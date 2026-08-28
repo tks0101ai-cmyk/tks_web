@@ -1,0 +1,65 @@
+# ==========================================
+# TKS Dashboard — Docker Compose cho VPS
+#
+# Chay:   docker compose up -d --build
+# Log:    docker compose logs -f tks-web
+# Dung:   docker compose down          (volume tks-data van duoc giu nguyen)
+# ==========================================
+
+services:
+  tks-web:
+    build: ./server
+    container_name: tks-web
+
+    # CHI DUOC CHAY DUNG 1 INSTANCE. App co nhieu trang thai in-process khong
+    # the chia se giua cac replica:
+    #   - Telegram long-polling  (server/telegram/hrTelegramBot.js:130) -> 2 poller cung
+    #     token gay loi Telegram 409 Conflict
+    #   - SSE qua EventEmitter   (server/hr/hrLeaveEvents.js:10) -> client noi vao replica A
+    #     khong nhan duoc event phat tu replica B
+    #   - Job store stockout     (server/dashboard/stockoutCheck/jobManager.js:5-6)
+    #   - OTP store              (server/auth/otpService.js:13)
+    # => Scale doc (them RAM/CPU), TUYET DOI khong scale ngang.
+
+    # Publish thang ra port 80 cua host: port 80/443 tren VPS dang trong (da
+    # kiem tra bang `ss -tulpn`), nen chua can nginx. Truy cap: http://<IP>
+    #
+    # Khi nao co domain + HTTPS thi doi thanh "127.0.0.1:3000:3000" va dat
+    # nginx dung truoc (nho `proxy_buffering off` cho route SSE).
+    ports:
+      - "80:3000"
+
+    # Bien moi truong nap tu file — day la BIEN THAT cua process, nen
+    # server/config.js khong can dotenv (xem ghi chu trong server/Dockerfile).
+    #
+    # File nay KHONG nam trong git. Copy tu may local qua SFTP roi `chmod 600`.
+    # Xem DEPLOY-VPS.md muc 3 de biet bien nao phai BO khi chay bang IP.
+    env_file:
+      - ./server/.env
+
+    environment:
+      # Khop voi cong EXPOSE/HEALTHCHECK trong Dockerfile. Dat o day de khong
+      # phu thuoc vao viec .env co dong PORT hay khong.
+      PORT: "3000"
+      # KHONG them NODE_ENV=production o day khi con chay HTTP bang IP —
+      # se lam hong dang nhap. Chi tiet trong server/Dockerfile.
+
+    # Named volume thay vi bind mount: Docker tu ke thua uid/gid tu /app/data
+    # trong image (user `node`), tranh loi sai quyen khien app am tham fallback
+    # sang os.tmpdir() va mat du lieu. Day la TOAN BO state ben vung:
+    # users.json, notifications.json, roleChangeRequests.json,
+    # telegram_conversations.json.
+    volumes:
+      - tks-data:/app/data
+
+    restart: unless-stopped
+
+    # Gioi han log de khong lam day disk VPS (mac dinh json-file khong gioi han)
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  tks-data:

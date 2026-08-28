@@ -1,0 +1,23 @@
+# Cai dat lai trong image bang `npm ci`
+node_modules/
+
+# State runtime — duoc cap bang named volume tks-data, KHONG bake vao image.
+# Bake vao se ghi de du lieu that (users.json chua tai khoan nguoi dung).
+data/
+
+# Secret — duoc nap luc chay bang `env_file:` cua Compose, khong bao gio nam
+# trong image (image co the bi push len registry).
+.env
+.env.*
+
+# Test khong can trong image production (npm ci --omit=dev cung da bo jsdom)
+*.test.js
+test/
+
+# Tai lieu
+README.md
+
+# Rac
+*.log
+.DS_Store
+Thumbs.db

@@ -14,6 +14,13 @@ node_modules/
 # server/.env chứa CLIENT_ID/CLIENT_SECRET của KiotViet — KHÔNG đẩy lên GitHub
 server/.env
 
+# Mọi file .env ở bất kỳ thư mục nào (kể cả .env ở thư mục gốc, vốn đang chứa
+# JWT_SECRET / GOOGLE_SERVICE_ACCOUNT_JSON / SMTP_APP_PASSWORD dùng cho dev local).
+# Pattern không có dấu "/" nên khớp ở mọi cấp thư mục.
+.env
+.env.*
+!.env.example
+
 # Local development preview (không cần commit)
 dev/
 
