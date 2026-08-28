@@ -32,21 +32,29 @@ trong Google Sheets và không nằm trong git. Mất volume `tks-data` là mấ
 
 ## 1. Chuẩn bị trên VPS
 
+Đã kiểm tra trên VPS đích (2026-08-28) — mọi thứ sẵn sàng, mục này chỉ để tham chiếu khi
+dựng lại trên máy khác:
+
+| Hạng mục | Trạng thái |
+|---|---|
+| Docker | ✅ v29.7.2 |
+| Docker Compose plugin | ✅ v5.5.0 |
+| Node/npm trên host | ❌ chưa cài — **không cần**, đây chính là lý do chọn Docker |
+| nginx/caddy/apache/certbot | ❌ chưa có — chưa cần khi chạy IP |
+| Port 80/443 | ✅ trống (chỉ có sshd `:22`) |
+| Disk | ✅ 213 GB trống |
+| RAM | ✅ 5.4 GB available |
+
+Kiểm tra lại nếu cần:
+
 ```bash
-docker --version && docker compose version
+docker compose version && ss -tulpn | grep -E ':(80|443)' || echo "Port 80/443 trong - OK"
 ```
 
-Nếu chưa có Docker Compose plugin:
-
-```bash
-apt-get update && apt-get install -y docker-compose-plugin
-```
-
-Kiểm tra port 80 còn trống:
-
-```bash
-ss -tulpn | grep -E ':(80|443)' || echo "Port 80/443 trong - OK"
-```
+**Lưu ý về các service đang chạy trên VPS này:** 4 bot (`kiotviet-bot`, `kiotviet2-bot`,
+`kiotviet-test`, `qa-bot`) chạy bằng **systemd + venv**, 1 bot (`invoice-telegram-bot`) chạy
+bằng **Docker Compose** ở `/opt/invoice-telegram-bot/`. App này dùng Docker Compose và không
+đụng gì tới các service kia — tên container `tks-web`, network riêng `tks_web_default`.
 
 ## 2. Clone đúng nhánh
 
@@ -125,17 +133,24 @@ docker compose exec -u root tks-web chown -R node:node /app/data && docker compo
 
 Nếu bắt đầu hoàn toàn mới: đăng nhập `admin` / `Admin@123` rồi **đổi mật khẩu ngay**.
 
-## 6. Firewall
+## 6. Firewall — không cần làm gì
+
+Đã kiểm tra trên VPS này (2026-08-28): **ufw không được cài**, và `nft list ruleset` chỉ chứa
+các chain do Docker tự sinh (`DOCKER`, `DOCKER-FORWARD`, nat cho `docker0` và
+`br-d6f388fa73f4`) — **không có rule nào chặn inbound**.
+
+Docker tự chèn rule nftables khi publish port, nên `ports: "80:3000"` sẽ hoạt động ngay,
+không cần `ufw allow`.
+
+Xác nhận lại sau khi container chạy:
 
 ```bash
-ufw status | head -3
+ss -tulpn | grep ':80'
 ```
 
-Nếu ufw đang `active`:
-
-```bash
-ufw allow 80/tcp
-```
+> Nếu về sau có cài ufw, nhớ rằng **ufw không chặn được port do Docker publish** (Docker chèn
+> rule vào chain `DOCKER` nằm trước chain của ufw). Muốn giới hạn thật thì đổi `ports:` thành
+> `"127.0.0.1:3000:3000"` rồi cho nginx đứng trước.
 
 ---
 
