@@ -93,7 +93,22 @@ Kết quả phải là `0`. Nếu ra số khác 0, sửa bằng:
 sed -i 's/\r$//' /root/tks_web/server/.env
 ```
 
-**Sửa lại file cho môi trường VPS** — bỏ hẳn 3 biến sau (xoá dòng hoặc comment bằng `#`):
+**Kiểm tra lại quan trọng:** file `.env` gốc ở máy local có `PORT=` trỏ tới cổng khác 3000 thì
+không sao — `docker-compose.yml` đã ghi đè `PORT: "3000"` để khớp với `EXPOSE`/`HEALTHCHECK`.
+
+**Sửa lại file cho môi trường VPS** — bỏ hẳn 3 biến sau:
+
+```bash
+sed -i -E '/^(NODE_ENV|GOOGLE_CLIENT_ID|TELEGRAM_BOT_ENABLED)=/d' /root/tks_web/server/.env
+```
+
+Xác nhận đã sạch (phải không in ra gì):
+
+```bash
+grep -E '^(NODE_ENV|GOOGLE_CLIENT_ID|TELEGRAM_BOT_ENABLED)=' /root/tks_web/server/.env
+```
+
+Lý do bỏ từng biến:
 
 | Biến | Vì sao phải bỏ khi chạy bằng IP |
 |---|---|
@@ -205,7 +220,10 @@ docker compose exec tks-web ls -la /app/data
 Phải thấy các file JSON thuộc sở hữu `node`. Nếu thư mục trống mà app vẫn chạy được nghĩa là
 đang dính fallback `os.tmpdir()` → dữ liệu sẽ mất khi restart.
 
-**7. Trên trình duyệt** — mở `http://<IP-VPS>`
+**7. Trên trình duyệt** — mở **http://152.53.183.240**
+
+VPS là dual-stack: IPv4 `152.53.183.240` (eth0), IPv6 `2a0a:4cc0:c0:e4e3:687c:60ff:feef:4b90`.
+Dùng IPv4 cho tiện. Lưu ý `curl ifconfig.me` không tham số sẽ trả về IPv6 — không phải lỗi.
 
 - Đăng nhập bằng user/mật khẩu → vào được dashboard, F5 vẫn giữ phiên
 - Nút "Đăng nhập bằng Google" **không hiển thị** (đúng thiết kế khi chạy IP)
