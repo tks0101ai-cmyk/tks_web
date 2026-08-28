@@ -151,6 +151,31 @@ là biện pháp duy nhất có tác dụng lâu dài, và nó có tác dụng t
 
 → Đăng nhập lần lượt bằng cả hai tài khoản và đổi mật khẩu **ngay**, trước khi cho bất kỳ ai truy cập.
 
+Luồng đổi: trang **`/account/#profile`** → thẻ "Bảo mật & Đổi mật khẩu"
+(`server/public/account/index.html:379-421`) → `POST /api/auth/change-password`
+(`server/auth/authRoutes.js:745`). Bắt buộc nhập đúng mật khẩu hiện tại; mật khẩu mới 8–128 ký tự.
+
+**Đăng xuất rồi đăng nhập lại bằng mật khẩu mới** để xác minh — API chỉ trả `{ok:true}` chứ
+không tự kiểm chứng.
+
+Kiểm tra bằng máy (không cần tiết lộ mật khẩu mới — lệnh chỉ hỏi "hai mật khẩu *mặc định* còn
+dùng được không"):
+
+```bash
+cd /root/tks_web && docker compose exec -T tks-web node -e 'const b=require("bcryptjs"),u=require("/app/data/users.json");[["admin","Admin@123"],["thangnnv2003@gmail.com","Thang@2026"]].forEach(function(p){var x=u.find(function(y){return y.username===p[0]});if(x===undefined){console.log(p[0],"KHONG TIM THAY");return}console.log(p[0], b.compareSync(p[1],x.passwordHash)?"VAN CON MAT KHAU MAC DINH":"da doi - OK")})'
+```
+
+Cả hai dòng phải ra `da doi - OK`.
+
+> Lệnh trên cố ý dùng `x===undefined` thay vì `!x`, và nháy đơn bọc ngoài đoạn `node -e`. Bash
+> tương tác coi `!` là history expansion **kể cả trong nháy kép** — viết gọn lại thành `!x` mà
+> vẫn để nháy kép sẽ báo `event not found` chứ không chạy.
+
+⚠️ **Đổi mật khẩu KHÔNG đá phiên nào ra.** `authRoutes.js:745-779` không ký lại token cũng
+không xoá cookie — mọi `tks_auth` đã phát ra vẫn sống đủ 12h. Nếu có token nào từng bị lộ
+(in ra terminal, dán vào chat, lọt vào log), phải đổi `JWT_SECRET` — xem
+[Đổi JWT_SECRET](#đổi-jwt_secret-huỷ-toàn-bộ-phiên-đăng-nhập) ở mục Vận hành.
+
 ### 🔴 Rủi ro của việc chạy HTTP thuần
 
 Vì chưa có domain nên toàn bộ traffic là HTTP không mã hoá, trên IP công khai
@@ -242,12 +267,21 @@ curl -i http://localhost/health
 
 **5. Cookie KHÔNG có cờ Secure** ← quan trọng nhất
 
+Cần một lần đăng nhập thành công. **Đừng gõ thẳng mật khẩu vào dòng lệnh** — nó sẽ nằm lại
+trong `~/.bash_history`. Dùng `read -rs` để nhập kín:
+
 ```bash
-curl -i -s -X POST http://localhost/api/auth/login -H 'Content-Type: application/json' -d '{"username":"admin","password":"Admin@123"}' | grep -i set-cookie
+read -rsp 'Mat khau admin: ' PW && echo && curl -i -s -X POST http://localhost/api/auth/login -H 'Content-Type: application/json' -d "{\"username\":\"admin\",\"password\":\"$PW\"}" | grep -i set-cookie; unset PW
 ```
 
 Kết quả phải có `Set-Cookie: tks_auth=...` và **không chứa chữ `Secure`**.
 Nếu thấy `Secure` → `NODE_ENV=production` đã lọt vào env, quay lại mục 3 gỡ ra.
+
+> Cách không cần dòng lệnh: đăng nhập trên trình duyệt rồi xem DevTools → Application →
+> Cookies → `tks_auth`, cột **Secure phải trống**.
+
+> Mật khẩu ở đây là mật khẩu **đã đổi** ở [mục 5](#5-việc-bắt-buộc-làm-ngay-sau-lần-khởi-động-đầu-️).
+> Nếu bạn còn đang chạy phép thử này bằng `Admin@123` thì nghĩa là mục 5 chưa làm — làm trước đã.
 
 **6. Volume gắn đúng**
 
@@ -287,6 +321,63 @@ cd /root/tks_web && git pull origin deploy/vps-docker && docker compose up -d --
 ```
 
 `server/.env` và volume `tks-data` nằm ngoài git nên `git pull` không đụng tới.
+
+### Đổi JWT_SECRET (huỷ toàn bộ phiên đăng nhập)
+
+Làm khi có token bị lộ, hoặc khi cần đá tất cả mọi người ra. **Đây là cách duy nhất huỷ token
+đang lưu hành:** hệ thống không có blacklist/revoke — `server/auth/authMiddleware.js:20-31` chỉ
+gọi `verifyToken` rồi tin kết quả, không đối chiếu danh sách nào. Đổi mật khẩu *không* có tác dụng
+này.
+
+Không làm hỏng thứ gì khác: OTP là `Map` in-memory với mã 6 số ngẫu nhiên
+(`server/auth/otpService.js:13,112`), luồng quên mật khẩu không có link ký sẵn nào
+(`authRoutes.js:396-482` là OTP thuần), đăng nhập Google xác thực bằng khoá công khai của Google
+(`googleAuthService.js:27-30`), mã liên kết Telegram lưu trong HR spreadsheet.
+
+Backup trước:
+
+```bash
+cp /root/tks_web/server/.env /root/.env.bak.$(date +%F-%H%M) && chmod 600 /root/.env.bak.*
+```
+
+Sinh và thay (giá trị không hiện lên màn hình; history chỉ lưu `${NEW}` chưa expand):
+
+```bash
+NEW=$(openssl rand -hex 48) && sed -i "s|^JWT_SECRET=.*|JWT_SECRET=${NEW}|" /root/tks_web/server/.env && unset NEW
+```
+
+Kiểm tra định dạng và line-ending — phải in ra `1` rồi `0`:
+
+```bash
+grep -c '^JWT_SECRET=[0-9a-f]\{96\}$' /root/tks_web/server/.env; grep -c $'\r' /root/tks_web/server/.env
+```
+
+**Nạp vào — chỗ dễ sai nhất:**
+
+```bash
+cd /root/tks_web && docker compose up -d --force-recreate tks-web
+```
+
+> ⚠️ `docker compose restart` **không** nạp lại `env_file`. Container cũ giữ nguyên biến môi
+> trường cũ và secret cũ vẫn verify được — trông như đã đổi nhưng thực chất chưa. Bắt buộc
+> `up -d --force-recreate`.
+
+Xác minh token cũ đã chết (dán token cũ vào chỗ `<TOKEN_CU>`) — phải ra **`401`**:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost/api/auth/me -H 'Cookie: tks_auth=<TOKEN_CU>'
+```
+
+Ra `200` nghĩa là container chưa recreate thật. Xong xuôi thì xoá backup chứa secret cũ:
+
+```bash
+rm -f /root/.env.bak.*
+```
+
+**Tác dụng phụ** (đến từ việc restart, không từ secret): mọi người phải đăng nhập lại · OTP đang
+chờ bị xoá sạch, ai đang giữa chừng quên mật khẩu phải xin mã mới · job kiểm tra đứt hàng đang
+chạy bị mất · bộ đếm khoá đăng nhập sai 5 lần (`authRoutes.js:34`) reset · SSE đứt và trình duyệt
+tự nối lại.
 
 **Backup dữ liệu (nên đặt cron hằng ngày):**
 
