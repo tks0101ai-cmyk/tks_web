@@ -1,0 +1,13 @@
+# ==========================================
+# Line endings
+#
+# core.autocrlf=true tren may Windows chuyen LF <-> CRLF trong working copy.
+# Cac file duoi day duoc Linux/Docker doc truc tiep: neu lot CRLF vao se gay
+# loi rat kho chan doan (script trong RUN bi dut dong, gia tri env thua \r).
+# Ep LF tuyet doi, bat ke cau hinh cua tung may.
+# ==========================================
+Dockerfile      text eol=lf
+*.dockerignore  text eol=lf
+docker-compose.yml text eol=lf
+*.sh            text eol=lf
+*.env.example   text eol=lf

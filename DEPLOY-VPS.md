@@ -71,6 +71,20 @@ Dùng SFTP của MobaXterm kéo `.env` từ máy local vào `/root/tks_web/serve
 chmod 600 /root/tks_web/server/.env
 ```
 
+**Kiểm tra line-ending ngay** — MobaXterm có thể tự chuyển LF sang CRLF khi truyền. Nếu dính,
+mọi giá trị sẽ có ký tự `\r` thừa ở cuối và gây lỗi cực khó chẩn đoán (Google Sheets trả 404
+vì `SPREADSHEET_ID` thừa `\r`, JWT không verify được, `GOOGLE_SERVICE_ACCOUNT_JSON` parse fail):
+
+```bash
+grep -c $'\r' /root/tks_web/server/.env
+```
+
+Kết quả phải là `0`. Nếu ra số khác 0, sửa bằng:
+
+```bash
+sed -i 's/\r$//' /root/tks_web/server/.env
+```
+
 **Sửa lại file cho môi trường VPS** — bỏ hẳn 3 biến sau (xoá dòng hoặc comment bằng `#`):
 
 | Biến | Vì sao phải bỏ khi chạy bằng IP |
