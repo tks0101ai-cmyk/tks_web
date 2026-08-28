@@ -129,7 +129,44 @@ Ba biến **bắt buộc phải có**, thiếu là container crash ngay lúc kh�
 cd /root/tks_web && docker compose up -d --build
 ```
 
-## 5. Di trú dữ liệu từ Render ⚠️
+## 5. Việc BẮT BUỘC làm ngay sau lần khởi động đầu ⚠️
+
+Khi `server/data/users.json` chưa tồn tại, `server/auth/localUserStore.js:78-113` tự tạo
+**hai** tài khoản Quản lý với mật khẩu **nằm sẵn trong mã nguồn**:
+
+| Username | Mật khẩu mặc định | Nguồn |
+|---|---|---|
+| `admin` | `Admin@123` | `localUserStore.js:79` |
+| `thangnnv2003@gmail.com` | `Thang@2026` | `localUserStore.js:80` |
+
+Cả hai đều có vai trò `QUAN_LY`, phụ trách `Cả hai` cơ sở, trạng thái hoạt động.
+
+**Hai tài khoản này không xoá được.** `HARDCODED_ADMINS` (`localUserStore.js:29-35`) chứa
+`admin`, `admin@tokosi.vn`, `thangnnv2003@gmail.com` và các biến thể; `ensureHardcodedAdmins()`
+chạy mỗi lần đọc file (`localUserStore.js:178`) sẽ tạo lại tài khoản nếu bị xoá và **ép ngược**
+vai trò về Quản lý, trạng thái về hoạt động, cơ sở về Cả hai — kể cả khi bạn đã sửa tay.
+
+May mắn là hàm đó **không đụng tới `passwordHash`** của tài khoản đã tồn tại, nên **đổi mật khẩu
+là biện pháp duy nhất có tác dụng lâu dài, và nó có tác dụng thật.**
+
+→ Đăng nhập lần lượt bằng cả hai tài khoản và đổi mật khẩu **ngay**, trước khi cho bất kỳ ai truy cập.
+
+### 🔴 Rủi ro của việc chạy HTTP thuần
+
+Vì chưa có domain nên toàn bộ traffic là HTTP không mã hoá, trên IP công khai
+`152.53.183.240`. Nghĩa là **mật khẩu đăng nhập đi qua Internet dưới dạng chữ thường**, ai
+đứng trên đường truyền (Wi-Fi công cộng, ISP, hạ tầng trung gian) cũng đọc được, và cookie
+phiên `tks_auth` cũng vậy.
+
+Chấp nhận được khi đang thử nghiệm nội bộ. **Không nên dùng với dữ liệu nhân sự/doanh thu thật
+trong thời gian dài.** Nếu chưa mua được domain, cách nhanh và miễn phí là đăng ký một
+subdomain DuckDNS trỏ về `152.53.183.240` rồi chạy Let's Encrypt — xem mục
+[Khi có domain](#khi-có-domain).
+
+## 6. Di trú dữ liệu từ Render (bỏ qua nếu dựng mới) ⚠️
+
+> **Lần deploy này là dựng mới hoàn toàn — bỏ qua mục 6, đi thẳng tới mục 7.**
+> Mục này giữ lại phòng khi sau này cần khôi phục dữ liệu từ backup.
 
 **Làm trước khi cho người dùng vào.** Nếu bỏ qua, `server/auth/localUserStore.js` sẽ tự tạo
 `users.json` mới với admin mặc định và **toàn bộ tài khoản cũ biến mất**.
@@ -146,9 +183,10 @@ Sửa quyền rồi restart:
 docker compose exec -u root tks-web chown -R node:node /app/data && docker compose restart tks-web
 ```
 
-Nếu bắt đầu hoàn toàn mới: đăng nhập `admin` / `Admin@123` rồi **đổi mật khẩu ngay**.
+Sau khi khôi phục xong, vẫn phải kiểm tra hai tài khoản hardcode ở [mục 5](#5-việc-bắt-buộc-làm-ngay-sau-lần-khởi-động-đầu-️) —
+`ensureHardcodedAdmins()` sẽ tạo lại chúng kèm mật khẩu mặc định nếu file backup không có.
 
-## 6. Firewall — không cần làm gì
+## 7. Firewall — không cần làm gì
 
 Đã kiểm tra trên VPS này (2026-08-28): **ufw không được cài**, và `nft list ruleset` chỉ chứa
 các chain do Docker tự sinh (`DOCKER`, `DOCKER-FORWARD`, nat cho `docker0` và
