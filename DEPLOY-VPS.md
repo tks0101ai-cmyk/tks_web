@@ -379,11 +379,88 @@ chờ bị xoá sạch, ai đang giữa chừng quên mật khẩu phải xin m�
 chạy bị mất · bộ đếm khoá đăng nhập sai 5 lần (`authRoutes.js:34`) reset · SSE đứt và trình duyệt
 tự nối lại.
 
-**Backup dữ liệu (nên đặt cron hằng ngày):**
+### Backup tự động
+
+Volume `tks_web_tks-data` là **bản duy nhất** của `users.json` (tài khoản người dùng thật),
+`notifications.json`, `roleChangeRequests.json`, `telegram_conversations.json`. Không có bản sao
+nào ở Google Sheets, không có trong git.
+
+Script `scripts/backup-tks-data.sh` (có trong repo) lo phần tarball + xoay vòng + tự kiểm tra.
+**Không cần dừng container:** cả 4 store ghi kiểu temp-file + `rename()`
+(`localUserStore.js:199`, `notificationRepository.js:53`, `conversationStore.js:63`,
+`roleChangeRequestRepository.js:58`), mà `rename()` là atomic — `tar` luôn đọc được bản cũ hoặc
+bản mới trọn vẹn, không bao giờ vớ phải file ghi dở.
+
+Cài đặt một lần:
 
 ```bash
-docker run --rm -v tks_web_tks-data:/data -v /root/backups:/backup alpine tar czf /backup/tks-data-$(date +%F).tar.gz -C /data .
+cd /root/tks_web && git pull origin deploy/vps-docker && chmod +x scripts/backup-tks-data.sh && docker pull alpine
 ```
+
+`docker pull alpine` làm sẵn để cron không phụ thuộc vào mạng lúc 3 giờ sáng.
+
+Chạy thử tay trước khi tin vào cron:
+
+```bash
+/root/tks_web/scripts/backup-tks-data.sh
+```
+
+Phải in ra dòng `OK tks-data-... — <số> byte`. Kích thước vài KB là đúng; **nếu chỉ ~100 byte thì
+sai** — nhưng script đã tự bắt lỗi đó rồi (xem bên dưới).
+
+Đặt cron 3h15 sáng:
+
+```bash
+( crontab -l 2>/dev/null; echo '15 3 * * * /root/tks_web/scripts/backup-tks-data.sh >> /root/backups/backup.log 2>&1' ) | crontab -
+```
+
+Xác nhận đã vào:
+
+```bash
+crontab -l
+```
+
+> ⚠️ **Ngày tháng cố ý nằm trong script, không nằm trong dòng crontab.** Trong crontab, `%` là ký
+> tự đặc biệt (nghĩa là xuống dòng) — viết `date +%F` thẳng vào crontab sẽ khiến cron cắt cụt
+> lệnh và job **im lặng không chạy**. Nếu sau này sửa dòng cron, đừng kéo `date` ra ngoài.
+
+> ⚠️ **Gõ sai tên volume không báo lỗi.** `docker run -v ten_sai:/data` khiến Docker *tự tạo một
+> volume rỗng*, `tar` vẫn exit 0 và vẫn đẻ ra file `.tar.gz` hợp lệ nhưng rỗng ruột — chỉ lộ ra
+> vào đúng lúc cần restore. Vì vậy script bắt buộc đối chiếu `users.json` có thật trong archive,
+> không có thì xoá file và exit 1.
+
+Kiểm tra sau vài ngày:
+
+```bash
+ls -la /root/backups/ && tail -5 /root/backups/backup.log
+```
+
+**Giữ 14 bản, xoay vòng tự động.** Đổi bằng biến môi trường nếu cần:
+`TKS_BACKUP_KEEP_DAYS=30`, `TKS_BACKUP_DEST=/mnt/...`, `TKS_BACKUP_VOLUME=...`.
+
+🔴 **`/root/backups` nằm cùng ổ đĩa với volume.** Nó cứu được lỗi app, xoá nhầm, restore hỏng —
+**không** cứu được mất VPS. Định kỳ kéo tarball mới nhất về máy bằng SFTP của MobaXterm.
+
+### Restore từ backup
+
+```bash
+cd /root/tks_web && docker compose stop tks-web
+```
+
+**Bắt buộc dừng trước.** `conversationStore.js:20,43` giữ dữ liệu trong `cache` RAM; đổ file mới
+xuống dưới chân container đang sống sẽ bị `persist()` kế tiếp ghi đè lại.
+
+```bash
+docker run --rm -v tks_web_tks-data:/data -v /root/backups:/backup alpine sh -c 'rm -rf /data/* && tar xzf /backup/tks-data-<STAMP>.tar.gz -C /data'
+```
+
+```bash
+cd /root/tks_web && docker compose start tks-web && docker compose exec tks-web ls -la /app/data
+```
+
+Các file phải thuộc sở hữu `node`. Sau đó kiểm tra lại hai tài khoản hardcode ở
+[mục 5](#5-việc-bắt-buộc-làm-ngay-sau-lần-khởi-động-đầu-️) — `ensureHardcodedAdmins()` sẽ tạo lại
+chúng kèm **mật khẩu mặc định** nếu bản backup không chứa.
 
 **Rollback về commit cũ:**
 
