@@ -39,7 +39,7 @@ const CORE_SHEETS_ORDER = Object.freeze([
 const ALL_CORE_KEYS = Object.freeze([...CORE_SHEETS_ORDER, PERIODS_KEY]);
 
 const ALL_ROLLUPS = Object.freeze([
-  'overviewRevenue', 'invoicesRevenue', 'productSales', 'newlyImportedSales', 'firstPurchase',
+  'overviewRevenue', 'invoicesRevenue', 'productSales', 'productSales90d', 'newlyImportedSales', 'firstPurchase',
   'purchaseTotals', 'newPurchaseOrders', 'invoiceQuantity'
 ]);
 
@@ -50,10 +50,12 @@ const VIEW_SOURCES = Object.freeze({
     rollups: ['overviewRevenue', 'productSales'],
     needsDebt: false
   },
-  // newlyImportedSales: doanh thu hang moi nhap (phan 5) theo bo loc rieng ni.
+  // productSales90d: phan 3 "Phan tich doanh thu", co dinh 90 ngay. newlyImportedSales:
+  // phan 5 "Hang moi nhap" theo bo loc ni. KHONG chay productSales (theo pr) — do la
+  // bo loc cua Tong quan.
   products: {
     sheets: [CONFIG.SHEET_CATEGORIES, CONFIG.SHEET_PRODUCTS],
-    rollups: ['productSales', 'newlyImportedSales', 'firstPurchase'],
+    rollups: ['productSales90d', 'newlyImportedSales', 'firstPurchase'],
     needsDebt: false
   },
   // Dat hang (~23K dong) + Tra hang chi tab Hoa don can.
@@ -84,11 +86,18 @@ const VIEW_SOURCES = Object.freeze({
 // Khoa cua object `filters` (xem routes.js) anh huong ket qua cua tab.
 const VIEW_FILTER_KEYS = Object.freeze({
   overview: ['overview', 'products'],
-  products: ['products', 'newlyImported', 'newProducts'],
+  // Hang hoa chi phu thuoc TRANG THAI cua `products` (khoa ao productStatus, xem
+  // DERIVED_FILTER_KEYS); khoang thoi gian pr la bo loc cua Tong quan.
+  products: ['productStatus', 'newlyImported', 'newProducts'],
   invoices: ['invoices'],
   customers: ['customers'],
   suppliers: ['newPurchases'],
   debt: []
+});
+
+// Khoa "ao" trong VIEW_FILTER_KEYS: lay 1 phan cua bo loc khac lam cache key.
+const DERIVED_FILTER_KEYS = Object.freeze({
+  productStatus: filters => (filters.products ? filters.products.status : undefined)
 });
 
 // Phan payload moi tab tra ve. `top`: khoa top-level tra nguyen; `nested`: chi
@@ -107,13 +116,20 @@ const VIEW_PAYLOAD = Object.freeze({
     filters: ['overview', 'products', 'productStatus']
   },
   products: {
-    top: ['products', 'lowStock', 'stockValueByCategory', 'allProducts', 'stockByCategory'],
-    nested: {},
+    top: ['lowStock', 'stockValueByCategory', 'allProducts', 'stockByCategory'],
+    // Khong lay childCategorySalesByParent/availableParentCategories: do la doanh thu
+    // theo nhom hang cua Tong quan (theo bo loc pr).
+    nested: {
+      products: [
+        'newProducts', 'topSellingProducts', 'topSellingParentCategories',
+        'allSellingProducts', 'allSellingParentCategories', 'newlyImported'
+      ]
+    },
     kpi: [
       'totalProducts', 'totalStock', 'inStockCodes', 'activeProducts', 'inactiveProducts',
       'lowStockCount', 'totalInventoryValue', 'inventoryValueCategoryCount'
     ],
-    filters: ['products', 'productStatus', 'newlyImported', 'newProducts']
+    filters: ['productStatus', 'newlyImported', 'newProducts']
   },
   invoices: {
     top: ['invoices'],
@@ -189,7 +205,7 @@ function resolveViewPlan(rawViews) {
   const coreKeys = needsPeriods ? [...sheets, PERIODS_KEY] : sheets;
   const rollups = new Set(unionInOrder(ALL_ROLLUPS, views.map(name => VIEW_SOURCES[name].rollups)));
   const filterKeys = unionInOrder(
-    ['overview', 'products', 'invoices', 'customers', 'newPurchases', 'newlyImported', 'newProducts'],
+    ['overview', 'products', 'productStatus', 'invoices', 'customers', 'newPurchases', 'newlyImported', 'newProducts'],
     views.map(name => VIEW_FILTER_KEYS[name])
   );
 
@@ -244,7 +260,10 @@ function pickFilters(filters, plan) {
   const source = filters || {};
   if (plan.all) return source;
   const picked = {};
-  plan.filterKeys.forEach(key => { if (source[key] !== undefined) picked[key] = source[key]; });
+  plan.filterKeys.forEach(key => {
+    const value = DERIVED_FILTER_KEYS[key] ? DERIVED_FILTER_KEYS[key](source) : source[key];
+    if (value !== undefined) picked[key] = value;
+  });
   return picked;
 }
 

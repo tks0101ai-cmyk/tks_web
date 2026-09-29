@@ -497,12 +497,12 @@ test('getDashboardData gop nhieu request TRUNG cacheKey toi cung luc tren cache 
   ]);
 
   assert.equal(dashboardData.__test__.getComputeCallCount(), 1, '3 request trung cacheKey cung luc chi duoc tinh 1 lan, khong phai 3');
-  // fetchDashboardRollups() goi 8 truy van rollup cho 1 co so (getInvoiceRevenueByDay
-  // goi 2 lan cho overview/invoices range, getProductSalesBreakdown 2 lan cho pr/ni range,
+  // fetchDashboardRollups() goi 9 truy van rollup cho 1 co so (getInvoiceRevenueByDay
+  // goi 2 lan cho overview/invoices range, getProductSalesBreakdown 3 lan cho pr/90 ngay/ni range,
   // 4 ham con lai goi 1 lan) — BASE_FILTERS ung voi 1 co so vat ly (Ha Noi mac dinh)
   // nen dung 1 lan fetchDashboardRollups duy nhat cho ca 3 request; neu khong gop
-  // (single-flight) con so nay se la 24 (x3).
-  assert.equal(callCounter.count, 8, 'ca 3 request trung cacheKey chi duoc goi rollup 1 luot (khong phai 3 luot => 24)');
+  // (single-flight) con so nay se la 27 (x3).
+  assert.equal(callCounter.count, 9, 'ca 3 request trung cacheKey chi duoc goi rollup 1 luot (khong phai 3 luot => 27)');
   assert.equal(first, second, 'ca 3 ket qua phai la cung 1 object reference (den tu chung 1 promise)');
   assert.equal(second, third, 'ca 3 ket qua phai la cung 1 object reference (den tu chung 1 promise)');
 });
@@ -1650,7 +1650,7 @@ test('getDashboardData: doanh thu Hang moi nhap lay tu truy van rieng theo khoan
   assert.equal(data.filters.newlyImported.label, info.label);
 });
 
-test('getDashboardData: Top san pham ban chay + nhom hang doc tu getProductSalesBreakdown (rollup)', async () => {
+test('getDashboardData: Phan tich doanh thu tab Hang hoa luon 90 ngay gan nhat, nhom con Tong quan van theo pr', async () => {
   const { dashboardData, dashboardPgReader, dashboardRollupRepository } = freshDashboardData();
   const CONFIG = require('../config');
   const productWithCategory = (code, name) => {
@@ -1671,6 +1671,7 @@ test('getDashboardData: Top san pham ban chay + nhom hang doc tu getProductSales
   mockDashboardRollups(dashboardRollupRepository, {
     getProductSalesBreakdown: (args) => {
       calls.push(args);
+      if (args.from === '2020-08-01') return [{ code: 'SP-01', name: 'Sản phẩm một', qty: 1, revenue: 7 }]; // pr cua Tong quan
       return [
         { code: 'SP-01', name: 'Sản phẩm một', qty: 5, revenue: 500000 },
         { code: 'SP-02', name: 'Sản phẩm hai', qty: 2, revenue: 100000 }
@@ -1679,16 +1680,20 @@ test('getDashboardData: Top san pham ban chay + nhom hang doc tu getProductSales
   });
   dashboardData.__test__.resetCaches();
 
-  const filters = { ...BASE_FILTERS, products: { mode: 'range', from: '2026-08-01', to: '2026-08-31' } };
+  const filters = { ...BASE_FILTERS, products: { mode: 'range', from: '2020-08-01', to: '2020-08-31' } };
   const data = await dashboardData.getDashboardData(filters);
 
-  assert.ok(calls.some(call => call.from === '2026-08-01' && call.to === '2026-08-31'), 'co truy van theo khoang pr');
+  const spanDays = call => (Date.parse(call.to) - Date.parse(call.from)) / 86400000 + 1;
+  assert.ok(calls.some(call => call.from && spanDays(call) === 90), 'co 1 truy van dung 90 ngay cho phan Phan tich');
   assert.deepEqual(
     data.products.topSellingProducts.map(p => [p.code, p.revenue]),
-    [['SP-01', 500000], ['SP-02', 100000]]
+    [['SP-01', 500000], ['SP-02', 100000]],
+    'Phan tich doc tu truy van 90 ngay, khong phai pr'
   );
+  assert.equal(data.products.allSellingProducts.length, 2);
   assert.equal(data.products.topSellingParentCategories.length, 1);
   assert.equal(data.products.topSellingParentCategories[0].revenue, 600000);
+  assert.equal(data.products.childCategorySalesByParent['Đồ uống'][0].revenue, 7, 'nhom con cua Tong quan van theo pr');
 });
 
 test('getDashboardData: doanh thu theo ngay (Tong quan/Hoa don) doc tu getInvoiceRevenueByDay (rollup)', async () => {
@@ -2258,6 +2263,34 @@ test('tung tab: cache tach rieng — doi bo loc cua tab khac KHONG lam mat cache
   // Ban day du (khong views) la mot entry khac, khong dung chung voi tab don le.
   await dashboardData.getDashboardData(BASE_FILTERS, undefined, VIEW_TEST_VIEWER);
   assert.equal(compute(), 4);
+});
+
+test('tung tab: Hang hoa khong phu thuoc khoang pr cua Tong quan (khong truy van pr, doi pr van trung cache)', async () => {
+  const ctx = freshDashboardData();
+  installRichViewFixture(ctx);
+  const salesCalls = [];
+  const original = ctx.dashboardRollupRepository.getProductSalesBreakdown;
+  ctx.dashboardRollupRepository.getProductSalesBreakdown = async (args) => { salesCalls.push(args); return original(args); };
+  ctx.dashboardData.__test__.resetCaches();
+  const { dashboardData } = ctx;
+  const compute = () => dashboardData.__test__.getComputeCallCount();
+  const filters = { ...BASE_FILTERS, products: { mode: 'range', from: '2020-01-01', to: '2020-01-31', status: 'all' } };
+
+  const data = await dashboardData.getDashboardData(filters, undefined, VIEW_TEST_VIEWER, { views: ['products'] });
+  assert.equal(salesCalls.length, 2, 'Hang hoa = 90 ngay (Phan tich) + ni (Hang moi nhap)');
+  assert.ok(salesCalls.every(call => call.from !== '2020-01-01'), 'khong truy van theo pr');
+  assert.equal(data.products.childCategorySalesByParent, undefined, 'nhom con la cua Tong quan');
+  assert.equal(data.filters.products, undefined);
+  assert.equal(data.filters.productStatus, 'all');
+  assert.equal(compute(), 1);
+
+  await dashboardData.getDashboardData({ ...filters, products: { mode: 'days', days: 7, status: 'all' } },
+    undefined, VIEW_TEST_VIEWER, { views: ['products'] });
+  assert.equal(compute(), 1, 'doi khoang pr khong lam tinh lai tab Hang hoa');
+
+  await dashboardData.getDashboardData({ ...filters, products: { mode: 'days', days: 7, status: 'Đang kinh doanh' } },
+    undefined, VIEW_TEST_VIEWER, { views: ['products'] });
+  assert.equal(compute(), 2, 'doi trang thai kinh doanh thi tinh lai');
 });
 
 test('tung tab: tab khong dung rollup/cong no khong bi het hieu luc khi rollup doi', async () => {

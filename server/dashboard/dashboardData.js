@@ -29,6 +29,7 @@ dashboardRollupEvents.on('updated', () => { rollupVersion += 1; });
 
 const OUT_OF_STOCK_LEVEL = 0;
 const TOP_SELLING_LIMIT = 15;
+const PRODUCT_ANALYSIS_DAYS = 90; // Phan tich doanh thu (tab Hang hoa phan 3): luon 90 ngay gan nhat, khong theo bo loc
 const NEWLY_IMPORTED_REVENUE_LIMIT = 15;
 const MAX_PARENT_CATEGORY_BARS = 30;
 const NEW_PURCHASES_SUPPLIER_LIMIT = 30; // top NCC cho bieu do 2 cot
@@ -252,6 +253,11 @@ function toCalendarDateKey(date) {
 function rangeToDateBounds(range) {
   if (!range || range.mode === 'all') return { from: null, to: null };
   return { from: toCalendarDateKey(range.start), to: toCalendarDateKey(range.end) };
+}
+
+// Khoang cua phan "Phan tich doanh thu" tab Hang hoa — y het nut "90 ngày" cua bo loc.
+function resolveProductAnalysisRange(now) {
+  return resolveFilterRange({ mode: 'days', days: PRODUCT_ANALYSIS_DAYS }, now);
 }
 
 function normalizeCategoryName(value) {
@@ -2180,6 +2186,12 @@ function mergeDashboardRollups(branchSources) {
       row => normalizeSearchValue(row.code),
       ['qty', 'revenue']
     ),
+    productSales90dRows: mergeRollupRows(
+      branchSources,
+      'productSales90dRows',
+      row => normalizeSearchValue(row.code),
+      ['qty', 'revenue']
+    ),
     firstPurchaseRows: Array.from(firstPurchaseByCode.values()),
     purchaseTotals: branchSources.reduce((totals, source) => ({
       orderCount: totals.orderCount + (Number(source.rollups.purchaseTotals?.orderCount) || 0),
@@ -2344,12 +2356,13 @@ function dashboardResultCacheKey(branch, plan, sourceVersions, filters) {
  * `|| []`), vd tab Tong quan khong phai cho getInvoiceQuantitiesByCode (~3,3s
  * khi nguoi) chi Hoa don moi can. Bo trong = chay moi truy van trong ALL_ROLLUPS.
  */
-async function fetchDashboardRollups(branch, { overviewRange, productsRange, newlyImportedRange, invoicesRange, newPurchasesRange }, plan) {
+async function fetchDashboardRollups(branch, { overviewRange, productsRange, productAnalysisRange, newlyImportedRange, invoicesRange, newPurchasesRange }, plan) {
   const wanted = plan ? plan.rollups : new Set(ALL_ROLLUPS);
   const run = (name, load) => (wanted.has(name) ? load() : undefined);
   const overviewBounds = rangeToDateBounds(overviewRange);
   const invoicesBounds = rangeToDateBounds(invoicesRange);
   const productsBounds = rangeToDateBounds(productsRange);
+  const productAnalysisBounds = rangeToDateBounds(productAnalysisRange);
   const newlyImportedBounds = rangeToDateBounds(newlyImportedRange);
   const newPurchasesBounds = rangeToDateBounds(newPurchasesRange);
   // Doanh thu theo ma hang (daily_product_sales) trong 1 khoang — moi khoang can thi goi 1 lan.
@@ -2361,12 +2374,13 @@ async function fetchDashboardRollups(branch, { overviewRange, productsRange, new
   });
 
   const [
-    overviewRevenueRows, invoicesRevenueRows, productSalesRows, newlyImportedSalesRows,
+    overviewRevenueRows, invoicesRevenueRows, productSalesRows, productSales90dRows, newlyImportedSalesRows,
     firstPurchaseRows, purchaseTotals, newPurchaseOrdersRaw, invoiceQuantityRows
   ] = await Promise.all([
     run('overviewRevenue', () => dashboardRollupRepository.getInvoiceRevenueByDay({ branch, from: overviewBounds.from, to: overviewBounds.to })),
     run('invoicesRevenue', () => dashboardRollupRepository.getInvoiceRevenueByDay({ branch, from: invoicesBounds.from, to: invoicesBounds.to })),
     run('productSales', () => productSalesIn(productsBounds)),
+    run('productSales90d', () => productSalesIn(productAnalysisBounds)),
     run('newlyImportedSales', () => productSalesIn(newlyImportedBounds)),
     run('firstPurchase', () => dashboardRollupRepository.getFirstPurchaseDates({ branch })),
     run('purchaseTotals', () => dashboardRollupRepository.getPurchaseTotals({ branch })),
@@ -2375,7 +2389,7 @@ async function fetchDashboardRollups(branch, { overviewRange, productsRange, new
   ]);
 
   return {
-    overviewRevenueRows, invoicesRevenueRows, productSalesRows, newlyImportedSalesRows,
+    overviewRevenueRows, invoicesRevenueRows, productSalesRows, productSales90dRows, newlyImportedSalesRows,
     firstPurchaseRows, purchaseTotals, newPurchaseOrdersRaw, invoiceQuantityRows
   };
 }
@@ -2386,7 +2400,7 @@ async function fetchDashboardRollups(branch, { overviewRange, productsRange, new
 const dashboardRollupFetchInflight = new Map();
 
 function shareDashboardRollupFetch(branch, ranges, plan, rollupVersionSnapshot) {
-  const bounds = ['overviewRange', 'productsRange', 'newlyImportedRange', 'invoicesRange', 'newPurchasesRange']
+  const bounds = ['overviewRange', 'productsRange', 'productAnalysisRange', 'newlyImportedRange', 'invoicesRange', 'newPurchasesRange']
     .map(name => rangeToDateBounds(ranges[name]));
   const key = [branch || '', plan.key, JSON.stringify(bounds), rollupVersionSnapshot].join('|');
   const existing = dashboardRollupFetchInflight.get(key);
@@ -2399,7 +2413,7 @@ function shareDashboardRollupFetch(branch, ranges, plan, rollupVersionSnapshot) 
 }
 
 // Chi doc nguon "re" (cache trong bo nho, thuong tuc thi) — KHONG goi rollup
-// (7 cau SQL) o day nua. getDashboardData() chi goi fetchDashboardRollups()
+// (9 cau SQL) o day nua. getDashboardData() chi goi fetchDashboardRollups()
 // rieng, SAU khi da tra dashboardResultCache va bi mien (xem Task 1.1).
 // `plan` quyet dinh bang nguon nao duoc doc; workbook cong no + workflow (Google
 // Sheets/Postgres) chi doc khi co tab Cong no.
@@ -2454,9 +2468,10 @@ async function getDashboardData(filters, branch, viewer, options) {
   const overviewRange = resolveFilterRange(f.overview, now);
   const productsRange = resolveFilterRange(f.products, now);
   const newlyImportedRange = resolveFilterRange(f.newlyImported, now);
+  const productAnalysisRange = resolveProductAnalysisRange(now);
   const invoicesRange = resolveFilterRange(f.invoices, now);
   const newPurchasesRange = resolveFilterRange(f.newPurchases, now);
-  const ranges = { overviewRange, productsRange, newlyImportedRange, invoicesRange, newPurchasesRange };
+  const ranges = { overviewRange, productsRange, productAnalysisRange, newlyImportedRange, invoicesRange, newPurchasesRange };
   // sourceArguments[i] la tham so branch thuc su truyen cho pgReader/rollup —
   // dung lai y het cho ca loadDashboardBaseSources va fetchDashboardRollups
   // ben duoi de tranh lech logic giua 2 cho.
@@ -2508,7 +2523,7 @@ async function getDashboardData(filters, branch, viewer, options) {
       }
     }
 
-    // Cache ket qua mien -> gio moi goi rollup (toi da 8 cau SQL/co so). Gan thang
+    // Cache ket qua mien -> gio moi goi rollup (toi da 9 cau SQL/co so). Gan thang
     // vao tung branchSource (object moi tao rieng cho request nay, khong phai
     // object dung chung tu cache) de giu dung shape ma computeDashboardData/
     // mergeDashboardSheets/mergeDebtManagementSources/mergeDashboardRollups
@@ -2833,21 +2848,24 @@ function computeDashboardData(sheets, filters, now, debtManagementSource, branch
   // dashboardRollupRepository.getProductSalesBreakdown()). Nhom cha/con tra cuu qua
   // productParentCategoryByCode/productChildCategoryByCode (tab Hang hoa/Nhom hang).
   const salesLookups = { productStatusFilter, productStatusByCode, productParentCategoryByCode, productChildCategoryByCode };
-  const productSales = aggregateProductSales(rollups.productSalesRows, salesLookups);
+  // Tong quan (doanh thu theo nhom hang/nhom con): theo bo loc pr.
+  const overviewSales = aggregateProductSales(rollups.productSalesRows, salesLookups);
+  // Tab Hang hoa phan 3 "Phan tich doanh thu": co dinh PRODUCT_ANALYSIS_DAYS ngay.
+  const analysisSales = aggregateProductSales(rollups.productSales90dRows, salesLookups);
   const newlyImportedSales = aggregateProductSales(
     rollups.newlyImportedSalesRows, salesLookups, code => newlyImportedCodeSet.has(code)
   );
-  const allSellingProducts = Object.values(productSales.byCode)
+  const allSellingProducts = Object.values(analysisSales.byCode)
     .sort((a, b) => b.revenue - a.revenue);
-  const allSellingParentCategories = categorySalesRows(productSales.byParent);
+  const allSellingParentCategories = categorySalesRows(analysisSales.byParent);
   const topSellingProducts = allSellingProducts.slice(0, TOP_SELLING_LIMIT);
   const topSellingParentCategories = allSellingParentCategories.slice(0, TOP_SELLING_LIMIT);
 
   // ---------- DOANH THU/SL BÁN THEO NHÓM CON, GOM THEO TỪNG NHÓM CHA ----------
   // Dung cho phan "chon 1 nhom cha -> xem chi tiet nhom con" o tab Tong quan.
   const childCategorySalesByParent = {};
-  Object.keys(productSales.childrenByParent).forEach(parentName => {
-    childCategorySalesByParent[parentName] = categorySalesRows(productSales.childrenByParent[parentName]);
+  Object.keys(overviewSales.childrenByParent).forEach(parentName => {
+    childCategorySalesByParent[parentName] = categorySalesRows(overviewSales.childrenByParent[parentName]);
   });
   const availableParentCategories = Object.keys(parentCategoryMap).sort((a, b) => a.localeCompare(b, 'vi'));
 
