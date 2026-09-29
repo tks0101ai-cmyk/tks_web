@@ -74,18 +74,28 @@ test('Hàng hóa chứa phần Mã mới tạo sau Hàng mới nhập', () => {
   assert.ok(view('products').querySelector('#todayNewProductRows'));
 });
 
-test('mỗi tab có thời gian lọc riêng: Tổng quan dùng chung bộ lọc Hàng hóa cho phần nhóm hàng', () => {
-  const groups = [...document.querySelectorAll('#filterBar .filter-group')]
-    .flatMap(group => (group.dataset.filterView || '').split(/\s+/));
-  assert.ok(groups.includes('overview'), 'Tong quan phai hien bo loc thoi gian cho phan nhom hang');
-  const overviewGroups = [...document.querySelectorAll('#filterBar .filter-group')]
-    .filter(group => (group.dataset.filterView || '').split(/\s+/).includes('overview'));
-  assert.ok(overviewGroups.every(group => group.dataset.filterView.split(/\s+/).includes('products')),
-    'bo loc o Tong quan phai la bo loc Hang hoa dung chung, khong tach rieng');
-  ['products', 'invoices', 'suppliers', 'customers'].forEach(name => {
-    assert.ok(groups.includes(name), name + ' phai co nhom loc');
-    assert.ok(document.getElementById('miniFrom-' + name) || name === 'products', 'thieu o chon ngay cua ' + name);
+test('bộ lọc thời gian: thanh trên chỉ ở Tổng quan; Hàng hóa có bộ lọc riêng trong phần 5 và 6, Trạng thái vẫn dùng chung', () => {
+  const groupsOf = name => [...document.querySelectorAll('#filterBar .filter-group')]
+    .filter(group => (group.dataset.filterView || '').split(/\s+/).includes(name));
+  assert.ok(groupsOf('overview').some(group => group.querySelector('.mini-filter[data-filter-key="products"]')),
+    'Tong quan giu bo loc thoi gian cho phan doanh thu theo nhom hang');
+  assert.equal(groupsOf('products').some(group => group.querySelector('.mini-filter')), false,
+    'thanh tren o Hang hoa khong con bo loc thoi gian');
+  assert.ok(groupsOf('products').some(group => group.querySelector('#productStatusToggle')),
+    'Trang thai van o thanh tren cua Hang hoa');
+
+  const sections = [...view('products').querySelectorAll(':scope > section.section')];
+  const filterIn = (section, key) => section.querySelector('.mini-filter[data-filter-key="' + key + '"]');
+  assert.ok(filterIn(sections[4], 'newlyImported'), 'phan 5 co bo loc rieng');
+  assert.ok(filterIn(sections[5], 'newProducts'), 'phan 6 co bo loc rieng');
+  assert.equal(sections[2].querySelector('.mini-filter'), null, 'phan 3 khong co bo loc thoi gian');
+  assert.equal(document.getElementById('productAnalysisPeriod').textContent, 'doanh thu 90 ngày gần nhất');
+
+  ['products', 'newlyImported', 'newProducts', 'invoices', 'suppliers', 'customers'].forEach(key => {
+    assert.ok(document.getElementById('miniFrom-' + key), 'thieu o Tu ngay cua ' + key);
+    assert.ok(document.getElementById('miniTo-' + key), 'thieu o Den ngay cua ' + key);
   });
+  ['invoices', 'suppliers', 'customers'].forEach(name => assert.ok(groupsOf(name).length, name + ' phai co nhom loc'));
 });
 
 test('tham số bộ lọc gửi backend: pr cho Tổng quan, ni cho Hàng mới nhập, np cho Mã mới tạo', () => {
@@ -187,6 +197,21 @@ test('render: giao dịch hiện ở Hóa đơn, phiếu nhập ở Nhà cung c�
 
   // Chuyển về Tổng quan không được ném lỗi dù dữ liệu tab khác có mặt
   assert.doesNotThrow(() => dom.window.eval("switchView('overview')"));
+});
+
+test('render: phần 3 luôn ghi 90 ngày; phần 5/6 ghi khoảng của bộ lọc riêng, không theo bộ lọc Tổng quan', () => {
+  const payload = samplePayload();
+  payload.filters = { products: { label: '7 ngày' } };
+  payload.products.newlyImported.label = '01/07/2026 – 31/07/2026';
+  payload.products.newProducts.label = 'Tất cả';
+  const dom = createRenderedDashboard(payload);
+  const text = id => dom.window.document.getElementById(id).textContent;
+
+  dom.window.eval("switchView('products')");
+  assert.equal(text('productAnalysisPeriod'), 'doanh thu 90 ngày gần nhất');
+  assert.equal(text('newlyImportedPeriod'), 'ngày nhập đầu tiên: 01/07/2026 – 31/07/2026');
+  assert.equal(text('newProductsPeriod'), 'ngày tạo: Tất cả');
+  assert.match(text('newlyImportedRows'), /01\/07\/2026 – 31\/07\/2026/, 'thong bao rong dung khoang ni');
 });
 
 test('render: Tổng quan vẽ biểu đồ doanh thu + số lượng theo nhóm hàng, nhấn lát để xem nhóm con', () => {

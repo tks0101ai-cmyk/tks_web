@@ -3467,7 +3467,7 @@
             </div>
           </div>
 
-          <div class="filter-group" data-filter-view="overview products" hidden>
+          <div class="filter-group" data-filter-view="overview" hidden>
             <div class="mini-filter" data-filter-key="products" style="margin:0; grid-row:3;">
               <div class="period-toggle" data-mini-toggle>
                 <button type="button" data-days="1" onclick="setMiniFilterDays('products',1)">1 ngày</button>
@@ -4051,7 +4051,7 @@
 
           <section class="section">
             <div class="section-head"><span class="section-step">3</span>
-              <h2>Phân tích <span class="section-note" id="productAnalysisPeriod">doanh thu trong 30 ngày</span></h2>
+              <h2>Phân tích <span class="section-note" id="productAnalysisPeriod">doanh thu 90 ngày gần nhất</span></h2>
             </div>
             <div class="period-toggle analysis-toggle" id="productAnalysisToggle" role="group"
               aria-label="Kiểu phân tích doanh thu">
@@ -4178,8 +4178,23 @@
 
           <section class="section">
             <div class="section-head"><span class="section-step">5</span>
-              <h2>Hàng mới nhập <span class="section-note" id="newlyImportedPeriod">ngày nhập đầu tiên trong 30
-                  ngày</span></h2>
+              <h2>Hàng mới nhập <span class="section-note" id="newlyImportedPeriod">ngày nhập đầu tiên: 30 ngày</span></h2>
+            </div>
+            <div class="mini-filter" data-filter-key="newlyImported">
+              <div class="period-toggle" data-mini-toggle role="group" aria-label="Khoảng thời gian: Hàng mới nhập">
+                <button type="button" data-days="1" onclick="setMiniFilterDays('newlyImported',1)">1 ngày</button>
+                <button type="button" data-days="7" onclick="setMiniFilterDays('newlyImported',7)">7 ngày</button>
+                <button type="button" data-days="30" class="active" onclick="setMiniFilterDays('newlyImported',30)">30 ngày</button>
+                <button type="button" data-days="90" onclick="setMiniFilterDays('newlyImported',90)">90 ngày</button>
+                <button type="button" data-custom onclick="focusMiniFilterRange('newlyImported')">Tùy chọn</button>
+                <button type="button" data-all onclick="setMiniFilterAll('newlyImported')">Tất cả</button>
+              </div>
+              <div class="mini-filter-range">
+                <input type="date" class="mini-date" id="miniFrom-newlyImported" aria-label="Từ ngày (Hàng mới nhập)">
+                <span class="mini-filter-sep">đến</span>
+                <input type="date" class="mini-date" id="miniTo-newlyImported" aria-label="Đến ngày (Hàng mới nhập)">
+                <button type="button" class="mini-filter-apply" onclick="applyMiniFilterRange('newlyImported')">Áp dụng</button>
+              </div>
             </div>
             <div class="grid">
               <div class="panel col-7 newly-imported-feature-panel">
@@ -4230,8 +4245,23 @@
 
           <section class="section">
             <div class="section-head"><span class="section-step">6</span>
-              <h2>Mã mới tạo <span class="section-note">các mã hàng có Ngày tạo trong khoảng thời gian đã chọn ở
-                  trên</span></h2>
+              <h2>Mã mới tạo <span class="section-note" id="newProductsPeriod">ngày tạo: 30 ngày</span></h2>
+            </div>
+            <div class="mini-filter" data-filter-key="newProducts">
+              <div class="period-toggle" data-mini-toggle role="group" aria-label="Khoảng thời gian: Mã mới tạo">
+                <button type="button" data-days="1" onclick="setMiniFilterDays('newProducts',1)">1 ngày</button>
+                <button type="button" data-days="7" onclick="setMiniFilterDays('newProducts',7)">7 ngày</button>
+                <button type="button" data-days="30" class="active" onclick="setMiniFilterDays('newProducts',30)">30 ngày</button>
+                <button type="button" data-days="90" onclick="setMiniFilterDays('newProducts',90)">90 ngày</button>
+                <button type="button" data-custom onclick="focusMiniFilterRange('newProducts')">Tùy chọn</button>
+                <button type="button" data-all onclick="setMiniFilterAll('newProducts')">Tất cả</button>
+              </div>
+              <div class="mini-filter-range">
+                <input type="date" class="mini-date" id="miniFrom-newProducts" aria-label="Từ ngày (Mã mới tạo)">
+                <span class="mini-filter-sep">đến</span>
+                <input type="date" class="mini-date" id="miniTo-newProducts" aria-label="Đến ngày (Mã mới tạo)">
+                <button type="button" class="mini-filter-apply" onclick="applyMiniFilterRange('newProducts')">Áp dụng</button>
+              </div>
             </div>
             <div class="grid">
               <div class="panel col-8">
@@ -8788,9 +8818,9 @@
         renderGroupRevenueSection(d);
       }
       else if (view === 'products') {
-        const productRangeLabel = d.filters && d.filters.products ? d.filters.products.label : '30 ngày';
-        document.getElementById('productAnalysisPeriod').textContent = 'doanh thu: ' + productRangeLabel;
-        document.getElementById('newlyImportedPeriod').textContent = 'ngày nhập đầu tiên: ' + productRangeLabel;
+        // Phan 3 co dinh 90 ngay (nhan tinh trong HTML); phan 5/6 theo bo loc rieng cua khoi.
+        const newlyImportedLabel = (d.products && d.products.newlyImported && d.products.newlyImported.label) || '30 ngày';
+        document.getElementById('newlyImportedPeriod').textContent = 'ngày nhập đầu tiên: ' + newlyImportedLabel;
         document.getElementById('pr-total').textContent = d.kpi.totalProducts;
         document.getElementById('pr-stock').textContent = fmtNumber(d.kpi.inStockCodes);
         document.getElementById('pr-lowstock').textContent = d.kpi.lowStockCount;
@@ -8832,7 +8862,7 @@
             '<td class="mono muted" data-sort-value="' + (Number(p.daysOnHand) || 0) + '">' + escapeHtml(String(p.daysOnHand)) + '</td>' +
             '<td class="mono" data-sort-value="' + (Number(p.revenue) || 0) + '">' + fmtMoney(p.revenue) + '</td></tr>',
           5,
-          'Không có mã hàng mới nhập · ' + escapeHtml(productRangeLabel)
+          'Không có mã hàng mới nhập · ' + escapeHtml(newlyImportedLabel)
         );
 
         const newlyImportedInfo = (d.products && d.products.newlyImported) || {};
@@ -8860,6 +8890,7 @@
         const todayNewProducts = (d.products && d.products.newProducts) || { label: '—', count: 0, dateColumnAvailable: true, products: [] };
         const newProductRows = todayNewProducts.products || [];
         document.getElementById('tagTodayNewProductsDate').textContent = todayNewProducts.label || '—';
+        document.getElementById('newProductsPeriod').textContent = 'ngày tạo: ' + (todayNewProducts.label || '—');
         document.getElementById('today-new-products-count').textContent = 'Tổng ' + fmtNumber(Number(todayNewProducts.count || 0)) + ' mã mới';
         renderPaginatedRows(
           'todayNewProducts',
