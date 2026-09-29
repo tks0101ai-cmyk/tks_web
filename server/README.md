@@ -21,6 +21,7 @@ Không còn Apps Script KiotViet. Đã gỡ bỏ tính năng vận chuyển cũ 
 - Khai báo tab (bảng nguồn, rollup, bộ lọc, phần payload) ở `dashboard/dashboardViews.js`; cache bảng nguồn theo từng bảng + cache kết quả theo (cơ sở, tab, bộ lọc của tab) ở `dashboard/dashboardData.js`.
 - Tab tài khoản không có quyền xem trả `{ "filters": {}, "kpi": {} }` (không đọc/tính gì); tên tab sai trả 400 `INVALID_VIEW`.
 - Thêm/đổi trường payload của một tab: sửa `VIEW_PAYLOAD` trong `dashboardViews.js` (test "tung tab: payload y het lat cat cua ban day du" sẽ báo nếu tab không tính đủ trường đã khai báo).
+- Bộ lọc thời gian theo khối: `pr*` = Tổng quan (doanh thu theo nhóm hàng), `ni*` = Hàng hóa › Hàng mới nhập, `np*` = Hàng hóa › Mã mới tạo; `prStatus` là trạng thái kinh doanh dùng chung Tổng quan + Hàng hóa. Hàng hóa › Phân tích doanh thu luôn 90 ngày gần nhất (`PRODUCT_ANALYSIS_DAYS`), không nhận bộ lọc.
 
 ## Lệnh
 

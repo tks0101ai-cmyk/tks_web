@@ -73,6 +73,8 @@ Migration `0015_app_users_telegram_id.sql` thêm `app_users.telegram_id` để b
 
 ## Cập nhật gần nhất
 
+2026-09-29 — tab Hàng hóa: phần Phân tích doanh thu cố định 90 ngày gần nhất; Hàng mới nhập (`ni*`) và Mã mới tạo (`np*`) có bộ lọc thời gian riêng đặt trong từng phần; thanh lọc trên cùng ở tab Hàng hóa chỉ còn Trạng thái + tìm kiếm, bộ lọc thời gian trên thanh chỉ còn ở Tổng quan (`pr*`).
+
 2026-09-23 — bổ sung bảng tổng hợp Báo cáo hàng hóa `product_report` (migration 0018) cho tab Tổng quan gộp cả 2 cơ sở, refresh định kỳ hàng đêm qua `productReportRefresh.js`, API `GET /api/product-report` và xuất Excel tùy chọn.
 
 2026-09-22 — chuyển nguồn dữ liệu Trả NCC (kiểm tra đứt hàng) từ tab Google Sheets đọc tay sang người dùng tự upload file Excel xuất trực tiếp từ KiotViet; thêm bảng Postgres `supplier_return_imports` (thay thế toàn bộ theo cơ sở mỗi lần import), gộp vào cùng pipeline Postgres với Hóa đơn/Nhập hàng/Khách trả, loại bỏ hoàn toàn nhánh đọc Sheets riêng cho Trả NCC.
