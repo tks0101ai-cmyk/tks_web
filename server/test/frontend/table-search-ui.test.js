@@ -43,10 +43,10 @@ function createDashboard() {
   return dom;
 }
 
-test('registry bao phủ đủ 20 bảng trong Báo cáo tổng hợp', () => {
+test('registry bao phủ đủ 21 bảng trong Báo cáo tổng hợp', () => {
   const dom = createDashboard();
   const expected = [
-    'cpDetail', 'productReport', 'recentStockout', 'stockout90d', 'stockout30d',
+    'cpDetail', 'productReport', 'productSales90d', 'recentStockout', 'stockout90d', 'stockout30d',
     'endOfDay', 'overviewPurchase', 'todayNewProducts', 'topSelling', 'lowStock',
     'allProducts', 'inventoryValue', 'newlyImported', 'childCategory', 'orders', 'returns',
     'customerRevenue', 'topDebt', 'suppliers', 'debtManagement'

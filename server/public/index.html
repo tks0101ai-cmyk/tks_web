@@ -1577,6 +1577,10 @@
       color: var(--blue);
     }
 
+    td.neg {
+      color: var(--red);
+    }
+
     .panel {
       background: var(--panel);
       border: 1px solid var(--border);
@@ -4060,7 +4064,73 @@
               <button type="button" data-analysis="parentCategory" onclick="setProductAnalysis('parentCategory')">Theo
                 nhóm cha</button>
             </div>
-            <div class="grid">
+            <!-- Theo mặt hàng: 4 chỉ số + biểu đồ Top 15 + bảng chi tiết, lấy từ bảng product_report
+                 (/api/product-report, tính sẵn 1 lần/đêm) nên không phụ thuộc bộ lọc thời gian. -->
+            <div class="grid" id="productAnalysisProductView">
+              <div class="kpi-card accent-blue col-3">
+                <div class="eyebrow">Tổng DS 90 ngày</div>
+                <div class="value" id="pa-ds90">—</div>
+              </div>
+              <div class="kpi-card accent-blue col-3">
+                <div class="eyebrow">Số mã sản phẩm</div>
+                <div class="value" id="pa-count">—</div>
+              </div>
+              <div class="kpi-card accent-blue col-3">
+                <div class="eyebrow">Tổng SL 30 ngày</div>
+                <div class="value" id="pa-sl30">—</div>
+              </div>
+              <div class="kpi-card col-3" id="pa-neg-card">
+                <div class="eyebrow">Số mã tồn âm</div>
+                <div class="value" id="pa-neg">—</div>
+                <div class="sub" id="pa-neg-sub">—</div>
+              </div>
+              <div class="panel col-12">
+                <div class="panel-head">
+                  <h2>Top 15 sản phẩm theo DS 90 ngày <span class="tag" id="tagProductSales90dChart">—</span></h2>
+                  <span class="drill-hint">Cột tím: doanh số (trục trái) · Cột cam: SL 30 ngày (trục phải)</span>
+                </div>
+                <div class="chart-box top-selling-top" id="productSales90dChartBox"><canvas id="chartProductSales90d"></canvas></div>
+              </div>
+              <div class="panel col-12">
+                <div class="panel-head">
+                  <h2>Chi tiết sản phẩm <span class="tag" id="tagProductSales90dRows">—</span></h2>
+                  <div class="panel-head-actions">
+                    <span class="drill-hint" id="productSales90dUpdatedAt">Đơn vị doanh số: triệu đồng</span>
+                  </div>
+                </div>
+                <div class="scroll-list" style="max-height:600px;">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Mã SP</th>
+                        <th>Tên SP</th>
+                        <th>DS 90 ngày</th>
+                        <th>Tổng tồn có bán</th>
+                        <th>Tổng SL 30 ngày</th>
+                        <th>SL khách bán</th>
+                        <th>Tồn SG</th>
+                        <th>Tồn HN</th>
+                        <th>Khách lớn nhất</th>
+                        <th>% Khách to</th>
+                      </tr>
+                    </thead>
+                    <tbody id="productSales90dRows">
+                      <tr>
+                        <td colspan="10" class="table-note">Đang tải...</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="pagination-controls" id="productSales90dPagination" hidden>
+                  <button type="button" id="productSales90dFirstPage" aria-label="Trang đầu" title="Trang đầu">&lt;&lt;</button>
+                  <button type="button" id="productSales90dPrevPage" aria-label="Trang trước" title="Trang trước">&lt;</button>
+                  <span id="productSales90dPageLabel">Trang 1/1</span>
+                  <button type="button" id="productSales90dNextPage" aria-label="Trang sau" title="Trang sau">&gt;</button>
+                  <button type="button" id="productSales90dLastPage" aria-label="Trang cuối" title="Trang cuối">&gt;&gt;</button>
+                </div>
+              </div>
+            </div>
+            <div class="grid" id="productAnalysisCategoryView" hidden>
               <div class="panel col-7 top-selling-feature-panel" id="topSellingChartPanel" hidden>
                 <div class="panel-head">
                   <h2><span id="topSellingChartTitle">Top sản phẩm bán chạy</span> <span class="tag"
@@ -7907,6 +7977,10 @@
       const tableRows = isParentCategory
         ? analysisRows
         : analysisRows.map(item => Object.assign({}, item, { stock: stockByCode.get(String(item.code).trim()) }));
+      // Theo mặt hàng dùng khối KPI + biểu đồ + bảng riêng (renderProductSales90d); khối cũ chỉ còn cho nhóm cha.
+      document.getElementById('productAnalysisProductView').hidden = isParentCategory;
+      document.getElementById('productAnalysisCategoryView').hidden = !isParentCategory;
+      if (!isParentCategory) renderProductSales90d();
       const chartPanel = document.getElementById('topSellingChartPanel');
       const tablePanel = document.getElementById('topSellingTablePanel');
       chartPanel.hidden = !isParentCategory;
@@ -8470,6 +8544,125 @@
         '</tr>';
     }
 
+    // ===== Tab Hàng hóa, phần 3 (Theo mặt hàng) — KPI + Top 15 + bảng chi tiết, dùng lại
+    // đúng dữ liệu product_report ở trên: doanh số 90 ngày (tính đến hôm qua), SL 30 ngày,
+    // tồn từng cơ sở. Doanh số hiển thị bằng triệu đồng cho gọn như báo cáo gốc. =====
+    TABLE_EXPLORER_CONFIGS.productSales90d = {
+      title: 'Phân tích doanh thu 90 ngày theo mặt hàng', searchText: tableSearchText, code: p => p.code, identity: p => p.code, supportsCodes: true
+    };
+
+    const PRODUCT_SALES_90D_CHART_LIMIT = 15;
+
+    function fmtMillions(value) {
+      return VN_NUMBER_1DP.format((Number(value) || 0) / 1000000);
+    }
+
+    function productSales90dRowHtml(p) {
+      const code = escapeHtml(p.code);
+      const shareValue = p.topCustomerShare === null || p.topCustomerShare === undefined ? -1 : p.topCustomerShare;
+      const stockCls = value => (Number(value) < 0 ? 'mono neg' : 'mono');
+      return '<tr data-table-item-id="' + code + '">' +
+        '<td class="mono"><strong>' + code + '</strong></td>' +
+        '<td class="name-cell">' + escapeHtml(p.name) + '</td>' +
+        '<td class="mono" data-sort-value="' + p.revenue90d + '">' + fmtMillions(p.revenue90d) + '</td>' +
+        '<td class="' + stockCls(p.availableToSell) + '" data-sort-value="' + p.availableToSell + '">' + fmtNumber(p.availableToSell) + '</td>' +
+        '<td class="mono" data-sort-value="' + p.qtySold30d + '">' + fmtNumber(p.qtySold30d) + '</td>' +
+        '<td class="mono" data-sort-value="' + p.customerCount90d + '">' + fmtNumber(p.customerCount90d) + '</td>' +
+        '<td class="' + stockCls(p.stockSaigon) + '" data-sort-value="' + p.stockSaigon + '">' + fmtNumber(p.stockSaigon) + '</td>' +
+        '<td class="' + stockCls(p.stockHanoi) + '" data-sort-value="' + p.stockHanoi + '">' + fmtNumber(p.stockHanoi) + '</td>' +
+        '<td>' + (p.topCustomerName ? escapeHtml(p.topCustomerName) : '<span class="muted">—</span>') + '</td>' +
+        '<td class="mono" data-sort-value="' + shareValue + '">' + formatDebtRatio(p.topCustomerShare) + '</td>' +
+        '</tr>';
+    }
+
+    function renderProductSales90dChart(top) {
+      destroyChart('productSales90d');
+      const canvas = document.getElementById('chartProductSales90d');
+      if (!canvas) return;
+      const box = document.getElementById('productSales90dChartBox');
+      box.classList.toggle('is-empty', !top.length);
+      canvas.hidden = !top.length;
+      if (!top.length) return;
+
+      const theme = chartTheme();
+      const purple = themeColor('--purple');
+      const revenueValues = top.map(p => p.revenue90d);
+      const formatAxisMoney = createMoneyAxisFormatter(revenueValues);
+      canvas.style.cursor = 'pointer';
+      canvas.title = 'Nhấn cột để xem dòng tương ứng';
+      state.charts.productSales90d = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: top.map(p => p.code),
+          datasets: [
+            { label: 'DS 90 ngày', data: revenueValues, yAxisID: 'y', backgroundColor: purple, borderRadius: 3, maxBarThickness: 26 },
+            { label: 'SL 30 ngày', data: top.map(p => p.qtySold30d), yAxisID: 'y1', backgroundColor: theme.amber, borderRadius: 3, maxBarThickness: 26 }
+          ]
+        },
+        options: {
+          animation: chartAnimationOption(),
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false, axis: 'x' },
+          onClick: function (event, elements) {
+            if (elements && elements[0]) navigateChartToTable('productSales90d', top[elements[0].index].code);
+          },
+          plugins: {
+            legend: { position: 'top', align: 'start', labels: { color: theme.text, boxWidth: 10, boxHeight: 10, font: { size: 11 } } },
+            tooltip: {
+              callbacks: {
+                title: items => { const p = top[items[0].dataIndex] || {}; return p.code + ' · ' + p.name; },
+                label: c => c.dataset.yAxisID === 'y'
+                  ? 'DS 90 ngày: ' + fmtMoney(c.raw)
+                  : 'SL 30 ngày: ' + fmtNumber(c.raw)
+              }
+            }
+          },
+          scales: {
+            x: { ticks: { color: theme.muted, autoSkip: false, maxRotation: 45, minRotation: 35, font: { size: 10.5 } }, grid: { display: false } },
+            y: { beginAtZero: true, position: 'left', ticks: { color: theme.muted, callback: formatAxisMoney, font: { size: 10.5 } }, grid: { color: theme.grid } },
+            y1: { beginAtZero: true, position: 'right', ticks: { color: theme.muted, callback: v => fmtNumber(v), font: { size: 10.5 } }, grid: { drawOnChartArea: false } }
+          }
+        }
+      });
+    }
+
+    function renderProductSales90d() {
+      if (!document.getElementById('productSales90dRows')) return;
+      const report = state.productReport;
+      // Mặc định xếp DS 90 ngày giảm dần; bấm tiêu đề cột thì sort đè lên (renderPaginatedRows).
+      const rows = report.rows.slice().sort((a, b) => b.revenue90d - a.revenue90d || a.code.localeCompare(b.code));
+      const negativeCount = rows.filter(p => p.stockHanoi < 0 || p.stockSaigon < 0 || p.availableToSell < 0).length;
+
+      document.getElementById('pa-ds90').textContent = rows.length ? fmtMoney(rows.reduce((sum, p) => sum + p.revenue90d, 0)) : '—';
+      document.getElementById('pa-count').textContent = rows.length ? fmtNumber(rows.length) : '—';
+      document.getElementById('pa-sl30').textContent = rows.length ? fmtNumber(rows.reduce((sum, p) => sum + p.qtySold30d, 0)) : '—';
+      document.getElementById('pa-neg').textContent = rows.length ? fmtNumber(negativeCount) : '—';
+      document.getElementById('pa-neg-card').classList.toggle('accent-red', negativeCount > 0);
+      document.getElementById('pa-neg-card').classList.toggle('accent-green', rows.length > 0 && negativeCount === 0);
+      document.getElementById('pa-neg-sub').textContent = !rows.length ? '—'
+        : negativeCount > 0 ? 'Cần kiểm tra lại tồn kho' : 'Không có mã nào tồn âm';
+
+      const top = rows.filter(p => p.revenue90d > 0).slice(0, PRODUCT_SALES_90D_CHART_LIMIT);
+      document.getElementById('tagProductSales90dChart').textContent = top.length ? String(top.length) : '—';
+      renderProductSales90dChart(top);
+
+      document.getElementById('tagProductSales90dRows').textContent = rows.length ? String(rows.length) : '—';
+      document.getElementById('productSales90dUpdatedAt').textContent = report.computedAt
+        ? 'Đơn vị doanh số: triệu đồng · ' + formatProductReportUpdatedAt(report.computedAt)
+        : 'Đơn vị doanh số: triệu đồng';
+      renderPaginatedRows(
+        'productSales90d',
+        {
+          tbody: 'productSales90dRows', pagination: 'productSales90dPagination', firstBtn: 'productSales90dFirstPage',
+          prevBtn: 'productSales90dPrevPage', nextBtn: 'productSales90dNextPage', lastBtn: 'productSales90dLastPage', label: 'productSales90dPageLabel'
+        },
+        rows,
+        productSales90dRowHtml,
+        10,
+        report.loaded ? 'Chưa có dữ liệu báo cáo hàng hóa.' : 'Đang tải...'
+      );
+    }
+
     function renderProductReport() {
       const rows = state.productReport.rows;
       document.getElementById('tagProductReportRows').textContent = rows.length ? String(rows.length) : '—';
@@ -8498,12 +8691,15 @@
           state.productReport.computedAt = data && data.computedAt;
           state.productReport.loaded = true;
           renderProductReport();
+          if (state.view === 'products' && state.productAnalysis === 'product') renderProductSales90d();
         })
         .catch(function (err) {
           console.error('Không tải được báo cáo hàng hóa:', err);
           state.productReport.loaded = true;
           document.getElementById('productReportRows').innerHTML =
             '<tr><td colspan="11" class="table-note">Không tải được báo cáo hàng hóa.</td></tr>';
+          document.getElementById('productSales90dRows').innerHTML =
+            '<tr><td colspan="10" class="table-note">Không tải được báo cáo hàng hóa.</td></tr>';
         });
     }
 

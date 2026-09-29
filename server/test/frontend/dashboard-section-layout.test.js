@@ -214,6 +214,50 @@ test('render: phần 3 luôn ghi 90 ngày; phần 5/6 ghi khoảng của bộ l�
   assert.match(text('newlyImportedRows'), /01\/07\/2026 – 31\/07\/2026/, 'thong bao rong dung khoang ni');
 });
 
+test('render: phần 3 Theo mặt hàng có 4 KPI, biểu đồ Top 15 hai trục và bảng chi tiết từ product_report', async () => {
+  const dom = createRenderedDashboard(samplePayload());
+  const doc = dom.window.document;
+  const text = id => doc.getElementById(id).textContent;
+  const charts = [];
+  dom.window.Chart = class { constructor(context, config) { this.config = config; charts.push(config); } destroy() {} };
+  const row = (code, revenue90d, extra) => Object.assign({
+    code, name: 'Tên ' + code, stockHanoi: 10, stockSaigon: 5, availableToSell: 15, qtySold30d: 2,
+    revenue90d, customerCount90d: 3, topCustomerRevenue90d: revenue90d / 2, topCustomerName: 'KH A', topCustomerShare: 0.5
+  }, extra);
+  const rows = Array.from({ length: 17 }, (_, i) => row('SP' + i, (i + 1) * 1000000));
+  rows.push(row('AM1', 0, { stockSaigon: -3, availableToSell: 2 }));
+  dom.window.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve({ rows, computedAt: '2026-09-29T01:00:00Z' }) });
+  dom.window.eval("switchView('products')");
+  dom.window.loadProductReport();
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(doc.getElementById('productAnalysisProductView').hidden, false);
+  assert.equal(doc.getElementById('productAnalysisCategoryView').hidden, true);
+  assert.equal(text('pa-count'), '18');
+  assert.equal(text('pa-ds90'), '153.000.000₫');
+  assert.equal(text('pa-sl30'), '36');
+  assert.equal(text('pa-neg'), '1');
+  assert.ok(doc.getElementById('pa-neg-card').classList.contains('accent-red'));
+
+  // Bảng xếp DS 90 ngày giảm dần, đơn vị triệu đồng, đủ cột theo báo cáo gốc
+  assert.equal(doc.querySelectorAll('#productSales90dRows').length, 1);
+  assert.equal(doc.getElementById('productSales90dRows').closest('table').querySelectorAll('th').length, 10);
+  const firstRow = doc.querySelector('#productSales90dRows tr:first-child');
+  assert.equal(firstRow.cells[0].textContent, 'SP16');
+  assert.equal(firstRow.cells[2].textContent, '17');
+  assert.match(text('productSales90dUpdatedAt'), /triệu đồng/);
+
+  // Biểu đồ: 15 mã có doanh số lớn nhất, trục trái = DS, trục phải = SL 30 ngày
+  const chart = charts[charts.length - 1];
+  assert.equal(chart.data.labels.length, 15);
+  assert.equal(chart.data.labels[0], 'SP16');
+  assert.equal(chart.data.datasets.map(d => d.yAxisID).join(','), 'y,y1');
+
+  // Chuyển sang Theo nhóm cha thì khối cũ hiện lại
+  dom.window.eval("setProductAnalysis('parentCategory')");
+  assert.equal(doc.getElementById('productAnalysisProductView').hidden, true);
+  assert.equal(doc.getElementById('productAnalysisCategoryView').hidden, false);
+});
+
 test('render: Tổng quan vẽ biểu đồ doanh thu + số lượng theo nhóm hàng, nhấn lát để xem nhóm con', () => {
   const payload = samplePayload();
   const child = (name, qty, revenue) => ({ name, qty, revenue, productCount: 1 });
