@@ -632,3 +632,17 @@ test('Xuat HTML ma may chu tra file .xlsx (server cu) thi bao loi, khong luu fil
   assert.equal(h.exportStatusIsError(), true);
   h.win.close();
 });
+
+test('xuat file gui bo loc rieng cua tung khoi: Hang moi nhap (ni), Ma moi tao (np), Tong quan (pr)', async () => {
+  const h = createExportDashboard();
+  h.win.eval("setMiniFilterDays('newlyImported', 7)");
+  h.win.eval("setMiniFilterAll('newProducts')");
+  h.win.eval("setMiniFilterDays('products', 90)");
+
+  h.win.openExportDialog('products.newly-imported');
+  const body = h.fieldsCalls().pop().body;
+  assert.deepEqual(body.filters.newlyImported, { mode: 'days', days: 7 });
+  assert.deepEqual(body.filters.newProducts, { mode: 'all' });
+  assert.deepEqual(body.filters.products, { mode: 'days', days: 90, status: 'all' });
+  h.win.close();
+});

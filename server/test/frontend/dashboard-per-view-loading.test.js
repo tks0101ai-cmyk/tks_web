@@ -47,12 +47,11 @@ function payloadFor(view, marker = 'A') {
       return {
         updatedAt: marker,
         kpi: { totalProducts: 4, totalStock: 120, inStockCodes: 3, activeProducts: 3, inactiveProducts: 1, lowStockCount: 1, totalInventoryValue: 5000, inventoryValueCategoryCount: 1 },
-        filters: { products: filters('30 ngày'), productStatus: 'all', newProducts: filters('30 ngày') },
+        filters: { productStatus: 'all', newlyImported: filters('30 ngày'), newProducts: filters('30 ngày') },
         products: {
           newProducts: { label: '30 ngày', count: 0, dateColumnAvailable: true, products: [] },
           topSellingProducts: [], topSellingParentCategories: [], allSellingProducts: [{ code: 'SP-1', name: 'Bán chạy', qty: 2, revenue: 200000 }],
-          allSellingParentCategories: [], childCategorySalesByParent: { 'NHÀ BẾP': [{ name: 'Nồi', qty: 10, revenue: 5000000, productCount: 1 }] },
-          availableParentCategories: ['NHÀ BẾP'],
+          allSellingParentCategories: [],
           newlyImported: { label: '30 ngày', count: 0, products: [], topByRevenue: [], salesByCategory: [], countByCategory: [], salesRevenue: 0, salesQty: 0 }
         },
         lowStock: [], stockValueByCategory: [], stockByCategory: [],
@@ -242,7 +241,7 @@ test('doi bo loc tab dang xem chi tai lai tab do, khong keo tab khac', async () 
   assert.match(page.calls[2].url, /view=invoices&days=30&inMode=days&inDays=7/);
 });
 
-test('doi bo loc Hoa don khong lam Tong quan tai lai, nhung doi bo loc Hang hoa lam Tong quan (dung chung bo loc) tai lai khi mo', async () => {
+test('doi bo loc Hoa don khong lam Tong quan tai lai', async () => {
   const page = createPage();
   await settle();
   page.run("switchView('invoices')");
@@ -254,18 +253,35 @@ test('doi bo loc Hoa don khong lam Tong quan tai lai, nhung doi bo loc Hang hoa 
   page.run("switchView('overview')");
   await settle();
   assert.equal(page.calls.length, before, 'chu ky Tong quan khong gom bo loc Hoa don -> khong tai lai');
+});
 
+test('Hang hoa gui ni/np + trang thai (khong gui khoang pr); bo loc ni/np va pr khong lam tab kia tai lai', async () => {
+  const page = createPage();
+  await settle();
   page.run("switchView('products')");
   await settle();
-  page.run("setMiniFilterDays('products', 7)");
+  assert.equal(page.calls[page.calls.length - 1].url,
+    '/api/dashboard?view=products&days=30&niMode=days&niDays=30&npMode=days&npDays=30&prStatus=all');
+
+  page.run("setMiniFilterDays('newlyImported', 7)");
   await settle();
+  assert.match(page.calls[page.calls.length - 1].url, /view=products&days=30&niMode=days&niDays=7&npMode=days&npDays=30&prStatus=all$/);
+  page.run("setMiniFilterAll('newProducts')");
+  await settle();
+  assert.match(page.calls[page.calls.length - 1].url, /niDays=7&npMode=all&prStatus=all$/);
   const afterProducts = page.calls.length;
-  assert.match(page.calls[afterProducts - 1].url, /view=products.*prDays=7.*npDays=7/);
 
   page.run("switchView('overview')");
   await settle();
-  assert.equal(page.calls.length, afterProducts + 1, 'bo loc Hang hoa doi -> Tong quan phai tai lai');
-  assert.match(page.calls[afterProducts].url, /view=overview.*prDays=7/);
+  assert.equal(page.calls.length, afterProducts, 'ni/np khong thuoc Tong quan -> Tong quan khong tai lai');
+
+  page.run("setMiniFilterDays('products', 7)");
+  await settle();
+  assert.match(page.calls[page.calls.length - 1].url, /view=overview.*prDays=7/);
+  const afterOverview = page.calls.length;
+  page.run("switchView('products')");
+  await settle();
+  assert.equal(page.calls.length, afterOverview, 'khoang pr cua Tong quan khong lam tab Hang hoa tai lai');
 });
 
 test('doi trang thai kinh doanh (Hang hoa) tai lai tab Hang hoa va danh dau Tong quan cu (KPI dung chung bo loc nay)', async () => {

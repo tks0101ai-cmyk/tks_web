@@ -88,11 +88,13 @@ test('mỗi tab có thời gian lọc riêng: Tổng quan dùng chung bộ lọc
   });
 });
 
-test('tham số bộ lọc gửi backend: pu theo Nhà cung cấp, np theo Hàng hóa, không còn ov/de', () => {
+test('tham số bộ lọc gửi backend: pr cho Tổng quan, ni cho Hàng mới nhập, np cho Mã mới tạo', () => {
   const match = html.match(/const TAB_FILTER_PREFIXES = \{([\s\S]*?)\};/);
   assert.ok(match, 'phai co TAB_FILTER_PREFIXES');
   const map = new Function('return {' + match[1] + '}')();
-  assert.deepEqual(map.products, ['pr', 'np']);
+  assert.deepEqual(map.products, ['pr']);
+  assert.deepEqual(map.newlyImported, ['ni']);
+  assert.deepEqual(map.newProducts, ['np']);
   assert.deepEqual(map.invoices, ['in']);
   assert.deepEqual(map.suppliers, ['pu']);
   assert.equal(map.overview, undefined);

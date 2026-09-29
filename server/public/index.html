@@ -4987,7 +4987,11 @@
       tableRenderers: {},
       tableTableBodies: {},
       filters: {
+        // Bo loc thoi gian cua Tong quan (doanh thu theo nhom hang), tien to pr.
         products: { mode: 'days', days: 30 },
+        // Tab Hang hoa: phan 5 Hang moi nhap (ni) va phan 6 Ma moi tao (np).
+        newlyImported: { mode: 'days', days: 30 },
+        newProducts: { mode: 'days', days: 30 },
         invoices: { mode: 'days', days: 30 },
         suppliers: { mode: 'days', days: 30 },
         customers: { mode: 'all' }
@@ -6358,7 +6362,8 @@
         invoices: cloneExportFilter(state.filters.invoices),
         customers: cloneExportFilter(state.filters.customers, 'all'),
         newPurchases: cloneExportFilter(state.filters.suppliers),
-        newProducts: cloneExportFilter(state.filters.products)
+        newlyImported: cloneExportFilter(state.filters.newlyImported),
+        newProducts: cloneExportFilter(state.filters.newProducts)
       };
     }
 
@@ -7366,11 +7371,15 @@
       if (state.data) renderProductSalesAnalysis(state.data);
     }
 
-    // Moi tab nho mot bo loc thoi gian doc lap; 1 bo loc co the gui cho nhieu khoi
-    // backend. Hang hoa: pr (ban chay/hang moi nhap) + np (ma moi tao). Hoa don: in
-    // (bao gom bang chi tiet giao dich). Nha cung cap: pu (phieu nhap hang).
+    // Moi khoa cua state.filters la 1 bo loc thoi gian doc lap, gui backend bang tien to
+    // rieng: products = Tong quan (pr, doanh thu theo nhom hang), newlyImported = Hang
+    // hoa phan 5 (ni), newProducts = Hang hoa phan 6 (np). Hoa don: in (gom bang chi
+    // tiet giao dich). Nha cung cap: pu (phieu nhap hang). Khach hang: cu.
+    // Phan 3 "Phan tich doanh thu" cua Hang hoa co dinh 90 ngay nen khong co bo loc.
     const TAB_FILTER_PREFIXES = {
-      products: ['pr', 'np'],
+      products: ['pr'],
+      newlyImported: ['ni'],
+      newProducts: ['np'],
       invoices: ['in'],
       suppliers: ['pu'],
       customers: ['cu']
@@ -7456,7 +7465,9 @@
           }
         });
       });
-      if (!filterKeys || filterKeys.indexOf('products') !== -1) {
+      // Trang thai kinh doanh dung chung Tong quan + Hang hoa. Khoa 'productStatus' chi gui
+      // prStatus (khong gui khoang pr) — tab Hang hoa dung khoa nay.
+      if (!filterKeys || filterKeys.indexOf('products') !== -1 || filterKeys.indexOf('productStatus') !== -1) {
         parts.push('prStatus=' + encodeURIComponent(state.productStatus));
       }
       return parts.join('&');
@@ -9385,10 +9396,10 @@
     };
 
     // Bo loc (khoa cua state.filters) anh huong tung tab — khop VIEW_FILTER_KEYS phia server.
-    // Tong quan dung chung bo loc Hang hoa cho phan doanh thu theo nhom hang.
+    // Hang hoa chi gui trang thai ('productStatus') + ni + np, khong gui khoang pr cua Tong quan.
     const VIEW_FILTER_SOURCES = {
       overview: ['products'],
-      products: ['products'],
+      products: ['productStatus', 'newlyImported', 'newProducts'],
       invoices: ['invoices'],
       customers: ['customers'],
       suppliers: ['suppliers'],
@@ -9740,6 +9751,8 @@
     loadProductReport();
 
     syncMiniFilterUI('products');
+    syncMiniFilterUI('newlyImported');
+    syncMiniFilterUI('newProducts');
     syncMiniFilterUI('invoices');
     syncMiniFilterUI('suppliers');
     syncMiniFilterUI('customers');
