@@ -55,6 +55,37 @@ function hasUnreliableZeroOnHand(events) {
   return hasPurchase && !hasOtherSource;
 }
 
+// Khi hasUnreliableZeroOnHand: ton hien tai (0) chua kip cap nhat sau phieu Nhap
+// hang moi nhat, nen uoc luong ton that = tong so luong nhap cua ngay do (khong
+// co giao dich nao khac cung ngay de tru). Dung de van dung lai timeline thay vi
+// bo qua ca ma — bo qua se lam mat dot dut hang that ngay truoc phieu nhap (vd.
+// MCRY301 Sai Gon: het hang 11/09->28/09, nhap 2.250 sang 29/09 nhung ton chua cap nhat).
+// Tra null (=> van bo qua ma) khi ma CHI co Nhap hang, khong co giao dich nao khac:
+// khong co bang chung ma nay tung ban/ton, ton 0 truoc do la gia (xem scan tests).
+function estimateOnHandFromLatestPurchase(events) {
+  if (!events.some((e) => e.source !== 'purchases')) return null;
+  let maxDate = null;
+  for (const e of events) if (maxDate === null || e.dateKey > maxDate) maxDate = e.dateKey;
+  return events
+    .filter((e) => e.dateKey === maxDate && e.source === 'purchases')
+    .reduce((sum, e) => sum + e.delta, 0);
+}
+
+// Ty le ma co ngay "khong dang tin" (ton tinh nguoc bi am) o muc binh thuong la
+// ~4-15% (kiem ke/dieu chinh ton khong co trong nguon). Vuot xa muc do gan nhu
+// chac chan do du lieu Tra NCC sai (nham co so, thieu lich su) — su co 29/09/2026:
+// 2 file Excel nhap nham co so day ty le nay len 56% ma khong co canh bao nao.
+const UNRELIABLE_WARNING_MIN_ANALYZED = 20;
+const UNRELIABLE_WARNING_RATIO = 0.25;
+
+function buildUnreliableDataWarning({ analyzed, unreliable }) {
+  if (!(analyzed >= UNRELIABLE_WARNING_MIN_ANALYZED)) return null;
+  if (unreliable / analyzed <= UNRELIABLE_WARNING_RATIO) return null;
+  const percent = Math.round((unreliable / analyzed) * 100);
+  return `${unreliable.toLocaleString('vi-VN')}/${analyzed.toLocaleString('vi-VN')} mã (${percent}%) có ngày tồn kho tính ngược bị âm nên bị loại khỏi kết quả. ` +
+    'Dữ liệu Trả NCC nhiều khả năng sai cơ sở hoặc thiếu lịch sử — hãy kiểm tra lại file Excel đã nhập rồi quét lại.';
+}
+
 function analyzeStockoutTimeline(options) {
   const {
     currentOnHand,
@@ -98,5 +129,7 @@ module.exports = {
   computeStockoutWindow,
   maxDateKey,
   hasUnreliableZeroOnHand,
+  estimateOnHandFromLatestPurchase,
+  buildUnreliableDataWarning,
   analyzeStockoutTimeline
 };

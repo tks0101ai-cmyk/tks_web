@@ -44,6 +44,36 @@ test('empty checkpoint on a snapshot entity (no backfillRangeParam) does a full 
   assert.ok(pool.transactions.every((tx) => tx.join(',') === 'BEGIN,COMMIT,RELEASE'));
 });
 
+test('entity co minIntervalMs: bo qua khi lan thanh cong truoc con moi, chay lai khi da du cu, khong chay chong nhau', async () => {
+  const pool = fakePool();
+  let last = '2026-09-29T03:00:00.000Z';
+  const advances = [];
+  let nowMs = Date.parse('2026-09-29T03:05:00Z');
+  const driver = createSyncDriver({ pool, now: () => nowMs, checkpointRepository: {
+    getCheckpoint: async () => ({ last_synced_at: last }),
+    advanceCheckpoint: async (...args) => { advances.push(args); }
+  }});
+  const queries = [];
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const api = { fetchAllPages: async (endpoint, query, onPage) => { queries.push([endpoint, query]); await gate; await onPage([{ id: 1 }]); } };
+  const entity = { entity: 'product_on_hands_snapshot', endpoint: 'productOnHands', listQuery: {}, incrementalParam: 'lastModifiedFrom',
+    pollFullSnapshot: true, minIntervalMs: 10 * 60 * 1000, upsertPage: pool.upsert };
+
+  await driver.pollEntityOnce(api, 'saigon', entity); // 5 phut < 10 phut -> bo qua
+  assert.equal(queries.length, 0);
+
+  nowMs = Date.parse('2026-09-29T03:11:00Z');
+  const first = driver.pollEntityOnce(api, 'saigon', entity);
+  await new Promise((resolve) => setImmediate(resolve));
+  await driver.pollEntityOnce(api, 'saigon', entity); // dang chay -> bo qua
+  release();
+  await first;
+  assert.equal(queries.length, 1);
+  assert.deepEqual(queries[0], ['productOnHands', {}]); // khong loc lastModifiedFrom
+  assert.equal(advances.length, 1);
+});
+
 test('empty checkpoint on a chunked entity (has backfillRangeParam) still falls back to one hour ago', async () => {
   const pool = fakePool();
   const queries = [];

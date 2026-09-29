@@ -5,6 +5,8 @@ const {
   computeStockoutWindow,
   maxDateKey,
   hasUnreliableZeroOnHand,
+  estimateOnHandFromLatestPurchase,
+  buildUnreliableDataWarning,
   STOCKOUT_DATA_FLOOR_DATE_KEY
 } = require('./stockoutEngine');
 const { todayVnDateKey } = require('./dateHelpers');
@@ -56,6 +58,8 @@ async function runStockout30dScanJob(jobStore, jobId, deps = {}) {
     });
 
     const rows = [];
+    let analyzed = 0;
+    let unreliable = 0;
     for (const { code, name, currentOnHand, createdDateKey } of candidates) {
       const events = eventMapByCode.get(code) || [];
       // Khong co bat ky giao dich nao (ban/nhap/tra) trong ca ky nghia la
@@ -68,13 +72,21 @@ async function runStockout30dScanJob(jobStore, jobId, deps = {}) {
       // tieu thu — Sheet Hang hoa (khong co vong doi soat dinh ky) gan nhu
       // chac chan da loi thoi. Bo qua thay vi bao dut hang sai tren du lieu
       // khong dang tin.
-      if (currentOnHand === 0 && hasUnreliableZeroOnHand(events)) continue;
+      // Thay vi bo qua ma (mat dot dut hang that truoc phieu nhap), uoc luong lai
+      // ton hien tai tu phieu nhap moi nhat roi dung timeline.
+      let effectiveOnHand = currentOnHand;
+      if (currentOnHand === 0 && hasUnreliableZeroOnHand(events)) {
+        effectiveOnHand = estimateOnHandFromLatestPurchase(events);
+        if (effectiveOnHand === null) continue;
+      }
       const { periods, summary, hasUnreliableData } = analyzeStockoutTimeline({
-        currentOnHand, events, todayKey, daysBack, minConsecutiveDays,
+        currentOnHand: effectiveOnHand, events, todayKey, daysBack, minConsecutiveDays,
         // Mot ma moi tao (createdDateKey) khong the dut hang truoc khi no
         // ton tai trong he thong — ghim moc san rieng cho ma nay.
         dataFromDateFloor: maxDateKey(dataFromDateFloor, createdDateKey)
       });
+      analyzed++;
+      if (hasUnreliableData) unreliable++;
       if (periods.length === 0) continue;
       rows.push({
         code,
@@ -86,6 +98,9 @@ async function runStockout30dScanJob(jobStore, jobId, deps = {}) {
         hasUnreliableData
       });
     }
+
+    const qualityWarning = buildUnreliableDataWarning({ analyzed, unreliable });
+    if (qualityWarning) warnings.push(qualityWarning);
 
     jobStore.setResult(jobId, {
       asOfDate: todayKey,

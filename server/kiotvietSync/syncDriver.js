@@ -41,7 +41,26 @@ function createSyncDriver({ pool = getPool(), checkpointRepository: checkpoints 
     });
   }
 
+  // Entity co minIntervalMs (vd product_on_hands_snapshot: quet toan bo, nang) chi
+  // chay khi lan thanh cong truoc da du cu, va khong bao gio chay chong nhau.
+  const inFlight = new Set();
+
   async function pollEntityOnce(kiotVietClient, branch, entityModule) {
+    if (!entityModule.minIntervalMs) return pollEntityNow(kiotVietClient, branch, entityModule);
+    const key = `${branch}:${entityModule.entity}`;
+    if (inFlight.has(key)) return;
+    inFlight.add(key);
+    try {
+      const checkpoint = await checkpoints.getCheckpoint(branch, entityModule.entity);
+      const lastMs = checkpoint?.last_synced_at ? new Date(checkpoint.last_synced_at).getTime() : NaN;
+      if (Number.isFinite(lastMs) && now() - lastMs < entityModule.minIntervalMs) return;
+      return await pollEntityNow(kiotVietClient, branch, entityModule);
+    } finally {
+      inFlight.delete(key);
+    }
+  }
+
+  async function pollEntityNow(kiotVietClient, branch, entityModule) {
     const checkpoint = await checkpoints.getCheckpoint(branch, entityModule.entity);
     const runEndIso = new Date(now()).toISOString();
     if (entityModule.entity === 'cash_flows') {

@@ -2,7 +2,10 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { analyzeStockoutTimeline, computeStockoutWindow, maxDateKey, hasUnreliableZeroOnHand } = require('./stockoutEngine');
+const {
+  analyzeStockoutTimeline, computeStockoutWindow, maxDateKey, hasUnreliableZeroOnHand,
+  estimateOnHandFromLatestPurchase, buildUnreliableDataWarning
+} = require('./stockoutEngine');
 const { daysBetweenInclusive } = require('./stockoutAnalyzer');
 
 test('analyzeStockoutTimeline dùng 4 ngày đệm để xác nhận đợt vắt qua biên nhưng chỉ cộng ngày trong kỳ', () => {
@@ -144,6 +147,37 @@ test('hasUnreliableZeroOnHand: false khi ngay gan nhat co Nhap hang VA nguon kha
 
 test('hasUnreliableZeroOnHand: false khi khong co su kien nao', () => {
   assert.equal(hasUnreliableZeroOnHand([]), false);
+});
+
+test('estimateOnHandFromLatestPurchase + analyze: MCRY301 Sai Gon giu dot het hang 11/09->28/09 du ton hien tai chua cap nhat', () => {
+  // Ton hien tai trong DB = 0 (chua kip cap nhat) nhung phieu Nhap 2.250 da co
+  // trong ngay 29/09: uoc luong ton = 2.250 thi ton cuoi 28/09 = 0 chu khong am.
+  const events = [
+    { dateKey: '2026-09-08', delta: -150, source: 'invoices' },
+    { dateKey: '2026-09-11', delta: -100, source: 'invoices' },
+    { dateKey: '2026-09-29', delta: 2250, source: 'purchases' }
+  ];
+  assert.equal(hasUnreliableZeroOnHand(events), true);
+  const onHand = estimateOnHandFromLatestPurchase(events);
+  assert.equal(onHand, 2250);
+  const result = analyzeStockoutTimeline({
+    currentOnHand: onHand, events, todayKey: '2026-09-29', daysBack: 89,
+    minConsecutiveDays: 5, dataFromDateFloor: '2026-06-01'
+  });
+  assert.deepEqual(result.periods, [{ fromDate: '2026-09-11', toDate: '2026-09-28', days: 18 }]);
+  assert.equal(result.hasUnreliableData, false);
+});
+
+test('estimateOnHandFromLatestPurchase: null khi ma chi co Nhap hang (khong co bang chung tung ban)', () => {
+  assert.equal(estimateOnHandFromLatestPurchase([{ dateKey: '2026-09-05', delta: 400, source: 'purchases' }]), null);
+});
+
+test('buildUnreliableDataWarning: chi canh bao khi du mau va ty le vuot 25%', () => {
+  assert.equal(buildUnreliableDataWarning({ analyzed: 10, unreliable: 10 }), null);
+  assert.equal(buildUnreliableDataWarning({ analyzed: 3254, unreliable: 143 }), null);
+  const warning = buildUnreliableDataWarning({ analyzed: 3254, unreliable: 1829 });
+  assert.match(warning, /56%/);
+  assert.match(warning, /Trả NCC/);
 });
 
 test('MCRY301 Hanoi stock card: replenishment on Sep 14 separates Sep 9-13 and Sep 19-28 outages', () => {

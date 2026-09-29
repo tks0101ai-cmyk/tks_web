@@ -113,6 +113,10 @@ const CONFIG = {
     ? Number(process.env.KIOTVIET_SYNC_FAST_INTERVAL_MS) : 7 * 60 * 1000,
   KIOTVIET_SYNC_SLOW_INTERVAL_MS: Number(process.env.KIOTVIET_SYNC_SLOW_INTERVAL_MS) > 0
     ? Number(process.env.KIOTVIET_SYNC_SLOW_INTERVAL_MS) : 20 * 60 * 1000,
+  // Chu ky toi thieu giua 2 lan quet TOAN BO ton kho (/productOnHands, xem
+  // kiotvietSync/entities/productOnHandsSnapshot.js). Mac dinh 10 phut.
+  KIOTVIET_SYNC_ONHAND_SNAPSHOT_INTERVAL_MS: Number(process.env.KIOTVIET_SYNC_ONHAND_SNAPSHOT_INTERVAL_MS) > 0
+    ? Number(process.env.KIOTVIET_SYNC_ONHAND_SNAPSHOT_INTERVAL_MS) : 10 * 60 * 1000,
   // Bi mat gan vao duong dan webhook KiotViet: cau hinh ben KiotViet tro toi
   // /api/kiotviet/webhook/<secret>. Bat buoc de nhan su kien — de trong thi
   // duong dan co secret bi tat hoan toan (404).

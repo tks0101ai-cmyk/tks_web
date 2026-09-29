@@ -101,6 +101,17 @@ hợp lệ). Không tạo bảng riêng để không phải sửa lại các nơ
 `products.raw->'inventories'` (`stockoutPgSource.js`, `dashboardPgReader.js`,
 `productReportRefresh.js`).
 
+**Cập nhật 2026-09-29 — `lastModifiedFrom` của `/productOnHands` KHÔNG đủ để giữ tồn "thời gian thực".**
+Đo trên DB thật: sau đợt làm mới, 0/47 mã Sài Gòn và 0/4 mã Hà Nội có hóa đơn mới được cập nhật tồn
+(MCRY301 SG: DB `onHand=0`, KiotViet 2.250 rồi 2.100), trong khi checkpoint `product_on_hands` vẫn báo
+thành công mỗi nhịp. Nghĩa là `modifiedDate` của endpoint này không bump theo bán/nhập hàng. Cách khắc phục:
+- Entity `product_on_hands_snapshot` (`entities/productOnHandsSnapshot.js`): quét TOÀN BỘ `/productOnHands`
+  (không lọc ngày) tối đa mỗi `KIOTVIET_SYNC_ONHAND_SNAPSHOT_INTERVAL_MS` (mặc định 10 phút; Hà Nội ~108
+  request/lượt, Sài Gòn ~36), chạy trong nhóm fast; `syncDriver` bỏ qua khi lần trước còn mới và không chạy chồng.
+- `productOnHands.upsertPage` nay GỘP theo `branchId` (giữ `cost`, `onOrder`... của `/products`, chỉ ghi đè
+  `onHand`/`reserved`) và chỉ UPDATE dòng thực sự đổi. Bản cũ ghi đè cả mảng nên làm mất `cost` (Giá vốn) của
+  6.786 dòng Hà Nội / 1.300 dòng Sài Gòn — phục hồi bằng một lượt đồng bộ lại `products` toàn bộ.
+
 **Quyết định về `fetchProductOnHand()` (`kiotVietApiClient.js`, gọi `/products/code/{code}`):**
 giữ lại nguyên trạng — hàm này hiện là dead code trong production (chỉ có test gọi), nhưng vẫn có
 giá trị riêng: gọi API cho **đúng 1 mã tại 1 thời điểm** (đọc trực tiếp `/products/code/...`, không

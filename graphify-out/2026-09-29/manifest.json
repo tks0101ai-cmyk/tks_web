@@ -973,50 +973,50 @@
   },
   "server/db/migrations/0001_core_master_data.sql": {
     "mtime": 1789356688.0273945,
-    "seen": 1790649754.784392,
-    "ast_hash": "b1d0538b8d54335aeed98b040291c39f",
+    "seen": 1789434773.0496037,
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "server/db/migrations/0002_invoices.sql": {
     "mtime": 1789356688.6102116,
-    "seen": 1790649754.784392,
-    "ast_hash": "e7a01464f2565ce4c49065d9c24f47e4",
+    "seen": 1789434773.0496037,
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "server/db/migrations/0003_orders.sql": {
     "mtime": 1789356689.3000667,
-    "seen": 1790649754.784392,
-    "ast_hash": "576c1fe81aa0ab06bfef53230e368402",
+    "seen": 1789434773.0496037,
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "server/db/migrations/0004_returns.sql": {
     "mtime": 1789356689.8746312,
-    "seen": 1790649754.784392,
-    "ast_hash": "8f58b371261c5a876745600dc5d63721",
+    "seen": 1789434773.0496037,
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "server/db/migrations/0005_purchases.sql": {
     "mtime": 1789356690.4832416,
-    "seen": 1790649754.784392,
-    "ast_hash": "e98fac2928084390fefa8887e4647908",
+    "seen": 1789434773.0496037,
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "server/db/migrations/0006_cash_flows.sql": {
     "mtime": 1789356691.1095312,
-    "seen": 1790649754.784392,
-    "ast_hash": "4a739bfcb2cb20e8b5e918ba76dc23c5",
+    "seen": 1789434773.0496037,
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "server/db/migrations/0007_webhook_events_raw.sql": {
     "mtime": 1789358517.7322018,
-    "seen": 1790649754.784392,
-    "ast_hash": "e8be878238705b728cf11c9abbef21aa",
+    "seen": 1789434773.0496037,
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "server/db/migrations/0008_backfill_progress.sql": {
     "mtime": 1789359133.509372,
-    "seen": 1790649754.784392,
-    "ast_hash": "8848c2120bc0e76fa87354794ec614ca",
+    "seen": 1789434773.0496037,
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "server/excelTableStyle.js": {
@@ -2001,90 +2001,6 @@
     "mtime": 1790327707.6015942,
     "seen": 1790649638.5704064,
     "ast_hash": "0ddb07873c5a7dfa448ab86357581b2a",
-    "semantic_hash": ""
-  },
-  "server/db/migrations/0009_app_users_hr_employees.sql": {
-    "mtime": 1789445626.9766612,
-    "seen": 1790649754.784392,
-    "ast_hash": "9bb7075d97b3f30711a781ecabd38a88",
-    "semantic_hash": ""
-  },
-  "server/db/migrations/0010_reporting_readonly_role.sql": {
-    "mtime": 1789522052.6229277,
-    "seen": 1790649754.784392,
-    "ast_hash": "3f9e9d87b398569db007d15f380822fa",
-    "semantic_hash": ""
-  },
-  "server/db/migrations/0011_debt_collection_statuses.sql": {
-    "mtime": 1789520922.8632948,
-    "seen": 1790649754.784392,
-    "ast_hash": "9d1689a37e04bd062160917973809bae",
-    "semantic_hash": ""
-  },
-  "server/db/migrations/0012_numeric_money_quantity_columns.sql": {
-    "mtime": 1789523616.076652,
-    "seen": 1790649754.784392,
-    "ast_hash": "59cb33ab91ba0ed26735f06e480cb1ce",
-    "semantic_hash": ""
-  },
-  "server/db/migrations/0013_dashboard_rollups.sql": {
-    "mtime": 1789698997.0639517,
-    "seen": 1790649754.784392,
-    "ast_hash": "a2d8656490c90254f40b5c2c58dee1d0",
-    "semantic_hash": ""
-  },
-  "server/db/migrations/0014_customer_debt_activity_periods.sql": {
-    "mtime": 1789781162.6037812,
-    "seen": 1790649754.784392,
-    "ast_hash": "7cc1a657425e42ee48f7141e58a63872",
-    "semantic_hash": ""
-  },
-  "server/db/migrations/0015_app_users_telegram_id.sql": {
-    "mtime": 1789798410.2999887,
-    "seen": 1790649754.784392,
-    "ast_hash": "0a82f52d6aa5173c9d97935d619faf3d",
-    "semantic_hash": ""
-  },
-  "server/db/migrations/0016_hr_leave_telegram.sql": {
-    "mtime": 1789802354.5574021,
-    "seen": 1790649754.784392,
-    "ast_hash": "62b944dfcd54f99d8f732d4842ee8277",
-    "semantic_hash": ""
-  },
-  "server/db/migrations/0017_supplier_return_imports.sql": {
-    "mtime": 1790048709.0327516,
-    "seen": 1790649754.784392,
-    "ast_hash": "fcc48dd1a811a0dbb311e4b6d621209d",
-    "semantic_hash": ""
-  },
-  "server/db/migrations/0018_product_report.sql": {
-    "mtime": 1790132168.0995474,
-    "seen": 1790649754.784392,
-    "ast_hash": "a4cf77dd7a4ac9acac998a5bed1555fb",
-    "semantic_hash": ""
-  },
-  "server/db/migrations/0019_app_users_role_marketing.sql": {
-    "mtime": 1790216371.3951857,
-    "seen": 1790649754.784392,
-    "ast_hash": "ed09e34777d12da67eeb1c86be5cba48",
-    "semantic_hash": ""
-  },
-  "server/db/migrations/0020_app_users_feature_permissions.sql": {
-    "mtime": 1790216549.892109,
-    "seen": 1790649754.784392,
-    "ast_hash": "b5412bbc97e63c4f9b6809b0ccf79d42",
-    "semantic_hash": ""
-  },
-  "server/db/migrations/0021_source_date_indexes.sql": {
-    "mtime": 1790562978.3387096,
-    "seen": 1790649754.784392,
-    "ast_hash": "91af8e7199a2664d7396bc33ddb0e095",
-    "semantic_hash": ""
-  },
-  "server/db/migrations/0022_customer_invoice_lines_90d.sql": {
-    "mtime": 1790585146.1551058,
-    "seen": 1790649754.784392,
-    "ast_hash": "6c4bc714a3fe767b52532e0a7f2da171",
     "semantic_hash": ""
   }
 }

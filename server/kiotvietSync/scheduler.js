@@ -13,7 +13,8 @@ const { startCustomerDebtReportRefreshSchedule } = require('./customerDebtReport
 const { startProductReportSchedule } = require('./productReportRefresh');
 const { startCustomerInvoiceLinesSchedule } = require('./customerInvoiceLinesRefresh');
 
-const fastEntities = [require('./entities/invoices'), require('./entities/orders'), require('./entities/productOnHands')];
+const fastEntities = [require('./entities/invoices'), require('./entities/orders'), require('./entities/productOnHands'),
+  require('./entities/productOnHandsSnapshot')];
 const slowEntities = [require('./entities/categories'), require('./entities/products'), require('./entities/customers'),
   require('./entities/suppliers'), require('./entities/returns'), require('./entities/purchases'), require('./entities/cashFlows')];
 

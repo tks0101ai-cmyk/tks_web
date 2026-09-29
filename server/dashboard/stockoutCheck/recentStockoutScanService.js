@@ -5,6 +5,7 @@ const {
   computeStockoutWindow,
   maxDateKey,
   hasUnreliableZeroOnHand,
+  buildUnreliableDataWarning,
   STOCKOUT_DATA_FLOOR_DATE_KEY
 } = require('./stockoutEngine');
 const { todayVnDateKey } = require('./dateHelpers');
@@ -59,6 +60,8 @@ async function runRecentStockoutScanJob(jobStore, jobId, deps = {}) {
     });
 
     const rows = [];
+    let analyzed = 0;
+    let unreliable = 0;
     for (const { code, name, createdDateKey } of candidates) {
       const events = eventMapByCode.get(code) || [];
       // Khong co bat ky giao dich nao (ban/nhap/tra) trong ca ky nghia la
@@ -78,6 +81,8 @@ async function runRecentStockoutScanJob(jobStore, jobId, deps = {}) {
         // ton tai trong he thong — ghim moc san rieng cho ma nay.
         dataFromDateFloor: maxDateKey(dataFromDateFloor, createdDateKey)
       });
+      analyzed++;
+      if (hasUnreliableData) unreliable++;
       const lastPeriod = periods[periods.length - 1];
       if (!lastPeriod || lastPeriod.toDate !== todayKey) continue;
       rows.push({
@@ -89,6 +94,9 @@ async function runRecentStockoutScanJob(jobStore, jobId, deps = {}) {
         hasUnreliableData
       });
     }
+
+    const qualityWarning = buildUnreliableDataWarning({ analyzed, unreliable });
+    if (qualityWarning) warnings.push(qualityWarning);
 
     jobStore.setResult(jobId, {
       asOfDate: todayKey,
