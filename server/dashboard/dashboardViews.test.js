@@ -30,7 +30,7 @@ test('parseViewsParam: ten tab sai bi tu choi 400 INVALID_VIEW, khong bo qua im 
   assert.throws(() => parseViewsParam('__proto__'), error => error.code === 'INVALID_VIEW');
 });
 
-test('ke hoach ca 6 tab (khong truyen view) = doc du 7 bang + CN1/3/7 + du 7 rollup + cong no, khoa cache "all"', () => {
+test('ke hoach ca 6 tab (khong truyen view) = doc du 7 bang + CN1/3/7 + du 8 rollup + cong no, khoa cache "all"', () => {
   const plan = resolveViewPlan();
   assert.equal(plan.all, true);
   assert.deepEqual(plan.views, VIEW_NAMES);
@@ -68,7 +68,8 @@ test('moi tab chi doc dung nguon cua no; Cong no chi can CN1/3/7 + workbook cong
   assert.equal(resolveViewPlan(['debt']).rollups.size, 0);
   assert.deepEqual([...resolveViewPlan(['suppliers']).rollups].sort(), ['newPurchaseOrders', 'purchaseTotals']);
   assert.deepEqual([...resolveViewPlan(['invoices']).rollups].sort(), ['invoiceQuantity', 'invoicesRevenue']);
-  assert.deepEqual([...resolveViewPlan(['products']).rollups].sort(), ['firstPurchase', 'productSales']);
+  assert.deepEqual([...resolveViewPlan(['products']).rollups].sort(), ['firstPurchase', 'newlyImportedSales', 'productSales']);
+  assert.deepEqual(resolveViewPlan(['products']).filterKeys, ['products', 'newlyImported', 'newProducts']);
   assert.equal(resolveViewPlan(['customers']).rollups.size, 0);
 });
 
@@ -97,7 +98,8 @@ test('moi khoa payload top-level cua tab dung quyen cua chinh tab do (khop SECTI
 test('pickFilters: chi giu bo loc anh huong tab (cache key), ke hoach ca 6 tab giu nguyen', () => {
   const filters = {
     overview: { mode: 'days', days: 30 }, products: { mode: 'days', days: 7 }, invoices: { mode: 'days', days: 3 },
-    customers: { mode: 'all' }, newPurchases: { mode: 'days', days: 60 }, newProducts: { mode: 'days', days: 30 }
+    customers: { mode: 'all' }, newPurchases: { mode: 'days', days: 60 },
+    newlyImported: { mode: 'days', days: 14 }, newProducts: { mode: 'days', days: 30 }
   };
   assert.equal(pickFilters(filters, resolveViewPlan()), filters);
   assert.deepEqual(pickFilters(filters, resolveViewPlan(['invoices'])), { invoices: { mode: 'days', days: 3 } });
@@ -106,6 +108,10 @@ test('pickFilters: chi giu bo loc anh huong tab (cache key), ke hoach ca 6 tab g
   const changed = { ...filters, invoices: { mode: 'days', days: 90 } };
   assert.deepEqual(pickFilters(changed, resolveViewPlan(['overview'])), pickFilters(filters, resolveViewPlan(['overview'])));
   assert.deepEqual(pickFilters(changed, resolveViewPlan(['products'])), pickFilters(filters, resolveViewPlan(['products'])));
+  // Bo loc Hang moi nhap chi doi khoa cua Hang hoa, khong doi khoa cua Tong quan.
+  const niChanged = { ...filters, newlyImported: { mode: 'days', days: 7 } };
+  assert.notDeepEqual(pickFilters(niChanged, resolveViewPlan(['products'])), pickFilters(filters, resolveViewPlan(['products'])));
+  assert.deepEqual(pickFilters(niChanged, resolveViewPlan(['overview'])), pickFilters(filters, resolveViewPlan(['overview'])));
 });
 
 test('pickPayload: cat dung phan cua tab, khong sua ban day du, khoa long `products` cua Tong quan chi co 2 truong', () => {

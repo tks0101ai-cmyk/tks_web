@@ -108,3 +108,17 @@ test('view bo trong hoac chi khoang trang = ca 6 tab', async () => {
   assert.equal(res.statusCode, 200);
   assert.equal(calls[0].options, undefined);
 });
+
+test('bo loc Hang moi nhap (ni*) doc rieng, khong lan voi pr/np', async () => {
+  calls.length = 0;
+  await dashboardHandler()(request({
+    view: 'products', niMode: 'range', niFrom: '2026-07-01', niTo: '2026-07-31',
+    npMode: 'days', npDays: '7', prStatus: 'Đang kinh doanh'
+  }), fakeRes());
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].filters.newlyImported, { mode: 'range', days: undefined, from: '2026-07-01', to: '2026-07-31' });
+  assert.equal(calls[0].filters.newProducts.days, '7');
+  assert.equal(calls[0].filters.products.status, 'Đang kinh doanh');
+  assert.deepEqual(calls[0].options, { views: ['products'] });
+});

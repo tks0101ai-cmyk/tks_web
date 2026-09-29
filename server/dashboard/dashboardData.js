@@ -2174,6 +2174,12 @@ function mergeDashboardRollups(branchSources) {
       row => normalizeSearchValue(row.code),
       ['qty', 'revenue']
     ),
+    newlyImportedSalesRows: mergeRollupRows(
+      branchSources,
+      'newlyImportedSalesRows',
+      row => normalizeSearchValue(row.code),
+      ['qty', 'revenue']
+    ),
     firstPurchaseRows: Array.from(firstPurchaseByCode.values()),
     purchaseTotals: branchSources.reduce((totals, source) => ({
       orderCount: totals.orderCount + (Number(source.rollups.purchaseTotals?.orderCount) || 0),
@@ -2336,28 +2342,32 @@ function dashboardResultCacheKey(branch, plan, sourceVersions, filters) {
  * `plan` (tu resolveViewPlan): CHI chay cac truy van tab dang xem can — cac
  * truy van con lai tra undefined (computeDashboardData da co gia tri mac dinh
  * `|| []`), vd tab Tong quan khong phai cho getInvoiceQuantitiesByCode (~3,3s
- * khi nguoi) chi Hoa don moi can. Bo trong = du 7 truy van nhu cu.
+ * khi nguoi) chi Hoa don moi can. Bo trong = chay moi truy van trong ALL_ROLLUPS.
  */
-async function fetchDashboardRollups(branch, { overviewRange, productsRange, invoicesRange, newPurchasesRange }, plan) {
+async function fetchDashboardRollups(branch, { overviewRange, productsRange, newlyImportedRange, invoicesRange, newPurchasesRange }, plan) {
   const wanted = plan ? plan.rollups : new Set(ALL_ROLLUPS);
   const run = (name, load) => (wanted.has(name) ? load() : undefined);
   const overviewBounds = rangeToDateBounds(overviewRange);
   const invoicesBounds = rangeToDateBounds(invoicesRange);
   const productsBounds = rangeToDateBounds(productsRange);
+  const newlyImportedBounds = rangeToDateBounds(newlyImportedRange);
   const newPurchasesBounds = rangeToDateBounds(newPurchasesRange);
+  // Doanh thu theo ma hang (daily_product_sales) trong 1 khoang — moi khoang can thi goi 1 lan.
+  const productSalesIn = bounds => dashboardRollupRepository.getProductSalesBreakdown({
+    branch,
+    from: bounds.from,
+    to: bounds.to,
+    preserveNameSource: true
+  });
 
   const [
-    overviewRevenueRows, invoicesRevenueRows, productSalesRows,
+    overviewRevenueRows, invoicesRevenueRows, productSalesRows, newlyImportedSalesRows,
     firstPurchaseRows, purchaseTotals, newPurchaseOrdersRaw, invoiceQuantityRows
   ] = await Promise.all([
     run('overviewRevenue', () => dashboardRollupRepository.getInvoiceRevenueByDay({ branch, from: overviewBounds.from, to: overviewBounds.to })),
     run('invoicesRevenue', () => dashboardRollupRepository.getInvoiceRevenueByDay({ branch, from: invoicesBounds.from, to: invoicesBounds.to })),
-    run('productSales', () => dashboardRollupRepository.getProductSalesBreakdown({
-      branch,
-      from: productsBounds.from,
-      to: productsBounds.to,
-      preserveNameSource: true
-    })),
+    run('productSales', () => productSalesIn(productsBounds)),
+    run('newlyImportedSales', () => productSalesIn(newlyImportedBounds)),
     run('firstPurchase', () => dashboardRollupRepository.getFirstPurchaseDates({ branch })),
     run('purchaseTotals', () => dashboardRollupRepository.getPurchaseTotals({ branch })),
     run('newPurchaseOrders', () => dashboardRollupRepository.listPurchaseOrders({ branch, from: newPurchasesBounds.from, to: newPurchasesBounds.to })),
@@ -2365,7 +2375,7 @@ async function fetchDashboardRollups(branch, { overviewRange, productsRange, inv
   ]);
 
   return {
-    overviewRevenueRows, invoicesRevenueRows, productSalesRows,
+    overviewRevenueRows, invoicesRevenueRows, productSalesRows, newlyImportedSalesRows,
     firstPurchaseRows, purchaseTotals, newPurchaseOrdersRaw, invoiceQuantityRows
   };
 }
@@ -2376,7 +2386,7 @@ async function fetchDashboardRollups(branch, { overviewRange, productsRange, inv
 const dashboardRollupFetchInflight = new Map();
 
 function shareDashboardRollupFetch(branch, ranges, plan, rollupVersionSnapshot) {
-  const bounds = ['overviewRange', 'productsRange', 'invoicesRange', 'newPurchasesRange']
+  const bounds = ['overviewRange', 'productsRange', 'newlyImportedRange', 'invoicesRange', 'newPurchasesRange']
     .map(name => rangeToDateBounds(ranges[name]));
   const key = [branch || '', plan.key, JSON.stringify(bounds), rollupVersionSnapshot].join('|');
   const existing = dashboardRollupFetchInflight.get(key);
@@ -2443,9 +2453,10 @@ async function getDashboardData(filters, branch, viewer, options) {
   const now = new Date();
   const overviewRange = resolveFilterRange(f.overview, now);
   const productsRange = resolveFilterRange(f.products, now);
+  const newlyImportedRange = resolveFilterRange(f.newlyImported, now);
   const invoicesRange = resolveFilterRange(f.invoices, now);
   const newPurchasesRange = resolveFilterRange(f.newPurchases, now);
-  const ranges = { overviewRange, productsRange, invoicesRange, newPurchasesRange };
+  const ranges = { overviewRange, productsRange, newlyImportedRange, invoicesRange, newPurchasesRange };
   // sourceArguments[i] la tham so branch thuc su truyen cho pgReader/rollup —
   // dung lai y het cho ca loadDashboardBaseSources va fetchDashboardRollups
   // ben duoi de tranh lech logic giua 2 cho.
@@ -2497,7 +2508,7 @@ async function getDashboardData(filters, branch, viewer, options) {
       }
     }
 
-    // Cache ket qua mien -> gio moi goi rollup (toi da 7 cau SQL/co so). Gan thang
+    // Cache ket qua mien -> gio moi goi rollup (toi da 8 cau SQL/co so). Gan thang
     // vao tung branchSource (object moi tao rieng cho request nay, khong phai
     // object dung chung tu cache) de giu dung shape ma computeDashboardData/
     // mergeDashboardSheets/mergeDebtManagementSources/mergeDashboardRollups
@@ -2586,6 +2597,7 @@ function computeDashboardData(sheets, filters, now, debtManagementSource, branch
   const customersRange = resolveFilterRange(f.customers, now);
   const newPurchasesRange = resolveFilterRange(f.newPurchases, now);
   const newProductsRange = resolveFilterRange(f.newProducts, now);
+  const newlyImportedRange = resolveFilterRange(f.newlyImported, now);
 
   const debtManagement = !view.has('debt') ? undefined : (debtManagementOverride || buildDebtManagementForBranch({
     branch,
@@ -2716,12 +2728,12 @@ function computeDashboardData(sheets, filters, now, debtManagementSource, branch
   const totalInventoryValue = allStockValueByCategory.reduce((sum, category) => sum + category.stockValue, 0);
   const stockValueByCategory = limitParentCategoryBars(allStockValueByCategory);
 
-  // ---------- HÀNG MỚI NHẬP (theo bộ lọc Hàng hóa) ----------
+  // ---------- HÀNG MỚI NHẬP (theo bộ lọc riêng ni) ----------
   // Ngay nhap SOM NHAT cho tung ma hang, tu product_first_purchase (rollup
   // toan bo lich su, khong gioi han cua so refresh — xem
   // dashboardRollupRepository.getFirstPurchaseDates()) thay vi tu quet sheet
   // "Nhập hàng" (da bo khoi cache "core", xem ke hoach rollup dashboard). Mot
-  // ma chi xuat hien neu ngay nhap dau tien nam trong khoang cua tab Hang hoa
+  // ma chi xuat hien neu ngay nhap dau tien nam trong khoang ni
   // va khop bo loc trang thai kinh doanh dang chon.
   const firstPurchaseRows = (rollups && rollups.firstPurchaseRows) || [];
   const newlyImportedProducts = [];
@@ -2729,7 +2741,7 @@ function computeDashboardData(sheets, filters, now, debtManagementSource, branch
     const code = entry.code;
     if (!code || isVatProductCode(code)) return;
     const importDate = parseSheetDate(entry.firstPurchaseDateText);
-    if (!importDate || !isWithinRange(importDate, productsRange)) return;
+    if (!importDate || !isWithinRange(importDate, newlyImportedRange)) return;
     const currentProductStatus = productStatusByCode.get(String(code).trim());
     if (productStatusFilter !== 'all' && currentProductStatus !== productStatusFilter) return;
     newlyImportedProducts.push({
@@ -2823,7 +2835,7 @@ function computeDashboardData(sheets, filters, now, debtManagementSource, branch
   const salesLookups = { productStatusFilter, productStatusByCode, productParentCategoryByCode, productChildCategoryByCode };
   const productSales = aggregateProductSales(rollups.productSalesRows, salesLookups);
   const newlyImportedSales = aggregateProductSales(
-    rollups.productSalesRows, salesLookups, code => newlyImportedCodeSet.has(code)
+    rollups.newlyImportedSalesRows, salesLookups, code => newlyImportedCodeSet.has(code)
   );
   const allSellingProducts = Object.values(productSales.byCode)
     .sort((a, b) => b.revenue - a.revenue);
@@ -2852,7 +2864,7 @@ function computeDashboardData(sheets, filters, now, debtManagementSource, branch
     .slice(0, NEWLY_IMPORTED_REVENUE_LIMIT);
 
   // ---------- HÀNG MỚI NHẬP -> DOANH THU BÁN THỰC TẾ THEO NHÓM HÀNG ----------
-  // Chi lay doanh thu cua nhung ma hang co ngay nhap dau tien nam trong productsRange
+  // Chi lay doanh thu cua nhung ma hang co ngay nhap dau tien nam trong newlyImportedRange
   // (newlyImportedCodeSet), gop nhom cha, gioi han so lat hien thi tren pie chart.
   const NEWLY_IMPORTED_PIE_LIMIT = 7;
   const newlyImportedByCategoryFull = categorySalesRows(newlyImportedSales.byParent);
@@ -3093,6 +3105,7 @@ function computeDashboardData(sheets, filters, now, debtManagementSource, branch
     filters: {
       overview: overviewRange,
       products: productsRange,
+      newlyImported: newlyImportedRange,
       productStatus: productStatusFilter,
       invoices: invoicesRange,
       customers: customersRange,
@@ -3142,7 +3155,7 @@ function computeDashboardData(sheets, filters, now, debtManagementSource, branch
       childCategorySalesByParent,
       availableParentCategories,
       newlyImported: {
-        label: productsRange.label,
+        label: newlyImportedRange.label,
         count: newlyImportedRows.length,
         products: newlyImportedRows,
         topByRevenue: topNewlyImportedByRevenue,

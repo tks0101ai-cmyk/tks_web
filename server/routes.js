@@ -172,6 +172,8 @@ router.get('/api/dashboard', async (req, res) => {
         mode: req.query.cuMode || 'all'
       },
       newPurchases: parseFilterSpec(req.query, 'pu'),
+      // Tab Hang hoa phan 5 "Hang moi nhap" co bo loc thoi gian rieng.
+      newlyImported: parseFilterSpec(req.query, 'ni'),
       newProducts: parseFilterSpec(req.query, 'np')
     };
     const data = await getDashboardData(filters, req.branch, req.user, allowedViews ? { views: allowedViews } : undefined);
