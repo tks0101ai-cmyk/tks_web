@@ -2481,3 +2481,39 @@ test('bang nguon loi + rollup loi cung luc: tra loi cua bang nguon, khong de lai
   );
   await new Promise(resolve => setImmediate(resolve)); // de node:test bat unhandled rejection neu co
 });
+
+// ===== aggregateProductSales: gom doanh thu 1 tap dong daily_product_sales =====
+test('aggregateProductSales gom theo ma/nhom cha/nhom con, bo ma rong, loc trang thai va includeCode', () => {
+  const { dashboardData } = freshDashboardData();
+  const { aggregateProductSales, categorySalesRows } = dashboardData.__test__;
+  const lookups = {
+    productStatusFilter: 'Đang kinh doanh',
+    productStatusByCode: new Map([
+      ['SP-1', 'Đang kinh doanh'], ['SP-2', 'Đang kinh doanh'], ['SP-3', 'Ngừng kinh doanh'], ['SP-4', 'Đang kinh doanh']
+    ]),
+    productParentCategoryByCode: new Map([['SP-1', 'NHÀ BẾP'], ['SP-2', 'NHÀ BẾP']]),
+    productChildCategoryByCode: new Map([['SP-1', 'Nồi'], ['SP-2', 'Chảo']])
+  };
+  const rows = [
+    { code: 'SP-1', name: 'Nồi một', qty: 2, revenue: 200 },
+    { code: 'SP-2 ', name: 'Chảo hai', qty: 1, revenue: 50 },
+    { code: 'SP-3', name: 'Đã ngừng', qty: 9, revenue: 900 },
+    { code: 'SP-4', name: '', qty: 1, revenue: 10 },
+    { code: '', name: 'Không mã', qty: 1, revenue: 1 }
+  ];
+
+  const all = aggregateProductSales(rows, lookups);
+  assert.deepEqual(Object.keys(all.byCode), ['SP-1', 'SP-2 ', 'SP-4'], 'bo SP-3 (ngung kinh doanh) va dong khong ma');
+  assert.deepEqual(all.byTrimmedCode.get('SP-2'), { code: 'SP-2 ', name: 'Chảo hai', qty: 1, revenue: 50 });
+  assert.equal(all.byCode['SP-4'].name, 'SP-4', 'thieu ten thi dung ma');
+  assert.deepEqual(categorySalesRows(all.byParent), [
+    { name: 'NHÀ BẾP', qty: 3, revenue: 250, productCount: 2 },
+    { name: 'Chưa xác định', qty: 1, revenue: 10, productCount: 1 }
+  ]);
+  assert.deepEqual(categorySalesRows(all.childrenByParent['NHÀ BẾP']).map(c => c.name), ['Nồi', 'Chảo']);
+  assert.deepEqual(Object.keys(all.childrenByParent['Chưa xác định']), ['Chưa phân nhóm']);
+
+  const onlySp1 = aggregateProductSales(rows, lookups, code => code === 'SP-1');
+  assert.deepEqual(Object.keys(onlySp1.byCode), ['SP-1']);
+  assert.deepEqual(aggregateProductSales(undefined, lookups).byCode, {});
+});
