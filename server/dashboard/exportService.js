@@ -119,6 +119,8 @@ function normalizeFilters(rawFilters) {
     invoices,
     customers,
     newPurchases: normalizeFilterSpec(raw.newPurchases || overview),
+    // Hang moi nhap (tab Hang hoa phan 5) co bo loc rieng; client cu chua gui thi dung bo loc products nhu truoc.
+    newlyImported: normalizeFilterSpec(raw.newlyImported || raw.products),
     newProducts: normalizeFilterSpec(raw.newProducts || overview)
   };
 }

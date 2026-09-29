@@ -1773,3 +1773,14 @@ test('trinh duyet khong co DecompressionStream thi bao ro thay vi trang trang', 
   assert.match(doc.getElementById('tbody').textContent, /Trình duyệt này quá cũ/);
   dom.window.close();
 });
+
+test('normalizeFilters: Hang moi nhap co bo loc rieng, client cu khong gui thi dung bo loc products', () => {
+  const { normalizeFilters } = exportService.__test__;
+  const own = normalizeFilters({
+    products: { mode: 'days', days: 7, status: 'Đang kinh doanh' },
+    newlyImported: { mode: 'range', from: '2026-07-01', to: '2026-07-31' }
+  });
+  assert.deepEqual(own.newlyImported, { mode: 'range', from: '2026-07-01', to: '2026-07-31' });
+  assert.deepEqual(own.products, { mode: 'days', days: 7, status: 'Đang kinh doanh' });
+  assert.deepEqual(normalizeFilters({ products: { mode: 'days', days: 7 } }).newlyImported, { mode: 'days', days: 7 });
+});
