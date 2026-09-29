@@ -9426,8 +9426,8 @@
       debt: ['debtManagement']
     };
 
-    // Bo loc (khoa cua state.filters) anh huong tung tab — khop VIEW_FILTER_KEYS phia server.
-    // Hang hoa chi gui trang thai ('productStatus') + ni + np, khong gui khoang pr cua Tong quan.
+    // Bo loc anh huong tung tab (khoa cua state.filters; 'productStatus' la khoa ao =
+    // state.productStatus) — khop VIEW_FILTER_KEYS phia server.
     const VIEW_FILTER_SOURCES = {
       overview: ['products'],
       products: ['productStatus', 'newlyImported', 'newProducts'],
@@ -9548,8 +9548,8 @@
     }
 
     // Gop payload 1 tab vao state.data. `kpi`/`filters`/`products` gop theo tung truong
-    // vi nhieu tab cung dong gop vao (vd Tong quan chi mang 2 truong cua `products`,
-    // tab Hang hoa mang ca khoa) — ghi de ca khoa se lam mat phan cua tab khac.
+    // vi nhieu tab cung dong gop vao (vd Tong quan mang 2 truong nhom hang cua `products`,
+    // tab Hang hoa mang cac truong con lai) — ghi de ca khoa se lam mat phan cua tab khac.
     function mergeDashboardPayload(data) {
       const merged = Object.assign({}, state.data || {});
       Object.keys(data).forEach(function (key) {

@@ -247,9 +247,9 @@ const DEBT_BRANCH_COLUMN = aggregateColumn('branch', 'Cơ sở', 'text', 'Cơ s�
 
 const PARENT_CATEGORY_COLUMNS = [
   aggregateColumn('name', 'Nhóm cha', undefined, 'Tên nhóm hàng cấp cha.'),
-  aggregateColumn('qty', 'Số lượng bán', 'number', 'Tổng số lượng hàng bán ra của nhóm trong kỳ.'),
-  aggregateColumn('revenue', 'Doanh thu', 'number', 'Tổng doanh thu bán hàng của nhóm trong kỳ (VNĐ).'),
-  aggregateColumn('productCount', 'Số mã hàng', 'number', 'Số mã hàng thuộc nhóm có phát sinh bán trong kỳ.')
+  aggregateColumn('qty', 'Số lượng bán', 'number', 'Tổng số lượng hàng bán ra của nhóm trong 90 ngày gần nhất.'),
+  aggregateColumn('revenue', 'Doanh thu', 'number', 'Tổng doanh thu bán hàng của nhóm trong 90 ngày gần nhất (VNĐ).'),
+  aggregateColumn('productCount', 'Số mã hàng', 'number', 'Số mã hàng thuộc nhóm có phát sinh bán trong 90 ngày gần nhất.')
 ];
 
 const CHILD_CATEGORY_COLUMNS = [
@@ -663,8 +663,8 @@ const TABLE_SPECS = {
       items: dashboard => (dashboard.products || {}).allSellingProducts
         || (dashboard.products || {}).topSellingProducts || [],
       derived: [
-        { key: 'sold_qty', label: 'Số lượng bán', type: 'number', description: 'Tổng số lượng hàng bán ra trong kỳ.' },
-        { key: 'sales_revenue', label: 'Doanh thu', type: 'number', description: 'Tổng doanh thu bán hàng trong kỳ (VNĐ).' }
+        { key: 'sold_qty', label: 'Số lượng bán', type: 'number', description: 'Tổng số lượng hàng bán ra trong 90 ngày gần nhất.' },
+        { key: 'sales_revenue', label: 'Doanh thu', type: 'number', description: 'Tổng doanh thu bán hàng trong 90 ngày gần nhất (VNĐ).' }
       ],
       derivedValues: { sold_qty: item => item.qty, sales_revenue: item => item.revenue }
     });
