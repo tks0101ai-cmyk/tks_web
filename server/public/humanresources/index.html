@@ -53,7 +53,8 @@
   .leave-dept-name{ font-size:12px; font-weight:700; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .leave-dept-val{ font-family:var(--font-data); font-size:22px; font-weight:700; color:var(--blue); margin-top:2px; }
   .leave-dept-val small{ font-family:var(--font-body); font-size:11px; font-weight:600; color:var(--muted); margin-left:4px; }
-  .leave-dept-sub{ font-size:11px; color:var(--muted); }
+  .leave-dept-sub{ font-size:11px; line-height:1.5; color:var(--muted); }
+  .leave-dept-sub b{ color:var(--text); font-weight:700; }
   .leave-dept-empty{ grid-column:1 / -1; font-size:12.5px; color:var(--muted); padding:10px 0; }
   .leave-calendar-panel{ min-width:0; background:var(--panel); border:1px solid var(--border); border-radius:var(--radius-lg); padding:12px; }
   .leave-calendar-panel[hidden]{ display:none; }
@@ -1779,31 +1780,30 @@
       renderDepartmentStats(requests);
     }
 
-    // So buoi nghi theo bo phan trong khoang Tu-Den dang chon (bo qua don bi tu choi); 1 ngay = 2 buoi.
+    // So don nghi theo bo phan trong khoang Tu-Den dang chon: tong don (to) + da duyet / chua duyet / tu choi (nho).
     function renderDepartmentStats(requests){
       const from = document.getElementById('fromDateFilter').value;
       const to = document.getElementById('toDateFilter').value;
       const byDept = new Map();
       requests.filter(matchesLeaveScope).forEach(r => {
-        if(r.trang_thai === 'Từ chối') return;
-        let sessions;
-        if(Array.isArray(r.leave_sessions)){
-          sessions = r.leave_sessions.filter(s => (!from || s.date >= from) && (!to || s.date <= to)).length;
-        }else sessions = Number(r.tong_buoi_nghi) || 0;
-        if(!sessions) return;
+        if(Array.isArray(r.leave_sessions) && (from || to)
+          && !r.leave_sessions.some(s => (!from || s.date >= from) && (!to || s.date <= to))) return;
         const key = departmentKey(r.bo_phan) || '(chưa có)';
-        const entry = byDept.get(key) || { name: String(r.bo_phan || '').trim() || 'Chưa có bộ phận', requests: 0, sessions: 0 };
-        entry.requests++; entry.sessions += sessions;
+        const entry = byDept.get(key) || { name: String(r.bo_phan || '').trim() || 'Chưa có bộ phận', total: 0, approved: 0, pending: 0, rejected: 0 };
+        entry.total++;
+        if(r.trang_thai === 'Đã duyệt') entry.approved++;
+        else if(r.trang_thai === 'Chưa duyệt') entry.pending++;
+        else if(r.trang_thai === 'Từ chối') entry.rejected++;
         byDept.set(key, entry);
       });
-      const rows = [...byDept.values()].sort((a, b) => b.sessions - a.sessions || a.name.localeCompare(b.name, 'vi'));
+      const rows = [...byDept.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, 'vi'));
       document.getElementById('leaveDeptRange').textContent = from || to
         ? `(${from ? displayLeaveDate(from) : '…'} – ${to ? displayLeaveDate(to) : '…'})` : '(tất cả thời gian)';
       document.getElementById('leaveDeptStats').innerHTML = rows.length ? rows.map(d =>
         `<div class="leave-dept-card" title="${escapeHtml(d.name)}"><div class="leave-dept-name">${escapeHtml(d.name)}</div>`
-        + `<div class="leave-dept-val">${fmtSoNgay(d.sessions / 2)}<small>ngày</small></div>`
-        + `<div class="leave-dept-sub">${d.requests} đơn · ${d.sessions} buổi</div></div>`).join('')
-        : '<div class="leave-dept-empty">Không có ai nghỉ trong khoảng đã chọn.</div>';
+        + `<div class="leave-dept-val">${d.total}<small>đơn</small></div>`
+        + `<div class="leave-dept-sub">Đã duyệt <b>${d.approved}</b> · Chưa duyệt <b>${d.pending}</b> · Từ chối <b>${d.rejected}</b></div></div>`).join('')
+        : '<div class="leave-dept-empty">Không có đơn nghỉ trong khoảng đã chọn.</div>';
     }
 
     function fmtSoNgay(n){
