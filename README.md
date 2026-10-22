@@ -430,3 +430,7 @@ tab **Xử lý hóa đơn → Chọn chứng từ** bỏ hẳn bảng tick chọ
 ### Cập nhật 22/10/2026 — ORDER VAT: trạng thái "VAT sẵn nhiều", tách Trạng thái / Ngày về hàng, gọn cột
 
 (1) Trạng thái mới **VAT sẵn nhiều** (`'5'`, khóa sale như 0, chip đứng sau "0. Không khai được"); migration `0083` chuyển các dòng "0" có KT note đúng nguyên văn "sẵn" / "sẵn nhiều" / "tồn nhiều" / "còn" / "còn tồn nhiều" (không phân biệt hoa thường) sang trạng thái này. (2) Cột Thời gian ẩn năm, kéo rộng cột thì hiện lại; "Số lượng" → "SL"; Full VAT hiện pill "Full VAT" / "Chưa VAT". (3) Góc nhìn KT: bỏ cột lịch ghép, thêm **Trạng thái** + **Dự kiến ngày về gần nhất** lấy từ Hàng dự kiến (cont chưa về sớm nhất; hết thì cont đã về gần nhất). (4) Chip "Tất cả" đứng trước "Cần xử lý" (KT vẫn mặc định mở "Cần xử lý").
+
+### Cập nhật 22/10/2026 — ORDER VAT: hết thanh cuộn ngang với sale, nhập lại dữ liệu từ sheet mới
+
+Bảng ORDER VAT luôn chừa chỗ thanh cuộn dọc nên không còn tràn ngang 15px ở màn 1920px; co cột Giá chưa VAT và Tổng tiền. Đã thay toàn bộ dữ liệu bằng bản xuất sheet ORDER VAT 1 ngày 22/10/2026 (1361 yêu cầu; dữ liệu cũ xóa mềm, có bản sao lưu).

@@ -660,6 +660,6 @@ Cập nhật: 22/10/2026.
 - Quyền duyệt (web và bot Telegram) và quyền tự xin nghỉ chỉ xét trạng thái tài khoản `app_users`, không còn đọc `hr_employees.is_active` (22/10/2026). HR chuyển nghỉ việc thì khóa tài khoản liên kết; admin cấp cao, quản lý được bảo vệ và chính người thao tác không bị tự khóa nên phải khóa tay.
 - Thứ tự triển khai: deploy code nhánh → áp 0081 → 0082 (code mới vẫn đọc được trước khi áp vì các cột mới có mặc định; trigger cũ vẫn chạy cho tới khi áp 0082).
 
-## ORDER VAT: trạng thái "VAT sẵn nhiều" — migration 0083 (22/10/2026, CHƯA áp DB dùng chung)
+## ORDER VAT: trạng thái "VAT sẵn nhiều" — migration 0083 (22/10/2026, đã áp DB dùng chung 22/10/2026)
 
 `0083_vat_request_status_vat_ready.sql`: thay CHECK `vat_requests_status_check` thành `status IN ('pending','0','1','2','3','4','5')`; `'5'` = "VAT sẵn nhiều" (khóa sale như `'0'`). Chuyển 1 lần dòng `'0'` chưa xóa có `accountant_note ~* '^\s*(sẵn|sẵn nhiều|tồn nhiều|còn|còn tồn nhiều)\s*$'` (khớp nguyên note, không tìm từ trong câu) sang `'5'`, `version + 1`, ghi `vat_request_history` (`action 'update'`, `field 'status'`, `'0'→'5'`, `changed_by NULL`, `changed_by_name 'Hệ thống'`). Idempotent (chạy lại không còn dòng khớp). Số 0081/0082 đã dùng trên `main` nên lấy 0083. Áp trước khi deploy mã mới.

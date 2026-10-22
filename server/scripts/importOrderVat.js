@@ -14,13 +14,38 @@
 //   - Thoi gian loi ('X') -> NULL (sheet da sap theo ma SP, khong suy duoc tu dong ben canh).
 //   - O giu cho 'X', '....', '-' coi nhu trong.
 //   - Idempotent theo so dong sheet (legacy_row): chay lai khong nhan doi.
+//   - KT PHAN HOI: "3. Cho khai chen" (so dau) hoac chi chu "Cho khai chen" / "Da ve" (= 1 Da xong) /
+//     "VAT san nhieu" (= 5, can migration 0083); chu la -> pending + bao trong report.
+//
+//   node scripts/importOrderVat.js --file moi.csv --replace --apply
+//     Thay TOAN BO: cung 1 transaction, xoa mem moi yeu cau dang hien (is_deleted, bo legacy_row,
+//     lich su 'delete') roi nhap file moi; thu tu = thoi gian tao moi nhat truoc (nhu migration 0079).
 // ==========================================
 'use strict';
 
 const fs = require('node:fs');
 const { parseCsv } = require('../vatDraft/csv');
 
-const STATUS_RE = /^\s*([0-4])\s*[.)-]?/;
+const STATUS_RE = /^\s*([0-5])\s*[.)-]?/;
+// Nhan chu khong co so dau (sheet doi ten "1. Da xong" -> "Da ve" tu 22/10/2026). Khoa = chu thuong, bo dau cau.
+const STATUS_LABELS = new Map([
+  ['không khai được', '0'],
+  ['đã xong', '1'], ['đã về', '1'],
+  ['đã khai chờ về', '2'],
+  ['chờ khai chèn', '3'],
+  ['chờ cont về tăng slg', '4'], ['chờ cont về', '4'],
+  ['vat sẵn nhiều', '5']
+]);
+
+/** KT PHAN HOI -> ma trang thai; trong -> 'pending'; chu la -> null. */
+function parseStatus(text) {
+  const value = String(text || '').trim();
+  if (!value) return 'pending';
+  const numbered = STATUS_RE.exec(value);
+  if (numbered) return numbered[1];
+  const key = value.normalize('NFC').toLowerCase().replace(/[.,;:\-–]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return STATUS_LABELS.get(key) || null;
+}
 const FULL_VAT_RE = /full\s*vat/i;
 const PLACEHOLDER_RE = /^[.\-xX\s]*$/;
 
@@ -84,9 +109,9 @@ function mapOrderVatRows(records, { usersByEmail = new Map() } = {}) {
     const productCode = PLACEHOLDER_RE.test(values[4]) ? '' : values[4];
     if (!productCode) report.missingProduct += 1;
 
-    const statusMatch = STATUS_RE.exec(values[9]);
-    if (!statusMatch && values[9]) report.unknownStatus += 1;
-    const status = statusMatch ? statusMatch[1] : 'pending';
+    const parsedStatus = parseStatus(values[9]);
+    if (!parsedStatus) report.unknownStatus += 1;
+    const status = parsedStatus || 'pending';
     report.byStatus[status] = (report.byStatus[status] || 0) + 1;
 
     const clean = text => (PLACEHOLDER_RE.test(text) ? '' : text);
@@ -112,11 +137,31 @@ function mapOrderVatRows(records, { usersByEmail = new Map() } = {}) {
   return { rows, report };
 }
 
-async function insertRows(pool, rows) {
+/**
+ * Ghi cac dong vao DB trong 1 transaction. `replace` = { label }: truoc khi nhap, xoa mem MOI yeu cau dang
+ * hien (is_deleted, legacy_row = NULL de nhap lai dung so dong sheet, +1 version, lich su 'delete' ten `label`),
+ * nhap xong dat sort_rank theo thoi gian tao (moi nhat truoc, dong thieu thoi gian xuong cuoi) nhu 0079.
+ * Tra { inserted, removed }; khong replace thi tra so dong moi (giu cach goi cu).
+ */
+async function insertRows(pool, rows, { replace = null } = {}) {
   const client = await pool.connect();
   let inserted = 0;
+  let removed = 0;
+  const ids = [];
   try {
     await client.query('BEGIN');
+    if (replace) {
+      const gone = await client.query(
+        `WITH gone AS (
+           UPDATE vat_requests SET is_deleted = true, legacy_row = NULL, version = version + 1, updated_at = now()
+           WHERE NOT is_deleted RETURNING id
+         )
+         INSERT INTO vat_request_history (request_id, changed_at, changed_by_name, action)
+         SELECT id, now(), $1, 'delete' FROM gone RETURNING request_id`,
+        [replace.label]
+      );
+      removed = gone.rows.length;
+    }
     for (const row of rows) {
       const columns = Object.keys(row);
       const { rows: result } = await client.query(
@@ -126,10 +171,18 @@ async function insertRows(pool, rows) {
       );
       if (!result.length) continue;
       inserted += 1;
+      ids.push(result[0].id);
       await client.query(
         `INSERT INTO vat_request_history (request_id, changed_at, changed_by_name, action, new_value)
          VALUES ($1, now(), 'Nhập từ ORDER VAT 1', 'import', $2)`,
         [result[0].id, `Dòng ${row.legacy_row}`]
+      );
+    }
+    if (replace && ids.length) {
+      await client.query(
+        `UPDATE vat_requests SET sort_rank = COALESCE(extract(epoch FROM created_at)::numeric * 1000, 0) + id * 0.000000001
+         WHERE id = ANY($1::bigint[])`,
+        [ids]
       );
     }
     await client.query('COMMIT');
@@ -139,14 +192,14 @@ async function insertRows(pool, rows) {
   } finally {
     client.release();
   }
-  return inserted;
+  return replace ? { inserted, removed } : inserted;
 }
 
 function readArgs(argv) {
   const args = { apply: false };
   for (let i = 0; i < argv.length; i += 1) {
-    if (argv[i] === '--apply') {
-      args.apply = true;
+    if (argv[i] === '--apply' || argv[i] === '--replace') {
+      args[argv[i].slice(2)] = true;
     } else if (argv[i].startsWith('--')) {
       args[argv[i].slice(2)] = argv[i + 1];
       i += 1;
@@ -188,10 +241,16 @@ async function main() {
   const { rows, report } = mapOrderVatRows(parseCsv(csv), { usersByEmail });
   printReport(report);
   if (!args.apply) {
-    console.log('\nChạy thử — chưa ghi gì. Thêm --apply để nhập thật.');
+    console.log(`\nChạy thử — chưa ghi gì. Thêm --apply để ${args.replace ? 'xóa mềm toàn bộ yêu cầu đang hiện rồi nhập file này' : 'nhập thật'}.`);
     return;
   }
   const { getPool } = require('../db/pool');
+  if (args.replace) {
+    const day = new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date());
+    const { inserted, removed } = await insertRows(getPool(), rows, { replace: { label: `Thay bằng bản xuất ORDER VAT 1 (${day})` } });
+    console.log(`\nĐã xóa mềm ${removed} yêu cầu cũ và nhập ${inserted} dòng từ file mới.`);
+    return;
+  }
   const inserted = await insertRows(getPool(), rows);
   console.log(`\nĐã nhập ${inserted} dòng mới (${rows.length - inserted} dòng đã có từ lần trước).`);
 }
@@ -203,4 +262,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { mapOrderVatRows, insertRows, parseVnTimestamp, parseVnDate, parseVnNumber };
+module.exports = { mapOrderVatRows, insertRows, parseStatus, parseVnTimestamp, parseVnDate, parseVnNumber };

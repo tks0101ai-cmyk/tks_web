@@ -55,3 +55,6 @@ server/data/roleChangeRequests.json*
 # De seed du lieu ban dau: copy server/data/users.json.example -> server/data/users.json
 server/data/users.json
 .codex_tmp/
+
+# Anh huong dan sinh tu mock (khong commit)
+docs/huong-dan/

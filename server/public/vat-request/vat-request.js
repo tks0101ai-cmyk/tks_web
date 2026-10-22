@@ -88,8 +88,8 @@
       { key: 'productCode', label: 'Mã SP', width: 110, locked: true, nowrap: true },
       { key: 'productName', label: 'Tên SP', width: 165, mobileHidden: true },
       { key: 'quantity', label: 'SL', width: 64, num: true },
-      { key: 'unitPrice', label: 'Giá chưa VAT', width: 96, num: true, mobileHidden: true },
-      { key: 'total', label: 'Tổng tiền', width: 104, num: true, mobileHidden: true },
+      { key: 'unitPrice', label: 'Giá chưa VAT', width: 80, num: true, mobileHidden: true },
+      { key: 'total', label: 'Tổng tiền', width: 92, num: true, mobileHidden: true },
       { key: 'fullVat', label: 'Full VAT', width: 88, mobileHidden: true },
       { key: 'saleNote', label: 'Ghi chú', width: 115, mobileHidden: true },
       { key: 'status', label: 'KT phản hồi', width: state.canProcess ? 150 : 128 },
@@ -128,8 +128,8 @@
     if (window.TKSTables) {
       const mobile = screenMode() === 'mobile';
       window.TKSTables.enhance($('vrTable'), {
-        // v2: đổi cột (bỏ Lịch ghép, thêm Trạng thái / Dự kiến ngày về) -> bỏ bố cục cột đã lưu theo bộ cột cũ.
-        key: 'vat-requests-v2-' + (state.canProcess ? 'kt-' : 'sale-') + screenMode(),
+        // v3: co Giá / Tổng tiền + chừa chỗ thanh cuộn dọc (22/10) -> bỏ bố cục cột đã lưu (đang tràn ngang 15px).
+        key: 'vat-requests-v3-' + (state.canProcess ? 'kt-' : 'sale-') + screenMode(),
         button: $('vrColumnsButton'),
         columns: columns().map(col => ({ key: col.key, label: col.label, width: col.width, locked: !!col.locked, hidden: mobile && !!col.mobileHidden }))
       });

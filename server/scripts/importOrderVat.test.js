@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { PGlite } = require('@electric-sql/pglite');
-const { mapOrderVatRows, insertRows, parseVnTimestamp, parseVnDate } = require('./importOrderVat');
+const { mapOrderVatRows, insertRows, parseStatus, parseVnTimestamp, parseVnDate } = require('./importOrderVat');
 
 const HEADER = ['Thời gian', 'Email', 'Tên Sale', 'Khách hàng', 'Mã SP Trim', 'Tên SP', 'Số lượng', 'Giá chưa VAT', 'Ghi chú', 'KT PHẢN HỒI', 'KT NOTE CHO SALE', 'NGÀY VỀ', 'TÊN MÃ KT', 'TỔNG TIỀN', 'TỒN VAT'];
 const RECORDS = [
@@ -75,6 +75,37 @@ test('ghi vao DB: dong cu duoc phep thieu du lieu, chay lai khong nhan doi, co l
     assert.equal(saved[1].created_at, null);
     const { rows: history } = await db.query("SELECT count(*)::int AS n FROM vat_request_history WHERE action = 'import'");
     assert.equal(history[0].n, 4);
+  } finally {
+    await db.close();
+  }
+});
+
+test('trang thai: so dau hoac chi nhan chu (sheet 22/10: "Da ve" = 1, "VAT san nhieu" = 5)', () => {
+  const cases = { '': 'pending', '1. Đã xong': '1', '5. VAT sẵn nhiều': '5', 'Đã về': '1', 'Không khai được': '0', 'Đã khai - Chờ về': '2',
+    'Chờ khai chèn': '3', 'Chờ cont về, tăng slg': '4', 'VAT sẵn nhiều': '5', ' ĐÃ VỀ ': '1', 'gì đó': null };
+  for (const [text, status] of Object.entries(cases)) assert.equal(parseStatus(text), status, text);
+});
+
+test('--replace: xoa mem moi yeu cau dang hien (ke ca dong tao tren web), nhap lai dung so dong sheet, xep moi nhat truoc', async () => {
+  const db = new PGlite();
+  try {
+    for (const file of ['0076_vat_requests.sql', '0079_vat_request_sort_rank.sql']) {
+      await db.exec(fs.readFileSync(path.join(__dirname, '../db/migrations', file), 'utf8'));
+    }
+    const query = (sql, params) => db.query(sql, params);
+    const pool = { connect: async () => ({ query, release() {} }) };
+    const { rows } = mapOrderVatRows(RECORDS, { usersByEmail: USERS });
+    await insertRows(pool, rows);
+    await db.query(`INSERT INTO vat_requests (created_by, product_code, quantity, unit_price_excl_vat) VALUES ('sale-1', 'WEB1', 1, 1)`);
+    const result = await insertRows(pool, rows, { replace: { label: 'Thay bằng bản xuất ORDER VAT 1 (22/10/2026)' } });
+    assert.deepEqual(result, { inserted: 4, removed: 5 });
+    const { rows: live } = await db.query('SELECT legacy_row, created_at FROM vat_requests WHERE NOT is_deleted ORDER BY sort_rank DESC, id DESC');
+    assert.deepEqual(live.map(r => r.legacy_row).sort(), rows.map(r => r.legacy_row).sort(), 'chi con dong cua file moi');
+    assert.equal(live[live.length - 1].created_at, null, 'dong thieu thoi gian xuong cuoi');
+    const { rows: gone } = await db.query('SELECT count(*)::int AS n FROM vat_requests WHERE is_deleted AND legacy_row IS NULL');
+    assert.equal(gone[0].n, 5);
+    const { rows: history } = await db.query("SELECT count(*)::int AS n FROM vat_request_history WHERE action = 'delete' AND changed_by_name LIKE 'Thay bằng%'");
+    assert.equal(history[0].n, 5);
   } finally {
     await db.close();
   }

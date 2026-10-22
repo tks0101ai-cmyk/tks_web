@@ -66,7 +66,8 @@
 .vr-status[data-kind="warn"]{color:var(--amber)}
 .vr-status[data-kind="ok"]{color:var(--green)}
 .vr-scroll-wrap{position:relative}
-.vr-scroll{overflow:auto;max-height:68vh}
+/* Chừa sẵn chỗ thanh cuộn dọc: bảng khít khung lúc mở trang (trước khi có dữ liệu) không bị tràn ngang khi thanh cuộn hiện ra. */
+.vr-scroll{overflow:auto;max-height:68vh;scrollbar-gutter:stable}
 .vr-table{width:100%;table-layout:fixed;border-collapse:collapse;text-align:left}
 .vr-table th{position:sticky;top:0;z-index:2}
 .vr-table td{color:var(--text);vertical-align:middle}
