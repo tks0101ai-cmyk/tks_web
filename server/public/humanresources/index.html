@@ -3608,6 +3608,11 @@
       const branch = selectedBranch('branchFilter');
       const department = document.getElementById('departmentFilter').value;
       const payload = { status, employee, branch, department, from: fromDate, to: toDate };
+      // Lọc đúng một ngày: màn hình còn kiểm tra ngày đó có thật sự nằm trong buổi nghỉ (lịch làm việc, chỉ có ở client)
+      // nên gửi kèm đúng các đơn đang hiện để file không thừa dòng.
+      if(fromDate && fromDate === toDate){
+        payload.requestIds = visibleLeaveRequests(rawLeaveRequests).map(r => r.request_id).filter(Boolean);
+      }
       if(leaveSort && SORT_FIELD_BY_COLUMN[leaveSort.columnIndex]){
         payload.sortField = SORT_FIELD_BY_COLUMN[leaveSort.columnIndex];
         payload.sortDir = leaveSort.direction;

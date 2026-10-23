@@ -3,6 +3,40 @@ const express = require('express');
 const { requireAuth, requireFeature } = require('../auth/authMiddleware');
 const { createRepository } = require('./cashbookRepository');
 const { parseFilters, invalid } = require('./cashbookFilters');
+const fuzzySearch = require('../public/shared/fuzzy-search.js');
+
+const BALANCE_MONEY_FIELDS = new Set(['balance', 'balanceHanoi', 'balanceSaigon']);
+
+// Khớp renderBalances / sortedBalances trong public/cashbook/index.html.
+function filterAndSortBalances(rows, { q, group, sortField, sortDir }) {
+  const query = typeof q === 'string' ? q : '';
+  const wantedGroup = typeof group === 'string' ? group : '';
+  let result = rows.filter((row) => !wantedGroup || (row.accountGroup || 'Khác') === wantedGroup);
+  if (fuzzySearch.tokens(query).length) {
+    result = fuzzySearch.filter(result, query, (row) =>
+      [row.name, row.accountNo, row.description, row.accountGroup].join(' '));
+  }
+  if (!sortField || !['asc', 'desc'].includes(sortDir)) return result;
+  const value = (row) => {
+    if (BALANCE_MONEY_FIELDS.has(sortField)) return row[sortField] == null ? null : Number(row[sortField]);
+    if (sortField === 'accountNo') return String(row.accountNo || row.name || '');
+    if (sortField === 'accountGroup') return String(row.accountGroup || 'Khác');
+    return String(row[sortField] == null ? '' : row[sortField]);
+  };
+  const sign = sortDir === 'asc' ? 1 : -1;
+  return result
+    .map((row, index) => ({ row, index, v: value(row) }))
+    .sort((a, b) => {
+      const emptyA = a.v == null || a.v === '';
+      const emptyB = b.v == null || b.v === '';
+      if (emptyA !== emptyB) return emptyA ? 1 : -1;
+      const c = typeof a.v === 'number'
+        ? a.v - b.v
+        : String(a.v).localeCompare(String(b.v), 'vi', { numeric: true, sensitivity: 'base' });
+      return c ? sign * c : a.index - b.index;
+    })
+    .map((entry) => entry.row);
+}
 const {
   createExportFile,
   selectedColumns,
@@ -62,14 +96,22 @@ function createCashbookRouter({ repository = createRepository() } = {}) {
     '/export',
     ...view,
     handle(async (req, res) => {
-      const { view: which, format = 'xlsx', columns, ...query } = req.query;
+      const {
+        view: which, format = 'xlsx', columns,
+        balanceQ, balanceGroup, balanceSortField, balanceSortDir,
+        ...query
+      } = req.query;
       selectedColumns(which, columns);
       if (!['xlsx', 'html'].includes(format))
         throw invalid('Định dạng xuất không hợp lệ.');
       const f = parseFilters(query);
       let rows;
-      if (which === 'balances') rows = (await repository.summary(f)).balances;
-      else {
+      if (which === 'balances') {
+        // Bảng Số dư lọc/sắp ngay trên màn hình (từ khóa, nhóm, cột bấm): file xuất đúng các dòng đang hiện.
+        rows = filterAndSortBalances((await repository.summary(f)).balances, {
+          q: balanceQ, group: balanceGroup, sortField: balanceSortField, sortDir: balanceSortDir,
+        });
+      } else {
         const r = await repository[which](f, {
           exportLimit: MAX_EXPORT_ROWS + 1,
         });

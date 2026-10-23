@@ -13,6 +13,37 @@ const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from('
 const GIF = Buffer.from('GIF89a-body');
 const WEBP = Buffer.concat([Buffer.from('RIFF'), Buffer.from([1, 0, 0, 0]), Buffer.from('WEBPVP8 ')]);
 
+test('report profiles batch includes missing and visit-only customers without notes or image bytes', async () => {
+  const { db, repo } = await setup();
+  try {
+    await repo.saveProfile('a', 'A', { warehouseLocation: 'Kho A', warehouseCount: 2, area: '200m2', competitor: 'X', salesChannels: ['san', 'khac'] }, ACTOR);
+    await repo.saveScale('a', 'A', 'very_large', ACTOR);
+    await repo.setEditors('a', ['u-2'], ACTOR);
+    await repo.setVisitDays('a', ['2026-10-02', '2026-10-01'], ACTOR);
+    await repo.setVisitDays('visit-only', ['2026-10-03'], ACTOR);
+    await repo.createNote('a', 'PRIVATE NOTE', ACTOR);
+    const image = await repo.addImage('a', PNG, ACTOR);
+    const result = await repo.getReportProfiles(['a', 'missing', 'visit-only', 'a']);
+    assert.deepEqual(result.a, {
+      warehouseLocation: 'Kho A', warehouseCount: 2, area: '200m2', competitor: 'X', salesChannels: ['san', 'khac'], warehouseScale: 'very_large',
+      editors: [{ userId: 'u-2', userName: 'Sale Hai' }], visitDays: ['2026-10-01', '2026-10-02'], images: [{ id: image.id, url: image.url }]
+    });
+    assert.deepEqual(result.missing, { warehouseLocation: '', warehouseCount: null, area: '', competitor: '', salesChannels: [], warehouseScale: 'none', editors: [], visitDays: [], images: [] });
+    assert.deepEqual(result['visit-only'].visitDays, ['2026-10-03']);
+    assert.equal(JSON.stringify(result).includes('PRIVATE NOTE'), false);
+    assert.deepEqual(await repo.getReportProfiles([]), {});
+  } finally { await db.close(); }
+});
+
+test('report profile reads reject missing tables or columns as migration pending', async () => {
+  const { db, repo } = await setup({ migrate: false });
+  try {
+    await assert.rejects(() => repo.getReportProfiles(['a']), { statusCode: 503, code: 'MIGRATION_PENDING' });
+    await db.exec(MIGRATION);
+    await assert.rejects(() => repo.getReportProfiles(['a']), { statusCode: 503, code: 'MIGRATION_PENDING' });
+  } finally { await db.close(); }
+});
+
 const USERS = [
   { id: 'u-1', username: 'ql', hoTen: 'Quản Lý A', vaiTro: 'Quản lý', trangThai: 'Đang hoạt động' },
   { id: 'u-2', username: 'sale2', hoTen: 'Sale Hai', vaiTro: 'Nhân viên sale', trangThai: 'Đang hoạt động' },

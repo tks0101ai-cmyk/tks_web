@@ -247,7 +247,7 @@
       host.querySelectorAll('[data-index]').forEach(element => { const open = () => { element.focus(); onOpen(slice[Number(element.dataset.index)]); }; element.addEventListener('click',open); element.addEventListener('keydown',event => { if(event.key==='Enter'||event.key===' ') { event.preventDefault(); open(); } }); });
     }
     host.querySelector('input[type="search"]').addEventListener('input',event => { saved.search=event.target.value; saved.page=1; draw(); });
-    if (exportInfo) host.querySelector('#'+id+'-export').addEventListener('click', () => openExport(exportInfo.kind, exportInfo.table, saved.search));
+    if (exportInfo) host.querySelector('#'+id+'-export').addEventListener('click', () => openExport(exportInfo.kind, exportInfo.table, saved.search, saved.sort ? { key: saved.sort, dir: saved.direction === 1 ? 'asc' : 'desc' } : null));
     host.querySelector('#'+id+'-first').addEventListener('click', () => { saved.page=1; draw(); });
     host.querySelector('#'+id+'-prev').addEventListener('click', () => { --saved.page; draw(); });
     host.querySelector('#'+id+'-next').addEventListener('click', () => { ++saved.page; draw(); });
@@ -283,10 +283,11 @@
       return exportFetch('/api/marketing-report/export?' + params.toString(), null, request);
     }
   };
-  function openExport(kind, table, search) {
+  function openExport(kind, table, search, sort) {
     if (!window.TKSNav?.can('reports.export') || typeof startExportDialog !== 'function') return;
     const params = new URLSearchParams({ ...sections[kind].filters, kind, table });
     if (search && search.trim()) params.set('q', search.trim());
+    if (sort) { params.set('sortKey', sort.key); params.set('sortDir', sort.dir); }
     return startExportDialog({ kind, table, query: params.toString() }, EXPORT_SOURCE);
   }
   async function openDetail(kind,key,source,refresh,nested) {

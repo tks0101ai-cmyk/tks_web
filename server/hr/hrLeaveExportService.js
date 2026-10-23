@@ -69,11 +69,13 @@ function branchFilePrefix(branch) {
  */
 async function buildLeaveRequestsWorkbook(filters, branch) {
   filters = filters || {};
-  const items = applySort(
-    await repo.getLeaveRequests({ status: filters.status, employee: filters.employee, department: filters.department, from: filters.from, to: filters.to }, branch),
-    filters.sortField,
-    filters.sortDir
-  );
+  let found = await repo.getLeaveRequests({ status: filters.status, employee: filters.employee, department: filters.department, from: filters.from, to: filters.to }, branch);
+  // Lọc một ngày: client gửi đúng các đơn đang hiện (đã áp lịch làm việc); chỉ giữ giao của hai tập.
+  if (Array.isArray(filters.requestIds)) {
+    const wanted = new Set(filters.requestIds.map(String));
+    found = found.filter(item => wanted.has(String(item.request_id)));
+  }
+  const items = applySort(found, filters.sortField, filters.sortDir);
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'TOKOSI Dashboard';

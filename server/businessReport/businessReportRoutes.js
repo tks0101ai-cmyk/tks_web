@@ -9,8 +9,9 @@ const { requireAuth, requireFeature } = require('../auth/authMiddleware');
 const { hasFeature } = require('../auth/featureRegistry');
 const { createRepository } = require('./businessReportRepository');
 const svc = require('./businessReportService');
-const { createExportFile, filterRows, exportFieldsFor, resolveColumnKeys } = require('./businessReportExport');
-const { nameKey, RETAIL_NAME, UNGROUPED_SALE, vnToday } = require('./businessMonths');
+const { createExportFile, filterRows, sortRowsByLabel, exportFieldsFor, resolveColumnKeys } = require('./businessReportExport');
+const { nameKey, RETAIL_NAME, UNGROUPED_SALE, vnToday, PRICE_LEVEL_LABELS } = require('./businessMonths');
+const { createCustomerPriceLevelRepository } = require('./customerPriceLevelRepository');
 const { createCustomerProfileRepository } = require('./customerProfileRepository');
 const rules = require('./customerProfileRules');
 
@@ -20,7 +21,8 @@ const CUSTOMER_MANAGE = 'reports.business.customerManage';
 const MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024;
 
 // customerProfiles: ghi chu / thong tin theo khach (migration 0080); now: gio hien tai (test dong bang ngay VN).
-function createBusinessReportRouter({ repository = createRepository(), customerProfiles = createCustomerProfileRepository(), now = () => new Date() } = {}) {
+function createBusinessReportRouter({ repository = createRepository(), customerProfiles = createCustomerProfileRepository(),
+  customerPriceLevels = createCustomerPriceLevelRepository(), now = () => new Date() } = {}) {
   const router = express.Router();
   router.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   const view = [requireAuth, requireFeature('reports.business')];
@@ -38,7 +40,10 @@ function createBusinessReportRouter({ repository = createRepository(), customerP
   };
 
   for (const kind of Object.keys(BUILDERS)) {
-    router.get(`/${kind}`, requireAuth, requireFeature(kind === 'products' ? 'reports.products.growth' : 'reports.business'), handle(async (req, res) => res.json(BUILDERS[kind](await repository.snapshot()))));
+    router.get(`/${kind}`, requireAuth, requireFeature(kind === 'products' ? 'reports.products.growth' : 'reports.business'), handle(async (req, res) => {
+      const report = BUILDERS[kind](await repository.snapshot());
+      res.json(kind === 'customers' ? await enrichCustomers(req, report) : report);
+    }));
   }
 
   router.get('/overview', ...view, handle(async (req, res) => res.json(svc.buildOverview(await repository.snapshot()))));
@@ -51,6 +56,8 @@ function createBusinessReportRouter({ repository = createRepository(), customerP
     const detail = svc.buildDetail(kind, key, snap, {});
     const months = svc.last4Months(snap);
     if (kind === 'customer') {
+      const levels = await customerPriceLevels.getLevels([detail.customer.key]);
+      detail.customer.priceLevel = PRICE_LEVEL_LABELS[levels[detail.customer.key].level];
       // Khach da gop theo ten: top ma hang cong don tren moi ho so (co so, ma KH) cua khach.
       const byProduct = new Map();
       for (const ref of detail.customer.refs) {
@@ -124,6 +131,34 @@ function createBusinessReportRouter({ repository = createRepository(), customerP
     return customer;
   }
   const noteView = (note, canEdit, today) => ({ ...note, editable: canEdit && note.noteDate === today });
+
+  // Revenue is cached, editable metadata is fresh. Batch reads avoid per-row queries.
+  async function enrichCustomers(req, report, exporting = false) {
+    const keys = report.rows.map(r => r.key);
+    const levels = await customerPriceLevels.getLevels(keys);
+    const canView = hasFeature(req.user, CUSTOMER_NOTES);
+    const profiles = canView ? await customerProfiles.getReportProfiles(keys) : {};
+    return { ...report, withLastVisit: canView, withCustomerProfile: canView,
+      rows: report.rows.map(row => {
+        const meta = profiles[row.key] || {};
+        const local = levels[row.key];
+        const canEdit = canView && (hasFeature(req.user, CUSTOMER_MANAGE) ||
+          (meta.editors || []).some(e => String(e.userId) === String(req.user.id)));
+        const profile = !canView ? {} : exporting ? {
+          ...meta, images:(meta.images || []).map(img => ({ ...img, url: new URL(img.url, `${req.protocol}://${req.get('host')}`).href }))
+        } : { salesChannels:meta.salesChannels || [], warehouseScale:meta.warehouseScale || 'none' };
+        return { ...row, ...profile, priceLevel:PRICE_LEVEL_LABELS[local.level],
+          priceLevelVersion:local.version, canEditPriceLevel:canEdit,
+          ...(canView ? { lastVisit:meta.lastVisit || (meta.visitDays || []).slice(-1)[0] || '' } : {}) };
+      }) };
+  }
+
+  router.put('/customer-price-level', ...customerView, jsonBody, handle(async (req, res) => {
+    const body = req.body || {};
+    const customer = await editableCustomer(req, body.key);
+    const saved = await customerPriceLevels.saveLevel(customer.key,body.level,body.version,actorOf(req.user));
+    res.json({ priceLevel:PRICE_LEVEL_LABELS[saved.level],priceLevelVersion:saved.version });
+  }));
 
   router.get('/customer-meta', ...customerView, handle(async (req, res) => {
     res.json({ customers: await customerProfiles.getMeta() });
@@ -236,14 +271,13 @@ function createBusinessReportRouter({ repository = createRepository(), customerP
     const kind = String(req.query.kind || '');
     if (!BUILDERS[kind]) { const e = new Error('Bảng xuất không hợp lệ.'); e.statusCode = 400; throw e; }
     let report = BUILDERS[kind](await repository.snapshot());
-    let rows = filterRows(kind, report.rows, req.query);
-    // Cot "Tiep khach lan cuoi" chi cho nguoi co quyen xem ghi chu khach; loi doc meta => de trong, khong chan xuat.
-    if (kind === 'customers' && hasFeature(req.user, CUSTOMER_NOTES)) {
-      let meta = {};
-      try { meta = await customerProfiles.getMeta() || {}; } catch (e) { console.error('[business-report export] doc tiep khach lan cuoi that bai:', e.message); }
-      report = { ...report, withLastVisit: true };
-      rows = rows.map(r => ({ ...r, lastVisit: (meta[r.key] && meta[r.key].lastVisit) || '' }));
+    if (kind === 'customers') {
+      if ((req.query.salesChannel || req.query.warehouseScale) && !hasFeature(req.user, CUSTOMER_NOTES)) {
+        throw fail(403,'CUSTOMER_PROFILE_FORBIDDEN','Bạn không có quyền lọc thông tin chi tiết khách hàng.');
+      }
+      report = await enrichCustomers(req,report,true);
     }
+    const rows = sortRowsByLabel(kind, report, filterRows(kind, report.rows, req.query), req.query);
     return { kind, report, rows };
   };
 

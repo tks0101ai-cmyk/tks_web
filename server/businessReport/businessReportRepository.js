@@ -104,7 +104,7 @@ function createSwrCache({ load, now, ttlMs, label }) {
 }
 
 function createRepository({
-  pool = getPool(), now = () => new Date(), ttlMs = 60 * 1000,
+  pool = getPool(), now = () => new Date(), ttlMs = 60 * 1000, legacyLevels = false,
   freeze = freezeMonth, rebuildSale = rebuildSaleTable,
   currentMonthMaxAgeMs = CURRENT_MONTH_MAX_AGE_MS, onCurrentMonthChanged = onBusinessCurrentMonthChanged
 } = {}) {
@@ -205,7 +205,7 @@ function createRepository({
       ['SELECT 1 FROM business_monthly_customer_product_sales LIMIT 0'],
       [`SELECT DISTINCT ON (branch, btrim(code)) branch, btrim(code) AS code, name,
                          COALESCE(NULLIF(btrim(raw->>'groups'), ''), $1) AS sale_name,
-                         COALESCE(btrim(COALESCE(raw->>'email', raw->>'Email')), '') AS email,
+                         ${legacyLevels ? "COALESCE(btrim(COALESCE(raw->>'email', raw->>'Email')), '')" : "''::text"} AS email,
                          COALESCE(raw->>'isActive', raw->>'IsActive', 'true') <> 'false' AS is_active
                   FROM customers WHERE btrim(COALESCE(code, '')) <> ''
                   ORDER BY branch, btrim(code), id DESC`, [UNGROUPED_SALE]],
@@ -278,7 +278,8 @@ function createRepository({
       customers, products,
       sales,
       teams: teams.rows.map(r => ({ saleName: r.sale_name, teamName: r.team_name })),
-      directory: directory.rows.map(r => ({ branch: r.branch, code: r.code, name: r.name || '', saleName: r.sale_name, priceLevel: PRICE_LEVEL_LABELS[customerLevelFromEmail(r.email)] })),
+      directory: directory.rows.map(r => ({ branch: r.branch, code: r.code, name: r.name || '', saleName: r.sale_name,
+        priceLevel: legacyLevels ? PRICE_LEVEL_LABELS[customerLevelFromEmail(r.email)] : PRICE_LEVEL_LABELS.large })),
       computedAt: now().toISOString()
     };
   }

@@ -285,6 +285,9 @@ test('Luu thong tin chung: PUT dung payload (nhieu kenh, so luong kho la so), nu
   });
   assert.match(page.doc.getElementById('tksToastStack').textContent, /Đã lưu thông tin chung/);
   assert.equal(page.$('cpProfileSave').disabled, false);
+  page.$('businessCustomersSalesChannel').value = 'fb_live';
+  fireChange(page, page.$('businessCustomersSalesChannel'));
+  assert.deepEqual(Array.from(page.run('businessFilteredCustomers().map(r => r.key)')), [KEY]);
 });
 
 test('so luong kho am: bao loi ngay o form, khong goi PUT', async () => {
@@ -595,6 +598,9 @@ test('danh gia quy mo luu rieng, khong mat thong tin chung dang nhap; chi Quan l
   await settle();
   assert.equal(page.$('cpWarehouseScale').value, 'very_large');
   assert.equal(page.server.profile.profile.warehouseScale, 'very_large');
+  page.$('businessCustomersScale').value = 'very_large';
+  fireChange(page, page.$('businessCustomersScale'));
+  assert.deepEqual(Array.from(page.run('businessFilteredCustomers().map(r => r.key)')), [KEY]);
   const editor = await openProfile({ profile: baseProfile({ canManage: false }) });
   assert.equal(editor.$('cpWarehouseScale'), null);
 });

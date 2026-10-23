@@ -8,6 +8,7 @@ const ExcelJS = require('exceljs');
 const { HEADER_FONT, frozenNoGridlinesView, applyFullTableBorder } = require('../excelTableStyle');
 const { renderHtmlReport } = require('../dashboard/exportHtmlReport');
 const fuzzy = require('../shared/fuzzySearch');
+const { filterTableItems } = require('../public/js/table-explorer');
 
 const MAX_EXPORT_ROWS = 20000;
 const TITLE = 'Hàng hóa · Dự kiến hàng về';
@@ -64,7 +65,9 @@ function filterRows(rows, query = {}) {
   const source = String(query.source || '');
   const container = String(query.container || '');
   const status = String(query.status || '');
-  const matcher = fuzzy.createMatcher(String(query.q || ''));
+  // Chế độ "Nhiều mã": khớp danh sách mã SP như màn hình (table-explorer dùng chung), không tìm gần đúng theo chữ.
+  const codesMode = String(query.qmode || '') === 'codes' && String(query.q || '').trim();
+  const matcher = fuzzy.createMatcher(codesMode ? '' : String(query.q || ''));
   const scored = [];
   rows.forEach((r, index) => {
     if (source && r.sheetName !== source) return;
@@ -72,13 +75,37 @@ function filterRows(rows, query = {}) {
     if (status && r.statusLabel !== status) return;
     let score = 1;
     if (!matcher.empty) {
-      score = matcher.score(fuzzy.fold([r.productCode, r.productName, r.containerName, r.color, r.saleNote, r.otherNote].join(' ')));
+      // Cùng các trường với ô tìm kiếm trên màn hình (kể cả Lịch / Trạng thái và Người đặt).
+      score = matcher.score(fuzzy.fold([r.scheduleLabel, r.containerName, r.productCode, r.productName, r.color, r.saleNote, r.otherNote, r.orderedBy].filter(Boolean).join(' ')));
       if (!score) return;
     }
     scored.push({ r, index, score });
   });
   if (!matcher.empty) scored.sort((a, b) => b.score - a.score || a.index - b.index);
-  return scored.map(item => item.r);
+  const matched = scored.map(item => item.r);
+  if (!codesMode) return matched;
+  return filterTableItems(matched, { searchText: () => '', code: r => r.productCode || '' }, { mode: 'codes', query: String(query.q) }).items;
+}
+
+// Sắp xếp theo cột đang bấm trên màn hình (sortLabel = tiêu đề cột, sortDir). Chỉ xét cột người xuất được phép thấy,
+// gọi SAU khi đã bỏ trường giá nên không lộ thứ tự theo cột giá cho người không có quyền.
+function sortRowsByLabel(rows, query = {}, { fullAccess = false, otherNoteAccess = false } = {}) {
+  const label = String(query.sortLabel || '').trim().toLocaleLowerCase('vi-VN');
+  if (!label || !['asc', 'desc'].includes(query.sortDir)) return rows;
+  const column = columnsFor(fullAccess, otherNoteAccess).find(c => c.label.toLocaleLowerCase('vi-VN') === label);
+  if (!column) return rows;
+  const sign = query.sortDir === 'asc' ? 1 : -1;
+  return rows
+    .map((row, index) => ({ row, index, v: cellValue(row, column) }))
+    .sort((a, b) => {
+      const emptyA = a.v === '', emptyB = b.v === '';
+      if (emptyA !== emptyB) return emptyA ? 1 : -1;
+      const c = typeof a.v === 'number' && typeof b.v === 'number'
+        ? a.v - b.v
+        : String(a.v).localeCompare(String(b.v), 'vi', { numeric: true, sensitivity: 'base' });
+      return c ? sign * c : a.index - b.index;
+    })
+    .map(entry => entry.row);
 }
 
 // Cung dang /api/business-report/export/fields.
@@ -194,4 +221,4 @@ async function createExportFile(format, rows, columnKeys, { query = {}, meta = n
   };
 }
 
-module.exports = { createExportFile, filterRows, exportFieldsFor, resolveColumnKeys, stripPriceFields, MAX_EXPORT_ROWS, COLUMNS };
+module.exports = { createExportFile, filterRows, sortRowsByLabel, exportFieldsFor, resolveColumnKeys, stripPriceFields, MAX_EXPORT_ROWS, COLUMNS };

@@ -682,7 +682,7 @@ Thiết kế: [spec đã duyệt](../docs/superpowers/specs/2026-10-23-customer-
 | `GET /api/me/table-prefs` | đăng nhập | Trả `{ tables: { [tableKey]: { [mode]: { columns } } } }` của chính tài khoản |
 | `PUT /api/me/table-prefs/:tableKey/:mode` body `{ columns: { [colKey]: { width?, hidden? } } }` | đăng nhập | Ghi đè cấu hình một bảng; `mode` là `desktop`/`mobile`, độ rộng 24–2000, ≤200 cột, sai →400. `user_id` lấy từ phiên |
 
-Client nạp một lần khi tải trang (`TKSTables.loadPrefs`), lưu sau khi kéo cột/đổi cột hiển thị với debounce 800 ms; trang chưa đăng nhập (401) hoặc file HTML xuất ra không gọi API. Độ rộng đã lưu được ưu tiên hơn tự co giãn lần đầu. Không có nút đặt lại. [Thiết kế](../docs/superpowers/specs/2026-10-23-table-column-prefs-design.md).
+Client nạp một lần khi tải trang (`TKSTables.loadPrefs`), lưu sau khi kéo cột/đổi cột hiển thị với debounce 800 ms; trang chưa đăng nhập (401) hoặc file HTML xuất ra không gọi API. Độ rộng đã lưu được ưu tiên hơn tự co giãn lần đầu. Tình trạng sắp xếp cục bộ (bảng `data-table-sort="local"` và `.dp-table`) cũng được lưu theo khóa cột (`prefs.sort = {key, dir}`, tùy chọn) và khôi phục khi vào lại; bảng sắp xếp bằng mã riêng của trang hoặc ở máy chủ chưa nằm trong phạm vi. Không có nút đặt lại. [Thiết kế](../docs/superpowers/specs/2026-10-23-table-column-prefs-design.md).
 
 
 ### 23/10/2026 — Ghi chú khác của CONT
@@ -693,3 +693,13 @@ Client nạp một lần khi tải trang (`TKSTables.loadPrefs`), lưu sau khi k
 - Đã áp riêng migration 0086 trên DB cấu hình và đồng bộ thủ công 23/10/2026: 13.044 dòng mỗi bảng, 5.839 dòng có ghi chú, 0 dòng lệch giữa hai bảng. Không áp migration khác đang chờ.
 - Kiểm tra liên quan 49/49 đạt; kiểm tra DOM các tổ hợp quyền và thu hồi quyền đạt, toàn bộ script nội tuyến phân tích cú pháp thành công. Chưa kiểm tra trình duyệt thật.
 - Code cục bộ chưa deploy. Cần triển khai phiên bản mới để web hiện cột và các lượt đồng bộ định kỳ tiếp tục giữ cột G; tiến trình đồng bộ phiên bản cũ chưa đọc trường này. Chạy thủ công khi cần: `refreshContainers({ force: true })`, sau đó `refreshExpected()`; force chỉ bỏ chờ chu kỳ, vẫn giữ khóa và kiểm tra nguồn.
+# Level giá nội bộ và bộ lọc khách — 23/10/2026
+
+Migration mới `db/migrations/0087_customer_price_levels.sql` tạo schema level/nguồn/lịch sử/trạng thái, chưa áp DB thật trong thay đổi này. Module `businessReport/customerPriceLevelRepository.js` quản lý level chung theo `nameKey` của khách gộp HN/SG; ảnh và thông tin lọc/xuất đọc theo lô qua `customerProfileRepository.getReportProfiles(keys)`.
+
+Trình tự vận hành khi triển khai: áp migration 0087, kiểm tra báo cáo doanh số đã sẵn sàng, chạy `node scripts/initialize-customer-price-levels.js` xem trước, rồi chạy lại với `--apply`. Lệnh apply lưu email/level nguồn của **mọi** hồ sơ khách và level đang hiển thị của khách gộp trong cùng giao dịch trước khi đánh dấu hoàn tất. Khởi tạo lại không ghi đè. Chưa khởi tạo: API level trả 503 `MIGRATION_PENDING`; job chụp mới báo nguồn chưa sẵn sàng; hóa đơn đã chụp vẫn đọc được. Không sửa email KiotViet. Sau khởi tạo, email không quyết định level, khách mới mặc định Lớn.
+
+- `GET /api/business-report/customers`: level nội bộ, `priceLevelVersion`, `canEditPriceLevel`; người có quyền xem Chi tiết nhận thêm `salesChannels` và `warehouseScale`.
+- `PUT /api/business-report/customer-price-level`: `{key,level,version}` (`medium/large/vip`), yêu cầu quyền xem Chi tiết và quyền quản lý khách hoặc được gán sửa khách đó; trả `{priceLevel,priceLevelVersion}`. Xung đột phiên bản: 409 `PRICE_LEVEL_CONFLICT`. Lịch sử lưu level cũ/mới, tài khoản và thời gian.
+- `/export/fields` và `/export`: nhận thêm `salesChannel` (`none` = chưa có) và `warehouseScale`; kết hợp AND trước phân trang. Thông tin chung, quy mô, người được sửa, các ngày tiếp khách và URL ảnh chỉ xuất với quyền xem Chi tiết; không xuất Note hoặc byte ảnh. URL ảnh vẫn cần đăng nhập. Lỗi đọc hồ sơ chặn xuất, tránh xuất dữ liệu trắng sai.
+- Kiểm tra giá bán đọc level nội bộ bằng client giao dịch chụp `REPEATABLE READ`; chỉ thêm hóa đơn chưa chụp. Đổi level không tính lại bản chụp cũ.

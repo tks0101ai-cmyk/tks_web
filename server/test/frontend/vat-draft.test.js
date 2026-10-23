@@ -61,6 +61,7 @@ async function setup(t, { hash = '#xu-ly', responses = api(), vaiTro = 'Quản l
   const calls = [];
   window.fetch = async (url, options = {}) => {
     const parsed = new URL(url, window.location.href);
+    if (parsed.pathname === '/api/me/table-prefs') return { ok: true, status: 200, json: async () => ({ tables: {} }) };
     const key = `${options.method || 'GET'} ${parsed.pathname.replace('/api/vat-draft', '')}`;
     const body = options.body ? JSON.parse(options.body) : undefined;
     calls.push({ key, query: Object.fromEntries(parsed.searchParams), body });

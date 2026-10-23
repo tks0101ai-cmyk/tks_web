@@ -220,3 +220,7 @@ Triển khai cục bộ theo spec `docs/superpowers/specs/2026-10-23-customer-pr
 Nhánh `feat/vat-lookup`, không migration. Port app Apps Script "Tra cứu VAT" (logic v12) sang `server/vatLookup/`: `lookupModel.js` (logic thuần chép từ Code.gs + Index.html: dò dòng tiêu đề, ghép Khớp mã + Gộp VAT, DK về 2 trạng thái 1–3, tìm kiếm nhiều từ khóa), `lookupSource.js` (3 CSV công khai Gộp VAT gid 0 / Khớp mã / DK về 2 gid 1150116423 qua `vatDraft/sheetsSource.fetchSheetCsv`, đọc theo tên cột, model dựng sẵn trong `createTtlSnapshotCache` 10 phút / stale 6 giờ), `vatLookupRoutes.js` (`GET /meta`, `POST /search`, `POST /refresh`). Tìm kiếm chạy trên server (~10 ms trên 3.142 sản phẩm + 8.052 dòng DK về 2), client chỉ vẽ 2 bảng (`public/vat-lookup/`, `table-controls.js`). Không dùng chung bản parse của Nháp VAT (đọc theo chữ cái cột, thiếu Tên hàng, bỏ dòng tồn không phải số). Quyền `accounting.vatLookup`.
 
 Cập nhật gần nhất: 23/10/2026.
+
+# Cập nhật 23/10/2026 — level giá nội bộ
+
+Triển khai cục bộ theo `docs/superpowers/plans/2026-10-23-customer-filters-local-price-level.md`: nguồn sao lưu theo `(branch,id)`, level chung theo khóa khách gộp, ghi có phiên bản và lịch sử. Hai bộ lọc hồ sơ dùng cùng điều kiện với xuất file. `0087` chỉ tạo schema; script khởi tạo lưu nguồn và level hiện hành trước cutover; chưa áp DB thật/deploy. Chụp kiểm tra giá đọc level trong giao dịch sẵn có và giữ nguyên bản chụp cũ.

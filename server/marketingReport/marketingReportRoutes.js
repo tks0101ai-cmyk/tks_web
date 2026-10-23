@@ -36,9 +36,9 @@ function createMarketingReportRouter({service=createMarketingReportService()}={}
     if(!['monthly','receipt-check','phones','costs'].includes(kind)||!['summary','rows'].includes(table)){
       const e=new Error('Bảng xuất không hợp lệ.');e.statusCode=400;e.code='MARKETING_EXPORT_INVALID';throw e;
     }
-    const {kind:_k,table:_t,q,columns,format,...filters}=req.query;
+    const {kind:_k,table:_t,q,columns,format,sortKey,sortDir,...filters}=req.query;
     const result=await service.report(kind,filters);
-    return {kind,table,result,rows:tableRows(table,result,q)};
+    return {kind,table,result,rows:tableRows(table,result,q,{sortKey,sortDir})};
   };
   router.get('/export/fields',requireFeature('reports.export'),handle(async req=>{
     const {kind,table,result,rows}=await exportContext(req);

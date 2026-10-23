@@ -34,6 +34,14 @@ test('sanitizePrefs từ chối đầu vào sai', () => {
   assert.throws(() => repo.sanitizePrefs({ columns: many }), { statusCode: 400 });
 });
 
+test('sanitizePrefs giữ sắp xếp hợp lệ, bỏ qua null và từ chối sai', () => {
+  assert.deepEqual(repo.sanitizePrefs({ columns: {}, sort: { key: 'qty', dir: 'desc', x: 1 } }), { columns: {}, sort: { key: 'qty', dir: 'desc' } });
+  assert.deepEqual(repo.sanitizePrefs({ columns: {}, sort: null }), { columns: {} });
+  for (const bad of ['qty', [], { key: 'qty' }, { key: 'qty', dir: 'up' }, { key: '', dir: 'asc' }, { dir: 'asc' }]) {
+    assert.throws(() => repo.sanitizePrefs({ columns: {}, sort: bad }), { statusCode: 400 });
+  }
+});
+
 test('savePrefs ghi đè theo (tài khoản, bảng, chế độ) và listForUser cô lập tài khoản', async t => {
   const pool = await makePool(t);
   await repo.savePrefs(pool, 'u1', 'orders', 'desktop', { columns: { code: { width: 200 } } });

@@ -250,9 +250,9 @@ router.get('/api/hr/leave-requests/summary/urgent-flags', ...authInternal, async
 
 router.post('/api/hr/leave-requests/export', ...authInternal, async (req, res) => {
   try {
-    const { status, employee, department, branch, from, to, sortField, sortDir } = req.body || {};
+    const { status, employee, department, branch, from, to, sortField, sortDir, requestIds } = req.body || {};
     const { buffer, fileName, mime } = await buildLeaveRequestsWorkbook(
-      { status, employee, department, from, to, sortField, sortDir },
+      { status, employee, department, from, to, sortField, sortDir, requestIds },
       resolveBranchScope(req, branch)
     );
     res.setHeader('Content-Type', mime);

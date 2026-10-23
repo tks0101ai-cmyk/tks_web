@@ -8,6 +8,8 @@ const ExcelJS = require('exceljs');
 const { HEADER_FONT, frozenNoGridlinesView, applyFullTableBorder } = require('../excelTableStyle');
 const { renderHtmlReport } = require('../dashboard/exportHtmlReport');
 const { monthLabel } = require('./businessMonths');
+const fuzzy = require('../shared/fuzzySearch');
+const { filterTableItems } = require('../public/js/table-explorer');
 
 const MAX_EXPORT_ROWS = 20000;
 const KINDS = ['sales', 'customers', 'products'];
@@ -25,24 +27,69 @@ function invalid(message, code) {
   return e;
 }
 
-const fold = s => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
-
 // Loc dong theo truy van. Chi bang KHACH mac dinh an khach khong hoat dong (TB 4 thang = 0),
 // inactive=1 giu tat ca; bang Sale / Ma hang khong co cong tac nay nen xuat du dong nhu tren man hinh.
+// Match the recursive tableSearchText used by the business table, excluding fields
+// attached ONLY for export. The /customers API intentionally omits these fields.
+const EXPORT_ONLY_PROFILE_FIELDS = new Set(['warehouseLocation','warehouseCount','area','competitor','editors','visitDays','images']);
+function searchText(row) {
+  const values = [];
+  function collect(value) {
+    if (value == null) return;
+    if (Array.isArray(value)) { value.forEach(collect); return; }
+    if (typeof value === 'object') { Object.values(value).forEach(collect); return; }
+    values.push(String(value));
+  }
+  for (const [key,value] of Object.entries(row)) if (!EXPORT_ONLY_PROFILE_FIELDS.has(key)) collect(value);
+  return values.join(' ');
+}
 function filterRows(kind, rows, query = {}) {
-  const q = fold(String(query.q || '').trim());
+  const q = String(query.q || '').trim();
   const sale = String(query.sale || '');
   const team = String(query.team || '');
   const level = String(query.level || '');
+  const salesChannel = String(query.salesChannel || '');
+  const warehouseScale = String(query.warehouseScale || '');
   const all = kind !== 'customers' || String(query.inactive || '') === '1';
-  return rows.filter(r => {
+  // Chế độ "Nhiều mã" của bảng Mã hàng: khớp danh sách mã như màn hình (table-explorer dùng chung).
+  const codesMode = kind === 'products' && String(query.qmode || '') === 'codes' && q;
+  const filtered = rows.filter(r => {
     if (!all && !r.active) return false;
     if (sale && r.saleName !== sale) return false;
     if (team && r.team !== team) return false;
     if (level && kind === 'customers' && String(r.priceLevel || '') !== level) return false;
-    if (q && !fold([r.code, r.name, r.saleName, r.team].filter(Boolean).join(' ')).includes(q)) return false;
+    if (kind === 'customers') {
+      const channels = Array.isArray(r.salesChannels) ? r.salesChannels : [];
+      if (salesChannel && (salesChannel === 'none' ? channels.length > 0 : !channels.includes(salesChannel))) return false;
+      if (warehouseScale && (r.warehouseScale || 'none') !== warehouseScale) return false;
+    }
+    if (q && !codesMode && !fuzzy.matches(searchText(r),q)) return false;
     return true;
   });
+  if (!codesMode) return filtered;
+  return filterTableItems(filtered, { searchText, code: r => r.code }, { mode: 'codes', query: q }).items;
+}
+
+// Sắp xếp theo cột đang bấm trên màn hình: client gửi nhãn cột (tiêu đề <th>) + chiều (sortLabel / sortDir).
+// Không có cột khớp nhãn thì giữ nguyên thứ tự.
+function sortRowsByLabel(kind, report, rows, query = {}) {
+  const label = String(query.sortLabel || '').trim().toLocaleLowerCase('vi-VN');
+  if (!label || !['asc', 'desc'].includes(query.sortDir)) return rows;
+  const column = columnsFor(kind, report).find(c => c.label.trim().toLocaleLowerCase('vi-VN') === label);
+  if (!column) return rows;
+  const sign = query.sortDir === 'asc' ? 1 : -1;
+  return rows
+    .map((row, index) => ({ row, index, v: rawValue(row, column) }))
+    .sort((a, b) => {
+      const emptyA = a.v === '' || a.v === '—';
+      const emptyB = b.v === '' || b.v === '—';
+      if (emptyA !== emptyB) return emptyA ? 1 : -1;
+      const c = typeof a.v === 'number' && typeof b.v === 'number'
+        ? a.v - b.v
+        : String(a.v).localeCompare(String(b.v), 'vi', { numeric: true, sensitivity: 'base' });
+      return c ? sign * c : a.index - b.index;
+    })
+    .map(entry => entry.row);
 }
 
 function dateLabel(today) {
@@ -56,10 +103,20 @@ function monthColumnKey(month) {
 // Cot "Tiep khach lan cuoi" (bang Khach hang): chi co khi route danh dau report.withLastVisit (nguoi xuat co
 // quyen xem ghi chu khach) va gan row.lastVisit ('YYYY-MM-DD' hoac '') tu customerProfileRepository.getMeta().
 const LAST_VISIT_COLUMN = ['lastVisit', 'Tiếp khách lần cuối'];
+const PROFILE_COLUMNS = [
+  ['warehouseLocation', 'Định vị kho'], ['warehouseCount', 'Số lượng kho', 'number'],
+  ['area', 'Diện tích'], ['competitor', 'Đối thủ'], ['salesChannels', 'Hình thức bán hàng'],
+  ['warehouseScale', 'Quy mô khách'], ['editors', 'Người được sửa'],
+  ['visitDays', 'Các ngày tiếp khách'], ['images', 'Ảnh kho']
+];
+const CHANNEL_LABELS = { san: 'Bán sàn', cua_hang: 'Bán cửa hàng', fb_ads: 'FB ads', fb_live: 'FB live', sang_tay: 'Sang tay', kho_buon: 'Kho buôn', khac: 'Khác' };
+const SCALE_LABELS = { none: 'Chưa có', small: 'Nhỏ', medium: 'Vừa', large: 'To', very_large: 'Rất to' };
 
 function columnsFor(kind, report) {
   const previous = report.months.filter(m => m !== report.currentMonth).slice().reverse();
-  const fixed = kind === 'customers' && report.withLastVisit ? [...FIXED[kind], LAST_VISIT_COLUMN] : FIXED[kind];
+  const fixed = [...FIXED[kind]];
+  if (kind === 'customers' && report.withLastVisit) fixed.push(LAST_VISIT_COLUMN);
+  if (kind === 'customers' && report.withCustomerProfile) fixed.push(...PROFILE_COLUMNS);
   return [
     ...fixed.map(([key, label, type]) => ({ key, label, type: type || 'text' })),
     { key: 'avg4', label: 'TB 4 tháng', type: 'number' },
@@ -111,6 +168,12 @@ function ddmmyyyy(isoDate) {
 
 function rawValue(row, column) {
   if (column.key === 'lastVisit') return ddmmyyyy(row.lastVisit);
+  if (column.key === 'warehouseCount') return row.warehouseCount == null ? '' : Number(row.warehouseCount);
+  if (column.key === 'warehouseScale') return SCALE_LABELS[row.warehouseScale || 'none'] || '';
+  if (column.key === 'salesChannels') return (row.salesChannels || []).map(c => CHANNEL_LABELS[c] || c).join(', ');
+  if (column.key === 'editors') return (row.editors || []).map(e => e.userName || e.userId || '').filter(Boolean).join(', ');
+  if (column.key === 'visitDays') return (row.visitDays || []).map(ddmmyyyy).filter(Boolean).join(', ');
+  if (column.key === 'images') return (row.images || []).map(i => typeof i === 'string' ? i : i.url || '').filter(Boolean).join('\n');
   if (column.month) return Number(row.series && row.series[column.month]) || 0;
   if (column.key === 'growth') return row.growth == null ? '—' : row.growth / 100;
   if (column.type === 'number') return Number(row[column.key]) || 0;
@@ -176,4 +239,4 @@ async function createExportFile(kind, format, report, rows, columnKeys) {
   };
 }
 
-module.exports = { createExportFile, filterRows, exportFieldsFor, resolveColumnKeys, MAX_EXPORT_ROWS };
+module.exports = { createExportFile, filterRows, sortRowsByLabel, exportFieldsFor, resolveColumnKeys, MAX_EXPORT_ROWS };

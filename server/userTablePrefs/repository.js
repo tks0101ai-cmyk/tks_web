@@ -25,7 +25,7 @@ function assertTarget(tableKey, mode) {
   if (!MODES.includes(mode)) throw badRequest('Chế độ màn hình không hợp lệ.');
 }
 
-/** Chi giu {columns:{key:{width?,hidden?}}} hop le; sai dinh dang -> 400. */
+/** Chi giu {columns:{key:{width?,hidden?}}, sort?:{key,dir}} hop le; sai dinh dang -> 400. */
 function sanitizePrefs(input) {
   const source = input && typeof input === 'object' ? input.columns : null;
   if (!source || typeof source !== 'object' || Array.isArray(source)) throw badRequest('Cấu hình bảng không hợp lệ.');
@@ -49,7 +49,15 @@ function sanitizePrefs(input) {
     }
     if (Object.keys(out).length) columns[key] = out;
   }
-  return { columns };
+  const prefs = { columns };
+  const sort = input.sort;
+  if (sort !== undefined && sort !== null) {
+    if (typeof sort !== 'object' || Array.isArray(sort) || !validKey(sort.key) || !['asc', 'desc'].includes(sort.dir)) {
+      throw badRequest('Cấu hình sắp xếp không hợp lệ.');
+    }
+    prefs.sort = { key: sort.key, dir: sort.dir };
+  }
+  return prefs;
 }
 
 /** -> { [tableKey]: { [mode]: prefs } } cua dung tai khoan. */

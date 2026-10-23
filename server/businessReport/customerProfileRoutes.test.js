@@ -15,6 +15,25 @@ const IMG_ID = '22222222-2222-4222-8222-222222222222';
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.from('png-body')]);
 const note = (over = {}) => ({ id: NOTE_ID, noteDate: '2026-10-22', body: 'Gặp khách', authorId: 'u-9', authorName: 'Sale', createdAt: '2026-10-22T03:00:00.000Z', updatedAt: '2026-10-22T03:00:00.000Z', ...over });
 
+test('local price level: manager and assigned editor can change, unrelated viewer cannot; conflict is 409', async () => {
+  const body = { key:KEY,level:'vip',version:1 };
+  assert.equal((await call('/customer-price-level', { method:'PUT',body })).status,200);
+  assert.equal((await call('/customer-price-level', { method:'PUT',body, permissions:VIEW })).status,403);
+  const assigned = fakeProfiles({ editors:[{key:KEY,userId:'u-1'}] });
+  assert.deepEqual((await call('/customer-price-level', { method:'PUT',body,permissions:VIEW,profiles:assigned })).data,
+    {priceLevel:'vip',priceLevelVersion:2});
+  const levels = { saveLevel:async () => { throw Object.assign(new Error('conflict'),{statusCode:409,code:'PRICE_LEVEL_CONFLICT'}); } };
+  assert.equal((await call('/customer-price-level', {method:'PUT',body,levels})).status,409);
+  const report = await call('/customers', {permissions:VIEW,profiles:assigned});
+  const row = report.data.rows.find(r => r.key === KEY);
+  assert.equal(row.priceLevel,'lớn');
+  assert.equal(row.canEditPriceLevel,true);
+  assert.deepEqual(row.salesChannels,['san']);
+  const fields = await call('/export/fields?kind=customers&salesChannel=san&warehouseScale=small', {permissions:[...VIEW,'reports.export']});
+  assert.equal(fields.data.worksheets[0].rowCount,1);
+  assert.ok(fields.data.worksheets[0].fields.some(f => f.key === 'warehouseScale'));
+});
+
 // Kho gia luu trong RAM, ghi lai moi loi goi ghi (de kiem "khong ghi" khi bi 403).
 function fakeProfiles({ editors = [], ...over } = {}) {
   const calls = [];
@@ -22,6 +41,10 @@ function fakeProfiles({ editors = [], ...over } = {}) {
   const profile = { warehouseLocation: 'Kho 1', area: '', warehouseCount: 2, warehouseScale: 'small', competitor: '', salesChannels: ['san'] };
   return {
     calls,
+    getReportProfiles: async keys => Object.fromEntries(keys.filter(k => k === KEY).map(k => [k, {
+      ...profile, editors: editors.length ? editors.map(e => ({userId:e.userId,userName:'Sale'})) : [{ userId: 'u-2', userName: 'Sale Hai' }], visitDays: ['2026-10-01','2026-10-20'],
+      images: [{ url: `/api/business-report/customer-profile/images/${IMG_ID}` }], lastVisit: '2026-10-20'
+    }])),
     getMeta: rec('getMeta', { [KEY]: { lastVisit: '2026-10-20', noteCount: 2 } }),
     getProfile: rec('getProfile', {
       profile, images: [{ id: IMG_ID, url: `/api/business-report/customer-profile/images/${IMG_ID}`, contentType: 'image/png', byteSize: 12, createdAt: '2026-10-21T00:00:00.000Z' }],
@@ -44,7 +67,7 @@ function fakeProfiles({ editors = [], ...over } = {}) {
   };
 }
 
-async function call(path, { permissions = MANAGE, user = {}, method = 'GET', body, form, headers = {}, profiles = fakeProfiles() } = {}) {
+async function call(path, { permissions = MANAGE, user = {}, method = 'GET', body, form, headers = {}, profiles = fakeProfiles(), levels = null } = {}) {
   const app = express();
   app.use((req, res, next) => {
     req.user = { id: 'u-1', username: 'tester', hoTen: 'Người Test', vaiTro: 'Quản lý', permissions, ...user };
@@ -54,6 +77,10 @@ async function call(path, { permissions = MANAGE, user = {}, method = 'GET', bod
   app.use('/api/business-report', createBusinessReportRouter({
     repository: { snapshot: async () => serviceSnapshot() },
     customerProfiles: profiles,
+    customerPriceLevels: levels || {
+      getLevels: async keys => Object.fromEntries(keys.map(k => [k, { level:'large', version:1 }])),
+      saveLevel: async (key, level, version) => ({ level,version:version+1 })
+    },
     now: () => NOW
   }));
   const server = app.listen(0);
@@ -380,7 +407,7 @@ test('GET /export?kind=customers: them cot "Tiep khach lan cuoi" (dd/mm/yyyy) kh
   assert.deepEqual(rows.find(r => r[0] === 'Anh B'), ['Anh B', '']);
 });
 
-test('GET /export: khong co quyen xem ghi chu khach thi khong co cot Tiep khach lan cuoi (khong lo du lieu); meta loi => cot de trong', async () => {
+test('GET /export: no profile fields without view permission; batch read failure blocks export', async () => {
   const plain = ['reports.business', 'reports.products.growth', 'reports.export'];
   const fields = await call('/export/fields?kind=customers', { permissions: plain });
   assert.ok(!fields.data.worksheets[0].fields.some(f => f.key === 'lastVisit'));
@@ -389,12 +416,10 @@ test('GET /export: khong co quyen xem ghi chu khach thi khong co cot Tiep khach 
   const origError = console.error;
   console.error = () => {};
   try {
-    const broken = fakeProfiles({ getMeta: async () => { throw new Error('db down'); } });
+    const broken = fakeProfiles({ getReportProfiles: async () => { throw new Error('db down'); } });
     const res = await call('/export?kind=customers&format=xlsx&inactive=1&columns=' + encodeURIComponent('name,lastVisit'), { permissions: [...VIEW, 'reports.products.growth', 'reports.export'], profiles: broken });
-    assert.equal(res.status, 200);
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(res.data);
-    assert.ok(wb.worksheets[0].getSheetValues().slice(2).map(r => r.slice(1)).every(r => r[1] === ''));
+    assert.equal(res.status, 500);
+    assert.equal(res.data.code,'BUSINESS_REPORT_ERROR');
   } finally { console.error = origError; }
 });
 

@@ -2,6 +2,8 @@
 
 Dashboard nội bộ cho hai cơ sở Hà Nội và Sài Gòn.
 
+23/10/2026 — Bảng Khách hàng bổ sung bộ lọc hình thức bán hàng/quy mô, xuất thông tin Chi tiết (trừ Note) và dropdown level nội bộ dùng chung HN/SG theo tên khách. Mã cục bộ; migration `0087` và bước khởi tạo nguồn **chưa áp DB thật**. Xem [thiết kế](docs/superpowers/specs/2026-10-23-customer-filters-local-price-level-design.md), [kế hoạch](docs/superpowers/plans/2026-10-23-customer-filters-local-price-level.md). Sau migration, chạy `node scripts/initialize-customer-price-levels.js` trong `server` để xem trước; `--apply` sao lưu nguồn và bật level nội bộ. Hóa đơn đã chụp giữ nguyên.
+
 Tiến độ, kiến trúc chi tiết và checklist vận hành: [CURRENT.md](CURRENT.md).
 
 ## Kiến trúc hiện tại

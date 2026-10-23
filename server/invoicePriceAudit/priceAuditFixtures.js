@@ -1,7 +1,7 @@
 'use strict';
 
 // Fixture PGlite dung chung cho test "Kiem tra gia ban" (KHONG phai file test: ten khong khop mau node --test).
-// Schema THAT: migration 0001-0006, 0012, 0064, 0077.
+// Schema THAT: migration 0001-0006, 0012, 0064, 0077, 0087.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -9,7 +9,7 @@ const { PGlite } = require('@electric-sql/pglite');
 
 const MIGRATIONS = ['0001_core_master_data.sql', '0002_invoices.sql', '0003_orders.sql', '0004_returns.sql',
   '0005_purchases.sql', '0006_cash_flows.sql', '0012_numeric_money_quantity_columns.sql',
-  '0064_sheet_snapshots.sql', '0077_invoice_price_audit.sql']
+  '0064_sheet_snapshots.sql', '0077_invoice_price_audit.sql', '0087_customer_price_levels.sql']
   .map(file => fs.readFileSync(path.join(__dirname, '..', 'db', 'migrations', file), 'utf8'));
 
 const HN_NOTE = 'T100 # 16/10 # 1T -24000 | 3T- 23800 | 5T- 23600 | 10T-23000 | VAT+2000đ';
@@ -18,6 +18,7 @@ const FREIGHT_NAME = 'SG Tín Phong Shop';
 async function newDb({ measuresSynced = true, syncedAt = new Date('2026-10-20T16:00:00Z') } = {}) {
   const db = new PGlite();
   for (const sql of MIGRATIONS) await db.exec(sql);
+  await db.query('UPDATE customer_price_level_state SET initialized_at=now() WHERE id');
   if (measuresSynced) {
     await db.query("INSERT INTO sheet_snapshot_sync (source, last_success_at) VALUES ('shipping_measures', $1)", [syncedAt]);
   }
@@ -33,6 +34,11 @@ async function customer(db, branch, id, name, raw = {}) {
   if (!('email' in raw) && !('Email' in raw)) raw = { email: 'vua@x.vn', ...raw };
   await db.query('INSERT INTO customers (branch, id, code, name, raw) VALUES ($1,$2,$3,$4,$5)',
     [branch, id, `KH${id}`, name, JSON.stringify(raw)]);
+  // Tests model the one-time archived level explicitly. Runtime capture never parses email.
+  const { nameKey } = require('../businessReport/businessMonths');
+  const { customerLevelFromEmail } = require('./priceAuditRules');
+  await db.query('INSERT INTO customer_price_levels(customer_key,level) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+    [nameKey(name),customerLevelFromEmail(raw.email ?? raw.Email)]);
 }
 // lines: [{ productId, code, name, qty, price, discount, note }]
 async function invoice(db, { branch = 'hanoi', id, purchaseDate = '2026-10-20 10:00:00+00', customerId = null,

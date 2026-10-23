@@ -1625,6 +1625,16 @@
           params.set("view", view);
           params.set("format", format);
           params.set("columns", columns.join(","));
+          if (view === "balances") {
+            // Bảng Số dư lọc/sắp ngay trên màn hình nên gửi kèm để file khớp các dòng đang hiện.
+            const q = $("balancesSearch").value.trim(), group = $("balancesGroupFilter").value;
+            if (q) params.set("balanceQ", q);
+            if (group) params.set("balanceGroup", group);
+            if (balanceSort.field && balanceSort.dir) {
+              params.set("balanceSortField", balanceSort.field);
+              params.set("balanceSortDir", balanceSort.dir);
+            }
+          }
           return "/api/cashbook/export?" + params.toString();
         }
         async function request(url, options = {}) {

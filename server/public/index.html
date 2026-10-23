@@ -1305,7 +1305,7 @@
     }
 
     /* Tang truong Sale: dropdown doi team ngay trong o Team (chi Quan ly thay) */
-    .business-team-select {
+    .business-team-select, .business-price-level-select {
       width: 100%;
       min-width: 112px;
       padding: 3px 6px;
@@ -1317,12 +1317,12 @@
       cursor: pointer;
     }
 
-    .business-team-select:disabled {
+    .business-team-select:disabled, .business-price-level-select:disabled {
       opacity: .6;
       cursor: progress;
     }
 
-    .business-team-select option {
+    .business-team-select option, .business-price-level-select option {
       background-color: var(--panel);
       color: var(--text);
     }
@@ -4908,6 +4908,8 @@
                   <div class="panel-head-actions business-customer-filters">
                     <select class="stockout-branch-select" id="businessCustomersSale" aria-label="Lọc theo sale"><option value="">Tất cả sale</option></select>
                     <select class="stockout-branch-select" id="businessCustomersLevel" aria-label="Lọc theo level giá"><option value="">Tất cả level</option></select>
+                    <select class="stockout-branch-select" id="businessCustomersSalesChannel" aria-label="Lọc theo hình thức bán hàng" hidden><option value="">Tất cả hình thức bán hàng</option></select>
+                    <select class="stockout-branch-select" id="businessCustomersScale" aria-label="Lọc theo quy mô khách" hidden><option value="">Tất cả quy mô khách</option></select>
                     <label class="business-inactive-toggle"><input type="checkbox" id="businessCustomersInactive"> Hiện cả khách không hoạt động</label>
                   </div>
                   <div class="panel-head-actions business-export" data-kind="customers">
@@ -5991,6 +5993,7 @@
             mode: getTableSearchState('recentStockout').mode,
             query: getTableSearchState('recentStockout').query
           },
+          tableSort: currentExportSort('recentStockout') || undefined,
           // Ket qua quet o "Cả hai" moi co cot nguon (theo ket qua da quet, khong
           // theo co so dang chon) — gui thua khoa nay o mot co so se bi tu choi.
           columns: {
@@ -6241,6 +6244,7 @@
             mode: getTableSearchState('stockout90d').mode,
             query: getTableSearchState('stockout90d').query
           },
+          tableSort: currentExportSort('stockout90d') || undefined,
           // Xem ghi chu tuong tu o exportRecentStockoutResult().
           columns: {
             stockout_90d_result: (isMergedStockoutResult(result) ? ['branch'] : [])
@@ -6490,6 +6494,7 @@
             mode: getTableSearchState('stockout30d').mode,
             query: getTableSearchState('stockout30d').query
           },
+          tableSort: currentExportSort('stockout30d') || undefined,
           // Xem ghi chu tuong tu o exportRecentStockoutResult().
           columns: {
             stockout_30d_result: (isMergedStockoutResult(result) ? ['branch'] : [])
@@ -6533,10 +6538,24 @@
       'overview.transactions': 'endOfDay',
       'customers.productDetail': 'cpDetail',
       'overview.productReport': 'productReport',
-      'debt.management': 'debtManagement',
-      'debt.penalty': 'debtPenalty',
-      'debt.aging': 'debtAging'
+      // Hai bảng công nợ còn lại (debt.management / debt.aging) gửi ô tìm kiếm qua context.debtSearch / debtAgingSearch
+      // để server lọc trên dòng gốc giống màn hình, không lọc lần hai theo cột xuất.
+      'debt.penalty': 'debtPenalty'
     };
+
+    // Cột đang sắp xếp của bảng (tableSearchKey -> tbody) dưới dạng { label, direction } để server sắp file xuất giống màn hình.
+    // Hai bảng công nợ tự sắp theo chỉ số cột nên gửi qua context (debtSort / debtAgingSort), không dùng hàm này.
+    function currentExportSort(tableSearchKey) {
+      const tbodyId = (state.tableTableBodies || {})[tableSearchKey];
+      const sort = tbodyId ? state.tableSorts[tbodyId] : null;
+      const tbody = sort ? document.getElementById(tbodyId) : null;
+      const table = tbody ? tbody.closest('table') : null;
+      const th = table ? table.querySelectorAll('thead th')[sort.columnIndex] : null;
+      if (!th) return null;
+      const button = th.querySelector('.sort-button');
+      const label = (button && button.firstElementChild ? button.firstElementChild.textContent : th.textContent).trim();
+      return label ? { label: label, direction: sort.direction === 'desc' ? 'desc' : 'asc' } : null;
+    }
 
     function buildExportPayload(tableKey) {
       const payload = {
@@ -6568,6 +6587,10 @@
           mode: tableSearch.mode === 'codes' ? 'codes' : 'normal',
           query: tableSearch.query || ''
         };
+        if (tableKey !== 'debt.management' && tableKey !== 'debt.aging') {
+          const tableSort = currentExportSort(tableSearchKey);
+          if (tableSort) payload.tableSort = tableSort;
+        }
       }
       return payload;
     }
@@ -8357,7 +8380,12 @@
       if (source) params.set('source', source);
       if (container) params.set('container', container);
       if (status) params.set('status', status);
-      if (search && search.query && search.query.trim()) params.set('q', search.query.trim());
+      if (search && search.query && search.query.trim()) {
+        params.set('q', search.query.trim());
+        if (search.mode === 'codes') params.set('qmode', 'codes');
+      }
+      const sort = currentExportSort('expectedArrivals');
+      if (sort) { params.set('sortLabel', sort.label); params.set('sortDir', sort.direction); }
       return params.toString();
     }
 
@@ -8501,7 +8529,7 @@
         const fixed = kind === 'sales'
           ? '<td class="name-cell">' + escapeHtml(r.saleName) + '</td>' + businessTeamCellHtml(r, data) + '<td class="mono" data-sort-value="' + r.activeCustomers + '">' + fmtNumber(r.activeCustomers) + '</td>'
           : kind === 'customers'
-            ? '<td class="name-cell">' + escapeHtml(r.name) + '</td><td>' + escapeHtml(r.saleName) + '</td><td>' + escapeHtml(r.priceLevel || '') + '</td>' +
+            ? '<td class="name-cell">' + escapeHtml(r.name) + '</td><td>' + escapeHtml(r.saleName) + '</td>' + businessPriceLevelCellHtml(r) +
               (businessCanNotes() ? businessCustomerNoteCellsHtml(r) : '')
             : '<td class="mono muted">' + escapeHtml(r.code) + '</td><td class="name-cell">' + escapeHtml(r.name) + '</td>';
         return '<tr class="doc-row" tabindex="0" title="Bấm để xem chi tiết" data-table-item-id="' + escapeHtml(r.key) + '">' + fixed +
@@ -8511,13 +8539,50 @@
       };
     }
 
+    function businessPriceLevelCellHtml(row) {
+      if (!row.canEditPriceLevel) return '<td>' + escapeHtml(row.priceLevel || '') + '</td>';
+      const values = [['medium', 'vừa', 'Vừa'], ['large', 'lớn', 'Lớn'], ['vip', 'vip', 'VIP']];
+      return '<td data-sort-value="' + escapeHtml(row.priceLevel) + '"><select class="business-price-level-select" data-key="' + escapeHtml(row.key) + '" aria-label="Level giá của ' + escapeHtml(row.name) + '"' + (row.priceLevelSaving ? ' disabled' : '') + '>' +
+        values.map(function (item) { return '<option value="' + item[0] + '"' + (row.priceLevel === item[1] ? ' selected' : '') + '>' + item[2] + '</option>'; }).join('') + '</select></td>';
+    }
+
+    document.getElementById('businessCustomersRows').addEventListener('change', function (event) {
+      const select = event.target.closest && event.target.closest('.business-price-level-select');
+      if (!select) return;
+      const data = state.business.data.customers;
+      const row = data && data.rows.find(function (item) { return item.key === select.dataset.key; });
+      if (!row || !row.canEditPriceLevel || row.priceLevelSaving) return;
+      const current = { 'vừa': 'medium', 'lớn': 'large', 'vip': 'vip' }[row.priceLevel];
+      if (select.value === current) return;
+      row.priceLevelSaving = true;
+      select.disabled = true;
+      cpApi('PUT', '/customer-price-level', { key: row.key, level: select.value, version: row.priceLevelVersion }).then(function (body) {
+        row.priceLevel = body.priceLevel;
+        row.priceLevelVersion = body.priceLevelVersion;
+        row.priceLevelSaving = false;
+        renderBusinessReport();
+        showToast('Đã lưu level giá.', 'success');
+      }).catch(function (err) {
+        row.priceLevelSaving = false;
+        select.value = current;
+        select.disabled = false;
+        // The table can be redrawn by another filter while this request is pending.
+        renderBusinessTable('customers');
+        showToast('Không lưu được level giá: ' + err.message + (err.status === 409 ? ' Vui lòng tải lại dữ liệu trước khi sửa tiếp.' : ''), 'error');
+      });
+    });
+
     function businessFilteredCustomers() {
       const data = state.business.data.customers;
       if (!data) return [];
       const sale = document.getElementById('businessCustomersSale').value;
       const level = document.getElementById('businessCustomersLevel').value;
       const inactive = document.getElementById('businessCustomersInactive').checked;
-      return data.rows.filter(r => (inactive || r.active) && (!sale || r.saleName === sale) && (!level || (r.priceLevel || '') === level));
+      const channel = businessCanNotes() ? document.getElementById('businessCustomersSalesChannel').value : '';
+      const scale = businessCanNotes() ? document.getElementById('businessCustomersScale').value : '';
+      return data.rows.filter(r => (inactive || r.active) && (!sale || r.saleName === sale) && (!level || (r.priceLevel || '') === level) &&
+        (!channel || (channel === 'none' ? !(r.salesChannels || []).length : (r.salesChannels || []).includes(channel))) &&
+        (!scale || (r.warehouseScale || 'none') === scale));
     }
 
     function businessFilteredSales() {
@@ -8594,7 +8659,6 @@
 
     function renderBusinessReport() {
       businessApplyCustomerMeta();
-      BUSINESS_KINDS.forEach(renderBusinessTable);
       const overview = state.business.data.overview;
       if (overview) renderSectionKpis('businessOverviewKpis', businessKpiCards(overview.kpis));
       const notice = document.getElementById('businessReadiness');
@@ -8606,6 +8670,18 @@
         const levels = Array.from(new Set(customerData.rows.map(r => r.priceLevel).filter(Boolean))).sort((a, b) => String(a).localeCompare(String(b), 'vi', { numeric: true }));
         fillBusinessSelect('businessCustomersLevel', 'Tất cả level', levels);
       }
+      [['businessCustomersSalesChannel', 'Tất cả hình thức bán hàng', [['none', 'Chưa có']].concat(CP_CHANNELS)],
+        ['businessCustomersScale', 'Tất cả quy mô khách', CP_SCALES]].forEach(function (entry) {
+        const select = document.getElementById(entry[0]);
+        select.hidden = !businessCanNotes();
+        const current = select.value;
+        select.innerHTML = '<option value="">' + entry[1] + '</option>' + entry[2].map(function (item) {
+          return '<option value="' + item[0] + '">' + item[1] + '</option>';
+        }).join('');
+        select.value = current;
+        if (select.value !== current) select.value = '';
+      });
+      BUSINESS_KINDS.forEach(renderBusinessTable);
       const sales = state.business.data.sales;
       if (sales) {
         fillBusinessSelect('businessCustomersSale', 'Tất cả sale', sales.rows.map(r => r.saleName));
@@ -8674,7 +8750,12 @@
     function businessExportQuery(kind) {
       const params = new URLSearchParams({ kind: kind });
       const search = getTableSearchState(BUSINESS_TABLE_KEYS[kind]);
-      if (search && search.query && search.query.trim()) params.set('q', search.query.trim());
+      if (search && search.query && search.query.trim()) {
+        params.set('q', search.query.trim());
+        if (search.mode === 'codes') params.set('qmode', 'codes');
+      }
+      const sort = currentExportSort(BUSINESS_TABLE_KEYS[kind]);
+      if (sort) { params.set('sortLabel', sort.label); params.set('sortDir', sort.direction); }
       if (kind === 'sales') {
         const team = document.getElementById('businessSalesTeam').value;
         if (team) params.set('team', team);
@@ -8684,6 +8765,12 @@
         if (sale) params.set('sale', sale);
         const level = document.getElementById('businessCustomersLevel').value;
         if (level) params.set('level', level);
+        if (businessCanNotes()) {
+          const channel = document.getElementById('businessCustomersSalesChannel').value;
+          const scale = document.getElementById('businessCustomersScale').value;
+          if (channel) params.set('salesChannel', channel);
+          if (scale) params.set('warehouseScale', scale);
+        }
         // Máy chủ mặc định ẩn khách không hoạt động ở bảng Khách — gửi inactive=1 khi công tắc đang bật.
         if (document.getElementById('businessCustomersInactive').checked) params.set('inactive', '1');
       }
@@ -8724,7 +8811,7 @@
         .catch(err => showToast('Không tính lại được: ' + err.message, 'error'));
     }
 
-    [['businessCustomersSale', 'customers'], ['businessCustomersLevel', 'customers'], ['businessCustomersInactive', 'customers'], ['businessSalesTeam', 'sales']].forEach(function (entry) {
+    [['businessCustomersSale', 'customers'], ['businessCustomersLevel', 'customers'], ['businessCustomersSalesChannel', 'customers'], ['businessCustomersScale', 'customers'], ['businessCustomersInactive', 'customers'], ['businessSalesTeam', 'sales']].forEach(function (entry) {
       document.getElementById(entry[0]).addEventListener('change', function () {
         state.tablePages[BUSINESS_TABLE_KEYS[entry[1]]] = 1;
         renderBusinessTable(entry[1]);
@@ -9183,6 +9270,7 @@
         cpApi('PUT', '/customer-profile/scale', { key: cp.key, warehouseScale: warehouseScale }).then(function (body) {
           if (token !== cp.token) return;
           cp.data.profile.warehouseScale = body.warehouseScale;
+          businessUpdateProfileFilters(cp.key, { warehouseScale: body.warehouseScale });
           cp.dirtyScale = cpEl('cpWarehouseScale').value !== body.warehouseScale;
           restore();
           showToast('Đã lưu đánh giá quy mô.', 'success');
@@ -9239,6 +9327,14 @@
       form.addEventListener('submit', cpSaveProfile);
     }
 
+    function businessUpdateProfileFilters(key, patch) {
+      const data = state.business.data.customers;
+      const row = data && data.rows.find(function (item) { return item.key === key; });
+      if (!row) return;
+      Object.assign(row, patch);
+      renderBusinessTable('customers');
+    }
+
     function cpSaveProfile(event) {
       event.preventDefault();
       const d = cp.data;
@@ -9268,6 +9364,7 @@
       cpApi('PUT', '/customer-profile', payload).then(function (body) {
         if (token !== cp.token) return;
         d.profile = Object.assign({}, body.profile || payload, { warehouseScale: d.profile.warehouseScale });
+        businessUpdateProfileFilters(cp.key, { salesChannels: d.profile.salesChannels || [] });
         showToast('Đã lưu thông tin chung.', 'success');
         cpRenderInfo();
         cpEl('cpProfileSave').focus();

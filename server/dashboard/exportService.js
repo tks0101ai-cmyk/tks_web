@@ -558,6 +558,24 @@ function normalizeDebtSearch(value) {
   return normalizeText(value).normalize('NFC').replace(/\s+/g, ' ').toLocaleLowerCase('vi-VN');
 }
 
+// Gom mọi giá trị lồng nhau của dòng gốc thành một chuỗi — giống tableSearchText trên màn hình.
+function rawItemSearchText(item) {
+  const values = [];
+  (function collect(value) {
+    if (value === undefined || value === null) return;
+    if (Array.isArray(value)) { value.forEach(collect); return; }
+    if (typeof value === 'object') { Object.keys(value).forEach(key => collect(value[key])); return; }
+    values.push(String(value));
+  })(item);
+  return values.join(' ');
+}
+
+// Tìm gần đúng trên dòng gốc (không phải cột xuất) để file khớp đúng các dòng màn hình công nợ đang hiện.
+function searchRawItems(items, query) {
+  if (!normalizeText(query)) return items;
+  return filterTableItems(items, { searchText: rawItemSearchText }, { mode: 'normal', query: String(query) }).items;
+}
+
 function debtAutomaticAlert(customer) {
   return (customer.alertCodes || []).includes('overdue') ? 'Quá hạn' : '';
 }
@@ -633,20 +651,19 @@ function debtManagementRows(debtManagement, context, aggregate = false) {
   const queue = DEBT_QUEUE_FILTERS.has(context.debtQueue) ? context.debtQueue : 'needsAction';
   const sale = normalizeText(context.debtSale);
   const schedule = normalizeText(context.debtSchedule);
-  const query = normalizeDebtSearch(context.debtSearch);
   // Loc va sap xep LUON tren hang cua man hinh (o "Ca hai" la hang da gop theo khach), giong duong
   // co so vat ly; chi sau do moi tach thanh cac dong theo co so de xuat.
   const customers = Array.isArray(debt.customers) ? debt.customers : [];
-  const retained = customers.filter(customer => {
+  const candidates = customers.filter(customer => {
     if (queue === 'needsAction' && !customer.needsAction) return false;
     if (queue === 'currentDebt' && !(Number(customer.currentDebt) > 0)) return false;
     if (queue === 'overdue' && !(Number(customer.overdueDebt) > 0)) return false;
     if (context.debtTeam && (customer.saleTeam || 'Chưa có team') !== context.debtTeam) return false;
     if (sale && customer.sale !== sale) return false;
     if (schedule && customer.paymentSchedule !== schedule) return false;
-    if (query && !normalizeDebtSearch(customer.customerName).includes(query) && !normalizeDebtSearch(customer.sale).includes(query)) return false;
     return true;
   });
+  const retained = searchRawItems(candidates, context.debtSearch);
   const toRow = customer => ({
     customerName: customer.customerName,
     branch: normalizeText(customer.branch) || debtBranchLabel(customer),
@@ -695,14 +712,13 @@ function debtAgingRows(debtAging, context) {
   const customers = Array.isArray(debtAging && debtAging.customers) ? debtAging.customers : [];
   const sale = normalizeText(context.debtAgingSale);
   const schedule = normalizeText(context.debtAgingSchedule);
-  const query = normalizeDebtSearch(context.debtAgingSearch);
-  const rows = customers.filter(customer => {
+  const candidates = customers.filter(customer => {
     if (context.debtAgingTeam && (customer.saleTeam || 'Chưa có team') !== context.debtAgingTeam) return false;
     if (sale && customer.sale !== sale) return false;
     if (schedule && customer.paymentSchedule !== schedule) return false;
-    if (query && !normalizeDebtSearch(customer.customerName).includes(query) && !normalizeDebtSearch(customer.sale).includes(query)) return false;
     return true;
-  }).map(customer => ({
+  });
+  const rows = searchRawItems(candidates, context.debtAgingSearch).map(customer => ({
     branch: customer.branch,
     customerName: customer.customerName,
     sale: customer.sale,
@@ -783,10 +799,14 @@ function hasTableSearch(tableSearch) {
   return !!normalizeText(tableSearch && tableSearch.query);
 }
 
+// Bảng mà ô tìm kiếm trên màn hình chỉ so khớp một số trường (bảng Thưởng/phạt chỉ tìm theo Sale).
+const WORKSHEET_SEARCH_KEYS = { debt_penalty: ['sale'] };
+
 function filterWorksheetRows(worksheet, tableSearch) {
   if (!hasTableSearch(tableSearch)) return worksheet;
   const codeKey = worksheet.codeKey;
-  const columns = worksheet.columns || [];
+  const searchKeys = WORKSHEET_SEARCH_KEYS[worksheet.key];
+  const columns = (worksheet.columns || []).filter(column => !searchKeys || searchKeys.includes(column.key));
   const filtered = filterTableItems(worksheet.rows || [], {
     searchText: row => columns.map(column => row[column.key]).join(' '),
     code: codeKey ? row => row[codeKey] : undefined
@@ -794,16 +814,53 @@ function filterWorksheetRows(worksheet, tableSearch) {
   return { ...worksheet, rows: filtered.items };
 }
 
-function applyTableSearchToWorksheets(worksheets, tableSearch) {
-  if (!hasTableSearch(tableSearch)) return worksheets;
-  return worksheets.map(worksheet => filterWorksheetRows(worksheet, tableSearch));
+// Sắp xếp theo cột đang bấm trên màn hình: client gửi nhãn cột (tiêu đề <th>) + chiều, khớp với nhãn cột xuất.
+// Không tìm thấy cột khớp thì giữ nguyên thứ tự (không bao giờ làm hỏng file).
+function normalizeSortLabel(value) {
+  return normalizeText(value).normalize('NFC').toLocaleLowerCase('vi-VN').replace(/\s+/g, ' ');
 }
 
-function applyTableSearchToDataset(dataset, tableSearch) {
-  if (!dataset || !hasTableSearch(tableSearch)) return dataset;
+function normalizeTableSort(tableSort) {
+  const raw = plainObject(tableSort);
+  const label = normalizeSortLabel(raw.label);
+  if (!label) return null;
+  return { label, direction: raw.direction === 'desc' ? 'desc' : 'asc' };
+}
+
+function sortWorksheetRows(worksheet, tableSort) {
+  const sort = normalizeTableSort(tableSort);
+  if (!sort) return worksheet;
+  const column = (worksheet.columns || []).find(item => normalizeSortLabel(item.label) === sort.label);
+  if (!column) return worksheet;
+  const entries = (worksheet.rows || []).map((row, index) => {
+    const value = row[column.key];
+    const text = normalizeText(value);
+    const number = text !== '' && typeof value !== 'boolean' && Number.isFinite(Number(value)) ? Number(value) : null;
+    return { row, index, text, number, empty: text === '' };
+  });
+  entries.sort((a, b) => {
+    if (a.empty !== b.empty) return a.empty ? 1 : -1;
+    const comparison = a.number !== null && b.number !== null
+      ? a.number - b.number
+      : a.text.localeCompare(b.text, 'vi', { numeric: true, sensitivity: 'base' });
+    if (comparison === 0) return a.index - b.index;
+    return sort.direction === 'asc' ? comparison : -comparison;
+  });
+  return { ...worksheet, rows: entries.map(entry => entry.row) };
+}
+
+function applyTableSearchToWorksheets(worksheets, tableSearch, tableSort) {
+  const filtered = hasTableSearch(tableSearch)
+    ? worksheets.map(worksheet => filterWorksheetRows(worksheet, tableSearch))
+    : worksheets;
+  return normalizeTableSort(tableSort) ? filtered.map(worksheet => sortWorksheetRows(worksheet, tableSort)) : filtered;
+}
+
+function applyTableSearchToDataset(dataset, tableSearch, tableSort) {
+  if (!dataset || (!hasTableSearch(tableSearch) && !normalizeTableSort(tableSort))) return dataset;
   return {
     ...dataset,
-    worksheets: applyTableSearchToWorksheets(dataset.worksheets || [], tableSearch)
+    worksheets: applyTableSearchToWorksheets(dataset.worksheets || [], tableSearch, tableSort)
   };
 }
 
@@ -829,12 +886,13 @@ function projectWorksheetRows(worksheet, keys) {
  * @param {Object} tableSearch tim kiem tren bang
  * @param {Object<string,string[]>} [selection] worksheetKey -> key cot da chon; co thi chi giu cot do
  */
-async function buildFixedDataset(tableKey, env, context, tableSearch = {}, selection) {
+async function buildFixedDataset(tableKey, env, context, tableSearch = {}, selection, tableSort) {
   const spec = getTableSpec(tableKey, context, env.branch);
   if (typeof spec.loadRows !== 'function') {
     throw exportError('Bảng yêu cầu xuất không hợp lệ.', 400, 'EXPORT_TABLE_NOT_ALLOWED');
   }
-  const searching = hasTableSearch(tableSearch);
+  // Sắp xếp theo nhãn cột cũng cần đủ cột của worksheet như tìm kiếm.
+  const searching = hasTableSearch(tableSearch) || !!normalizeTableSort(tableSort);
   // Tim kiem can moi cot cua worksheet (nhu ban cu) nen khi co tim kiem thi nap
   // day du roi moi cat con cot da chon sau khi loc.
   const activeFor = worksheet => activeColumns(worksheet, selection, searching);
@@ -849,7 +907,7 @@ async function buildFixedDataset(tableKey, env, context, tableSearch = {}, selec
     ...(worksheet.summaryKeys ? { summaryKeys: worksheet.summaryKeys } : {}),
     rows: (loaded[index] && loaded[index].rows) || []
   }));
-  worksheets = applyTableSearchToWorksheets(worksheets, tableSearch);
+  worksheets = applyTableSearchToWorksheets(worksheets, tableSearch, tableSort);
   if (searching && selection) {
     worksheets = worksheets.map(worksheet => projectWorksheetRows(worksheet, selection[worksheet.key]));
   }
@@ -878,10 +936,10 @@ async function buildCustomerProductRevenueDataset(tableKey, description, payload
   }, payload.tableSearch).items;
 
   const worksheet = description.worksheets[0];
-  return {
+  return applyTableSearchToDataset({
     tableKey, title: TABLE_TITLES[tableKey], selectionMode: 'custom',
     worksheets: [{ ...worksheet, rows: pickAggregateRows(products, worksheet.columns) }]
-  };
+  }, null, payload.tableSort);
 }
 
 /**
@@ -899,7 +957,7 @@ async function buildProductReportDataset(description, payload, signal) {
     tableKey: 'overview.productReport', title: TABLE_TITLES['overview.productReport'], selectionMode: 'custom',
     reportNotes: productContainerExportNotes(data.containerSync),
     worksheets: [{ ...worksheet, rows: pickAggregateRows(data.rows, worksheet.columns) }]
-  }, payload.tableSearch);
+  }, payload.tableSearch, payload.tableSort);
 }
 
 function productContainerExportNotes(sync) {
@@ -1037,7 +1095,7 @@ function describeExport(payload, branch, options = {}) {
       : tableKey === 'stockout.check90d'
         ? buildStockout90dResultDataset(description, request)
         : buildStockout30dResultDataset(description, request);
-    const filtered = applyTableSearchToDataset(dataset, request.tableSearch);
+    const filtered = applyTableSearchToDataset(dataset, request.tableSearch, request.tableSort);
     if (filtered.worksheets.every(worksheet => worksheet.rows.length === 0)) {
       throw exportError('Không có kết quả phù hợp bộ lọc để xuất.', 404, 'EXPORT_NO_DATA');
     }
@@ -1074,7 +1132,7 @@ async function buildExportDataset(payload, branch, options = {}) {
     const board = await require('../debtSchedule/debtRewardService').getDebtRewardService().readBoard({ month, branches });
     throwIfAborted(signal);
     if (!board.summary) throw exportError('Chưa có bản chốt công nợ để xuất thưởng/phạt.', 404, 'EXPORT_NO_DATA');
-    const dataset = await buildFixedDataset(tableKey, { dashboard: { debtReward: board }, branch, signal }, description.context, request.tableSearch, options.selection);
+    const dataset = await buildFixedDataset(tableKey, { dashboard: { debtReward: board }, branch, signal }, description.context, request.tableSearch, options.selection, request.tableSort);
     if (board.status !== 'finalized') {
       dataset.worksheets.forEach(worksheet => {
         worksheet.columns = worksheet.columns.map(column => column.key === 'reward' ? { ...column, label: 'Thưởng tạm tính' } : column);
@@ -1100,7 +1158,7 @@ async function buildExportDataset(payload, branch, options = {}) {
   }
   const dashboard = await dashboardData.getDashboardData(description.filters, branch);
   throwIfAborted(signal);
-  return buildFixedDataset(tableKey, { dashboard, branch, signal }, description.context, request.tableSearch, options.selection);
+  return buildFixedDataset(tableKey, { dashboard, branch, signal }, description.context, request.tableSearch, options.selection, request.tableSort);
 }
 
 function toFieldMeta(column) {

@@ -13,7 +13,9 @@ const crypto = require('node:crypto');
 const { getPool } = require('../db/pool');
 const { INVOICE_STATUS_SQL } = require('../kiotvietSync/salesSqlFragments');
 const { parsePriceNote } = require('./priceNoteParser');
-const { customerLevelFromEmail, hasFullVat, isExcludedProduct, isFreightCustomer } = require('./priceAuditRules');
+const { hasFullVat, isExcludedProduct, isFreightCustomer } = require('./priceAuditRules');
+const { readCustomerPriceLevels } = require('../businessReport/customerPriceLevelRepository');
+const { nameKey, RETAIL_NAME } = require('../businessReport/businessMonths');
 const S = require('./priceAuditSql');
 const fuzzy = require('../shared/fuzzySearch');
 
@@ -126,6 +128,14 @@ async function captureUnseenInvoices({ day, client, now }) {
   const invoices = (await client.query(INVOICES_SQL, [day])).rows;
   if (invoices.length === 0) return { addedInvoices: 0, addedLines: 0 };
 
+  const customerKey = inv => nameKey(inv.customer_name || inv.raw_customer_name) || nameKey(RETAIL_NAME);
+  let localLevels;
+  try { localLevels = await readCustomerPriceLevels(client,invoices.map(customerKey)); }
+  catch (err) {
+    if (err.code === 'MIGRATION_PENDING') throw sourceNotReady(err.message);
+    throw err;
+  }
+
   const missingCustomers = invoices.filter(i => i.customer_id && !i.customer_found);
   if (missingCustomers.length) {
     throw sourceNotReady(`Chưa đồng bộ khách hàng cho ${missingCustomers.length} hóa đơn (vd ${missingCustomers[0].branch}/${missingCustomers[0].code}).`);
@@ -183,7 +193,7 @@ async function captureUnseenInvoices({ day, client, now }) {
     if (all.length === 0) continue;
     markers.push({ branch: inv.branch, invoice_id: inv.invoice_id, invoice_code: inv.code, sold_day: inv.sold_day,
       captured_at: capturedAt, run_day: day, source_hash: sourceHash(inv, all), source_modified_at: inv.modified_at });
-    const level = customerLevelFromEmail(inv.customer_email);
+    const level = localLevels[customerKey(inv)].level;
     const freightEligible = freightInvoices.has(key);
     all.forEach((l, index) => {
       // Chi dong SL duong; so dong = vi tri trong hoa don nguon (1..n), giu ca khi bo dong SL <= 0.

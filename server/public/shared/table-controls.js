@@ -20,6 +20,10 @@
     var table = storedPrefs[key], prefs = table && table[mode];
     return prefs && prefs.columns && typeof prefs.columns === 'object' ? prefs.columns : {};
   }
+  function savedSort(key, mode) {
+    var table = storedPrefs[key], prefs = table && table[mode], sort = prefs && prefs.sort;
+    return sort && typeof sort.key === 'string' && (sort.dir === 'asc' || sort.dir === 'desc') ? { key: sort.key, dir: sort.dir } : null;
+  }
   function copyColumns(source) {
     var out = {};
     Object.keys(source).forEach(function (key) { out[key] = Object.assign({}, source[key]); });
@@ -51,9 +55,11 @@
       if (typeof item.hidden === 'boolean') out.hidden = item.hidden;
       if (Object.keys(out).length) { columns[key] = out; count++; }
     });
+    var body = { columns: columns };
+    if (session.sort && session.sort.key.length <= MAX_KEY_LENGTH) body.sort = { key: session.sort.key, dir: session.sort.dir };
     var url = PREFS_URL + '/' + encodeURIComponent(session.key) + '/' + session.mode;
     try {
-      fetch(url, { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ columns: columns }) })
+      fetch(url, { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
         .catch(function () { /* mất kết nối: bảng vẫn dùng bình thường, lần chỉnh sau sẽ lưu lại */ });
     } catch (_) { /* fetch không dùng được */ }
   }
@@ -63,6 +69,7 @@
     prefsReady = true;
     sessions.forEach(function (session) {
       session.dirty = copyColumns(savedColumns(session.key, session.mode));
+      session.sort = savedSort(session.key, session.mode);
       session.columns.forEach(function (column) { applySaved(session, column); if (column.locked) column.hidden = false; });
     });
     if (window.document && document.body) refreshAll();
@@ -584,7 +591,19 @@
     if (!current || current.index !== index) ctrl.sort = { index: index, dir: 'asc' };
     else if (current.dir === 'asc') ctrl.sort = { index: index, dir: 'desc' };
     else ctrl.sort = null;
+    ctrl.sortByUser = true;
+    ctrl.session.sort = ctrl.sort && ctrl.columns[ctrl.sort.index] ? { key: ctrl.columns[ctrl.sort.index].key, dir: ctrl.sort.dir } : null;
+    scheduleSave(ctrl.session);
     applySort(ctrl);
+  }
+  // Khôi phục sắp xếp đã lưu (theo khóa cột) trừ khi người dùng đã tự sắp xếp bảng này trong lần xem hiện tại.
+  function restoreSort(ctrl) {
+    if (ctrl.sortByUser) return;
+    var saved = ctrl.session.sort, signature = saved ? saved.key + '|' + saved.dir : '';
+    if (ctrl.sortRestored === signature) return;
+    ctrl.sortRestored = signature;
+    var index = saved ? ctrl.columns.findIndex(function (column) { return column.key === saved.key; }) : -1;
+    ctrl.sort = index >= 0 ? { index: index, dir: saved.dir } : null;
   }
   function rowsChanged(ctrl) {
     var body = ctrl.table.tBodies[0], rows = body ? body.rows : [], previous = ctrl.sortedRows || [];
@@ -632,7 +651,7 @@
     var key = ctrl.options.key || tableKey(table), mode = screenMode(), sessionKey = key + '\u001e' + mode;
     var session = sessions.get(sessionKey);
     if (!session) {
-      session = { columns: new Map(), fitted: false, key: key, mode: mode, dirty: copyColumns(savedColumns(key, mode)) };
+      session = { columns: new Map(), fitted: false, key: key, mode: mode, dirty: copyColumns(savedColumns(key, mode)), sort: savedSort(key, mode) };
       sessions.set(sessionKey, session);
     }
     ctrl.key = key; ctrl.mode = mode; ctrl.session = session; ctrl.head = head;
@@ -655,7 +674,7 @@
       return column;
     });
     if (ctrl.columns.every(function (column) { return column.hidden; })) ctrl.columns[0].hidden = false;
-    table.classList.add('tks-controlled-table'); installSort(ctrl); installButton(ctrl); dropdownMinimums(ctrl); numberMinimums(ctrl); apply(ctrl);
+    table.classList.add('tks-controlled-table'); restoreSort(ctrl); installSort(ctrl); installButton(ctrl); dropdownMinimums(ctrl); numberMinimums(ctrl); apply(ctrl);
     if (active === ctrl && picker && !picker.hidden) renderPicker();
     return ctrl;
   }

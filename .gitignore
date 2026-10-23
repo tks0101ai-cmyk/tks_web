@@ -55,3 +55,7 @@ server/data/roleChangeRequests.json*
 # De seed du lieu ban dau: copy server/data/users.json.example -> server/data/users.json
 server/data/users.json
 .codex_tmp/
+
+# Graphify obsolete nested output & backups
+graphify-out/graphify-out/
+*.bak

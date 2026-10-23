@@ -65,7 +65,7 @@ test('mac dinh theo vai tro: reports.* khop dung REPORTS_ROLES cu', () => {
     const defaults = registry.defaultsForRole(role);
     for (const key of registry.ANY_REPORTS_FEATURES) {
       // Tinh lai thang chot (2026-10-07) va sua Khach moi/Ghi chu Marketing (2026-10-08) chi danh cho Quan ly.
-      if (['reports.business.refreeze', 'reports.business.editTeam', 'reports.business.customerManage', 'reports.marketing.edit', 'reports.overview.containers.full'].includes(key) && role !== ROLES.QUAN_LY) continue;
+      if (['reports.business.refreeze', 'reports.business.editTeam', 'reports.business.customerManage', 'reports.marketing.edit', 'reports.overview.containers.full', 'reports.products.expected.otherNote'].includes(key) && role !== ROLES.QUAN_LY) continue;
       // Cong no theo lich TT (2026-10-13): Sale phan hoi mac dinh chi Nhan vien sale; QL phan hoi, trang thai, lich TT chi Quan ly.
       if (key === 'reports.debt.saleFeedback' || key === 'reports.invoices.priceAudit.explain') continue;
       if (key === 'reports.invoices.priceAudit.decide' && role !== ROLES.QUAN_LY) continue;
@@ -94,7 +94,7 @@ test('mac dinh theo vai tro: hr.* danh cho moi vai tro noi bo, account.users chi
 });
 
 test('chi Quan ly moi co cac quyen quan tri mac dinh', () => {
-  const managerOnly = ['hr.leave.manage', 'hr.rules.manage', 'account.users', 'account.users.manage', 'account.permissions', 'system.syncStatus'];
+  const managerOnly = ['hr.leave.manage', 'hr.rules.manage', 'account.users', 'account.users.manage', 'account.permissions', 'system.syncStatus', 'reports.products.expected.otherNote'];
   for (const key of managerOnly) {
     assert.ok(registry.defaultsForRole(ROLES.QUAN_LY).includes(key), `Quản lý phai co ${key}`);
     for (const role of Object.values(ROLES)) {

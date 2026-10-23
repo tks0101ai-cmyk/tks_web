@@ -11,6 +11,54 @@ function customerRows() {
   return svc.buildCustomerReport(serviceSnapshot()).rows;
 }
 
+test('profile-filtered export uses the same fuzzy word matching as the customer table', () => {
+  const rows=[{name:'Chị Hoa Hà Nội',saleName:'Mai',active:true,salesChannels:['san'],warehouseScale:'large',
+    priceLevel:'vip',refs:[{branch:'hanoi',code:'KH123'}],series:{'2026-10-01':87654},warehouseLocation:'Kho bí mật',editors:[{userName:'Người ẩn'}]}];
+  assert.equal(filterRows('customers',rows,{q:'noi hoa',salesChannel:'san',warehouseScale:'large'}).length,1);
+  assert.equal(filterRows('customers',rows,{q:'hoa noi sai',salesChannel:'san'}).length,1);
+  for (const q of ['vip','KH123','87654']) assert.equal(filterRows('customers',rows,{q}).length,1,q);
+  for (const q of ['bí mật','Người ẩn']) assert.equal(filterRows('customers',rows,{q}).length,0,q);
+});
+
+test('customer profile filters use contains, empty defaults and AND with other filters', () => {
+  const rows = [
+    { key: 'a', name: 'Chị A', active: true, saleName: 'Mai', priceLevel: 'VIP', salesChannels: ['san', 'khac'], warehouseScale: 'large' },
+    { key: 'b', name: 'Chị B', active: true, saleName: 'Mai', priceLevel: 'VIP', salesChannels: ['khac'], warehouseScale: 'large' },
+    { key: 'c', active: true }, { key: 'd', active: false, salesChannels: [], warehouseScale: 'none' }
+  ];
+  assert.deepEqual(filterRows('customers', rows, { salesChannel: 'san', warehouseScale: 'large', sale: 'Mai', level: 'VIP', q: 'chi' }).map(r => r.key), ['a']);
+  assert.deepEqual(filterRows('customers', rows, { salesChannel: 'san', warehouseScale: 'small' }), []);
+  assert.deepEqual(filterRows('customers', rows, { warehouseScale: 'none' }).map(r => r.key), ['c']);
+  assert.deepEqual(filterRows('customers', rows, { salesChannel: 'none', warehouseScale: 'none' }).map(r => r.key), ['c']);
+  assert.deepEqual(filterRows('customers', rows, { salesChannel: 'none', warehouseScale: 'none', inactive: '1' }).map(r => r.key), ['c', 'd']);
+  assert.equal(filterRows('products', rows, { salesChannel: 'san', warehouseScale: 'small' }).length, 4);
+});
+
+test('profile export fields require profile permission and format labels, dates, URLs and safe text', async () => {
+  const base = svc.buildCustomerReport(serviceSnapshot());
+  assert.throws(() => resolveColumnKeys('customers', base, 'salesChannels'), { code: 'INVALID_COLUMNS' });
+  const report = { ...base, withCustomerProfile: true, withLastVisit: true };
+  const keys = ['warehouseLocation', 'warehouseCount', 'area', 'competitor', 'salesChannels', 'warehouseScale', 'editors', 'visitDays', 'images'];
+  const fields = exportFieldsFor('customers', report, []).worksheets[0].fields;
+  assert.ok(keys.every(key => fields.some(f => f.key === key)));
+  assert.ok(!fields.some(f => f.key === 'notes'));
+  assert.ok(!exportFieldsFor('sales', report, []).worksheets[0].fields.some(f => keys.includes(f.key)));
+  const rows = [{ warehouseLocation: '=CMD()', warehouseCount: 2, area: '200m2', competitor: 'X', salesChannels: ['san', 'fb_ads', 'khac'], warehouseScale: 'very_large', editors: [{ userId: '1', userName: 'Mai' }, { userId: '2', userName: 'Hoa' }], visitDays: ['2026-10-01', '2026-10-02'], images: [{ url: 'https://tks.test/api/images/1' }, 'https://tks.test/api/images/2'], notes: ['PRIVATE'] }, {}];
+  const file = await createExportFile('customers', 'xlsx', report, rows, keys);
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(file.buffer);
+  const sheet = wb.worksheets[0];
+  assert.deepEqual(sheet.getRow(1).values.slice(1), ['Định vị kho', 'Số lượng kho', 'Diện tích', 'Đối thủ', 'Hình thức bán hàng', 'Quy mô khách', 'Người được sửa', 'Các ngày tiếp khách', 'Ảnh kho']);
+  assert.deepEqual(sheet.getRow(2).values.slice(1), ["'=CMD()", 2, '200m2', 'X', 'Bán sàn, FB ads, Khác', 'Rất to', 'Mai, Hoa', '01/10/2026, 02/10/2026', 'https://tks.test/api/images/1\nhttps://tks.test/api/images/2']);
+  assert.ok(sheet.getRow(3).getCell(2).value == null || sheet.getRow(3).getCell(2).value === '');
+  assert.equal(sheet.getRow(3).getCell(6).value, 'Chưa có');
+  const html = await createExportFile('customers', 'html', report, rows, keys);
+  const b64 = /<script type="application\/octet-stream" id="report-data"[^>]*>([^<]*)<\/script>/.exec(html.buffer.toString())[1];
+  const ws = JSON.parse(zlib.gunzipSync(Buffer.from(b64, 'base64'))).worksheets[0];
+  assert.equal(ws.rows[0][4], 'Bán sàn, FB ads, Khác');
+  assert.equal(ws.rows[0][7], '01/10/2026, 02/10/2026');
+});
+
 test('filterRows khach: mac dinh chi giu khach hoat dong, inactive=1 giu tat ca', () => {
   const rows = customerRows();
   const active = filterRows('customers', rows, {});

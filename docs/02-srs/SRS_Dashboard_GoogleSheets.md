@@ -863,3 +863,7 @@ Hai cột thông tin/Note; Note cuộn riêng 360px, chữ dài xuống dòng. B
 - **FR-VL-8 (bảng)**: trên máy tính, lần đầu hiển thị các cột được co / giãn cho vừa khung (không có thanh cuộn ngang); tiêu đề cột dính khi cuộn và có nền đặc; điện thoại cuộn ngang trong khung bảng.
 
 Cập nhật gần nhất: 23/10/2026.
+
+# Cập nhật yêu cầu 23/10/2026 — bộ lọc khách và level nội bộ
+
+Bảng Doanh số theo khách có lọc Hình thức bán hàng (khớp thành viên của nhiều lựa chọn) và Quy mô khách do quản lý đánh giá; hai điều kiện kết hợp AND với các bộ lọc hiện có trước phân trang và khi xuất. Excel thêm thông tin chung, quy mô, người được sửa, lịch tiếp khách và URL ảnh, loại Note; quyền xem Chi tiết kiểm tra tại server. Level giá chọn trực tiếp Vừa/Lớn/VIP theo dòng gộp HN/SG; quyền sửa là quản lý khách hoặc người được gán sửa khách, kèm quyền xem Chi tiết. Ghi có phiên bản chống xung đột và lịch sử người/thời gian/giá trị. Sao lưu toàn bộ level suy từ email trước chuyển sang level nội bộ; sau chuyển đổi khách mới mặc định Lớn. Chụp hóa đơn mới dùng level lúc chụp, hóa đơn đã chụp không thay đổi. Migration 0087 và khởi tạo nguồn chưa áp DB thật; đặc tả chi tiết tại `docs/superpowers/specs/2026-10-23-customer-filters-local-price-level-design.md`.

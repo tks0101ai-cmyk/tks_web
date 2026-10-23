@@ -33,10 +33,20 @@ function check(kind, table) {
   if (!TABLE_TITLES[table]) throw invalid('Bảng xuất không hợp lệ.');
 }
 
-function tableRows(table, result, q) {
+function tableRows(table, result, q, sort = {}) {
   const rows = table === 'summary' ? result.summaryRows || [] : result.rows || [];
   // Tim gan dung cung luat voi bang tren man hinh (marketing-report.js): bo dau, nhieu tu, khop nhieu tu xep truoc.
-  return String(q || '').trim() ? fuzzy.filter(rows, q, row => Object.values(row).join(' ')) : rows;
+  const found = String(q || '').trim() ? fuzzy.filter(rows, q, row => Object.values(row).join(' ')) : rows;
+  // Sap xep theo cot dang bam tren man hinh (cung quy tac so sanh voi draw() cua marketing-report.js).
+  const key = typeof sort.sortKey === 'string' ? sort.sortKey : '';
+  if (!key || !['asc', 'desc'].includes(sort.sortDir)) return found;
+  const direction = sort.sortDir === 'asc' ? 1 : -1;
+  return found.slice().sort((a, b) => {
+    const av = a[key], bv = b[key];
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    return direction * (typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv), 'vi', { numeric: true }));
+  });
 }
 
 function columnsFor(kind, table, result) {

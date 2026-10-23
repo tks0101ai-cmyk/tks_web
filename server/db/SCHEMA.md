@@ -1,10 +1,16 @@
 # Supabase schema cho đồng bộ KiotViet
 
+## Migration 0087 — level giá nội bộ (23/10/2026, chưa áp DB thật)
+
+`0087_customer_price_levels.sql` thêm `customer_price_level_state(id BOOLEAN PRIMARY KEY CHECK(id), initialized_at)`, `customer_price_levels(customer_key TEXT PRIMARY KEY, level medium/large/vip, version INTEGER > 0, updated_by_id/name, updated_at)`, `customer_price_level_sources` (khóa `(branch,customer_id)`, lưu mã/tên/khóa khách/email và level nguồn lúc chuyển đổi), `customer_price_level_history` (khóa identity, unique `(customer_key,version)`, level cũ/mới, người sửa, thời gian). Không cấp quyền đọc cho `reporting_readonly`.
+
+Schema không tự bật cutover. Script `scripts/initialize-customer-price-levels.js --apply` chụp mọi nguồn và tạo level gộp trong giao dịch trước khi đánh dấu khởi tạo; giữ nguyên dữ liệu đã có khi chạy lại. Khách mới chưa có dòng level dùng Lớn, phiên bản 0 cho lần ghi đầu. Giá trị level nội bộ thay email khi đọc báo cáo và chụp hóa đơn. Không cập nhật `invoice_price_audit_*` lịch sử.
+
 23/10/2026 — Kiểm tra giá bán (migration `0077_invoice_price_audit.sql`) với 4 bảng `invoice_price_audit_*` và cột `shipping_measures.freight_per_unit`. ORDER VAT trạng thái "VAT sẵn nhiều" (`0083_vat_request_status_vat_ready.sql`).
 
 22/10/2026 — `hr_employees.insurance_number TEXT NOT NULL DEFAULT ''` (migration `0078_hr_employee_insurance_number.sql`), unique index trên số không rỗng của hồ sơ chưa xóa mềm; chỉ quyền `hr.employees.manage` nhận từ API/Excel. Server áp riêng migration này trước khi nhận request, có advisory lock cho nhiều instance và không chạy migration khác đang chờ.
 
-Tài liệu này mô tả schema Postgres được tạo bởi `db/migrations/0001` đến `0086`. Mọi module đồng bộ ở Giai đoạn 2/3 phải đọc cả tài liệu này và `kiotviet/API_ENDPOINTS.md` trước khi ánh xạ payload.
+Tài liệu này mô tả schema Postgres được tạo bởi `db/migrations/0001` đến `0087` (0087 đang chờ áp). Mọi module đồng bộ ở Giai đoạn 2/3 phải đọc cả tài liệu này và `kiotviet/API_ENDPOINTS.md` trước khi ánh xạ payload.
 
 ## Quy ước chung
 
@@ -674,7 +680,7 @@ Thông tin chung và quy mô dùng hai UPSERT cập nhật các cột riêng: PU
 
 ## Cấu hình bảng theo tài khoản — migration 0085 (23/10/2026, đã áp DB dùng chung 23/10/2026)
 
-`0085_user_table_prefs.sql` tạo `user_table_prefs(user_id TEXT, table_key TEXT, screen_mode TEXT CHECK desktop/mobile, prefs JSONB CHECK object, updated_at)`, khóa chính `(user_id, table_key, screen_mode)`. `prefs = {"columns": {"<colKey>": {"width": number, "hidden": boolean}}}`, chỉ chứa cột người dùng đã đổi. `user_id` không có FK tới `app_users` (tài khoản có thể nằm ở kho JSON). Đã thu hồi SELECT của `reporting_readonly`. Chạy lại được.
+`0085_user_table_prefs.sql` tạo `user_table_prefs(user_id TEXT, table_key TEXT, screen_mode TEXT CHECK desktop/mobile, prefs JSONB CHECK object, updated_at)`, khóa chính `(user_id, table_key, screen_mode)`. `prefs = {"columns": {"<colKey>": {"width": number, "hidden": boolean}}}`, chỉ chứa cột người dùng đã đổi; có thể kèm `"sort": {"key": colKey, "dir": "asc"|"desc"}` cho sắp xếp cục bộ (không có nghĩa là chưa sắp). `user_id` không có FK tới `app_users` (tài khoản có thể nằm ở kho JSON). Đã thu hồi SELECT của `reporting_readonly`. Chạy lại được.
 
 ## Ghi chú khác của CONT — migration 0086 (23/10/2026, đã áp DB dùng chung 23/10/2026)
 

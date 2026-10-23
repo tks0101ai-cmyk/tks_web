@@ -21,7 +21,7 @@ const publicDir = path.join(__dirname, '..', '..', 'public');
 const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8');
 const settle = async () => { for (let i = 0; i < 10; i++) await new Promise(r => setImmediate(r)); };
 
-function createPage({ can = () => true, notReady = false, hash = '#business' } = {}) {
+function createPage({ can = () => true, notReady = false, hash = '#business', customerRows, saveLevel } = {}) {
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://tokosi.example/reports/' + hash });
   dom.window.HTMLCanvasElement.prototype.getContext = () => ({});
   const charts = [];
@@ -57,7 +57,8 @@ function createPage({ can = () => true, notReady = false, hash = '#business' } =
     }
     if (href === '/api/business-report/customer-meta') return ok({ customers: {} });
     if (href === '/api/business-report/sales') return ok(svc.buildSaleReport(snap));
-    if (href === '/api/business-report/customers') return ok(svc.buildCustomerReport(snap));
+    if (href === '/api/business-report/customer-price-level' && saveLevel) return saveLevel(JSON.parse(opts.body));
+    if (href === '/api/business-report/customers') { const report = svc.buildCustomerReport(snap); if (customerRows) report.rows = customerRows(report.rows); return ok(report); }
     if (href === '/api/business-report/products') return ok(svc.buildProductReport(snap));
     if (href === '/api/business-report/overview') return ok(svc.buildOverview(snap));
     if (href.startsWith('/api/business-report/detail?kind=sale')) return ok(svc.buildDetail('sale', 'Khang', snap, {}));
@@ -543,4 +544,72 @@ test('Team trong bang Sale: Quan ly (reports.business.editTeam) thay dropdown, d
   assert.equal(put.opts.method, 'PUT');
   assert.deepEqual(JSON.parse(put.opts.body), { saleName: 'Khang', teamName: 'Team Trinh' });
   assert.equal(businessUrls(page).filter(h => h === '/api/business-report/sales').length, before + 1, 'tai lai bang Sale sau khi luu');
+});
+
+
+const profileRows = rows => rows.map((r, i) => Object.assign({}, r, {
+  priceLevel: i === 0 ? 'lớn' : 'vừa', priceLevelVersion: 3, canEditPriceLevel: i === 0,
+  salesChannels: i === 0 ? ['san', 'fb_ads'] : [], warehouseScale: i === 0 ? 'small' : 'none'
+}));
+
+test('customer profile filters combine before pagination and share export conditions without loading profile', async () => {
+  const page = createPage({ customerRows: profileRows });
+  page.run("switchView('business')"); await settle();
+  const channel = page.$('businessCustomersSalesChannel');
+  const scale = page.$('businessCustomersScale');
+  assert.ok(channel, 'sales channel filter exists'); assert.ok(scale, 'scale filter exists');
+  assert.equal([...channel.options].find(o => o.value === 'san').textContent, 'Bán sàn');
+  assert.equal([...scale.options].find(o => o.value === 'small').textContent, 'Nhỏ');
+  page.$('businessCustomersInactive').checked = true;
+  channel.value = 'fb_ads'; fire(page, channel);
+  scale.value = 'small'; fire(page, scale);
+  assert.equal(rowsOf(page, 'businessCustomersRows').length, 1);
+  const query = new URLSearchParams(page.run("businessExportQuery('customers')"));
+  assert.equal(query.get('salesChannel'), 'fb_ads'); assert.equal(query.get('warehouseScale'), 'small');
+  scale.value = 'none'; fire(page, scale);
+  assert.equal(rowsOf(page, 'businessCustomersRows').length, 0, 'AND filters');
+  channel.value = 'none'; fire(page, channel);
+  assert.equal(rowsOf(page, 'businessCustomersRows').length, 3, 'empty profiles match none');
+  assert.equal(businessUrls(page).some(u => u.includes('customer-profile')), false);
+});
+
+test('customer profile filters stay hidden and ignored without detail permission', async () => {
+  const page = createPage({ can: k => k !== 'reports.business.customerNotes', customerRows: profileRows });
+  page.run("switchView('business')"); await settle();
+  for (const id of ['businessCustomersSalesChannel', 'businessCustomersScale']) assert.equal(page.$(id).hidden, true);
+  page.$('businessCustomersSalesChannel').value = 'san';
+  assert.equal(new URLSearchParams(page.run("businessExportQuery('customers')")).has('salesChannel'), false);
+  assert.equal(page.run('businessFilteredCustomers().length'), 3);
+});
+
+test('price level dropdown locks, persists version, refreshes options and never opens row details', async () => {
+  let resolveSave; let sent;
+  const page = createPage({ customerRows: profileRows, saveLevel: body => { sent = body; return new Promise(r => { resolveSave = r; }); } });
+  page.run("switchView('business')"); await settle();
+  const select = page.doc.querySelector('.business-price-level-select');
+  assert.ok(select, 'editable customer has dropdown');
+  assert.equal(page.doc.querySelectorAll('.business-price-level-select').length, 1, 'read-only customers have text');
+  select.click(); select.dispatchEvent(new page.dom.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  assert.equal(page.$('docModalBackdrop').hidden, true);
+  const key = select.closest('tr').dataset.tableItemId;
+  select.value = 'vip'; select.dispatchEvent(new page.dom.window.Event('change', { bubbles: true }));
+  assert.equal(select.disabled, true);
+  assert.deepEqual(sent, { key, level: 'vip', version: 3 });
+  resolveSave({ ok: true, status: 200, json: async () => ({ priceLevel: 'vip', priceLevelVersion: 4 }) }); await settle();
+  const updated = page.doc.querySelector('.business-price-level-select');
+  assert.equal(updated.value, 'vip'); assert.equal(updated.disabled, false);
+  assert.equal(page.run('businessFilteredCustomers()[0].priceLevelVersion'), 4);
+  assert.ok([...page.$('businessCustomersLevel').options].some(o => o.value === 'vip'));
+  assert.equal(page.$('docModalBackdrop').hidden, true);
+});
+
+test('price level conflict restores the saved choice and reports reload guidance', async () => {
+  const page = createPage({ customerRows: profileRows, saveLevel: () => Promise.resolve({ ok: false, status: 409, json: async () => ({ error: 'Dữ liệu đã thay đổi. Vui lòng tải lại.' }) }) });
+  page.run("switchView('business')"); await settle();
+  const select = page.doc.querySelector('.business-price-level-select'); assert.ok(select);
+  const original = select.value;
+  select.value = 'vip'; select.dispatchEvent(new page.dom.window.Event('change', { bubbles: true })); await settle();
+  assert.equal(select.value, original); assert.equal(select.disabled, false);
+  assert.equal(page.run('businessFilteredCustomers()[0].priceLevelVersion'), 3);
+  assert.match(page.doc.body.textContent, /Dữ liệu đã thay đổi.*tải lại/);
 });

@@ -16,6 +16,7 @@ async function request(path, { permissions = ['reports.business', 'reports.produ
     next();
   });
   app.use('/api/business-report', createBusinessReportRouter({
+    customerPriceLevels: { getLevels:async keys => Object.fromEntries(keys.map(k => [k,{level:'large',version:1}])) },
     repository: {
       snapshot: async () => serviceSnapshot(),
       customerProducts: async args => { calls.push(['customerProducts', args]); return [{ productCode: 'SP1', productName: 'Khay', revenue: 10, qty: 1 }]; },

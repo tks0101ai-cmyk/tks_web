@@ -74,7 +74,8 @@ const byTotalDesc = (a, b) => seriesTotal(b.series) - seriesTotal(a.series);
 
 // Gop cac ho so cung ten (HN + SG, nhieu ma) thanh 1 khach. Sale = sale co TB 4 thang (cua so
 // 4 thang) lon nhat; khong ai co doanh so trong cua so thi lay sale cua ho so tong lon nhat.
-// Level giá của khách gộp: hồ sơ có tổng doanh số lớn nhất mà email đã gán level; không có thì mặc định Vừa.
+// Legacy selection preserved during one-time initialization; live routes overlay local levels.
+// Pick the highest-revenue record with a non-default level, else Vừa.
 function levelOf(recs) {
   const set = recs.slice().sort(byTotalDesc).find(rec => rec.priceLevel && rec.priceLevel !== DEFAULT_PRICE_LEVEL);
   return set ? set.priceLevel : DEFAULT_PRICE_LEVEL;

@@ -25,6 +25,31 @@ async function lines(db, where = 'TRUE') {
 }
 const pick = (rows, keys) => rows.map(r => Object.fromEntries(keys.map(k => [k, r[k]])));
 
+test('local level changes affect new captures across HN/SG; email edits never alter old snapshots', async () => {
+  const db = await newDb();
+  try {
+    await product(db,'hanoi',1,'T100','Ly',HN_NOTE);
+    await product(db,'saigon',1,'T100','Ly',HN_NOTE);
+    await customer(db,'hanoi',1,'Cùng Khách',{email:'lon@x'});
+    await customer(db,'saigon',2,'cùng  khách',{email:'lon@x'});
+    const detail = [{productId:1,code:'T100',name:'Ly',qty:1,price:1}];
+    await invoice(db,{id:901,customerId:1,lines:detail});
+    await capture(db);
+    const before = (await db.query('SELECT * FROM invoice_price_audit_lines WHERE invoice_id=901')).rows;
+    await db.query("UPDATE customer_price_levels SET level='vip',version=version+1 WHERE customer_key='cùng khách'");
+    await db.query("UPDATE customers SET raw=jsonb_set(raw,'{email}','\"vua@x\"')");
+    await invoice(db,{branch:'saigon',id:902,customerId:2,lines:detail});
+    await capture(db);
+    assert.deepEqual((await db.query('SELECT * FROM invoice_price_audit_lines WHERE invoice_id=901')).rows,before);
+    assert.equal((await lines(db,'invoice_id=902'))[0].customer_level,'VIP');
+    assert.equal((await lines(db,'invoice_id=902'))[0].min,'23600');
+    await db.query('UPDATE customer_price_level_state SET initialized_at=NULL WHERE id');
+    await invoice(db,{id:903,customerId:1,lines:detail});
+    await assert.rejects(capture(db),{code:SOURCE_NOT_READY});
+    assert.equal((await db.query('SELECT count(*)::int AS n FROM invoice_price_audit_invoices WHERE invoice_id=903')).rows[0].n,0);
+  } finally { await db.close(); }
+});
+
 // Khach chuan HN cap Vua.
 async function baseHn(db) {
   await product(db, 'hanoi', 1, 'T100', 'Ly giu nhiet', HN_NOTE);
@@ -256,7 +281,7 @@ test('Snapshot: doi nguon sau khi chup khong doi dong cu; them/xoa/doi thu tu do
     const after = (await db.query('SELECT * FROM invoice_price_audit_lines WHERE invoice_id = 1 ORDER BY source_line_no')).rows;
     assert.deepEqual(after, before);
     const late = await lines(db, 'invoice_id = 2');
-    assert.deepEqual(pick(late, ['min', 'customer_level', 'sale_name']), [{ min: '1', customer_level: 'VIP', sale_name: 'Khac' }]);
+    assert.deepEqual(pick(late, ['min', 'customer_level', 'sale_name']), [{ min: '1', customer_level: 'Vừa', sale_name: 'Khac' }]);
   } finally { await db.close(); }
 });
 

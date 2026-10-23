@@ -8,7 +8,7 @@ const express = require('express');
 const { requireAuth, requireFeature } = require('../auth/authMiddleware');
 const expectedRepository = require('./expectedRepository');
 const { hasFeature } = require('../auth/featureRegistry');
-const { createExportFile, filterRows, exportFieldsFor, resolveColumnKeys, stripPriceFields } = require('./expectedExport');
+const { createExportFile, filterRows, sortRowsByLabel, exportFieldsFor, resolveColumnKeys, stripPriceFields } = require('./expectedExport');
 
 // Gia (Gia SP tep, Gia hang ve VN, ngay len gia) chi Quan ly co quyen xem day du CONT moi thay.
 const canSeeOtherNote = req => hasFeature(req.user, 'reports.products.expected.otherNote') === true;
@@ -42,7 +42,8 @@ function createExpectedArrivalsRouter({ repository = expectedRepository } = {}) 
     const data = await repository.getExpected();
     const fullAccess = canSeePrices(req);
     const otherNoteAccess = canSeeOtherNote(req);
-    return { data, fullAccess, otherNoteAccess, rows: stripPriceFields(filterRows(stripOtherNote(data.rows, otherNoteAccess), fullAccess ? req.query : { ...req.query, source: '' }), fullAccess) };
+    const stripped = stripPriceFields(filterRows(stripOtherNote(data.rows, otherNoteAccess), fullAccess ? req.query : { ...req.query, source: '' }), fullAccess);
+    return { data, fullAccess, otherNoteAccess, rows: sortRowsByLabel(stripped, req.query, { fullAccess, otherNoteAccess }) };
   };
 
   // Danh sach truong cho hop thoai "Xuat file" dung chung (cung dang /api/business-report/export/fields).

@@ -298,3 +298,101 @@ test('data-table-fit="fill": cot cham do rong toi thieu thi giu, phan thieu tru 
   assert.deepEqual(widths,[64,172,64]);
   assert.equal(widths.reduce((a,b)=>a+b,0),300);
 });
+
+function prefsContext(t, html) {
+  const ctx = setup(t, html);
+  ctx.window.HTMLCanvasElement.prototype.getContext = () => ({ measureText: text => ({ width: text.length * 8 }) });
+  ctx.api.enhance(ctx.table);
+  const puts = [], timers = [];
+  ctx.window.fetch = (url, init) => { if (init.method !== 'PUT') return Promise.resolve({ ok: false }); puts.push({ url, body: JSON.parse(init.body), method: init.method }); return Promise.resolve({ ok: true }); };
+  ctx.window.setTimeout = fn => { timers.push(fn); return timers.length; };
+  ctx.window.clearTimeout = id => { timers[id - 1] = null; };
+  ctx.flush = () => { while (timers.length) { const fn = timers.shift(); if (fn) fn(); } };
+  ctx.puts = puts;
+  return ctx;
+}
+
+test('saved account preferences set width and hidden columns, and survive a new page load', t => {
+  const ctx = prefsContext(t);
+  const key = state(ctx).key;
+  ctx.api.loadPrefs({ [key]: { desktop: { columns: { name: { width: 333 }, qty: { hidden: true } } } } });
+  const columns = state(ctx).columns;
+  assert.equal(columns.find(c => c.key === 'name').width, 333);
+  assert.equal(columns.find(c => c.key === 'qty').hidden, true);
+  assert.equal(columns.find(c => c.key === 'code').width, 130, 'Unsaved columns keep their default');
+
+  const fresh = setup(t);
+  fresh.api.enhance(fresh.table);
+  fresh.api.loadPrefs({ [key]: { desktop: { columns: { name: { width: 333 } } } } });
+  assert.equal(state(fresh).columns.find(c => c.key === 'name').width, 333);
+});
+
+test('dragging a column or toggling visibility is saved once, debounced, for the account', t => {
+  const ctx = prefsContext(t);
+  const key = state(ctx).key;
+  ctx.api.loadPrefs({});
+  const handle = ctx.table.querySelectorAll('.tks-column-resizer')[1];
+  for (let i = 0; i < 5; i++) handle.dispatchEvent(new ctx.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  toggle(ctx, 'qty');
+  assert.equal(ctx.puts.length, 0, 'Nothing is sent until the debounce fires');
+  ctx.flush();
+  assert.equal(ctx.puts.length, 1);
+  assert.equal(ctx.puts[0].method, 'PUT');
+  assert.equal(ctx.puts[0].url, '/api/me/table-prefs/' + encodeURIComponent(key) + '/desktop');
+  assert.deepEqual(ctx.puts[0].body, { columns: { name: { width: 290 }, qty: { hidden: true } } });
+});
+
+test('nothing is saved before the preferences have loaded (for example when signed out)', t => {
+  const ctx = prefsContext(t);
+  const handle = ctx.table.querySelectorAll('.tks-column-resizer')[1];
+  handle.dispatchEvent(new ctx.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  ctx.flush();
+  assert.equal(ctx.puts.length, 0);
+});
+
+test('a locked column is never hidden by saved preferences', t => {
+  const ctx = setup(t, fixture.replace('<th data-column-key="code"', '<th data-column-locked="true" data-column-key="code"'));
+  ctx.api.enhance(ctx.table);
+  const key = state(ctx).key;
+  ctx.api.loadPrefs({ [key]: { desktop: { columns: { code: { hidden: true }, gone: { width: 500 } } } } });
+  assert.equal(state(ctx).columns.find(c => c.key === 'code').hidden, false);
+});
+
+// Sắp xếp cục bộ chỉ bật khi bảng khai báo data-table-sort="local" (hoặc là .dp-table).
+const localSortFixture = fixture.replace('<table id="orders"', '<table id="orders" data-table-sort="local"');
+function sortHeader(ctx, label) {
+  return Array.from(ctx.table.tHead.rows[0].cells).find(cell => cell.textContent.includes(label)).querySelector('.sort-button');
+}
+function rowCodes(ctx) { return Array.from(ctx.table.tBodies[0].rows).filter(r => r.cells.length === 3).map(r => r.cells[0].textContent); }
+
+test('sorting a column is saved by column key and restored from saved preferences', t => {
+  const html = localSortFixture.replace('<tr><td>A</td>', '<tr><td>B</td><td>x</td><td>2</td></tr><tr><td>A</td>');
+  const ctx = prefsContext(t, html);
+  const key = state(ctx).key;
+  ctx.api.loadPrefs({});
+  sortHeader(ctx, 'Số lượng').click();
+  sortHeader(ctx, 'Số lượng').click();
+  ctx.flush();
+  assert.deepEqual(ctx.puts[ctx.puts.length - 1].body.sort, { key: 'qty', dir: 'desc' });
+  assert.deepEqual(rowCodes(ctx), ['A', 'B']);
+
+  const fresh = setup(t, html);
+  fresh.api.enhance(fresh.table);
+  fresh.api.loadPrefs({ [key]: { desktop: { columns: {}, sort: { key: 'code', dir: 'desc' } } } });
+  assert.deepEqual(state(fresh).sort, { key: 'code', direction: 'desc' });
+  assert.deepEqual(rowCodes(fresh), ['B', 'A']);
+});
+
+test('clearing the sort is saved without a sort, and an unknown saved sort column is ignored', t => {
+  const ctx = prefsContext(t, localSortFixture);
+  ctx.api.loadPrefs({});
+  const button = sortHeader(ctx, 'Mã hàng');
+  button.click(); button.click(); button.click();
+  ctx.flush();
+  assert.equal('sort' in ctx.puts[ctx.puts.length - 1].body, false);
+
+  const other = setup(t, localSortFixture);
+  other.api.enhance(other.table);
+  other.api.loadPrefs({ [state(other).key]: { desktop: { columns: {}, sort: { key: 'gone', dir: 'asc' } } } });
+  assert.equal(state(other).sort, null);
+});

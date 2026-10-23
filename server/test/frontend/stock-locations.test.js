@@ -67,7 +67,9 @@ async function setup(t, { branch = 'Cả hai', hash = '', data = { HN: [row('001
   window.TKSNav.authGuard = async () => { window.TKSNav.setPermissions(user); return user; };
   const calls = [];
   window.fetch = async (url, options) => {
-    const target = new URL(url, window.location.href).searchParams.get('branch');
+    const parsed = new URL(url, window.location.href);
+    if (parsed.pathname === '/api/me/table-prefs') return { ok: true, status: 200, json: async () => ({ tables: {} }) };
+    const target = parsed.searchParams.get('branch');
     calls.push({ target, options });
     return fetcher ? fetcher(target) : { ok: true, json: async () => ({ branch: target, rows: data[target] }) };
   };
