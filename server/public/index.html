@@ -3268,9 +3268,25 @@
       font-size: 10.5px;
     }
 
-    .debt-feedback-input:focus-visible,
-    .debt-schedule-input:focus-visible,
-    .debt-penalty-input:focus-visible,
+    /* Ô nhập trong bảng (Công nợ, Sai giá) trông như chữ thường: không nền, không viền (viền trong suốt giữ nguyên kích thước); bấm vào chỉ hiện con trỏ. */
+    .debt-feedback-input,
+    .debt-schedule-input,
+    .debt-penalty-input {
+      background: transparent;
+      border-color: transparent;
+      cursor: text;
+    }
+
+    .debt-penalty-input[data-manual="true"] {
+      border-color: var(--blue);
+    }
+
+    .debt-feedback-input:focus,
+    .debt-schedule-input:focus,
+    .debt-penalty-input:focus {
+      outline: 0;
+    }
+
     .debt-history-button:focus-visible {
       outline: 2px solid var(--blue);
       outline-offset: 2px;
@@ -4889,6 +4905,15 @@
                       <option value="">Tất cả lịch</option>
                     </select>
                   </div>
+                  <div class="debt-filter-field">
+                    <label for="debtStatusFilter">Trạng thái</label>
+                    <select id="debtStatusFilter" onchange="handleDebtFilterChange()">
+                      <option value="">Tất cả trạng thái</option>
+                      <option value="Chưa xử lý">Chưa xử lý</option>
+                      <option value="Đã xử lý">Đã xử lý</option>
+                      <option value="Bỏ qua">Bỏ qua</option>
+                    </select>
+                  </div>
                   <div class="debt-filter-field search-field">
                     <label for="debtManagementSearch">Tìm khách / sale</label>
                     <input id="debtManagementSearch" type="search" autocomplete="off" placeholder="Nhập tên khách hoặc sale" oninput="handleDebtFilterChange()">
@@ -5254,7 +5279,7 @@
     })();
   </script>
   <script src="/shared/filter-links.js?v=20261029-1"></script>
-  <script src="/shared/table-controls.js?v=20261024-2"></script>
+  <script src="/shared/table-controls.js?v=20261030-1"></script>
   <script>
     // Bảng công nợ: mặc định ẩn cột Cảnh báo (người dùng vẫn bật lại được ở bộ chọn cột).
     (function () {
@@ -5313,6 +5338,7 @@
       inventoryHistory: { filter: { mode: 'days', days: 30 }, rows: [], loaded: false, failed: false, requestId: 0 },
       debtFilters: {
         queue: 'all',
+        status: '',
         team: '',
         sale: '',
         schedule: '',
@@ -6807,6 +6833,7 @@
         filters: currentExportFilters(),
         context: {
           debtQueue: state.debtFilters.queue,
+          debtStatus: state.debtFilters.status,
           debtSale: state.debtFilters.sale,
           debtSchedule: state.debtFilters.schedule,
           debtSearch: state.debtFilters.search,
@@ -8376,7 +8403,7 @@
 
     // Vai trò chỉ biết sau authGuard() trong khi table-controls đã dựng bảng lúc tải trang (chưa ẩn cột nào), và cột ẩn mặc định
     // chỉ áp lúc phiên cột được tạo. Nên đổi khóa phiên theo hồ sơ ("dashboard-table-2:sale|manager") để dựng phiên mới có sẵn cột ẩn,
-    // cùng cách marketing-report.js / stock-locations.js đang dùng. Không làm gì khi chưa biết vai trò hoặc chưa nạp table-controls.
+    // cùng cách marketing-report.js đang dùng. Không làm gì khi chưa biết vai trò hoặc chưa nạp table-controls.
     function applyProductReportColumnView() {
       const user = state.currentUser;
       if (!user || !window.TKSTables || typeof window.TKSTables.enhance !== 'function') return;
@@ -11423,6 +11450,7 @@
         if (filters.team && (customer.saleTeam || 'Chưa có team') !== filters.team) return false;
         if (filters.sale && customer.sale !== filters.sale) return false;
         if (filters.schedule && customer.paymentSchedule !== filters.schedule) return false;
+        if (filters.status && customer.workflowStatus !== filters.status) return false;
         if (query && !fuzzyMatches(tableSearchText(customer), query)) return false;
         return true;
       });
@@ -11497,6 +11525,7 @@
     }
 
     function handleDebtFilterChange() {
+      state.debtFilters.status = document.getElementById('debtStatusFilter').value;
       state.debtFilters.team = document.getElementById('debtTeamFilter').value;
       state.debtFilters.queue = document.getElementById('debtQueueFilter').value;
       state.debtFilters.sale = document.getElementById('debtSaleFilter').value;
@@ -11968,6 +11997,7 @@
       populateDebtSaleFilter(customers);
       populateDebtScheduleFilter(customers);
       document.getElementById('debtQueueFilter').value = state.debtFilters.queue;
+      document.getElementById('debtStatusFilter').value = state.debtFilters.status;
       document.getElementById('debtScheduleFilter').value = state.debtFilters.schedule;
       document.getElementById('debtManagementSearch').value = state.debtFilters.search;
       renderDebtManagementTable();

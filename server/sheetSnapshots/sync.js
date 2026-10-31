@@ -2,8 +2,9 @@
 
 // ==========================================
 // SHEET SNAPSHOTS — doc Google Sheets THEO CHU KY roi ghi vao Postgres; web chi doc bang DB.
-//   stock_locations_hn / stock_locations_sg : sheet "Vi tri HN" / "Vi tri SG"  -> stock_location_lines
-//   shipping_measures                       : sheet "CAN DO"                   -> shipping_measures
+//   shipping_measures : sheet "CAN DO" -> shipping_measures
+// (2026-10-30: 2 nguon stock_locations_hn / stock_locations_sg doc sheet "Vi tri HN" / "Vi tri SG" da go cung module Vi tri hang cu;
+//  bang stock_location_lines con trong DB nhung khong con job nao ghi.)
 // Khuon theo productContainers/sync.js: khoa advisory chung giua cac instance, cong "chua den han"
 // luu o DB (khoi dong lai khong don Sheets), GHI KHAC BIET (sheet khong doi => 0 dong ghi), chot an
 // toan khi so dong tut manh, loi giu nguyen ban thanh cong gan nhat va chi ghi thong bao an toan.
@@ -12,8 +13,7 @@
 const CONFIG = require('../config');
 const { getPool } = require('../db/pool');
 const { createReadOnlyClient } = require('../sheets/sheetsClient');
-const { parseLocationRows, normalizeHeader } = require('../stockLocations/stockLocationsService');
-const { parseMeasureRows } = require('../shipment/measureSheet');
+const { parseMeasureRows, normalizeHeader } = require('../shipment/measureSheet');
 
 const SHRINK_GUARD_RATIO = 0.7;
 const SAFE_ERROR = 'Không đọc hoặc lưu được dữ liệu từ Google Sheets. Đang giữ lần đồng bộ thành công gần nhất.';
@@ -28,28 +28,6 @@ function missingSheet(wanted) {
   const error = new Error(`Không tìm thấy sheet ${wanted}.`);
   error.code = 'SNAPSHOT_SHEET_MISSING';
   return error;
-}
-
-function locationSource(branch) {
-  const sheetName = () => (branch === 'HN' ? CONFIG.STOCK_LOCATIONS_SHEET_HN : CONFIG.STOCK_LOCATIONS_SHEET_SG);
-  return {
-    id: `stock_locations_${branch.toLowerCase()}`,
-    lockKey: branch === 'HN' ? 20531101 : 20531102,
-    intervalMs: 3 * 60 * 1000,
-    spreadsheetId: () => CONFIG.STOCK_LOCATIONS_SPREADSHEET_ID,
-    table: 'stock_location_lines',
-    keyCols: ['branch', 'source_row'],
-    scope: { col: 'branch', value: branch },
-    async read(client) {
-      const title = findSheetTitle(await client.listSheetTitles(), sheetName());
-      if (!title) throw missingSheet(sheetName());
-      const values = await client.getValues(title, { valueRenderOption: 'FORMATTED_VALUE' });
-      return parseLocationRows(values, branch).map((row, index) => ({
-        branch, source_row: index + 1, code: row.code, name: row.name, total_quantity: row.totalQuantity,
-        notes: row.notes, location: row.location, arrival_date: row.arrivalDate
-      }));
-    }
-  };
 }
 
 const measureSource = {
@@ -76,7 +54,7 @@ const measureSource = {
   successState: rows => ({ sql: 'UPDATE sheet_snapshot_sync SET freight_error = $2 WHERE source = $1', value: rows.freightError || null })
 };
 
-const SOURCES = [locationSource('HN'), locationSource('SG'), measureSource];
+const SOURCES = [measureSource];
 
 // Trang thai "cho xac nhan so dong tut" theo nguon, nam trong bo nho tien trinh (giong productContainers).
 const pendingShrink = new Map();

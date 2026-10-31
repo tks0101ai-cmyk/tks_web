@@ -25,7 +25,8 @@ const SEARCH_MODES = Object.freeze(['code', 'sale', 'customer']);
 const BRANCHES = Object.freeze(['HN', 'SG']);
 // Bo loc canh bao: 'any' = co it nhat 1 canh bao, hoac 1 ma cu the (khop orderLifecycleService.WARNING).
 const WARNING_FILTERS = Object.freeze([
-  'any', 'ACCOUNTANT_LATE', 'DRIVER_NO_PHOTO', 'DRIVER_FORGOT_PHOTO', 'NOT_SIGNED_6H', 'PICKUP_PENDING', 'NO_TRAIN_BILL'
+  'any', 'ACCOUNTANT_LATE', 'DRIVER_NO_PHOTO', 'DRIVER_FORGOT_PHOTO', 'NOT_SIGNED_6H', 'PICKUP_PENDING', 'NO_TRAIN_BILL',
+  'PICK_KIOT_DIFF', 'PICK_ORDER_DIFF'
 ]);
 // Bo loc "Chi dinh vi tri" (migration 0096): trang thai chi dinh MOI NHAT cua don. Du lieu o Postgres (khong nam trong cac dong
 // da gop/cache) nen KHONG loc o filterRows: orderLifecycleService thu hep danh sach theo pickStatus truoc khi loc/sap xep.

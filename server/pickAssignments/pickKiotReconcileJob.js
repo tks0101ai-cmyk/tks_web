@@ -1,7 +1,7 @@
 'use strict';
 
 // Job nen: dong bo trang thai boc hang theo trang thai don KiotViet (xem pickAssignmentsService.reconcileWithKiot).
-//   Dang boc + Kiot "Hoan thanh" -> Da boc (luc nay moi tru thung that); Dang boc + Kiot "Da huy" -> Chua boc (tra giu cho).
+//   Dang boc + Kiot "Hoan thanh" -> Da boc (luc nay moi tru thung that); Dang boc + Kiot "Da huy" -> Da huy (tra giu cho).
 // Chi doc bang orders DA DONG BO vao Postgres cho vai chuc don dang boc (khong goi API KiotViet, khong doc 60 nghin don).
 // Chay lai la an toan: chi dong 'picking', dung version cua chi dinh, nen nhieu instance / chay lap khong tru thung 2 lan.
 const CONFIG = require('../config');

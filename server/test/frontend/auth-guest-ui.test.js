@@ -106,7 +106,7 @@ test('shared nav khong con mang vai tro cung — menu dung tu danh sach quyen', 
   assert.match(script, /TKSNav\.can/);
 });
 
-test('sidebar của Khách chỉ có Hồ sơ, Quy định công ty và Nghỉ phép', () => {
+test('sidebar của Khách chỉ có VT Hà Nội / VT Sài Gòn, Hồ sơ, Quy định công ty và Nghỉ phép', () => {
   const dom = loadSharedNav('https://tokosi.example/account/');
   const { window } = dom;
   const sidebar = window.document.getElementById('sidebar');
@@ -121,7 +121,10 @@ test('sidebar của Khách chỉ có Hồ sơ, Quy định công ty và Nghỉ p
   assert.match(sidebar.innerHTML, /Quy định công ty/);
   assert.match(sidebar.innerHTML, /Nghỉ phép/);
   assert.deepEqual([...sidebar.querySelectorAll('a')].map(a => a.getAttribute('href')),
-    ['/humanresources/#quydinh', '/humanresources/#leave', '/account/#profile']);
+    ['/vt-positions/#hn', '/vt-positions/#sg', '/humanresources/#quydinh', '/humanresources/#leave', '/account/#profile']);
+  assert.match(sidebar.innerHTML, /VT Hà Nội/);
+  assert.match(sidebar.innerHTML, /VT Sài Gòn/);
+  assert.doesNotMatch(sidebar.innerHTML, /stock-locations/);
   assert.doesNotMatch(sidebar.innerHTML, /Quản lý người dùng/);
   assert.doesNotMatch(sidebar.innerHTML, /Vòng đời đơn hàng/);
   assert.match(sidebar.innerHTML, /Quản lý hồ sơ/);

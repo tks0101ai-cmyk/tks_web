@@ -10,7 +10,9 @@ function createDocumentEntity(options) {
     detailColumns, mapDetail, payment, backfillRangeParam, batchDetails = false,
     // Payload khong co ten nhan vien (vd /ordersuppliers chi co userId) thi khong
     // upsert `staff` de khong sinh dong nhan vien rong ten.
-    syncStaff = true
+    syncStaff = true,
+    // Sap/bo sung item truoc khi ghi (vd orders: sap dong hang theo thu tu that cua Kiot). Fail-soft o phia goi.
+    prepareItems = null
   } = options;
   const parentSql = `INSERT INTO ${entity} (${parentColumns.join(',')}) VALUES (${parentColumns.map((_, i) => `$${i + 1}`).join(',')})
     ON CONFLICT (branch, id) DO UPDATE SET ${parentUpdateColumns.map((c) => `${c}=EXCLUDED.${c}`).join(', ')}, raw=EXCLUDED.raw, synced_at=now()`;
@@ -20,6 +22,7 @@ function createDocumentEntity(options) {
     entity, endpoint, listQuery, incrementalParam: 'lastModifiedFrom', hasUpperBound,
     ...(backfillRangeParam ? { backfillRangeParam } : {}),
     async upsertPage(pgClient, branch, items) {
+      if (prepareItems) items = await prepareItems(branch, items);
       // Upsert "staff" (bang dung chung giua invoices/orders/returns/purchases)
       // MOT LAN cho ca trang, theo thu tu id tang dan, TRUOC khi ghi cac bang
       // rieng cua entity - phat hien deadlock that khi backfill production

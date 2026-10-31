@@ -830,7 +830,7 @@ router.put('/api/admin/users/:id/permissions', ...authPermissions, async (req, r
     const overrides = featureRegistry.sanitizeOverrides(raw);
     const forbiddenGrants = Object.keys(overrides).filter(key => overrides[key] && featureRegistry.isFeatureForbiddenForRole(key, targetUser.vaiTro));
     if (forbiddenGrants.length) {
-      return res.status(400).json({ error: 'Không thể cấp quyền ngoài Quy định công ty và Nghỉ phép cho tài khoản Khách.', code: 'FEATURE_ROLE_FORBIDDEN' });
+      return res.status(400).json({ error: 'Không thể cấp quyền ngoài Quy định công ty, Nghỉ phép và Vị trí hàng (xem, xuất Excel) cho tài khoản Khách.', code: 'FEATURE_ROLE_FORBIDDEN' });
     }
     const blockedReason = assertPermissionsEditable(req, targetUser, overrides);
     if (blockedReason) {

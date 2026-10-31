@@ -183,17 +183,18 @@ test('GET /api/shipment/lifecycle trả 1 TRANG đơn (gộp đơn Kiot mọi tr
   assert.deepEqual(res.body, { ...payload, kiotOrderHosts: { HN: null, SG: null } });
   assert.deepEqual(received.params, query, 'bo loc/sap xep/trang di thang xuong service (service kiem tra hop le)');
   assert.equal(received.options.kiot, kiotRepository.kiotOrders, 'phai truyen repository doc don cua Kiot');
-  // Nhan vien sale khong co shipment.pick -> KHONG nhan trang thai boc / canh bao lech SL (cot bi an).
+  // Nhan vien sale khong co shipment.pick -> KHONG nhan trang thai boc / canh bao chi dinh (cot bi an).
   assert.equal(received.options.pickStatuses, undefined);
-  assert.equal(received.options.pickMismatches, undefined);
+  assert.equal(received.options.pickWarnings, undefined);
 });
 
-test('GET /api/shipment/lifecycle: nguoi co quyen shipment.pick (Quan ly) nhan nguon trang thai boc + canh bao lech SL', async () => {
+test('GET /api/shipment/lifecycle: nguoi co quyen shipment.pick (Quan ly) nhan nguon trang thai boc + canh bao chi dinh (Lech Kiot / Lech SL trong don)', async () => {
   let received = null;
   service.queryOrders = async (params, options) => { received = options; return { orders: [], page: 1, pageSize: 100, totalPages: 1, total: 0, filteredTotal: 0 }; };
   await callRoute('get', '/', reqAs('Quản lý'), fakeRes());
   assert.equal(received.pickStatuses, pickAssignments.latestStatuses, 'phai truyen nguon trang thai chi dinh vi tri (cot pickStatus + bo loc)');
-  assert.equal(received.pickMismatches, pickAssignments.pickMismatches, 'phai truyen nguon canh bao lech SL');
+  assert.equal(typeof pickAssignments.pickWarnings, 'function');
+  assert.equal(received.pickWarnings, pickAssignments.pickWarnings, 'phai truyen nguon canh bao chi dinh');
 });
 
 test('GET /api/shipment/lifecycle: co bien gian hang thi tra ten mien de mo don tren Kiot', async () => {

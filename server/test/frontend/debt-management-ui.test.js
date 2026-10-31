@@ -150,6 +150,31 @@ test('lọc mặc định Tất cả, sort toàn tập và PATCH thành công c�
   dom.window.close();
 });
 
+test('lọc cả ba trạng thái, kết hợp tìm kiếm và giữ lựa chọn khi render lại', () => {
+  const payload = debtPayload();
+  payload.customers.push({ ...payload.customers[0], customerKey: 'skip', customerName: 'Khách C', workflowStatus: 'Bỏ qua' });
+  const dom = createDashboard(payload);
+  const document = dom.window.document;
+  const select = document.getElementById('debtStatusFilter');
+  const names = () => [...document.querySelectorAll('#debtManagementRows tr[data-customer-key] .name-cell')].map(el => el.textContent);
+  assert.equal(select.value, '');
+  assert.equal(names().length, 3);
+  for (const [status, name] of [['Chưa xử lý', 'Khách A'], ['Đã xử lý', 'Khách B'], ['Bỏ qua', 'Khách C']]) {
+    select.value = status;
+    dom.window.handleDebtFilterChange();
+    assert.deepEqual(names(), [name]);
+  }
+  dom.window.renderDebtManagement();
+  assert.equal(select.value, 'Bỏ qua');
+  document.getElementById('debtManagementSearch').value = 'Khách A';
+  dom.window.handleDebtFilterChange();
+  assert.deepEqual(names(), []);
+  select.value = '';
+  dom.window.handleDebtFilterChange();
+  assert.deepEqual(names(), ['Khách A']);
+  dom.window.close();
+});
+
 function scheduleDebtPayload() {
   const payload = debtPayload();
   payload.cycleDate = '2026-10-13';

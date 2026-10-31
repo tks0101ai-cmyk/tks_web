@@ -1,6 +1,7 @@
 'use strict';
 
-// /api/stock-positions/* — tab "VT Ha Noi" / "VT Sai Gon" (xem: stockLocationsV2.view, ghi: stockLocationsV2.edit).
+// /api/stock-positions/* — tab "VT Ha Noi" / "VT Sai Gon", module Vi tri hang duy nhat (module cu doc Google Sheets da go 2026-10-30).
+// Xem + Xuat Excel (stockLocationsV2.view / .export): mac dinh MOI vai tro ke ca Khach; ghi (.edit) va xoa lich su (.historyDelete) chi noi bo.
 const express = require('express');
 const multer = require('multer');
 const { requireAuth, requireFeature } = require('../auth/authMiddleware');
@@ -8,6 +9,7 @@ const { hasFeature } = require('../auth/featureRegistry');
 const { resolveBranch } = require('../branch/branchMiddleware');
 const { BRANCHES, resolveBranchScope } = require('../branch/branches');
 const service = require('./stockPositionsService');
+const { events: defaultEvents, CHANGED } = require('./stockPositionsEvents');
 const { createStockPositionsWorkbook, createStockPositionsHistoryWorkbook } = require('./stockPositionsExport');
 
 const IMPORT_MAX_BYTES = 8 * 1024 * 1024;
@@ -50,14 +52,59 @@ function createStockPositionsRouter(dependencies = {}) {
     const result = await svc().list(ctxOf(req), req.query.branch);
     res.json({ ...result, canEdit: hasFeature(req.user, 'stockLocationsV2.edit'), canExport: hasFeature(req.user, 'stockLocationsV2.export'), canDeleteHistory: hasFeature(req.user, 'stockLocationsV2.historyDelete') });
   }));
-  // Xuat Excel toan bo dong cua co so (khong theo bo loc tren man hinh); quyen rieng stockLocationsV2.export.
-  router.get('/api/stock-positions/export', requireFeature('stockLocationsV2.export'), handle(async (req, res) => {
+  // SSE: bao "bang vi tri co so X vua doi" (khong keo du lieu) de trinh duyet tu tai nen; client lay du lieu bang GET list
+  // voi quyen/co so cua chinh phien do. Ket noi giu mo -> proxy phai khong buffer (X-Accel-Buffering) va co heartbeat.
+  router.get('/api/stock-positions/events', (req, res) => {
+    const branch = String(req.query.branch || '').toUpperCase();
+    if (!ctxOf(req).scope.includes(branch)) {
+      return res.status(403).json({ error: 'Không có quyền xem vị trí hàng của cơ sở này.', code: 'BRANCH_FORBIDDEN' });
+    }
+    req.socket.setTimeout(0); // Node mac dinh ngat socket khong hoat dong sau ~2 phut
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no'
+    });
+    const write = chunk => {
+      try {
+        res.write(chunk);
+        // compression() boc res trong stream gzip co buffer rieng: khong flush thi su kien bi giu lai.
+        if (typeof res.flush === 'function') res.flush();
+      } catch { /* client da roi */ }
+    };
+    write(':ok\n\n');
+    const bus = dependencies.events || defaultEvents;
+    const onChanged = payload => {
+      if (payload && payload.branch === branch) write(`event: positions-changed\ndata: ${JSON.stringify({ branch })}\n\n`);
+    };
+    bus.on(CHANGED, onChanged);
+    const heartbeat = setInterval(() => write(':heartbeat\n\n'), 25000);
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      bus.off(CHANGED, onChanged);
+    });
+  });
+  router.get('/api/stock-positions/code-suggestions', handle(async (req, res) => {
+    res.json(await svc().suggestCodes(ctxOf(req), req.query.branch, req.query.q));
+  }));
+  // Export selected rows in screen order, restricted to the authorized branch.
+  router.route('/api/stock-positions/export').get(requireFeature('stockLocationsV2.export'), exportPositions).post(requireFeature('stockLocationsV2.export'), express.json({ limit: '8mb' }), exportPositions);
+  async function exportPositions(req, res, next) {
+    return handle(async (req, res) => {
     const { branch, rows } = await svc().list(ctxOf(req), req.query.branch);
-    const file = await createStockPositionsWorkbook({ branch, rows });
+    let exportRows = rows;
+    if (req.method === 'POST') {
+      if (!Array.isArray(req.body?.ids)) return res.status(400).json({ error: 'Danh sách dòng xuất không hợp lệ.' });
+      const byId = new Map(rows.map(row => [String(row.id), row]));
+      exportRows = [...new Set(req.body.ids.map(String))].map(id => byId.get(id)).filter(Boolean);
+    }
+    const file = await createStockPositionsWorkbook({ branch, rows: exportRows });
     res.set('Content-Type', file.mimeType);
     res.set('Content-Disposition', `attachment; filename="${file.fileName}"`);
     res.send(file.buffer);
-  }));
+    })(req, res, next);
+  }
   // Phai dat truoc '/:id'.
   router.get('/api/stock-positions/history', handle(async (req, res) => {
     res.json(await svc().history(ctxOf(req), req.query.branch, { limit: req.query.limit, before: req.query.before, positionId: req.query.positionId }));
@@ -96,6 +143,17 @@ function createStockPositionsRouter(dependencies = {}) {
       mode: req.query.mode, commit: req.query.commit === '1', buffer: req.file.buffer, fileName,
       ...(inputRows !== undefined ? { inputRows } : {})
     }));
+  }));
+  // Xuat kho: tru SL hang loat theo file (3 cot Ma hang, Ghi chu, Vi tri), dong sai bo qua + tra danh sach. Dat truoc '/:id/...'.
+  router.post('/api/stock-positions/stock-out', edit, (req, res, next) => upload.single('file')(req, res, error => {
+    if (!error) return next();
+    const tooBig = error.code === 'LIMIT_FILE_SIZE';
+    return res.status(tooBig ? 413 : 400).json({ error: tooBig ? 'File quá lớn (tối đa 8 MB).' : 'Không đọc được file tải lên.', code: tooBig ? 'IMPORT_FILE_TOO_LARGE' : 'IMPORT_UPLOAD_FAILED' });
+  }), handle(async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'Vui lòng chọn file Excel hoặc CSV.', code: 'IMPORT_FILE_REQUIRED' });
+    const fileName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+    if (!IMPORT_EXTENSIONS.test(fileName)) return res.status(400).json({ error: 'Chỉ nhận file .xlsx, .xls hoặc .csv.', code: 'IMPORT_BAD_EXTENSION' });
+    res.json(await svc().stockOutFile(ctxOf(req), req.query.branch, { buffer: req.file.buffer, fileName }));
   }));
   router.post('/api/stock-positions', edit, handle(async (req, res) => {
     const result = await svc().create(ctxOf(req), req.query.branch, req.body || {});

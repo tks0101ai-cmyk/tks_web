@@ -6,7 +6,7 @@
 
 > **📋 Audit toàn diện gần nhất:** 2026-09-15 — rà soát 100% giao diện (7 trang: `index`, `account`, `humanresources`,
 > `login`, `register`, `shipment`, `404` + `shared.css`). **Cập nhật 2026-10-05:** trang tra cứu vòng đời nay là
-> `shipment/lifecycle/index.html` (trước là `shipment/index.html`) và có thêm trang `stock-locations/` (Vị trí hàng)
+> `shipment/lifecycle/index.html` (trước là `shipment/index.html`) và có thêm trang `stock-locations/` (Vị trí hàng; ĐÃ GỠ 2026-10-30, thay bằng `vt-positions/` — xem `pages/vt-positions.md`)
 > và (2026-10-06) `cashbook/` (Sổ quỹ — dựng theo khuôn tab Báo cáo, xem `pages/cashbook.md`);
 > trạng thái hiện tại của từng mục nợ ở mục 12 đã được kiểm tra lại bằng grep (bảng "Trạng thái kiểm tra lại" đầu mục 12). Các component mới phát hiện đã được chuẩn hoá vào mục 5;
 > sai lệch/nợ thiết kế phát hiện được liệt kê đầy đủ ở **mục 12**. Chi tiết theo từng trang: `pages/*.md`.
@@ -994,3 +994,5 @@ dùng chung, vì đã xuất hiện ở ≥ 2 trang với nội dung gần như 
 (§5.6), modal dialog chuẩn (§5.7), toast notification (§5.8), sub-nav tabs (§5.9), auth card (§5.10).
 Việc hợp nhất giúp một lần sửa (VD: bỏ `backdrop-filter` khỏi modal) áp dụng ngay cho mọi trang thay
 vì phải sửa lặp lại 4 chỗ như hiện tại ở mục 12.1.
+
+Cập nhật gần nhất: 2026-10-30 (ghi chú trang Vị trí hàng đổi từ `stock-locations` sang `vt-positions`).

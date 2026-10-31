@@ -142,7 +142,31 @@ function createKiotVietClient(config) {
     }
   }
 
-  return { getAccessToken, fetchJsonWithRetry, fetchAllPages, fetchProductOnHand };
+  // Ghi len Kiot (PUT /orders/{id}): KHONG tu thu lai khi loi 5xx/mat ket noi -- lan dau co the da ghi, thu lai mu co the ghi chong.
+  // 401 thi lay token moi roi gui lai dung 1 lan (chua xu ly gi nen an toan).
+  async function authorizedWrite(method, path, body) {
+    const send = async (token) => fetchJsonWithRetry(`${BASE_URL}${path}`, {
+      method,
+      headers: { Authorization: `Bearer ${token}`, Retailer: retailer, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }, { maxRetries: 1 });
+    try {
+      return await send(await getAccessToken());
+    } catch (err) {
+      if (err.status === 401) return send(await getAccessToken(true));
+      throw err;
+    }
+  }
+
+  async function fetchOrderById(id) {
+    return authorizedRequest(`/orders/${encodeURIComponent(id)}`, new URLSearchParams());
+  }
+
+  async function updateOrder(id, body) {
+    return authorizedWrite('PUT', `/orders/${encodeURIComponent(id)}`, body);
+  }
+
+  return { getAccessToken, fetchJsonWithRetry, fetchAllPages, fetchProductOnHand, fetchOrderById, updateOrder };
 }
 
 module.exports = { createKiotVietClient };

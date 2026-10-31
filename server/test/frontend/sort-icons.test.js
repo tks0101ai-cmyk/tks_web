@@ -119,7 +119,7 @@ test('tieu de static cua Vong doi don hang dung nut .sort-button, khong con .sor
 test('moi trang bang chi dung quy uoc sort o shared.css: khong tu dinh nghia lai nut/bieu tuong sap xep', () => {
   const pages = [
     'index.html', 'account/index.html', 'humanresources/index.html', 'shipment/lifecycle/index.html',
-    'cashbook/index.html', 'stock-locations/index.html', 'stock-locations/stock-locations.css', 'marketing-report.css'
+    'cashbook/index.html', 'vt-positions/index.html', 'vt-positions/vt-base.css', 'vt-positions/vt-positions.css','marketing-report.css'
   ];
   for (const page of pages) {
     const source = loadHtml(page);

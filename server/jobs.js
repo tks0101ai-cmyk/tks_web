@@ -11,7 +11,7 @@ function startBackgroundJobs() {
 
   stops.push(require('./productContainers/sync').startContainerSchedule());
 
-  // Vị trí hàng (HN/SG) + CÂN ĐO: đọc Google Sheets theo chu kỳ vào Postgres, web chỉ đọc DB.
+  // CÂN ĐO: đọc Google Sheets theo chu kỳ vào Postgres, web chỉ đọc DB (Vị trí hàng cũ đã gỡ 2026-10-30).
   stops.push(require('./sheetSnapshots/sync').startSheetSnapshotSchedule());
 
   if (CONFIG.PANCAKE_MARKETING_SYNC_ENABLED) {

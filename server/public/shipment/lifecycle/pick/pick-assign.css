@@ -6,10 +6,30 @@
 .picking-source{font-size:12px;color:var(--muted);margin:0 0 16px}
 .picking-table-wrap{overflow:auto;border:1px solid var(--border);border-radius:10px}
 .picking-table{width:100%;table-layout:fixed;min-width:1180px}
-.picking-table th:nth-child(1){width:9%}.picking-table th:nth-child(2){width:13%}.picking-table th:nth-child(3){width:8%}.picking-table th:nth-child(4){width:11%}.picking-table th:nth-child(5){width:8%}.picking-table th:nth-child(6){width:51%}
+/* Độ rộng cột do shared/table-controls.js quản lý (kéo mép tiêu đề, lưu theo tài khoản); % dưới đây chỉ là mốc trước khi script chạy. */
+.picking-table th:nth-child(1){width:8%}.picking-table th:nth-child(2){width:12%}.picking-table th:nth-child(3){width:10%}.picking-table th:nth-child(4){width:7%}.picking-table th:nth-child(5){width:10%}.picking-table th:nth-child(6){width:7%}.picking-table th:nth-child(7){width:46%}
 .picking-table td{white-space:normal!important;vertical-align:middle!important;padding:7px 12px!important}
-.picking-table th:nth-child(3),.picking-table th:nth-child(4),.picking-table th:nth-child(5),.picking-need,.picking-st,.picking-total{text-align:center!important}
+.picking-table th:nth-child(4),.picking-table th:nth-child(5),.picking-table th:nth-child(6),.picking-need,.picking-st,.picking-total{text-align:center!important}
 .picking-table .picking-code{font-family:var(--font-data);font-weight:600}
+.picking-table .picking-note{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+/* Dòng có SL chọn khác SL khách đặt: nền + vạch trái đỏ, số "chọn/đặt" đỏ. */
+.picking-table tr.picking-mismatch>td{background:rgba(239,68,68,.12)!important}
+.picking-table tr.picking-mismatch>td:first-child{box-shadow:inset 3px 0 0 var(--red)}
+/* Ô cần nhặt: bộ tăng giảm và ô nhập dùng chung một viền, trạng thái phân bổ nằm dưới. */
+.picking-need-stepper{display:grid;grid-template-columns:36px minmax(0,1fr) 36px;align-items:center;width:100%;max-width:190px;min-width:132px;margin:0 auto;border:1px solid var(--border);border-radius:8px;background:var(--bg,var(--panel));overflow:hidden}
+.picking-need-stepper:focus-within{border-color:var(--blue);outline:2px solid var(--blue);outline-offset:2px}
+.picking-body .picking-need-stepper button[data-need-step]{height:40px;padding:0;border:0;border-radius:0;background:var(--panel-2);color:var(--text);font-size:22px;line-height:1;cursor:pointer}
+.picking-body .picking-need-stepper button:hover:not(:disabled){background:var(--panel);color:var(--blue)}
+.picking-need-stepper button:focus-visible{outline:2px solid var(--blue);outline-offset:-3px}
+.picking-need-input{box-sizing:border-box;width:100%;min-width:0;height:40px;padding:0 4px;text-align:center;border:0;border-radius:0;background:transparent;color:var(--text);font-family:var(--font-data);font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.picking-need-input:focus-visible{outline:none}
+.picking-need small.picking-kiot{color:var(--amber);font-weight:600}
+.picking-need small.picking-good{color:var(--green)}
+.picking-need small.picking-bad{color:var(--red)}
+.picking-need small.picking-allocation{display:flex;align-items:center;justify-content:center;gap:5px;margin-top:7px;line-height:1.4;overflow-wrap:anywhere}
+.picking-allocation-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 16px;height:16px;border:1px solid currentColor;border-radius:50%;font-size:11px}
+/* Chỉ cho kéo độ rộng cột: ẩn nút "Cột hiển thị" do table-controls tự chèn phía trên bảng. */
+#pickingDialog .tks-table-tools,#pickingDialog .tks-columns-button{display:none!important}
 .picking-need strong,.picking-total strong,.picking-st strong{display:block;font-size:17px;font-family:var(--font-data);font-variant-numeric:tabular-nums}
 .picking-need small{display:block;margin-top:2px;font-size:11px;font-family:var(--font-data);font-weight:600}
 .picking-good{color:var(--green)}.picking-bad{color:var(--amber)}
@@ -97,3 +117,22 @@ td.lc-st{font-variant-numeric:tabular-nums}
 @media print{.print-edit-hint,#pickingPrintMessage{display:none!important}#pickingPrintSheet [contenteditable="true"]:focus{outline:none}body.picking-printing>*:not(#pickingPrintDialog){display:none!important}#pickingPrintDialog{display:block!important;position:static!important;width:100%!important;max-height:none!important;overflow:visible!important;margin:0!important;border:0!important}#pickingPrintDialog .dp-head{display:none}#pickingPrintSheet{padding:0}#pickingPrintSheet tr{break-inside:avoid}#pickingPrintSheet thead{display:table-header-group}}
 @media(max-width:1100px){.picking-locations{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}.picking-table{min-width:900px}}
 @media(max-width:600px){.picking-body{padding:14px;max-height:62vh}.picking-footer{flex-wrap:wrap;padding:14px}.picking-actions{flex-wrap:wrap;margin-left:0}#pickingPrintSheet{padding:12px}}
+
+.picking-table .picking-sort{border:0;background:transparent;color:inherit;font:inherit;text-transform:inherit;letter-spacing:inherit;padding:4px 0;cursor:pointer}
+.picking-sort-indicator{margin-left:4px;opacity:.7}
+.picking-sort:focus-visible{outline:2px solid var(--blue,#3b82f6);outline-offset:3px}
+
+/* Kéo-thả đổi thứ tự dòng + nút Xóa dòng (ghi ngược lên đơn Kiot). */
+.picking-table .picking-code{white-space:nowrap!important}
+.picking-grip{display:inline-block;margin-right:6px;padding:2px 4px;border-radius:4px;color:var(--muted);cursor:grab;letter-spacing:-2px;font-weight:700;user-select:none;-webkit-user-select:none;touch-action:none}
+.picking-grip:hover{color:var(--text);background:var(--surface-2,rgba(128,128,128,.15))}
+.picking-table tbody tr[data-line]{user-select:none;-webkit-user-select:none}
+.picking-table tbody tr[data-line] input{user-select:text;-webkit-user-select:text}
+.picking-remove{display:block;margin-top:4px;padding:2px 8px;border:1px solid var(--red);border-radius:6px;background:transparent;color:var(--red);font:inherit;font-size:11px;font-weight:600;cursor:pointer}
+.picking-remove:hover:not(:disabled){background:var(--red);color:#fff}
+.picking-remove:disabled{opacity:.45;cursor:not-allowed}
+body.picking-drag-active,body.picking-drag-active *{cursor:grabbing!important}
+.picking-table tr.picking-dragging>td{opacity:.55;background:rgba(59,130,246,.14)!important}
+.picking-table tr.picking-drop-before>td{box-shadow:inset 0 3px 0 var(--blue,#3b82f6)}
+.picking-table tr.picking-drop-after>td{box-shadow:inset 0 -3px 0 var(--blue,#3b82f6)}
+@media(prefers-reduced-motion:no-preference){.picking-table tr{transition:background-color .15s}}

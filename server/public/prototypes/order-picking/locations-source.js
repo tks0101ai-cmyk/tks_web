@@ -1,19 +1,19 @@
-/* Nguồn dòng vị trí: khi prototype được phục vụ từ server thì ĐỌC từ module Vị trí hàng (GET /api/stock-locations?branch=HN|SG,
-   cần đăng nhập và quyền stockLocations.view); mở file HTML trực tiếp hoặc API lỗi thì dùng dữ liệu demo.
+/* Nguồn dòng vị trí: khi prototype được phục vụ từ server thì ĐỌC từ module VT Hà Nội / VT Sài Gòn (GET /api/stock-positions?branch=HN|SG,
+   cần đăng nhập và quyền stockLocationsV2.view); mở file HTML trực tiếp hoặc API lỗi thì dùng dữ liệu demo.
    Chỉ đọc: mọi sửa, nhặt và lịch sử nằm trong bộ nhớ phiên của prototype, không ghi ngược về DB hay Google Sheets. */
 (function(root){
   'use strict';
   const BRANCHES = ['HN', 'SG'];
-  const LABEL = { api:'Từ Vị trí hàng', demo:'Dữ liệu demo' };
-  /* Dòng API {code, name, totalQuantity, notes, location, arrivalDate} → dòng vị trí của prototype.
-     SL không lấy từ totalQuantity (chỉ giữ làm dự phòng như cột SL của file import): SL luôn tính từ ghi chú. */
+  const LABEL = { api:'Từ VT Hà Nội / VT Sài Gòn', demo:'Dữ liệu demo' };
+  /* Dòng API /api/stock-positions {code, name, quantity, notes, location, arrivalDate, ...} → dòng vị trí của prototype.
+     SL không lấy từ quantity (chỉ giữ làm dự phòng như cột SL của file import): SL luôn tính từ ghi chú. */
   function mapRows(branch, rows){
     return (Array.isArray(rows) ? rows : []).filter(row => row && String(row.code ?? '').trim())
       .map((row, index) => ({
         id:'api-' + branch + '-' + index, branch,
         code:String(row.code).trim(), name:String(row.name ?? '').trim(),
         location:String(row.location ?? '').trim(), notes:String(row.notes ?? ''),
-        arrivalDate:String(row.arrivalDate ?? '').trim(), totalQuantity:row.totalQuantity ?? null
+        arrivalDate:String(row.arrivalDate ?? '').trim(), totalQuantity:row.quantity ?? row.totalQuantity ?? null
       }));
   }
   // Thay dòng vị trí demo bằng dòng thật (chỉ khi cả hai cơ sở đọc được). Trả về nhãn nguồn.
@@ -27,7 +27,7 @@
     try {
       const results = {};
       await Promise.all(BRANCHES.map(async branch => {
-        const response = await fetchFn('/api/stock-locations?branch=' + branch, { credentials:'same-origin' });
+        const response = await fetchFn('/api/stock-positions?branch=' + branch, { credentials:'same-origin' });
         if (!response.ok) throw Error('HTTP ' + response.status);
         results[branch] = await response.json();
       }));

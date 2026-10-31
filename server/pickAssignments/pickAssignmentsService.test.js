@@ -32,12 +32,12 @@ function order(overrides = {}) {
   return {
     branch: 'HN', orderCode: 'DH001', customerName: 'Khách A', saleName: 'Sale B', saleTelegramId: '555', orderDate: '27/10/2026 09:00',
     status: { code: 'SENT_TO_ACCOUNTANT', label: 'Đơn đã gửi kế toán' }, invoiceDiscount: 0,
-    lines: [{ productCode: 'AAA1', productName: 'Hàng A', quantity: 250, price: 10, discount: 0 }],
+    lines: [{ productCode: 'AAA1', productName: 'Hàng A', quantity: 250, price: 10, discount: 0, note: '' }],
     ...overrides
   };
 }
 
-async function fixture({ orders = { DH001: order() }, positions } = {}) {
+async function fixture({ orders = { DH001: order() }, positions, orderEditor } = {}) {
   const db = new PGlite();
   await db.exec(migration('0001_core_master_data.sql'));
   await db.exec(migration('0064_sheet_snapshots.sql'));
@@ -56,6 +56,7 @@ async function fixture({ orders = { DH001: order() }, positions } = {}) {
   }
   const service = createPickAssignmentsService({
     getDb: () => poolFor(db),
+    ...(orderEditor ? { orderEditor } : {}),
     loadOrder: async ({ branch, orderCode }) => {
       const found = orders[orderCode];
       return found && found.branch === branch ? found : null;
@@ -151,8 +152,9 @@ test('order snapshot keeps original duplicate-code lines and exact total',async(
 
 test('mergeOrderLines: gop theo ma (khong phan biet hoa/thuong), bo dong dich vu va VAT, binh quan gia khi khac gia', () => {
   const merged = mergeOrderLines([
-    { productCode: 'AAA1', productName: 'Hàng A', quantity: 100, price: 10, discount: 0 },
-    { productCode: 'aaa1', productName: '', quantity: 50, price: 10, discount: 0 },
+    { productCode: 'AAA1', productName: 'Hàng A', quantity: 100, price: 10, discount: 0, note: '15th' },
+    { productCode: 'aaa1', productName: '', quantity: 50, price: 10, discount: 0, note: ' full vat ' },
+    { productCode: 'AAA1', productName: '', quantity: 5, price: 10, discount: 0, note: '15th' },
     { productCode: 'BBB2', productName: 'B', quantity: 10, price: 10, discount: 2 },
     { productCode: 'bbb2', productName: 'B', quantity: 30, price: 20, discount: 2 },
     { productCode: 'VAT8', productName: 'Thuế', quantity: 1, price: 5 },
@@ -160,8 +162,8 @@ test('mergeOrderLines: gop theo ma (khong phan biet hoa/thuong), bo dong dich vu
     { productCode: 'ZERO', productName: 'Không SL', quantity: 0, price: 1 }
   ]);
   assert.deepEqual(merged, [
-    { productCode: 'AAA1', productName: 'Hàng A', quantity: 150, price: 10, discount: 0 },
-    { productCode: 'BBB2', productName: 'B', quantity: 40, price: 17.5, discount: 2 }
+    { productCode: 'AAA1', productName: 'Hàng A', quantity: 155, price: 10, discount: 0, note: '15th; full vat' },
+    { productCode: 'BBB2', productName: 'B', quantity: 40, price: 17.5, discount: 2, note: '' }
   ]);
 });
 
@@ -173,7 +175,7 @@ test('candidates: ung vien theo ma kem onHand / held (chi chi dinh dang nhat cua
   try {
     let result = await service.candidates(ctx(), { branch: 'HN', orderCode: 'DH001' });
     assert.equal(result.order.eligible, true);
-    assert.deepEqual(result.order.lines, [{ productCode: 'AAA1', productName: 'Hàng A', quantity: 250, price: 10, discount: 0 }]);
+    assert.deepEqual(result.order.lines, [{ productCode: 'AAA1', productName: 'Hàng A', quantity: 250, price: 10, discount: 0, note: '' }]);
     assert.deepEqual(result.candidates.aaa1.map(c => [c.positionId, c.location, c.onHand, c.held, c.available]), [[1, 'A01', 300, 0, 300], [2, 'B02', 200, 0, 200]]);
     assert.equal(result.assignment, null);
     await service.assign(ctx(), assignBody([{ productCode: 'AAA1', positionId: 1, qty: 200 }, { productCode: 'AAA1', positionId: 2, qty: 50 }]));
@@ -220,14 +222,13 @@ test('assign: tao chi dinh Dang nhat, giu cho (chua doi ghi chu), tinh ST, luu s
 test('assign: loi 404 / 409 don khong du dieu kien / 400 thieu SL, vi tri la, ma ngoai don / 409 vuot ton / 409 da chi dinh', async () => {
   const { db, service } = await fixture({ orders: {
     DH001: order(),
-    DH003: order({ orderCode: 'DH003', status: { code: 'DELIVERING', label: 'Đơn đang được giao' } }),
+    DH003: order({ orderCode: 'DH003', status: { code: 'NOT_SENT', label: 'Đơn chưa gửi kế toán' } }),
     DH004: order({ orderCode: 'DH004', lines: [{ productCode: 'AAA1', productName: 'Hàng A', quantity: 250, price: 10 }] }),
     DH005: order({ orderCode: 'DH005', lines: [] })
   } });
   try {
     const A = (positionId, qty, productCode = 'AAA1') => ({ productCode, positionId, qty });
     await assert.rejects(() => service.assign(ctx(), { branch: 'HN', orderCode: 'KHONGCO', allocations: [A(1, 1)] }), { statusCode: 404, code: 'NOT_FOUND' });
-    await assert.rejects(() => service.assign(ctx(), { branch: 'HN', orderCode: 'DH003', allocations: [A(1, 250)] }), { statusCode: 409, code: 'ORDER_NOT_ELIGIBLE' });
     await assert.rejects(() => service.assign(ctx(), { branch: 'XX', orderCode: 'DH001', allocations: [] }), { statusCode: 400, code: 'INVALID_BRANCH' });
     await assert.rejects(() => service.assign(ctx(), { branch: 'HN', orderCode: '  ', allocations: [A(1, 1)] }), { statusCode: 400, code: 'VALIDATION' });
     await assert.rejects(() => service.assign(ctx(), assignBody([])), { statusCode: 400, code: 'VALIDATION' });
@@ -361,4 +362,79 @@ test('lich su chi dinh va lich su VT la bat bien (trigger chan sua/xoa)', async 
     await assert.rejects(() => db.query(`UPDATE order_pick_history SET actor_name = 'x'`), /immutable/);
     await assert.rejects(() => db.query(`DELETE FROM order_pick_history`), /immutable/);
   } finally { await db.close(); }
+});
+
+
+test('empty allocation can be saved with mismatch acknowledgement without reserving stock', async () => {
+  const { db, service } = await fixture();
+  try {
+    await assert.rejects(() => service.assign(ctx(), assignBody([])), { code: 'VALIDATION' });
+    const { assignment: result } = await service.assign(ctx(), { ...assignBody([]), allowMismatch: true });
+    assert.equal(result.status, 'picking');
+    assert.deepEqual(result.lines, []);
+    const candidates = await service.candidates(ctx(), { branch: 'HN', orderCode: 'DH001' });
+    assert.ok(candidates.candidates.aaa1.every(row => row.held === 0));
+  } finally { await db.close(); }
+});
+
+test('chi dinh duoc o MOI trang thai vong doi (ke ca chua gui ke toan); don da huy nhat chi dinh lai duoc', async () => {
+  const orders = { DH001: order() };
+  const { db, service } = await fixture({ orders });
+  try {
+    const first = await service.assign(ctx(), assignBody([{ productCode: 'AAA1', positionId: 1, qty: 250 }]));
+    await service.cancel(ctx(), first.assignment.id, { version: first.assignment.version });
+    for (const code of ['NOT_SENT', 'SENT_TO_ACCOUNTANT', 'DELIVERING', 'DELIVERED', 'SHIP_RECEIVED', 'SIGNED', 'COMPLETED', 'CANCELLED', 'EXCEPTION']) {
+      orders.DH001 = order({ status: { code, label: code } });
+      assert.equal((await service.candidates(ctx(), { branch: 'HN', orderCode: 'DH001' })).order.eligible, true, code);
+    }
+    orders.DH001 = order({ status: { code: 'NOT_SENT', label: 'Đơn chưa gửi kế toán' } });
+    const again = await service.assign(ctx(), assignBody([{ productCode: 'AAA1', positionId: 1, qty: 250 }]));
+    assert.equal(again.assignment.status, 'picking');
+  } finally { await db.close(); }
+});
+
+test('SL can nhat sua tay duoc ghi len Kiot roi doc lai don; chi dinh dung SL moi, khong con lech Kiot',async()=>{
+  const orders={DH001:order()};const calls=[];
+  const orderEditor={
+    setQuantities:async arg=>{calls.push(['set',arg]);orders.DH001=order({lines:[{productCode:'AAA1',productName:'Hàng A',quantity:200,price:10,discount:0,note:''}]});return {changed:true};},
+    removeLine:async()=>{throw new Error('khong duoc goi');}
+  };
+  const {db,service}=await fixture({orders,orderEditor});
+  try{
+    const {assignment}=await service.assign(ctx(),assignBody([{productCode:'AAA1',positionId:1,qty:200}],{needs:{AAA1:200}}));
+    assert.deepEqual(calls.map(call=>call[0]),['set']);
+    assert.equal(calls[0][1].branch,'HN');assert.equal(calls[0][1].orderCode,'DH001');assert.deepEqual(calls[0][1].quantities,{AAA1:200});
+    assert.equal(assignment.snapshot.lines[0].quantity,200);
+    assert.equal(assignment.snapshot.lines[0].kiotQuantity,undefined);
+  }finally{await db.close();}
+});
+
+test('Kiot tu choi ghi SL -> assign loi va khong tao chi dinh',async()=>{
+  const orderEditor={setQuantities:async()=>{throw Object.assign(new Error('Kiot tu choi'),{statusCode:502,code:'KIOT_REJECTED'});}};
+  const {db,service}=await fixture({orderEditor});
+  try{
+    await assert.rejects(()=>service.assign(ctx(),assignBody([{productCode:'AAA1',positionId:1,qty:200}],{needs:{AAA1:200}})),{code:'KIOT_REJECTED'});
+    assert.equal(Number((await db.query('SELECT count(*) FROM order_pick_assignments')).rows[0].count),0);
+  }finally{await db.close();}
+});
+
+test('SL khong sua (needs trung Kiot) khong cham Kiot',async()=>{
+  let touched=0;const orderEditor={setQuantities:async()=>{touched++;return {};}};
+  const {db,service}=await fixture({orderEditor});
+  try{
+    await service.assign(ctx(),assignBody([{productCode:'AAA1',positionId:1,qty:250}],{needs:{AAA1:250}}));
+    assert.equal(touched,0);
+  }finally{await db.close();}
+});
+
+test('removeLine goi bo ghi Kiot voi nguoi thao tac va tra chi dinh moi nhat; thieu ma hang -> 400',async()=>{
+  const calls=[];const orderEditor={removeLine:async arg=>{calls.push(arg);return {changed:true};}};
+  const {db,service}=await fixture({orderEditor});
+  try{
+    const result=await service.removeLine(ctx(),{branch:'HN',orderCode:'DH001',productCode:' AAA1 '});
+    assert.equal(result.changed,true);assert.equal(result.assignment,null);
+    assert.equal(calls[0].productCode,'AAA1');assert.equal(calls[0].orderCode,'DH001');assert.equal(calls[0].branch,'HN');
+    await assert.rejects(()=>service.removeLine(ctx(),{branch:'HN',orderCode:'DH001',productCode:''}),{code:'VALIDATION'});
+    await assert.rejects(()=>service.removeLine(ctx(),{branch:'XX',orderCode:'DH001',productCode:'AAA1'}));
+  }finally{await db.close();}
 });

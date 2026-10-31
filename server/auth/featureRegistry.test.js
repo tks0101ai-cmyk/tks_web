@@ -44,39 +44,72 @@ test('các đường dẫn Sổ quỹ dùng cùng quyền xem và có thể là 
   assert.equal(registry.landingPathFor(['cashbook.view', 'account.profile']), '/cashbook/');
 });
 
-test('Vị trí hàng defaults for every internal role; guest grants are always forbidden', () => {
-  for (const vaiTro of INTERNAL_ROLES) assert.ok(registry.defaultsForRole(vaiTro).includes('stockLocations.view'), vaiTro);
-  const guest = { vaiTro: ROLES.KHACH, featurePermissions: { 'stockLocations.view': true } };
-  assert.ok(!registry.resolvePermissions(guest).includes('stockLocations.view'));
-  assert.equal(registry.hasFeature({ ...guest, permissions: ['stockLocations.view'] }, 'stockLocations.view'), false);
-  assert.ok(!registry.resolvePermissions({ vaiTro: ROLES.NHAN_VIEN_KHO, featurePermissions: { 'stockLocations.view': false } }).includes('stockLocations.view'));
+test('module Vị trí hàng cũ (đọc Google Sheets) đã gỡ: không còn quyền, trang; ghi đè cũ còn lưu bị bỏ qua vô hại', () => {
+  assert.equal(registry.FEATURES.some(f => f.key.startsWith('stockLocations.')), false);
+  assert.equal(registry.isFeatureKey('stockLocations.view'), false);
+  assert.equal(registry.pageRuleFor('/stock-locations/'), null);
+  assert.equal(registry.PAGE_FEATURES.some(rule => rule.path === '/stock-locations'), false);
+  // Ghi đè cũ trong app_users.feature_permissions: sanitize bỏ, không làm lỗi, không đổi quyền hiệu lực còn lại.
+  const legacy = { 'stockLocations.view': false, 'reports.debt': false };
+  assert.deepEqual(registry.sanitizeOverrides(legacy), { 'reports.debt': false });
+  assert.deepEqual(registry.unknownOverrideKeys(legacy), ['stockLocations.view']);
+  for (const vaiTro of Object.values(ROLES)) {
+    assert.deepEqual(
+      registry.resolvePermissions({ vaiTro, featurePermissions: { 'stockLocations.view': false } }),
+      registry.resolvePermissions({ vaiTro }), vaiTro);
+    assert.deepEqual(
+      registry.resolvePermissions({ vaiTro, featurePermissions: { 'stockLocations.view': true } }),
+      registry.resolvePermissions({ vaiTro }), vaiTro);
+  }
 });
 
-test('VT Hà Nội / VT Sài Gòn: mặc định chỉ Quản lý, sửa cần quyền xem, Khách bị chặn dù được cấp', () => {
-  for (const vaiTro of INTERNAL_ROLES) {
+test('VT Hà Nội / VT Sài Gòn: xem + xuất Excel mặc định cho MỌI vai trò kể cả Khách; sửa / xóa lịch sử mặc định chỉ Quản lý', () => {
+  for (const vaiTro of Object.values(ROLES)) {
     const defaults = registry.defaultsForRole(vaiTro);
     const manager = vaiTro === ROLES.QUAN_LY;
-    assert.equal(defaults.includes('stockLocationsV2.view'), manager, vaiTro);
+    assert.equal(defaults.includes('stockLocationsV2.view'), true, vaiTro);
+    assert.equal(defaults.includes('stockLocationsV2.export'), true, vaiTro);
     assert.equal(defaults.includes('stockLocationsV2.edit'), manager, vaiTro);
-    assert.equal(defaults.includes('stockLocationsV2.export'), manager, vaiTro);
     assert.equal(defaults.includes('stockLocationsV2.historyDelete'), manager, vaiTro);
+    // Quyền hiệu lực (có lọc Khách) khớp: ai cũng xem + xuất; chỉ Quản lý sửa / xóa lịch sử.
+    const effective = registry.resolvePermissions({ vaiTro });
+    assert.ok(effective.includes('stockLocationsV2.view') && effective.includes('stockLocationsV2.export'), vaiTro);
+    assert.equal(effective.includes('stockLocationsV2.edit'), manager, vaiTro);
+    assert.equal(effective.includes('stockLocationsV2.historyDelete'), manager, vaiTro);
   }
-  // Xuất Excel là quyền riêng: được xem/được sửa chưa chắc được xuất, và cần quyền xem.
-  const exporter = registry.resolvePermissions({ vaiTro: ROLES.NHAN_VIEN_KHO, featurePermissions: { 'stockLocationsV2.view': true, 'stockLocationsV2.export': true } });
-  assert.ok(exporter.includes('stockLocationsV2.export') && !exporter.includes('stockLocationsV2.edit'));
-  assert.ok(!registry.resolvePermissions({ vaiTro: ROLES.NHAN_VIEN_KHO, featurePermissions: { 'stockLocationsV2.export': true } }).includes('stockLocationsV2.export'));
-  const editor = registry.resolvePermissions({ vaiTro: ROLES.QUAN_LY, featurePermissions: { 'stockLocationsV2.export': false } });
-  assert.ok(editor.includes('stockLocationsV2.edit') && !editor.includes('stockLocationsV2.export'));
-  // Cấp riêng quyền xem cho nhân viên kho: xem được, chưa sửa được.
-  const viewer = registry.resolvePermissions({ vaiTro: ROLES.NHAN_VIEN_KHO, featurePermissions: { 'stockLocationsV2.view': true } });
-  assert.ok(viewer.includes('stockLocationsV2.view'));
-  assert.ok(!viewer.includes('stockLocationsV2.edit'));
-  // Cấp quyền sửa mà thiếu quyền xem thì không có hiệu lực (requires).
-  const editOnly = registry.resolvePermissions({ vaiTro: ROLES.NHAN_VIEN_KHO, featurePermissions: { 'stockLocationsV2.edit': true } });
-  assert.ok(!editOnly.includes('stockLocationsV2.edit'));
-  const guest = registry.resolvePermissions({ vaiTro: ROLES.KHACH, featurePermissions: { 'stockLocationsV2.view': true, 'stockLocationsV2.edit': true } });
-  assert.ok(!guest.includes('stockLocationsV2.view') && !guest.includes('stockLocationsV2.edit'));
+  // Khách có xem + xuất nhưng KHÔNG sửa / xóa lịch sử, kể cả khi bị ghi đè cấp thêm.
+  const guest = registry.resolvePermissions({ vaiTro: ROLES.KHACH, featurePermissions: { 'stockLocationsV2.edit': true, 'stockLocationsV2.historyDelete': true } });
+  assert.ok(guest.includes('stockLocationsV2.view') && guest.includes('stockLocationsV2.export'));
+  assert.ok(!guest.includes('stockLocationsV2.edit') && !guest.includes('stockLocationsV2.historyDelete'));
+  assert.equal(registry.hasFeature({ vaiTro: ROLES.KHACH, permissions: ['stockLocationsV2.view'] }, 'stockLocationsV2.view'), true);
+  assert.equal(registry.hasFeature({ vaiTro: ROLES.KHACH, permissions: ['stockLocationsV2.edit'] }, 'stockLocationsV2.edit'), false);
+  assert.equal(registry.isFeatureForbiddenForRole('stockLocationsV2.edit', ROLES.KHACH), true);
+  assert.equal(registry.isFeatureForbiddenForRole('stockLocationsV2.historyDelete', ROLES.KHACH), true);
+  assert.equal(registry.isFeatureForbiddenForRole('stockLocationsV2.view', ROLES.KHACH), false);
+  assert.equal(registry.isFeatureForbiddenForRole('stockLocationsV2.export', ROLES.KHACH), false);
+  // Quản lý tắt xem của một tài khoản: mất cả xuất Excel / sửa / xóa lịch sử (requires), mọi vai trò.
+  for (const vaiTro of Object.values(ROLES)) {
+    const off = registry.resolvePermissions({ vaiTro, featurePermissions: { 'stockLocationsV2.view': false, 'stockLocationsV2.export': true, 'stockLocationsV2.edit': true } });
+    assert.deepEqual(off.filter(key => key.startsWith('stockLocationsV2.')), [], vaiTro);
+  }
+  // Xuất Excel là quyền riêng: tắt xuất vẫn xem được; Quản lý tắt xuất vẫn sửa được.
+  const noExport = registry.resolvePermissions({ vaiTro: ROLES.QUAN_LY, featurePermissions: { 'stockLocationsV2.export': false } });
+  assert.ok(noExport.includes('stockLocationsV2.view') && noExport.includes('stockLocationsV2.edit') && !noExport.includes('stockLocationsV2.export'));
+  // Nhân viên kho ghi đè edit:true nhưng view:false thì không có edit (cũng không xem / xuất); có view thì sửa được.
+  const khoNoView = registry.resolvePermissions({ vaiTro: ROLES.NHAN_VIEN_KHO, featurePermissions: { 'stockLocationsV2.edit': true, 'stockLocationsV2.view': false } });
+  assert.ok(!khoNoView.includes('stockLocationsV2.edit') && !khoNoView.includes('stockLocationsV2.view') && !khoNoView.includes('stockLocationsV2.export'));
+  const khoEdit = registry.resolvePermissions({ vaiTro: ROLES.NHAN_VIEN_KHO, featurePermissions: { 'stockLocationsV2.edit': true } });
+  assert.ok(khoEdit.includes('stockLocationsV2.view') && khoEdit.includes('stockLocationsV2.edit'));
+  // Nhân viên kho mặc định không sửa được.
+  assert.ok(!registry.resolvePermissions({ vaiTro: ROLES.NHAN_VIEN_KHO }).includes('stockLocationsV2.edit'));
   assert.deepEqual(registry.pageRuleFor('/vt-positions/'), { path: '/vt-positions', href: '/vt-positions/', anyOf: ['stockLocationsV2.view'] });
+});
+
+test('VT: xem / xuất miễn kiểm tra leo thang (Trợ lý bị tắt xem vẫn tạo tài khoản được), sửa / xóa lịch sử thì không', () => {
+  assert.equal(registry.isEscalationExempt('stockLocationsV2.view'), true);
+  assert.equal(registry.isEscalationExempt('stockLocationsV2.export'), true);
+  assert.equal(registry.isEscalationExempt('stockLocationsV2.edit'), false);
+  assert.equal(registry.isEscalationExempt('stockLocationsV2.historyDelete'), false);
 });
 
 // Cac tap hop vai tro CU (truoc khi co featureRegistry) — giu lai nguyen van o
@@ -117,7 +150,7 @@ test('mac dinh theo vai tro: hr.* danh cho moi vai tro noi bo, account.users chi
     assert.equal(defaults.includes('account.users'), role === ROLES.QUAN_LY, role);
   }
   const guest = registry.defaultsForRole(ROLES.KHACH);
-  assert.deepEqual(guest, ['hr.rules', 'hr.leave', 'account.profile']);
+  assert.deepEqual(guest, ['stockLocationsV2.view', 'stockLocationsV2.export', 'hr.rules', 'hr.leave', 'account.profile']);
 });
 
 test('chi Quan ly moi co cac quyen quan tri mac dinh', () => {
@@ -305,8 +338,9 @@ test('hasFeature/permissionsHave dung ngu nghia HOAC', () => {
 
 test('guest permissions remain restricted even with stored or session overrides', () => {
   const guest = { vaiTro: ROLES.KHACH, trangThai: 'Đang hoạt động', workCoSo: 'Hà Nội', boPhan: 'Marketing', featurePermissions: Object.fromEntries(registry.FEATURE_KEYS.map(key => [key, true])) };
-  assert.deepEqual(registry.resolvePermissions(guest), ['hr.rules', 'hr.leave', 'hr.leave.submit', 'account.profile']);
-  for (const key of registry.FEATURE_KEYS.filter(key => !['hr.rules', 'hr.leave', 'hr.leave.submit', 'account.profile'].includes(key))) {
+  const allowed = ['stockLocationsV2.view', 'stockLocationsV2.export', 'hr.rules', 'hr.leave', 'hr.leave.submit', 'account.profile'];
+  assert.deepEqual(registry.resolvePermissions(guest), allowed);
+  for (const key of registry.FEATURE_KEYS.filter(key => !allowed.includes(key))) {
     assert.equal(registry.hasFeature({ ...guest, permissions: [key] }, key), false, key);
   }
 });

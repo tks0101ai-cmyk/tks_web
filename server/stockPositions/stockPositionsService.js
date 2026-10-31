@@ -8,6 +8,7 @@ const carton = require('../public/shared/carton.js');
 const { stripTelegramId } = require('../dashboard/saleName');
 const { parseImportWorkbook } = require('./stockPositionsImport');
 const { ACTION_LABELS, FIELD_LABELS, summaryText } = require('./stockPositionsHistoryLabels');
+const { announceChanged } = require('./stockPositionsEvents');
 
 const BRANCH_CODES = Object.freeze(['HN', 'SG']);
 const DB_BRANCH = Object.freeze({ HN: 'hanoi', SG: 'saigon' });
@@ -16,6 +17,7 @@ const MAX = Object.freeze({ code: 60, notes: 500, arrivalDate: 60, location: 100
 const HISTORY_MAX = 1000;
 const HISTORY_EXPORT_MAX = 50000;
 const ERROR_LIMIT = 50;
+const STOCK_OUT_ERROR_LIMIT = 500;
 const NORMALIZE_ACTOR = 'Chuẩn hóa ghi chú';
 const MERGE_ACTOR = 'Gộp dòng trùng';
 const MODES = Object.freeze(['replace', 'add']);
@@ -90,14 +92,28 @@ function mergeNotes(current, added) {
   return carton.normalizeNote(text);
 }
 
+// Co so ma giao dich dang giu khoa (lockBranch) -> phat tin hieu "da doi" sau COMMIT, khong phat khi ROLLBACK.
+const touchedBranches = new WeakMap();
+
+function announceTouched(client) {
+  const branches = touchedBranches.get(client);
+  touchedBranches.delete(client);
+  if (!branches) return;
+  for (const branch of branches) {
+    try { announceChanged(branch); } catch (error) { console.error('[stock-positions] khong phat duoc tin hieu doi:', error.message); }
+  }
+}
+
 async function withTransaction(pool, work) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const result = await work(client);
     await client.query('COMMIT');
+    announceTouched(client);
     return result;
   } catch (error) {
+    touchedBranches.delete(client);
     await client.query('ROLLBACK').catch(() => {});
     throw error;
   } finally {
@@ -105,7 +121,11 @@ async function withTransaction(pool, work) {
   }
 }
 
-const lockBranch = (client, branch) => client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', ['stock_positions:' + branch]);
+const lockBranch = (client, branch) => {
+  const branches = touchedBranches.get(client) || touchedBranches.set(client, new Set()).get(client);
+  branches.add(branch);
+  return client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', ['stock_positions:' + branch]);
+};
 
 const ON_HAND_SQL = `
   SELECT p.code, p.name, COALESCE(SUM((inv->>'onHand')::numeric), 0)::float8 AS on_hand
@@ -121,6 +141,14 @@ const RESOLVE_SQL = `SELECT code, name FROM products WHERE branch = $1 AND lower
 // Chi chi dinh 'picking' giu cho; 'confirmed' da tru thung that, 'cancelled' da tra. Cung cong thuc voi pickAssignmentsService.heldByPosition (khong loai tru don nao).
 const HELD_SQL = `
   SELECT l.position_id, COALESCE(SUM(l.reserved_qty), 0)::float8 AS held
+  FROM order_pick_lines l JOIN order_pick_assignments a ON a.id = l.assignment_id
+  WHERE a.status = 'picking' AND a.branch = $1 AND l.position_id = ANY($2::bigint[])
+  GROUP BY l.position_id`;
+
+// Ma don "Dang boc" dang chi dinh vao tung vi tri (ke ca dong giu 0): cac dong nay KHONG duoc xoa (xoa tay, ve 0, import Thay the),
+// vi phieu boc tro thang vao id dong — xoa roi thi luc xac nhan Da boc bao "vi tri khong con ton tai".
+const HOLDERS_SQL = `
+  SELECT l.position_id, array_agg(DISTINCT a.order_code ORDER BY a.order_code) AS orders
   FROM order_pick_lines l JOIN order_pick_assignments a ON a.id = l.assignment_id
   WHERE a.status = 'picking' AND a.branch = $1 AND l.position_id = ANY($2::bigint[])
   GROUP BY l.position_id`;
@@ -192,6 +220,26 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
     return held;
   }
 
+  // Map id dong -> [ma don Dang boc]. Fail-soft nhu heldByPosition khi chua ap migration 0096.
+  async function holdersByPosition(db, branch, ids) {
+    const holders = new Map();
+    if (!ids.length) return holders;
+    if (!heldTablesReady) {
+      const probe = (await db.query(`SELECT to_regclass('order_pick_lines') IS NOT NULL AND to_regclass('order_pick_assignments') IS NOT NULL AS ready`)).rows[0];
+      heldTablesReady = Boolean(probe && probe.ready);
+      if (!heldTablesReady) return holders;
+    }
+    for (const row of (await db.query(HOLDERS_SQL, [branch, ids])).rows) holders.set(Number(row.position_id), row.orders);
+    return holders;
+  }
+
+  async function assertNotHeld(client, row) {
+    const orders = (await holdersByPosition(client, row.branch, [Number(row.id)])).get(Number(row.id));
+    if (orders && orders.length) {
+      throw fail(409, 'POSITION_HELD', `Dòng này đang được đơn Đang bốc ${orders.join(', ')} chỉ định nên không xóa được. Hãy chỉ định lại hoặc hủy bốc đơn đó trước.`, { orders });
+    }
+  }
+
   function shape(row, product, held = 0) {
     const spec = product ? carton.parseSpec(row.notes) : null;
     const rawWarnings = carton.warnings(row.notes, { unknownCode: !product });
@@ -230,6 +278,23 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
     const products = await loadProducts(db, branch, rows.map(row => row.code));
     const held = await heldByPosition(db, branch, rows.map(row => Number(row.id)));
     return { branch, rows: rows.map(row => shape(row, products.get(row.code), held.get(Number(row.id)) || 0)) };
+  }
+
+  // Goi y ma hang khi go o "Them dong": khop dau/giua ma (bo khoang trang, khong phan biet hoa thuong) hoac trong ten; ma bat dau bang tu khoa xep truoc.
+  async function suggestCodes(ctx, branch, query) {
+    assertBranch(branch);
+    assertScope(ctx, branch);
+    const term = clean(query).slice(0, 60);
+    if (!term) return { items: [] };
+    const escape = value => value.replace(/[\\%_]/gu, '\\$&');
+    const codeTerm = escape(lower(term));
+    const { rows } = await getDb().query(
+      `SELECT code, name FROM products
+       WHERE branch = $1 AND (lower(regexp_replace(code, '\\s+', '', 'g')) LIKE '%' || $2 || '%' ESCAPE '\\' OR name ILIKE '%' || $3 || '%' ESCAPE '\\')
+       ORDER BY (lower(regexp_replace(code, '\\s+', '', 'g')) LIKE $2 || '%' ESCAPE '\\') DESC, code
+       LIMIT 12`,
+      [DB_BRANCH[branch], codeTerm, escape(term)]);
+    return { items: rows.map(row => ({ code: normalizeCode(row.code), name: clean(row.name) })) };
   }
 
   const FIELD_COLUMN = { notes: 'notes', arrivalDate: 'arrival_date', location: 'location' };
@@ -320,6 +385,7 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
         throw fail(409, 'DUPLICATE_POSITION', 'Mã hàng này đã có ở vị trí đó. Hãy dùng Thêm dòng để cộng vào dòng sẵn có.', { field: 'location' });
       }
       if (knownProduct && next.notes !== undefined && isEmptyNote(merged.notes)) {
+        await assertNotHeld(client, row);
         if (!body.confirmEmpty) throw fail(409, 'WOULD_AUTO_DELETE', 'Số lượng về 0 nên dòng sẽ bị xóa. Xác nhận để tiếp tục.');
         await removeRow(client, row.branch, actor, row, 'auto_delete', { newValue: merged.notes });
         return { deleted: true, id: Number(row.id) };
@@ -348,6 +414,7 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
       const result = carton.deduct(spec, quantity);
       if (!result) throw fail(400, 'VALIDATION', 'Số lượng trừ vượt quá số lượng hiện có (' + spec.quantity + ').', { field: 'quantity' });
       if (isEmptyNote(result.text)) {
+        await assertNotHeld(client, row);
         await removeRow(client, row.branch, actor, row, 'auto_delete', { newValue: result.text, summary: { deducted: quantity } });
         return { deleted: true, id: Number(row.id) };
       }
@@ -363,6 +430,7 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
     const actor = actorOf(ctx);
     return withTransaction(getDb(), async client => {
       const row = await lockRow(client, ctx, id, version);
+      await assertNotHeld(client, row);
       await removeRow(client, row.branch, actor, row, 'delete');
       return { deleted: true, id: Number(row.id) };
     });
@@ -456,7 +524,7 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
   // ---- Import file Excel/CSV (4 cot: Ma hang, Ghi chu, Ngay ve, Vi tri) ----
 
   // Thuan tuy: tu dong file + dong hien co + bang tra ma -> ke hoach them/doi/xoa/loi.
-  function planImport(mode, fileRows, existing, resolved) {
+  function planImport(mode, fileRows, existing, resolved, holders = new Map()) {
     const errors = [];
     const skipped = [];
     const unchangedRows = [];
@@ -469,7 +537,7 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
     const entries = new Map(); // (ma, vi tri) -> dong da gop (dong trung trong file tu cong ghi chu)
     const touched = new Set();
     for (const [sourceIndex, line] of fileRows.entries()) {
-      const invalid = message => errors.push({ ...line, sourceIndexes: [sourceIndex], message });
+      const invalid = message => { skippedEmpty += 1; skipped.push({ ...line, sourceIndexes: [sourceIndex], message }); };
       const code = normalizeCode(line.code);
       if (!code) { invalid('Thiếu mã hàng.'); continue; }
       const product = resolved.get(lower(code));
@@ -479,16 +547,15 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
         invalid('Dữ liệu quá dài (mã ≤ 60, ghi chú ≤ 500, ngày về ≤ 60, vị trí ≤ 100 ký tự).'); continue;
       }
       const spec = carton.parseSpec(notes);
-      if (product && !spec) { invalid(`Ghi chú "${notes}" sai định dạng (cần dạng 3T x 100, nối nhiều quy cách bằng +).`); continue; }
-      if (product && spec.quantity === 0) { skippedEmpty += 1; skipped.push({ ...line, notes, sourceIndexes: [sourceIndex] }); continue; }
+      // Free-form notes are imported with warnings; an unreadable quantity is not zero.
+      if (product && spec && spec.quantity === 0) { skippedEmpty += 1; skipped.push({ ...line, notes, sourceIndexes: [sourceIndex] }); continue; }
       const finalCode = product ? product.code : code;
       const key = keyOf(finalCode, location);
       const arrivalDate = clean(line.arrivalDate);
       const earlier = entries.get(key);
       if (earlier) {
-        const sum = product ? mergeNotes(earlier.notes, notes)
-          : mergeNotes(earlier.notes, notes) ?? carton.normalizeStoredNote([earlier.notes, notes].filter(Boolean).join(' + '));
-        if (sum === null) { invalid(`Ghi chú dòng ${earlier.row} sai định dạng, không cộng được dòng trùng này.`); continue; }
+        const sum = mergeNotes(earlier.notes, notes)
+          ?? carton.normalizeStoredNote([earlier.notes, notes].filter(Boolean).join(' + '));
         earlier.sourceIndexes.push(sourceIndex);
         earlier.notes = sum;
         earlier.arrivalDate = arrivalDate || earlier.arrivalDate;
@@ -507,9 +574,8 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
       let nextLocation = location;
       const nextName = resolved.has(lower(entry.code)) ? entry.name : entry.name || clean(current.name);
       if (mode === 'add') {
-        nextNotes = resolved.has(lower(entry.code)) ? mergeNotes(current.notes, notes)
-          : mergeNotes(current.notes, notes) ?? carton.normalizeStoredNote([clean(current.notes), notes].filter(Boolean).join(' + '));
-        if (nextNotes === null) { errors.push({ ...entry, message: `Ghi chú hiện có "${current.notes}" sai định dạng, không cộng thêm được.` }); continue; }
+        nextNotes = mergeNotes(current.notes, notes)
+          ?? carton.normalizeStoredNote([clean(current.notes), notes].filter(Boolean).join(' + '));
         nextDate = arrivalDate || clean(current.arrival_date);
         nextLocation = location; // khop khong phan biet hoa/thuong/khoang trang: ghi lai theo dang chuan
       }
@@ -520,11 +586,23 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
       else updates.push({ sourceIndexes: entry.sourceIndexes, id: current.id, code: entry.code, name: nextName, notes: nextNotes, arrivalDate: nextDate, location: nextLocation, row, before: current });
     }
     // Thay toan bo: dong hien co khong nam trong file bi xoa (ke ca dong trung ma + vi tri thua).
-    const deletes = mode === 'replace' ? existing.filter(row => !touched.has(row.id)) : [];
-    return { adds, updates, deletes, unchangedRows, skipped, unchanged: unchangedIds.length, skippedEmpty, errors };
+    // Dong dang duoc don Dang boc chi dinh thi giu lai (bao trong "bo qua"), khong xoa.
+    const deletes = [];
+    let keptHeld = 0;
+    if (mode === 'replace' && entries.size > 0) {
+      for (const row of existing) {
+        if (touched.has(row.id)) continue;
+        const orders = holders.get(Number(row.id));
+        if (!orders || !orders.length) { deletes.push(row); continue; }
+        keptHeld += 1;
+        skipped.push({ row: null, code: row.code, name: row.name, notes: row.notes, arrivalDate: row.arrival_date, location: row.location, sourceIndexes: [],
+          message: `Giữ lại, không xóa: đang được đơn Đang bốc ${orders.join(', ')} chỉ định.` });
+      }
+    }
+    return { adds, updates, deletes, unchangedRows, skipped, unchanged: unchangedIds.length, skippedEmpty, keptHeld, errors };
   }
 
-  const countsOf = plan => ({ added: plan.adds.length, updated: plan.updates.length, deleted: plan.deletes.length, unchanged: plan.unchanged, skippedEmpty: plan.skippedEmpty, errors: plan.errors.length });
+  const countsOf = plan => ({ added: plan.adds.length, updated: plan.updates.length, deleted: plan.deletes.length, unchanged: plan.unchanged, skippedEmpty: plan.skippedEmpty, keptHeld: plan.keptHeld || 0, errors: plan.errors.length });
 
   // Full draft: source indexes link normalized/merged operations back to original inputs.
   function previewOf(plan, resolved, inputRows) {
@@ -571,7 +649,8 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
     const run = async client => {
       const existing = (await client.query(`SELECT ${ROW_COLUMNS} FROM stock_positions WHERE branch = $1 ORDER BY id`, [branch])).rows;
       const resolved = await resolveCodes(client, branch, fileRows.map(line => line.code));
-      return { plan: planImport(mode, fileRows, existing, resolved), resolved };
+      const holders = mode === 'replace' ? await holdersByPosition(client, branch, existing.map(row => Number(row.id))) : new Map();
+      return { plan: planImport(mode, fileRows, existing, resolved, holders), resolved };
     };
     const response = (plan, extra = {}) => ({ mode, commit: Boolean(commit), counts: countsOf(plan), errors: plan.errors.slice(0, ERROR_LIMIT), ...extra });
     if (!commit) { const { plan, resolved } = await run(db); return response(plan, previewOf(plan, resolved, fileRows)); }
@@ -579,7 +658,6 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
     return withTransaction(db, async client => {
       await lockBranch(client, branch);
       const { plan, resolved } = await run(client);
-      if (plan.errors.length) throw fail(400, 'IMPORT_HAS_ERRORS', `Còn ${plan.errors.length} dòng lỗi, chưa nhập. Hãy sửa tại bước xem trước.`, { body: response(plan, previewOf(plan, resolved, fileRows)) });
       const summaryAction = mode === 'replace' ? 'import_replace' : 'import_add';
       const entries = [{ action: summaryAction, summary: { file: fileName, ...countsOf(plan) } }];
       if (plan.adds.length) {
@@ -614,6 +692,96 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
       await writeHistory(client, branch, actor, entries);
       productCache.delete(branch);
       return response(plan, { imported: true });
+    });
+  }
+
+  // ---- Xuat kho tu file Excel/CSV (3 cot: Ma hang, Ghi chu so thung, Vi tri; Ngay ve neu co thi bo qua) ----
+
+  // Thuan tuy: tu dong file + dong hien co + gioi han giu cho -> ke hoach tru. Dong sai thi bo qua, dong dung van tru.
+  // Dong trung (ma, vi tri) trong file xu ly TUAN TU theo thu tu file tren ghi chu dang con lai: moi dong tru theo dung quy cach cua no,
+  // dong nao tru qua so con lai (da tru cac dong truoc) thi bi bo qua rieng; tong da tru khong bao gio vuot ton.
+  function planStockOut(fileRows, existing, held) {
+    const byKey = new Map(); // (ma, vi tri) -> cac dong luu tru (du lieu dau co the trung), theo id
+    for (const row of existing) {
+      const key = keyOf(row.code, row.location);
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key).push({ row, notes: row.notes, deducted: 0, fileRows: [] });
+    }
+    const errors = [];
+    let applied = 0;
+    for (const line of fileRows) {
+      const reject = message => errors.push({ row: line.row, code: clean(line.code), location: clean(line.location), notes: clean(line.notes), message });
+      const code = normalizeCode(line.code);
+      const location = normalizeLocation(line.location);
+      if (!code) { reject('Thiếu mã hàng.'); continue; }
+      if (!location) { reject('Thiếu vị trí.'); continue; }
+      const spec = carton.parseSpec(carton.normalizeStoredNote(clean(line.notes)));
+      const quantity = spec && !spec.empty ? spec.quantity : 0;
+      if (!spec || !Number.isSafeInteger(quantity) || quantity <= 0) { reject('Ghi chú sai định dạng hoặc không có số lượng (vd 1T x 50).'); continue; }
+      const candidates = byKey.get(keyOf(code, location));
+      if (!candidates) { reject('Không có dòng nào cùng mã hàng và vị trí trong cơ sở này.'); continue; }
+      let target = null;
+      let result = null;
+      let available = 0;
+      let reason = '';
+      for (const candidate of candidates) {
+        const current = carton.parseSpec(candidate.notes);
+        if (!current || current.empty) { reason = reason || 'Ghi chú của dòng đang lưu không đọc được hoặc đã hết hàng nên không trừ được.'; continue; }
+        const free = Math.max(0, current.quantity - (held.get(Number(candidate.row.id)) || 0));
+        available += free;
+        // Phan giu cho cua phieu boc "Dang boc" khong duoc xuat: chi tru toi da SL co the boc.
+        if (quantity > free) continue;
+        const deducted = carton.deduct(current, quantity);
+        if (deducted) { target = candidate; result = deducted; break; }
+      }
+      if (!target) {
+        reject(reason && !available ? reason : `Số lượng xuất ${quantity} vượt quá số lượng có thể xuất (${available}).`);
+        continue;
+      }
+      target.notes = result.text;
+      target.deducted += quantity;
+      target.fileRows.push(line.row);
+      applied += 1;
+    }
+    const changed = [...byKey.values()].flat().filter(entry => entry.deducted > 0).map(entry => ({ ...entry, removed: isEmptyNote(entry.notes) }));
+    return { changed, errors, applied, total: changed.reduce((sum, entry) => sum + entry.deducted, 0) };
+  }
+
+  // Tru so luong theo file. Mot buoc: doc file -> ap dung ngay (khong co buoc xem truoc), tra ve ket qua + danh sach dong bo qua.
+  async function stockOutFile(ctx, branch, { buffer, fileName = '' } = {}) {
+    assertBranch(branch);
+    assertScope(ctx, branch);
+    if (!buffer || !buffer.length) throw fail(400, 'IMPORT_FILE_REQUIRED', 'Vui lòng chọn file Excel hoặc CSV.');
+    const fileRows = parseImportWorkbook(buffer, { fileName, now: new Date(now()), requireArrivalDate: false });
+    const actor = actorOf(ctx);
+    return withTransaction(getDb(), async client => {
+      await lockBranch(client, branch);
+      const existing = (await client.query(`SELECT ${ROW_COLUMNS} FROM stock_positions WHERE branch = $1 ORDER BY id FOR UPDATE`, [branch])).rows;
+      const held = await heldByPosition(client, branch, existing.map(row => Number(row.id)));
+      const plan = planStockOut(fileRows, existing, held);
+      const kept = plan.changed.filter(entry => !entry.removed);
+      const removed = plan.changed.filter(entry => entry.removed);
+      if (kept.length) {
+        const col = pick => kept.map(pick);
+        await client.query(
+          `UPDATE stock_positions p SET notes = u.notes, version = p.version + 1, updated_by_user_id = $2, updated_by_name = $3, updated_at = now()
+           FROM unnest($1::bigint[], $4::text[]) AS u(id, notes) WHERE p.id = u.id`,
+          [col(e => e.row.id), actor.id, actor.name, col(e => e.notes)]);
+      }
+      if (removed.length) await client.query('DELETE FROM stock_positions WHERE id = ANY($1::bigint[])', [removed.map(e => e.row.id)]);
+      await writeHistory(client, branch, actor, plan.changed.map(entry => ({
+        positionId: entry.row.id, code: entry.row.code, location: entry.row.location, action: 'stock_out', field: 'notes',
+        oldValue: entry.row.notes, newValue: entry.removed ? null : entry.notes,
+        summary: { deducted: entry.deducted, removed: entry.removed, fileName, fileRows: entry.fileRows }
+      })));
+      if (plan.changed.length) productCache.delete(branch);
+      else touchedBranches.delete(client); // khong doi gi thi khong phat tin hieu "da doi"
+      return {
+        fileName,
+        counts: { fileRows: fileRows.length, applied: plan.applied, updated: kept.length, deleted: removed.length, skipped: plan.errors.length, quantity: plan.total },
+        errors: plan.errors.slice(0, STOCK_OUT_ERROR_LIMIT),
+        errorsTruncated: plan.errors.length > STOCK_OUT_ERROR_LIMIT
+      };
     });
   }
 
@@ -695,7 +863,7 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
     });
   }
 
-  return { list, create, update, deduct, remove, acknowledge, history, historyAll, purgeHistory, importFile, normalizeAllNotes, mergeDuplicateRows };
+  return { list, suggestCodes, create, update, deduct, remove, acknowledge, history, historyAll, purgeHistory, importFile, stockOutFile, normalizeAllNotes, mergeDuplicateRows };
 }
 
 // `tx`: helper giao dich dung chung cho module khac can tru/cong thung that trong cung giao dich + khoa co so (pickAssignments).

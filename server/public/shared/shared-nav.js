@@ -2012,18 +2012,9 @@
 
     var locationBranch = user && user.branch;
     var locationTabs = locationBranch === 'Hà Nội' ? ['hn'] : locationBranch === 'Sài Gòn' ? ['sg'] : ['hn', 'sg'];
-    var locationActiveTab = locationTabs.indexOf(currentHash) !== -1 ? currentHash : locationTabs[0];
     var locationIcon = '<path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"></path><circle cx="12" cy="10" r="3"></circle>';
-    var locationItems = locationTabs.map(function(tab){
-      return {
-        feature: 'stockLocations.view', href: '/stock-locations/#' + tab,
-        label: tab === 'hn' ? 'Vị trí HN' : 'Vị trí SG',
-        active: currentPath === '/stock-locations' && locationActiveTab === tab,
-        dataAttr: 'data-stock-location-tab="' + tab + '"',
-        icon: locationIcon
-      };
-    });
-    // Co so du lieu Vi tri hang moi (/vt-positions/): tab VT Ha Noi / VT Sai Gon, tuan theo co so nguoi dung nhu hai tab cu.
+    var locationItems = [];
+    // Nhom Vi tri hang (/vt-positions/): tab VT Ha Noi / VT Sai Gon, tuan theo co so nguoi dung.
     var vtActiveTab = currentPath === '/vt-positions' && locationTabs.indexOf(currentHash) !== -1 ? currentHash : locationTabs[0];
     locationTabs.forEach(function(tab){
       locationItems.push({

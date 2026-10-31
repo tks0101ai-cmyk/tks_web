@@ -14,7 +14,7 @@ function page(html) {
   return dom;
 }
 
-for (const file of ['index.html', 'account/index.html', 'humanresources/index.html', 'cashbook/index.html', 'stock-locations/index.html', 'shipment/lifecycle/index.html']) {
+for (const file of ['index.html', 'account/index.html', 'humanresources/index.html', 'cashbook/index.html', 'vt-positions/index.html','shipment/lifecycle/index.html']) {
   // vat-draft/index.html bo ra 22/10/2026: trang chi con o dan ma, khong con o tim kiem.
   test(file + ': every search has exactly one clear button', () => {
     const html = fs.readFileSync(path.join(publicDir, file), 'utf8');

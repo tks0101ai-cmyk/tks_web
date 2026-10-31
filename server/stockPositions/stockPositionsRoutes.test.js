@@ -6,7 +6,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const ExcelJS = require('exceljs');
+const { EventEmitter } = require('node:events');
 const { createStockPositionsRouter } = require('./stockPositionsRoutes');
+const { CHANGED } = require('./stockPositionsEvents');
 
 const MANAGER = { id: 'ql', vaiTro: 'Quản lý' };
 const ROWS = [
@@ -19,7 +21,7 @@ const HISTORY = [
   { id: 1, createdAt: '2026-10-27T03:27:00.000Z', branch: 'HN', code: 'CKL2DBV', location: 'ST', action: 'import_add', field: null, oldValue: null, newValue: null, summary: { added: 3, fileName: 'a.xlsx' }, actorName: 'Nhập dữ liệu đầu' }
 ];
 
-async function start(t, { user = MANAGER, scope = 'Cả hai' } = {}) {
+async function start(t, { user = MANAGER, scope = 'Cả hai', events } = {}) {
   const calls = [];
   const record = name => async (ctx, ...args) => { calls.push([name, ...args]); return { ok: name }; };
   const service = {
@@ -27,6 +29,7 @@ async function start(t, { user = MANAGER, scope = 'Cả hai' } = {}) {
     create: record('create'), update: record('update'), deduct: record('deduct'), remove: record('remove'), history: record('history'),
     acknowledge: record('acknowledge'), purgeHistory: record('purgeHistory'),
     historyAll: async (ctx, branch, filters) => { calls.push(['historyAll', branch, filters, ctx.scope]); return { rows: HISTORY, truncated: false }; },
+    stockOutFile: async (ctx, branch, options) => { calls.push(['stockOutFile', branch, options.fileName, options.buffer.length, ctx.scope]); return { counts: {}, errors: [] }; },
     importFile: async (ctx, branch, options) => { calls.push(['importFile', branch, options.mode, options.commit, options.fileName, options.buffer.length, ...(options.inputRows === undefined ? [] : [options.inputRows])]); return { counts: {} }; }
   };
   const app = express();
@@ -35,7 +38,8 @@ async function start(t, { user = MANAGER, scope = 'Cả hai' } = {}) {
   app.use(createStockPositionsRouter({
     requireAuth: (req, res, next) => (req.user ? next() : res.status(401).json({ error: 'Chưa đăng nhập.' })),
     resolveBranch: (req, res, next) => { req.branch = scope; next(); },
-    service
+    service,
+    ...(events ? { events } : {})
   }));
   const server = await new Promise(resolve => { const s = app.listen(0, () => resolve(s)); });
   t.after(() => server.close());
@@ -54,27 +58,67 @@ test('GET danh sách: Quản lý có canEdit + canExport, không cache, truyền
   assert.deepEqual(calls[0], ['list', 'SG', ['SG']]);
 });
 
-test('Không đủ quyền: chưa đăng nhập 401; Nhân viên kho và Khách có cấp quyền giả mạo 403', async t => {
+test('Chưa đăng nhập 401; Quản lý tắt quyền xem của tài khoản (kể cả Khách) thì 403, không gọi service', async t => {
   assert.equal((await fetch((await start(t, { user: null })).base + '?branch=HN')).status, 401);
-  const kho = await start(t, { user: { vaiTro: 'Nhân viên kho' } });
-  assert.equal((await fetch(kho.base + '?branch=HN')).status, 403);
-  const khach = await start(t, { user: { vaiTro: 'Khách', featurePermissions: { 'stockLocationsV2.view': true } } });
-  assert.equal((await fetch(khach.base + '?branch=HN')).status, 403);
-  assert.deepEqual([...kho.calls, ...khach.calls], []);
+  const off = { 'stockLocationsV2.view': false };
+  const kho = await start(t, { user: { vaiTro: 'Nhân viên kho', featurePermissions: off } });
+  const khach = await start(t, { user: { vaiTro: 'Khách', featurePermissions: off } });
+  for (const { base } of [kho, khach]) {
+    assert.equal((await fetch(base + '?branch=HN')).status, 403);
+    // Mất xem thì xuất Excel (dù ghi đè cấp xuất) cũng mất theo.
+    assert.equal((await fetch(base + '/export?branch=HN')).status, 403);
+    assert.equal((await fetch(base + '/history/export?branch=HN')).status, 403);
+  }
+  const exportKept = await start(t, { user: { vaiTro: 'Khách', featurePermissions: { ...off, 'stockLocationsV2.export': true } } });
+  assert.equal((await fetch(exportKept.base + '/export?branch=HN')).status, 403);
+  assert.deepEqual([...kho.calls, ...khach.calls, ...exportKept.calls], []);
 });
 
-test('Chỉ xem (đã cấp view, không edit/export): đọc được, ghi + xuất bị 403', async t => {
-  const viewer = { vaiTro: 'Nhân viên kho', featurePermissions: { 'stockLocationsV2.view': true } };
+test('Mọi vai trò kể cả Khách xem + xuất Excel được theo mặc định, không có quyền ghi', async t => {
+  const json = { 'Content-Type': 'application/json' };
+  for (const vaiTro of ['Khách', 'Nhân viên kho', 'Nhân viên sale', 'Kế toán', 'Trợ lý']) {
+    const { base, calls } = await start(t, { user: { vaiTro } });
+    const list = await (await fetch(base + '?branch=HN')).json();
+    assert.deepEqual([list.canEdit, list.canExport, list.canDeleteHistory], [false, true, false], vaiTro);
+    assert.equal((await fetch(base + '/export?branch=HN')).status, 200, vaiTro);
+    assert.equal((await fetch(base + '/history/export?branch=HN')).status, 200, vaiTro);
+    assert.equal((await fetch(base + '/history?branch=HN')).status, 200, vaiTro);
+    assert.equal((await fetch(base + '?branch=HN', { method: 'POST', headers: json, body: '{}' })).status, 403, vaiTro);
+    assert.equal((await fetch(base + '/5', { method: 'PATCH', headers: json, body: '{}' })).status, 403, vaiTro);
+    assert.equal((await fetch(base + '/5/deduct', { method: 'POST', headers: json, body: '{}' })).status, 403, vaiTro);
+    assert.equal((await fetch(base + '/5/ack', { method: 'POST', headers: json, body: '{}' })).status, 403, vaiTro);
+    assert.equal((await fetch(base + '/5', { method: 'DELETE' })).status, 403, vaiTro);
+    assert.equal((await fetch(base + '/import?branch=HN&mode=add', { method: 'POST' })).status, 403, vaiTro);
+    assert.equal((await fetch(base + '/stock-out?branch=HN', { method: 'POST' })).status, 403, vaiTro);
+    assert.equal((await fetch(base + '/history?branch=HN', { method: 'DELETE' })).status, 403, vaiTro);
+    assert.deepEqual(calls.map(c => c[0]), ['list', 'list', 'historyAll', 'history'], vaiTro);
+  }
+});
+
+test('Khách được ghi đè cấp edit / historyDelete vẫn bị 403 (Khách chỉ có xem + xuất)', async t => {
+  const json = { 'Content-Type': 'application/json' };
+  const { base, calls } = await start(t, { user: { vaiTro: 'Khách', featurePermissions: { 'stockLocationsV2.edit': true, 'stockLocationsV2.historyDelete': true } } });
+  assert.equal((await fetch(base + '?branch=HN', { method: 'POST', headers: json, body: '{}' })).status, 403);
+  assert.equal((await fetch(base + '/5/ack', { method: 'POST', headers: json, body: '{}' })).status, 403);
+  assert.equal((await fetch(base + '/history?branch=HN', { method: 'DELETE' })).status, 403);
+  assert.deepEqual(calls, []);
+});
+
+test('Nhân viên kho ghi đè edit:true nhưng view:false thì không có quyền gì (edit cần view)', async t => {
+  const json = { 'Content-Type': 'application/json' };
+  const { base, calls } = await start(t, { user: { vaiTro: 'Nhân viên kho', featurePermissions: { 'stockLocationsV2.edit': true, 'stockLocationsV2.view': false } } });
+  assert.equal((await fetch(base + '?branch=HN')).status, 403);
+  assert.equal((await fetch(base + '?branch=HN', { method: 'POST', headers: json, body: '{}' })).status, 403);
+  assert.equal((await fetch(base + '/5', { method: 'PATCH', headers: json, body: '{}' })).status, 403);
+  assert.deepEqual(calls, []);
+});
+
+test('Chỉ xem (Quản lý tắt xuất Excel): đọc được, xuất bị 403', async t => {
+  const viewer = { vaiTro: 'Nhân viên kho', featurePermissions: { 'stockLocationsV2.export': false } };
   const { base, calls } = await start(t, { user: viewer });
   const list = await (await fetch(base + '?branch=HN')).json();
   assert.equal(list.canEdit, false);
   assert.equal(list.canExport, false);
-  const json = { 'Content-Type': 'application/json' };
-  assert.equal((await fetch(base + '?branch=HN', { method: 'POST', headers: json, body: '{}' })).status, 403);
-  assert.equal((await fetch(base + '/5', { method: 'PATCH', headers: json, body: '{}' })).status, 403);
-  assert.equal((await fetch(base + '/5/deduct', { method: 'POST', headers: json, body: '{}' })).status, 403);
-  assert.equal((await fetch(base + '/5', { method: 'DELETE' })).status, 403);
-  assert.equal((await fetch(base + '/import?branch=HN&mode=add', { method: 'POST' })).status, 403);
   assert.equal((await fetch(base + '/export?branch=HN')).status, 403);
   assert.equal((await fetch(base + '/history/export?branch=HN')).status, 403);
   assert.deepEqual(calls.map(c => c[0]), ['list']);
@@ -110,6 +154,24 @@ test('Import: nhận file multipart, chặn sai đuôi file, truyền chế đ�
   const none = await fetch(base + '/import?branch=SG&mode=add', { method: 'POST', body: new FormData() });
   assert.equal(none.status, 400);
   assert.equal((await none.json()).code, 'IMPORT_FILE_REQUIRED');
+});
+
+test('Xuất kho: Quản lý nhận file multipart, chặn sai đuôi/thiếu file, truyền cơ sở + phạm vi; vai trò không có quyền sửa bị 403', async t => {
+  const { base, calls } = await start(t, { scope: 'Sài Gòn' });
+  const form = name => { const f = new FormData(); f.append('file', new Blob(['abc']), name); return f; };
+  const ok = await fetch(base + '/stock-out?branch=SG', { method: 'POST', body: form('xuat.xlsx') });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(calls, [['stockOutFile', 'SG', 'xuat.xlsx', 3, ['SG']]]);
+  const bad = await fetch(base + '/stock-out?branch=SG', { method: 'POST', body: form('xuat.pdf') });
+  assert.equal(bad.status, 400);
+  assert.equal((await bad.json()).code, 'IMPORT_BAD_EXTENSION');
+  const none = await fetch(base + '/stock-out?branch=SG', { method: 'POST', body: new FormData() });
+  assert.equal(none.status, 400);
+  assert.equal((await none.json()).code, 'IMPORT_FILE_REQUIRED');
+  assert.equal(calls.length, 1);
+  const viewer = await start(t, { user: { vaiTro: 'Nhân viên kho' } });
+  assert.equal((await fetch(viewer.base + '/stock-out?branch=HN', { method: 'POST', body: form('xuat.xlsx') })).status, 403);
+  assert.deepEqual(viewer.calls, []);
 });
 
 test('Import review: malformed JSON is rejected and edited rows reach the service', async t => {
@@ -187,4 +249,47 @@ test('Quyền: chỉ sửa được Đã sửa khi có edit; chỉ xóa lịch s
   const granted = await start(t, { user: { vaiTro: 'Nhân viên kho', featurePermissions: { 'stockLocationsV2.view': true, 'stockLocationsV2.historyDelete': true } } });
   assert.equal((await fetch(granted.base + '/history?branch=HN', { method: 'DELETE' })).status, 200);
   assert.deepEqual(calls.map(c => c[0]), ['list', 'acknowledge']);
+});
+
+async function readUntil(reader, text) {
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (!buffer.includes(text)) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+  }
+  return buffer;
+}
+
+test('GET /events: mở SSE, chỉ nhận tín hiệu đúng cơ sở, dọn listener khi đóng', async t => {
+  const events = new EventEmitter();
+  const { base } = await start(t, { events });
+  const res = await fetch(base + '/events?branch=HN');
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /text\/event-stream/);
+  assert.equal(res.headers.get('x-accel-buffering'), 'no');
+  const reader = res.body.getReader();
+  await readUntil(reader, ':ok');
+  assert.equal(events.listenerCount(CHANGED), 1);
+  events.emit(CHANGED, { branch: 'SG' });
+  events.emit(CHANGED, { branch: 'HN' });
+  const chunk = await readUntil(reader, 'positions-changed');
+  assert.match(chunk, /event: positions-changed\ndata: \{"branch":"HN"\}\n\n/);
+  assert.ok(!chunk.includes('SG'));
+  await reader.cancel();
+  for (let i = 0; i < 20 && events.listenerCount(CHANGED) > 0; i++) await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(events.listenerCount(CHANGED), 0);
+});
+
+test('GET /events: ngoài phạm vi cơ sở 403, thiếu quyền 403, chưa đăng nhập 401, cơ sở lạ 403', async t => {
+  const events = new EventEmitter();
+  const sg = await start(t, { scope: 'Sài Gòn', events });
+  const forbidden = await fetch(sg.base + '/events?branch=HN');
+  assert.equal(forbidden.status, 403);
+  assert.equal((await forbidden.json()).code, 'BRANCH_FORBIDDEN');
+  assert.equal((await fetch(sg.base + '/events?branch=XX')).status, 403);
+  assert.equal((await fetch((await start(t, { user: { vaiTro: 'Nhân viên kho', featurePermissions: { 'stockLocationsV2.view': false } }, events })).base + '/events?branch=HN')).status, 403);
+  assert.equal((await fetch((await start(t, { user: null, events })).base + '/events?branch=HN')).status, 401);
+  assert.equal(events.listenerCount(CHANGED), 0);
 });

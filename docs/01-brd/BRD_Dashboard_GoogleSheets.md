@@ -15,7 +15,7 @@
 | Tên dự án         | Hệ thống Dashboard nội bộ TOKOSI (KiotViet → Supabase PostgreSQL → Web; Google Sheets bổ trợ) |
 | Phiên bản         | 2.3                                                                 |
 | Ngày tạo          | 27/07/2026                                                          |
-| Ngày cập nhật     | 28/10/2026                                                          |
+| Ngày cập nhật     | 30/10/2026                                                          |
 | Đối tượng sử dụng | Ban lãnh đạo, nhân viên nội bộ công ty                              |
 | Trạng thái        | Nội dung nền rà soát tại HEAD `11751c4` (05/10); bổ sung Sổ quỹ đã kiểm chứng cục bộ 06/10, migration `0033` và deploy production còn chờ. |
 
@@ -62,7 +62,7 @@ Giai đoạn 1 đến hiện tại: Báo cáo tổng hợp (6 tab, gồm Khách 
 - **Kiểm tra đứt hàng** dựa trên dữ liệu đã đồng bộ và dữ liệu Trả NCC do người dùng tự upload (Excel xuất từ KiotViet).
 - **Phân hệ nghỉ phép:** tự gửi trên web từ hồ sơ HR hoạt động hoặc bot nhân viên ngoài repo; người được cấp quyền duyệt theo phòng ban/cơ sở. Web có lịch nghỉ phép.
 - **Vòng đời đơn hàng:** xem mọi đơn đặt hàng KiotViet cùng trạng thái vòng đời từ Google Sheet (HN, SG và luồng đơn Bắc-Nam của Kiot Hà Nội, tính như đơn Hà Nội); lọc, sắp xếp, phân trang ở máy chủ.
-- **Vị trí hàng:** tra cứu vị trí hàng HN/SG từ workbook Google Sheets dùng chung.
+- **Vị trí hàng:** tra cứu và quản lý vị trí hàng HN/SG (VT Hà Nội / VT Sài Gòn) lưu trong hệ thống; module cũ đọc Google Sheets đã gỡ ngày 30/10/2026.
 - **Sổ quỹ:** Quản lý xem số dư tài khoản ngân hàng và Tiền mặt, sổ phiếu thu chi gộp HN/SG, chốt số dư theo sao kê và xuất Excel/HTML. Code đã kiểm chứng cục bộ; cần migration `0033`, đồng bộ danh mục và chốt ban đầu trước khi dùng production. Từ 19/10/2026 trang đọc sổ phiếu qua view cơ sở dữ liệu để tải nhẹ hơn (không đổi nghiệp vụ).
 - **Tài khoản và phân quyền theo tính năng** theo vai trò, Quản lý ghi đè từng tài khoản; ID Telegram do Quản lý quản lý.
 - Kiến trúc mô-đun, dễ mở rộng theo lộ trình dài hạn.
@@ -73,7 +73,7 @@ Giai đoạn 1 đến hiện tại: Báo cáo tổng hợp (6 tab, gồm Khách 
 
 - **Nguồn dữ liệu:**
   - **Supabase PostgreSQL:** toàn bộ dữ liệu KiotViet (nhóm hàng, hàng hóa, hóa đơn + chi tiết + thanh toán, đặt hàng, trả hàng, khách hàng, nhập hàng, phiếu đặt hàng nhập, thu chi), bảng tổng hợp (rollup theo ngày, báo cáo hàng hóa, chi tiết hóa đơn 90 ngày, giá trị tồn kho theo ngày, CN1/CN3/CN7, doanh số tháng đã chốt của Báo cáo kinh doanh), Trả NCC upload, tài khoản `app_users`, nhân sự `hr_employees`, nghỉ phép và liên kết Telegram, trạng thái xử lý công nợ, tài liệu quy định công ty.
-  - **Google Sheets:** Bảng Công nợ (`DEBT_MANAGEMENT_SPREADSHEET_ID`, chỉ đọc); Vòng đời đơn hàng (`ORDER_LIFECYCLE_SPREADSHEET_ID`, đọc `DonHang_HN`/`DonHang_SG`, ghi tab `Lịch sử cập nhật`); Vị trí hàng (`STOCK_LOCATIONS_SPREADSHEET_ID`, chỉ đọc); Báo cáo Marketing (ba workbook `MARKETING_*_SPREADSHEET_ID`, chỉ đọc).
+  - **Google Sheets:** Bảng Công nợ (`DEBT_MANAGEMENT_SPREADSHEET_ID`, chỉ đọc); Vòng đời đơn hàng (`ORDER_LIFECYCLE_SPREADSHEET_ID`, đọc `DonHang_HN`/`DonHang_SG`, ghi tab `Lịch sử cập nhật`); sheet CÂN ĐO (`STOCK_LOCATIONS_SPREADSHEET_ID` — tên biến di sản, hoặc `SHIPPING_MEASURE_SPREADSHEET_ID`, chỉ đọc); Báo cáo Marketing (ba workbook `MARKETING_*_SPREADSHEET_ID`, chỉ đọc).
 - **Báo cáo tổng hợp (6 tab):** Tổng quan (Xu hướng, Kiểm tra đứt hàng), Hàng hóa (Báo cáo hàng hóa, Dự kiến hàng về, Tăng trưởng mã hàng), Hóa đơn (Chi tiết giao dịch), Khách hàng (Báo cáo doanh thu theo khách, Chỉ số tổng quát, Tăng trưởng Sale, Tăng trưởng Khách hàng; trước đây là tab Báo cáo kinh doanh), Quản lý công nợ, Báo cáo Marketing (BC tháng, Check tỷ lệ nhận số, Sao lưu SĐT, Chi phí).
 - **Báo cáo kinh doanh:** thay báo cáo tăng trưởng làm tay trên Google Sheets. Doanh số tháng = hóa đơn hoàn thành trừ hàng khách trả, gộp HN + SG, từ T3/2026; sale = nhóm khách hàng trên KiotViet (khách chưa có nhóm gộp vào "Chưa phân nhóm"); tháng đang chạy quy đổi về 30 ngày để so tăng trưởng với tháng trước, kèm trung bình 4 tháng; các tháng đã qua được chốt cứng mỗi ngày mùng 1, Quản lý có thể tính lại và đổi team của từng sale bằng dropdown ngay trên bảng Tăng trưởng Sale. Từ 19/10/2026 doanh số tháng đang chạy được tính sẵn bằng job nền sau mỗi lượt đồng bộ KiotViet (tối đa 10 phút/lần), nên số liệu trễ khoảng 7–14 phút so với KiotViet; dữ liệu quá 30 phút thì báo cáo tính trực tiếp như trước. Không đổi quy tắc tính.
 - **Màn hình Quản lý công nợ:** kết hợp Bảng Công nợ, đối chiếu CN1/CN3/CN7 và trạng thái xử lý lưu trong PostgreSQL.
@@ -116,7 +116,7 @@ Giai đoạn 1 đến hiện tại: Báo cáo tổng hợp (6 tab, gồm Khách 
 ## 5.1. Nguồn dữ liệu & kết nối
 
 - Dữ liệu KiotViet đọc từ **Supabase PostgreSQL**; thông tin kết nối (`SUPABASE_DB_URL`), Service Account Google (`GOOGLE_SERVICE_ACCOUNT_JSON`) và các ID workbook cấu hình qua biến môi trường, không hard-code.
-- Google Sheets dùng cho Bảng Công nợ (Viewer), Vòng đời đơn hàng (Editor — để ghi tab Lịch sử), Vị trí hàng và ba workbook Marketing (Viewer). Thiếu ID workbook chỉ tắt tính năng tương ứng (trả 503), không làm sập dashboard.
+- Google Sheets dùng cho Bảng Công nợ (Viewer), Vòng đời đơn hàng (Editor — để ghi tab Lịch sử), workbook CÂN ĐO và ba workbook Marketing (Viewer). Thiếu ID workbook chỉ tắt tính năng tương ứng (trả 503), không làm sập dashboard.
 - Một bảng/nguồn lỗi tạm thời chỉ làm rỗng hoặc cảnh báo phần tương ứng, các phần khác vẫn hiển thị.
 
 ## 5.2. KPI tổng quan
@@ -195,9 +195,9 @@ Chỉ hàng **Đang kinh doanh** được tính; không còn KPI nhà cung cấp
 
 - **Chỉnh sửa khi xem trước import VT (28/10/2026):** người có quyền sửa có thể thêm/sửa/xóa dữ liệu nhập trực tiếp trước khi xác nhận, gồm cả dòng lỗi, bỏ qua hoặc không đổi. Dòng trùng mã + vị trí được sửa trên từng dữ liệu nguồn để số lượng không bị cộng lại hai lần; khi Thay toàn bộ có thể **Giữ dòng** mà hệ thống dự kiến xóa. Cảnh báo/lỗi được đưa lên đầu; tìm mã/tên/vị trí/ghi chú không dấu, kết hợp bộ lọc cảnh báo và loại thao tác, xem toàn bộ danh sách qua phân trang 100 dòng. Hệ thống kiểm tra lại sau thay đổi, khóa xác nhận khi còn lỗi hoặc chưa kiểm tra thành công; lỗi kết nối giữ bản sửa để thử lại. Chỉ xác nhận mới ghi dữ liệu theo quyền và cơ sở hiện có; không bổ sung migration.
 
-- Mọi tài khoản nội bộ (không phải Khách) tra cứu vị trí hàng Hà Nội/Sài Gòn từ workbook Google Sheets dùng chung. Nhóm riêng trên sidebar có hai tab theo cơ sở đang chọn; bảng 6 cột (Mã hàng, Tên hàng, Tổng SL, Ghi chú hàng hóa, Ngày về, Vị trí), tìm mã/tên/vị trí không dấu, 100 dòng/trang, không xuất file.
-- Giữ từng dòng nguồn kể cả mã trùng, SL = 0 hoặc vị trí trống. Dữ liệu đọc mới mỗi lần mở tab/tải lại. Khách bị chặn hoàn toàn, kể cả khi được ghi đè cấp quyền. Xem [thiết lập/nguồn](../stock-locations-setup.md).
-- **VT Hà Nội / VT Sài Gòn (27/10/2026, chạy song song hai tab cũ):** cơ sở dữ liệu Vị trí hàng mới trong hệ thống, dữ liệu đầu sao chép một lần từ Vị trí HN/SG rồi ngắt khỏi Google Sheets. Bảng gồm mã hàng, tên hàng (tự tra theo mã từ KiotViet), số lượng kho (tự tính từ ghi chú số thùng), số lượng KiotViet (tồn thực), ghi chú số thùng (tự chuẩn hóa khi lưu; trừ số lượng thì ghi chú tự cập nhật), ngày về (text, có thể trống), vị trí (mỗi dòng một vị trí của một mã), người cập nhật và thời gian cập nhật cuối. Giao diện: tiêu đề/tab/thanh công cụ có icon, cột "Cập nhật" gộp (giờ + người), vị trí dạng nhãn, chọn 50/100/200 dòng mỗi trang, lọc Cảnh báo / Hợp lệ / Tất cả. Bấm vào một dòng để mở hộp chi tiết (SL thùng, SL chiếc, SL KiotViet, vị trí, ngày về, lịch sử của dòng đó, nút Lưu và Xóa). Quản lý sửa trực tiếp trong hộp đó, thêm/xóa dòng, import file 4 cột (mã, ghi chú, ngày về, vị trí) theo hai chế độ (thay toàn bộ / bổ sung thêm), dòng hết hàng tự xóa, mọi thay đổi có lịch sử; người có quyền xuất Excel tải được bảng của cơ sở đang xem và cả Lịch sử cập nhật (theo bộ lọc hành động/từ khóa). Trước mắt chỉ Quản lý và người được cấp quyền xem/sửa/xuất; chưa deploy. Từ 28/10/2026: dòng có cảnh báo định dạng có thể đánh dấu **Đã sửa** (giữ mãi tới khi bỏ tay), lượt trừ tồn theo đơn ghi mã đơn làm người sửa, và người được cấp quyền riêng có thể xóa lịch sử theo khoảng ngày (để lại dấu vết); chưa migrate/deploy.
+- **Đã gỡ 30/10/2026:** hai tab cũ "Vị trí HN" / "Vị trí SG" (đọc Google Sheets dùng chung, 6 cột, không xuất file, Khách bị chặn) và tài liệu thiết lập `stock-locations-setup.md`. Link/bookmark cũ `/stock-locations` tự chuyển sang trang VT mới; từ nay Vị trí hàng chỉ còn VT Hà Nội / VT Sài Gòn. Bảng dữ liệu cũ trong cơ sở dữ liệu giữ lại chưa xóa, chờ người dùng quyết.
+- **Phân quyền (30/10/2026):** xem VT Hà Nội/Sài Gòn và xuất Excel mặc định mở cho **mọi vai trò kể cả Khách**; Quản lý vẫn tắt được từng tài khoản (tắt xem thì xuất/sửa/xóa lịch sử mất theo). Sửa/thêm/xóa/import và xóa lịch sử giữ chỉ Quản lý (hoặc người được cấp), Khách bị cấm. Khách xem được toàn bộ cột (SL KiotViet, giữ chỗ, ghi chú, lịch sử chỉnh sửa kèm tên người sửa) theo phạm vi cơ sở của mình — đây là hành vi hiện tại.
+- **VT Hà Nội / VT Sài Gòn (27/10/2026; từ 30/10/2026 là module Vị trí hàng duy nhất):** cơ sở dữ liệu Vị trí hàng trong hệ thống, dữ liệu đầu sao chép một lần từ Vị trí HN/SG rồi ngắt khỏi Google Sheets. Bảng gồm mã hàng, tên hàng (tự tra theo mã từ KiotViet), số lượng kho (tự tính từ ghi chú số thùng), số lượng KiotViet (tồn thực), ghi chú số thùng (tự chuẩn hóa khi lưu; trừ số lượng thì ghi chú tự cập nhật), ngày về (text, có thể trống), vị trí (mỗi dòng một vị trí của một mã), người cập nhật và thời gian cập nhật cuối. Giao diện: tiêu đề/tab/thanh công cụ có icon, cột "Cập nhật" gộp (giờ + người), vị trí dạng nhãn, chọn 50/100/200 dòng mỗi trang, lọc Cảnh báo / Hợp lệ / Tất cả. Bấm vào một dòng để mở hộp chi tiết (SL thùng, SL chiếc, SL KiotViet, vị trí, ngày về, lịch sử của dòng đó, nút Lưu và Xóa). Quản lý sửa trực tiếp trong hộp đó, thêm/xóa dòng, import file 4 cột (mã, ghi chú, ngày về, vị trí) theo hai chế độ (thay toàn bộ / bổ sung thêm), dòng hết hàng tự xóa, mọi thay đổi có lịch sử; người có quyền xuất Excel tải được bảng của cơ sở đang xem và cả Lịch sử cập nhật (theo bộ lọc hành động/từ khóa). Quyền xem/xuất mặc định mọi vai trò, sửa chỉ Quản lý và người được cấp (xem mục phân quyền phía trên); chưa deploy. Từ 28/10/2026: dòng có cảnh báo định dạng có thể đánh dấu **Đã sửa** (giữ mãi tới khi bỏ tay), lượt trừ tồn theo đơn ghi mã đơn làm người sửa, và người được cấp quyền riêng có thể xóa lịch sử theo khoảng ngày (để lại dấu vết); chưa migrate/deploy.
 
 ## 5.10. Vòng đời đơn hàng
 
@@ -232,7 +232,7 @@ Từ 19/10/2026 (không đổi nghiệp vụ, chỉ đổi độ tươi/hiệu n
 ## 7.1. Giả định
 
 - Supabase PostgreSQL lưu toàn bộ dữ liệu nghiệp vụ với schema trong `server/db/SCHEMA.md`, đã thiết kế đến migration `0044`.
-- Service Account Google được cấp Viewer trên Bảng Công nợ, Vị trí hàng và ba workbook Marketing, Editor trên workbook Vòng đời đơn hàng.
+- Service Account Google được cấp Viewer trên workbook CÂN ĐO và ba workbook Marketing, Editor trên workbook Vòng đời đơn hàng.
 - Scheduler Node.js hoạt động liên tục (một instance) để dữ liệu được cập nhật gần thời gian thực.
 - Bot xin nghỉ của nhân viên vận hành ngoài repo và ghi trực tiếp vào Postgres.
 - Số người dùng đồng thời khoảng 10–50 (nội bộ).
@@ -240,7 +240,7 @@ Từ 19/10/2026 (không đổi nghiệp vụ, chỉ đổi độ tươi/hiệu n
 ## 7.2. Ràng buộc
 
 - Dữ liệu KiotViet phụ thuộc tốc độ polling và hạn mức KiotViet API; webhook không phải nguồn cập nhật.
-- Bảng Công nợ, Vòng đời đơn hàng, Vị trí hàng, Báo cáo Marketing phụ thuộc cấu trúc header của Google Sheets; đổi tên tab/cột có thể làm tính năng báo lỗi cấu hình.
+- Bảng Công nợ, Vòng đời đơn hàng, CÂN ĐO, Báo cáo Marketing phụ thuộc cấu trúc header của Google Sheets; đổi tên tab/cột có thể làm tính năng báo lỗi cấu hình.
 - Job nặng chạy một lần/đêm (Báo cáo hàng hóa, chi tiết hóa đơn 90 ngày) nên số liệu hôm nay chỉ xuất hiện ở đêm sau; giao diện ghi rõ mốc.
 - Hiệu năng: cache hai tầng, phân trang, tải theo tab; hạn chế IO Postgres (job chỉ ghi dòng thay đổi).
 
@@ -257,7 +257,7 @@ Từ 19/10/2026 (không đổi nghiệp vụ, chỉ đổi độ tươi/hiệu n
 - Tài khoản chọn `Cả hai` thấy KPI/biểu đồ cộng dồn hai cơ sở, giao dịch trùng mã giữ hai dòng kèm nhãn cơ sở, không có giá trị `Cả hai` nào được ghi vào dữ liệu nghiệp vụ.
 - Đổi trạng thái công nợ ở `Cả hai` cập nhật cả hai cơ sở hoặc không đổi gì khi có lỗi.
 - Vòng đời đơn hàng hiển thị đủ đơn KiotViet, lọc/phân trang ở máy chủ, quyền phụ gắn đúng quyền gốc.
-- Vị trí hàng đọc đúng 6 cột của hai sheet, Khách bị chặn.
+- Vị trí hàng (VT Hà Nội/Sài Gòn): mọi vai trò kể cả Khách xem và xuất Excel được theo phạm vi cơ sở; chỉ Quản lý (hoặc người được cấp) sửa/import/xóa lịch sử; link cũ `/stock-locations` chuyển sang `/vt-positions/`.
 - Tự đăng ký trả `REGISTRATION_DISABLED` khi chưa bật; ID Telegram chỉ Quản lý sửa được và chống trùng.
 - Bot quản lý giao đơn đúng cơ sở, loại tài khoản không đủ điều kiện và bản ghi tự ý nghỉ; Phê duyệt/Từ chối đồng bộ với web và mọi bản tin; nút cũ/đồng thời không ghi đè; phiên lý do chỉ nhận reply đúng tin, giới hạn 500 ký tự, hết hạn 15 phút; webhook không secret hợp lệ bị từ chối.
 - Bộ kiểm thử tự động vượt qua: **2.207 test đạt (2.207/2.214, 3 bỏ qua)** ghi nhận 12/10/2026; 4 test lỗi cũ ở xuất Excel tồn kho không thuộc phạm vi.
@@ -491,6 +491,8 @@ Rà soát bản trước khi sửa ngày 2026-10-27 ghi lỗi xử lý vị trí
 
 **Sửa chỉ định khi đang nhặt, phiếu theo kho, Đã xử lý lệch SL (27/10/2026, khuya).** Không còn nút Chỉ định lại: đơn Đang nhặt được sửa vị trí/số lượng ngay trong hộp chỉ định rồi lưu bằng nút “Cập nhật chỉ định & In phiếu” (chưa lưu thì chưa cho xác nhận nhặt hoặc in đơn, tránh xác nhận nhầm bản cũ); Đã hủy chỉ định mới ngay; Đã bốc chỉ xem. Các vị trí của mỗi mã hàng được xếp theo thứ tự hệ thống ưu tiên bốc (vị trí gợi ý trước) thay vì theo tên kho. Phiếu in sắp dòng theo vị trí kho đầu tiên (theo chữ cái đầu cột Vị trí) để người kho đi lấy theo tuyến, cột TT vẫn đánh 1, 2, 3. Với đơn Lệch SL bốc, người có quyền chỉ định mở chi tiết đơn và bấm **Đã xử lý** khi đã xem xét mà không đổi số lượng: cảnh báo chuyển sang “Đã xử lý” màu vàng, và tự hiện lại nếu Kiot sửa tiếp làm số lệch thay đổi. Cần áp thêm migration `0098`.
 
+**Sửa SL cần nhặt và cảnh báo chỉ định (30/10/2026):** người có quyền bốc có thể sửa tay số lượng cần nhặt khi chỉ định (vd kho chỉ đủ 5 thùng x 100 nên nhặt 500 thay vì 600); phiếu in ghi số đã sửa và giữ thứ tự dòng như đơn Kiot. Hệ thống cảnh báo **Lệch Kiot** (số đã sửa ≠ số trên đơn Kiot, hết khi Kiot sửa khớp) và **Lệch SL trong đơn** (số chọn theo thùng ≠ số cần nhặt), có trong bộ lọc cảnh báo của Vòng đời đơn hàng; thay cho cảnh báo “Lệch SL bốc” và nút “Đã xử lý” cũ.
+
 **Có thể bốc và ST đầy đủ khi chỉ định (28/10/2026).** Hộp chỉ định cho người bốc thấy thêm số **Có thể bốc** (tồn còn lại sau khi trừ số đang chọn) và cột ST ghi đầy đủ quy cách thùng đã gộp từ mọi vị trí, ví dụ `5T x 100 + 2T x 50 - 30`, để biết ngay phải lấy bao nhiêu thùng loại nào và phần lẻ trừ đi. Phiếu in chưa đổi.
 
 Trạng thái: đang làm trên nhánh `feat/lifecycle-pick-assign`, **chưa merge, chưa migrate (`0096`, `0097`, `0098`), chưa deploy**; phần trạng thái bốc và đợt khuya chưa commit.
@@ -507,3 +509,7 @@ Kho được chọn thêm Phiếu xác nhận giao hàng theo mẫu bảy cột 
 Cập nhật gần nhất: 28/10/2026 (chỉnh sửa khi xem trước import VT).
 
 28/10/2026 — Phiếu in: đồng bộ chiều cao và cỡ chữ mọi hàng dữ liệu trong bảng, tiêu đề chỉnh riêng. Ctrl+L/R/E căn trái/phải/giữa và Ctrl+B/I đậm/nghiêng cho các cột bôi chọn ở mọi hàng cùng nhóm; ngoài bảng định dạng vùng chữ/đoạn chọn. Form chung JSONB thêm `groups.body/header` (height/size/columns: align/bold/italic), `blocks` (căn đoạn); `fonts` hỗ trợ đậm/nghiêng vùng chữ. Cấu hình áp dụng cả phiếu số dòng khác, qua tài khoản/máy/phiên; giữ kiểm tra version, chỉ lưu khi báo thành công. Không migration/API mới; nội dung chỉ đọc.
+
+- Chỉ định vị trí: người có quyền chỉ định kéo-thả (nhấn giữ) để đổi thứ tự dòng hàng trong hộp và trên phiếu in (chỉ trong lần mở hộp, không lưu); xóa dòng hàng khỏi đơn và sửa số lượng cần nhặt đều **ghi ngược lên đơn KiotViet** ở mọi trạng thái đơn, có hộp xác nhận, đối chiếu sau khi ghi, tự khôi phục nếu Kiot ghi lệch và nhật ký người thao tác. Không cho xóa dòng hàng cuối cùng của đơn.
+
+Cập nhật gần nhất: 30/10/2026 (Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; trước đó: gỡ module Vị trí hàng cũ).

@@ -1,4 +1,4 @@
-/* Trang VT Hà Nội / VT Sài Gòn: khung bảng dùng lại /stock-locations/stock-locations.css, ở đây chỉ phần riêng (bảng bấm được, hộp thoại). */
+/* Trang VT Hà Nội / VT Sài Gòn: khung bảng nằm ở vt-base.css (tiền tố .locations-*), ở đây chỉ phần riêng (bảng bấm được, hộp thoại). */
 /* ---- Đầu trang + tab ---- */
 .vt-page-head{display:flex;align-items:center;gap:14px;margin:0 0 18px}
 .vt-page-icon{display:inline-flex;align-items:center;justify-content:center;flex:none;width:44px;height:44px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--panel);color:var(--blue);box-shadow:var(--card-shadow)}
@@ -58,9 +58,21 @@
 .vt-badge.is-ack{border-color:color-mix(in srgb,var(--green,#2e9e5b) 60%,transparent);background:color-mix(in srgb,var(--green,#2e9e5b) 12%,transparent);color:var(--green,#2e9e5b)}
 .vt-badge-icon{width:12px;height:12px;flex:none}
 .vt-table tbody tr.vt-row{cursor:pointer}
+/* Ô nhập trực tiếp: trông y như chữ thường (không nền, viền, bóng, đổi màu); bấm vào chỉ hiện con trỏ nhập. */
+.vt-table[data-editable="true"] td[data-field="notes"],.vt-table[data-editable="true"] td[data-field="arrivalDate"],.vt-table[data-editable="true"] td[data-field="location"]{cursor:text}
+.vt-table input.vt-inline{display:block;width:100%;min-width:0;margin:0;padding:0;border:0;border-radius:0;outline:0;box-shadow:none;background:transparent;color:inherit;font:inherit;letter-spacing:inherit;line-height:inherit;height:auto;appearance:none;-webkit-appearance:none}
+.vt-table .vt-pill input.vt-inline{display:inline-block;width:auto;min-width:3ch;field-sizing:content}
 .vt-table tbody tr.vt-row:hover td{background:color-mix(in srgb,var(--blue) 9%,transparent)}
 .vt-table tbody tr.vt-row:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
 .vt-table tbody tr.vt-row:focus-visible td{background:color-mix(in srgb,var(--blue) 9%,transparent)}
+/* Ô vừa đổi do người khác sửa: nháy nền xanh nhạt rồi tắt. */
+.vt-table td.vt-cell-flash{animation:vt-cell-flash 1.6s ease-out}
+@keyframes vt-cell-flash{from{background:color-mix(in srgb,var(--blue) 30%,transparent)}to{background:transparent}}
+@media (prefers-reduced-motion:reduce){.vt-table td.vt-cell-flash{animation:none}}
+/* Hộp chi tiết đang mở mà dòng bị người khác sửa/xóa. */
+.vt-detail-stale{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:0 0 10px;padding:8px 12px;border:1px solid color-mix(in srgb,var(--blue) 55%,transparent);border-radius:var(--radius-sm);background:color-mix(in srgb,var(--blue) 10%,transparent);font-size:13px}
+.vt-detail-stale[hidden]{display:none}
+.vt-detail-stale .vt-row-button{margin-right:0}
 /* Phân trang: đếm dòng bên trái, chọn số dòng + nút trang bên phải. */
 #vtPager{flex-direction:row;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px 16px}
 .vt-page-size select{min-height:40px;padding:0 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel);color:var(--text);font:13px var(--font-body);cursor:pointer}
@@ -86,6 +98,8 @@
 .vt-dialog button:disabled{opacity:.45;cursor:not-allowed}
 /* Modal Import: thanh bước, khung kéo thả, 2 thẻ chế độ, bảng xem trước các dòng đã chuẩn hóa. */
 .vt-import{width:min(1240px,calc(100vw - 32px))}
+.vt-import>.dp-body{gap:24px}
+.vt-import .vt-import-review{gap:24px}
 .vt-steps{display:flex;align-items:center;gap:0;margin:0;padding:0;list-style:none}
 .vt-steps li{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:14px;font-weight:600;white-space:nowrap}
 .vt-steps li+li::before{content:"";display:block;width:clamp(24px,8vw,110px);height:1px;margin:0 14px;background:var(--border)}
@@ -168,11 +182,27 @@
 .vt-kind.is-add{border-color:color-mix(in srgb,var(--green) 55%,var(--border));background:color-mix(in srgb,var(--green) 14%,transparent);color:var(--green)}
 .vt-kind.is-update{border-color:color-mix(in srgb,var(--blue) 55%,var(--border));background:color-mix(in srgb,var(--blue) 14%,transparent);color:var(--blue)}
 .vt-kind.is-delete{border-color:color-mix(in srgb,var(--red) 55%,var(--border));background:color-mix(in srgb,var(--red) 14%,transparent);color:var(--red)}
-.vt-import-counts{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:0;padding:0;list-style:none}
-.vt-import-counts li{padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel-2);font-size:12.5px}
-.vt-import-counts b{display:block;font:600 16px var(--font-data);color:var(--text)}
+.vt-import-counts{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin:0;padding:0;list-style:none}
+.vt-import-counts li{padding:16px;border:1px solid var(--border);border-radius:12px;background:var(--panel-2);color:var(--muted);font-size:12.5px;line-height:1.5}
+.vt-import-counts b{display:block;margin-bottom:4px;font:700 24px var(--font-data);font-variant-numeric:tabular-nums;color:var(--muted)}
+.vt-import-counts li[data-count="added"] b{color:var(--green)}
+.vt-import-counts li[data-count="updated"] b{color:var(--blue)}
+.vt-import-counts li[data-count="deleted"] b{color:var(--amber)}
+.vt-import-counts li[data-count="skippedEmpty"] b{color:var(--purple)}
 .vt-import-counts li[data-count="errors"] b{color:var(--red)}
-.vt-import-errors{margin:10px 0 0;padding-left:20px;color:var(--red);font-size:12.5px;max-height:200px;overflow:auto}
+@media(max-width:900px){.vt-import-counts{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:480px){.vt-import-counts{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.vt-import-counts li{padding:12px}.vt-import-counts b{font-size:20px}}
+/* Hộp Xuất kho: dùng lại khung Import, 4 ô kết quả, khối cảnh báo trừ ngay. */
+.vt-stockout{width:min(980px,calc(100vw - 32px))}
+.vt-stockout .vt-import-counts{grid-template-columns:repeat(4,minmax(0,1fr))}
+.vt-stockout .vt-import-counts li[data-count="applied"] b{color:var(--green)}
+.vt-stockout .vt-import-counts li[data-count="skipped"] b{color:var(--red)}
+.vt-stockout .vt-import-counts li[data-count="quantity"] b{color:var(--blue)}
+.vt-stockout-warn{margin:0;font-size:13px;line-height:1.5}
+.vt-stockout-warn svg{flex:none;width:16px;height:16px}
+.vt-stockout .vt-import-table .vt-stockout-reason{min-width:220px;white-space:normal;color:var(--red);font-size:12.5px}
+.vt-stockout .vt-import-table .vt-stockout-notes{font-family:var(--font-data);white-space:nowrap}
+@media(max-width:600px){.vt-stockout .vt-import-counts{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.vt-stockout .vt-import-counts li{padding:12px}.vt-stockout .vt-import-counts b{font-size:20px}}
 .vt-history-filters{display:flex;flex-wrap:wrap;gap:8px}
 .vt-history-filters input,.vt-history-filters select{min-height:36px;padding:0 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel-2);color:var(--text);font:13px var(--font-body)}
 .vt-history-filters input{flex:1 1 240px}

@@ -661,6 +661,7 @@ function debtManagementRows(debtManagement, context, aggregate = false) {
     if (context.debtTeam && (customer.saleTeam || 'Chưa có team') !== context.debtTeam) return false;
     if (sale && customer.sale !== sale) return false;
     if (schedule && customer.paymentSchedule !== schedule) return false;
+    if (context.debtStatus && customer.workflowStatus !== context.debtStatus) return false;
     return true;
   });
   const retained = searchRawItems(candidates, context.debtSearch);

@@ -2,7 +2,7 @@
 
 // Cot "Trang thai boc" tren bang Vong doi don hang THAT (public/shipment/lifecycle/index.html), chay trong JSDOM voi fetch gia:
 // chi nguoi co quyen shipment.pick thay cot, Dang boc doi duoc sang Da boc / Da huy bang dropdown (POST /api/shipment/pick/status),
-// va canh bao LECH SL (to do dong + nhan o cot Canh bao).
+// va canh bao chi dinh Lech Kiot / Lech SL trong don (to do dong + nhan o cot Canh bao, nam trong bo loc canh bao).
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -79,6 +79,8 @@ test('người KHÔNG có quyền chỉ định: không có cột Trạng thái 
   assert.equal(headers.includes('Trạng thái bốc'), false);
   assert.equal(page.document.querySelector('[data-col="pickStatus"]'), null);
   assert.equal(page.document.getElementById('bulkPickWrap').hidden, true);
+  assert.equal(page.document.querySelector('#bulkWarningFilter option[value="PICK_KIOT_DIFF"]'), null, 'không thấy lựa chọn lọc Lệch Kiot');
+  assert.equal(page.document.querySelector('#bulkWarningFilter option[value="PICK_ORDER_DIFF"]'), null);
   page.dom.window.close();
 });
 
@@ -181,43 +183,55 @@ test('lỗi từ máy chủ (409): dropdown trả về Đang bốc, báo lỗi v
   [page, offline].forEach(p => p.dom.window.close());
 });
 
-test('cảnh báo lệch SL: dòng tô đỏ + nhãn "Lệch SL bốc" có chi tiết từng mã; tự hết khi danh sách mới không còn lệch; đơn không lệch không tô', async () => {
-  const mismatch = [{ productCode: 'MCRY301', picked: 400, ordered: 395 }];
+test('cảnh báo chỉ định: Lệch Kiot / Lệch SL trong đơn tô đỏ dòng, nhãn có giải thích; tự hết khi danh sách mới không còn; đơn không lệch không tô; ô lọc có 2 lựa chọn', async () => {
   const page = await renderPage({ orders: [
-    orderRow('DH1', { pickStatus: 'picking', pickMismatch: mismatch }), orderRow('DH2', { pickStatus: 'confirmed' })
+    orderRow('DH1', { pickStatus: 'picking', warning: true, warnings: ['PICK_KIOT_DIFF'] }),
+    orderRow('DH2', { pickStatus: 'confirmed' }),
+    orderRow('DH3', { pickStatus: 'picking', warning: true, warnings: ['PICK_KIOT_DIFF', 'PICK_ORDER_DIFF'] })
   ] });
-  let rows = rowsOf(page.document);
   const byCode = code => rowsOf(page.document).find(row => row.cells[0].textContent === code);
+  const labels = code => [...byCode(code).querySelectorAll('[data-col="warning"] .lc-warning-badge')].map(node => node.textContent);
   assert.equal(byCode('DH1').classList.contains('lc-row-mismatch'), true);
   assert.equal(byCode('DH2').classList.contains('lc-row-mismatch'), false);
-  const badge = byCode('DH1').querySelector('[data-col="warning"] .lc-pick-mismatch');
-  assert.equal(badge.textContent, 'Lệch SL bốc');
-  assert.match(badge.title, /MCRY301: bốc 400 \/ đặt 395/u);
-  assert.equal(byCode('DH2').querySelector('.lc-pick-mismatch'), null);
+  assert.deepEqual(labels('DH1'), ['Lệch Kiot']);
+  assert.deepEqual(labels('DH3'), ['Lệch Kiot', 'Lệch SL trong đơn']);
+  assert.match(byCode('DH1').querySelector('.lc-warning-badge').title, /Kiot/u);
+  assert.deepEqual(labels('DH2'), []);
+  const options = [...page.document.querySelectorAll('#bulkWarningFilter option')].map(option => [option.value, option.textContent]);
+  assert.deepEqual(options.slice(-2), [['PICK_KIOT_DIFF', 'Lệch Kiot'], ['PICK_ORDER_DIFF', 'Lệch SL trong đơn']]);
 
-  // Kiot sửa đơn khớp lại -> lần làm mới sau không còn pickMismatch -> hết đỏ.
-  page.source.orders = [orderRow('DH1', { pickStatus: 'picking' }), orderRow('DH2', { pickStatus: 'confirmed' })];
+  // Chọn lọc -> gửi warning lên máy chủ.
+  const filter = page.document.getElementById('bulkWarningFilter');
+  filter.value = 'PICK_ORDER_DIFF';
+  filter.dispatchEvent(new page.window.Event('change', { bubbles: true }));
+  await settle();
+  assert.match(page.calls.filter(c => isListUrl(c.url)).at(-1).url, /warning=PICK_ORDER_DIFF/u);
+  filter.value = '';
+  filter.dispatchEvent(new page.window.Event('change', { bubbles: true }));
+  await settle();
+
+  // Kiot sửa đơn / chỉ định lại khớp -> lần làm mới sau không còn mã -> hết đỏ.
+  page.source.orders = [orderRow('DH1', { pickStatus: 'picking' }), orderRow('DH2', { pickStatus: 'confirmed' }), orderRow('DH3', { pickStatus: 'picking' })];
   page.window.eval('loadBulkOrders(true)');
   await settle();
   assert.equal(byCode('DH1').classList.contains('lc-row-mismatch'), false);
-  assert.equal(byCode('DH1').querySelector('.lc-pick-mismatch'), null);
-  rows = rowsOf(page.document);
-  assert.equal(rows.length, 2);
+  assert.deepEqual(labels('DH1'), []);
+  assert.equal(rowsOf(page.document).length, 3);
   page.dom.window.close();
 });
 
-test('đổi Đang bốc → Đã hủy thì hết cảnh báo lệch SL ngay trên dòng', async () => {
-  const page = await renderPage({ orders: [orderRow('DH1', { pickStatus: 'picking', pickMismatch: [{ productCode: 'A1', picked: 10, ordered: 9 }] })] });
+test('đổi Đang bốc → Đã hủy thì hết cảnh báo chỉ định ngay trên dòng (cảnh báo khác giữ nguyên)', async () => {
+  const page = await renderPage({ orders: [orderRow('DH1', { pickStatus: 'picking', warning: true, warnings: ['NOT_SIGNED_6H', 'PICK_KIOT_DIFF'] })] });
   const row = () => rowsOf(page.document)[0];
   assert.equal(row().classList.contains('lc-row-mismatch'), true);
   await choose(page, pickCell(row()).querySelector('select'), 'cancelled');
   assert.equal(row().classList.contains('lc-row-mismatch'), false);
-  assert.equal(row().querySelector('.lc-pick-mismatch'), null);
+  assert.deepEqual([...row().querySelectorAll('[data-col="warning"] .lc-warning-badge')].map(node => node.textContent), ['Chưa nhận đơn quá 6 giờ']);
   page.dom.window.close();
 });
 
-test('đơn Đã bốc vẫn cảnh báo lệch SL (không có dropdown để đổi trạng thái)', async () => {
-  const page = await renderPage({ orders: [orderRow('DH3', { pickStatus: 'confirmed', pickMismatch: [{ productCode: 'A1', picked: 10, ordered: 12 }] })] });
+test('đơn Đã bốc vẫn cảnh báo chỉ định (không có dropdown để đổi trạng thái)', async () => {
+  const page = await renderPage({ orders: [orderRow('DH3', { pickStatus: 'confirmed', warning: true, warnings: ['PICK_ORDER_DIFF'] })] });
   const row = rowsOf(page.document)[0];
   assert.equal(row.classList.contains('lc-row-mismatch'), true);
   assert.equal(row.querySelector('select.lc-pick-state'), null);

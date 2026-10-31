@@ -1,13 +1,14 @@
 # MEMORY: BỘ NHỚ DÀI HẠN DỰ ÁN TOKOSI DASHBOARD
 
 > **Thời hạn giá trị:** Ít nhất 3 tháng (Q4/2026 – Q1/2027).  
-> **Cập nhật gần nhất:** 24/10/2026.  
+> **Cập nhật gần nhất:** 30/10/2026.  
 > **Quy tắc:** Chỉ lưu trữ các nguyên tắc cốt lõi, kiến trúc bất biến, quy ước chuẩn hóa và bài học kinh nghiệm dài hạn. Không ghi deadline ngắn hạn hay task vụn vặt vào file này.
 >
 > **Nguyên tắc tiên quyết:** với chức năng chưa quen thuộc, đừng viết từ con số 0 — tìm các dự án mã nguồn mở trên GitHub để so sánh ý tưởng trước khi bắt tay làm (xem mục 0 của [CLAUDE.md](CLAUDE.md)).
 
 ---
 
+- **Vị trí hàng chỉ còn VT Hà Nội / VT Sài Gòn (30/10/2026):** nguồn sự thật là bảng Postgres `stock_positions` (module `stockPositions/`, trang `/vt-positions/`, quyền `stockLocationsV2.*`); module cũ đọc Google Sheets (`stockLocations/`, `/api/stock-locations`, khóa `stockLocations.view`, nguồn đồng bộ `stock_locations_hn/sg`) đã gỡ — ĐỪNG dựng lại. Link `/stock-locations*` chuyển 302 sang `/vt-positions/`. `stockLocationsV2.view` + `.export` mở cho mọi vai trò kể cả Khách (`GUEST_ALLOWED_KEYS`), `.edit` + `.historyDelete` chỉ Quản lý. Biến `STOCK_LOCATIONS_SPREADSHEET_ID` là tên di sản của workbook CÂN ĐO; bảng `stock_location_lines` còn trong DB nhưng không còn job ghi (chưa DROP, chờ người dùng duyệt).
 - **Tên khách/hàng trong báo cáo (24/10/2026):** báo cáo dùng TÊN HIỆN TẠI (`customers.name`, `products.name` theo cơ sở + id), không dùng tên ghi trên chứng từ (`raw->>'customerName'`/`'productName'`); khách trong `product_report_customers` gộp theo tên chuẩn hóa. Đổi tên trên KiotViet chỉ cần chạy lại job tính sẵn (`customerInvoiceLinesRefresh`, `productReportRefresh`), không đồng bộ lại hóa đơn. Bảng tháng đã chốt `business_monthly_*` giữ tên lúc chốt.
 - **Khách hoạt động trong Công nợ (15/10/2026):** danh sách/KPI/điểm/phạt/xuất file chỉ dùng khách hiện còn hoạt động. KiotViet retail không trả cờ hoạt động trong các payload khách đã kiểm tra và bỏ qua query `isActive`; đồng bộ chuẩn hóa `customers.raw.isActive` từ cờ rõ ràng nếu có, danh sách hiện hành và `removedIds`. Đối soát đầy đủ lần đầu/mỗi ngày, không đánh dấu vắng mặt khi thiếu trang/tổng thay đổi/trùng ID/lỗi giữa chừng; không xóa dữ liệu nguồn hoặc audit. Lọc hoạt động trước chọn ID mới nhất của cơ sở+mã. Kết quả thưởng tháng đã chốt bất biến.
 
@@ -27,7 +28,7 @@
   - **Frontend:** Vanilla HTML5, CSS3 (Design token, CSS variables, Dark/Light theme, responsive), Vanilla JavaScript (không dùng Tailwind, React, Vue).
   - **Dữ liệu nguồn:**
     - KiotViet API (bán hàng, kho, khách hàng, hóa đơn, thu chi) đồng bộ qua Node.js engine (`server/kiotvietSync/`).
-    - Google Sheets API (chỉ đọc cho Vị trí hàng + CÂN ĐO qua job `sheetSnapshots` vào Postgres, Báo cáo Marketing; đọc/ghi tab `Lịch sử cập nhật` Vòng đời đơn hàng và sửa trực tiếp Khách mới/Ghi chú của Báo cáo Marketing).
+    - Google Sheets API (chỉ đọc cho CÂN ĐO qua job `sheetSnapshots` vào Postgres — module Vị trí hàng cũ đọc Sheets đã gỡ 30/10/2026, Báo cáo Marketing; đọc/ghi tab `Lịch sử cập nhật` Vòng đời đơn hàng và sửa trực tiếp Khách mới/Ghi chú của Báo cáo Marketing).
   - **Bot & Thông báo:** Telegram Bot quản lý duyệt nghỉ phép (`server/telegram/`), Server-Sent Events (SSE) phát sóng thời gian thực cho trình duyệt.
 
 ---

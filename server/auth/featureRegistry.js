@@ -113,12 +113,14 @@ const FEATURES = Object.freeze([
   // trong VT Ha Noi / VT Sai Gon). Chi Quan ly mac dinh; Quan ly cap rieng tung tai khoan khi can.
   { key: 'shipment.pick', groupKey: 'shipment', label: 'Chỉ định vị trí hàng cho đơn (cần Vòng đời đơn hàng)', roles: MANAGER_ONLY, requires: 'shipment.lifecycle' },
 
-  { key: 'stockLocations.view', groupKey: 'stockLocations', label: 'Xem vị trí hàng HN / SG', roles: INTERNAL_ROLES, forbiddenRoles: [ROLES.KHACH] },
-  // 2026-10-27: co so du lieu Vi tri hang moi (tab VT Ha Noi / VT Sai Gon, bang stock_positions). Tam thoi chi Quan ly; cap them tung tai khoan duoc.
-  { key: 'stockLocationsV2.view', groupKey: 'stockLocations', label: 'Xem VT Hà Nội / VT Sài Gòn', roles: MANAGER_ONLY, forbiddenRoles: [ROLES.KHACH] },
-  { key: 'stockLocationsV2.edit', groupKey: 'stockLocations', label: 'Sửa / thêm / xóa / import VT Hà Nội / VT Sài Gòn (cần xem VT)', roles: MANAGER_ONLY, requires: 'stockLocationsV2.view' },
-  { key: 'stockLocationsV2.export', groupKey: 'stockLocations', label: 'Xuất Excel VT Hà Nội / VT Sài Gòn (cần xem)', roles: MANAGER_ONLY, requires: 'stockLocationsV2.view' },
-  { key: 'stockLocationsV2.historyDelete', groupKey: 'stockLocations', label: 'Xóa lịch sử VT Hà Nội / VT Sài Gòn (cần xem VT)', roles: MANAGER_ONLY, requires: 'stockLocationsV2.view' },
+  // 2026-10-30: VT Ha Noi / VT Sai Gon (bang stock_positions) la module Vi tri hang DUY NHAT (module doc Google Sheets cu da go,
+  // khoa stockLocations.view bo; ghi de cu con luu trong tai khoan bi sanitizeOverrides bo qua).
+  // Xem + Xuat Excel mac dinh mo cho MOI vai tro ke ca Khach (Khach nam trong GUEST_ALLOWED_KEYS), Quan ly van tat duoc tung tai khoan.
+  // escalationExempt: ai cung co mac dinh nen Tro ly duoc uy quyen (da bi tat xem/xuat) van tao / dat lai mat khau tai khoan duoc.
+  { key: 'stockLocationsV2.view', groupKey: 'stockLocations', label: 'Xem VT Hà Nội / VT Sài Gòn', roles: ALL_ROLES, escalationExempt: true },
+  { key: 'stockLocationsV2.edit', groupKey: 'stockLocations', label: 'Sửa / thêm / xóa / import VT Hà Nội / VT Sài Gòn (cần xem VT)', roles: MANAGER_ONLY, forbiddenRoles: [ROLES.KHACH], requires: 'stockLocationsV2.view' },
+  { key: 'stockLocationsV2.export', groupKey: 'stockLocations', label: 'Xuất Excel VT Hà Nội / VT Sài Gòn (cần xem)', roles: ALL_ROLES, requires: 'stockLocationsV2.view', escalationExempt: true },
+  { key: 'stockLocationsV2.historyDelete', groupKey: 'stockLocations', label: 'Xóa lịch sử VT Hà Nội / VT Sài Gòn (cần xem VT)', roles: MANAGER_ONLY, forbiddenRoles: [ROLES.KHACH], requires: 'stockLocationsV2.view' },
 
   // --- Quan ly nhan su ---
   { key: 'hr.rules', groupKey: 'hr', label: 'Quy định công ty', roles: ALL_ROLES },
@@ -187,7 +189,6 @@ const PAGE_FEATURES = Object.freeze([
   { path: '/reports', href: '/reports/', anyOf: ANY_REPORTS_FEATURES, landingAnyOf: ANY_REPORTS_FEATURES.filter(k => k !== 'reports.products.expected') },
   { path: '/shipment/lifecycle', href: '/shipment/lifecycle/', anyOf: ['shipment.lifecycle'] },
   { path: '/humanresources', href: '/humanresources/', anyOf: ['hr.rules', 'hr.employees', 'hr.leave', 'hr.leave.submit'] },
-  { path: '/stock-locations', href: '/stock-locations/', anyOf: ['stockLocations.view'] },
   { path: '/vt-positions', href: '/vt-positions/', anyOf: ['stockLocationsV2.view'] },
   { path: '/cashbook', href: '/cashbook/', anyOf: ['cashbook.view'] },
   { path: '/vat-draft', href: '/vat-draft/', anyOf: ['accounting.vatDraft', 'accounting.qr'] },
@@ -284,8 +285,15 @@ function isEscalationExempt(key) {
   return !!(feature && (feature.dynamic || feature.escalationExempt));
 }
 
+// Quyen tai khoan Khach duoc huong (mac dinh hoac ghi de); moi key khac bi chan cung voi Khach.
+// Vi tri hang chi mo phan XEM + XUAT EXCEL; sua / import / xoa lich su van chi noi bo.
+const GUEST_ALLOWED_KEYS = Object.freeze([
+  'account.profile', 'hr.rules', 'hr.leave', 'hr.leave.submit',
+  'stockLocationsV2.view', 'stockLocationsV2.export'
+]);
+
 function isFeatureForbiddenForRole(key, role) {
-  if (String(role || '').trim() === ROLES.KHACH && !['account.profile', 'hr.rules', 'hr.leave', 'hr.leave.submit'].includes(key)) return true;
+  if (String(role || '').trim() === ROLES.KHACH && !GUEST_ALLOWED_KEYS.includes(key)) return true;
   return !!FEATURE_BY_KEY.get(key)?.forbiddenRoles?.includes(String(role || '').trim());
 }
 

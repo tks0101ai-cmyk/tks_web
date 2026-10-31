@@ -50,14 +50,14 @@ function createPickAssignmentsRouter(dependencies = {}) {
   router.post('/', handle(async (req, res) => {
     res.status(201).json(await svc().assign(ctxOf(req), req.body || {}));
   }));
+  // Xoa dong hang khoi don KiotViet (ghi nguoc len Kiot): body { branch, orderCode, productCode }.
+  router.post('/order-lines/remove', handle(async (req, res) => {
+    res.json(await svc().removeLine(ctxOf(req), req.body || {}));
+  }));
   // Doi trang thai bang dropdown cot "Trang thai boc": body { branch, orderCode, status: 'confirmed' | 'cancelled' }.
   // Dat TRUOC '/:id/...' (khong xung dot vi 2 doan duong dan khac nhau, nhung giu cho de doc).
   router.post('/status', handle(async (req, res) => {
     res.json(await svc().setStatus(ctxOf(req), req.body || {}));
-  }));
-  // "Da xu ly" canh bao lech SL (giu nguyen so luong): body { branch, orderCode }.
-  router.post('/mismatch-ack', handle(async (req, res) => {
-    res.json(await svc().acknowledgeMismatch(ctxOf(req), req.body || {}));
   }));
   router.post('/:id/confirm', handle(async (req, res) => {
     res.json(await svc().confirm(ctxOf(req), Number(req.params.id), req.body || {}));

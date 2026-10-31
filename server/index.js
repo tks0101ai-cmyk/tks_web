@@ -11,7 +11,7 @@ require('./kiotvietSync/scheduler');
 const { startBackgroundJobs } = require('./jobs');
 const { prewarmDashboardCaches } = require('./dashboard/dashboardData');
 const { captureWebhookRawBody, webhookJsonErrorHandler } = require('./kiotviet/kiotvietWebhookRoutes');
-const { pageGuard } = require('./auth/pageGuard');
+const { pageGuard, legacyPageRedirect } = require('./auth/pageGuard');
 const { createLeaveDbRealtime } = require('./hr/hrLeaveDbRealtime');
 const { getConfiguredManagerLeaveRuntime } = require('./telegram/managerLeaveRuntime');
 const { startSpecialDayNotifySchedule } = require('./notifications/specialDayNotifier');
@@ -60,6 +60,8 @@ app.use(routes);
 // dat TRUOC ca route /reports lan express.static de bookmark/tab cu khong con
 // tai duoc trang ma tai khoan khong co quyen. Tai nguyen tinh (/shared/*,
 // /js/*, /vendor/*) va trang dang nhap/dang ky khong bi anh huong.
+// Link/bookmark cu cua cac trang da go chuyen sang trang thay the (vd /stock-locations -> /vt-positions/); trang dich van qua pageGuard.
+app.use(legacyPageRedirect);
 app.use(pageGuard);
 
 // "/reports" la duong dan tuong duong "tab lon" cua trang bao cao tong hop

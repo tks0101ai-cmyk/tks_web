@@ -20,10 +20,10 @@
     const origin=location.protocol==='file:'?'http://prototype.local':location.origin;
     const url=new URL(typeof resource==='string'?resource:resource.url,origin);
     if(url.origin!==origin||!url.pathname.startsWith('/api/'))return realFetch(resource,options);
-    // Chỉ endpoint ĐỌC của Vị trí hàng đi ra server thật khi prototype được phục vụ qua http(s); mở file trực tiếp thì dùng dữ liệu demo bên dưới.
-    if(url.pathname==='/api/stock-locations'&&location.protocol!=='file:'&&(options.method||'GET').toUpperCase()==='GET')return realFetch(resource,options);
+    // Chỉ endpoint ĐỌC của VT Hà Nội / VT Sài Gòn đi ra server thật khi prototype được phục vụ qua http(s); mở file trực tiếp thì dùng dữ liệu demo bên dưới.
+    if(url.pathname==='/api/stock-positions'&&location.protocol!=='file:'&&(options.method||'GET').toUpperCase()==='GET')return realFetch(resource,options);
     if((options.method||'GET').toUpperCase()!=='GET')return reply({error:'Prototype chỉ đọc, không ghi hệ thống.'},403);
-    if(url.pathname==='/api/auth/me')return reply({id:'prototype-accountant',username:'prototype',hoTen:'Kế toán · Mô phỏng',vaiTro:'Kế toán',coSo:'Cả hai',trangThai:'Đang hoạt động',permissions:['shipment.lifecycle','shipment.lookup','shipment.history','shipment.export','stockLocations.view','account.profile'],pageFeatures:[]});
+    if(url.pathname==='/api/auth/me')return reply({id:'prototype-accountant',username:'prototype',hoTen:'Kế toán · Mô phỏng',vaiTro:'Kế toán',coSo:'Cả hai',trangThai:'Đang hoạt động',permissions:['shipment.lifecycle','shipment.lookup','shipment.history','shipment.export','stockLocationsV2.view','account.profile'],pageFeatures:[]});
     if(url.pathname==='/api/shipment/lifecycle/order-detail'){
       const o=data.orders.find(o=>o.orderCode===url.searchParams.get('code')&&o.branch===url.searchParams.get('branch'));
       return o?reply({detail:{...o,code:o.orderCode,phieuTam:true,status:'Phiếu tạm',total:o.orderTotal,lineCount:o.lines.length,totalQuantity:o.lines.reduce((s,l)=>s+l.quantity,0)}}):reply({error:'Không có đơn'},404);
@@ -45,7 +45,7 @@
     if(url.pathname.startsWith('/api/shipment/lifecycle/')){
       const code=decodeURIComponent(url.pathname.split('/').pop());const o=data.orders.find(o=>o.orderCode===code);return o?reply({order:o,detail:o,summary:o.summary}):reply({error:'Không có đơn'},404);
     }
-    if(url.pathname==='/api/stock-locations')return reply({rows:data.locations.filter(r=>r.branch===url.searchParams.get('branch')),stale:false,syncedAt:new Date().toISOString()});
+    if(url.pathname==='/api/stock-positions')return reply({rows:data.locations.filter(r=>r.branch===url.searchParams.get('branch')),stale:false,syncedAt:new Date().toISOString()});
     if(url.pathname.includes('notifications'))return reply({notifications:[],unreadCount:0});
     return reply({items:[],branches:['Hà Nội','Sài Gòn']});
   };

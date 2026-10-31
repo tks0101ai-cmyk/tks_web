@@ -4,7 +4,7 @@
       <tbody><tr>
         <td class="invoice-order">
           <p><strong class="invoice-title">PHIẾU ĐẶT HÀNG</strong><br>Mã đơn hàng: <strong>{Ma_Don_Hang}</strong></p>
-          <p class="invoice-seller">NV Bán hàng: {Nhan_Vien_Ban_Hang}<span class="invoice-telegram-slot"></span> | Zalo: {Dien_Thoai_Nguoi_Ban}</p>
+          <p class="invoice-seller">NV Bán hàng: {Nhan_Vien_Ban_Hang}<span class="invoice-telegram-slot"></span> | Zalo: <strong>{Dien_Thoai_Nguoi_Ban}</strong></p>
           <div class="invoice-customer">
             <p>Khách hàng: {Khach_Hang}</p>
             <p>SĐT khách: {So_Dien_Thoai}</p>

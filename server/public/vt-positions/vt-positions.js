@@ -23,19 +23,26 @@
     seed: 'Nhập dữ liệu đầu', create: 'Thêm dòng', edit: 'Sửa', delete: 'Xóa dòng', auto_delete: 'Tự xóa (hết hàng)',
     deduct: 'Trừ SL', import_replace: 'Import thay toàn bộ', import_add: 'Import bổ sung',
     pick: 'Nhặt hàng (đơn)', pick_revert: 'Hoàn tác nhặt (đơn)',
-    ack: 'Đánh dấu Đã sửa', unack: 'Bỏ Đã sửa', history_purged: 'Xóa lịch sử'
+    ack: 'Đánh dấu Đã sửa', unack: 'Bỏ Đã sửa', history_purged: 'Xóa lịch sử',
+    stock_out: 'Xuất kho'
   };
   const FIELD_LABELS = { code: 'Mã hàng', name: 'Tên hàng', notes: 'Ghi chú', arrivalDate: 'Ngày về', location: 'Vị trí', quantity: 'Số lượng' };
   const collator = new Intl.Collator('vi', { numeric: true, sensitivity: 'base' });
+  // Cập nhật thời gian thực: debounce tín hiệu SSE, chu kỳ tải bù khi SSE lỗi, thời gian nháy ô vừa đổi.
+  const LIVE = { debounceMs: 300, fallbackMs: 60000, flashMs: 1600 };
+  // Chữ ký nội dung của dòng/ô lúc dựng (không đọc lại từ DOM vì table-controls có thể thêm thuộc tính).
+  const signatures = new WeakMap();
+  const setText = (node, text) => { if (node.textContent !== text) node.textContent = text; };
   const QUANTITY_FORMAT = new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 });
   const newState = () => ({ rows: [], query: '', page: 1, sortField: '', sortDirection: 'asc', loading: false, error: '', warnFilter: 'all', canEdit: null, canExport: false, canDeleteHistory: false });
   const state = { hn: newState(), sg: newState() };
   let user, activeTab, allowedTabs, requestVersion = 0;
   let screenMode, visibleFields, columnPreferences = {}, canEditPermission = false;
   const importState = { busy: false };
+  const stockOutState = { busy: false };
   const history = { rows: [], nextBefore: null, branch: '', version: 0 };
   // Hộp chi tiết một dòng: row = bản đang mở (để lấy version), version chống tải lịch sử cũ ghi đè.
-  const detail = { id: null, tab: '', row: null, rows: [], nextBefore: null, version: 0, busy: false };
+  const detail = { id: null, tab: '', row: null, fresh: null, rows: [], nextBefore: null, version: 0, busy: false };
 
   const $ = id => document.getElementById(id);
   const fields = () => BASE_FIELDS;
@@ -68,9 +75,10 @@
 
   // warn: 'all' | 'warn' (chỉ dòng có cảnh báo) | 'valid' (chỉ dòng không cảnh báo); true = 'warn' để tương thích bản cũ dùng boolean.
   function filterRows(rows, query, warn) {
-    const mode = warn === true ? 'warn' : warn === 'warn' || warn === 'valid' ? warn : 'all';
+    const mode = warn === true ? 'warn' : typeof warn === 'string' ? warn : 'all';
     if (mode === 'warn') rows = rows.filter(row => warningsOf(row).length > 0);
     else if (mode === 'valid') rows = rows.filter(row => warningsOf(row).length === 0);
+    else if (mode.startsWith('type:')) rows = rows.filter(row => warningsOf(row).includes(mode.slice(5)));
     const needle = normalizeSearch(query);
     if (!needle) return rows;
     const text = row => ['code', 'name', 'location'].map(field => row[field]).join(' ');
@@ -262,30 +270,100 @@
       }
       tr.appendChild(td);
     });
+    signatures.set(tr, tr.className + '\u0001' + (tr.dataset.warning || ''));
+    Array.from(tr.children).forEach(td => signatures.set(td, td.innerHTML + '\u0001' + td.title));
     return tr;
   }
 
-  function render() {
+  function flashCell(cell) {
+    cell.classList.add('vt-cell-flash');
+    setTimeout(() => cell.classList.remove('vt-cell-flash'), LIVE.flashMs);
+  }
+
+  // Sửa dòng đang có cho khớp bản mới: chỉ ô nào chữ ký khác mới bị thay nội dung. Trả về true nếu có gì đổi.
+  function syncRowCells(node, fresh, flash) {
+    let changed = false;
+    if (signatures.get(node) !== signatures.get(fresh)) {
+      node.className = fresh.className;
+      if (fresh.dataset.warning) node.dataset.warning = fresh.dataset.warning; else delete node.dataset.warning;
+      signatures.set(node, signatures.get(fresh));
+      changed = true;
+    }
+    Array.from(node.children).forEach((cell, index) => {
+      const next = fresh.children[index];
+      // Ô đang được gõ trực tiếp thì giữ nguyên (không ghi đè chữ người dùng đang nhập).
+      if (!next || cell.classList.contains('is-editing') || signatures.get(cell) === signatures.get(next)) return;
+      cell.replaceChildren(...Array.from(next.childNodes));
+      if (next.title) cell.title = next.title; else cell.removeAttribute('title');
+      signatures.set(cell, signatures.get(next));
+      changed = true;
+      if (flash) flashCell(cell);
+    });
+    return changed;
+  }
+
+  // Đối chiếu <tbody> theo data-id thay vì dựng lại: giữ node (focus, hover, cuộn) của dòng không đổi, chèn dòng mới đúng chỗ,
+  // gỡ dòng không còn. Trả về true nếu DOM có thay đổi.
+  function reconcileRows(body, rows, flash) {
+    const existing = new Map();
+    Array.from(body.children).forEach(node => existing.set(node.dataset.id, node));
+    let cursor = body.firstElementChild;
+    let changed = false;
+    rows.forEach(row => {
+      const fresh = buildRow(row);
+      const node = existing.get(String(row.id));
+      if (!node) { body.insertBefore(fresh, cursor); changed = true; return; }
+      existing.delete(String(row.id));
+      if (node === cursor) cursor = cursor.nextElementSibling;
+      else { body.insertBefore(node, cursor); changed = true; }
+      if (syncRowCells(node, fresh, flash)) changed = true;
+    });
+    existing.forEach(node => { node.remove(); changed = true; });
+    return changed;
+  }
+
+  // Cập nhật nhãn/số đếm của bộ lọc cảnh báo tại chỗ (giữ node <option> để danh sách đang mở không bị đóng).
+  function syncWarnOptions(select, current) {
+    const wanted = new Set([...Object.keys(WARNING_LABELS), ...current.rows.flatMap(warningsOf)]);
+    if (current.warnFilter.startsWith('type:')) wanted.add(current.warnFilter.slice(5));
+    const existing = new Map();
+    select.querySelectorAll('option[data-warning-type]').forEach(option => existing.set(option.dataset.warningType, option));
+    existing.forEach((option, code) => { if (!wanted.has(code)) option.remove(); });
+    wanted.forEach(code => {
+      let option = existing.get(code);
+      if (!option) {
+        option = document.createElement('option');
+        option.value = 'type:' + code;
+        option.dataset.warningType = code;
+        select.appendChild(option);
+      }
+      setText(option, warningLabel(code) + ' (' + formatNumber(current.rows.filter(row => warningsOf(row).includes(code)).length) + ')');
+    });
+  }
+
+  function render(options = {}) {
     const current = state[activeTab];
     const canEdit = editable();
     $('vtAddButton').hidden = !canEdit;
+    $('vtTable').dataset.editable = String(canEdit);
     $('vtImportButton').hidden = !canEdit;
+    $('vtStockOutButton').hidden = !canEdit;
     $('vtExportButton').hidden = state[activeTab].canExport !== true;
     const rows = sortRows(filterRows(current.rows, current.query, current.warnFilter), current.sortField, current.sortDirection);
     updateSortHeaders();
     // Bộ lọc cảnh báo: số đếm tính trên toàn bộ dòng của cơ sở (không theo từ khóa tìm).
     const select = $('vtWarnFilter');
     const warned = current.rows.filter(row => warningsOf(row).length > 0).length;
-    select.querySelector('option[value="warn"]').textContent = 'Cảnh báo (' + formatNumber(warned) + ')';
-    select.querySelector('option[value="valid"]').textContent = 'Hợp lệ (' + formatNumber(current.rows.length - warned) + ')';
-    select.value = current.warnFilter;
+    setText(select.querySelector('option[value="warn"]'), 'Cảnh báo (' + formatNumber(warned) + ')');
+    setText(select.querySelector('option[value="valid"]'), 'Hợp lệ (' + formatNumber(current.rows.length - warned) + ')');
+    syncWarnOptions(select, current);
+    if (select.value !== current.warnFilter) select.value = current.warnFilter;
     select.parentElement.dataset.filter = current.warnFilter;
     select.disabled = current.loading || !!current.error;
     const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
     if (!current.loading && !current.error) current.page = Math.min(current.page, pageCount);
     const start = (current.page - 1) * pageSize;
     const body = $('vtRows');
-    body.replaceChildren();
     const search = $('vtSearch');
     if (search.value !== current.query) search.value = current.query;
     search.disabled = current.loading || !!current.error;
@@ -296,12 +374,11 @@
       (current.rows.length === 0 ? 'Chưa có dữ liệu vị trí hàng.' : rows.length === 0 ? (current.warnFilter === 'warn' ? 'Không có dòng cảnh báo.' : current.warnFilter === 'valid' ? 'Không có dòng hợp lệ.' : 'Không tìm thấy hàng phù hợp.') : '');
     const ready = !current.loading && !current.error && rows.length > 0;
     $('vtPager').hidden = !ready;
-    if (!ready) return;
+    if (!ready) { body.replaceChildren(); return; }
 
-    const fragment = document.createDocumentFragment();
-    rows.slice(start, start + pageSize).forEach(row => fragment.appendChild(buildRow(row)));
-    body.appendChild(fragment);
-    if (window.TKSTables) window.TKSTables.refresh($('vtTable'));
+    const changed = reconcileRows(body, rows.slice(start, start + pageSize), options.background === true);
+    // Cập nhật nền mà không đổi gì thì khỏi áp lại cấu hình bảng.
+    if (window.TKSTables && (changed || options.background !== true)) window.TKSTables.refresh($('vtTable'));
     $('vtCount').textContent = `${formatNumber(start + 1)}–${formatNumber(Math.min(start + pageSize, rows.length))} / ${formatNumber(rows.length)} dòng`;
     $('vtPage').textContent = `Trang ${current.page} / ${pageCount}`;
     if ($('vtPageSize').value !== String(pageSize)) $('vtPageSize').value = String(pageSize);
@@ -364,6 +441,7 @@
   }
   function closeDialog(dialog, force = false) {
     if (dialog.id === 'vtImportDialog' && importState.busy && !force) return;
+    if (dialog.id === 'vtStockOutDialog' && stockOutState.busy && !force) return;
     if (dialog.close) dialog.close(); else dialog.removeAttribute('open');
   }
 
@@ -526,6 +604,7 @@
     detail.id = row.id;
     detail.tab = activeTab;
     detail.row = row;
+    detail.fresh = null;
     detail.rows = [];
     detail.nextBefore = null;
     $('vtDetailCode').textContent = String(row.code ?? '');
@@ -539,10 +618,35 @@
     $('vtDetailDialog').querySelector('.vt-detail-foot').style.display = canEdit ? '' : 'none';
     setDetailBusy(false);
     setDetailError('');
+    $('vtDetailStale').hidden = true;
     renderDetailStats();
     renderDetailHistory('Đang tải lịch sử…');
-    openDialog($('vtDetailDialog'));
+    if (!$('vtDetailDialog').open) openDialog($('vtDetailDialog'));
     loadDetailHistory(false);
+  }
+
+  // Sau mỗi lần tải nền: hộp chi tiết đang mở KHÔNG bị đóng hay ghi đè. Dòng đổi version -> hiện dải + nút Xem bản mới;
+  // dòng bị xóa -> báo đã xóa; version giữ nguyên nhưng số phái sinh (SL Kiot, giữ chỗ) đổi -> cập nhật thẳng.
+  function syncOpenDetail() {
+    if (detail.id === null || !detail.row || detail.tab !== activeTab) return;
+    const fresh = state[activeTab].rows.find(item => String(item.id) === String(detail.id));
+    const banner = $('vtDetailStale');
+    const reload = $('vtDetailStaleReload');
+    if (!fresh) {
+      $('vtDetailStaleText').textContent = 'Dòng này vừa bị người khác xóa.';
+      reload.hidden = true;
+      banner.hidden = false;
+      return;
+    }
+    if (fresh.version !== detail.row.version) {
+      detail.fresh = fresh;
+      $('vtDetailStaleText').textContent = 'Dòng này vừa được người khác sửa.';
+      reload.hidden = false;
+      banner.hidden = false;
+      return;
+    }
+    detail.row = fresh;
+    renderDetailStats();
   }
 
   // Chỉ gửi trường đã đổi; không đổi gì thì chỉ đóng hộp.
@@ -582,6 +686,30 @@
     }
   }
 
+  // Gợi ý mã hàng khi gõ ô Mã hàng (hộp Thêm dòng): chờ 200ms, bỏ kết quả của lần gõ cũ.
+  let suggestTimer = null;
+  let suggestSeq = 0;
+  function suggestCodes() {
+    clearTimeout(suggestTimer);
+    const list = $('vtCodeSuggestions');
+    const term = $('vtAddForm').elements.code.value.trim();
+    if (!term) { list.replaceChildren(); return; }
+    const tab = activeTab;
+    suggestTimer = setTimeout(async () => {
+      const seq = ++suggestSeq;
+      try {
+        const { response, payload } = await request(API + '/code-suggestions?branch=' + tab.toUpperCase() + '&q=' + encodeURIComponent(term));
+        if (seq !== suggestSeq || !response.ok) return;
+        list.replaceChildren(...(payload.items || []).map(item => {
+          const option = document.createElement('option');
+          option.value = item.code;
+          option.label = item.name ? item.code + ' — ' + item.name : item.code;
+          return option;
+        }));
+      } catch (error) { /* gợi ý chỉ là tiện ích, lỗi mạng thì bỏ qua */ }
+    }, 200);
+  }
+
   async function submitAdd(event) {
     event.preventDefault();
     const form = $('vtAddForm');
@@ -608,7 +736,7 @@
     $('vtImportBack').disabled = busy;
     document.querySelectorAll('input[name="vtImportMode"]').forEach(radio => { radio.disabled = busy; });
     $('vtImportPreview').disabled = busy;
-    $('vtImportConfirm').disabled = busy || !$('vtImportFile').files?.length || importState.stale || importState.editing || importState.errors > 0 || (importState.inputRows && !importState.inputRows.length);
+    $('vtImportConfirm').disabled = busy || !$('vtImportFile').files?.length || importState.stale || importState.editing || (importState.inputRows && !importState.inputRows.length);
     $('vtImportReview').querySelectorAll('button, input, select').forEach(control => { control.disabled = busy; });
     $('vtImportReview').querySelectorAll('.vt-import-row-actions button, #vtImportAdd').forEach(control => { control.disabled = busy || importState.stale || importState.editing; });
     $('vtImportRetry').hidden = !importState.stale;
@@ -639,6 +767,8 @@
     importState.tab = activeTab;
     importState.warnFilter = 'all';
     importState.page = 0;
+    importState.sortField = '';
+    importState.sortDirection = 'asc';
     importState.inputRows = null;
     importState.errors = 0;
     importState.stale = false;
@@ -662,12 +792,58 @@
   const importPriority = row => row.kind === 'error' ? 2 : importWarning(row) ? 1 : 0;
   const importKey = row => [row.code, row.location].map(value => String(value || '').replace(/\s+/gu, '').toLocaleUpperCase('vi')).join('|');
 
+  const importWarningsText = row => [row.message, ...(row.warnings || []).map(key => WARNING_LABELS[key] || key)].filter(Boolean).join(' · ');
+  function importSortValue(row, field) {
+    if (field === 'kind') return IMPORT_KINDS[row.kind] || row.kind;
+    if (field === 'warnings') return importWarningsText(row) || null;
+    if (field === 'row' && row.sourceIndexes?.length > 1) {
+      const numbers = row.sourceIndexes.map(i => importState.inputRows?.[i]?.row).filter(value => value != null);
+      return numbers.length ? Math.min(...numbers) : null;
+    }
+    return row[field] === '' ? null : row[field] ?? null;
+  }
+
+  function initImportTable() {
+    const table = $('vtImportPreviewTable');
+    const fields = ['kind', 'row', 'code', 'notes', 'cartons', 'quantity', 'arrivalDate', 'location', 'warnings'];
+    fields.forEach((field, index) => {
+      const th = table.tHead.rows[0].cells[index];
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'sort-button';
+      button.dataset.importSort = field;
+      const label = document.createElement('span');
+      label.className = 'sort-label';
+      label.textContent = th.textContent;
+      const icon = document.createElement('span');
+      icon.className = 'sort-indicator';
+      icon.setAttribute('aria-hidden', 'true');
+      button.append(label, icon);
+      th.replaceChildren(button);
+      button.addEventListener('click', () => {
+        if (importState.sortField !== field) { importState.sortField = field; importState.sortDirection = 'asc'; }
+        else if (importState.sortDirection === 'asc') importState.sortDirection = 'desc';
+        else importState.sortField = '';
+        importState.page = 0;
+        renderImportPreviewRows();
+      });
+    });
+    window.TKSTables?.enhance(table, { sort: false });
+  }
+
   function filteredImportRows() {
     const needle = normalizeSearch($('vtImportSearch').value);
     return importState.rows.filter(row => (importState.filter === 'all' || row.kind === importState.filter)
       && (importState.warnFilter === 'all' || (importState.warnFilter === 'error' ? row.kind === 'error' : importWarning(row)))
       && (!needle || normalizeSearch([row.code, row.name, row.notes, row.location, row.arrivalDate].join(' ')).includes(needle)))
-      .sort((a, b) => importPriority(b) - importPriority(a));
+      .sort((a, b) => {
+        const field = importState.sortField;
+        if (!field) return importPriority(b) - importPriority(a);
+        const left = importSortValue(a, field), right = importSortValue(b, field);
+        if (left === null || right === null) return left === right ? 0 : left === null ? 1 : -1;
+        const result = ['row', 'cartons', 'quantity'].includes(field) ? Number(left) - Number(right) : collator.compare(String(left), String(right));
+        return importState.sortDirection === 'desc' ? -result : result;
+      });
   }
 
   function updateImportPaging() {
@@ -787,6 +963,12 @@
 
   // Bảng "Các dòng sau khi chuẩn hóa": đúng giá trị sẽ được ghi (ghi chú đã chuẩn + cộng dồn, vị trí viết hoa không dấu cách).
   function renderImportPreviewRows() {
+    $('vtImportPreviewTable').querySelectorAll('[data-import-sort]').forEach(button => {
+      const selected = importState.sortField === button.dataset.importSort;
+      button.closest('th').setAttribute('aria-sort', selected ? importState.sortDirection === 'asc' ? 'ascending' : 'descending' : 'none');
+      button.querySelector('.sort-indicator').textContent = selected ? importState.sortDirection === 'asc' ? '▲' : '▼' : '▲▼';
+      button.title = selected ? importState.sortDirection === 'asc' ? 'Sắp xếp giảm dần' : 'Về thứ tự ưu tiên lỗi' : 'Sắp xếp tăng dần';
+    });
     const body = $('vtImportPreviewRows');
     body.replaceChildren();
     updateImportPaging();
@@ -822,7 +1004,7 @@
         importCell(dash(row.arrivalDate)),
         importChange(row.before && row.before.location, row.location, 'vt-import-location')
       );
-      const warnings = [row.message, ...(row.warnings || []).map(key => WARNING_LABELS[key] || key)].filter(Boolean).join(' · ');
+      const warnings = importWarningsText(row);
       tr.appendChild(importCell(warnings || '—', 'vt-import-warning'));
       const actions = document.createElement('td');
       actions.className = 'vt-import-row-actions';
@@ -898,37 +1080,18 @@
     setImportStep(2);
     renderImportPreview(payload);
     const counts = payload.counts || {};
-    const items = [['added', 'Thêm'], ['updated', 'Cập nhật'], ['deleted', 'Xóa'], ['unchanged', 'Không đổi'], ['skippedEmpty', 'Bỏ qua (SL 0/trống)'], ['errors', 'Lỗi']];
+    const items = [['added', 'Thêm'], ['updated', 'Cập nhật'], ['deleted', 'Xóa'], ['unchanged', 'Không đổi'], ['skippedEmpty', 'Bỏ qua (trống/lỗi)'], ['keptHeld', 'Giữ lại (đơn Đang bốc)'], ['errors', 'Lỗi']];
     const list = document.createElement('ul');
     list.className = 'vt-import-counts';
     items.forEach(([key, label]) => {
       const li = document.createElement('li');
       li.dataset.count = key;
       const value = document.createElement('b');
-      value.textContent = String(counts[key] ?? 0);
+      value.textContent = formatNumber(counts[key] ?? 0);
       li.append(value, label);
       list.appendChild(li);
     });
     box.appendChild(list);
-    const errors = Array.isArray(payload.errors) ? payload.errors : [];
-    if (errors.length) {
-      const ol = document.createElement('ol');
-      ol.className = 'vt-import-errors';
-      ol.dataset.importErrors = '';
-      errors.forEach(error => {
-        const li = document.createElement('li');
-        li.value = Number(error.row) || 0;
-        li.textContent = `${error.row == null ? 'Dòng thêm thủ công' : `Dòng ${error.row}`}: ${error.message}`;
-        ol.appendChild(li);
-      });
-      box.appendChild(ol);
-      if ((counts.errors || 0) > errors.length) {
-        const more = document.createElement('p');
-        more.className = 'vt-form-error';
-        more.textContent = `… và ${counts.errors - errors.length} lỗi khác.`;
-        box.appendChild(more);
-      }
-    }
   }
 
   async function runImport(commit) {
@@ -950,8 +1113,7 @@
     if (importState.busy) return;
     setImportBusy(true);
     try {
-      const result = await runImport(false);
-      if (result && result.payload.counts?.errors) $('vtImportError').textContent = 'Còn dòng lỗi. Hãy sửa hoặc xóa dòng lỗi ngay trong bảng xem trước.';
+      await runImport(false);
     } catch (error) {
       $('vtImportError').textContent = 'Không kết nối được máy chủ. Vui lòng thử lại.';
     } finally {
@@ -960,7 +1122,7 @@
   }
 
   async function confirmImport() {
-    if (importState.busy || importState.editing || importState.stale || importState.errors > 0 || (importState.inputRows && !importState.inputRows.length)) return;
+    if (importState.busy || importState.editing || importState.stale || (importState.inputRows && !importState.inputRows.length)) return;
     setImportBusy(true);
     try {
       const result = await runImport(true);
@@ -973,6 +1135,108 @@
       $('vtImportError').textContent = 'Không kết nối được máy chủ. Vui lòng thử lại.';
     } finally {
       setImportBusy(false);
+    }
+  }
+
+  // ---------- Xuất kho: trừ SL theo file (một bước, kết quả hiển thị ngay trong hộp) ----------
+  const stockOutFile = () => ($('vtStockOutFile').files && $('vtStockOutFile').files[0]) || null;
+  function setStockOutBusy(busy) {
+    stockOutState.busy = busy;
+    $('vtStockOutButton').disabled = busy;
+    $('vtStockOutDialog').querySelectorAll('[data-vt-close]').forEach(button => { button.disabled = busy; });
+    $('vtStockOutFile').disabled = busy;
+    $('vtStockOutPick').disabled = busy;
+    $('vtStockOutBack').disabled = busy;
+    $('vtStockOutRun').disabled = busy || Boolean(stockOutState.done) || !stockOutFile();
+    $('vtStockOutRun').textContent = busy ? 'Đang trừ kho…' : 'Trừ kho';
+  }
+  // Về trạng thái chọn file (chưa trừ); giữ file đang chọn nếu có.
+  function resetStockOut() {
+    stockOutState.done = false;
+    stockOutState.tab = activeTab;
+    $('vtStockOutPickPanel').hidden = false;
+    $('vtStockOutReview').hidden = true;
+    $('vtStockOutResult').replaceChildren();
+    $('vtStockOutErrorsBox').hidden = true;
+    $('vtStockOutBack').hidden = true;
+    $('vtStockOutRun').hidden = false;
+    $('vtStockOutError').textContent = '';
+    $('vtStockOutSubtitle').textContent = tabLabel(activeTab) + ' · trừ số lượng theo file Excel hoặc CSV';
+    const file = stockOutFile();
+    $('vtStockOutFileName').textContent = file ? file.name : '';
+    $('vtStockOutDrop').classList.toggle('has-file', Boolean(file));
+    setStockOutBusy(false);
+  }
+  // File mẫu dựng ngay trên trình duyệt (CSV có BOM để Excel đọc đúng tiếng Việt).
+  function downloadStockOutTemplate() {
+    const csv = '\ufeffMã hàng,Ghi chú,Vị trí\r\nVASNAM,1T x 50,42\r\n';
+    const url = URL.createObjectURL(new window.Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'mau-xuat-kho.csv';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  function renderStockOutResult(payload) {
+    const counts = payload.counts || {};
+    const box = $('vtStockOutResult');
+    box.replaceChildren();
+    const list = document.createElement('ul');
+    list.className = 'vt-import-counts';
+    [['applied', 'Dòng file đã trừ'], ['deleted', 'Dòng vị trí bị xóa (hết hàng)'], ['skipped', 'Dòng file bị bỏ qua'], ['quantity', 'Tổng SL đã trừ']].forEach(([key, label]) => {
+      const li = document.createElement('li');
+      li.dataset.count = key;
+      const value = document.createElement('b');
+      value.textContent = formatNumber(counts[key] ?? 0);
+      li.append(value, label);
+      list.appendChild(li);
+    });
+    box.appendChild(list);
+    const errors = Array.isArray(payload.errors) ? payload.errors : [];
+    const body = $('vtStockOutErrorRows');
+    body.replaceChildren();
+    errors.forEach(item => {
+      const tr = document.createElement('tr');
+      const cell = (text, className) => { const td = document.createElement('td'); if (className) td.className = className; td.textContent = text; tr.appendChild(td); };
+      cell(item.row === null || item.row === undefined ? '—' : String(item.row), 'num');
+      cell(item.code || '—', 'vt-import-code');
+      cell(item.location || '—', 'vt-import-location');
+      cell(item.notes || '—', 'vt-stockout-notes');
+      cell(item.message || '', 'vt-stockout-reason');
+      body.appendChild(tr);
+    });
+    $('vtStockOutErrorsBox').hidden = !errors.length;
+    $('vtStockOutErrorNote').textContent = payload.errorsTruncated
+      ? `Chỉ hiển thị ${formatNumber(errors.length)} dòng đầu trong tổng ${formatNumber(counts.skipped || 0)} dòng bị bỏ qua. Các dòng hợp lệ đã được trừ.`
+      : 'Các dòng hợp lệ đã được trừ; chỉ những dòng ở trên bị bỏ qua. Sửa file rồi xuất kho lại cho các dòng này nếu cần.';
+  }
+  async function runStockOut() {
+    if (stockOutState.busy || stockOutState.done) return;
+    const file = stockOutFile();
+    $('vtStockOutError').textContent = '';
+    if (!file) { $('vtStockOutError').textContent = 'Vui lòng chọn file .xlsx, .xls hoặc .csv.'; return; }
+    const tab = stockOutState.tab || activeTab;
+    setStockOutBusy(true);
+    try {
+      const form = new window.FormData();
+      form.append('file', file, file.name);
+      const { response, payload } = await request(API + '/stock-out?branch=' + tab.toUpperCase(), { method: 'POST', body: form });
+      if (!response.ok) { $('vtStockOutError').textContent = payload.error || 'Không xuất kho được từ file này.'; return; }
+      stockOutState.done = true;
+      $('vtStockOutPickPanel').hidden = true;
+      $('vtStockOutReview').hidden = false;
+      $('vtStockOutBack').hidden = false;
+      $('vtStockOutRun').hidden = true;
+      renderStockOutResult(payload);
+      const counts = payload.counts || {};
+      notify(`Đã xuất kho: trừ ${counts.applied || 0} dòng, xóa ${counts.deleted || 0} dòng hết hàng, bỏ qua ${counts.skipped || 0} dòng.`);
+      await selectTab(activeTab);
+    } catch (error) {
+      $('vtStockOutError').textContent = 'Không kết nối được máy chủ. Vui lòng thử lại.';
+    } finally {
+      setStockOutBusy(false);
     }
   }
 
@@ -990,7 +1254,13 @@
     notify('');
     $('vtExportButton').disabled = true;
     try {
-      const response = await fetch(API + '/export?branch=' + tab.toUpperCase(), { credentials: 'same-origin', cache: 'no-store' });
+      const current = state[tab];
+      const rows = sortRows(filterRows(current.rows, current.query, current.warnFilter), current.sortField, current.sortDirection);
+      const response = await fetch(API + '/export?branch=' + tab.toUpperCase(), {
+        method: 'POST', credentials: 'same-origin', cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: rows.map(row => row.id) })
+      });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
         notify(payload.error || 'Không xuất được file Excel.', true);
@@ -1017,11 +1287,13 @@
   function historyValue(entry, side) {
     if (entry.summary && side === 'new') {
       const s = entry.summary, parts = [];
-      [['added', 'Thêm'], ['updated', 'Đổi'], ['deleted', 'Xóa'], ['skippedEmpty', 'Bỏ qua']].forEach(([key, label]) => { if (s[key] !== undefined) parts.push(label + ' ' + s[key]); });
+      [['added', 'Thêm'], ['updated', 'Đổi'], ['deleted', 'Xóa'], ['skippedEmpty', 'Bỏ qua'], ['keptHeld', 'Giữ lại']].forEach(([key, label]) => { if (s[key] !== undefined) parts.push(label + ' ' + s[key]); });
       if (s.rows !== undefined) parts.push(s.rows + ' dòng');
       if ('from' in s || 'to' in s) parts.push(s.from && s.to ? vnDate(s.from) + ' – ' + vnDate(s.to) : s.from ? 'từ ' + vnDate(s.from) : s.to ? 'đến ' + vnDate(s.to) : 'toàn bộ');
       if (Array.isArray(s.warnings) && s.warnings.length) parts.push(s.warnings.map(warningLabel).join(', '));
       if (Array.isArray(s.warnings) && typeof s.notes === 'string' && s.notes.trim()) parts.push('Ghi chú: ' + s.notes.trim());
+      if (s.deducted !== undefined) parts.push('Trừ ' + s.deducted);
+      if (s.removed === true) parts.push('Hết hàng, đã xóa dòng');
       if (s.picked !== undefined) parts.push('Nhặt ' + s.picked);
       if ('confirmedBy' in s) parts.push(s.confirmedBy ? 'Xác nhận: ' + s.confirmedBy : 'Job Kiot');
       if (s.fileName) parts.push(s.fileName);
@@ -1075,7 +1347,7 @@
   }
 
   // Nhãn hành động dạng pill: màu theo loại (có chữ nên không chỉ dựa vào màu).
-  const HISTORY_TONES = { edit: 'blue', create: 'green', import_add: 'green', delete: 'red', auto_delete: 'red', deduct: 'amber', pick: 'amber', pick_revert: 'blue', seed: 'neutral', import_replace: 'neutral', ack: 'green', unack: 'neutral', history_purged: 'red' };
+  const HISTORY_TONES = { edit: 'blue', create: 'green', import_add: 'green', delete: 'red', auto_delete: 'red', deduct: 'amber', pick: 'amber', pick_revert: 'blue', seed: 'neutral', import_replace: 'neutral', ack: 'green', unack: 'neutral', history_purged: 'red', stock_out: 'amber' };
   const HISTORY_ICONS = {
     blue: '<path d="M4 20h4L19 9l-4-4L4 16v4Z"></path>',
     green: '<path d="M12 5v14M5 12h14"></path>',
@@ -1097,7 +1369,19 @@
   function historyChange(entry) {
     const box = document.createDocumentFragment();
     const add = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; node.textContent = text; box.appendChild(node); return node; };
-    if (entry.summary) { add('span', 'vt-hist-summary', historyValue(entry, 'new')); return box; }
+    if (entry.summary) {
+      // Xuất kho: giữ cả ghi chú cũ → mới của dòng, rồi tóm tắt (số lượng trừ · file).
+      if (entry.action === 'stock_out') {
+        const was = String(entry.oldValue ?? ''), now = String(entry.newValue ?? '');
+        if (was) add('del', 'vt-hist-old', was);
+        if (was && now) add('span', 'vt-hist-arrow', ' → ');
+        if (now) add('ins', 'vt-hist-new', now);
+        add('span', 'vt-hist-summary', (was || now ? '  ' : '') + historyValue(entry, 'new'));
+        return box;
+      }
+      add('span', 'vt-hist-summary', historyValue(entry, 'new'));
+      return box;
+    }
     const before = historyValue(entry, 'old'), after = historyValue(entry, 'new');
     if (!before && !after) { add('span', 'vt-hist-empty', '—'); return box; }
     if (entry.field && entry.field !== 'notes') add('span', 'vt-hist-field', (FIELD_LABELS[entry.field] || entry.field) + ': ');
@@ -1225,6 +1509,7 @@
     activeTab = allowedTabs.includes(requested) ? requested : allowedTabs[0];
     if (window.location.hash !== '#' + activeTab) window.history.replaceState(null, '', '#' + activeTab);
     const tab = activeTab;
+    stopLive();
     document.querySelectorAll('[data-vt-tab]').forEach(link => {
       link.hidden = !allowedTabs.includes(link.dataset.vtTab);
       if (link.dataset.vtTab === tab) link.setAttribute('aria-current', 'page');
@@ -1251,8 +1536,72 @@
       if (version !== requestVersion) return;
       current.error = error.message || 'Lỗi kết nối, vui lòng tải lại trang.';
     } finally {
-      if (version === requestVersion) { current.loading = false; render(); }
+      if (version === requestVersion) { current.loading = false; render(); startLive(tab); }
     }
+  }
+
+  // Tải lại danh sách ở nền (không đặt loading, không xóa dòng) rồi vá bảng tại chỗ. Bỏ kết quả nếu đã đổi tab giữa chừng.
+  // Một yêu cầu tại một thời điểm; tín hiệu đến lúc đang tải thì tải thêm một lần sau khi xong.
+  const live = { busy: false, pending: false };
+  async function refreshInBackground(tab) {
+    if (!tab || tab !== activeTab) return;
+    if (live.busy) { live.pending = true; return; }
+    live.busy = true;
+    const version = requestVersion;
+    try {
+      const { response, payload } = await request(API + '?branch=' + tab.toUpperCase());
+      if (version !== requestVersion || tab !== activeTab) return;
+      if (!response.ok || payload.branch !== tab.toUpperCase() || !Array.isArray(payload.rows)) return;
+      const current = state[tab];
+      current.rows = payload.rows;
+      current.error = '';
+      current.canEdit = typeof payload.canEdit === 'boolean' ? payload.canEdit : null;
+      current.canExport = payload.canExport === true;
+      current.canDeleteHistory = payload.canDeleteHistory === true;
+      render({ background: true });
+      syncOpenDetail();
+    } catch (error) { /* lần tải bù sau sẽ thử lại */ } finally {
+      live.busy = false;
+      if (live.pending) { live.pending = false; refreshInBackground(activeTab); }
+    }
+  }
+
+  // ---------- Thời gian thực (SSE) ----------
+  // Máy chủ chỉ báo "cơ sở này vừa đổi"; ở đây gộp tín hiệu rồi tải nền. SSE lỗi -> tải bù định kỳ cho tới khi nối lại.
+  const feed = { source: null, debounce: null, fallback: null, opened: false, missed: false };
+
+  function scheduleRefresh() {
+    clearTimeout(feed.debounce);
+    feed.debounce = setTimeout(() => {
+      if (document.hidden) { feed.missed = true; return; }
+      refreshInBackground(activeTab);
+    }, LIVE.debounceMs);
+  }
+
+  function stopFallback() { clearInterval(feed.fallback); feed.fallback = null; }
+
+  function stopLive() {
+    if (feed.source) feed.source.close();
+    feed.source = null;
+    feed.opened = false;
+    clearTimeout(feed.debounce);
+    stopFallback();
+  }
+
+  function startLive(tab) {
+    stopLive();
+    if (typeof window.EventSource !== 'function') return;
+    const source = new window.EventSource(API + '/events?branch=' + tab.toUpperCase());
+    feed.source = source;
+    source.addEventListener('positions-changed', scheduleRefresh);
+    source.addEventListener('open', () => {
+      stopFallback();
+      if (feed.opened) scheduleRefresh(); // nối lại sau khi ngắt: có thể đã lỡ tín hiệu
+      feed.opened = true;
+    });
+    source.addEventListener('error', () => {
+      if (!feed.fallback) feed.fallback = setInterval(() => { if (!document.hidden) refreshInBackground(activeTab); }, LIVE.fallbackMs);
+    });
   }
 
   function syncTheme() {
@@ -1281,6 +1630,7 @@
       $('vtAddForm').elements.code.focus();
     });
     $('vtAddForm').addEventListener('submit', submitAdd);
+    $('vtAddForm').elements.code.addEventListener('input', suggestCodes);
     $('vtImportButton').addEventListener('click', () => {
       if (importState.busy) return;
       $('vtImportFile').value = '';
@@ -1315,6 +1665,29 @@
     $('vtImportWarnFilter').addEventListener('change', () => { importState.warnFilter = $('vtImportWarnFilter').value; importState.page = 0; renderImportPreviewRows(); });
     $('vtImportPrevPage').addEventListener('click', () => { importState.page -= 1; renderImportPreviewRows(); });
     $('vtImportNextPage').addEventListener('click', () => { importState.page += 1; renderImportPreviewRows(); });
+    $('vtStockOutButton').addEventListener('click', () => {
+      if (stockOutState.busy) return;
+      $('vtStockOutFile').value = '';
+      resetStockOut();
+      openDialog($('vtStockOutDialog'));
+    });
+    $('vtStockOutFile').addEventListener('change', resetStockOut);
+    $('vtStockOutPick').addEventListener('click', () => $('vtStockOutFile').click());
+    $('vtStockOutBack').addEventListener('click', () => { $('vtStockOutFile').value = ''; resetStockOut(); });
+    $('vtStockOutTemplate').addEventListener('click', downloadStockOutTemplate);
+    const stockOutDrop = $('vtStockOutDrop');
+    ['dragenter', 'dragover'].forEach(name => stockOutDrop.addEventListener(name, event => { event.preventDefault(); if (!stockOutState.busy) stockOutDrop.classList.add('is-over'); }));
+    ['dragleave', 'dragend'].forEach(name => stockOutDrop.addEventListener(name, () => stockOutDrop.classList.remove('is-over')));
+    stockOutDrop.addEventListener('drop', event => {
+      event.preventDefault();
+      stockOutDrop.classList.remove('is-over');
+      const files = event.dataTransfer && event.dataTransfer.files;
+      if (stockOutState.busy || !files || !files.length) return;
+      $('vtStockOutFile').files = files;
+      resetStockOut();
+    });
+    $('vtStockOutRun').addEventListener('click', runStockOut);
+    $('vtStockOutDialog').addEventListener('cancel', event => { if (stockOutState.busy) event.preventDefault(); });
     $('vtExportButton').addEventListener('click', exportExcel);
     $('vtHistoryButton').addEventListener('click', openHistory);
     $('vtHistorySearch').addEventListener('input', renderHistory);
@@ -1325,7 +1698,117 @@
     $('vtPurgeOk').addEventListener('click', runPurge);
   }
 
-  // Bấm (hoặc Enter/Space) vào dòng để mở hộp chi tiết; đang bôi đen chữ để sao chép thì không mở.
+  // ---------- Nhập trực tiếp trong bảng (Ghi chú số thùng / Ngày về / Vị trí) ----------
+  // Bấm vào ô → thành ô nhập; Enter hoặc rời ô → lưu, Esc → hủy, mũi tên → sang ô nhập kề bên.
+  // Các lần lưu xếp hàng nối đuôi nhau để dòng luôn được gửi với version mới nhất.
+  let saveChain = Promise.resolve();
+  const rowById = (tab, id) => state[tab].rows.find(item => String(item.id) === String(id));
+  const isVisible = node => node.offsetParent !== null;
+
+  function restoreCell(td, row) {
+    const index = Array.from(td.parentElement.children).indexOf(td);
+    const next = buildRow(row).children[index];
+    td.classList.remove('is-editing');
+    td.replaceChildren(...Array.from(next.childNodes));
+    if (next.title) td.title = next.title; else td.removeAttribute('title');
+    signatures.set(td, signatures.get(next));
+  }
+
+  function startEdit(td) {
+    if (!editable() || !DETAIL_FIELDS.includes(td.dataset.field)) return null;
+    const existing = td.querySelector('input.vt-inline');
+    if (existing) return existing;
+    const row = rowById(activeTab, td.parentElement.dataset.id);
+    if (!row) return null;
+    const field = td.dataset.field;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'vt-inline';
+    input.autocomplete = 'off';
+    input.value = String(row[field] ?? '');
+    input.dataset.field = field;
+    input.dataset.id = String(row.id);
+    input.setAttribute('aria-label', LABELS[field] + ' ' + row.code);
+    td.classList.add('is-editing');
+    // Chỉ thay phần chữ bằng ô nhập (giữ nhãn cảnh báo / Đã sửa, viên Vị trí) để bố cục dòng không đổi.
+    const holder = td.querySelector('.vt-pill') || td;
+    const text = Array.from(holder.childNodes).find(node => node.nodeType === 3);
+    if (text) text.replaceWith(input); else holder.insertBefore(input, holder.firstChild);
+    input.addEventListener('keydown', inlineKeydown);
+    input.addEventListener('blur', () => finishEdit(input, true));
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+    return input;
+  }
+
+  function finishEdit(input, save) {
+    if (input.dataset.done) return;
+    input.dataset.done = '1';
+    const td = input.closest('td');
+    const tab = activeTab, field = input.dataset.field, id = input.dataset.id, raw = input.value;
+    const row = rowById(tab, id);
+    if (td && row) {
+      // Hiện ngay giá trị vừa gõ trong lúc chờ máy chủ; thất bại thì render() bên dưới trả về giá trị cũ.
+      restoreCell(td, save ? Object.assign({}, row, { [field]: field === 'location' ? normalizeLocation(raw) : raw.trim() }) : row);
+    }
+    if (!save) return;
+    saveChain = saveChain.then(async () => {
+      const current = rowById(tab, id);
+      if (!current) return;
+      const before = String(current[field] ?? '').trim();
+      let value = raw.trim();
+      if (field === 'location') value = normalizeLocation(value);
+      if (field === 'notes' && before && value.startsWith('+')) value = before + ' ' + value;
+      if (value !== before) await patchRow(tab, current, { [field]: value }, false, message => notify(message, true));
+      if (tab === activeTab) render();
+    }).catch(() => notify('Không lưu được thay đổi.', true));
+  }
+
+  const caretAtEdge = (input, forward) => {
+    if (input.selectionStart === 0 && input.selectionEnd === input.value.length) return true;
+    if (input.selectionStart !== input.selectionEnd) return false;
+    return forward ? input.selectionEnd === input.value.length : input.selectionStart === 0;
+  };
+
+  function neighborCell(td, key) {
+    const tr = td.parentElement;
+    if (key === 'ArrowUp' || key === 'ArrowDown') {
+      const step = key === 'ArrowUp' ? 'previousElementSibling' : 'nextElementSibling';
+      for (let other = tr[step]; other; other = other[step]) {
+        const cell = other.children[td.cellIndex];
+        if (cell && isVisible(cell)) return cell;
+      }
+      return null;
+    }
+    const step = key === 'ArrowLeft' ? 'previousElementSibling' : 'nextElementSibling';
+    for (let cell = td[step]; cell; cell = cell[step]) {
+      if (DETAIL_FIELDS.includes(cell.dataset.field) && isVisible(cell)) return cell;
+    }
+    return null;
+  }
+
+  function inlineKeydown(event) {
+    const input = event.target;
+    if (event.isComposing) return;
+    if (event.key === 'Enter' || event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      const tr = input.closest('tr');
+      finishEdit(input, event.key === 'Enter');
+      if (tr) tr.focus();
+      return;
+    }
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    if ((event.key === 'ArrowLeft' || event.key === 'ArrowRight') && !caretAtEdge(input, event.key === 'ArrowRight')) return;
+    const target = neighborCell(input.closest('td'), event.key);
+    if (!target) return;
+    event.preventDefault();
+    startEdit(target); // lấy focus → ô cũ rời đi và tự lưu
+  }
+
+  // Bấm vào ô nhập liệu được → gõ ngay tại ô; bấm cột khác (hoặc Enter/Space trên dòng) → mở hộp chi tiết.
+  // Đang bôi đen chữ để sao chép thì không làm gì.
   function bindTable() {
     const body = $('vtRows');
     const rowOf = tr => state[activeTab].rows.find(item => String(item.id) === tr.dataset.id);
@@ -1333,6 +1816,8 @@
       const tr = event.target.closest('tr[data-id]');
       if (!tr) return;
       if (window.getSelection && window.getSelection().toString()) return;
+      const cell = event.target.closest('td[data-field]');
+      if (cell && editable() && DETAIL_FIELDS.includes(cell.dataset.field)) { startEdit(cell); return; }
       const row = rowOf(tr);
       if (row) openDetail(row);
     });
@@ -1358,6 +1843,7 @@
     });
     form.addEventListener('input', () => { renderDetailStats(); setDetailError(''); });
     $('vtDetailHistoryMore').addEventListener('click', () => loadDetailHistory(true));
+    $('vtDetailStaleReload').addEventListener('click', () => { if (detail.fresh) openDetail(detail.fresh); });
   }
 
   async function init() {
@@ -1383,6 +1869,7 @@
     applyScreenMode(mobileQuery ? mobileQuery.matches : window.innerWidth <= 600);
     if (mobileQuery) mobileQuery.addEventListener('change', event => applyScreenMode(event.matches));
     bindDialogs();
+    initImportTable();
     bindTable();
     bindDetail();
     document.querySelector('#vtTable thead').addEventListener('click', event => {
@@ -1400,7 +1887,7 @@
     $('vtWarnFilter').addEventListener('change', event => {
       const value = event.target.value;
       const current = state[activeTab];
-      current.warnFilter = value === 'warn' || value === 'valid' ? value : 'all';
+      current.warnFilter = value === 'warn' || value === 'valid' || value.startsWith('type:') ? value : 'all';
       current.page = 1;
       render();
     });
@@ -1439,8 +1926,12 @@
       else window.location.hash = tab;
     });
     window.addEventListener('hashchange', () => selectTab(window.location.hash.slice(1)));
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && feed.missed) { feed.missed = false; refreshInBackground(activeTab); }
+    });
+    window.addEventListener('pagehide', stopLive);
     await selectTab(window.location.hash.slice(1));
   }
 
-  window.TKSVtPositions = { init, normalizeSearch, filterRows, sortRows, formatTime };
+  window.TKSVtPositions = { init, normalizeSearch, filterRows, sortRows, formatTime, refresh: () => refreshInBackground(activeTab), live: LIVE };
 })();

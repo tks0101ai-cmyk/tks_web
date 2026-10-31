@@ -21,3 +21,10 @@ test('tóm tắt bỏ Đã sửa (warnings rỗng) không rỗng; tóm tắt nh�
   assert.equal(summaryText({ orderCode: 'DH2', assignmentId: 8, confirmedBy: '', picked: 5 }), 'Nhặt 5 · Job Kiot');
   assert.equal(summaryText({ warnings: ['unreadable'] }), 'Sai định dạng');
 });
+
+test('nhãn + tóm tắt Xuất kho (stock_out); Trừ SL cũ cũng đọc được', () => {
+  assert.equal(ACTION_LABELS.stock_out, 'Xuất kho');
+  assert.equal(summaryText({ deducted: 250, removed: false, fileName: 'xuat.xlsx', fileRows: [2, 3] }), 'Trừ 250 · xuat.xlsx');
+  assert.equal(summaryText({ deducted: 100, removed: true, fileName: 'xuat.xlsx', fileRows: [2] }), 'Trừ 100 · Hết hàng, đã xóa dòng · xuat.xlsx');
+  assert.equal(summaryText({ deducted: 200 }), 'Trừ 200');
+});

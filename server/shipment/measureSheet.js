@@ -125,4 +125,4 @@ function createMeasureSheet({ getDb = getPool, now = () => Date.now() } = {}) {
   return { lookup };
 }
 
-module.exports = { parseMeasureRows, createMeasureSheet, codeKey, ...createMeasureSheet() };
+module.exports = { parseMeasureRows, createMeasureSheet, codeKey, normalizeHeader, ...createMeasureSheet() };

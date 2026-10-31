@@ -2,6 +2,8 @@
 
 Ngày 23/10/2026. Đây là nghiên cứu nghiệp vụ, chưa triển khai lên hệ thống thật hoặc thay đổi prototype.
 
+> **Ghi chú 30/10/2026:** tài liệu nghiên cứu theo thời điểm 23/10/2026. Module `server/stockLocations/` (Vị trí HN/SG đọc Google Sheets, `stock_location_lines`) nhắc tới dưới đây đã bị gỡ; Vị trí hàng nay là VT Hà Nội / VT Sài Gòn (`stockPositions/`, bảng `stock_positions`, SL kho tính từ ghi chú thùng) và Chỉ định vị trí đã triển khai trên Vòng đời đơn hàng (`pickAssignments/`). Các đoạn mô tả "mã hiện tại" bên dưới là lịch sử, không phản ánh hiện trạng.
+
 ## 1. Dữ kiện mới quyết định cách thiết kế
 
 Người dùng xác nhận số lượng trong tab Vị trí hiện là số nhập ban đầu hoặc số đã đi, chưa phản ánh tồn còn. Vì vậy số Sheet không phải số khả dụng để thuật toán sử dụng. Những tình huống prototype đã thử chứng minh công thức trên dữ liệu giả định là tồn còn, chưa chứng minh có thể áp dụng trực tiếp cho dữ liệu vận hành.

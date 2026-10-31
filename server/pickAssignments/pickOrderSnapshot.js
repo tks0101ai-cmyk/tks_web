@@ -50,7 +50,7 @@ function makeOrderSnapshot(order) {
     const amount = {scale:unit.scale, coefficient:unit.coefficient * BigInt(quantity)};
     total = add(total, amount);
     lines.push({productCode:String(line.productCode).trim(), productName:String(line.productName || '').trim(),
-      quantity, price:line.price, discount:line.discount ?? 0, note:line.note || '',
+      quantity, ...(line.kiotQuantity===undefined?{}:{kiotQuantity:line.kiotQuantity}), price:line.price, discount:line.discount ?? 0, note:line.note || '',
       unitPrice:text(unit), amount:text(amount)});
   }
   const discount = decimal(order.invoiceDiscount ?? 0);

@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
 const publicDir = path.join(__dirname, '../../public');
-const pages = ['index.html', 'account/index.html', 'cashbook/index.html', 'humanresources/index.html', 'shipment/lifecycle/index.html', 'stock-locations/index.html', 'vat-draft/index.html'];
+const pages = ['index.html', 'account/index.html', 'cashbook/index.html', 'humanresources/index.html', 'shipment/lifecycle/index.html', 'vat-draft/index.html'];
 test('every table page loads shared controls after page styles and before application scripts', () => {
   for (const page of pages) {
     const html = fs.readFileSync(path.join(publicDir, page), 'utf8');
@@ -24,7 +24,7 @@ test('every table page loads shared controls after page styles and before applic
 test('legacy column persistence and clipped lifecycle notes are replaced', () => {
   const account = fs.readFileSync(path.join(publicDir, 'account/index.html'), 'utf8');
   const lifecycle = fs.readFileSync(path.join(publicDir, 'shipment/lifecycle/index.html'), 'utf8');
-  const locations = fs.readFileSync(path.join(publicDir, 'stock-locations/stock-locations.js'), 'utf8');
+  const locations = fs.readFileSync(path.join(publicDir, 'vt-positions/vt-positions.js'), 'utf8');
   assert.doesNotMatch(lifecycle, /HIDDEN_COLUMNS_STORAGE_KEY|bulkColumnStyle|-webkit-line-clamp/);
   assert.doesNotMatch(locations, /COLUMN_STORAGE_KEY/);
   assert.doesNotMatch(account, /openUserColumnsModal|userColumnsModal|tableColumnsStorageKey|visibleUserColumns/);

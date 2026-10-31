@@ -2,6 +2,8 @@
 
 Ngày nghiên cứu: 23/10/2026. Đề xuất thiết kế, chưa phải chức năng production đã triển khai. Nguồn ngoài là đối chiếu nghiệp vụ; các quyết định áp dụng TOKOSI dưới đây là đề xuất cần chốt với người dùng.
 
+> **Ghi chú 30/10/2026:** tài liệu nghiên cứu theo thời điểm 23/10/2026. Module `server/stockLocations/` (Vị trí HN/SG đọc Google Sheets, `stock_location_lines`) nhắc tới dưới đây đã bị gỡ; Vị trí hàng nay là VT Hà Nội / VT Sài Gòn (`stockPositions/`, bảng `stock_positions`, SL kho tính từ ghi chú thùng) và Chỉ định vị trí đã triển khai trên Vòng đời đơn hàng (`pickAssignments/`). Các đoạn mô tả "mã hiện tại" bên dưới là lịch sử, không phản ánh hiện trạng.
+
 ## 1. Kết luận chính
 
 Giữ nguyên bảng/chi tiết Vòng đời. Tách bốn khái niệm: gợi ý (không ghi tồn), giữ chỗ (cam kết cho đơn), thực nhặt (chuyển vật lý khỏi kệ sang chờ giao), xuất giao (rời kho). Không đồng nhất chỉ định với trừ tồn tổng KiotViet.

@@ -31,23 +31,65 @@ function getRouteHandler(router, method, routePath) {
   return layer.route.stack[layer.route.stack.length - 1].handle;
 }
 
-test('permission catalog marks guest exclusion; granting stock locations to a guest is rejected without saving', async () => {
+test('permission catalog: Vị trí hàng chỉ còn VT HN/SG, xem + xuất mặc định cho mọi vai trò kể cả Khách, sửa / xóa lịch sử loại Khách', async () => {
   const catalog = fakeRes();
   await getRouteHandler(adminUserRoutes, 'get', '/api/admin/permissions/catalog')({}, catalog);
-  assert.deepEqual(catalog.body.features.find(f => f.key === 'stockLocations.view').forbiddenRoles, ['Khách']);
-  // VT Hà Nội / VT Sài Gòn: quyền xem, sửa, xuất Excel hiện trong danh mục để Quản lý cấp thêm từng tài khoản.
+  assert.equal(catalog.body.features.some(f => f.key === 'stockLocations.view'), false);
+  // VT Hà Nội / VT Sài Gòn: quyền xem, sửa, xuất Excel, xóa lịch sử hiện trong danh mục để Quản lý cấp / thu hồi từng tài khoản.
   const vt = catalog.body.features.filter(f => f.key.startsWith('stockLocationsV2.')).map(f => f.key).sort();
   assert.deepEqual(vt, ['stockLocationsV2.edit', 'stockLocationsV2.export', 'stockLocationsV2.historyDelete', 'stockLocationsV2.view']);
-  assert.deepEqual(catalog.body.features.find(f => f.key === 'stockLocationsV2.view').forbiddenRoles, ['Khách']);
+  const byKey = key => catalog.body.features.find(f => f.key === key);
+  assert.deepEqual(byKey('stockLocationsV2.view').forbiddenRoles, []);
+  assert.deepEqual(byKey('stockLocationsV2.export').forbiddenRoles, []);
+  assert.deepEqual(byKey('stockLocationsV2.edit').forbiddenRoles, ['Khách']);
+  assert.deepEqual(byKey('stockLocationsV2.historyDelete').forbiddenRoles, ['Khách']);
+  for (const role of Object.keys(catalog.body.roleDefaults)) {
+    assert.ok(catalog.body.roleDefaults[role].includes('stockLocationsV2.view'), role);
+    assert.ok(catalog.body.roleDefaults[role].includes('stockLocationsV2.export'), role);
+    assert.equal(catalog.body.roleDefaults[role].includes('stockLocationsV2.edit'), role === 'Quản lý', role);
+  }
+});
+
+test('Khách: cấp edit / xóa lịch sử VT bị từ chối không lưu; tắt xem / xuất VT được lưu và có hiệu lực', async () => {
   localUserStore.setInMemoryUsers([{ id: 'location-guest', username: 'location-guest', vaiTro: 'Khách', trangThai: 'Đang hoạt động' }]);
-  const res = fakeRes();
-  await getRouteHandler(adminUserRoutes, 'put', '/api/admin/users/:id/permissions')({
-    user: { id: 'admin', username: 'admin', vaiTro: 'Quản lý' },
-    params: { id: 'location-guest' }, body: { overrides: { 'stockLocations.view': true } }
-  }, res);
-  assert.equal(res.statusCode, 400);
-  assert.equal(res.body.code, 'FEATURE_ROLE_FORBIDDEN');
-  assert.ok(!(await localUserStore.getUserById('location-guest')).featurePermissions?.['stockLocations.view']);
+  const put = getRouteHandler(adminUserRoutes, 'put', '/api/admin/users/:id/permissions');
+  const actor = { id: 'admin', username: 'admin', vaiTro: 'Quản lý' };
+  for (const key of ['stockLocationsV2.edit', 'stockLocationsV2.historyDelete']) {
+    const res = fakeRes();
+    await put({ user: actor, params: { id: 'location-guest' }, body: { overrides: { [key]: true } } }, res);
+    assert.equal(res.statusCode, 400, key);
+    assert.equal(res.body.code, 'FEATURE_ROLE_FORBIDDEN', key);
+    assert.ok(!(await localUserStore.getUserById('location-guest')).featurePermissions?.[key], key);
+  }
+  const off = fakeRes();
+  await put({ user: actor, params: { id: 'location-guest' }, body: { overrides: { 'stockLocationsV2.view': false } } }, off);
+  assert.equal(off.statusCode, 200);
+  assert.ok(!off.body.effective.includes('stockLocationsV2.view') && !off.body.effective.includes('stockLocationsV2.export'));
+  assert.ok(off.body.defaults.includes('stockLocationsV2.view'));
+  const exportOff = fakeRes();
+  await put({ user: actor, params: { id: 'location-guest' }, body: { overrides: { 'stockLocationsV2.export': false } } }, exportOff);
+  assert.equal(exportOff.statusCode, 200);
+  assert.ok(exportOff.body.effective.includes('stockLocationsV2.view') && !exportOff.body.effective.includes('stockLocationsV2.export'));
+});
+
+test('ghi đè stockLocations.view cũ còn lưu: GET bỏ qua, PUT lại bằng overrides đã chuẩn hóa xóa nó, PUT gửi thẳng key cũ bị từ chối rõ ràng', async () => {
+  localUserStore.setInMemoryUsers([{ id: 'old-override', username: 'old-override', vaiTro: 'Nhân viên kho', trangThai: 'Đang hoạt động',
+    featurePermissions: { 'stockLocations.view': false } }]);
+  const get = fakeRes();
+  await getRouteHandler(adminUserRoutes, 'get', '/api/admin/users/:id/permissions')({ user: { id: 'admin', username: 'admin', vaiTro: 'Quản lý' }, params: { id: 'old-override' } }, get);
+  assert.equal(get.statusCode, 200);
+  assert.deepEqual(get.body.overrides, {});
+  assert.ok(get.body.effective.includes('stockLocationsV2.view'));
+  const put = getRouteHandler(adminUserRoutes, 'put', '/api/admin/users/:id/permissions');
+  const actor = { id: 'admin', username: 'admin', vaiTro: 'Quản lý' };
+  const stale = fakeRes();
+  await put({ user: actor, params: { id: 'old-override' }, body: { overrides: { 'stockLocations.view': false } } }, stale);
+  assert.equal(stale.statusCode, 400);
+  assert.equal(stale.body.code, 'UNKNOWN_FEATURE');
+  const resave = fakeRes();
+  await put({ user: actor, params: { id: 'old-override' }, body: { overrides: get.body.overrides } }, resave);
+  assert.equal(resave.statusCode, 200);
+  assert.deepEqual((await localUserStore.getUserById('old-override')).featurePermissions, {});
 });
 
 test('Admin User Management: GET /api/admin/users trả về danh sách user không lộ passwordHash', async () => {

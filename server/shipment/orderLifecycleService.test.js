@@ -563,29 +563,39 @@ test('queryOrders + pickStatuses: dong cua trang co pickStatus (null neu chua ch
   }
 });
 
-test('queryOrders: bo loc "none" (Chua boc) = don khong co khoa chi chi dinh; pickMismatch chi gan cho don Dang boc / Da boc cua TRANG, chi hoi cac don do', async () => {
+test('queryOrders: bo loc "none" (Chua boc) = don khong co khoa chi chi dinh; canh bao Lech Kiot / Lech SL trong don cong vao warnings, loc/dem/xuat duoc', async () => {
   const ctx = freshService([]);
   try {
     const orders = [1, 2, 3, 4].map(i => kiotOrder({ code: 'DH00000' + i, orderDate: `0${i}/10/2026 10:00` }));
     const kiot = fakeKiot({ ok: true, orders });
     const pickStatuses = async () => new Map([['HN|dh000002', 'picking'], ['HN|dh000003', 'confirmed'], ['HN|dh000004', 'cancelled']]);
-    const asked = [];
-    const pickMismatches = async pairs => {
-      asked.push(pairs.map(p => p.branch + '|' + p.orderCode).sort());
-      return new Map([['HN|dh000002', [{ productCode: 'A1', picked: 400, ordered: 395 }]]]);
-    };
-    const none = await ctx.service.queryOrders({ pickStatus: 'none' }, { kiot, pickStatuses, pickMismatches });
+    const pickWarnings = async () => new Map([['HN|dh000002', ['PICK_KIOT_DIFF']], ['HN|dh000003', ['PICK_KIOT_DIFF', 'PICK_ORDER_DIFF']]]);
+    const none = await ctx.service.queryOrders({ pickStatus: 'none' }, { kiot, pickStatuses, pickWarnings });
     assert.deepEqual(none.orders.map(o => o.orderCode), ['DH000001'], 'Chua boc = khong co khoa (khong co chi dinh / Kiot huy don)');
-    assert.deepEqual(asked.at(-1), undefined, 'trang chi co don Chua boc -> khong hoi canh bao lech SL');
-    const all = await ctx.service.queryOrders({}, { kiot, pickStatuses, pickMismatches });
-    assert.deepEqual(all.orders.map(o => [o.orderCode, o.pickMismatch || null]), [
-      ['DH000004', null], ['DH000003', null], ['DH000002', [{ productCode: 'A1', picked: 400, ordered: 395 }]], ['DH000001', null]]);
-    assert.deepEqual(asked.at(-1), ['HN|DH000002', 'HN|DH000003'], 'chi hoi don Dang boc / Da boc cua trang');
-    // Khong truyen pickMismatches (nguoi khong co quyen) thi khong co truong.
+    const all = await ctx.service.queryOrders({}, { kiot, pickStatuses, pickWarnings });
+    assert.deepEqual(all.orders.map(o => [o.orderCode, o.warnings]), [
+      ['DH000004', []], ['DH000003', ['PICK_KIOT_DIFF', 'PICK_ORDER_DIFF']], ['DH000002', ['PICK_KIOT_DIFF']], ['DH000001', []]]);
+    // Bo loc canh bao: ma cu the va "any" (co canh bao).
+    const kiotDiff = await ctx.service.queryOrders({ warning: 'PICK_KIOT_DIFF' }, { kiot, pickStatuses, pickWarnings });
+    assert.deepEqual(kiotDiff.orders.map(o => o.orderCode), ['DH000003', 'DH000002']);
+    const orderDiff = await ctx.service.queryOrders({ warning: 'PICK_ORDER_DIFF' }, { kiot, pickStatuses, pickWarnings });
+    assert.deepEqual(orderDiff.orders.map(o => o.orderCode), ['DH000003']);
+    const any = await ctx.service.queryOrders({ warning: 'any' }, { kiot, pickStatuses, pickWarnings });
+    assert.deepEqual(any.orders.map(o => o.orderCode), ['DH000003', 'DH000002']);
+    // The KPI va dem theo co so tinh ca 2 ma moi; don nhieu canh bao dem 1 lan o "any".
+    assert.deepEqual([all.kpis.warnings.any, all.kpis.warnings.PICK_KIOT_DIFF, all.kpis.warnings.PICK_ORDER_DIFF], [2, 2, 1]);
+    assert.equal(all.warningCounts.PICK_KIOT_DIFF, 2);
+    assert.equal(all.facets.warning.PICK_ORDER_DIFF, 1);
+    // Khong truyen pickWarnings (nguoi khong co quyen) thi khong co ma canh bao chi dinh.
     const plain = await ctx.service.queryOrders({}, { kiot, pickStatuses });
-    assert.ok(plain.orders.every(o => !('pickMismatch' in o)));
-    // Xuat Excel loc 'none' cung bo tham so.
+    assert.ok(plain.orders.every(o => !o.warnings.some(code => code.startsWith('PICK_'))));
+    assert.equal((await ctx.service.queryOrders({ warning: 'PICK_KIOT_DIFF' }, { kiot, pickStatuses })).orders.length, 0);
+    // Xuat Excel dung cung bo tham so (loc none, loc canh bao).
     assert.deepEqual((await ctx.service.exportOrders({ pickStatus: 'none' }, { kiot, pickStatuses })).map(o => o.orderCode), ['DH000001']);
+    assert.deepEqual((await ctx.service.exportOrders({ warning: 'PICK_ORDER_DIFF' }, { kiot, pickStatuses, pickWarnings })).map(o => o.orderCode), ['DH000003']);
+    // pickWarnings loi/rong khong lam hong danh sach.
+    const empty = await ctx.service.queryOrders({ warning: 'any' }, { kiot, pickStatuses, pickWarnings: async () => new Map() });
+    assert.equal(empty.orders.length, 0);
   } finally {
     ctx.restore();
   }

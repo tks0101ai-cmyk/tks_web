@@ -282,7 +282,8 @@ test('countSummary: 3 trạng thái — "Chưa gửi KT" chỉ tính đơn Phi�
   assert.deepEqual(q.countSummary(rows, q.parseParams({})), {
     status: { NOT_SENT: 1, SENT_TO_ACCOUNTANT: 1, DELIVERING: 1 },
     warnings: {
-      any: 2, ACCOUNTANT_LATE: 1, DRIVER_NO_PHOTO: 1, DRIVER_FORGOT_PHOTO: 0, NOT_SIGNED_6H: 1, PICKUP_PENDING: 0, NO_TRAIN_BILL: 0
+      any: 2, ACCOUNTANT_LATE: 1, DRIVER_NO_PHOTO: 1, DRIVER_FORGOT_PHOTO: 0, NOT_SIGNED_6H: 1, PICKUP_PENDING: 0, NO_TRAIN_BILL: 0,
+      PICK_KIOT_DIFF: 0, PICK_ORDER_DIFF: 0
     }
   });
 });

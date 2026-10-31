@@ -86,10 +86,6 @@
   /* Don Dang boc / Da boc ma tong ST da chi dinh khac SL tren Kiot: to do ca dong + nhan canh bao o cot Canh bao. */
   .bulk-table tbody tr.lc-row-mismatch{ background:rgba(239,68,68,.10); box-shadow:inset 3px 0 0 var(--red); }
   .bulk-table tbody tr.lc-row-mismatch:hover{ background:rgba(239,68,68,.16); }
-  /* Lệch SL đã bấm "Đã xử lý": nhãn và dòng chuyển vàng, không còn đỏ. */
-  .badge-handled{ color:var(--amber); background:rgba(245,158,11,.14); border:1px solid rgba(245,158,11,.4); }
-  .bulk-table tbody tr.lc-row-handled{ background:rgba(245,158,11,.10); box-shadow:inset 3px 0 0 var(--amber); }
-  .bulk-table tbody tr.lc-row-handled:hover{ background:rgba(245,158,11,.16); }
   .badge-not-sent{ color:var(--muted); background:var(--surface-hover); border:1px solid var(--border); }
   .badge-sent{ color:var(--amber); background:rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.3); }
   .badge-delivering{ color:var(--blue); background:rgba(59,130,246,.12); border:1px solid rgba(59,130,246,.3); }
@@ -361,11 +357,6 @@
     border:1px solid var(--alert-error-border); border-radius:var(--radius-lg); background:var(--alert-error-bg);
   }
   .lc-detail-alert-title{ font-size:12px; font-weight:700; color:var(--red); }
-  .lc-detail-alert.is-handled{ border-color:rgba(245,158,11,.4); background:rgba(245,158,11,.10); }
-  .lc-detail-alert.is-handled .lc-detail-alert-title{ color:var(--amber); }
-  .lc-handle-btn{ margin-left:auto; padding:4px 12px; font:inherit; font-size:12.5px; font-weight:700; color:var(--amber); background:rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.4); border-radius:var(--radius-md, 8px); cursor:pointer; }
-  .lc-handle-btn:hover:not(:disabled){ background:rgba(245,158,11,.22); }
-  .lc-handle-btn:disabled{ opacity:.6; cursor:default; }
   #lcDetailAlertHost:empty{ display:none; }
   .lc-detail-alert .lc-warning-badge{ margin:0; }
   .lc-detail-row{
@@ -567,6 +558,8 @@
                   <option value="NOT_SIGNED_6H">Chưa nhận đơn quá 6 giờ</option>
                   <option value="PICKUP_PENDING">Khách/Ship chưa lấy</option>
                   <option value="NO_TRAIN_BILL">Chưa chụp bill tàu</option>
+                  <option value="PICK_KIOT_DIFF" data-pick-only>Lệch Kiot</option>
+                  <option value="PICK_ORDER_DIFF" data-pick-only>Lệch SL trong đơn</option>
                 </select>
                 <span class="bulk-pick-filter" id="bulkPickWrap" hidden>
                   <select class="bulk-status-select" id="bulkPickStatusFilter" aria-label="Lọc theo trạng thái bốc hàng">
@@ -719,7 +712,7 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- Dat o cuoi than <body> thay vi <head>: script chan phan tich cu phap trong <head> se lam dung viec xu ly toan bo tai lieu. Khong dung `defer` vi script inline ben duoi dung TKSNav o cap cao nhat, va script inline luon chay truoc script defer. -->
-  <script src="/shared/table-controls.js?v=20261024-2"></script>
+  <script src="/shared/table-controls.js?v=20261030-1"></script>
   <script src="/shared/fuzzy-search.js"></script>
   <script src="/shared/search-clear.js?v=20261009-1"></script>
   <script src="/shared/shared-nav.js?v=20261028-leave-btn"></script>
@@ -1254,53 +1247,13 @@
         });
     }
     // Ve lai khoi "Hang hoa trong don" + gan nut/chip Chi dinh vi tri (pick/pick-assign.js).
-    // Khung Cảnh báo đầu hộp chi tiết: nhãn cảnh báo + (người có quyền bốc, đơn đang lệch SL chưa xử lý) nút "Đã xử lý".
+    // Khung Cảnh báo đầu hộp chi tiết: các nhãn cảnh báo của đơn.
     function renderDetailAlert(order){
       const host = document.getElementById('lcDetailAlertHost');
       if(!host) return;
       const warnings = Array.isArray(order.warnings) ? order.warnings : (order.warning ? [''] : []);
-      if(!warnings.length && !hasPickMismatch(order)){ host.innerHTML = ''; return; }
-      const onlyHandled = !warnings.length && pickMismatchHandled(order);
-      const canHandle = canPick && hasPickMismatch(order) && !pickMismatchHandled(order);
-      host.innerHTML = '<div class="lc-detail-alert' + (onlyHandled ? ' is-handled' : '') + '"><span class="lc-detail-alert-title">' + (onlyHandled ? 'Đã xử lý' : 'Cảnh báo') + '</span>' + warningHtml(order) +
-        (canHandle ? '<button type="button" class="lc-handle-btn" id="lcMismatchHandle" title="Giữ nguyên số lượng đã chỉ định, chuyển cảnh báo sang Đã xử lý">Đã xử lý</button>' : '') + '</div>';
-      const button = document.getElementById('lcMismatchHandle');
-      if(button) button.addEventListener('click', function(){ handleMismatch(order, button); });
-    }
-    // "Đã xử lý": không đổi số lượng, chỉ ghi nhận đã xem lệch SL (máy chủ nhớ theo đúng số lệch hiện tại; Kiot sửa tiếp thì cảnh báo hiện lại).
-    async function handleMismatch(order, button){
-      button.disabled = true;
-      try{
-        const res = await fetch('/api/shipment/pick/mismatch-ack', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
-          body: JSON.stringify({ branch: order.branch, orderCode: order.orderCode })
-        });
-        const body = await res.json().catch(function(){ return {}; });
-        if(!res.ok){
-          showToast(body.error || 'Không đánh dấu được đã xử lý.', 'error');
-          button.disabled = false;
-          if(res.status === 409) loadBulkOrders(true);
-          return;
-        }
-        applyMismatch(order, body.mismatch);
-        showToast('Đã đánh dấu đơn "' + order.orderCode + '" là đã xử lý.', 'success');
-      }catch(err){
-        showToast('Lỗi kết nối máy chủ.', 'error');
-        button.disabled = false;
-      }
-    }
-    function applyMismatch(order, items){
-      const targets = [order];
-      const entry = bulkRowNodes.get(rowKey(order));
-      if(entry && entry.tr && entry.tr._order && entry.tr._order !== order) targets.push(entry.tr._order);
-      targets.forEach(function(target){ target.pickMismatch = Array.isArray(items) && items.length ? items : undefined; });
-      if(entry && entry.tr && entry.tr._order){
-        const warningCell = entry.tr.querySelector('[data-col="warning"]');
-        if(warningCell) warningCell.innerHTML = warningHtml(entry.tr._order);
-        syncMismatchRow(entry.tr, entry.tr._order);
-        entry.sig = rowSignature(entry.tr._order);
-      }
-      if(detailOrder === order) renderDetailAlert(order);
+      if(!warnings.length){ host.innerHTML = ''; return; }
+      host.innerHTML = '<div class="lc-detail-alert"><span class="lc-detail-alert-title">Cảnh báo</span>' + warningHtml(order) + '</div>';
     }
     function renderKiotHolder(order){
       const holder = document.getElementById('lcDetailKiot');
@@ -1323,15 +1276,18 @@
       detailPick = assignment || null;
       applyPickStatus(order, status);
       if(detailOrder === order) renderKiotHolder(order);
+      loadBulkOrders(true); // canh bao Lech Kiot / Lech SL trong don do may chu tinh lai theo chi dinh moi
     }
-    // Ghi trang thai bốc moi len dong (va dong dang hien tren bang): ve lai o "Trang thai boc"; khong con Dang boc / Da boc thi het canh bao lech SL.
+    // Ghi trang thai bốc moi len dong (va dong dang hien tren bang): ve lai o "Trang thai boc"; khong con Dang boc / Da boc thi het canh bao chi dinh (Lech Kiot / Lech SL trong don).
     function applyPickStatus(order, status){
       const targets = [order];
       const entry = bulkRowNodes.get(rowKey(order));
       if(entry && entry.tr && entry.tr._order && entry.tr._order !== order) targets.push(entry.tr._order);
       targets.forEach(function(target){
         target.pickStatus = status;
-        if(status !== 'picking' && status !== 'confirmed') target.pickMismatch = undefined;
+        if(status !== 'picking' && status !== 'confirmed' && Array.isArray(target.warnings)){
+          target.warnings = target.warnings.filter(function(code){ return PICK_WARNING_CODES.indexOf(code) < 0; });
+        }
       });
       if(entry && entry.tr && entry.tr._order){
         const cell = entry.tr.querySelector('[data-col="pickStatus"]');
@@ -1856,39 +1812,30 @@
       DRIVER_FORGOT_PHOTO: 'Lái xe quên chụp',
       NOT_SIGNED_6H: 'Chưa nhận đơn quá 6 giờ',
       PICKUP_PENDING: 'Khách/Ship chưa lấy',
-      NO_TRAIN_BILL: 'Chưa chụp bill tàu'
+      NO_TRAIN_BILL: 'Chưa chụp bill tàu',
+      PICK_KIOT_DIFF: 'Lệch Kiot',
+      PICK_ORDER_DIFF: 'Lệch SL trong đơn'
     };
-    // Canh bao LECH SL bốc (server chi tra pickMismatch cho nguoi co quyen shipment.pick): tong ST da chi dinh khac SL dong don Kiot.
-    function hasPickMismatch(order){
-      return Array.isArray(order.pickMismatch) && order.pickMismatch.length > 0;
-    }
-    // Đã xử lý = mọi dòng lệch đều đã được ghi nhận khớp đúng số lệch hiện tại (máy chủ gắn `handled`).
-    function pickMismatchHandled(order){
-      return hasPickMismatch(order) && order.pickMismatch.every(function(item){ return !!item.handled; });
-    }
-    function pickMismatchTitle(order){
-      return order.pickMismatch.map(function(item){
-        return item.productCode + ': bốc ' + VND_FORMAT.format(item.picked) + ' / đặt ' + VND_FORMAT.format(item.ordered);
-      }).join('; ');
+    // Canh bao chi dinh vi tri (server chi gan cho nguoi co quyen shipment.pick): "Lech Kiot" = SL can nhat (da sua tay) khac SL don tren Kiot;
+    // "Lech SL trong don" = SL chon theo thung khac SL can nhat (dong boi do luc chi dinh). Nam trong order.warnings nhu cac canh bao khac.
+    const PICK_WARNING_CODES = ['PICK_KIOT_DIFF', 'PICK_ORDER_DIFF'];
+    const PICK_WARNING_TITLE = {
+      PICK_KIOT_DIFF: 'SL cần nhặt đã sửa khác SL đơn trên Kiot. Sửa đơn Kiot cho khớp và đồng bộ lại thì cảnh báo tự hết.',
+      PICK_ORDER_DIFF: 'SL chọn theo thùng khác SL cần nhặt trong đơn (dòng bôi đỏ khi chỉ định). Chỉ định lại cho khớp thì cảnh báo tự hết.'
+    };
+    function hasPickWarning(order){
+      return Array.isArray(order.warnings) && order.warnings.some(function(code){ return PICK_WARNING_CODES.indexOf(code) >= 0; });
     }
     function warningHtml(order){
       const codes = Array.isArray(order.warnings) ? order.warnings : (order.warning ? [''] : []);
-      const html = codes.map(function(code){
-        return '<span class="lc-badge badge-exception lc-warning-badge">' + escapeHtml(WARNING_LABEL[code] || 'Cảnh báo') + '</span>';
-      });
-      if(pickMismatchHandled(order)){
-        const by = order.pickMismatch[0].handled;
-        html.push('<span class="lc-badge badge-handled lc-warning-badge lc-pick-mismatch" title="' + escapeHtml('Lệch SL đã xử lý' + (by && by.by ? ' bởi ' + by.by : '') + ' — ' + pickMismatchTitle(order)) + '">Đã xử lý</span>');
-      }else if(hasPickMismatch(order)){
-        html.push('<span class="lc-badge badge-exception lc-warning-badge lc-pick-mismatch" title="' + escapeHtml('Lệch SL (ST đã chỉ định so với SL đơn trên Kiot) — ' + pickMismatchTitle(order)) + '">Lệch SL bốc</span>');
-      }
-      return html.join(' ');
+      return codes.map(function(code){
+        const title = PICK_WARNING_TITLE[code];
+        return '<span class="lc-badge badge-exception lc-warning-badge"' + (title ? ' title="' + escapeHtml(title) + '"' : '') + '>' + escapeHtml(WARNING_LABEL[code] || 'Cảnh báo') + '</span>';
+      }).join(' ');
     }
-    // Tô đỏ cả dòng khi lệch SL bốc; đã bấm "Đã xử lý" thì tô vàng.
+    // Tô đỏ cả dòng khi đơn có cảnh báo chỉ định (Lệch Kiot / Lệch SL trong đơn).
     function syncMismatchRow(tr, order){
-      const handled = pickMismatchHandled(order);
-      tr.classList.toggle('lc-row-mismatch', hasPickMismatch(order) && !handled);
-      tr.classList.toggle('lc-row-handled', handled);
+      tr.classList.toggle('lc-row-mismatch', hasPickWarning(order));
     }
 
     // ---------- Cot cua bang + hop "Cot hien thi" ----------
@@ -2044,8 +1991,7 @@
         hasOrderTotal(order) ? order.orderTotal : null,
         hasSellableValue(order) ? order.sellableValue : null,
         order.summary && order.summary.code, order.summary && order.summary.label, order.summary && order.summary.at,
-        (order.warnings || []).join(','), !!order.warning, isEditableRow(order), order.pickStatus || null,
-        hasPickMismatch(order) ? pickMismatchTitle(order) + (pickMismatchHandled(order) ? '|handled' : '') : null
+        (order.warnings || []).join(','), !!order.warning, isEditableRow(order), order.pickStatus || null
       ]);
     }
 
@@ -2302,7 +2248,8 @@
       { code: 'SENT_TO_ACCOUNTANT', label: 'Đã gửi kế toán', accent: 'blue' },
       { code: 'DELIVERING', label: 'Đang được giao', accent: 'green' }
     ];
-    const KPI_WARNING_CODES = Object.keys(WARNING_LABEL);
+    // Hai the canh bao chi dinh chi hien cho nguoi co quyen shipment.pick (may chu chi tinh cho ho).
+    const kpiWarningCodes = function(){ return Object.keys(WARNING_LABEL).filter(function(code){ return canPick || PICK_WARNING_CODES.indexOf(code) < 0; }); };
     let lastKpis = null;
 
     function kpiCardSelected(kind, code){
@@ -2326,7 +2273,7 @@
         return kpiCardHtml('status', card.code, card.label, kpis.status[card.code], card.accent, card.sub);
       }).join('');
       const warningCards = kpiCardHtml('warning', 'any', 'Tổng đơn vi phạm', kpis.warnings.any, 'red') +
-        KPI_WARNING_CODES.map(function(code){
+        kpiWarningCodes().map(function(code){
           return kpiCardHtml('warning', code, WARNING_LABEL[code], kpis.warnings[code], 'red');
         }).join('');
       lcKpis.innerHTML =
@@ -2788,6 +2735,7 @@
       canOverride = TKSNav.can('shipment.override');
       canPick = TKSNav.can('shipment.pick');
       document.getElementById('bulkPickWrap').hidden = !canPick; // bo loc trang thai boc chi cho nguoi co quyen
+      if(!canPick) document.querySelectorAll('#bulkWarningFilter option[data-pick-only]').forEach(function(option){ option.remove(); });
       if(canPick) addPickColumn(); // cot "Trang thai boc" (dropdown Dang boc -> Da boc / Da huy) chi cho nguoi co quyen
       lookupForm.hidden = true;
       lcInternalWrap.hidden = false;

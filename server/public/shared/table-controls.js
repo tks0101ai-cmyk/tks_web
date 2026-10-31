@@ -770,8 +770,58 @@
       .then(function (body) { if (body && body.tables) loadPrefs(body.tables); })
       .catch(function () { /* dùng cấu hình mặc định */ });
   }
+  // Phím mũi tên trong ô nhập của bảng: lên/xuống sang cùng cột ở dòng trên/dưới, trái/phải (khi con trỏ ở mép chữ)
+  // sang ô nhập kề bên. Trang tự xử lý (đã preventDefault) thì bỏ qua.
+  var GRID_INPUT_TYPES = /^(text|search|tel|email|url|number|date)$/;
+  function gridInputOf(cell) {
+    var input = cell && cell.querySelector('input,textarea');
+    if (!input || input.disabled || input.readOnly || input.hidden || (input.tagName === 'INPUT' && !GRID_INPUT_TYPES.test(input.type || 'text'))) return null;
+    return input.offsetParent === null ? null : input;
+  }
+  function caretAtEdge(input, forward) {
+    if (typeof input.selectionStart !== 'number' || input.type === 'number') return true;
+    if (input.selectionStart === 0 && input.selectionEnd === input.value.length) return true;
+    if (input.selectionStart !== input.selectionEnd) return false;
+    return forward ? input.selectionEnd === input.value.length : input.selectionStart === 0;
+  }
+  function gridNeighbor(input, key) {
+    var cell = input.closest('td,th'); var row = cell && cell.parentElement;
+    if (!row || !row.closest('table')) return null;
+    var next;
+    if (key === 'ArrowUp' || key === 'ArrowDown') {
+      var step = key === 'ArrowUp' ? 'previousElementSibling' : 'nextElementSibling';
+      for (var other = row[step]; other; other = other[step]) {
+        next = gridInputOf(other.cells[cell.cellIndex]);
+        if (next) return next;
+      }
+      return null;
+    }
+    var sibling = key === 'ArrowLeft' ? 'previousElementSibling' : 'nextElementSibling';
+    for (var cur = cell[sibling]; cur; cur = cur[sibling]) {
+      next = gridInputOf(cur);
+      if (next) return next;
+    }
+    return null;
+  }
+  function onGridKeydown(event) {
+    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return;
+    var key = event.key;
+    if (key !== 'ArrowUp' && key !== 'ArrowDown' && key !== 'ArrowLeft' && key !== 'ArrowRight') return;
+    var input = event.target;
+    if (!input || (input.tagName !== 'INPUT' && input.tagName !== 'TEXTAREA') || !gridInputOf(input.closest('td,th'))) return;
+    // Ô nhiều dòng (textarea): lên/xuống chỉ chuyển ô khi con trỏ đã ở đầu/cuối chữ, còn lại để di chuyển giữa các dòng.
+    var forward = key === 'ArrowRight' || key === 'ArrowDown';
+    if ((key === 'ArrowLeft' || key === 'ArrowRight' || input.tagName === 'TEXTAREA') && !caretAtEdge(input, forward)) return;
+    var next = gridNeighbor(input, key);
+    if (!next) return;
+    event.preventDefault();
+    next.focus();
+    if (next.select) next.select();
+  }
+
   function start() {
     if (!window.document || !document.body) return;
+    document.addEventListener('keydown', onGridKeydown);
     refreshAll();
     fetchPrefs();
     new MutationObserver(function (records) {

@@ -9,7 +9,7 @@
 | Tên dự án          | Hệ thống Dashboard nội bộ TOKOSI                                    |
 | Phiên bản          | 3.0                                                                  |
 | Ngày tạo           | 27/07/2026                                                           |
-| Ngày cập nhật      | 05/10/2026                                                           |
+| Ngày cập nhật      | 30/10/2026 (riêng Luồng G Vị trí hàng; các luồng khác giữ nguyên rà soát 05/10/2026) |
 | Tài liệu liên quan | BRD v2.2 · SRS v3.0 · Implementation Plan (cập nhật 05/10/2026) · CSNS-NP-01 · Design System MASTER · `server/db/SCHEMA.md` |
 | Trạng thái         | Khớp code tại HEAD `11751c4` (migration `0001`–`0030`). Tên file giữ nguyên `…_GoogleSheets.md` vì lý do lịch sử; nguồn dữ liệu chính nay là Supabase PostgreSQL. |
 
@@ -27,7 +27,7 @@ Tài liệu mô tả các luồng quy trình vận hành của Dashboard TOKOSI 
 - **Luồng D:** Xác thực, quản lý tài khoản, khóa tự đăng ký, ID Telegram và khôi phục mật khẩu OTP.
 - **Luồng E:** Nghỉ phép nhân sự: bot xin nghỉ (ngoài repo), duyệt trên web, bot Telegram riêng cho quản lý.
 - **Luồng F:** Vòng đời đơn hàng (đơn KiotViet ghép Google Sheet).
-- **Luồng G:** Vị trí hàng (đọc Google Sheets theo yêu cầu).
+- **Luồng G:** Vị trí hàng (VT Hà Nội / VT Sài Gòn, đọc/ghi Postgres `stock_positions`; module cũ đọc Google Sheets đã gỡ 30/10/2026).
 
 ---
 
@@ -38,7 +38,7 @@ Tài liệu mô tả các luồng quy trình vận hành của Dashboard TOKOSI 
 | KiotViet Public API        | Nguồn dữ liệu bán hàng. Phục vụ polling (GET); gửi webhook POST nhưng webhook hiện chỉ được lưu thô.                          |
 | Node.js Sync Engine        | `server/kiotvietSync/` chạy cùng tiến trình Express: polling fast/slow, rollup, CN1/CN3/CN7, báo cáo hàng hóa, chụp tồn kho. |
 | Supabase PostgreSQL        | Kho dữ liệu trung tâm: dữ liệu KiotViet, rollup, `app_users`, `hr_*`, nghỉ phép, trạng thái công nợ, Trả NCC, tài liệu quy định. |
-| Google Sheets              | Nguồn bổ trợ: Bảng Công nợ (đọc), Vòng đời đơn hàng (`DonHang_HN`/`DonHang_SG` đọc, `Lịch sử cập nhật` ghi), Vị trí hàng (đọc). |
+| Google Sheets              | Nguồn bổ trợ: Bảng Công nợ (đọc), Vòng đời đơn hàng (`DonHang_HN`/`DonHang_SG` đọc, `Lịch sử cập nhật` ghi), sheet CÂN ĐO (đọc, qua job `sheetSnapshots`). |
 | Backend (Express)          | REST API, xác thực JWT, phân quyền theo tính năng, cache, tính KPI/bảng, xuất Excel/HTML, SSE, bot Telegram quản lý.          |
 | Bot xin nghỉ (ngoài repo)  | Tiến trình riêng của nhân viên: nhận tin xin nghỉ, ghi thẳng vào `hr_leave_requests`, báo kết quả qua `decision_notified_at`.  |
 | Telegram (bot quản lý)     | Bot riêng cho quản lý, chạy trong Express, nhận webhook `POST /api/telegram/manager-leave/webhook`.                            |
@@ -71,7 +71,7 @@ Luồng C (một lần):  IT Admin: biến môi trường Render + `npm run db:m
 Luồng D (sự kiện):  Đăng nhập / OTP quên mật khẩu / hồ sơ / Quản lý tạo-sửa tài khoản & phân quyền
 Luồng E (sự kiện):  Bot xin nghỉ -> hr_leave_requests -> web + chuông + bot quản lý -> Phê duyệt / Từ chối
 Luồng F (yêu cầu):  Người dùng -> /api/shipment/lifecycle (đơn Kiot trong Postgres + Google Sheet) -> 1 trang 100 dòng
-Luồng G (yêu cầu):  Người dùng -> /api/stock-locations?branch= -> Google Sheets (đọc mới mỗi lần mở tab)
+Luồng G (yêu cầu):  Người dùng -> /api/stock-positions?branch= -> Postgres stock_positions (+ SL Kiot từ products)
 ```
 
 Luồng A độc lập với các luồng còn lại. Luồng B/F/G chỉ **đọc** dữ liệu; chỉ Quản lý công nợ, ghi đè vòng đời đơn hàng, upload Trả NCC và các thao tác tài khoản/nghỉ phép mới ghi.
@@ -213,7 +213,7 @@ Bảng xuất được: Chi tiết giao dịch, Danh sách mã mới, Sản ph�
 [C1] [Task] IT Admin tạo Web Service Render.com + Database Supabase (dùng "Direct connection" cổng 5432, không dùng pooler)
 [C2] [Task] Đặt biến môi trường bắt buộc: SUPABASE_DB_URL, GOOGLE_SERVICE_ACCOUNT_JSON, JWT_SECRET
              KiotViet: KIOTVIET_CLIENT_ID/SECRET/RETAILER (+ hậu tố _SG cho Sài Gòn), KIOTVIET_SYNC_ENABLED, KIOTVIET_WEBHOOK_SECRET
-             Google Sheets: DEBT_MANAGEMENT_SPREADSHEET_ID, ORDER_LIFECYCLE_SPREADSHEET_ID (Editor), STOCK_LOCATIONS_SPREADSHEET_ID
+             Google Sheets: DEBT_MANAGEMENT_SPREADSHEET_ID, ORDER_LIFECYCLE_SPREADSHEET_ID (Editor), STOCK_LOCATIONS_SPREADSHEET_ID (workbook CÂN ĐO, tên di sản)
              Tùy chọn: GOOGLE_CLIENT_ID, SMTP_*, ALLOW_SELF_REGISTRATION, HR_MANAGER_TELEGRAM_* (xem README.md)
 [C3] [Task] Render deploy từ branch main (npm install; `npm test` chạy cục bộ trước khi push)
 [C4] [Task] Áp migration TRƯỚC khi chạy bản web mới: `npm run db:migrate` (0001 -> 0030); riêng 0026 (xóa suppliers) áp SAU khi code mới đã chạy
@@ -277,11 +277,11 @@ Bảng xuất được: Chi tiết giao dịch, Danh sách mã mới, Sản ph�
 [D5.2] Quản lý (thường) không đặt lại mật khẩu, đổi email/SĐT/ID Telegram, hạ vai trò, rút quyền, khóa hay xóa Quản lý khác -> 403 ACCOUNT_POLICY_DENIED;
        chỉ Quản lý cấp cao (admin cứng) giữ đủ quyền
 [D5.3] Phân quyền chi tiết (account.permissions): xem catalog + quyền hiệu lực, ghi đè từng quyền cho từng tài khoản (chỉ lưu phần lệch so với mặc định vai trò);
-       quyền phụ thuộc (requires) tự bị loại khi thiếu quyền gốc; Khách bị cấm cấp stockLocations.view
+       quyền phụ thuộc (requires) tự bị loại khi thiếu quyền gốc; Khách chỉ được các khóa trong GUEST_ALLOWED_KEYS (gồm stockLocationsV2.view / .export), mọi khóa khác bị cấm
 [D5.4] Yêu cầu đổi vai trò tự thân: người dùng gửi (POST /api/role-requests), Quản lý duyệt/từ chối (PATCH .../:id/status)
 
 --- Nhánh D6: Bảo vệ trang ---
-[D6.1] pageGuard.js chặn truy cập trang theo quyền (reports / shipment/lifecycle / humanresources / stock-locations / account); chưa đăng nhập -> /login/
+[D6.1] pageGuard.js chặn truy cập trang theo quyền (reports / shipment/lifecycle / humanresources / vt-positions / account; /stock-locations* chuyển 302 sang /vt-positions/); chưa đăng nhập -> /login/
 [D6.2] Sau đăng nhập tới trang đầu tiên tài khoản có quyền (landingPathFor)
 ```
 
@@ -345,14 +345,14 @@ Bảng xuất được: Chi tiết giao dịch, Danh sách mã mới, Sản ph�
 
 ---
 
-# 11. Luồng G — Vị trí hàng (quyền `stockLocations.view`)
+# 11. Luồng G — Vị trí hàng (quyền `stockLocationsV2.view`, từ 30/10/2026)
 
 ```
-[G0] [Start] Người dùng nội bộ (không phải Khách) mở /stock-locations/#hn hoặc #sg (nhóm sidebar "Vị trí hàng"; chọn HN/SG chỉ hiện tab tương ứng, "Cả hai" hiện cả hai, mặc định HN)
-[G1] [Task] GET /api/stock-locations?branch=HN|SG -> kiểm tra đăng nhập + quyền + cơ sở thuộc phạm vi chọn (400 branch lạ; 403 ngoài phạm vi/thiếu quyền)
-[G2] [Task] Đọc mới sheet `Vị trí HN`/`Vị trí SG` (FORMATTED_VALUE, nhận cột theo tiêu đề; chỉ gộp các lượt đọc đồng thời; không cache giá trị); Cache-Control: no-store
-[G3] [Decision] Đọc được? Không -> 503 với mã STOCK_LOCATIONS_NOT_CONFIGURED / _SHEET_MISSING / _HEADERS_MISSING / _SOURCE_UNAVAILABLE
-[G4] [Task] Frontend: 6 cột (Mã hàng, Tên hàng, Tổng SL, Ghi chú hàng hóa, Ngày về, Vị trí), tìm mã/tên/vị trí không dấu, sắp xếp toàn bộ rồi phân trang 100 dòng, ẩn/hiện cột (nhớ riêng điện thoại/máy tính)
+[G0] [Start] Người dùng (mọi vai trò kể cả Khách; mở xem mặc định, Quản lý tắt được từng tài khoản) mở /vt-positions/#hn hoặc #sg (nhóm sidebar "Vị trí hàng": mục VT Hà Nội / VT Sài Gòn theo cơ sở người dùng, "Cả hai" hiện cả hai, mặc định HN). Link cũ /stock-locations* -> 302 /vt-positions/
+[G1] [Task] GET /api/stock-positions?branch=HN|SG -> kiểm tra đăng nhập + stockLocationsV2.view + cơ sở thuộc phạm vi chọn (400 branch lạ; 403 ngoài phạm vi/thiếu quyền); trả canEdit / canExport / canDeleteHistory theo quyền
+[G2] [Task] Đọc stock_positions của cơ sở; SL kho/cảnh báo tính từ ghi chú bằng carton.js, tên + SL Kiot tra theo mã từ products; có thể bốc = SL kho − giữ chỗ của đơn Đang bốc; SSE /api/stock-positions/events báo bảng vừa đổi để trang tự vá số liệu
+[G3] [Decision] Có quyền sửa (stockLocationsV2.edit, Quản lý)? Có -> sửa/thêm/xóa/import/Đã sửa/trừ thùng (khóa lạc quan version, lịch sử bất biến); Không -> chỉ xem + xuất Excel (nếu còn stockLocationsV2.export), ẩn nút Lưu/Xóa/Import
+[G4] [Task] Frontend: bảng 10 cột, tìm không dấu, lọc Cảnh báo / Hợp lệ / Tất cả, 50/100/200 dòng/trang, bấm dòng mở hộp chi tiết + lịch sử; xuất Excel bảng và lịch sử (stockLocationsV2.export)
 [G5] [End]
 ```
 
@@ -375,7 +375,7 @@ Bảng xuất được: Chi tiết giao dịch, Danh sách mã mới, Sản ph�
 # 13. Ghi chú & khuyến nghị
 
 - **Điểm mấu chốt:** polling của Sync Engine là nguồn dữ liệu thật; webhook KiotViet hiện chỉ lưu thô. Báo cáo tổng hợp tải từng tab, cache hai tầng và cập nhật gần thời gian thực bằng SSE sau mỗi lượt sync + rollup.
-- **Google Sheets còn dùng cho 3 việc:** Bảng Công nợ (đọc), Vòng đời đơn hàng (đọc + ghi tab Lịch sử), Vị trí hàng (đọc). Workbook HR và tab `Trả NCC` **không còn được đọc** (Trả NCC → upload Excel vào Postgres; nhân sự → `hr_employees`).
+- **Google Sheets còn dùng:** Vòng đời đơn hàng (đọc + ghi tab Lịch sử), sheet CÂN ĐO (đọc, job `sheetSnapshots`), Báo cáo Marketing (đọc); Vị trí hàng không còn đọc Sheets (30/10/2026). Workbook HR và tab `Trả NCC` **không còn được đọc** (Trả NCC → upload Excel vào Postgres; nhân sự → `hr_employees`).
 - **Khả năng suy giảm có kiểm soát:** nguồn Kiot lỗi thì Vòng đời đơn hàng vẫn hiện đơn sheet kèm cảnh báo; workbook công nợ lỗi chỉ làm tab Công nợ báo `available=false`; bảng chưa migrate (vd `inventory_value_snapshots`) trả rỗng thay vì lỗi.
 - **Nhất quán thời gian:** ngày "hôm nay", bucket ngày và `updatedAt` tính theo Asia/Ho_Chi_Minh; cột TIMESTAMPTZ của KiotViet lưu "giờ treo tường VN mang nhãn UTC" (xem `dashboardPgReader.js`).
 - **Kiểm thử liên tục:** chạy `npm test` trong `server/` trước khi commit/deploy (số lượng test xem SRS mục 2.2).
@@ -383,3 +383,5 @@ Bảng xuất được: Chi tiết giao dịch, Danh sách mã mới, Sản ph�
 ---
 
 *Hết tài liệu BPMN v3.0*
+
+Cập nhật gần nhất: 30/10/2026 (Luồng G Vị trí hàng: gỡ module cũ đọc Google Sheets, chuyển sang VT Hà Nội/Sài Gòn trên Postgres).

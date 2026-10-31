@@ -4,7 +4,8 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret';
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createPageGuard, isPageRequest } = require('./pageGuard');
+const { createPageGuard, isPageRequest, legacyPageRedirect } = require('./pageGuard');
+const { pageRuleFor } = require('./featureRegistry');
 const { ROLES } = require('./userRepository');
 
 function fakeRes() {
@@ -83,31 +84,46 @@ test('chua dang nhap: chuyen ve /login/ kem duong dan quay lai', async () => {
   assert.equal(res.redirectedTo, '/login/?next=%2Freports%2F');
 });
 
-test('Vị trí hàng page requires login and rejects guests with a grant on every HTML alias', async () => {
-  for (const url of ['/stock-locations', '/stock-locations/', '/stock-locations/index.html']) {
-    const anonymous = await run(guardFor({ vaiTro: ROLES.NHAN_VIEN_KHO }), fakeReq(url));
-    assert.equal(anonymous.nextCalled, false);
-    assert.match(anonymous.res.redirectedTo, /^\/login\//);
-    const guest = await run(guardFor({ vaiTro: ROLES.KHACH, featurePermissions: { 'stockLocations.view': true } }), fakeReq(url, { token: 'ok' }));
-    assert.equal(guest.nextCalled, false);
-    const staff = await run(guardFor({ vaiTro: ROLES.NHAN_VIEN_KHO }), fakeReq(url, { token: 'ok' }));
-    assert.equal(staff.nextCalled, true);
+test('trang Vị trí hàng cũ /stock-locations chuyển hướng sang /vt-positions/ trên mọi đường dẫn HTML, kể cả khi chưa đăng nhập', async () => {
+  for (const url of ['/stock-locations', '/stock-locations/', '/stock-locations/index.html', '/Stock-Locations/']) {
+    for (const withToken of [false, true]) {
+      const { res, nextCalled } = await run(legacyPageRedirect, fakeReq(url, withToken ? { token: 'ok' } : {}));
+      assert.equal(nextCalled, false, url);
+      assert.equal(res.statusCode, 302, url);
+      assert.equal(res.redirectedTo, '/vt-positions/', url);
+      assert.equal(res.headers['Cache-Control'], 'no-store');
+    }
+    const head = await run(legacyPageRedirect, { ...fakeReq(url), method: 'HEAD' });
+    assert.equal(head.res.redirectedTo, '/vt-positions/');
+  }
+  // Tài nguyên tĩnh cũ, trang khác và POST không bị chuyển hướng.
+  for (const req of [fakeReq('/stock-locations/stock-locations.js'), fakeReq('/stock-locationsx/'), fakeReq('/vt-positions/'),
+    fakeReq('/api/stock-locations'), { ...fakeReq('/stock-locations/'), method: 'POST' }]) {
+    const { res, nextCalled } = await run(legacyPageRedirect, req);
+    assert.equal(nextCalled, true, req.path);
+    assert.equal(res.redirectedTo, null);
   }
 });
 
-test('VT Hà Nội / VT Sài Gòn page: cần đăng nhập, mặc định chỉ Quản lý, nhân viên được cấp quyền xem thì vào được', async () => {
+test('trang Vị trí hàng cũ không còn quy tắc quyền: pageGuard bỏ qua, việc chuyển hướng do legacyPageRedirect lo', async () => {
+  assert.equal(pageRuleFor('/stock-locations/'), null);
+  const staff = await run(guardFor({ vaiTro: ROLES.QUAN_LY }), fakeReq('/stock-locations/', { token: 'ok' }));
+  assert.equal(staff.nextCalled, true);
+  assert.equal(staff.res.redirectedTo, null);
+});
+
+test('VT Hà Nội / VT Sài Gòn page: cần đăng nhập, mọi vai trò kể cả Khách vào được, Quản lý tắt quyền xem từng tài khoản thì bị chặn', async () => {
   for (const url of ['/vt-positions', '/vt-positions/', '/vt-positions/index.html']) {
     const anonymous = await run(guardFor({ vaiTro: ROLES.QUAN_LY }), fakeReq(url));
     assert.equal(anonymous.nextCalled, false);
     assert.match(anonymous.res.redirectedTo, /^\/login\//);
-    const staff = await run(guardFor({ vaiTro: ROLES.NHAN_VIEN_KHO }), fakeReq(url, { token: 'ok' }));
-    assert.equal(staff.nextCalled, false);
-    const granted = await run(guardFor({ vaiTro: ROLES.NHAN_VIEN_KHO, featurePermissions: { 'stockLocationsV2.view': true } }), fakeReq(url, { token: 'ok' }));
-    assert.equal(granted.nextCalled, true);
-    const guest = await run(guardFor({ vaiTro: ROLES.KHACH, featurePermissions: { 'stockLocationsV2.view': true } }), fakeReq(url, { token: 'ok' }));
-    assert.equal(guest.nextCalled, false);
-    const manager = await run(guardFor({ vaiTro: ROLES.QUAN_LY }), fakeReq(url, { token: 'ok' }));
-    assert.equal(manager.nextCalled, true);
+    for (const role of Object.values(ROLES)) {
+      const allowed = await run(guardFor({ vaiTro: role }), fakeReq(url, { token: 'ok' }));
+      assert.equal(allowed.nextCalled, true, role + ' ' + url);
+      const revoked = await run(guardFor({ vaiTro: role, featurePermissions: { 'stockLocationsV2.view': false } }), fakeReq(url, { token: 'ok' }));
+      assert.equal(revoked.nextCalled, false, role + ' ' + url);
+      assert.match(revoked.res.redirectedTo, /^\/(reports|humanresources|shipment|account)\//);
+    }
   }
 });
 

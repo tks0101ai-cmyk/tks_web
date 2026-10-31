@@ -29,11 +29,11 @@ const kiotRepository = require('./kiotOrdersRepository');
 // Trang thai chi dinh vi tri (cot pickStatus cua bang, bo loc pickStatus) — goi qua thuoc tinh module de test thay the duoc.
 const pickAssignments = require('../pickAssignments/pickAssignmentsService');
 
-// Trang thai boc (cot pickStatus, bo loc, canh bao lech SL) CHI tra cho nguoi co quyen chi dinh (shipment.pick, mac dinh
+// Trang thai boc (cot pickStatus, bo loc, canh bao Lech Kiot / Lech SL trong don) CHI tra cho nguoi co quyen chi dinh (shipment.pick, mac dinh
 // chi Quan ly): nguoi khac khong nhan truong nao, giao dien tu an cot. Goi qua thuoc tinh module de test thay the duoc.
 function pickOptions(req) {
   if (!featureRegistry.hasFeature(req.user, 'shipment.pick')) return {};
-  return { pickStatuses: pickAssignments.latestStatuses, pickMismatches: pickAssignments.pickMismatches };
+  return { pickStatuses: pickAssignments.latestStatuses, pickWarnings: pickAssignments.pickWarnings };
 }
 const containerRepository = require('../productContainers/repository');
 const { retailerHosts } = require('./kiotOrderLink');

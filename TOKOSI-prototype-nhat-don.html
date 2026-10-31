@@ -3129,10 +3129,10 @@ tr.loc-row{cursor:pointer}tr.loc-row.loc-open td{border-bottom-color:var(--blue)
     const origin=location.protocol==='file:'?'http://prototype.local':location.origin;
     const url=new URL(typeof resource==='string'?resource:resource.url,origin);
     if(url.origin!==origin||!url.pathname.startsWith('/api/'))return realFetch(resource,options);
-    // Chỉ endpoint ĐỌC của Vị trí hàng đi ra server thật khi prototype được phục vụ qua http(s); mở file trực tiếp thì dùng dữ liệu demo bên dưới.
-    if(url.pathname==='/api/stock-locations'&&location.protocol!=='file:'&&(options.method||'GET').toUpperCase()==='GET')return realFetch(resource,options);
+    // Chỉ endpoint ĐỌC của VT Hà Nội / VT Sài Gòn đi ra server thật khi prototype được phục vụ qua http(s); mở file trực tiếp thì dùng dữ liệu demo bên dưới.
+    if(url.pathname==='/api/stock-positions'&&location.protocol!=='file:'&&(options.method||'GET').toUpperCase()==='GET')return realFetch(resource,options);
     if((options.method||'GET').toUpperCase()!=='GET')return reply({error:'Prototype chỉ đọc, không ghi hệ thống.'},403);
-    if(url.pathname==='/api/auth/me')return reply({id:'prototype-accountant',username:'prototype',hoTen:'Kế toán · Mô phỏng',vaiTro:'Kế toán',coSo:'Cả hai',trangThai:'Đang hoạt động',permissions:['shipment.lifecycle','shipment.lookup','shipment.history','shipment.export','stockLocations.view','account.profile'],pageFeatures:[]});
+    if(url.pathname==='/api/auth/me')return reply({id:'prototype-accountant',username:'prototype',hoTen:'Kế toán · Mô phỏng',vaiTro:'Kế toán',coSo:'Cả hai',trangThai:'Đang hoạt động',permissions:['shipment.lifecycle','shipment.lookup','shipment.history','shipment.export','stockLocationsV2.view','account.profile'],pageFeatures:[]});
     if(url.pathname==='/api/shipment/lifecycle/order-detail'){
       const o=data.orders.find(o=>o.orderCode===url.searchParams.get('code')&&o.branch===url.searchParams.get('branch'));
       return o?reply({detail:{...o,code:o.orderCode,phieuTam:true,status:'Phiếu tạm',total:o.orderTotal,lineCount:o.lines.length,totalQuantity:o.lines.reduce((s,l)=>s+l.quantity,0)}}):reply({error:'Không có đơn'},404);
@@ -3154,7 +3154,7 @@ tr.loc-row{cursor:pointer}tr.loc-row.loc-open td{border-bottom-color:var(--blue)
     if(url.pathname.startsWith('/api/shipment/lifecycle/')){
       const code=decodeURIComponent(url.pathname.split('/').pop());const o=data.orders.find(o=>o.orderCode===code);return o?reply({order:o,detail:o,summary:o.summary}):reply({error:'Không có đơn'},404);
     }
-    if(url.pathname==='/api/stock-locations')return reply({rows:data.locations.filter(r=>r.branch===url.searchParams.get('branch')),stale:false,syncedAt:new Date().toISOString()});
+    if(url.pathname==='/api/stock-positions')return reply({rows:data.locations.filter(r=>r.branch===url.searchParams.get('branch')),stale:false,syncedAt:new Date().toISOString()});
     if(url.pathname.includes('notifications'))return reply({notifications:[],unreadCount:0});
     return reply({items:[],branches:['Hà Nội','Sài Gòn']});
   };
@@ -6302,10 +6302,10 @@ tr.loc-row{cursor:pointer}tr.loc-row.loc-open td{border-bottom-color:var(--blue)
     var locationActiveTab = locationTabs.indexOf(currentHash) !== -1 ? currentHash : locationTabs[0];
     var locationItems = locationTabs.map(function(tab){
       return {
-        feature: 'stockLocations.view', href: '/stock-locations/#' + tab,
-        label: tab === 'hn' ? 'Vị trí HN' : 'Vị trí SG',
-        active: currentPath === '/stock-locations' && locationActiveTab === tab,
-        dataAttr: 'data-stock-location-tab="' + tab + '"',
+        feature: 'stockLocationsV2.view', href: '/vt-positions/#' + tab,
+        label: tab === 'hn' ? 'VT Hà Nội' : 'VT Sài Gòn',
+        active: currentPath === '/vt-positions' && locationActiveTab === tab,
+        dataAttr: 'data-vt-position-tab="' + tab + '"',
         icon: '<path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"></path><circle cx="12" cy="10" r="3"></circle>'
       };
     });
@@ -10656,22 +10656,22 @@ window.PickingKiotLink={urlFor,attach};attach();
   }, true);
   window.PickingLocations = { render, renderHistory, setBranch(value){ branch = value; onlyWarnings = false; query = ''; } };
 })();
-</script><script>/* Nguồn dòng vị trí: khi prototype được phục vụ từ server thì ĐỌC từ module Vị trí hàng (GET /api/stock-locations?branch=HN|SG,
-   cần đăng nhập và quyền stockLocations.view); mở file HTML trực tiếp hoặc API lỗi thì dùng dữ liệu demo.
+</script><script>/* Nguồn dòng vị trí: khi prototype được phục vụ từ server thì ĐỌC từ module VT Hà Nội / VT Sài Gòn (GET /api/stock-positions?branch=HN|SG,
+   cần đăng nhập và quyền stockLocationsV2.view); mở file HTML trực tiếp hoặc API lỗi thì dùng dữ liệu demo.
    Chỉ đọc: mọi sửa, nhặt và lịch sử nằm trong bộ nhớ phiên của prototype, không ghi ngược về DB hay Google Sheets. */
 (function(root){
   'use strict';
   const BRANCHES = ['HN', 'SG'];
-  const LABEL = { api:'Từ Vị trí hàng', demo:'Dữ liệu demo' };
-  /* Dòng API {code, name, totalQuantity, notes, location, arrivalDate} → dòng vị trí của prototype.
-     SL không lấy từ totalQuantity (chỉ giữ làm dự phòng như cột SL của file import): SL luôn tính từ ghi chú. */
+  const LABEL = { api:'Từ VT Hà Nội / VT Sài Gòn', demo:'Dữ liệu demo' };
+  /* Dòng API /api/stock-positions {code, name, quantity, notes, location, arrivalDate, ...} → dòng vị trí của prototype.
+     SL không lấy từ quantity (chỉ giữ làm dự phòng như cột SL của file import): SL luôn tính từ ghi chú. */
   function mapRows(branch, rows){
     return (Array.isArray(rows) ? rows : []).filter(row => row && String(row.code ?? '').trim())
       .map((row, index) => ({
         id:'api-' + branch + '-' + index, branch,
         code:String(row.code).trim(), name:String(row.name ?? '').trim(),
         location:String(row.location ?? '').trim(), notes:String(row.notes ?? ''),
-        arrivalDate:String(row.arrivalDate ?? '').trim(), totalQuantity:row.totalQuantity ?? null
+        arrivalDate:String(row.arrivalDate ?? '').trim(), totalQuantity:row.quantity ?? row.totalQuantity ?? null
       }));
   }
   // Thay dòng vị trí demo bằng dòng thật (chỉ khi cả hai cơ sở đọc được). Trả về nhãn nguồn.
@@ -10685,7 +10685,7 @@ window.PickingKiotLink={urlFor,attach};attach();
     try {
       const results = {};
       await Promise.all(BRANCHES.map(async branch => {
-        const response = await fetchFn('/api/stock-locations?branch=' + branch, { credentials:'same-origin' });
+        const response = await fetchFn('/api/stock-positions?branch=' + branch, { credentials:'same-origin' });
         if (!response.ok) throw Error('HTTP ' + response.status);
         results[branch] = await response.json();
       }));

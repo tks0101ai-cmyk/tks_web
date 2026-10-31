@@ -7,6 +7,30 @@ const {JSDOM} = require('jsdom');
 const {makeOrderSnapshot} = require('../../pickAssignments/pickOrderSnapshot');
 const dir = path.join(__dirname, '../../public/shipment/lifecycle/pick');
 
+test('both print templates use one shared notice footer and remove the old metadata footer', async () => {
+  const order={schemaVersion:2,orderCode:'DH-footer',branch:'HN',lines:Array.from({length:80},(_,i)=>({productCode:'P'+i,productName:'Hàng '+i,quantity:1,unitPrice:'10',amount:'10'}))};
+  const record={status:'picking',lines:[]};
+  const dom=await invoice(order,record);
+  try {
+    const d=dom.window.document,notice=d.querySelector('.invoice-notice').outerHTML;
+    for(const template of ['delivery','order']){
+      await dom.window.PickingInvoice.show(order,record,template);
+      assert.equal(d.querySelectorAll('.invoice-notice').length,1);
+      assert.equal(d.querySelector('.invoice-notice').outerHTML,notice);
+      assert.match(d.querySelector('.invoice-notice').textContent,/kiểm hàng thừa\/thiếu\/vỡ trong vòng 3 ngày/);
+      assert.equal(d.querySelector('.invoice-demo'),null);
+      assert.equal(d.querySelectorAll('.invoice-goods tbody tr').length,80);
+      dom.window.eval(fs.readFileSync(path.join(dir,'print-tools.js'),'utf8'));
+      const exported=new JSDOM(dom.window.PickingPrint.document());
+      try {
+        assert.equal(exported.window.document.querySelectorAll('.print-page-layout>tfoot>tr>td').length,1,'reserve footer space on each printed page');
+        assert.equal(exported.window.document.querySelectorAll('.print-page-layout .invoice-notice').length,1);
+        assert.match(exported.window.document.querySelector('style').textContent,/\.invoice-notice\{position:fixed;left:0;right:0;bottom:0\}/,'keep the footer inside the printable area');
+      } finally {exported.window.close();}
+    }
+  } finally {dom.window.close();}
+});
+
 async function invoice(order, record) {
   const dom = new JSDOM('<dialog id="pickingPrintDialog"></dialog><div id="pickingPrintTitle"></div><p id="pickingPrintMessage"></p><div id="pickingPrintSheet"></div>', {runScripts:'outside-only'});
   const w = dom.window;
@@ -252,7 +276,7 @@ test('phiếu in gộp thùng trong từng khu, nối cộng giữa các khu và
  }finally{dom.window.close();}
 });
 
-test('table body columns share size and rows share height, header stays separate and shortcuts persist for other users/new rows',async()=>{
+test('table body columns share size and rows fit their own content, header stays separate and shortcuts persist for other users/new rows',async()=>{
  const order={schemaVersion:2,orderCode:'DH-STYLE',lines:[1,2].map(n=>({productCode:'P'+n,productName:'Hàng '+n,quantity:10,unitPrice:'1',amount:'10'}))};
  const record={status:'picking',lines:[]},saved={};
  const fetchShared=async(url,options={})=>{
@@ -276,33 +300,35 @@ test('table body columns share size and rows share height, header stays separate
   for(const [shortcut,align] of [['l','left'],['r','right'],['e','center']]){
    key(shortcut);assert.ok(bodyRows.every(r=>r.cells[1].style.textAlign===align));
   }
-  key('b');key('i');assert.ok(bodyRows.every(r=>r.cells[1].style.fontWeight==='bold'&&r.cells[1].style.fontStyle==='italic'));
-  key('b');assert.ok(bodyRows.every(r=>r.cells[1].style.fontWeight==='normal'));key('b');
+  // Ctrl+B / Ctrl+I không còn đổi đậm / nghiêng trên phiếu.
+  key('b');key('i');assert.ok(bodyRows.every(r=>r.cells[1].style.fontWeight===''&&r.cells[1].style.fontStyle===''));
+
   assert.equal(bodyRows[0].cells[0].style.fontWeight,'');
-  const cell=bodyRows[0].cells[1];cell.getBoundingClientRect=()=>({left:0,right:100,top:0,bottom:parseFloat(bodyRows[0].style.height),height:parseFloat(bodyRows[0].style.height)});
-  const y=parseFloat(bodyRows[0].style.height);
+  const cell=bodyRows[0].cells[1];cell.getBoundingClientRect=()=>({left:0,right:100,top:0,bottom:24,height:24});
+  const y=24;
   const pointer=(target,type,y)=>target.dispatchEvent(new w.MouseEvent(type,{bubbles:true,button:0,clientX:40,clientY:y}));
   pointer(cell,'pointerdown',y);pointer(d,'pointermove',y+12);pointer(d,'pointerup',y+12);
-  assert.ok(bodyRows.every(r=>r.style.height==='44px'));
+  assert.ok(bodyRows.every(r=>r.style.height===''));
+  assert.deepEqual(bodyRows.map(r=>r.getBoundingClientRect().height),[24,32]);
   const header=d.querySelector('.invoice-goods thead td');select(header);key(']');key('r');
   assert.equal(header.style.textAlign,'right');assert.equal(bodyRows[0].cells[0].style.textAlign,'center');
   assert.ok(bodyRows.every(r=>r.cells[0].style.fontSize==='16px'));
   const lastHeader=d.querySelector('.invoice-goods thead td:last-child');select(lastHeader);key('r');
   assert.equal(lastHeader.querySelector('p').style.textAlign,'right');
   const title=d.querySelector('.invoice-title');select(title);key('e');assert.equal(title.closest('p').style.textAlign,'center');
-  const customer=d.querySelector('.invoice-customer p')||d.querySelector('.invoice-customer');select(customer);key('l');key('b');key('i');
-  assert.equal(customer.style.textAlign,'left');assert(customer.querySelector('[data-print-font]'));
+  const customer=d.querySelector('.invoice-customer p')||d.querySelector('.invoice-customer');select(customer);key('l');
+  assert.equal(customer.style.textAlign,'left');
   assert.equal(root.textContent,before);
   await new Promise(resolve=>setImmediate(resolve));
   const reopened=await invoice({...order,lines:[...order.lines,...order.lines.map(l=>({...l,productCode:l.productCode+'N'}))]},record);
   try{
    const rw=reopened.window;rw.fetch=fetchShared;rw.eval(fs.readFileSync(path.join(dir,'print-tools.js'),'utf8'));await rw.PickingPrint.prepare();
    const rows=[...rw.document.querySelectorAll('.invoice-goods tbody tr')];assert.equal(rows.length,4);
-   assert.ok(rows.every(r=>r.style.height==='44px'&&r.cells[0].style.fontSize===''&&r.cells[1].style.fontSize==='13pt'&&r.cells[1].style.textAlign==='center'&&r.cells[1].style.fontWeight==='bold'&&r.cells[1].style.fontStyle==='italic'));
+   assert.ok(rows.every(r=>r.style.height===''&&r.cells[0].style.fontSize===''&&r.cells[1].style.fontSize==='13pt'&&r.cells[1].style.textAlign==='center'));
    assert.equal(rw.document.querySelector('.invoice-goods thead td').style.textAlign,'right');
    const exported=new JSDOM(rw.PickingPrint.document());
-   assert.equal(exported.window.document.querySelector('.invoice-goods tbody td:nth-child(2)').style.fontWeight,'bold');exported.window.close();
-   rw.document.querySelector('#pickingPrintFormatting button').click();assert.equal(rows[0].cells[1].style.textAlign,'');assert.equal(rows[0].cells[1].style.fontWeight,'');
+   assert.equal(exported.window.document.querySelector('.invoice-goods tbody td:nth-child(2)').style.fontSize,'13pt');exported.window.close();
+   rw.document.querySelector('#pickingPrintFormatting button').click();assert.equal(rows[0].cells[1].style.textAlign,'');
   }finally{reopened.window.close();}
  }finally{dom.window.close();}
 });
@@ -310,7 +336,7 @@ test('table body columns share size and rows share height, header stays separate
 
 test('seller Zalo phone prints with leading 0 even when the snapshot holds +84',async()=>{
  const dom=await invoice({schemaVersion:2,orderCode:'DH-PHONE',saleName:'Sale A',sellerPhone:'+84923170904',lines:[{productCode:'A',productName:'A',quantity:1,unitPrice:'2',amount:'2'}]},{status:'picking',lines:[]});
- try{assert.match(dom.window.document.querySelector('.invoice-seller').textContent,/Zalo: 0923170904/);}finally{dom.window.close();}
+ try{assert.match(dom.window.document.querySelector('.invoice-seller').textContent,/Zalo: 0923170904/);assert.equal(dom.window.document.querySelector('.invoice-seller strong').textContent,'0923170904','số Zalo in đậm');}finally{dom.window.close();}
 });
 
 test('Telegram ID is bold and footer columns resize, format and restore independently',async()=>{
@@ -329,7 +355,7 @@ test('Telegram ID is bold and footer columns resize, format and restore independ
   const range=d.createRange();range.selectNodeContents(cell);w.getSelection().addRange(range);
   const key=k=>root.dispatchEvent(new w.KeyboardEvent('keydown',{key:k,ctrlKey:true,bubbles:true,cancelable:true}));
   key(']');key('r');key('b');key('i');
-  assert.ok([...summary.rows].every(r=>r.cells[1].style.fontSize&&r.cells[1].style.textAlign==='right'&&r.cells[1].style.fontWeight==='bold'&&r.cells[1].style.fontStyle==='italic'));
+  assert.ok([...summary.rows].every(r=>r.cells[1].style.fontSize&&r.cells[1].style.textAlign==='right'&&r.cells[1].style.fontWeight===''&&r.cells[1].style.fontStyle===''));
   assert.equal(summary.rows[0].cells[0].style.fontSize,'');
   assert.equal(d.querySelector('.invoice-goods tbody td:nth-child(2)').style.fontSize,'');
   cell.getBoundingClientRect=()=>({left:470,right:670,top:0,bottom:30});summary.getBoundingClientRect=()=>({width:1000});
@@ -339,12 +365,38 @@ test('Telegram ID is bold and footer columns resize, format and restore independ
   assert.equal(summary.querySelectorAll('col')[1].style.width,'21%');
   assert.equal(saved.tables.summary.widths[1],21);
   await w.PickingInvoice.changeTemplate('order');
-  assert.equal(d.querySelector('.invoice-summary').rows[1].cells[1].style.fontStyle,'italic');
+  assert.equal(d.querySelector('.invoice-summary').rows[1].cells[1].style.textAlign,'right');
   const exported=new JSDOM(w.PickingPrint.document());
   assert.equal(exported.window.document.querySelector('.invoice-summary col:nth-child(2)').style.width,'21%');exported.window.close();
   d.querySelector('#pickingPrintFormatting button').click();assert.equal(d.querySelector('.invoice-summary').rows[1].cells[1].style.fontSize,'');
   await w.PickingInvoice.changeTemplate('delivery');
   assert.equal(d.querySelectorAll('.delivery-signatures col').length,3);
   assert.equal(d.querySelector('.invoice-telegram').textContent,'123456');
+ }finally{dom.window.close();}
+});
+
+
+test('unallocated repeated products leave both placement columns blank in both templates', async () => {
+  const order={schemaVersion:2,orderCode:'DH-empty',branch:'HN',lines:[1,2].map(() => ({productCode:'A',productName:'Hàng A',quantity:10,unitPrice:'2',amount:'20'}))};
+  const record={status:'picking',lines:[]};
+  const dom=await invoice(order,record);
+  try {
+    for(const template of ['order','delivery']) {
+      await dom.window.PickingInvoice.show(order,record,template);
+      for(const cell of dom.window.document.querySelectorAll('.invoice-goods tbody .invoice-location, .invoice-goods tbody .invoice-st')) assert.equal(cell.textContent.trim(),'');
+    }
+  } finally {dom.window.close();}
+});
+
+
+test('saved body heights do not inflate short rows or exported HTML',async()=>{
+ const dom=await invoice({schemaVersion:2,orderCode:'DH-AUTO',lines:[1,2].map(n=>({productCode:'P'+n,productName:'Hàng '+n,quantity:1,unitPrice:'1',amount:'1'}))},{status:'picking',lines:[]});
+ try{
+  const w=dom.window;
+  w.fetch=async()=>({ok:true,json:async()=>({layout:{widths:[],heights:[45,100,100],fonts:[],groups:{body:{height:100}}},version:1})});
+  w.eval(fs.readFileSync(path.join(dir,'print-tools.js'),'utf8'));await w.PickingPrint.prepare();
+  assert.ok([...w.document.querySelectorAll('.invoice-goods tbody tr')].every(r=>r.style.height===''));
+  const exported=new JSDOM(w.PickingPrint.document());
+  try{assert.ok([...exported.window.document.querySelectorAll('.invoice-goods tbody tr')].every(r=>r.style.height===''));}finally{exported.window.close();}
  }finally{dom.window.close();}
 });

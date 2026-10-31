@@ -42,7 +42,6 @@ const orderLifecycleRoutes = require('./shipment/orderLifecycleRoutes');
 const { createBotLifecycleIntegrationRouter, findKiotIdentity } = require('./shipment/botLifecycleIntegrationRoutes');
 const orderLifecycleService = require('./shipment/orderLifecycleService');
 const pickAssignmentsRoutes = require('./pickAssignments/pickAssignmentsRoutes');
-const stockLocationsRoutes = require('./stockLocations/stockLocationsRoutes');
 const stockPositionsRoutes = require('./stockPositions/stockPositionsRoutes');
 const cashbookRoutes = require('./cashbook/cashbookRoutes');
 const { createVatDraftRouter } = require('./vatDraft/vatDraftRoutes');
@@ -92,8 +91,7 @@ router.use(adminUserRoutes);
 // Xem/doi co so dang lam viec — /api/branch. KHONG gan resolveBranch o day:
 // chinh hai route nay quyet dinh gia tri cookie ma resolveBranch se doc.
 router.use(branchRoutes);
-router.use(stockLocationsRoutes);
-// VT Hà Nội / VT Sài Gòn (cơ sở dữ liệu vị trí hàng mới, sửa trực tiếp + import): quyền stockLocationsV2.*.
+// VT Hà Nội / VT Sài Gòn (module Vị trí hàng duy nhất, sửa trực tiếp + import): quyền stockLocationsV2.*.
 router.use(stockPositionsRoutes);
 // Sổ quỹ toàn công ty: không áp cookie hoặc middleware chọn cơ sở.
 router.use('/api/cashbook', cashbookRoutes);

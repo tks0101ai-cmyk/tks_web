@@ -7,7 +7,9 @@ const ACTION_LABELS = Object.freeze({
   // Nhat hang theo don (Vong doi don hang, migration 0096): tru thung khi Xac nhan nhat / hoan tac khi Huy nhat.
   pick: 'Nhặt hàng theo đơn', pick_revert: 'Hoàn tác nhặt hàng',
   // 2026-10-28: co Da sua + dau vet xoa lich su (migration 0099).
-  ack: 'Đánh dấu Đã sửa', unack: 'Bỏ Đã sửa', history_purged: 'Xóa lịch sử'
+  ack: 'Đánh dấu Đã sửa', unack: 'Bỏ Đã sửa', history_purged: 'Xóa lịch sử',
+  // 2026-10-30: Xuất kho từ file (migration 0101).
+  stock_out: 'Xuất kho'
 });
 const FIELD_LABELS = Object.freeze({ code: 'Mã hàng', name: 'Tên hàng', notes: 'Ghi chú', arrivalDate: 'Ngày về', location: 'Vị trí', quantity: 'Số lượng' });
 const SUMMARY_KEYS = Object.freeze([['added', 'Thêm'], ['updated', 'Đổi'], ['deleted', 'Xóa'], ['skippedEmpty', 'Bỏ qua']]);
@@ -25,6 +27,8 @@ function summaryText(summary) {
   }
   if (Array.isArray(summary.warnings) && summary.warnings.length) parts.push(summary.warnings.map(code => WARNING_LABELS[code] || code).join(', '));
   if (Array.isArray(summary.warnings) && typeof summary.notes === 'string' && summary.notes.trim()) parts.push(`Ghi chú: ${summary.notes.trim()}`);
+  if (summary.deducted !== undefined) parts.push(`Trừ ${summary.deducted}`);
+  if (summary.removed === true) parts.push('Hết hàng, đã xóa dòng');
   if (summary.picked !== undefined) parts.push(`Nhặt ${summary.picked}`);
   if ('confirmedBy' in summary) parts.push(summary.confirmedBy ? `Xác nhận: ${summary.confirmedBy}` : 'Job Kiot');
   if (summary.fileName) parts.push(summary.fileName);

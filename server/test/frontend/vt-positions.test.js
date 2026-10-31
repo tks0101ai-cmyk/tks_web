@@ -76,6 +76,45 @@ const pickFilter = (doc, window, value) => {
   select.dispatchEvent(new window.Event('change'));
 };
 
+test('import review: column resizing and sorting cover the full filtered draft before paging', async t => {
+  const rows = Array.from({ length: 205 }, (_, i) => ({ row: i + 2, code: 'MA' + i, kind: 'add', quantity: i, cartons: i, location: 'K' + i, warnings: i === 150 ? ['multi'] : [] }));
+  rows.push({ row: null, code: 'EMPTY', kind: 'add', quantity: null, cartons: null, warnings: [] });
+  const { doc, window } = await setup(t, { handler: async (url, options, parsed) => parsed.pathname.endsWith('/import') ? json({ counts: { added: rows.length }, rows }) : null });
+  doc.getElementById('vtImportButton').click();
+  Object.defineProperty(doc.getElementById('vtImportFile'), 'files', { value: [new window.File(['x'], 'a.csv')] });
+  doc.getElementById('vtImportPreview').click();
+  await settle();
+  const table = doc.getElementById('vtImportPreviewTable');
+  assert.equal(table.querySelectorAll('th > .tks-column-resizer').length, 10);
+  const firstCode = () => doc.querySelector('#vtImportPreviewRows tr .vt-import-code').textContent;
+  assert.equal(firstCode(), 'MA150');
+  const sort = table.querySelector('[data-import-sort="quantity"]');
+  sort.click();
+  assert.equal(firstCode(), 'MA0');
+  assert.equal(sort.closest('th').getAttribute('aria-sort'), 'ascending');
+  doc.getElementById('vtImportNextPage').click();
+  assert.equal(firstCode(), 'MA100');
+  sort.click();
+  assert.equal(firstCode(), 'MA204');
+  assert.match(doc.getElementById('vtImportPage').textContent, /Trang 1/);
+  doc.getElementById('vtImportNextPage').click();
+  doc.getElementById('vtImportNextPage').click();
+  assert.equal(doc.querySelector('#vtImportPreviewRows tr:last-child .vt-import-code').textContent, 'EMPTY');
+  sort.click();
+  assert.equal(firstCode(), 'MA150');
+  assert.equal(sort.closest('th').getAttribute('aria-sort'), 'none');
+  const search = doc.getElementById('vtImportSearch');
+  search.value = 'MA20';
+  search.dispatchEvent(new window.Event('input'));
+  sort.click();
+  assert.equal(firstCode(), 'MA20');
+  const handle = sort.closest('th').querySelector('.tks-column-resizer');
+  const before = window.TKSTables.getState(table).columns[5].width;
+  handle.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  assert.ok(window.TKSTables.getState(table).columns[5].width > before);
+  assert.equal(sort.closest('th').getAttribute('aria-sort'), 'ascending');
+});
+
 test('import review: warnings first, combined filters/search and paging include rows past 300', async t => {
   const inputs = Array.from({ length: 305 }, (_, i) => ({ row: i + 2, code: 'AAA' + i, notes: '1T x 10', location: 'A' + i }));
   const rows = inputs.map((r, i) => ({ ...r, kind: 'add', sourceIndexes: [i], warnings: i === 304 ? ['multi'] : [], name: i === 304 ? 'Miếng tẩy' : 'Hàng', cartons: 1, quantity: 10 }));
@@ -214,7 +253,7 @@ test('import review: deleting the last source blocks commit but a new row can re
   assert.equal(doc.getElementById('vtImportConfirm').disabled, false);
 });
 
-test('import review: errors block commit; failed recalculation retains edits until retry succeeds', async t => {
+test('import review: errors allow commit; failed recalculation retains edits until retry succeeds', async t => {
   let failRefresh = false;
   let draft;
   const { doc, window } = await setup(t, { handler: async (url, options, parsed) => {
@@ -227,7 +266,7 @@ test('import review: errors block commit; failed recalculation retains edits unt
   Object.defineProperty(doc.getElementById('vtImportFile'), 'files', { value: [new window.File(['x'], 'a.csv')] });
   doc.getElementById('vtImportPreview').click();
   await settle();
-  assert.equal(doc.getElementById('vtImportConfirm').disabled, true);
+  assert.equal(doc.getElementById('vtImportConfirm').disabled, false);
   doc.querySelector('[data-import-edit]').click();
   doc.querySelector('#vtImportEditor [data-field="code"]').value = 'ZZZ9';
   failRefresh = true;
@@ -540,8 +579,9 @@ test('import: xem trước tùy chọn hiện số liệu và lỗi theo dòng; 
   assert.equal(queries[0].body.get('file').name, 'vitri.xlsx');
   assert.equal(doc.querySelector('[data-count="added"] b').textContent, '2');
   assert.equal(doc.querySelector('[data-count="errors"] b').textContent, '1');
-  assert.match(doc.querySelector('[data-import-errors]').textContent, /Dòng 7: Thiếu mã SP/);
-  assert.equal(doc.getElementById('vtImportConfirm').disabled, true, 'dòng lỗi phải được sửa trước khi xác nhận');
+  assert.equal(doc.querySelector('[data-import-errors]'), null, 'không lặp lại danh sách lỗi phía trên bảng');
+  assert.equal(doc.getElementById('vtImportError').textContent, '');
+  assert.equal(doc.getElementById('vtImportConfirm').disabled, false, 'dòng lỗi không khóa xác nhận');
 
   preview = { ...preview, counts: { ...preview.counts, errors: 0 }, errors: [] };
   doc.getElementById('vtImportPreview').click();
@@ -629,8 +669,9 @@ test('import trực tiếp sau chọn file, không gọi xem trước; lỗi má
   assert.equal(imports.length, 1, 'chặn bấm lặp khi đang gửi');
   assert.equal(imports[0].query.get('commit'), '1');
   assert.ok(doc.getElementById('vtImportDialog').hasAttribute('open'));
-  assert.match(doc.querySelector('[data-import-errors]').textContent, /Thiếu mã hàng/);
-  assert.equal(doc.getElementById('vtImportConfirm').disabled, true, 'lỗi từ máy chủ khóa xác nhận');
+  assert.equal(doc.querySelector('[data-import-errors]'), null);
+  assert.match(doc.getElementById('vtImportError').textContent, /File còn lỗi/);
+  assert.equal(doc.getElementById('vtImportConfirm').disabled, false, 'lỗi từ máy chủ không khóa xác nhận');
   valid = true;
   doc.getElementById('vtImportBack').click();
   doc.getElementById('vtImportPreview').click();
@@ -687,4 +728,99 @@ test('sắp xếp số theo giá trị, ô trống luôn cuối', async t => {
   const rows = [row(1, { quantity: 10 }), row(2, { quantity: null }), row(3, { quantity: 2 })];
   assert.deepEqual(Array.from(window.TKSVtPositions.sortRows(rows, 'quantity', 'asc'), r => r.id), [3, 1, 2]);
   assert.deepEqual(Array.from(window.TKSVtPositions.sortRows(rows, 'quantity', 'desc'), r => r.id), [1, 3, 2]);
+});
+
+test('Xuất kho: nút chỉ hiện khi được sửa; chọn file → Trừ kho gửi POST theo cơ sở, hiện kết quả + dòng bỏ qua, tải lại bảng', async t => {
+  const readonly = await setup(t, { canEdit: false });
+  assert.equal(readonly.doc.getElementById('vtStockOutButton').hidden, true);
+  assert.equal((await setup(t, { permissions: ['stockLocationsV2.view'] })).doc.getElementById('vtStockOutButton').hidden, true);
+
+  const result = {
+    fileName: 'xuat.xlsx',
+    counts: { fileRows: 3, applied: 2, updated: 1, deleted: 1, skipped: 1, quantity: 250 },
+    errors: [{ row: 4, code: 'ZZZ9', location: 'K9', notes: '1T x 5', message: 'Không có dòng nào cùng mã hàng và vị trí trong cơ sở này.' }],
+    errorsTruncated: false
+  };
+  const { doc, calls, window } = await setup(t, {
+    handler: async (url, options, parsed) => (parsed.pathname === '/api/stock-positions/stock-out' ? json(result) : null)
+  });
+  const button = doc.getElementById('vtStockOutButton');
+  assert.equal(button.hidden, false);
+  button.click();
+  assert.ok(doc.getElementById('vtStockOutDialog').hasAttribute('open'));
+  assert.equal(doc.getElementById('vtStockOutRun').disabled, true, 'chưa chọn file thì không trừ được');
+  const input = doc.getElementById('vtStockOutFile');
+  Object.defineProperty(input, 'files', { value: [new window.File(['x'], 'xuat.xlsx')], configurable: true });
+  input.dispatchEvent(new window.Event('change'));
+  assert.equal(doc.getElementById('vtStockOutFileName').textContent, 'xuat.xlsx');
+  assert.equal(doc.getElementById('vtStockOutRun').disabled, false);
+  doc.getElementById('vtStockOutRun').click();
+  doc.getElementById('vtStockOutRun').click();
+  await settle();
+  const posts = calls.filter(c => c.path === '/api/stock-positions/stock-out');
+  assert.equal(posts.length, 1, 'chặn bấm lặp khi đang gửi');
+  assert.equal(posts[0].method, 'POST');
+  assert.equal(posts[0].query.get('branch'), 'HN');
+  assert.equal(posts[0].options.body.get('file').name, 'xuat.xlsx');
+  assert.ok(doc.getElementById('vtStockOutDialog').hasAttribute('open'), 'giữ hộp để xem kết quả');
+  assert.deepEqual([...doc.querySelectorAll('#vtStockOutResult li')].map(li => li.dataset.count + ':' + li.querySelector('b').textContent),
+    ['applied:2', 'deleted:1', 'skipped:1', 'quantity:250']);
+  assert.equal(doc.getElementById('vtStockOutErrorsBox').hidden, false);
+  assert.deepEqual([...doc.querySelectorAll('#vtStockOutErrorRows tr td')].map(td => td.textContent),
+    ['4', 'ZZZ9', 'K9', '1T x 5', 'Không có dòng nào cùng mã hàng và vị trí trong cơ sở này.']);
+  assert.equal(doc.getElementById('vtStockOutRun').hidden, true);
+  assert.equal(doc.getElementById('vtStockOutBack').hidden, false);
+  assert.match(doc.getElementById('vtNotice').textContent, /trừ 2 dòng, xóa 1 dòng hết hàng, bỏ qua 1 dòng/);
+  assert.ok(calls.filter(c => c.method === 'GET' && c.path === '/api/stock-positions').length >= 2, 'tải lại bảng sau khi trừ');
+  doc.getElementById('vtStockOutBack').click();
+  assert.equal(doc.getElementById('vtStockOutPickPanel').hidden, false);
+  assert.equal(doc.getElementById('vtStockOutRun').hidden, false);
+});
+
+test('Xuất kho: lỗi từ máy chủ / mất kết nối báo trong hộp và cho thử lại; tab SG gửi branch=SG', async t => {
+  let mode = 'server';
+  const { doc, calls, window, changeTab } = await setup(t, {
+    handler: async (url, options, parsed) => {
+      if (parsed.pathname !== '/api/stock-positions/stock-out') return null;
+      if (mode === 'offline') throw new TypeError('Failed to fetch');
+      return json({ error: 'File thiếu cột: Vị trí.', code: 'IMPORT_HEADERS_MISSING' }, 400);
+    }
+  });
+  await changeTab('sg');
+  doc.getElementById('vtStockOutButton').click();
+  assert.match(doc.getElementById('vtStockOutSubtitle').textContent, /VT Sài Gòn/);
+  const input = doc.getElementById('vtStockOutFile');
+  Object.defineProperty(input, 'files', { value: [new window.File(['x'], 'xuat.csv')], configurable: true });
+  input.dispatchEvent(new window.Event('change'));
+  doc.getElementById('vtStockOutRun').click();
+  await settle();
+  assert.equal(calls.find(c => c.path === '/api/stock-positions/stock-out').query.get('branch'), 'SG');
+  assert.match(doc.getElementById('vtStockOutError').textContent, /File thiếu cột: Vị trí/);
+  assert.equal(doc.getElementById('vtStockOutRun').disabled, false, 'lỗi không khóa nút thử lại');
+  assert.equal(doc.getElementById('vtStockOutReview').hidden, true);
+  mode = 'offline';
+  doc.getElementById('vtStockOutRun').click();
+  await settle();
+  assert.match(doc.getElementById('vtStockOutError').textContent, /Không kết nối được máy chủ/);
+  assert.equal(doc.getElementById('vtStockOutRun').disabled, false);
+  assert.ok(doc.getElementById('vtStockOutDialog').hasAttribute('open'));
+});
+
+test('Lịch sử: hành động Xuất kho có nhãn, lọc được và hiện ghi chú cũ → mới kèm tóm tắt', async t => {
+  const entries = [
+    { id: 3, createdAt: '2026-10-30T03:00:00Z', branch: 'HN', code: 'AAA', location: 'K1', action: 'stock_out', field: 'notes', oldValue: '3T x 100', newValue: '2T x 100', summary: { deducted: 100, removed: false, fileName: 'xuat.xlsx', fileRows: [2] }, actorName: 'Lan' },
+    { id: 2, createdAt: '2026-10-30T02:00:00Z', branch: 'HN', code: 'BBB', location: 'K2', action: 'stock_out', field: 'notes', oldValue: '1T x 50', newValue: null, summary: { deducted: 50, removed: true, fileName: 'xuat.xlsx', fileRows: [3] }, actorName: 'Lan' },
+    { id: 1, createdAt: '2026-10-30T01:00:00Z', branch: 'HN', code: 'CCC', location: 'K3', action: 'edit', field: 'notes', oldValue: '1T x 5', newValue: '2T x 5', actorName: 'Minh' }
+  ];
+  const { doc, window } = await setup(t, { handler: async (url, options, parsed) => (parsed.pathname === '/api/stock-positions/history' ? json({ rows: entries, nextBefore: null }) : null) });
+  doc.getElementById('vtHistoryButton').click();
+  await settle();
+  const rows = [...doc.querySelectorAll('#vtHistoryRows tr')].map(tr => [...tr.querySelectorAll('td')].map(td => td.textContent.replace(/\s+/g, ' ').trim()));
+  assert.deepEqual(rows[0].slice(2), ['Xuất kho', 'AAA · K1', '3T x 100 → 2T x 100 Trừ 100 · xuat.xlsx']);
+  assert.deepEqual(rows[1].slice(2), ['Xuất kho', 'BBB · K2', '1T x 50 Trừ 50 · Hết hàng, đã xóa dòng · xuat.xlsx']);
+  const action = doc.getElementById('vtHistoryAction');
+  assert.ok([...action.options].some(option => option.value === 'stock_out' && option.textContent === 'Xuất kho'));
+  action.value = 'stock_out';
+  action.dispatchEvent(new window.Event('change'));
+  assert.equal(doc.querySelectorAll('#vtHistoryRows tr').length, 2);
 });

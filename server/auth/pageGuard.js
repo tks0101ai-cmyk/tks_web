@@ -48,6 +48,23 @@ function isPageRequest(req) {
   return !lastSegment.includes('.');           // '/reports' — khong co phan mo rong
 }
 
+// Trang CU da go -> trang thay the. Chi chuyen huong chinh trang HTML (khong chuyen tai nguyen tinh: tra 404 dung hon tra HTML cho
+// <script>). Phan #fragment trinh duyet tu giu. Dat TRUOC pageGuard: trang cu khong con quy tac quyen nen pageGuard se bo qua no.
+// 302 (khong 301) de trinh duyet khong ghi nho vinh vien neu sau nay doi duong dan.
+//   /stock-locations (module Vi tri hang doc Google Sheets, go 2026-10-30) -> /vt-positions/ (VT Ha Noi / VT Sai Gon)
+const LEGACY_PAGE_REDIRECTS = Object.freeze([
+  { from: '/stock-locations', to: '/vt-positions/' }
+]);
+
+function legacyPageRedirect(req, res, next) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  const pathname = String(req.path || '').toLowerCase().replace(/\/index\.html$/, '').replace(/\/+$/, '');
+  const rule = LEGACY_PAGE_REDIRECTS.find(item => item.from === pathname);
+  if (!rule) return next();
+  res.setHeader('Cache-Control', 'no-store');
+  return res.redirect(302, rule.to);
+}
+
 function createPageGuard(dependencies = {}) {
   const verify = dependencies.verifyToken || verifyToken;
   const findUserById = dependencies.findUserById || localUserStore.getUserById;
@@ -107,6 +124,8 @@ module.exports = {
   PUBLIC_PREFIXES,
   PUBLIC_EXACT,
   isPageRequest,
+  LEGACY_PAGE_REDIRECTS,
+  legacyPageRedirect,
   createPageGuard,
   pageGuard: createPageGuard()
 };
