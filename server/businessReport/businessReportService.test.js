@@ -137,6 +137,14 @@ test('chi tiet sale: tong quan + chuoi thang + danh sach khach cua sale', () => 
   assert.ok(d.summary.find(s => s.key === 'avg4'));
 });
 
+test('chi tiet: bieu do chi giu 6 thang gan nhat, tong van cong du cac thang', () => {
+  const snap = snapshot();
+  snap.months = ['2026-03-01', '2026-04-01', '2026-05-01', '2026-06-01', ...snap.months];
+  const d = svc.buildDetail('sale', 'Khang', snap, {});
+  assert.deepEqual(d.chart.map(c => c.label), ['T5/26', 'T6/26', 'T7/26', 'T8/26', 'T9/26', 'T10/26']);
+  assert.equal(d.chart[d.chart.length - 1].partial, true);
+});
+
 test('chi tiet khach theo khoa ten: tra refs de route nap top ma hang', () => {
   const d = svc.buildDetail('customer', 'chị a', snapshot(), {});
   assert.equal(d.title, 'Chị A');

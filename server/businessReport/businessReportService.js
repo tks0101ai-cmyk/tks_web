@@ -183,6 +183,9 @@ function last4Months(snap) {
   return [3, 2, 1, 0].map(i => addMonths(snap.currentMonth, -i));
 }
 
+// Biểu đồ cột trong hộp chi tiết chỉ vẽ 6 tháng gần nhất (tổng "từ T3/26" vẫn cộng đủ các tháng).
+const CHART_MONTHS = 6;
+
 function detailBase(row, snap, title, subtitle) {
   return {
     ...header(snap), title, subtitle,
@@ -194,7 +197,7 @@ function detailBase(row, snap, title, subtitle) {
       { key: 'avg4', label: 'TB 4 tháng', value: row.avg4, type: 'money' },
       { key: 'total', label: 'Tổng từ T3/26', value: Object.values(row.series).reduce((s, v) => s + v, 0), type: 'money' }
     ],
-    chart: snap.months.map(m => ({ month: m, label: monthLabel(m), value: row.series[m] || 0, partial: m === snap.currentMonth }))
+    chart: snap.months.slice(-CHART_MONTHS).map(m =>({ month: m, label: monthLabel(m), value: row.series[m] || 0, partial: m === snap.currentMonth }))
   };
 }
 

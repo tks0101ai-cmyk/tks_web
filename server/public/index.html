@@ -5529,12 +5529,15 @@
     const VN_MONEY = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
     function fmtTableMoney(n) { return VN_MONEY.format(Number(n) || 0); }
     function fmtMoney(n) { return fmtTableMoney(n) + '₫'; }
+    // Số âm quy cùng cách ghi với số dương (-2 tỷ₫, không phải -2000000000₫): lấy trị tuyệt đối rồi gắn dấu lại.
     function fmtMoneyShort(n) {
       n = Number(n) || 0;
-      if (n >= 1000000000) return (n / 1000000000).toFixed(1).replace('.0', '') + ' tỷ₫';
-      if (n >= 1000000) return (n / 1000000).toFixed(1).replace('.0', '') + 'tr₫';
-      if (n >= 1000) return (n / 1000).toFixed(0) + 'k₫';
-      return n + '₫';
+      const sign = n < 0 ? '-' : '';
+      const abs = Math.abs(n);
+      if (abs >= 1000000000) return sign + (abs / 1000000000).toFixed(1).replace('.0', '') + ' tỷ₫';
+      if (abs >= 1000000) return sign + (abs / 1000000).toFixed(1).replace('.0', '') + 'tr₫';
+      if (abs >= 1000) return sign + (abs / 1000).toFixed(0) + 'k₫';
+      return sign + abs + '₫';
     }
 
     function createMoneyAxisFormatter(values) {
