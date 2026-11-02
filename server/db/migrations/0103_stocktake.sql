@@ -55,6 +55,8 @@ CREATE TABLE IF NOT EXISTS stocktake_code_notes (
   session_id          BIGINT      NOT NULL REFERENCES stocktake_sessions (id) ON DELETE CASCADE,
   product_code        TEXT        NOT NULL CHECK (btrim(product_code) <> ''),
   status_text         TEXT        NOT NULL DEFAULT '',
+  -- Mau danh dau trang thai (khoa trong STATUS_COLORS cua public/stocktake/stocktakePaste.js), '' = khong mau.
+  status_color        TEXT        NOT NULL DEFAULT '' CHECK (status_color IN ('', 'red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple', 'gray')),
   reason_text         TEXT        NOT NULL DEFAULT '',
   recheck_employee_id BIGINT      REFERENCES hr_employees (id) ON DELETE SET NULL,
   -- Ten nguoi kiem lai dang chu tu sheet (biet danh "THAI KHO"...), chi dot nap tu sheet; tren web dung recheck_employee_id.

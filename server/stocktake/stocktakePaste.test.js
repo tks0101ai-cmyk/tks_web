@@ -61,3 +61,10 @@ test('normalizeValue theo kieu cot', () => {
   assert.deepEqual(normalizeValue('recheck', 'THÁI KHO'), { ok: true, value: 'THÁI KHO', empty: false });
   assert.equal(PASTE_COLUMNS.reasonText.max, 1000);
 });
+
+test('STATUS_COLORS: bang mau trang thai dung chung', () => {
+  const { STATUS_COLORS } = require('../public/stocktake/stocktakePaste');
+  assert.deepEqual(Object.keys(STATUS_COLORS), ['red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple', 'gray']);
+  assert.equal(STATUS_COLORS.red.label, 'Đỏ');
+  assert.match(STATUS_COLORS.red.argb, /^FF[0-9A-F]{6}$/);
+});

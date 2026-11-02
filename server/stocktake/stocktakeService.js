@@ -6,7 +6,7 @@
 const { getPool } = require('../db/pool');
 const { stripTelegramId } = require('../dashboard/saleName');
 const { codeKey, buildBoard, toResults, deriveColumns, totalsOf } = require('./stocktakeCompute');
-const { PASTE_COLUMNS, normalizeValue, parseVnNumber, foldName } = require('../public/stocktake/stocktakePaste');
+const { PASTE_COLUMNS, STATUS_COLORS, normalizeValue, parseVnNumber, foldName } = require('../public/stocktake/stocktakePaste');
 const { announceChanged } = require('./stocktakeEvents');
 
 const BRANCHES = Object.freeze(['hanoi', 'saigon']);
@@ -126,7 +126,7 @@ const POSITION_BRANCH = Object.freeze({ hanoi: 'HN', saigon: 'SG' });
 
 const SESSION_COLUMNS = `id, branch, name, date_from, date_to, status, source, version, counterpart_session_id, created_by_name, created_at, closed_by_name, closed_at`;
 const EDIT_COLUMNS = `id, order_id, line_no, product_code, team, zone, spec, quantity::float8 AS quantity, removed, version, updated_by_name, updated_at`;
-const NOTE_COLUMNS = `product_code, status_text, reason_text, recheck_employee_id, recheck_name, print_page, print_time,
+const NOTE_COLUMNS = `product_code, status_text, status_color, reason_text, recheck_employee_id, recheck_name, print_page, print_time,
   prev_diff_manual::float8 AS prev_diff_manual, other_diff_manual::float8 AS other_diff_manual, version, updated_by_name, updated_at`;
 const TAG_COLUMNS = `product_code, cluster, is_combo, version, updated_by_name, updated_at`;
 
@@ -162,6 +162,7 @@ const shapeEdit = row => ({
 const shapeNote = row => ({
   code: row.product_code,
   statusText: row.status_text,
+  statusColor: row.status_color || '',
   reasonText: row.reason_text,
   recheckEmployeeId: row.recheck_employee_id === null ? null : Number(row.recheck_employee_id),
   recheckName: row.recheck_name || '',
@@ -536,6 +537,8 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       checkVersion(current, body.version, shapeNote);
       const before = current ? shapeNote(current) : null;
       const statusText = body.statusText === undefined ? (before ? before.statusText : '') : textOf(body, 'statusText', 'Trạng thái');
+      const statusColor = body.statusColor === undefined ? (before ? before.statusColor : '') : String(body.statusColor ?? '');
+      if (statusColor && !Object.hasOwn(STATUS_COLORS, statusColor)) throw fail(400, 'VALIDATION', 'Màu trạng thái không hợp lệ.', { field: 'statusColor' });
       const reasonText = body.reasonText === undefined ? (before ? before.reasonText : '') : textOf(body, 'reasonText', 'Chi tiết lý do', MAX.note);
       const printPage = body.printPage === undefined ? (before ? before.printPage : '') : textOf(body, 'printPage', 'Trang in', MAX.print);
       const printTime = body.printTime === undefined ? (before ? before.printTime : '') : textOf(body, 'printTime', 'Giờ in', MAX.print);
@@ -551,14 +554,15 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       }
       const { rows } = await client.query(
         `INSERT INTO stocktake_code_notes (session_id, product_code, status_text, reason_text, recheck_employee_id, updated_by_user_id, updated_by_name,
-           print_page, print_time, prev_diff_manual, other_diff_manual)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-         ON CONFLICT (session_id, product_code) DO UPDATE SET status_text = EXCLUDED.status_text, reason_text = EXCLUDED.reason_text,
+           print_page, print_time, prev_diff_manual, other_diff_manual, status_color)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         ON CONFLICT (session_id, product_code) DO UPDATE SET status_text = EXCLUDED.status_text, status_color = EXCLUDED.status_color,
+           reason_text = EXCLUDED.reason_text,
            recheck_employee_id = EXCLUDED.recheck_employee_id, print_page = EXCLUDED.print_page, print_time = EXCLUDED.print_time,
            prev_diff_manual = EXCLUDED.prev_diff_manual, other_diff_manual = EXCLUDED.other_diff_manual, version = stocktake_code_notes.version + 1,
            updated_by_user_id = EXCLUDED.updated_by_user_id, updated_by_name = EXCLUDED.updated_by_name, updated_at = now()
          RETURNING ${NOTE_COLUMNS}`, [session.id, productCode, statusText, reasonText, recheckEmployeeId, actor.id, actor.name,
-          printPage, printTime, prevDiffManual, otherDiffManual]);
+          printPage, printTime, prevDiffManual, otherDiffManual, statusColor]);
       const note = shapeNote(rows[0]);
       await writeHistory(client, session, actor, productCode, 'note', before, note);
       return { note };

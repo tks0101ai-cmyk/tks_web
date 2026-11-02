@@ -3,6 +3,7 @@
 // Xuat Excel bang doi chieu kiem ke (dung thu tu cot tab "KIEM KE HN T10").
 const ExcelJS = require('exceljs');
 const { HEADER_FONT, frozenNoGridlinesView, applyFullTableBorder } = require('../excelTableStyle');
+const { STATUS_COLORS } = require('../public/stocktake/stocktakePaste');
 
 const NUMBER = '#,##0.##';
 const MONEY = '#,##0';
@@ -50,10 +51,16 @@ async function createStocktakeWorkbook({ session, rows = [], employees = [] }) {
   workbook.creator = 'TOKOSI Dashboard';
   const sheet = workbook.addWorksheet('Kiểm kê');
   sheet.columns = cols.map(col => ({ header: col.header, width: col.width, style: col.numFmt ? { numFmt: col.numFmt } : { alignment: { wrapText: true, vertical: 'top' } } }));
-  rows.forEach(row => sheet.addRow(cols.map(col => {
-    const value = col.value(row);
-    return value === null || value === undefined ? null : value;
-  })));
+  const statusColumn = cols.findIndex(col => col.header === 'Trạng thái') + 1;
+  rows.forEach(row => {
+    const added = sheet.addRow(cols.map(col => {
+      const value = col.value(row);
+      return value === null || value === undefined ? null : value;
+    }));
+    // To o Trang thai theo mau nguoi dung chon tren web.
+    const color = row.note && STATUS_COLORS[row.note.statusColor];
+    if (color) added.getCell(statusColumn).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color.argb } };
+  });
   sheet.views = frozenNoGridlinesView(1);
   const header = sheet.getRow(1);
   header.font = HEADER_FONT;

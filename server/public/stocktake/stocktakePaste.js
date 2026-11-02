@@ -18,6 +18,17 @@
     prevDiffManual: { label: 'KK trước sai', kind: 'number' },
     otherDiffManual: { label: 'Kiểm SG / Kiểm HN', kind: 'number' }
   });
+  // Mau danh dau Trang thai cua tung ma (khoa luu DB -> nhan + mau to o Excel). '' = khong mau.
+  const STATUS_COLORS = Object.freeze({
+    red: { label: 'Đỏ', argb: 'FFFCA5A5' },
+    orange: { label: 'Cam', argb: 'FFFDBA74' },
+    yellow: { label: 'Vàng', argb: 'FFFDE68A' },
+    green: { label: 'Xanh lá', argb: 'FF86EFAC' },
+    cyan: { label: 'Xanh cyan', argb: 'FF67E8F9' },
+    blue: { label: 'Xanh dương', argb: 'FF93C5FD' },
+    purple: { label: 'Tím', argb: 'FFC4B5FD' },
+    gray: { label: 'Xám', argb: 'FFD1D5DB' }
+  });
   const MAX_ABS = 1e12;
   const COMBO_YES = new Set(['x', 'true', '1', 'co']);
 
@@ -78,5 +89,5 @@
     return { rows: [...byCode].map(([code, value]) => ({ code, value })), duplicates };
   }
 
-  return { PASTE_COLUMNS, codeKey, foldName, parseVnNumber, parseComboFlag, normalizeValue, parsePasteText };
+  return { PASTE_COLUMNS, STATUS_COLORS, codeKey, foldName, parseVnNumber, parseComboFlag, normalizeValue, parsePasteText };
 });

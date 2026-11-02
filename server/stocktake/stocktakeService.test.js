@@ -333,3 +333,17 @@ test('dan cot: ma lap trong 1 lan dan lay dong cuoi; cac cot con lai, clear, ngu
   assert.ok(history.some(h => h.action === 'paste' && h.after.column === 'cluster' && h.after.cluster === 'Cụm B'));
   assert.ok(!history.some(h => h.action === 'paste' && h.after.column === 'statusText'));
 });
+
+test('mau trang thai: luu theo ma, mau la bi tu choi, dan cot giu nguyen mau', async () => {
+  const { service, session } = await fixture();
+  const { note } = await service.saveNote(ctx(), session.id, 'AAA1', { statusText: 'mất ko thấy', statusColor: 'red' });
+  assert.equal(note.statusColor, 'red');
+  await assert.rejects(service.saveNote(ctx(), session.id, 'AAA1', { statusColor: '#ff0000', version: note.version }), { statusCode: 400 });
+  await service.pasteColumn(ctx(), session.id, { column: 'statusText', mode: 'skip', rows: [{ code: 'AAA1', value: 'tìm thấy' }] });
+  let board = await service.getBoard(ctx(), session.id);
+  assert.deepEqual([rowOf(board, 'AAA1').note.statusText, rowOf(board, 'AAA1').note.statusColor], ['tìm thấy', 'red']);
+  const latest = rowOf(board, 'AAA1').note;
+  await service.saveNote(ctx(), session.id, 'AAA1', { statusColor: '', version: latest.version });
+  board = await service.getBoard(ctx(), session.id);
+  assert.equal(rowOf(board, 'AAA1').note.statusColor, '');
+});

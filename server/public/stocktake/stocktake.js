@@ -1,52 +1,59 @@
 /* Trang Kiểm kê (/stocktake/): đối chiếu số đếm đơn TEAM với tồn KiotViet theo đợt.
-   Dữ liệu tính ở máy chủ (GET board); trang chỉ lọc / sắp xếp / phân trang và gửi sửa kèm version.
+   Dữ liệu tính ở máy chủ (GET board); trang chỉ lọc / sắp xếp / vẽ dần khi cuộn và gửi sửa kèm version.
    Người khác sửa -> SSE "stocktake-changed" -> tải lại bảng; lưu với version cũ -> 409 kèm bản mới. */
 (function () {
   'use strict';
 
   const API = '/api/stocktake';
-  const PAGE_SIZE = 100;
+  // Danh sách liền mạch: vẽ từng đoạn CHUNK dòng khi cuộn gần cuối (4.000 mã × 24 cột vẽ một lần sẽ giật).
+  const CHUNK = 200;
   const $ = id => document.getElementById(id);
   // Đúng thứ tự tab "KIỂM KÊ HN T10" (A→W); đợt SG đổi nhãn otherDiff/otherRatio.
   const COLUMNS = [
     { key: 'code', label: 'Mã hàng', width: 120, locked: true, type: 'text' },
     { key: 'name', label: 'Tên hàng', width: 240, type: 'text' },
-    { key: 'counted', label: 'Tổng kiểm', width: 96, num: true },
-    { key: 'stock', label: 'Tồn KIOT', width: 96, num: true },
-    { key: 'diffQty', label: 'SL chênh', width: 96, num: true },
-    { key: 'diffValue', label: 'Giá trị chênh', width: 120, num: true },
+    { key: 'counted', label: 'Tổng kiểm', width: 110, num: true },
+    { key: 'stock', label: 'Tồn KIOT', width: 110, num: true },
+    { key: 'diffQty', label: 'SL chênh', width: 110, num: true },
+    { key: 'diffValue', label: 'Giá trị chênh', width: 150, num: true },
     { key: 'status', label: 'Trạng thái', width: 130, type: 'text' },
     { key: 'reason', label: 'Chi tiết lý do', width: 220, type: 'text' },
     { key: 'printPage', label: 'Trang in', width: 80, type: 'text' },
     { key: 'printTime', label: 'Giờ in', width: 90, type: 'text' },
     { key: 'recheck', label: 'Người kiểm lại', width: 140, type: 'text' },
-    { key: 'prevDiff', label: 'KK trước sai', width: 96, num: true },
-    { key: 'otherDiff', label: 'Kiểm SG', width: 96, num: true },
+    { key: 'prevDiff', label: 'KK trước sai', width: 110, num: true },
+    { key: 'otherDiff', label: 'Kiểm SG', width: 110, num: true },
     { key: 'cluster', label: 'Cụm SP', width: 140, type: 'text' },
     { key: 'clusterCount', label: 'Count', width: 70, num: true },
-    { key: 'clusterDiff', label: 'Chênh cụm', width: 96, num: true },
+    { key: 'clusterDiff', label: 'Chênh cụm', width: 110, num: true },
     { key: 'prevRatio', label: 'Do KK trước', width: 96, num: true, percent: true },
     { key: 'clusterPrevRatio', label: 'Lẫn + KK trước', width: 110, num: true, percent: true },
     { key: 'otherRatio', label: 'Do kiểm SG', width: 96, num: true, percent: true },
     { key: 'forgotten', label: 'Quên KK', width: 80, type: 'flag' },
     { key: 'combo', label: 'Combo', width: 70, type: 'flag' },
     { key: 'position', label: 'Vị trí kho gần nhất', width: 130, type: 'text' },
-    { key: 'cost', label: 'Giá vốn', width: 96, num: true },
+    { key: 'cost', label: 'Giá vốn', width: 110, num: true },
     { key: 'updated', label: 'Cập nhật', width: 140, type: 'text' }
   ];
+  const STATUS_COLORS = window.TKSStocktakePaste ? window.TKSStocktakePaste.STATUS_COLORS : {};
   const otherLabel = branch => (branch === 'saigon' ? 'HN' : 'SG');
   const labelOf = (column, branch) => (column.key === 'otherDiff' ? 'Kiểm ' + otherLabel(branch)
     : column.key === 'otherRatio' ? 'Do kiểm ' + otherLabel(branch) : column.label);
 
   const state = {
     sessions: [], sessionId: null, board: null, canEdit: false, canClose: false,
-    query: '', filter: 'mismatch', recheck: '', status: '', sortKey: null, sortDir: null, headBranch: null, page: 1, loadVersion: 0
+    query: '', filter: 'mismatch', recheck: '', status: '', sortKey: null, sortDir: null, headBranch: null, loadVersion: 0
   };
+  // view.rows: các dòng đã lọc + sort; view.drawn: số dòng đã vẽ.
+  const view = { rows: [], drawn: 0, observer: null };
+  // Vùng chọn kiểu sheet: chỉ số dòng trong view.rows và chỉ số cột trong COLUMNS.
+  const selection = { anchor: null, focus: null, dragging: false, painted: [] };
   const live = { source: null, timer: null };
   const detail = { code: null };
   let user = null;
 
-  const fmt = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 });
+  // Số kiểu sheet kiểm kê: phẩy ngăn hàng nghìn, chấm thập phân (163,200 · 1.5).
+  const fmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
   const num = value => (value === null || value === undefined ? '' : fmt.format(value));
   // "HH:mm dd/MM" theo giờ VN (cố định +7, không phụ thuộc múi giờ máy).
   const time = iso => {
@@ -270,7 +277,7 @@
     syncSortHeader();
     if (window.TKSTables) {
       window.TKSTables.enhance($('stTable'), {
-        key: 'stocktake-board-v2', button: $('stColumnsButton'), sort: false,
+        key: 'stocktake-board-v3', button: $('stColumnsButton'), sort: false,
         columns: COLUMNS.map(c => ({ key: c.key, label: labelOf(c, state.headBranch), width: c.width, locked: !!c.locked, hidden: c.key === 'updated' }))
       });
     }
@@ -324,43 +331,170 @@
     renderFilters();
     renderRecheck();
 
-    const rows = visibleRows();
-    const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-    state.page = Math.min(state.page, pageCount);
-    const tbody = $('stRows');
-    tbody.textContent = '';
-    const fragment = document.createDocumentFragment();
-    for (const row of rows.slice((state.page - 1) * PAGE_SIZE, state.page * PAGE_SIZE)) {
-      const tr = document.createElement('tr');
-      tr.dataset.code = row.code;
-      tr.tabIndex = 0;
-      if (row.forgotten) tr.classList.add('st-forgotten');
-      for (const column of COLUMNS) {
-        const td = document.createElement('td');
-        td.dataset.field = column.key;
-        if (column.num) td.className = 'num';
-        td.textContent = cellText(row, column.key);
-        if ((column.key === 'prevDiff' && row.prevDiffManual) || (column.key === 'otherDiff' && row.otherDiffManual)) {
-          td.classList.add('st-manual');
-          const auto = column.key === 'prevDiff' ? row.prevDiffAuto : row.otherDiffAuto;
-          td.title = 'Số dán tay · web tự lấy: ' + (auto === null || auto === undefined ? 'trống' : num(auto));
-        }
-        if (['diffQty', 'diffValue', 'clusterDiff', 'prevDiff', 'otherDiff'].includes(column.key) && row[column.key]) {
-          td.classList.add(row[column.key] < 0 ? 'st-neg' : 'st-pos');
-        }
-        tr.appendChild(td);
-      }
-      fragment.appendChild(tr);
-    }
-    tbody.appendChild(fragment);
-    if (board && !rows.length) $('stStatus').textContent = 'Không có mã nào khớp bộ lọc.';
+    // Tải nền (SSE / sau khi lưu) giữ số dòng đã vẽ và vùng chọn để không nhảy về đầu bảng.
+    const keepDrawn = view.drawn;
+    view.rows = visibleRows();
+    view.drawn = 0;
+    $('stRows').textContent = '';
+    drawMore(Math.max(CHUNK, keepDrawn));
+    paintSelection();
+    if (board && !view.rows.length) $('stStatus').textContent = 'Không có mã nào khớp bộ lọc.';
     else if (board && $('stStatus').dataset.error !== 'true') $('stStatus').textContent = '';
-    $('stPager').hidden = !board || rows.length <= PAGE_SIZE;
-    $('stCount').textContent = num(rows.length) + ' mã';
-    $('stPage').textContent = state.page + ' / ' + pageCount;
-    $('stPrevious').disabled = state.page <= 1;
-    $('stNext').disabled = state.page >= pageCount;
+    $('stCount').textContent = board ? num(view.rows.length) + ' mã' : '';
+  }
+
+  function rowElement(row, index) {
+    const tr = document.createElement('tr');
+    tr.dataset.code = row.code;
+    tr.dataset.index = String(index);
+    tr.tabIndex = 0;
+    if (row.forgotten) tr.classList.add('st-forgotten');
+    COLUMNS.forEach((column, col) => {
+      const td = document.createElement('td');
+      td.dataset.field = column.key;
+      td.dataset.col = String(col);
+      if (column.num) td.className = 'num';
+      td.textContent = cellText(row, column.key);
+      if ((column.key === 'prevDiff' && row.prevDiffManual) || (column.key === 'otherDiff' && row.otherDiffManual)) {
+        td.classList.add('st-manual');
+        const auto = column.key === 'prevDiff' ? row.prevDiffAuto : row.otherDiffAuto;
+        td.title = 'Số dán tay · web tự lấy: ' + (auto === null || auto === undefined ? 'trống' : num(auto));
+      }
+      if (['diffQty', 'diffValue', 'clusterDiff', 'prevDiff', 'otherDiff'].includes(column.key) && row[column.key]) {
+        td.classList.add(row[column.key] < 0 ? 'st-neg' : 'st-pos');
+      }
+      if (column.key === 'status' && row.note && STATUS_COLORS[row.note.statusColor]) td.dataset.color = row.note.statusColor;
+      tr.appendChild(td);
+    });
+    return tr;
+  }
+
+  // Vẽ thêm count dòng; còn dòng thì gắn ô canh cuối để vẽ tiếp khi cuộn tới.
+  function drawMore(count) {
+    const tbody = $('stRows');
+    const old = tbody.querySelector('.st-sentinel');
+    if (old) old.remove();
+    const fragment = document.createDocumentFragment();
+    const end = Math.min(view.rows.length, view.drawn + count);
+    for (let index = view.drawn; index < end; index++) fragment.appendChild(rowElement(view.rows[index], index));
+    view.drawn = end;
+    tbody.appendChild(fragment);
+    if (view.drawn < view.rows.length) {
+      const sentinel = document.createElement('tr');
+      sentinel.className = 'st-sentinel';
+      const td = document.createElement('td');
+      td.colSpan = COLUMNS.length;
+      td.textContent = 'Đang hiện ' + num(view.drawn) + ' / ' + num(view.rows.length) + ' mã — cuộn xuống để xem tiếp';
+      sentinel.appendChild(td);
+      tbody.appendChild(sentinel);
+      watchSentinel(sentinel);
+    }
     if (window.TKSTables) window.TKSTables.refresh($('stTable'));
+    paintSelection();
+  }
+
+  function watchSentinel(sentinel) {
+    if (typeof window.IntersectionObserver !== 'function') return;
+    if (!view.observer) {
+      view.observer = new window.IntersectionObserver(entries => {
+        if (entries.some(entry => entry.isIntersecting)) drawMore(CHUNK);
+      }, { root: document.querySelector('.st-scroll'), rootMargin: '600px 0px' });
+    }
+    view.observer.disconnect();
+    view.observer.observe(sentinel);
+  }
+
+  // Đổi bộ lọc / sort / đợt: vẽ lại từ đầu, bỏ vùng chọn, cuộn về đầu bảng.
+  function resetView() {
+    view.drawn = 0;
+    selection.anchor = selection.focus = null;
+    const scroller = document.querySelector('.st-scroll');
+    if (scroller) scroller.scrollTop = 0;
+  }
+
+  // ---------- Chọn nhiều ô + copy như sheet ----------
+  const cellPos = td => ({ row: Number(td.parentElement.dataset.index), col: Number(td.dataset.col) });
+  function selectionRect() {
+    if (!selection.anchor || !selection.focus) return null;
+    return {
+      top: Math.min(selection.anchor.row, selection.focus.row), bottom: Math.max(selection.anchor.row, selection.focus.row),
+      left: Math.min(selection.anchor.col, selection.focus.col), right: Math.max(selection.anchor.col, selection.focus.col)
+    };
+  }
+  function paintSelection() {
+    for (const td of selection.painted) td.classList.remove('st-sel');
+    selection.painted = [];
+    const rect = selectionRect();
+    if (!rect) return;
+    const tbody = $('stRows');
+    for (let index = rect.top; index <= Math.min(rect.bottom, view.drawn - 1); index++) {
+      const tr = tbody.rows[index];
+      if (!tr) break;
+      for (let col = rect.left; col <= rect.right; col++) {
+        const td = tr.cells[col];
+        td.classList.add('st-sel');
+        selection.painted.push(td);
+      }
+    }
+  }
+  // Cột đang hiện (bỏ cột ẩn bằng "Cột hiển thị") trong vùng chọn.
+  function visibleColumnsIn(rect) {
+    const heads = document.querySelectorAll('#stTable thead th');
+    const cols = [];
+    for (let col = rect.left; col <= rect.right; col++) {
+      if (!heads[col] || getComputedStyle(heads[col]).display !== 'none') cols.push(col);
+    }
+    return cols;
+  }
+  // Dán sang Google Sheets: tab giữa các cột, xuống dòng giữa các hàng; ô có tab / xuống dòng đổi thành dấu cách.
+  function selectionText() {
+    const rect = selectionRect();
+    if (!rect) return '';
+    const cols = visibleColumnsIn(rect);
+    const lines = [];
+    for (let index = rect.top; index <= rect.bottom; index++) {
+      const row = view.rows[index];
+      if (row) lines.push(cols.map(col => cellText(row, COLUMNS[col].key).replace(/[\t\r\n]+/g, ' ')).join('\t'));
+    }
+    return lines.join('\n');
+  }
+  function bindSelection() {
+    const tbody = $('stRows');
+    tbody.addEventListener('mousedown', event => {
+      const td = event.target.closest('td[data-col]');
+      if (!td || event.button !== 0) return;
+      event.preventDefault(); // không bôi đen chữ khi kéo
+      const pos = cellPos(td);
+      if (event.shiftKey && selection.anchor) selection.focus = pos;
+      else selection.anchor = selection.focus = pos;
+      selection.dragging = true;
+      td.parentElement.focus({ preventScroll: true });
+      paintSelection();
+    });
+    tbody.addEventListener('mouseover', event => {
+      if (!selection.dragging) return;
+      const td = event.target.closest('td[data-col]');
+      if (!td) return;
+      const pos = cellPos(td);
+      if (selection.focus && pos.row === selection.focus.row && pos.col === selection.focus.col) return;
+      selection.focus = pos;
+      paintSelection();
+    });
+    document.addEventListener('mouseup', () => { selection.dragging = false; });
+    document.addEventListener('copy', event => {
+      const active = document.activeElement;
+      if (!selectionRect() || (active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) || document.querySelector('dialog[open]')) return;
+      event.clipboardData.setData('text/plain', selectionText());
+      event.preventDefault();
+      const rect = selectionRect();
+      notify('Đã copy ' + num(rect.bottom - rect.top + 1) + ' dòng × ' + num(visibleColumnsIn(rect).length) + ' cột.');
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && selectionRect() && !document.querySelector('dialog[open]')) {
+        selection.anchor = selection.focus = null;
+        paintSelection();
+      }
+    });
   }
 
   function fillSelect(select, firstLabel, entries, current) {
@@ -436,7 +570,7 @@
         state.recheck = key;
         state.filter = 'all';
         $('stFilter').value = 'all';
-        state.page = 1;
+        resetView();
         render();
       });
       list.appendChild(button);
@@ -497,6 +631,7 @@
     }
     recheck.value = note.recheckEmployeeId === null || note.recheckEmployeeId === undefined ? '' : String(note.recheckEmployeeId);
     noteForm.elements.statusText.value = note.statusText || '';
+    noteForm.elements.statusColor.value = STATUS_COLORS[note.statusColor] ? note.statusColor : '';
     noteForm.elements.reasonText.value = note.reasonText || '';
     noteForm.elements.printPage.value = note.printPage || '';
     noteForm.elements.printTime.value = note.printTime || '';
@@ -584,7 +719,7 @@
   const ACTION_LABELS = { line_edit: 'Sửa dòng đếm', line_add: 'Thêm dòng', note: 'Kiểm lại', tag: 'Cụm / Combo', session_close: 'Đóng đợt', sheet_import: 'Nạp từ sheet', paste: 'Dán cột', session_update: 'Đổi đối chiếu' };
   function historyText(item) {
     const after = item.after || {};
-    if (item.action === 'note') return [recheckLabel(after), after.statusText, after.reasonText, after.printPage && 'Trang ' + after.printPage].filter(Boolean).join(' · ');
+    if (item.action === 'note') return [recheckLabel(after), after.statusText, STATUS_COLORS[after.statusColor] && 'màu ' + STATUS_COLORS[after.statusColor].label.toLowerCase(), after.reasonText, after.printPage && 'Trang ' + after.printPage].filter(Boolean).join(' · ');
     if (item.action === 'paste') return 'Dán cột ' + ((window.TKSStocktakePaste.PASTE_COLUMNS[after.column] || {}).label || after.column);
     if (item.action === 'session_update') return 'Đổi đợt đối chiếu';
     if (item.action === 'tag') return [after.cluster && 'Cụm: ' + after.cluster, after.isCombo ? 'Combo' : ''].filter(Boolean).join(' · ');
@@ -639,8 +774,29 @@
     return write(API + '/sessions/' + state.sessionId + '/lines', 'PATCH', Object.assign(base, patch, { version: line.edit ? line.edit.version : null }));
   }
 
+  // Ô chọn màu cho Trạng thái: "Không màu" + bảng màu dùng chung với server (STATUS_COLORS).
+  function bindStatusColors() {
+    const box = $('stStatusColors');
+    for (const [key, label] of [['', 'Không màu'], ...Object.entries(STATUS_COLORS).map(([k, v]) => [k, v.label])]) {
+      const option = document.createElement('label');
+      option.className = 'st-swatch';
+      option.dataset.color = key;
+      option.title = label;
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = 'statusColor';
+      input.value = key;
+      input.setAttribute('aria-label', label);
+      const dot = document.createElement('span');
+      dot.setAttribute('aria-hidden', 'true');
+      option.append(input, dot);
+      box.appendChild(option);
+    }
+  }
+
   function bindDetail() {
-    $('stRows').addEventListener('click', event => {
+    // Nhấp một lần = chọn ô (như sheet); nhấp đúp hoặc Enter = mở chi tiết mã.
+    $('stRows').addEventListener('dblclick', event => {
       const tr = event.target.closest('tr[data-code]');
       if (tr) openDetail(tr.dataset.code);
     });
@@ -660,6 +816,7 @@
       write(API + '/sessions/' + state.sessionId + '/codes/' + encodeURIComponent(detail.code) + '/note', 'PUT', {
         recheckEmployeeId: form.elements.recheckEmployeeId.value ? Number(form.elements.recheckEmployeeId.value) : null,
         statusText: form.elements.statusText.value,
+        statusColor: form.elements.statusColor.value || '',
         reasonText: form.elements.reasonText.value,
         printPage: form.elements.printPage.value,
         printTime: form.elements.printTime.value,
@@ -710,7 +867,7 @@
     document.querySelectorAll('[data-st-close]').forEach(button => button.addEventListener('click', () => button.closest('dialog').close()));
     $('stSession').addEventListener('change', event => {
       state.sessionId = Number(event.target.value);
-      state.page = 1;
+      resetView();
       loadBoard();
     });
     const createForm = $('stCreateForm');
@@ -791,12 +948,12 @@
   }
 
   function bindTable() {
-    const rerender = () => { state.page = 1; render(); };
+    const rerender = () => { resetView(); render(); };
     $('stSearch').addEventListener('input', event => { state.query = event.target.value; rerender(); });
     $('stFilter').addEventListener('change', event => { state.filter = event.target.value; rerender(); });
     $('stRecheckFilter').addEventListener('change', event => { state.recheck = event.target.value; rerender(); });
     $('stStatusFilter').addEventListener('change', event => { state.status = event.target.value; rerender(); });
-    // Bấm tiêu đề: tăng -> giảm -> mặc định (giá trị chênh lớn trước). Sort toàn bộ dòng đã lọc rồi mới chia trang.
+    // Bấm tiêu đề: tăng -> giảm -> mặc định (giá trị chênh lớn trước). Sort toàn bộ dòng đã lọc rồi mới vẽ.
     document.querySelector('#stTable thead').addEventListener('click', event => {
       const button = event.target.closest('[data-st-sort]');
       if (!button || event.target.closest('.tks-column-resizer')) return;
@@ -807,8 +964,6 @@
       syncSortHeader();
       rerender();
     });
-    $('stPrevious').addEventListener('click', () => { state.page -= 1; render(); });
-    $('stNext').addEventListener('click', () => { state.page += 1; render(); });
   }
 
   // ---------- Dán cột ----------
@@ -925,6 +1080,8 @@
     bindSessions();
     bindTable();
     bindDetail();
+    bindSelection();
+    bindStatusColors();
     bindPaste();
     window.addEventListener('pagehide', stopLive);
     try {
