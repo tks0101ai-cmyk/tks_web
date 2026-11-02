@@ -4,7 +4,6 @@
 // (vai chuc → vai tram don), khong doc lai 60 nghin don cua trang Vong doi. Khong goi API KiotViet.
 //   - kiotOutcome: trang thai Kiot -> 'completed' (Hoan thanh) | 'cancelled' (Da huy) | null.
 //   - readKiotStatuses: trang thai Kiot cua cac don (dung unique index orders (branch, code)).
-//   - readKiotQuantities / diffQuantities: SL tung ma hang tren don Kiot de doi chieu voi tong SL da chi dinh (canh bao lech SL).
 //   - readKiotLineKeys: ma hang con tren don Kiot (bo dong chi dinh cua ma da xoa khoi don).
 const { tx } = require('../stockPositions/stockPositionsService');
 
@@ -83,30 +82,6 @@ async function readKiotStatuses(db, branch, codes) {
   return found;
 }
 
-// Map 'ma don chu thuong' -> Map('ma hang chu thuong' -> SL) cua dong hang don Kiot (gop theo ma, bo dong VAT*).
-async function readKiotQuantities(db, branch, codes) {
-  const found = new Map();
-  const list = uniqueCodes(codes);
-  if (!list.length) return found;
-  const { rows } = await db.query(
-    `SELECT o.code,
-            lower(btrim(COALESCE(NULLIF(d.raw->>'productCode', ''), p.code, ''))) AS product_key,
-            COALESCE(SUM(d.quantity), 0)::float8 AS quantity
-       FROM orders o
-       JOIN order_details d ON d.branch = o.branch AND d.order_id = o.id
-       LEFT JOIN products p ON p.branch = d.branch AND p.id = d.product_id
-      WHERE o.branch = $1 AND o.code = ANY($2::text[])
-      GROUP BY o.code, 2`,
-    [DB_BRANCH[branch], list]);
-  for (const row of rows) {
-    const orderKey = codeKey(row.code);
-    if (!found.has(orderKey)) found.set(orderKey, new Map());
-    if (!row.product_key || row.product_key.startsWith('vat')) continue;
-    found.get(orderKey).set(row.product_key, Number(row.quantity));
-  }
-  return found;
-}
-
 // Map 'ma don chu thuong' -> Set('ma hang chu thuong') cac ma hang (khong VAT*) con tren don Kiot, de bo dong chi dinh cua ma
 // da xoa khoi don. Don co dong khong xac dinh duoc ma (thieu productCode va khong khop products) -> null: khong ket luan duoc.
 // Don khong co dong nao trong DB (chua dong bo chi tiet) khong co khoa.
@@ -132,23 +107,5 @@ async function readKiotLineKeys(db, branch, codes) {
   return found;
 }
 
-/**
- * HAM THUAN. So SL da chi dinh (tong planned_qty theo ma) voi SL dong don Kiot; tra cac ma LECH nhau
- * [{ productCode, picked, ordered }] sap theo ma. Ma co tren don nhung chua chi dinh dong nao (picked 0) hoac ma chi dinh
- * khong con tren don (ordered 0) deu tinh la lech.
- * @param assigned Map('ma hang chu thuong' -> { productCode, quantity })
- * @param ordered Map('ma hang chu thuong' -> SL)
- */
-function diffQuantities(assigned, ordered) {
-  const out = [];
-  const keys = new Set([...assigned.keys(), ...ordered.keys()]);
-  for (const key of keys) {
-    const picked = assigned.has(key) ? Number(assigned.get(key).quantity) : 0;
-    const want = ordered.has(key) ? Number(ordered.get(key)) : 0;
-    if (Math.abs(picked - want) < 1e-6) continue;
-    out.push({ productCode: assigned.has(key) ? assigned.get(key).productCode : key, picked, ordered: want });
-  }
-  return out.sort((a, b) => a.productCode.localeCompare(b.productCode));
-}
 
-module.exports = { toLocalPhone, kiotOutcome, readKiotStatuses, readKiotQuantities, readKiotLineKeys, diffQuantities, codeKey, createSellerPhoneLookup, readSellerPhone, loadSellerPhone };
+module.exports = { toLocalPhone, kiotOutcome, readKiotStatuses, readKiotLineKeys, codeKey, createSellerPhoneLookup, readSellerPhone, loadSellerPhone };

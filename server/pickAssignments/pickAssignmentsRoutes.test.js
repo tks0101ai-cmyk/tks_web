@@ -17,7 +17,7 @@ async function start(t, { user = MANAGER, failWith } = {}) {
     if (failWith) throw failWith;
     return name === 'candidates' ? { order: { orderCode: 'DH001' }, candidates: {}, assignment: null } : name === 'get' ? { assignment: null } : { assignment: ASSIGNMENT };
   };
-  const service = { candidates: record('candidates'), get: record('get'), assign: record('assign'), confirm: record('confirm'), cancel: record('cancel'), setStatus: record('setStatus'), removeLine: record('removeLine'),
+  const service = { candidates: record('candidates'), get: record('get'), assign: record('assign'), confirm: record('confirm'), cancel: record('cancel'), setStatus: record('setStatus'),
     createPosition: async (ctx, body) => { calls.push(['createPosition', body]); if (failWith) throw failWith; return { row: { id: 9 }, merged: body.location === 'A01' }; },
     updatePosition: async (ctx, id, body) => { calls.push(['updatePosition', id, body]); if (failWith) throw failWith; return { row: { id } }; },
     removePosition: async (ctx, id, params) => { calls.push(['removePosition', id, params]); if (failWith) throw failWith; return { deleted: true, id }; } };
@@ -123,14 +123,14 @@ test('shared form GET/PUT uses shipment.pick, user from session and no-store',as
  assert.equal((await fetch(anon.base+'/print-layout/order')).status,401);
 });
 
-test('POST /order-lines/remove truyen nguyen body cho service, can quyen shipment.pick',async t=>{
-  const {base,calls}=await start(t);
-  const body={branch:'HN',orderCode:'DH001',productCode:'AAA1'};
-  const res=await fetch(base+'/order-lines/remove',{method:'POST',headers:json,body:JSON.stringify(body)});
-  assert.equal(res.status,200);
-  assert.deepEqual(calls,[['removeLine',body]]);
-  const denied=await start(t,{user:{id:'kh',vaiTro:'Khách hàng'}});
-  assert.equal((await fetch(denied.base+'/order-lines/remove',{method:'POST',headers:json,body:JSON.stringify(body)})).status,403);
+test('POST chi dinh truyen nguyen removed/needs trong body cho service; route /order-lines/remove (ghi Kiot) da bo', async t => {
+  const { base, calls } = await start(t);
+  const body = { branch: 'HN', orderCode: 'DH001', allocations: [{ productCode: 'AAA1', positionId: 1, qty: 5 }], removed: ['BBB2'], needs: { AAA1: 5 } };
+  assert.equal((await fetch(base, { method: 'POST', headers: json, body: JSON.stringify(body) })).status, 201);
+  assert.deepEqual(calls, [['assign', body]]);
+  const gone = await fetch(base + '/order-lines/remove', { method: 'POST', headers: json, body: JSON.stringify({ branch: 'HN', orderCode: 'DH001', productCode: 'AAA1' }) });
+  assert.equal(gone.status, 404);
+  assert.equal(calls.length, 1);
 });
 
 test('Sửa VT trong hộp: /positions cần thêm quyền xem + sửa VT; candidates báo canEditPositions; route truyền đúng tham số', async t => {

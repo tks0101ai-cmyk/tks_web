@@ -2,11 +2,11 @@
 
 ## Migration 0103 — Lịch sử bỏ dòng chỉ định (31/10/2026, chưa áp DB)
 
-`0103_order_pick_history_prune.sql`: chỉ mở rộng CHECK `order_pick_history.action` thành `assign|confirm|cancel|mismatch_ack|prune`. `prune` ghi khi dòng chỉ định Đang bốc của mã đã bị xóa khỏi đơn Kiot được bỏ (`summary` `{reason: "line_removed"|"kiot_line_missing", lines:[{productCode, positionId, location, quantity}]}`). Không thêm cột/bảng; code fail-soft khi chưa áp (vẫn bỏ dòng, không ghi lịch sử).
+`0103_order_pick_history_prune.sql`: chỉ mở rộng CHECK `order_pick_history.action` thành `assign|confirm|cancel|mismatch_ack|prune`. `prune` ghi khi dòng chỉ định Đang bốc của mã đã bị xóa khỏi đơn Kiot được bỏ (`summary` `{reason: "line_removed"|"kiot_line_missing", lines:[{productCode, positionId, location, quantity}]}`; từ 02/11/2026 chỉ còn `kiot_line_missing` do job đối chiếu ghi — `line_removed` gắn với nút Xóa dòng ghi Kiot đã gỡ). Không thêm cột/bảng; code fail-soft khi chưa áp (vẫn bỏ dòng, không ghi lịch sử).
 
-## Migration 0102 — Nhật ký ghi ngược lên đơn KiotViet (30/10/2026, chưa áp DB)
+## Migration 0102 — Nhật ký ghi ngược lên đơn KiotViet (30/10/2026, chưa áp DB; không còn được ghi từ 02/11/2026)
 
-`0102_order_kiot_edit_log.sql`: bảng `order_kiot_edit_log` (`id`, `created_at`, `branch` HN|SG, `order_code`, `action` `remove_line|set_quantity|rollback`, `summary JSONB` {productCode/quantities, before[], after[] hoặc problems/restored}, `actor_user_id`, `actor_name`); trigger chặn UPDATE/DELETE; thu hồi `reporting_readonly`; index `(branch, lower(btrim(order_code)), id)`. Ghi bởi `kiotviet/kiotOrderEditor.js`, fail-soft khi bảng chưa tồn tại.
+`0102_order_kiot_edit_log.sql`: bảng `order_kiot_edit_log` (`id`, `created_at`, `branch` HN|SG, `order_code`, `action` `remove_line|set_quantity|rollback`, `summary JSONB` {productCode/quantities, before[], after[] hoặc problems/restored}, `actor_user_id`, `actor_name`); trigger chặn UPDATE/DELETE; thu hồi `reporting_readonly`; index `(branch, lower(btrim(order_code)), id)`. Trước đây ghi bởi `kiotviet/kiotOrderEditor.js` (fail-soft khi bảng chưa tồn tại). **Không còn được ghi từ 02/11/2026:** đã gỡ toàn bộ ghi ngược lên đơn KiotViet (xóa `kiotOrderEditor.js`, `KIOT_ORDER_WRITE_ENABLED`, `POST /api/shipment/pick/order-lines/remove`); bảng và migration giữ nguyên làm lịch sử, áp hay chưa áp đều không ảnh hưởng.
 
 ## Migration 0101 — VT: hành động lịch sử Xuất kho (30/10/2026, chưa áp DB)
 
@@ -804,7 +804,7 @@ Trạng thái: đang làm trên nhánh `feat/lifecycle-pick-assign`, **chưa mer
 
 - `order_pick_history.action` CHECK mở rộng thành `assign|confirm|cancel|mismatch_ack`. Bảng vẫn chỉ thêm (trigger chặn UPDATE/DELETE).
 - Dòng `mismatch_ack` ghi khi người có `shipment.pick` bấm **Đã xử lý**: `summary.signature` = JSON các `[mã chữ thường, picked, ordered]` của số lệch lúc bấm, `summary.items` = `[{productCode, picked, ordered}]`. Chỉ dòng mới nhất của chỉ định hoạt động được xét; còn khớp số lệch hiện tại thì API đánh dấu `handled`. Kiot sửa tiếp hoặc chỉ định mới (`assignment_id` mới) thì không còn khớp.
-- **Từ 30/10/2026 ứng dụng không còn ghi `mismatch_ack`** (nút Đã xử lý và route `mismatch-ack` đã bỏ, thay bằng cảnh báo Lệch Kiot / Lệch SL trong đơn tính từ snapshot + `order_pick_lines`, không migration). Migration giữ nguyên; áp hay chưa áp đều không ảnh hưởng. Snapshot đơn (`order_snapshot.lines[]`) có thêm `kiotQuantity` khi SL cần nhặt được sửa tay khác SL Kiot.
+- **Từ 30/10/2026 ứng dụng không còn ghi `mismatch_ack`** (nút Đã xử lý và route `mismatch-ack` đã bỏ, thay bằng cảnh báo Lệch Kiot / Lệch SL trong đơn tính từ snapshot + `order_pick_lines`, không migration; **2 cảnh báo này cũng đã gỡ 02/11/2026**, Vòng đời chỉ còn 6 cảnh báo giao hàng). Migration giữ nguyên; áp hay chưa áp đều không ảnh hưởng. Snapshot đơn (`order_snapshot.lines[]`) có thêm `kiotQuantity` khi SL cần nhặt được sửa tay khác SL Kiot. Từ 02/11/2026 snapshot cũng có thể thiếu mã có trên đơn Kiot khi người chỉ định bấm **Xóa dòng** (`removed` của `POST /api/shipment/pick`, chỉ nội bộ, không sửa đơn Kiot); không đổi cấu trúc JSON.
 
 ## 0099 — VT: Đã sửa + xóa lịch sử (28/10/2026, chưa áp DB)
 
@@ -834,4 +834,4 @@ Cập nhật gần nhất: 30/10/2026 (gỡ module Vị trí hàng cũ: `stock_l
 - `stock_position_history_action_check` mở rộng: thêm `stock_out` = một lượt **Xuất kho từ file** trừ SL khỏi một dòng vị trí. Mỗi vị trí bị trừ có đúng một bản ghi: `position_id`, `code`, `location`, `field = 'notes'`, `old_value` = ghi chú trước, `new_value` = ghi chú sau (`NULL` khi dòng về 0 và bị xóa), `summary = {deducted, removed, fileName, fileRows}` (`fileRows` = số dòng Excel đã góp vào lượt trừ), `actor_*` = người bấm Xuất kho.
 - Không thêm cột/bảng/trigger; dòng vị trí vẫn dùng `version`, `updated_by_*` như mọi thao tác ghi. Chưa áp migration thì `stockOutFile` lỗi 500 và rollback toàn bộ lượt (CHECK từ chối `stock_out`) — phải `npm run db:migrate` trước deploy.
 
-Cập nhật gần nhất: 31/10/2026 (ghi chú tài liệu: `stock_position_history.summary` có thể chứa `{source: 'pick', orderCode}` khi sửa VT từ hộp Chỉ định vị trí; không migration mới).
+Cập nhật gần nhất: 02/11/2026 (ghi chú tài liệu: `order_kiot_edit_log` (0102) không còn được ghi; `prune` chỉ còn `kiot_line_missing`; snapshot có thể thiếu mã đã Xóa dòng nội bộ; không migration mới) — trước đó 31/10/2026 (ghi chú tài liệu: `stock_position_history.summary` có thể chứa `{source: 'pick', orderCode}` khi sửa VT từ hộp Chỉ định vị trí; không migration mới).

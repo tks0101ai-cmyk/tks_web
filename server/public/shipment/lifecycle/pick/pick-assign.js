@@ -27,12 +27,12 @@
   // latest = chỉ định mới nhất của đơn; assignment = latest khi Đã bốc (chỉ xem); reassignOf = latest khi Đang nhặt (đang sửa, lưu bằng reassign).
   /* canEditPositions = quyền sửa VT (máy chủ gửi kèm candidates); posEdit = ô sửa VT đang mở {line, id ('new' khi thêm), code, notes, location, before, version, held, error};
      touched = id vị trí đơn này đang giữ chỗ (Đang nhặt) đã bị sửa/xóa trên VT trong lần mở hộp → bắt buộc Cập nhật chỉ định trước khi Xác nhận nhặt/In đơn. */
-  const state={listOrder:null,order:null,cand:{},needs:{},latest:null,assignment:null,allocations:{},suggestions:{},busy:false,needsSync:true,requestEpoch:0,reassignOf:null,reopened:false,onChange:null,sort:null,manual:null,drag:null,canEditPositions:false,posEdit:null,touched:new Set()};
+  const state={listOrder:null,order:null,cand:{},needs:{},removed:new Set(),latest:null,assignment:null,allocations:{},suggestions:{},busy:false,needsSync:true,requestEpoch:0,reassignOf:null,reopened:false,onChange:null,sort:null,manual:null,drag:null,canEditPositions:false,posEdit:null,touched:new Set()};
   let posEscGuard=false; // Esc vừa đóng ô sửa VT: chặn luôn sự kiện cancel của dialog phát ngay sau phím đó.
 
-  const DIALOGS_HTML='<dialog id="pickingDialog" aria-labelledby="pickingTitle"><div class="dp-head"><div class="dp-head-text"><h2 class="dp-title" id="pickingTitle"></h2><p class="dp-subtitle">Chọn vị trí và điều chỉnh số lượng nhặt. Nhấn giữ dòng (hoặc ba chấm đầu dòng) rồi kéo lên/xuống để đổi thứ tự (phiếu in theo thứ tự này); "Xóa dòng" và số lượng cần nhặt sửa tay đều được ghi lên đơn KiotViet. Dòng bôi đỏ là tổng chọn chưa khớp số lượng cần nhặt; vị trí được giữ chỗ cho đơn này sau khi xác nhận. Nút ✎ / 🗑 / + Thêm vị trí sửa thẳng VT Hà Nội / VT Sài Gòn (cần quyền sửa VT), gợi ý của mã đó tự cập nhật theo tồn mới.</p></div><button id="pickingClose" type="button" class="dp-close" aria-label="Đóng chỉ định vị trí">×</button></div>'
+  const DIALOGS_HTML='<dialog id="pickingDialog" aria-labelledby="pickingTitle"><div class="dp-head"><div class="dp-head-text"><h2 class="dp-title" id="pickingTitle"></h2><p class="dp-subtitle">Chọn vị trí và điều chỉnh số lượng nhặt. Nhấn giữ dòng (hoặc ba chấm đầu dòng) rồi kéo lên/xuống hoặc bấm tiêu đề cột để đổi thứ tự (phiếu in theo đúng thứ tự đang hiển thị); "Xóa dòng" và số lượng cần nhặt sửa tay chỉ lưu trong chỉ định và phiếu in, không sửa đơn KiotViet. Dòng bôi đỏ là tổng chọn chưa khớp số lượng cần nhặt; vị trí được giữ chỗ cho đơn này sau khi xác nhận. Nút ✎ / 🗑 / + Thêm vị trí sửa thẳng VT Hà Nội / VT Sài Gòn (cần quyền sửa VT), gợi ý của mã đó tự cập nhật theo tồn mới.</p></div><button id="pickingClose" type="button" class="dp-close" aria-label="Đóng chỉ định vị trí">×</button></div>'
     +'<div class="picking-body"><div class="picking-status-bar"><span id="pickingOrderStatus" class="picking-order-status" data-status="">Chưa chỉ định</span><button id="pickingConfirmPick" type="button" class="btn-primary" hidden>Xác nhận nhặt</button><button id="pickingCancelPick" type="button" hidden>Hủy nhặt</button><button id="pickingReopen" type="button" hidden>Chỉ định lại</button><button id="pickingReprint" type="button" hidden>In đơn</button></div>'
-    +'<p id="pickingSource" class="picking-source"></p><div class="picking-table-wrap"><table class="dp-table picking-table" data-table-key="picking-table" data-table-sort="off"><thead><tr><th data-column-key="code" data-default-width="150" data-min-width="130">Mã hàng</th><th data-column-key="name" data-default-width="210">Tên hàng</th><th data-column-key="note" data-default-width="170" title="Ghi chú của dòng hàng trong đơn Kiot">Ghi chú</th><th data-column-key="need" data-default-width="190" data-min-width="180">Cần nhặt</th><th data-column-key="st" data-default-width="150" title="Số thùng thực nhặt theo chỉ định (SL nhặt / SL mỗi thùng). Trống khi dòng chưa chỉ định đủ SL; lẻ hiện đỏ.">ST</th><th data-column-key="stock" data-default-width="115" title="Tổng khả dụng cùng mã tại cơ sở sau giữ chỗ của các đơn khác">Có thể bốc</th><th data-column-key="locations" data-default-width="760" data-min-width="320">Vị trí kho</th></tr></thead><tbody id="pickingRows"></tbody></table></div><p id="pickingStatus" role="status"></p></div>'
+    +'<p id="pickingSource" class="picking-source"></p><div class="picking-table-wrap"><table class="dp-table picking-table" data-table-key="picking-table" data-table-sort="off"><thead><tr><th data-column-key="code" data-default-width="150" data-min-width="130">Mã hàng</th><th data-column-key="name" data-default-width="210">Tên hàng</th><th data-column-key="note" data-default-width="170" title="Ghi chú của dòng hàng trong đơn Kiot">Ghi chú</th><th data-column-key="need" data-default-width="190" data-min-width="180">Cần nhặt</th><th data-column-key="st" data-default-width="150" title="Số thùng thực nhặt theo chỉ định (SL nhặt / SL mỗi thùng). Trống khi dòng chưa chỉ định đủ SL; lẻ hiện đỏ.">ST</th><th data-column-key="stock" data-default-width="115" title="Tổng khả dụng cùng mã tại cơ sở sau giữ chỗ của các đơn khác">Có thể bốc</th><th data-column-key="locations" data-default-width="760" data-min-width="320">Vị trí kho</th></tr></thead><tbody id="pickingRows"></tbody></table></div><p id="pickingRemoved" class="picking-removed" hidden></p><p id="pickingStatus" role="status"></p></div>'
     +'<div class="picking-footer"><span id="pickingProgress"></span><div><button id="pickingReload" type="button" hidden>Tải lại</button><button id="pickingSuggest" type="button">Gợi ý lại</button><button id="pickingConfirm" type="button" class="btn-primary">Xác nhận &amp; In phiếu nhặt</button></div></div></dialog>'
     +'<dialog id="pickingPrintDialog" aria-labelledby="pickingPrintTitle"><div class="dp-head"><div><p class="dp-kicker">PHIẾU NHẶT HÀNG</p><h2 class="dp-title" id="pickingPrintTitle">Xem trước phiếu nhặt</h2></div><div><button id="pickingPrintBtn" type="button" class="btn-primary">In phiếu</button><button id="pickingPrintClose" type="button" class="dp-close" aria-label="Đóng bản in">×</button></div></div><div class="print-preview-stage"><div id="pickingPrintSheet"></div></div></dialog>';
 
@@ -45,14 +45,19 @@
 
   // ---------- Dữ liệu dòng đơn và vị trí ----------
   /* Dòng cần nhặt: `quantity` = SL cần nhặt đang dùng (người dùng có thể sửa tay trong state.needs), `kiotQuantity` = SL trên đơn Kiot.
-     Mọi phép kiểm/gợi ý/tô đỏ dùng `quantity` nên tự theo SL đã sửa. */
-  const lines=()=>(state.order&&state.order.lines||[]).filter(l=>!key(l.productCode).startsWith('vat'))
+     Mọi phép kiểm/gợi ý/tô đỏ dùng `quantity` nên tự theo SL đã sửa. Mã đã bấm "Xóa dòng" (state.removed) không nằm trong danh sách. */
+  const lines=()=>(state.order&&state.order.lines||[]).filter(l=>!key(l.productCode).startsWith('vat')&&!state.removed.has(key(l.productCode)))
     .map(l=>({...l,kiotQuantity:l.quantity,quantity:Object.hasOwn(state.needs,key(l.productCode))?state.needs[key(l.productCode)]:l.quantity}));
   // SL cần nhặt đã lưu theo chỉ định (snapshot, cộng các dòng cùng mã): { mã chữ thường: SL }.
   function needsFromAssignment(a){
     const out={};
     ((a&&a.snapshot&&a.snapshot.lines)||[]).forEach(l=>{if(key(l.productCode))out[key(l.productCode)]=(out[key(l.productCode)]||0)+(Number(l.quantity)||0);});
     return out;
+  }
+  // Mã đã bỏ khỏi chỉ định: có trên đơn Kiot nhưng không có trong snapshot đã lưu (Set mã chữ thường).
+  function removedFromAssignment(a){
+    const saved=new Set(((a&&a.snapshot&&a.snapshot.lines)||[]).map(l=>key(l.productCode)));
+    return new Set(saved.size?(state.order&&state.order.lines||[]).map(l=>key(l.productCode)).filter(k=>k&&!k.startsWith('vat')&&!saved.has(k)):[]);
   }
   // Chỉ giữ SL khác SL Kiot (khớp Kiot thì không cần lưu SL sửa).
   function editedNeeds(source){
@@ -100,7 +105,7 @@
   }
   // Sort chỉ đổi thứ tự trình bày; chỉ số dòng gốc vẫn dùng cho mọi thao tác phân bổ.
   /* Thứ tự kéo-thả (state.manual = mảng mã hàng chữ thường) chỉ sống trong lần mở hộp này; mở lại về thứ tự Kiot. Mã không có trong mảng
-     (vd đơn vừa tải lại) xếp sau cùng theo thứ tự Kiot. Phiếu in theo đúng thứ tự này (printPick). */
+     (vd đơn vừa tải lại) xếp sau cùng theo thứ tự Kiot. Phiếu in theo đúng thứ tự đang hiển thị: kéo-thả hoặc sort cột (printOrderKeys). */
   const manualRank=l=>{const at=state.manual.indexOf(key(l.productCode));return at<0?state.manual.length:at;};
   function displayLines(){
     const entries=lines().map((l,i)=>({l,i}));
@@ -136,8 +141,8 @@
     return [...seen.values()];
   }
   const editable=()=>!!state.order&&!state.assignment&&state.order.eligible!==false&&!state.busy&&!state.needsSync;
-  // Xóa dòng ghi ngược lên đơn Kiot nên cho ở mọi trạng thái (kể cả Đã bốc), miễn đơn còn ít nhất 2 mã hàng.
-  const canRemove=()=>!!state.order&&!state.busy&&!state.needsSync&&lines().length>1;
+  // Xóa dòng chỉ bỏ mã khỏi chỉ định (không sửa đơn Kiot), lưu cùng lần chỉ định nên chỉ khi đang sửa được; còn ít nhất 2 mã hàng.
+  const canRemove=()=>editable()&&lines().length>1;
   // Sửa VT trong hộp (✎/🗑/+ Thêm vị trí): cần quyền sửa VT, không theo eligible; Đã bốc (kể cả đang Chỉ định lại) chỉ xem. posShown bỏ điều kiện bận để ô sửa vẫn hiện (khóa) khi đang lưu.
   const posShown=()=>state.canEditPositions&&!!state.order&&!state.needsSync&&!state.assignment&&state.latest?.status!=='confirmed';
   const posEditable=()=>posShown()&&!state.busy;
@@ -227,7 +232,9 @@
     lines().forEach((l,i)=>(state.allocations[i]||[]).forEach(p=>{if(p.quantity>0)have.set(p.id,(have.get(p.id)||0)+p.quantity);}));
     const savedNeeds=needsFromAssignment(saved);
     const needChanged=lines().some(l=>l.quantity!==(Object.hasOwn(savedNeeds,key(l.productCode))?savedNeeds[key(l.productCode)]:l.kiotQuantity));
-    return needChanged||touchedOwn()||want.size!==have.size||[...want].some(([id,qty])=>have.get(id)!==qty);
+    const savedRemoved=removedFromAssignment(saved);
+    const removedChanged=savedRemoved.size!==state.removed.size||[...state.removed].some(k=>!savedRemoved.has(k));
+    return needChanged||removedChanged||touchedOwn()||want.size!==have.size||[...want].some(([id,qty])=>have.get(id)!==qty);
   }
   // Vị trí đơn này đang giữ chỗ vừa bị sửa/xóa trên VT: giữ chỗ cũ không còn khớp tồn → phải lưu lại chỉ định.
   const touchedOwn=()=>!!state.reassignOf&&state.reassignOf.lines.some(j=>state.touched.has(String(j.positionId)));
@@ -431,9 +438,9 @@
       const uncertainty=unknown?' (chưa xác định)':'';
       // Số chọn khác SL khách đặt (thiếu, thừa hoặc chưa chọn) → bôi đỏ cả dòng.
       const mismatch=round6(total)!==round6(l.quantity);
-      const needCell=editable()?`<div class="picking-need-stepper"><button type="button" data-need-step="-1" data-need-line="${i}" aria-label="Giảm SL cần nhặt ${esc(l.productCode)}" ${l.quantity<=1?'disabled':''}>−</button><input type="text" inputmode="numeric" class="picking-need-input" data-need data-need-line="${i}" value="${fmt(l.quantity)}" aria-label="SL cần nhặt ${esc(l.productCode)}" title="Sửa số lượng cần nhặt (khác số trên đơn Kiot sẽ được ghi lên đơn Kiot khi bấm xác nhận và in)"><button type="button" data-need-step="1" data-need-line="${i}" aria-label="Tăng SL cần nhặt ${esc(l.productCode)}" ${l.quantity>=Number.MAX_SAFE_INTEGER?'disabled':''}>+</button></div>`:`<strong>${fmt(l.quantity)}</strong>`;
+      const needCell=editable()?`<div class="picking-need-stepper"><button type="button" data-need-step="-1" data-need-line="${i}" aria-label="Giảm SL cần nhặt ${esc(l.productCode)}" ${l.quantity<=1?'disabled':''}>−</button><input type="text" inputmode="numeric" class="picking-need-input" data-need data-need-line="${i}" value="${fmt(l.quantity)}" aria-label="SL cần nhặt ${esc(l.productCode)}" title="Sửa số lượng cần nhặt (chỉ lưu trong chỉ định và phiếu in, không sửa đơn Kiot)"><button type="button" data-need-step="1" data-need-line="${i}" aria-label="Tăng SL cần nhặt ${esc(l.productCode)}" ${l.quantity>=Number.MAX_SAFE_INTEGER?'disabled':''}>+</button></div>`:`<strong>${fmt(l.quantity)}</strong>`;
       const kiotNote=l.kiotQuantity!==l.quantity?`<small class="picking-kiot" title="Số lượng trên đơn Kiot">Kiot: ${fmt(l.kiotQuantity)}</small>`:'';
-      const removeBtn=canRemove(i)?`<button type="button" class="picking-remove" data-remove-line="${i}" title="Xóa dòng hàng này khỏi đơn KiotViet" aria-label="Xóa ${esc(l.productCode)} khỏi đơn">Xóa dòng</button>`:'';
+      const removeBtn=canRemove(i)?`<button type="button" class="picking-remove" data-remove-line="${i}" title="Bỏ dòng này khỏi chỉ định và phiếu in (không sửa đơn Kiot)" aria-label="Bỏ ${esc(l.productCode)} khỏi chỉ định">Xóa dòng</button>`:'';
       return `<tr data-line="${i}"${mismatch?' class="picking-mismatch" data-mismatch="true"':''}><td class="picking-code"><span class="picking-grip" role="img" aria-label="Nhấn giữ và kéo để đổi thứ tự" title="Nhấn giữ và kéo lên/xuống để đổi thứ tự (phiếu in theo thứ tự này)">⋮⋮</span><span class="picking-code-text">${esc(l.productCode)}</span>${removeBtn}</td><td>${esc(l.productName)}</td><td class="picking-note">${esc(l.note)}</td><td class="picking-need">${needCell}<small class="picking-allocation ${lineOk(i)?'picking-good':'picking-bad'}" data-allocated="${total}"><span aria-hidden="true" class="picking-allocation-icon">${lineOk(i)?'✓':'!'}</span> Đã phân bổ ${fmt(total)}/${fmt(l.quantity)}</small>${kiotNote}</td>${stCell(st)}<td class="picking-total" data-total-code="${esc(l.productCode)}" data-shared-available="${shared===null?'unknown':shared}" data-remaining="${unknown?'unknown':before-selected}"><strong class="${shared===null?'picking-bad':'picking-good'}">${fmt(before)}${uncertainty}</strong><small class="picking-pickable" data-pickable="${Math.max(0,before-selected)}" title="Số lượng có thể bốc trừ phần đang chọn cho đơn này">Còn sau chỉ định: ${fmt(Math.max(0,before-selected))}${uncertainty}</small></td><td><div class="picking-locations">${rows.map(r=>{
         if(state.posEdit&&state.posEdit.line===i&&state.posEdit.id===r.id&&r.real&&posShown())return posEditorHtml(l,i,r);
         const take=picks.find(p=>p.id===r.id)?.quantity||0,available=R.quantity(r.available),hint=(state.suggestions[i]||[]).some(p=>p.id===r.id);
@@ -447,6 +454,7 @@
     const errors=order?allocErrors():['no-order'];
     const mism=order&&!errors.length?mismatchList():[];
     $('pickingProgress').textContent=ls.filter((l,i)=>lineOk(i)).length+'/'+ls.length+' mã hàng đã phân bổ đủ';
+    renderRemoved();
     const busy=state.busy||state.needsSync;
     $('pickingReload').hidden=!state.needsSync;
     $('pickingReload').disabled=state.busy;
@@ -488,7 +496,8 @@
     state.assignment=latest&&latest.status==='confirmed'?latest:null;
     state.reassignOf=latest&&latest.status==='picking'?latest:null;
     state.needsSync=false;
-    // SL cần nhặt: chỉ định Đang nhặt/Đã bốc dùng SL đã lưu (có thể đã sửa tay), còn lại lấy SL đơn Kiot.
+    // Mã đã bỏ + SL cần nhặt: chỉ định Đang nhặt/Đã bốc dùng bản đã lưu (có thể đã sửa tay), còn lại theo đơn Kiot.
+    state.removed=removedFromAssignment(state.assignment||state.reassignOf);
     state.needs=editedNeeds(state.assignment||state.reassignOf?needsFromAssignment(state.assignment||state.reassignOf):{});
     if(state.assignment)allocationsFromAssignment(state.assignment);
     else{
@@ -520,7 +529,7 @@
   async function open(listOrder){
     ensureDialogs();
     const epoch=++state.requestEpoch;
-    state.sort=null;state.manual=null;state.drag=null;state.listOrder=listOrder;state.reassignOf=null;state.reopened=false;state.order=null;state.needs={};state.latest=null;state.assignment=null;state.allocations={};state.suggestions={};state.busy=false;state.needsSync=true;
+    state.sort=null;state.manual=null;state.drag=null;state.listOrder=listOrder;state.reassignOf=null;state.reopened=false;state.order=null;state.needs={};state.removed=new Set();state.latest=null;state.assignment=null;state.allocations={};state.suggestions={};state.busy=false;state.needsSync=true;
     state.canEditPositions=false;state.posEdit=null;state.touched=new Set();
     $('pickingTitle').textContent=listOrder.orderCode+' · '+(listOrder.branch==='SG'?'Sài Gòn':'Hà Nội');
     setStatus('Đang tải…');render();
@@ -546,7 +555,7 @@
       if(!r.data.assignment)throw new Error('Phản hồi không có trạng thái chỉ định.');
       const next=r.data.assignment;
       state.latest=next;state.reopened=false;state.assignment=next.status==='confirmed'?next:null;state.reassignOf=next.status==='picking'?next:null;state.needsSync=false;
-      if(next.status==='picking'||next.status==='confirmed')state.needs=editedNeeds(needsFromAssignment(next));
+      if(next.status==='picking'||next.status==='confirmed'){state.removed=removedFromAssignment(next);state.needs=editedNeeds(needsFromAssignment(next));}
       if(state.assignment)allocationsFromAssignment(state.assignment);
       // Chỉ định vừa lưu đã giữ chỗ theo tồn VT mới nhất → bỏ dấu "vị trí đã sửa".
       state.touched=new Set();
@@ -576,16 +585,15 @@
     lines().forEach((l,i)=>(state.allocations[i]||[]).forEach(p=>{if(p.quantity>0)allocations.push({productCode:l.productCode,positionId:Number(p.id),qty:p.quantity});}));
     // In lại đơn Đang bốc: một lệnh hủy lượt cũ + giữ chỗ lượt mới (lỗi ở bước sau thì lượt cũ giữ nguyên).
     const reassign=state.reassignOf?{reassign:true,version:state.reassignOf.version}:{};
+    // SL cần nhặt sửa tay và mã bỏ dòng chỉ lưu trong chỉ định (snapshot + phiếu in), không sửa đơn Kiot.
     const needs={};
     lines().forEach(l=>{if(l.quantity!==l.kiotQuantity)needs[l.productCode]=l.quantity;});
-    // SL cần nhặt khác đơn Kiot được GHI LÊN ĐƠN KIOT khi lưu chỉ định (máy chủ sửa Kiot trước, rồi mới tạo chỉ định).
-    const edited=lines().filter(l=>l.quantity!==l.kiotQuantity);
-    if(edited.length&&!window.confirm('Ghi lên đơn KiotViet?\n'+edited.map(l=>'• '+l.productCode+': '+fmt(l.kiotQuantity)+' → '+fmt(l.quantity)).join('\n')+'\n\nSố lượng trên đơn Kiot sẽ được sửa theo số lượng cần nhặt và không hoàn tác được. Tiếp tục?'))return;
-    if(!await write(API,{branch:state.order.branch,orderCode:state.order.orderCode,allocations,...(Object.keys(needs).length?{needs}:{}),...(mismatched.length?{allowMismatch:true}:{}),...reassign}))return;
-    // Kiot đã đổi theo SL cần nhặt: tải lại để dòng đơn trong hộp khớp Kiot (hết nhãn "Kiot: …") trước khi in.
-    if(edited.length&&!await reloadCurrent(state.requestEpoch,'',true))return;
+    const removed=(state.order.lines||[]).filter(l=>state.removed.has(key(l.productCode))).map(l=>l.productCode);
+    // Chụp thứ tự in trước khi lưu: sort theo Vị trí/ST dựa vào phân bổ đang chọn.
+    const printKeys=printOrderKeys();
+    if(!await write(API,{branch:state.order.branch,orderCode:state.order.orderCode,allocations,...(Object.keys(needs).length?{needs}:{}),...(removed.length?{removed}:{}),...(mismatched.length?{allowMismatch:true}:{}),...reassign}))return;
     $('pickingDialog').close();
-    await printPick();
+    await printPick(printKeys);
   }
   async function changeStatus(action){
     const a=state.latest;if(!a||state.busy||state.needsSync)return false;
@@ -602,15 +610,16 @@
     state.reopened=true;state.assignment=null;state.reassignOf=a;allocationsFromAssignment(a);
     render();
   }
-  async function printPick(){
+  // Thứ tự mã trên phiếu in = thứ tự đang hiển thị trong hộp khi có kéo-thả hoặc sort cột; không có thì null (giữ thứ tự đơn Kiot).
+  const printOrderKeys=()=>state.manual||state.sort?displayLines().map(e=>key(e.l.productCode)):null;
+  async function printPick(keys=printOrderKeys()){
     const a=state.latest;
     if(!a||!window.PickingInvoice)return;
     try{
-      // Phiếu in giữ thứ tự dòng của đơn Kiot (snapshot), không theo sort đang chọn trong hộp; chỉ khi người dùng kéo-thả
-      // đổi thứ tự trong hộp này thì phiếu theo đúng thứ tự đó (mã ngoài danh sách kéo-thả xếp sau, giữ thứ tự cũ).
+      // Phiếu in theo thứ tự hộp đang hiển thị (keys); mã ngoài danh sách xếp sau, giữ thứ tự snapshot.
       const snapshot={...a.snapshot,orderCode:a.orderCode,branch:a.branch};
-      if(state.manual&&state.listOrder&&state.listOrder.orderCode===a.orderCode){
-        const rank=l=>{const at=state.manual.indexOf(key(l.productCode));return at<0?state.manual.length:at;};
+      if(keys&&state.listOrder&&state.listOrder.orderCode===a.orderCode){
+        const rank=l=>{const at=keys.indexOf(key(l.productCode));return at<0?keys.length:at;};
         snapshot.lines=(snapshot.lines||[]).map((l,i)=>({l,i})).sort((x,y)=>rank(x.l)-rank(y.l)||x.i-y.i).map(e=>e.l);
       }
       await window.PickingInvoice.show(snapshot,a);
@@ -686,26 +695,37 @@
     setStatus('');setQty(Number(event.target.dataset.qline),event.target.dataset.qloc,qty);render();
   }
 
-  // ---------- Xóa dòng hàng (ghi ngược lên đơn Kiot) ----------
-  async function removeLine(i){
+  // ---------- Xóa dòng (chỉ trong chỉ định, không sửa đơn Kiot) ----------
+  /* Đổi tập mã đã bỏ: phân bổ / gợi ý đang theo chỉ số dòng của lines() nên gom theo mã rồi gắn lại theo danh sách mới. */
+  function changeRemoved(mutate){
+    const before=new Map(lines().map((l,i)=>[key(l.productCode),{a:state.allocations[i]||[],s:state.suggestions[i]||[]}]));
+    mutate();
+    state.allocations={};state.suggestions={};state.posEdit=null;
+    lines().forEach((l,i)=>{const hit=before.get(key(l.productCode));state.allocations[i]=hit?hit.a:[];state.suggestions[i]=hit?hit.s:[];});
+  }
+  function removeLine(i){
     const line=lines()[i];if(!line||!canRemove())return;
-    const o=state.order,status=state.latest?state.latest.status:'';
-    const unsaved=Object.keys(state.needs).length>0||dirty();
-    const text='Xóa dòng hàng khỏi đơn KiotViet?\n\n• '+line.productCode+' · '+(line.productName||'')+' (SL '+fmt(line.kiotQuantity)+')\n• Đơn '+o.orderCode+' trên KiotViet bị sửa ngay và KHÔNG hoàn tác được.'
-      +(status==='picking'?'\n• Vị trí đã chỉ định cho mã này sẽ được bỏ luôn (trả giữ chỗ).':status==='confirmed'?'\n• Đơn đã bốc: sau khi xóa, bấm Chỉ định lại để hoàn số thùng đã trừ của mã này.':'')
-      +(unsaved?'\n• Thay đổi chưa lưu trong hộp này sẽ bị bỏ.':'')+'\n\nVẫn xóa?';
-    if(!window.confirm(text))return;
-    const epoch=state.requestEpoch;
-    state.busy=true;setStatus('Đang xóa dòng trên KiotViet…');render();
-    let r;
-    try{r=await api('POST',API+'/order-lines/remove',{branch:o.branch,orderCode:o.orderCode,productCode:line.productCode});}
-    catch(error){r=null;}
-    if(!current(epoch))return;
-    // Không rõ kết quả (lỗi mạng / 5xx): tải lại để hiện đúng trạng thái đơn, không tự gửi lần nữa.
-    if(!r||r.status>=500){await reloadCurrent(epoch,'Chưa xác định được kết quả xóa dòng do lỗi kết nối.',true);return;}
-    if(!r.ok){state.busy=false;render();setStatus(r.data.error||'Không xóa được dòng hàng.',true);return;}
-    if(state.manual)state.manual=state.manual.filter(k=>k!==key(line.productCode));
-    if(await reloadCurrent(epoch,'',true))setStatus('Đã xóa '+line.productCode+' khỏi đơn KiotViet.');
+    if(!window.confirm('Bỏ '+line.productCode+' · '+(line.productName||'')+' khỏi chỉ định và phiếu in?\nĐơn KiotViet không bị sửa. Bấm lưu chỉ định để áp dụng.'))return;
+    const k=key(line.productCode);
+    changeRemoved(()=>{state.removed.add(k);delete state.needs[k];});
+    if(state.manual)state.manual=state.manual.filter(m=>m!==k);
+    setStatus('');render();
+  }
+  // Hoàn tác Xóa dòng: đưa mã trở lại và gợi ý vị trí cho riêng dòng đó.
+  function restoreLine(code){
+    const k=key(code);if(!editable()||!state.removed.has(k))return;
+    changeRemoved(()=>state.removed.delete(k));
+    const at=lines().findIndex(l=>key(l.productCode)===k);
+    if(at>=0&&state.order.eligible!==false)suggestLine(at);
+    render();
+  }
+  function renderRemoved(){
+    const node=$('pickingRemoved');if(!node)return;
+    const gone=(state.order&&state.order.lines||[]).filter(l=>state.removed.has(key(l.productCode)));
+    node.hidden=!gone.length;
+    node.innerHTML=gone.length?'Đã bỏ khỏi chỉ định: '+gone.map(l=>editable()
+      ?`<button type="button" class="picking-restore" data-restore-line="${esc(l.productCode)}" title="Đưa ${esc(l.productCode)} trở lại chỉ định">${esc(l.productCode)} ↺</button>`
+      :`<span>${esc(l.productCode)}</span>`).join(', '):'';
   }
 
   // ---------- Kéo-thả đổi thứ tự dòng hàng ----------
@@ -811,6 +831,7 @@
       onRowsClick(event);
     });
     $('pickingRows').addEventListener('change',onRowsChange);
+    $('pickingRemoved').addEventListener('click',event=>{const b=event.target.closest('[data-restore-line]');if(b)restoreLine(b.dataset.restoreLine);});
     $('pickingRows').addEventListener('input',onPosInput);
     $('pickingRows').addEventListener('keydown',onPosKeydown);
     // Esc khi đang sửa VT chỉ đóng ô sửa: chặn sự kiện cancel (đóng dialog) của trình duyệt.

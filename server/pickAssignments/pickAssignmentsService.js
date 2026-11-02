@@ -30,18 +30,7 @@ const PRUNE_REASON = Object.freeze({ LINE_REMOVED: 'line_removed', KIOT_MISSING:
 // Nguoi thuc hien cua cac chuyen trang thai tu dong theo Kiot (lich su ghi ten nay).
 const KIOT_CTX = Object.freeze({ user: Object.freeze({ id: null, hoTen: 'Hệ thống (KiotViet)', username: 'kiot-sync' }) });
 const MAX_ALLOCATIONS = 500;
-// Ma canh bao chi dinh (cung chuoi voi orderLifecycleService.WARNING).
-const PICK_WARNING = Object.freeze({ KIOT_DIFF: 'PICK_KIOT_DIFF', ORDER_DIFF: 'PICK_ORDER_DIFF' });
 const AVAILABILITY_ERROR = /vượt số lượng khả dụng/u;
-
-// Don dat truoc 01/11/2026 (ca ngay 31/10) (gio VN) khong canh bao Lech Kiot / Lech SL trong don. Ngay don lay tu snapshot, thieu thi lay ngay chi dinh.
-const PICK_WARNING_SINCE = Date.parse('2026-11-01T00:00:00+07:00');
-function isWarnableOrder(head) {
-  const vn = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(head.order_date || '').trim()); // 'dd/mm/yyyy HH:mm' (gio VN)
-  const at = vn ? Date.parse(`${vn[3]}-${vn[2].padStart(2, '0')}-${vn[1].padStart(2, '0')}T00:00:00+07:00`)
-    : (Date.parse(head.order_date || '') || (head.assigned_at ? new Date(head.assigned_at).getTime() : NaN));
-  return !Number.isFinite(at) || at >= PICK_WARNING_SINCE;
-}
 
 const codeKey = value => String(value ?? '').trim().toLowerCase();
 const num = value => (value === null || value === undefined ? null : Number(value));
@@ -127,6 +116,27 @@ function applyNeeds(order, lines, needs) {
   return { lines: edited, order: { ...order, lines: orderLines } };
 }
 
+/**
+ * Ma hang nguoi dung bo khoi chi dinh (nut "Xoa dong" trong hop, KHONG sua don Kiot): `removed` [ma hang]. Tra { lines, order } da bo
+ * moi dong cua cac ma do (ca dong Kiot chua gop trong order.lines, de snapshot / phieu in khong con ma). Ma khong co trong don -> 400;
+ * bo het moi dong -> 400.
+ */
+function applyRemovals(order, lines, removed) {
+  if (removed === undefined || removed === null) return { lines, order };
+  if (!Array.isArray(removed)) throw fail(400, 'VALIDATION', 'Danh sách mã bỏ không hợp lệ.', { field: 'removed' });
+  const drop = new Set();
+  for (const code of removed) {
+    const key = codeKey(code);
+    if (!key || !lines.some(line => codeKey(line.productCode) === key)) throw fail(400, 'VALIDATION', `Mã hàng ${code || '(trống)'} không có trong đơn.`, { field: 'removed' });
+    drop.add(key);
+  }
+  if (!drop.size) return { lines, order };
+  const kept = lines.filter(line => !drop.has(codeKey(line.productCode)));
+  if (!kept.length) throw fail(400, 'VALIDATION', 'Đơn phải còn ít nhất một dòng hàng cần nhặt.', { field: 'removed' });
+  const orderLines = (Array.isArray(order.lines) ? order.lines : []).filter(line => !drop.has(codeKey(line.productCode)));
+  return { lines: kept, order: { ...order, lines: orderLines } };
+}
+
 // Nguon don mac dinh: trang thai tu bang gop Vong doi don hang + dong hang tu don Kiot (khong tin du lieu tu trinh duyet).
 async function defaultLoadOrder({ branch, orderCode }) {
   const kiot = require('../shipment/kiotOrdersRepository').kiotOrders;
@@ -153,9 +163,6 @@ async function defaultLoadOrder({ branch, orderCode }) {
 
 function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoadOrder,
   loadSellerPhone = loadOrder === defaultLoadOrder ? kiotData.loadSellerPhone : null,
-  // Ghi nguoc len don Kiot (xoa dong / sua SL can nhat). Chi bat o duong that; test truyen loadOrder rieng thi khong cham Kiot
-  // (assign() giu cach cu: SL sua chi luu trong ban chi dinh).
-  orderEditor = loadOrder === defaultLoadOrder ? require('../kiotviet/kiotOrderEditor').createKiotOrderEditor() : null,
   // Them / sua ghi chu / xoa dong VT ngay trong hop Chi dinh vi tri: di qua service VT (khoa co so, lich su, SSE trang VT).
   stockPositions = createStockPositionsService({ getDb }) } = {}) {
   // ---------- Doc / dinh dang ----------
@@ -331,26 +338,6 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
     });
   }
 
-  // Xoa dong hang (moi dong cua ma) khoi chinh don Kiot. Chi dinh Dang boc: bo luon dong vi tri cua ma do (tra giu cho).
-  // Da boc khong dong vao: don lech Kiot nen hien canh bao "Lech SL boc", nguoi dung Chi dinh lai de hoan thung cua ma da xoa.
-  async function removeLine(ctx, { branch, orderCode, productCode } = {}) {
-    assertBranch(branch);
-    assertScope(ctx, branch);
-    const code = cleanOrderCode(orderCode);
-    const product = typeof productCode === 'string' ? productCode.trim() : '';
-    if (!product) throw fail(400, 'VALIDATION', 'Thiếu mã hàng cần xóa.', { field: 'productCode' });
-    if (!orderEditor) throw fail(424, 'KIOT_WRITE_UNAVAILABLE', 'Máy chủ chưa hỗ trợ ghi ngược lên KiotViet.');
-    const actor = actorOf(ctx);
-    const result = await orderEditor.removeLine({ branch, orderCode: code, productCode: product, actor });
-    // Kiot da sua xong: loi o day khong duoc bao "khong xoa duoc"; job doi chieu Kiot se bo dong o chu ky sau.
-    try {
-      await pruneAssignment(getDb(), { branch, orderCode: code }, key => key === codeKey(product), actor, PRUNE_REASON.LINE_REMOVED);
-    } catch (error) {
-      console.error('[PickAssignments] khong bo duoc dong chi dinh sau khi xoa dong Kiot:', branch, code, product, error.code || error.message);
-    }
-    return { changed: result.changed, assignment: await readLatest(getDb(), branch, code) };
-  }
-
   // ---------- Sua VT (stock_positions) trong hop Chi dinh vi tri — can ca shipment.pick va stockLocationsV2.edit (kiem o route) ----------
 
   /* Pham vi sua: chi dong VT cua cac ma hang trong don (dong don Kiot da gop), dung co so cua don; don Da boc thi hop chi xem -> 409.
@@ -447,27 +434,17 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
     assertBranch(branch);
     assertScope(ctx, branch);
     const orderCode = cleanOrderCode(body.orderCode);
-    let { order, lines: kiotLines } = await requireOrder(branch, orderCode);
+    const { order: kiotOrder, lines: kiotLines } = await requireOrder(branch, orderCode);
     if (!kiotLines.length) throw fail(400, 'VALIDATION', 'Đơn không có dòng hàng cần nhặt.');
-    const invalidQuantities = quantityErrors(order);
+    const invalidQuantities = quantityErrors(kiotOrder);
     if (invalidQuantities.length) throw fail(400, 'VALIDATION', invalidQuantities.join('; '), { field: 'allocations' });
-    let needed = applyNeeds(order, kiotLines, body.needs);
-    let lines = needed.lines;
-    let perLine = parseAllocations(body, lines);
+    // Bo dong / SL can nhat sua tay chi luu trong ban chi dinh (snapshot + phieu in), KHONG sua don Kiot.
+    const kept = applyRemovals(kiotOrder, kiotLines, body.removed);
+    const needed = applyNeeds(kept.order, kept.lines, body.needs);
+    const { order } = kept;
+    const lines = needed.lines;
+    const perLine = parseAllocations(body, lines);
     const actor = actorOf(ctx);
-    // SL cần nhặt sửa tay → GHI LÊN ĐƠN KIOT (chỉ khi đúng đường thật), rồi đọc lại đơn: từ đây SL trên Kiot = SL cần nhặt,
-    // snapshot không còn dòng "lệch Kiot". Kiot từ chối/ghi sai → ném lỗi, chưa tạo chỉ định nào.
-    const edited = lines.filter(line => line.kiotQuantity !== undefined);
-    if (edited.length && orderEditor) {
-      await orderEditor.setQuantities({ branch, orderCode: order.orderCode, actor,
-        quantities: Object.fromEntries(edited.map(line => [line.productCode, line.quantity])) });
-      ({ order, lines: kiotLines } = await requireOrder(branch, orderCode));
-      const rechecked = quantityErrors(order);
-      if (rechecked.length) throw fail(400, 'VALIDATION', rechecked.join('; '), { field: 'allocations' });
-      needed = { lines: kiotLines, order };
-      lines = kiotLines;
-      perLine = parseAllocations(body, lines);
-    }
     const reassign = body.reassign === true;
     const snapshot = makeOrderSnapshot(needed.order);
     const db = getDb();
@@ -787,67 +764,7 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
     return result;
   }
 
-  /* Canh bao chi dinh (don Dang boc / Da boc), tinh cho MOI chi dinh hoat dong (so it) tu snapshot + dong vi tri + don Kiot hien tai:
-       PICK_ORDER_DIFF — tong SL chon theo vi tri (order_pick_lines) khac SL can nhat cua ma trong snapshot (dong do da xac nhan luu);
-       PICK_KIOT_DIFF  — SL can nhat (snapshot, co the da sua tay) khac SL ma do tren don Kiot hien tai; tu het khi Kiot sua khop va dong bo.
-     Tra Map 'HN|ma don chu thuong' -> [ma canh bao] (chi don co canh bao). Fail-soft: loi DB tra Map rong, danh sach van chay. */
-  async function pickWarnings() {
-    const out = new Map();
-    try {
-      const db = getDb();
-      const heads = (await db.query(
-        `SELECT id, branch, order_code, order_snapshot->'lines' AS snapshot_lines, order_snapshot->>'orderDate' AS order_date, assigned_at
-           FROM order_pick_assignments WHERE status IN ('picking', 'confirmed')`)).rows.filter(isWarnableOrder);
-      if (!heads.length) return out;
-      const picked = new Map(); // id chi dinh -> Map(ma hang chu thuong -> tong SL chon)
-      const { rows } = await db.query(
-        `SELECT assignment_id, lower(btrim(product_code)) AS product_key, SUM(planned_qty)::float8 AS quantity
-           FROM order_pick_lines WHERE assignment_id = ANY($1::bigint[]) GROUP BY assignment_id, lower(btrim(product_code))`,
-        [heads.map(head => Number(head.id))]);
-      for (const row of rows) {
-        const id = Number(row.assignment_id);
-        if (!picked.has(id)) picked.set(id, new Map());
-        picked.get(id).set(row.product_key, Number(row.quantity));
-      }
-      const needOf = head => {
-        const need = new Map(); // ma hang chu thuong -> { productCode, quantity }
-        for (const line of Array.isArray(head.snapshot_lines) ? head.snapshot_lines : []) {
-          const key = codeKey(line.productCode);
-          if (!key) continue;
-          const hit = need.get(key);
-          need.set(key, { productCode: hit ? hit.productCode : String(line.productCode).trim(), quantity: (hit ? hit.quantity : 0) + (Number(line.quantity) || 0) });
-        }
-        return need;
-      };
-      const add = (head, code) => {
-        const key = `${head.branch}|${codeKey(head.order_code)}`;
-        const list = out.get(key) || [];
-        if (!list.includes(code)) out.set(key, [...list, code]);
-      };
-      const byBranch = new Map();
-      for (const head of heads) {
-        if (!tx.BRANCH_CODES.includes(head.branch)) continue;
-        const need = needOf(head), have = picked.get(Number(head.id)) || new Map();
-        if ([...need].some(([key, line]) => Math.abs(line.quantity - (have.get(key) || 0)) > 1e-6)) add(head, PICK_WARNING.ORDER_DIFF);
-        if (!byBranch.has(head.branch)) byBranch.set(head.branch, []);
-        byBranch.get(head.branch).push({ head, need });
-      }
-      for (const [branch, items] of byBranch) {
-        const ordered = await kiotData.readKiotQuantities(db, branch, items.map(item => item.head.order_code));
-        for (const { head, need } of items) {
-          const kiotLines = ordered.get(codeKey(head.order_code));
-          if (!kiotLines) continue; // chua co don tren Kiot (DB chua dong bo): khong ket luan
-          if (kiotData.diffQuantities(need, kiotLines).length) add(head, PICK_WARNING.KIOT_DIFF);
-        }
-      }
-    } catch (error) {
-      if (error && error.code !== '42P01') console.error('[PickAssignments] warning lookup failed:', error.code || error.message);
-      return new Map();
-    }
-    return out;
-  }
-
-  return { candidates, get, assign, removeLine, confirm, cancel, setStatus, reconcileWithKiot, pickWarnings, latestStatuses, createPosition, updatePosition, removePosition };
+  return { candidates, get, assign, confirm, cancel, setStatus, reconcileWithKiot, latestStatuses, createPosition, updatePosition, removePosition };
 }
 
-module.exports = { createPickAssignmentsService, mergeOrderLines, applyNeeds, PICK_WARNING, STATUS, CANCEL_REASON, PRUNE_REASON, ...createPickAssignmentsService() };
+module.exports = { createPickAssignmentsService, mergeOrderLines, applyRemovals, applyNeeds, STATUS, CANCEL_REASON, PRUNE_REASON, ...createPickAssignmentsService() };

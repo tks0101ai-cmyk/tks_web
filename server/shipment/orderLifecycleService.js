@@ -177,10 +177,7 @@ const WARNING = Object.freeze({
   DRIVER_FORGOT_PHOTO: 'DRIVER_FORGOT_PHOTO',
   NOT_SIGNED_6H: 'NOT_SIGNED_6H',
   PICKUP_PENDING: 'PICKUP_PENDING',
-  NO_TRAIN_BILL: 'NO_TRAIN_BILL',
-  // Canh bao chi dinh vi tri (chi gan cho nguoi co quyen shipment.pick, xem withPickWarnings).
-  PICK_KIOT_DIFF: 'PICK_KIOT_DIFF',
-  PICK_ORDER_DIFF: 'PICK_ORDER_DIFF'
+  NO_TRAIN_BILL: 'NO_TRAIN_BILL'
 });
 
 const WARNING_LABEL = Object.freeze({
@@ -189,9 +186,7 @@ const WARNING_LABEL = Object.freeze({
   [WARNING.DRIVER_FORGOT_PHOTO]: 'Lái xe quên chụp',
   [WARNING.NOT_SIGNED_6H]: 'Chưa nhận đơn quá 6 giờ',
   [WARNING.PICKUP_PENDING]: 'Khách/Ship chưa lấy',
-  [WARNING.NO_TRAIN_BILL]: 'Chưa chụp bill tàu',
-  [WARNING.PICK_KIOT_DIFF]: 'Lệch Kiot',
-  [WARNING.PICK_ORDER_DIFF]: 'Lệch SL trong đơn'
+  [WARNING.NO_TRAIN_BILL]: 'Chưa chụp bill tàu'
 });
 
 /**
@@ -517,10 +512,9 @@ async function loadMergedRows(kiot) {
  * trang theo bo loc hien tai — xem orderLifecycleQuery.countSummary), facets (so don theo tung gia tri cua cac o loc
  * dropdown, theo cac bo loc khac dang chon — xem orderLifecycleQuery.countFacets), kiot (tom tat nguon Kiot | null) }.
  */
-async function queryOrders(rawParams, { kiot, pickStatuses, pickWarnings } = {}) {
+async function queryOrders(rawParams, { kiot, pickStatuses } = {}) {
   const params = query.parseParams(rawParams);
-  const { rows: mergedRows, kiotResult } = await loadMergedRows(kiot);
-  const rows = await withPickWarnings(mergedRows, pickWarnings);
+  const { rows, kiotResult } = await loadMergedRows(kiot);
   const pickMap = pickStatuses ? await pickStatuses() : null;
   // Loc theo trang thai chi dinh vi tri: thu hep tap dong (chi dinh it, don ~60 nghin) roi loc/sap xep nhu thuong, khong qua
   // selectionCache (gan voi mang dong nguon). Khong loc thi van dung cache; pickStatus chi gan len cac dong cua trang tra ve.
@@ -564,27 +558,6 @@ function matchesPickFilter(status, filter) {
   return filter === 'none' ? !status : status === filter;
 }
 
-/**
- * Canh bao chi dinh vi tri (PICK_KIOT_DIFF, PICK_ORDER_DIFF): `pickWarnings()` (pickAssignmentsService) tra Map 'co so|ma don' -> [ma] cho
- * moi chi dinh Dang boc / Da boc (it don). Cong cac ma vao `warnings` cua dong tuong ung TRUOC khi loc/dem nen chung nam trong o loc
- * canh bao, the KPI va file Excel. Chi sao chep nong cac dong doi; mang ket qua duoc nho lai theo (mang nguon, chu ky) de selectionCache
- * van dung duoc. Khong truyen `pickWarnings` (nguoi khong co quyen shipment.pick) hoac khong co canh bao thi tra nguyen `rows`.
- */
-let pickWarnedCache = null;
-async function withPickWarnings(rows, pickWarnings) {
-  if (!pickWarnings) return rows;
-  const found = await pickWarnings();
-  if (!found || !found.size) return rows;
-  const signature = JSON.stringify([...found].sort((a, b) => (a[0] < b[0] ? -1 : 1)));
-  if (pickWarnedCache && pickWarnedCache.rows === rows && pickWarnedCache.signature === signature) return pickWarnedCache.result;
-  const result = rows.map(row => {
-    const extra = found.get(pickKey(row));
-    return extra ? Object.assign({}, row, { warnings: [...(Array.isArray(row.warnings) ? row.warnings : []), ...extra] }) : row;
-  });
-  pickWarnedCache = { rows, signature, result };
-  return result;
-}
-
 /** Gan `pickStatus` (picking|confirmed|cancelled|null) cho cac dong cua TRANG tra ve (ban sao nong, khong sua dong trong cache). */
 function withPickStatus(items, pickMap) {
   return items.map(row => Object.assign({}, row, { pickStatus: pickMap.get(pickKey(row)) || null }));
@@ -601,10 +574,9 @@ async function findMergedOrder(branch, orderCode, { kiot } = {}) {
  * Toan bo dong DA LOC + SAP XEP (moi trang, khong cat trang) de xuat Excel — cung bo tham so voi queryOrders
  * nen file khop dung bang tren man hinh. Khong truyen bo loc nao -> toan bo (don moi dat nhat truoc).
  */
-async function exportOrders(rawParams, { kiot, pickStatuses, pickWarnings } = {}) {
+async function exportOrders(rawParams, { kiot, pickStatuses } = {}) {
   const params = query.parseParams(rawParams);
-  const { rows: mergedRows } = await loadMergedRows(kiot);
-  const rows = await withPickWarnings(mergedRows, pickWarnings);
+  const { rows } = await loadMergedRows(kiot);
   if (pickStatuses && (params.pickStatus || params.sort === 'pickStatus')) {
     const pickMap = await pickStatuses();
     const source = params.pickStatus ? rows.filter(row => matchesPickFilter(pickMap.get(pickKey(row)), params.pickStatus)) : rows;
