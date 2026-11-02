@@ -1,6 +1,6 @@
 # Supabase schema cho đồng bộ KiotViet
 
-## Migration 0104 — Đơn xuất kho VT (02/11/2026, chưa áp DB)
+## Migration 0104 — Đơn xuất kho VT (02/11/2026, đã áp DB 02/11/2026)
 
 `0104_stock_out_orders.sql`: `stock_out_orders` (`id`, `branch` HN/SG, `code` unique theo cơ sở dạng `XK-HN-00001` cấp lúc tạo đơn tạm bằng `max+1` dưới khóa advisory `stock_out_orders:<cơ sở>`, `status` `draft|confirmed`, `version` tăng mỗi lần dòng đổi để chốt phát hiện đơn đã thay đổi, `created_by_*`, `confirmed_by_*`, `confirmed_at`, `summary` JSONB) với **unique một đơn `draft` mỗi cơ sở** (`WHERE status='draft'`) và `stock_out_order_lines` (`order_id` FK `ON DELETE CASCADE`, `sort_order`, `code`, `name`, `location`, `notes` ghi chú thùng, `source` `manual|excel`, `version`, `result` JSONB `{before, after, quantity, negative, created, positionId}` ghi lúc chốt). Không khóa ngoại sang `stock_positions` (dòng VT có thể bị xóa khi hết hàng, lịch sử đơn vẫn giữ). Không đổi CHECK `stock_position_history.action`: chốt đơn ghi action `stock_out` với `summary {source:'order', orderId, orderCode, deducted, lineIds, negative, removed, created}`. Số lượng âm không có cột riêng: là ghi chú dạng `-2T x 100` (xem `public/shared/carton.js` `parseSigned`). `REVOKE ALL` cho `reporting_readonly` (có tên người dùng).
 
