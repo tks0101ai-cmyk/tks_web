@@ -851,7 +851,8 @@
     const head=host.querySelector('.dp-section-head');if(!head)return;
     const controls=document.createElement('span');controls.id='pickingActions';controls.className='picking-actions';
     if(canOpen){
-      const button=document.createElement('button');button.type='button';button.id='openPickingBtn';button.className='picking-open-btn';button.textContent='Chỉ định vị trí';
+      const button=document.createElement('button');button.type='button';button.id='openPickingBtn';button.className='picking-open-btn';button.textContent=status==='picking'?'Thay đổi chỉ định':'Chỉ định vị trí';
+      if(status==='picking')button.title='Đổi vị trí hoặc số lượng rồi lưu bằng Cập nhật chỉ định & In phiếu.';
       button.addEventListener('click',()=>open(o));(buttonHost||controls).appendChild(button);
     }
     if(status){

@@ -539,6 +539,7 @@ test('Đã hủy chỉ định mới ngay (không reassign); Đang nhặt đổi
   const store = newStore({ assignment: makeAssignment('picking', { version: 3 }) });
   const picking = await renderPage({ orders: [orderRow('DH1', { pickStatus: 'picking' })], store });
   await openPopup(picking);
+  assert.equal(picking.document.getElementById('openPickingBtn').textContent, 'Thay đổi chỉ định');
   await makeDirty(picking);
   await click(picking, 'pickingConfirm');
   assert.equal(store.posted.length, 1);

@@ -20,7 +20,7 @@ function poolFor(db) {
 const QL = { id: 'ql-1', hoTen: 'Quản Lý A - 123456789', username: 'ql' };
 const ctx = (scope = ['HN', 'SG']) => ({ user: QL, scope });
 
-async function fixture({ lines = [] } = {}) {
+async function fixture({ lines = [], stockOutMigration = true } = {}) {
   const db = new PGlite();
   await db.exec(migration('0001_core_master_data.sql'));
   await db.exec(migration('0064_sheet_snapshots.sql'));
@@ -31,7 +31,7 @@ async function fixture({ lines = [] } = {}) {
   }
   await db.exec(migration('0095_stock_positions.sql'));
   await db.exec(migration('0099_stock_position_ack_and_history_purge.sql'));
-  await db.exec(migration('0101_stock_position_stock_out_action.sql'));
+  if (stockOutMigration) await db.exec(migration('0101_stock_position_stock_out_action.sql'));
   await db.query(`INSERT INTO products (branch, id, code, name, raw) VALUES
     ('hanoi', 1, 'AAA1', 'Hàng A một', '{"inventories":[{"onHand":30},{"onHand":12}]}'),
     ('hanoi', 2, 'BBB2', 'Hàng B hai', '{"inventories":[{"onHand":5}]}'),
@@ -49,6 +49,30 @@ function workbook(rows, name = 'Sheet1') {
 
 const HEADER = ['Mã hàng', 'Ghi chú', 'Ngày về', 'Vị trí'];
 const OUT_HEADER = ['Mã hàng', 'Ghi chú', 'Vị trí'];
+
+test('stockOut: DB thiếu 0101 rollback tồn và lịch sử; áp migration thì xuất kho được', async () => {
+  const { db, service } = await fixture({ stockOutMigration: false, lines: [
+    { branch: 'HN', code: 'AAA1', notes: '2T x 100', location: 'A1' },
+    { branch: 'HN', code: 'BBB2', notes: '1T x 50', location: 'B1' }
+  ] });
+  try {
+    const buffer = workbook([OUT_HEADER, ['AAA1', '1T x 100', 'A1'], ['BBB2', '1T x 50', 'B1']]);
+    const snapshot = async () => ({
+      positions: (await db.query('SELECT * FROM stock_positions ORDER BY id')).rows,
+      history: (await db.query('SELECT * FROM stock_position_history ORDER BY id')).rows
+    });
+    const before = await snapshot();
+    await assert.rejects(service.stockOutFile(ctx(), 'HN', { buffer }), error =>
+      error.code === '23514' && error.constraint === 'stock_position_history_action_check');
+    assert.deepEqual(await snapshot(), before, 'cả dòng cập nhật và dòng xóa phải được rollback');
+    await db.exec(migration('0101_stock_position_stock_out_action.sql'));
+    const result = await service.stockOutFile(ctx(), 'HN', { buffer });
+    assert.equal(result.counts.applied, 2);
+    assert.equal(result.counts.deleted, 1);
+    assert.equal((await db.query('SELECT notes FROM stock_positions')).rows[0].notes, '1T x 100');
+    assert.equal((await db.query("SELECT count(*)::int AS n FROM stock_position_history WHERE action = 'stock_out'")).rows[0].n, 2);
+  } finally { await db.close(); }
+});
 
 test('import: known products keep unreadable notes as warnings through replace and additive merges', async () => {
   const { db, service } = await fixture({ lines: [{ branch: 'HN', code: 'AAA1', notes: '5T x 100', location: 'A1' }] });
