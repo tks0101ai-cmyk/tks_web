@@ -654,9 +654,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1793605571.6412208,
-    "seen": 1793607450.2267468,
-    "ast_hash": "0836390b03c2188b43b2941411b2aaa9",
+    "mtime": 1793611181.3252647,
+    "seen": 1793611219.23801,
+    "ast_hash": "d2152ca046a99acc4d609672bd576991",
     "semantic_hash": ""
   },
   "design-system/tks-dashboard/MASTER.md": {
@@ -786,9 +786,9 @@
     "semantic_hash": "58e700daf0c14819a97499bd94f6f2e1"
   },
   "server/README.md": {
-    "mtime": 1793605571.6542132,
-    "seen": 1793607450.2399027,
-    "ast_hash": "d7bb04ab67ec677deadd4f861422d5cb",
+    "mtime": 1793611181.3202653,
+    "seen": 1793611219.250889,
+    "ast_hash": "adc0d95326c1f52996777b8775843398",
     "semantic_hash": ""
   },
   "server/kiotviet/API_ENDPOINTS.md": {
@@ -1386,9 +1386,9 @@
     "semantic_hash": ""
   },
   "server/db/SCHEMA.md": {
-    "mtime": 1793605571.6562202,
-    "seen": 1793607450.2399044,
-    "ast_hash": "297e8b5da030a07386fe36b68e27f60e",
+    "mtime": 1793611181.317077,
+    "seen": 1793611219.250891,
+    "ast_hash": "99e0d5ae25345ec30fa36cce33e8cafc",
     "semantic_hash": ""
   },
   "server/auth/appUsersRepository.js": {
@@ -3306,9 +3306,9 @@
     "semantic_hash": ""
   },
   "CURRENT.md": {
-    "mtime": 1793605571.6452193,
-    "seen": 1793607450.226645,
-    "ast_hash": "5a3b945af41cc53223075756d8c90972",
+    "mtime": 1793611181.324265,
+    "seen": 1793611219.2379072,
+    "ast_hash": "8f629ab85fbd5ebdfe95d354fc8ece32",
     "semantic_hash": ""
   },
   "MEMORY.md": {
@@ -6336,9 +6336,9 @@
     "semantic_hash": ""
   },
   "server/public/stocktake/stocktake.js": {
-    "mtime": 1793607179.6269855,
-    "seen": 1793607450.2007473,
-    "ast_hash": "e1483a65efd15120d25c13c7993638d7",
+    "mtime": 1793611149.632862,
+    "seen": 1793611219.2124667,
+    "ast_hash": "c9093d954b8c3024a2762a5e5f0baa11",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeCompute.js": {
@@ -6360,9 +6360,9 @@
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeExport.js": {
-    "mtime": 1793603997.2725167,
-    "seen": 1793605056.533258,
-    "ast_hash": "a12b7ecebc55855ebc649ff12babe3d3",
+    "mtime": 1793610868.5934873,
+    "seen": 1793611219.2211049,
+    "ast_hash": "243537d5a6100e1bf5e16c843dc496de",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeRoutes.js": {
@@ -6372,21 +6372,21 @@
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeRoutes.test.js": {
-    "mtime": 1793603984.1525128,
-    "seen": 1793605056.5332816,
-    "ast_hash": "f27cb8db283e3a0b952737c7a6d4a610",
+    "mtime": 1793610886.2518,
+    "seen": 1793611219.2212107,
+    "ast_hash": "69bda85d478b3001f4afea7c2c2e5f61",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeService.js": {
-    "mtime": 1793607135.2710707,
-    "seen": 1793607450.209578,
-    "ast_hash": "1e7c44824d839c79f5c70f9b0d610589",
+    "mtime": 1793610826.225101,
+    "seen": 1793611219.2212124,
+    "ast_hash": "4334eefdfd67c079b05abc34e248623d",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeService.test.js": {
-    "mtime": 1793605915.5638394,
-    "seen": 1793607450.2095795,
-    "ast_hash": "2534804cb8f41bb81ab946c0ef434dd1",
+    "mtime": 1793610767.5914888,
+    "seen": 1793611219.2212133,
+    "ast_hash": "5407be11a057680cb88ea27edaf5270f",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeSheetImport.js": {
@@ -6414,21 +6414,21 @@
     "semantic_hash": ""
   },
   "server/public/stocktake/index.html": {
-    "mtime": 1793607179.6269855,
-    "seen": 1793607450.2415862,
-    "ast_hash": "c799fa78d9a1094f539b29a53c195328",
+    "mtime": 1793611149.6696897,
+    "seen": 1793611219.2525694,
+    "ast_hash": "acfd8541af53e7dffe25f3e94fea74fb",
     "semantic_hash": ""
   },
   "server/public/stocktake/stocktakePaste.js": {
-    "mtime": 1793607135.2720718,
-    "seen": 1793607450.2007499,
-    "ast_hash": "826a1186d4674e15a53514ad81083cff",
+    "mtime": 1793610807.7745605,
+    "seen": 1793611219.2124696,
+    "ast_hash": "a33c7f7d74a5fab51383811faea8459c",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakePaste.test.js": {
-    "mtime": 1793605915.5638394,
-    "seen": 1793607450.2093718,
-    "ast_hash": "52f01a24e43b34669c0e096a6d644392",
+    "mtime": 1793610767.611902,
+    "seen": 1793611219.2211065,
+    "ast_hash": "5909522577b33fb13cf45b23b422b804",
     "semantic_hash": ""
   },
   "docs/superpowers/plans/2026-11-02-stocktake-columns-sg-paste.md": {
