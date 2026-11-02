@@ -36,6 +36,16 @@ test('parsePasteText: dong dau la du lieu that thi giu', () => {
   assert.deepEqual(rows, [{ code: 'LUMI3M', value: 'mất ko thấy' }]);
 });
 
+test('parsePasteText: dong tieu de sau dong trong van bi bo', () => {
+  const { rows } = parsePasteText('\nMã SP\tKK\nA\t5', { isKnownCode: code => code === 'A', column: 'prevDiffManual' });
+  assert.deepEqual(rows, [{ code: 'A', value: '5' }]);
+});
+
+test('parsePasteText: tieu de cot chu bi bo, dong du lieu giu', () => {
+  const { rows } = parsePasteText('Mã SP\tTrạng thái\nLUMI3M\tOK', { isKnownCode: code => code === 'LUMI3M', column: 'statusText' });
+  assert.deepEqual(rows, [{ code: 'LUMI3M', value: 'OK' }]);
+});
+
 test('normalizeValue theo kieu cot', () => {
   assert.deepEqual(normalizeValue('prevDiffManual', '-1.234'), { ok: true, value: -1234, empty: false });
   assert.deepEqual(normalizeValue('prevDiffManual', ''), { ok: true, value: null, empty: true });

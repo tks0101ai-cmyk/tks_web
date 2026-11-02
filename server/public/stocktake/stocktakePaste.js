@@ -59,13 +59,16 @@
     const lines = String(text ?? '').split(/\r?\n/u);
     const byCode = new Map();
     let duplicates = 0;
-    lines.forEach((line, index) => {
+    let firstContent = true;
+    lines.forEach(line => {
       if (!line.trim()) return;
+      const isFirst = firstContent;
+      firstContent = false;
       const cells = line.split('\t');
       const code = codeKey(cells[0]);
       const value = clean(cells.slice(1).join(' '));
       if (!code) return;
-      if (index === 0 && !isKnownCode(code)) {
+      if (isFirst && !isKnownCode(code)) {
         const check = normalizeValue(column, value);
         if (!check.ok || PASTE_COLUMNS[column].kind !== 'number') return;
       }
