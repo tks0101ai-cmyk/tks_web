@@ -9,6 +9,7 @@ const { hasFeature } = require('../auth/featureRegistry');
 const { resolveBranch } = require('../branch/branchMiddleware');
 const { BRANCHES, resolveBranchScope } = require('../branch/branches');
 const service = require('./stockPositionsService');
+const ordersService = require('./stockOutOrdersService');
 const { events: defaultEvents, CHANGED } = require('./stockPositionsEvents');
 const { createStockPositionsWorkbook, createStockPositionsHistoryWorkbook } = require('./stockPositionsExport');
 
@@ -18,6 +19,7 @@ const IMPORT_EXTENSIONS = /\.(xlsx|xls|csv)$/iu;
 function createStockPositionsRouter(dependencies = {}) {
   const router = express.Router();
   const svc = () => dependencies.service || service;
+  const orders = () => dependencies.ordersService || ordersService;
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: IMPORT_MAX_BYTES, fieldSize: IMPORT_MAX_BYTES, fields: 1, files: 1 } });
 
   router.use('/api/stock-positions', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); },
@@ -43,6 +45,7 @@ function createStockPositionsRouter(dependencies = {}) {
         // Ma don Dang boc dang giu dong (POSITION_HELD / BELOW_HELD / HELD_SPEC_CONFLICT) + tong giu cho (BELOW_HELD).
         if (error.orders) body.orders = error.orders;
         if (error.held !== undefined) body.held = error.held;
+        if (error.blocked) body.blocked = error.blocked;
         return res.status(error.statusCode).json(body);
       }
       console.error('[stock-positions]', error);
@@ -157,6 +160,44 @@ function createStockPositionsRouter(dependencies = {}) {
     const fileName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
     if (!IMPORT_EXTENSIONS.test(fileName)) return res.status(400).json({ error: 'Chỉ nhận file .xlsx, .xls hoặc .csv.', code: 'IMPORT_BAD_EXTENSION' });
     res.json(await svc().stockOutFile(ctxOf(req), req.query.branch, { buffer: req.file.buffer, fileName }));
+  }));
+  // Don xuat kho (migration 0104): don tam dung chung moi co so, chi tru ton khi chot. Xem = .view; them/sua/xoa dong, import, chot = .edit.
+  // Dat truoc '/:id' (cac duong dan sau co nhieu doan hon nen khong trung, nhung giu cung thu tu voi cac route cu the khac).
+  const uploadOne = (req, res, next) => upload.single('file')(req, res, error => {
+    if (!error) return next();
+    const tooBig = error.code === 'LIMIT_FILE_SIZE';
+    return res.status(tooBig ? 413 : 400).json({ error: tooBig ? 'File quá lớn (tối đa 8 MB).' : 'Không đọc được file tải lên.', code: tooBig ? 'IMPORT_FILE_TOO_LARGE' : 'IMPORT_UPLOAD_FAILED' });
+  });
+  const BASE = '/api/stock-positions/stock-out-orders';
+  const intParam = value => Number(value);
+  router.get(BASE + '/current', handle(async (req, res) => {
+    const canEdit = hasFeature(req.user, 'stockLocationsV2.edit');
+    res.json({ ...(await orders().getCurrent(ctxOf(req), req.query.branch, { create: canEdit })), canEdit });
+  }));
+  router.post(BASE + '/:id/lines', edit, handle(async (req, res) => {
+    res.status(201).json(await orders().addLine(ctxOf(req), intParam(req.params.id), req.body || {}));
+  }));
+  router.post(BASE + '/:id/import', edit, uploadOne, handle(async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'Vui lòng chọn file Excel hoặc CSV.', code: 'IMPORT_FILE_REQUIRED' });
+    const fileName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+    if (!IMPORT_EXTENSIONS.test(fileName)) return res.status(400).json({ error: 'Chỉ nhận file .xlsx, .xls hoặc .csv.', code: 'IMPORT_BAD_EXTENSION' });
+    res.json(await orders().importLines(ctxOf(req), intParam(req.params.id), { buffer: req.file.buffer, fileName }));
+  }));
+  router.post(BASE + '/:id/confirm', edit, handle(async (req, res) => {
+    res.json(await orders().confirm(ctxOf(req), intParam(req.params.id), req.body || {}));
+  }));
+  router.patch(BASE + '/lines/:lineId', edit, handle(async (req, res) => {
+    res.json(await orders().updateLine(ctxOf(req), intParam(req.params.lineId), req.body || {}));
+  }));
+  router.delete(BASE + '/lines/:lineId', edit, handle(async (req, res) => {
+    const version = req.query.version === undefined ? undefined : Number(req.query.version);
+    res.json(await orders().removeLine(ctxOf(req), intParam(req.params.lineId), version));
+  }));
+  router.get(BASE, handle(async (req, res) => {
+    res.json(await orders().list(ctxOf(req), req.query.branch, { limit: req.query.limit, before: req.query.before }));
+  }));
+  router.get(BASE + '/:id', handle(async (req, res) => {
+    res.json(await orders().get(ctxOf(req), intParam(req.params.id)));
   }));
   router.post('/api/stock-positions', edit, handle(async (req, res) => {
     const result = await svc().create(ctxOf(req), req.query.branch, req.body || {});

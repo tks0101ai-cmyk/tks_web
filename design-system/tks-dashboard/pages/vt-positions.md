@@ -16,3 +16,8 @@ Tra cứu và quản lý vị trí hàng Hà Nội / Sài Gòn lưu trong Postgr
 - Mỗi tab giữ từ khóa, thứ tự, bộ lọc và trang riêng; đổi từ khóa/thứ tự về trang 1.
 - Bảng tự vá số liệu khi có sự kiện SSE `positions-changed` (không tải lại cả bảng).
 - Khách thấy toàn bộ cột (kể cả SL Kiot, ghi chú, lịch sử kèm tên người sửa) nhưng không có nút sửa / import / xóa lịch sử.
+
+## Đơn xuất kho (02/11/2026)
+- Nút **Đơn xuất kho** (toolbar, mọi vai trò xem được) mở `#vtOrderDialog` (`.vt-dialog-wide.vt-order`, quy ước `.dp-*`): tab **Đơn tạm** / **Lịch sử đơn**, bảng dòng có cột *Tồn VT hiện tại* và *Sau khi chốt*; hàng nhập ở cuối bảng (nút `+ Thêm dòng`, `<datalist>` gợi ý theo tên), sửa Vị trí/Ghi chú tại chỗ, nút Chốt đơn mở `vtConfirmDialog` (`white-space:pre-line`).
+- Số âm hiển thị đỏ (`.vt-order-neg`, thẻ `Âm`); dòng bảng chính có cảnh báo `negative` nên dùng lại kiểu `.vt-warning`. Chỉ dùng biến màu của `shared.css` (Sáng/Tối); ≤600px hộp co theo chiều ngang.
+- Lịch sử cập nhật: dòng `stock_out` có `summary.source==='order'` hiện nút `Xem đơn <mã>` mở chi tiết đơn (chỉ đọc).

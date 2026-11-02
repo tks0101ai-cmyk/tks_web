@@ -36,6 +36,13 @@ const lower = value => normalizeCode(value).toLocaleLowerCase('vi');
 const normalizeLocation = value => String(value ?? '').replace(/\s+/gu, '').toLocaleUpperCase('vi');
 const keyOf = (code, location) => `${lower(code)}|${normalizeLocation(location)}`;
 // Bo dau tieng Viet + hoa/thuong + khoang trang de so khop tu khoa.
+// Bang bo dau tieng Viet cho translate() cua goi y theo ten (ca chu thuong da duoc lower()).
+const ACCENTED = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';
+const UNACCENTED = [...ACCENTED].map(char => (char === 'đ' ? 'd' : char.normalize('NFD')[0])).join('');
+const foldVietnamese = value => String(value ?? '').normalize('NFC').toLocaleLowerCase('vi').replace(/[\s\S]/gu, char => {
+  const at = ACCENTED.indexOf(char);
+  return at < 0 ? char : UNACCENTED[at];
+});
 const isoOf = value => (value instanceof Date ? value : new Date(value)).toISOString();
 
 // Ngay loc xoa lich su: rong -> null; dung dang yyyy-mm-dd va la ngay that.
@@ -286,7 +293,8 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
   }
 
   function shape(row, product, held = 0) {
-    const spec = product ? carton.parseSpec(row.notes) : null;
+    // parseSigned: dong am (xuat qua ton tu Don xuat kho) van co SL am de hien thi; "Co the boc" khong bao gio am.
+    const spec = product ? carton.parseSigned(row.notes) : null;
     const rawWarnings = carton.warnings(row.notes, { unknownCode: !product });
     return {
       id: Number(row.id),
@@ -333,12 +341,14 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
     if (!term) return { items: [] };
     const escape = value => value.replace(/[\\%_]/gu, '\\$&');
     const codeTerm = escape(lower(term));
+    // Gõ tên không dấu ("kem chong nang") vẫn ra "Kem chống nắng": bỏ dấu cả hai phía bằng translate (không cần extension unaccent).
     const { rows } = await getDb().query(
       `SELECT code, name FROM products
-       WHERE branch = $1 AND (lower(regexp_replace(code, '\\s+', '', 'g')) LIKE '%' || $2 || '%' ESCAPE '\\' OR name ILIKE '%' || $3 || '%' ESCAPE '\\')
+       WHERE branch = $1 AND (lower(regexp_replace(code, '\\s+', '', 'g')) LIKE '%' || $2 || '%' ESCAPE '\\' OR name ILIKE '%' || $3 || '%' ESCAPE '\\'
+         OR translate(lower(name), $4, $5) LIKE '%' || $6 || '%' ESCAPE '\\')
        ORDER BY (lower(regexp_replace(code, '\\s+', '', 'g')) LIKE $2 || '%' ESCAPE '\\') DESC, code
        LIMIT 12`,
-      [DB_BRANCH[branch], codeTerm, escape(term)]);
+      [DB_BRANCH[branch], codeTerm, escape(term), ACCENTED, UNACCENTED, escape(foldVietnamese(term))]);
     return { items: rows.map(row => ({ code: normalizeCode(row.code), name: clean(row.name) })) };
   }
 

@@ -1,5 +1,9 @@
 # Supabase schema cho đồng bộ KiotViet
 
+## Migration 0104 — Đơn xuất kho VT (02/11/2026, chưa áp DB)
+
+`0104_stock_out_orders.sql`: `stock_out_orders` (`id`, `branch` HN/SG, `code` unique theo cơ sở dạng `XK-HN-00001` cấp lúc tạo đơn tạm bằng `max+1` dưới khóa advisory `stock_out_orders:<cơ sở>`, `status` `draft|confirmed`, `version` tăng mỗi lần dòng đổi để chốt phát hiện đơn đã thay đổi, `created_by_*`, `confirmed_by_*`, `confirmed_at`, `summary` JSONB) với **unique một đơn `draft` mỗi cơ sở** (`WHERE status='draft'`) và `stock_out_order_lines` (`order_id` FK `ON DELETE CASCADE`, `sort_order`, `code`, `name`, `location`, `notes` ghi chú thùng, `source` `manual|excel`, `version`, `result` JSONB `{before, after, quantity, negative, created, positionId}` ghi lúc chốt). Không khóa ngoại sang `stock_positions` (dòng VT có thể bị xóa khi hết hàng, lịch sử đơn vẫn giữ). Không đổi CHECK `stock_position_history.action`: chốt đơn ghi action `stock_out` với `summary {source:'order', orderId, orderCode, deducted, lineIds, negative, removed, created}`. Số lượng âm không có cột riêng: là ghi chú dạng `-2T x 100` (xem `public/shared/carton.js` `parseSigned`). `REVOKE ALL` cho `reporting_readonly` (có tên người dùng).
+
 ## Migration 0103 — Lịch sử bỏ dòng chỉ định (31/10/2026, chưa áp DB)
 
 `0103_order_pick_history_prune.sql`: chỉ mở rộng CHECK `order_pick_history.action` thành `assign|confirm|cancel|mismatch_ack|prune`. `prune` ghi khi dòng chỉ định Đang bốc của mã đã bị xóa khỏi đơn Kiot được bỏ (`summary` `{reason: "line_removed"|"kiot_line_missing", lines:[{productCode, positionId, location, quantity}]}`; từ 02/11/2026 chỉ còn `kiot_line_missing` do job đối chiếu ghi — `line_removed` gắn với nút Xóa dòng ghi Kiot đã gỡ). Không thêm cột/bảng; code fail-soft khi chưa áp (vẫn bỏ dòng, không ghi lịch sử).
