@@ -545,7 +545,14 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       const prevDiffManual = body.prevDiffManual === undefined ? (before ? before.prevDiffManual : null) : diffOf(body.prevDiffManual, 'prevDiffManual');
       const otherDiffManual = body.otherDiffManual === undefined ? (before ? before.otherDiffManual : null) : diffOf(body.otherDiffManual, 'otherDiffManual');
       let recheckEmployeeId = before ? before.recheckEmployeeId : null;
-      if (body.recheckEmployeeId !== undefined) {
+      let recheckName = before ? before.recheckName : '';
+      if (body.recheckName !== undefined) {
+        // Go tay ten nguoi kiem lai (thuong la biet danh "THAI KHO"): khop dung 1 nhan su cung co so thi gan id.
+        const typed = textOf(body, 'recheckName', 'Người kiểm lại');
+        const employees = typed ? (await loadEmployees(client)).filter(e => e.branch === session.branch) : [];
+        ({ recheckEmployeeId, recheckName } = recheckOf(typed, employees));
+      } else if (body.recheckEmployeeId !== undefined) {
+        recheckName = '';
         recheckEmployeeId = body.recheckEmployeeId === null || body.recheckEmployeeId === '' ? null : Number(body.recheckEmployeeId);
         if (recheckEmployeeId !== null) {
           const found = (await client.query('SELECT 1 FROM hr_employees WHERE id = $1 AND is_active', [recheckEmployeeId])).rows[0];
@@ -554,15 +561,15 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       }
       const { rows } = await client.query(
         `INSERT INTO stocktake_code_notes (session_id, product_code, status_text, reason_text, recheck_employee_id, updated_by_user_id, updated_by_name,
-           print_page, print_time, prev_diff_manual, other_diff_manual, status_color)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+           print_page, print_time, prev_diff_manual, other_diff_manual, status_color, recheck_name)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          ON CONFLICT (session_id, product_code) DO UPDATE SET status_text = EXCLUDED.status_text, status_color = EXCLUDED.status_color,
            reason_text = EXCLUDED.reason_text,
-           recheck_employee_id = EXCLUDED.recheck_employee_id, print_page = EXCLUDED.print_page, print_time = EXCLUDED.print_time,
+           recheck_employee_id = EXCLUDED.recheck_employee_id, recheck_name = EXCLUDED.recheck_name, print_page = EXCLUDED.print_page, print_time = EXCLUDED.print_time,
            prev_diff_manual = EXCLUDED.prev_diff_manual, other_diff_manual = EXCLUDED.other_diff_manual, version = stocktake_code_notes.version + 1,
            updated_by_user_id = EXCLUDED.updated_by_user_id, updated_by_name = EXCLUDED.updated_by_name, updated_at = now()
          RETURNING ${NOTE_COLUMNS}`, [session.id, productCode, statusText, reasonText, recheckEmployeeId, actor.id, actor.name,
-          printPage, printTime, prevDiffManual, otherDiffManual, statusColor]);
+          printPage, printTime, prevDiffManual, otherDiffManual, statusColor, recheckName]);
       const note = shapeNote(rows[0]);
       await writeHistory(client, session, actor, productCode, 'note', before, note);
       return { note };

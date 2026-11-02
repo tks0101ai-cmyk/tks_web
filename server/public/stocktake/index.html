@@ -177,7 +177,7 @@
       <section class="dp-section">
         <h4 class="dp-section-title">Kiểm lại</h4>
         <form class="st-grid" id="stNoteForm" novalidate>
-          <label class="vt-field"><span>Người kiểm lại</span><select name="recheckEmployeeId"><option value="">— Chưa giao —</option></select></label>
+          <label class="vt-field"><span>Người kiểm lại</span><input name="recheckName" type="text" maxlength="200" list="stRecheckSuggestions" autocomplete="off" placeholder="Gõ tên hoặc biệt danh, để trống = chưa giao"><datalist id="stRecheckSuggestions"></datalist></label>
           <label class="vt-field"><span>Trạng thái</span><input name="statusText" type="text" maxlength="200" list="stStatusSuggestions" autocomplete="off"><datalist id="stStatusSuggestions"></datalist></label>
           <fieldset class="st-color-pick st-wide" id="stStatusColors"><legend>Màu trạng thái</legend></fieldset>
           <label class="vt-field st-wide"><span>Chi tiết lý do</span><input name="reasonText" type="text" maxlength="1000" list="stReasonSuggestions" autocomplete="off"><datalist id="stReasonSuggestions"></datalist></label>
@@ -227,7 +227,7 @@
   <script src="/shared/search-clear.js?v=20261009-1"></script>
   <script src="/shared/shared-nav.js?v=20261102-stocktake"></script>
   <script src="/stocktake/stocktakePaste.js?v=20261102-3"></script>
-  <script src="/stocktake/stocktake.js?v=20261102-10"></script>
+  <script src="/stocktake/stocktake.js?v=20261102-11"></script>
   <script>window.addEventListener('DOMContentLoaded', function () { TKSStocktake.init(); });</script>
   <script src="/shared/shooting-star.js?v=20261019"></script>
 </body>

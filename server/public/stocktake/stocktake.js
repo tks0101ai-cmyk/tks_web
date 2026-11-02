@@ -616,19 +616,17 @@
     const canEditNote = editable();
     const noteForm = $('stNoteForm');
     const note = row.note || {};
-    const recheck = noteForm.elements.recheckEmployeeId;
-    recheck.textContent = '';
-    const none = document.createElement('option');
-    none.value = '';
-    none.textContent = '— Chưa giao —';
-    recheck.appendChild(none);
-    for (const employee of state.board.employees) {
+    // Người kiểm lại gõ tay; gợi ý = nhân sự cùng cơ sở + các tên đã dùng trong đợt (biệt danh như "THÁI KHO").
+    noteForm.elements.recheckName.value = recheckLabel(row.note);
+    const names = new Set(state.board.employees.filter(e => e.branch === state.board.session.branch).map(e => e.name));
+    for (const entry of recheckCounts().values()) names.add(entry.label);
+    const list = $('stRecheckSuggestions');
+    list.textContent = '';
+    for (const name of [...names].filter(Boolean).sort((a, b) => a.localeCompare(b, 'vi'))) {
       const option = document.createElement('option');
-      option.value = String(employee.id);
-      option.textContent = employee.name + (employee.branch === 'saigon' ? ' (SG)' : '');
-      recheck.appendChild(option);
+      option.value = name;
+      list.appendChild(option);
     }
-    recheck.value = note.recheckEmployeeId === null || note.recheckEmployeeId === undefined ? '' : String(note.recheckEmployeeId);
     noteForm.elements.statusText.value = note.statusText || '';
     noteForm.elements.statusColor.value = STATUS_COLORS[note.statusColor] ? note.statusColor : '';
     noteForm.elements.reasonText.value = note.reasonText || '';
@@ -821,7 +819,7 @@
       event.preventDefault();
       const form = event.target;
       write(API + '/sessions/' + state.sessionId + '/codes/' + encodeURIComponent(detail.code) + '/note', 'PUT', {
-        recheckEmployeeId: form.elements.recheckEmployeeId.value ? Number(form.elements.recheckEmployeeId.value) : null,
+        recheckName: form.elements.recheckName.value,
         statusText: form.elements.statusText.value,
         statusColor: form.elements.statusColor.value || '',
         reasonText: form.elements.reasonText.value,

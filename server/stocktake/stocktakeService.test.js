@@ -347,3 +347,14 @@ test('mau trang thai: luu theo ma, mau la bi tu choi, dan cot giu nguyen mau', a
   board = await service.getBoard(ctx(), session.id);
   assert.equal(rowOf(board, 'AAA1').note.statusColor, '');
 });
+
+test('nguoi kiem lai go tay: khop dung 1 nhan su cung co so thi gan id, khong thi giu chu, xoa duoc', async () => {
+  const { service, session } = await fixture();
+  let { note } = await service.saveNote(ctx(), session.id, 'AAA1', { recheckName: '  cảnh ' });
+  assert.deepEqual([note.recheckEmployeeId, note.recheckName], [501, '']);
+  ({ note } = await service.saveNote(ctx(), session.id, 'AAA1', { recheckName: 'THÁI KHO', version: note.version }));
+  assert.deepEqual([note.recheckEmployeeId, note.recheckName], [null, 'THÁI KHO']);
+  ({ note } = await service.saveNote(ctx(), session.id, 'AAA1', { recheckName: '', version: note.version }));
+  assert.deepEqual([note.recheckEmployeeId, note.recheckName], [null, '']);
+  await assert.rejects(service.saveNote(ctx(), session.id, 'AAA1', { recheckName: 'x'.repeat(201), version: note.version }), { statusCode: 400 });
+});
