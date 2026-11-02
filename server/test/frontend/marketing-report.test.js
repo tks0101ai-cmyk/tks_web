@@ -238,7 +238,8 @@ test('Database manager form preserves report period, chooses Kiot customer and s
   await p.window.TKSMarketing.load();
   assert.equal(p.doc.querySelector('#marketing-monthly-rows textarea'),null);
   assert.equal(p.doc.getElementById('marketing-monthly-year').value,'2026');
-  assert.equal(p.doc.querySelector('#marketingOperations img'),null);
+  assert.equal(p.doc.querySelector('#marketingOperations'),null);
+  assert.equal(p.urls.some(url=>url.includes('/sync-status?')),false);
   p.doc.querySelector('#marketing-monthly-rows [data-detail-key]').click();await settle();
   const form=p.doc.querySelector('#marketingEditorDialog form');
   assert.equal(form.elements.reportMonth.value,'9');assert.equal(form.elements.closedAt.value,'2026-10-01');
@@ -255,12 +256,12 @@ test('Database read-only user has no editing or alias controls even with feature
  assert.equal(p.doc.querySelector('#marketing-monthly-rows .mini-filter-apply'),null);
  assert.equal(p.doc.querySelector('[data-aliases]'),null);assert.equal(p.doc.querySelector('#marketing-monthly-rows textarea'),null);p.dom.window.close();
 });
-test('Database manager creates a row with a separate report period and saves unresolved employee alias',async()=>{
+test('Database manager creates a row with a separate report period',async()=>{
  const writes=[];const p=databasePage(true,(url,options)=>{writes.push({url,body:JSON.parse(options.body)});return {ok:true,status:200,json:async()=>({row:{id:'new'}})};});await p.window.TKSMarketing.load();
  p.doc.querySelector('#marketing-monthly-rows .mini-filter-apply').click();let form=p.doc.querySelector('#marketingEditorDialog form');
  Object.entries({sale:'Sale',customer:'Khách',phone:'0900000000',page:'Hữu Nghị',closedAt:'2026-09-30',reportMonth:'10',reportYear:'2026'}).forEach(([key,value])=>form.elements[key].value=value);
  p.doc.querySelector('[data-find]').click();await settle();p.doc.querySelector('[data-customers] button').click();form.elements.status.value='Chốt';form.elements.dataSource.value='Pancake';form.dispatchEvent(new p.window.Event('submit',{cancelable:true}));await settle();assert.equal(writes[0].url,'/api/marketing-report/monthly/rows');assert.equal(writes[0].body.reportMonth,10);assert.equal(writes[0].body.closedAt,'2026-09-30');
- p.doc.querySelector('[data-aliases]').click();await settle();form=p.doc.querySelector('#marketingEditorDialog form');form.elements.rawName.value='Tên chưa rõ';form.elements.reportEmployee.value='An MKT';form.dispatchEvent(new p.window.Event('submit',{cancelable:true}));await settle();assert.equal(writes[1].url,'/api/marketing-report/aliases');assert.equal(writes[1].body.reportEmployee,'An MKT');p.dom.window.close();
+ assert.equal(p.doc.querySelector('[data-aliases]'),null);p.dom.window.close();
 });
 
 test('Imported monthly row with unresolved page keeps blank when saved',async()=>{
@@ -281,11 +282,11 @@ test('Phone source detail exposes raw observations with escaped text and distinc
  await p.window.TKSMarketing.load();p.doc.querySelector('#marketing-phones-rows [data-detail-key]').click();await settle();const host=p.doc.querySelector('#marketing-detail-group-0');assert.ok(host.querySelector('[data-column-key="employeeRaw"]'));assert.ok(host.querySelector('[data-column-key="sourceCreatedAt"]'));assert.match(host.textContent,/<img src=x>/);assert.equal(host.querySelector('img,script'),null);assert.match(host.textContent,/02\/10\/2026/);assert.match(host.textContent,/1\/10\/2026/);assert.match(host.textContent,/01:30/);p.dom.window.close();
 });
 
-test('Sync missing success time is empty and month choices follow exact year/month pairs; ADS has no year control',async()=>{
+test('Marketing omits sync panel and month choices follow exact year/month pairs; ADS has no year control',async()=>{
  const p=page(async url=>{const reply=json=>({ok:true,status:200,json:async()=>json});
  if(url.includes('/metadata?'))return reply({sourceMode:'database',canEdit:false,currentMonth:10,currentYear:2026,months:{monthly:[9,10],check:[9,10],costs:[10]},periods:[{year:2025,month:9},{year:2026,month:10}]});
  if(url.includes('/sync-status?'))return reply({pages:[{name:'Page',status:'pending',lastSuccessAt:null},{name:'Page khác',status:'success',lastSuccessAt:'2026-10-12T00:41:00Z'}]});
- });await p.window.TKSMarketing.load();const status=p.doc.querySelector('#marketingOperations').textContent;assert.doesNotMatch(status,/1970/);assert.match(status,/Thành công gần nhất: —/);assert.match(status,/07:41/);
+ });await p.window.TKSMarketing.load();assert.equal(p.doc.querySelector('#marketingOperations'),null);assert.equal(p.urls.some(url=>url.includes('/sync-status?')),false);
  assert.equal(p.doc.getElementById('marketing-costs-year'),null);const month=p.doc.getElementById('marketing-monthly-month');assert.deepEqual(Array.from(month.options,o=>o.value),['10']);const year=p.doc.getElementById('marketing-monthly-year');year.value='2025';year.dispatchEvent(new p.window.Event('change'));await settle();
  const options=Array.from(p.doc.getElementById('marketing-monthly-month').options,o=>[o.value,o.textContent]);assert.deepEqual(options.map(o=>o[0]),['9','10']);assert.match(options[1][1],/Chưa có dữ liệu/);assert.match(p.doc.getElementById('marketing-monthly-warnings').textContent,/tháng\/năm/);p.dom.window.close();
 });

@@ -209,19 +209,24 @@ function buildDetail(kind, key, snap, extra = {}) {
     if (!row) throw notFound('Không tìm thấy sale này.');
     const customers = buildCustomerReport(snap).rows.filter(c => c.saleName === key);
     const base = detailBase(row, snap, key, `${row.team} · ${row.activeCustomers} khách hoạt động`);
+    base.summary = base.summary.filter(s => s.key !== 'normalized' && s.key !== 'total');
     base.summary.push({ key: 'activeCustomers', label: 'SL khách hoạt động', value: row.activeCustomers, type: 'number' });
     return { ...base, kind, customers };
   }
   if (kind === 'customer') {
     const row = buildCustomerReport(snap).rows.find(r => r.key === key);
     if (!row) throw notFound('Không tìm thấy khách hàng này.');
-    return { ...detailBase(row, snap, row.name, `Sale ${row.saleName}`),
+    const base = detailBase(row, snap, row.name, `Sale ${row.saleName}`);
+    base.summary = base.summary.filter(s => s.key !== 'normalized');
+    return { ...base,
       kind, customer: row, topProducts: extra.topProducts || [], window: last4Months(snap) };
   }
   if (kind === 'product') {
     const row = buildProductReport(snap).rows.find(r => r.key === key);
     if (!row) throw notFound('Không tìm thấy mã hàng này.');
-    return { ...detailBase(row, snap, `${row.code} – ${row.name}`, 'Doanh số theo tháng'),
+    const base = detailBase(row, snap, `${row.code} – ${row.name}`, 'Doanh số theo tháng');
+    base.summary = base.summary.filter(s => s.key !== 'normalized' && s.key !== 'total');
+    return { ...base,
       kind, product: row, topCustomers: extra.topCustomers || [], window: last4Months(snap) };
   }
   const e = new Error('Loại chi tiết không hợp lệ.');

@@ -3909,6 +3909,8 @@
       background: rgba(var(--glow-red-rgb), .1);
     }
     td.num-neg { color: var(--red) !important; }
+  /* Hộp chi tiết khách hàng: 5 chỉ số tổng quan nằm gọn trên 1 dòng (màn hẹp vẫn xuống dòng theo .dp-stats chung). */
+  @media (min-width: 900px){ .dp-stats.business-summary.is-one-row{ grid-template-columns:repeat(5, minmax(0, 1fr)); } }
   </style>
   <link rel="stylesheet" href="/shared/table-controls.css?v=20261016-1">
 </head>
@@ -10337,7 +10339,7 @@
             : '<tr><td colspan="' + (isCustomer ? 4 : 3) + '" class="table-note">Không có dữ liệu.</td></tr>') +
           '</tbody></table></div>';
       }
-      body.innerHTML = detailStatsHtml(businessDetailTiles(data.summary), 'business-summary') +
+      body.innerHTML = detailStatsHtml(businessDetailTiles(data.summary), 'business-summary' + ((data.summary || []).length === 5 ? ' is-one-row' : '')) +
         '<div class="dp-split is-table-wide">' +
         '<div class="dp-section">' + detailSectionHeadHtml('Doanh số theo tháng', '* tháng này, tính đến hôm nay') +
         '<div class="dp-chart"><canvas id="businessDetailChart" role="img" aria-label="Biểu đồ cột doanh số theo tháng"></canvas></div></div>' +
@@ -10396,14 +10398,14 @@
         query: item => '?branch=' + encodeURIComponent(item.branchCode) + '&customerId=' + encodeURIComponent(item.customerId),
         failure: 'Không tải được hóa đơn của khách này.'
       },
-      // Công nợ (khung Chỉ số then chốt): bảng thưởng/phạt sale — dữ liệu tính tại chỗ, không gọi API.
-      debtPenaltySale: {
       // Công nợ, Danh sách thao tác: lịch sử 7 ngày của 1 khách (trạng thái từng ngày sửa được nếu có quyền duyệt).
       debtCustomerHistory: {
         api: '/api/debt-management/customer-history', title: 'Lịch sử công nợ', size: 'medium',
         query: item => '?branch=' + encodeURIComponent(item.branchCode) + '&customerId=' + encodeURIComponent(item.customerId),
         failure: 'Không tải được lịch sử công nợ của khách này.'
       },
+      // Công nợ (khung Chỉ số then chốt): bảng thưởng/phạt sale — dữ liệu tính tại chỗ, không gọi API.
+      debtPenaltySale: {
         title: 'Thưởng/phạt sale', size: 'wide', local: item => debtPenaltySaleDetail(item), failure: 'Không dựng được chi tiết sale.'
       }
     };
@@ -10693,8 +10695,6 @@
         rows + '</tbody>' + foot + '</table></div></div>';
     }
 
-    function renderDocumentDetail(status, data, message) {
-      const body = document.getElementById('docModalBody');
     // Hộp lịch sử công nợ 7 ngày của 1 khách (Danh sách thao tác): mới nhất trước; Trạng thái sửa được nếu có quyền duyệt
     // và ngày đó không kéo theo tháng đã chốt thưởng/phạt — các ngày sau tự tính lại số phiên và tiền phạt ở máy chủ.
     function renderDebtCustomerHistoryModal(body, subtitle, data) {
@@ -10768,11 +10768,13 @@
       }
     }
 
+    function renderDocumentDetail(status, data, message) {
+      const body = document.getElementById('docModalBody');
       const subtitle = document.getElementById('docModalSubtitle');
       const kind = DOC_DETAIL_KINDS[docDetail.tableKey];
+      const isDebtCustomerHistory = docDetail.tableKey === 'debtCustomerHistory';
       const isDebtAgingInvoices = docDetail.tableKey === 'debtAgingInvoices';
       const isProduct = docDetail.tableKey === 'productReport';
-      const isDebtCustomerHistory = docDetail.tableKey === 'debtCustomerHistory';
       const isExpectedArrival = docDetail.tableKey === 'expectedArrival';
       const isBusiness = docDetail.tableKey.indexOf('business') === 0;
       const isDebtPenalty = docDetail.tableKey === 'debtPenaltySale';
@@ -10801,11 +10803,11 @@
         if (window.TKSTables && typeof window.TKSTables.refreshAll === 'function') window.TKSTables.refreshAll();
       } else if (status === 'ready' && isBusiness) {
         renderBusinessDetailModal(body, subtitle, data);
-      } else if (status === 'ready' && isDebtAgingInvoices) {
-        renderDebtAgingInvoicesModal(body, subtitle, data);
       } else if (status === 'ready' && isDebtCustomerHistory) {
         renderDebtCustomerHistoryModal(body, subtitle, data);
         if (window.TKSTables && typeof window.TKSTables.refreshAll === 'function') window.TKSTables.refreshAll();
+      } else if (status === 'ready' && isDebtAgingInvoices) {
+        renderDebtAgingInvoicesModal(body, subtitle, data);
         if (window.TKSTables && typeof window.TKSTables.refreshAll === 'function') window.TKSTables.refreshAll();
       } else if (status === 'ready' && isDebtPenalty) {
         renderDebtPenaltyDetailModal(body, subtitle, data);
@@ -10960,8 +10962,6 @@
         event.preventDefault();
         openExpectedRow(row);
       });
-      // Kiểm tra công nợ: dòng khách lấy từ state.debtAging (bảng tự dựng, không qua tableDatasets).
-      const agingBody = document.getElementById('debtAgingRows');
       // Danh sách thao tác (công nợ): bấm dòng khách mở lịch sử 7 ngày; bấm vào ô nhập / chọn / nút trong dòng thì không mở.
       const debtRowsBody = document.getElementById('debtManagementRows');
       function openDebtRow(row) {
@@ -10983,6 +10983,8 @@
         event.preventDefault();
         openDebtRow(row);
       });
+      // Kiểm tra công nợ: dòng khách lấy từ state.debtAging (bảng tự dựng, không qua tableDatasets).
+      const agingBody = document.getElementById('debtAgingRows');
       function openAgingRow(row) {
         const key = row.dataset.customerKey;
         const customer = state.debtAging.customers.find(function (candidate) { return candidate.customerKey === key; });
