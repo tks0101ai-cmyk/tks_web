@@ -12,7 +12,8 @@
 // instance (nhu toan codebase). Cache cung het han sau 5 phut de trang thai active moi khong bi giu cu.
 
 const { getPool } = require('../db/pool');
-const { parseScheduleDays, WORKFLOW_STATUSES } = require('./debtScheduleRules');
+const { parseScheduleDays, WORKFLOW_STATUSES, RESOLVED_STATUS } = require('./debtScheduleRules');
+const { applyStatusEdit, dayPenalty } = require('./debtHistoryCascade');
 
 const BRANCH_CODES = Object.freeze(['hanoi', 'saigon']);
 const FEEDBACK_MAX_LENGTH = 1000;
@@ -43,23 +44,18 @@ const CUSTOMERS_SQL = `
          s.schedule_days, dc.overdue_streak,
          f.sale_feedback, f.sale_feedback_by, f.manager_feedback, f.manager_feedback_by,
          f.status, f.status_by, f.status_at,
-         pen.amount AS penalty_amount, pen.updated_by_name AS penalty_by,
          pdc.customer_id IS NOT NULL AS has_prev, pdc.overdue_debt AS prev_overdue, pdc.overdue_streak AS prev_streak,
-         pf.status AS prev_status, ppen.amount AS prev_penalty_amount
+         pf.status AS prev_status
   FROM debt_cycle_customers dc
   JOIN customers c ON c.branch = dc.branch AND c.id = dc.customer_id
   LEFT JOIN debt_payment_schedules s ON s.branch = dc.branch AND s.customer_id = dc.customer_id
   LEFT JOIN debt_cycle_feedback f
     ON f.cycle_date = dc.cycle_date AND f.branch = dc.branch AND f.customer_id = dc.customer_id
-  LEFT JOIN debt_cycle_penalties pen
-    ON pen.cycle_date = dc.cycle_date AND pen.branch = dc.branch AND pen.customer_id = dc.customer_id
   LEFT JOIN debt_cycle_customers pdc
     ON pdc.cycle_date = (SELECT MAX(cycle_date) FROM debt_cycle_runs WHERE cycle_date < dc.cycle_date)
    AND pdc.branch = dc.branch AND pdc.customer_id = dc.customer_id
   LEFT JOIN debt_cycle_feedback pf
     ON pf.cycle_date = pdc.cycle_date AND pf.branch = pdc.branch AND pf.customer_id = pdc.customer_id
-  LEFT JOIN debt_cycle_penalties ppen
-    ON ppen.cycle_date = pdc.cycle_date AND ppen.branch = pdc.branch AND ppen.customer_id = pdc.customer_id
   WHERE dc.cycle_date = $1::date AND dc.branch = ANY($2::text[]) AND ${ACTIVE_CUSTOMER_SQL}`;
 
 // Gop theo (co so, khach) NGAY TRONG SQL: 1 dong/khach thay vi 1 dong/ngay -> it dong, it lap lai branch/customer_id
@@ -121,13 +117,10 @@ function mapCustomerRow(row) {
     sale: row.sale,
     scheduleDays: row.schedule_days,
     overdueStreak: Number(row.overdue_streak) || 0,
-    penaltyOverride: row.penalty_amount === null || row.penalty_amount === undefined ? null : Number(row.penalty_amount),
-    penaltyBy: row.penalty_by || '',
     previousCycle: row.has_prev ? {
       overdueDebt: Number(row.prev_overdue) || 0,
       overdueStreak: Number(row.prev_streak) || 0,
-      status: row.prev_status || 'Chưa xử lý',
-      penaltyOverride: row.prev_penalty_amount === null || row.prev_penalty_amount === undefined ? null : Number(row.prev_penalty_amount)
+      status: row.prev_status || 'Chưa xử lý'
     } : null,
     currentDebt: Number(row.current_debt) || 0,
     openingDebt: row.opening_debt === null || row.opening_debt === undefined ? null : Number(row.opening_debt),
@@ -313,48 +306,166 @@ function createDebtScheduleRepository({ pool = getPool(), now = Date.now } = {})
     return result;
   }
 
+  /** Cac thang (YYYY-MM-01) da chot thuong/phat trong so `dates`; bang chua co (chua migrate 0052) -> rong. */
+  async function finalizedRewardMonths(db, dates) {
+    const exists = await db.query("SELECT to_regclass('debt_reward_months') AS t");
+    if (!exists.rows[0].t) return new Set();
+    const months = Array.from(new Set(dates.map(date => `${date.slice(0, 7)}-01`)));
+    const { rows } = await db.query('SELECT month::text AS month FROM debt_reward_months WHERE month = ANY($1::date[])', [months]);
+    return new Set(rows.map(row => row.month));
+  }
+
   /**
-   * Tien phat phien nay do Quan ly dien (ghi de muc goi y). amount rong/null = xoa, ve lai muc
-   * goi y. Chi ghi cho chu ky hien tai; ghi 1 dong lich su (field 'penalty') neu gia tri doi.
+   * Lich su toi da 7 ban chot cua 1 khach (cu -> moi): so no qua han / phien / trang thai / tien phat tung ngay.
+   * `rewardFinalized` = ngay thuoc thang da chot thuong/phat: van sua duoc, nhung ban thuong da chot (debt_reward_months.result)
+   * la anh chup co dinh nen khong doi theo. Tien phat = quy che (khong con phat tay): "Da xu ly" = 0.
    */
-  async function savePenalty({ branch, customerId, cycleDate, amount, user }) {
+  async function listCustomerHistory({ branch, customerId } = {}) {
     const code = assertBranch(branch);
     const id = assertCustomerId(customerId);
-    const clearing = amount === null || amount === undefined || String(amount).trim() === '';
-    let value = null;
-    if (!clearing) {
-      const text = String(amount).trim();
-      if (!/^\d{1,12}$/.test(text)) throw httpError(400, 'Tiền phạt phải là số nguyên không âm (VNĐ).', 'INVALID_PENALTY');
-      value = Number(text);
-    }
+    const customer = await pool.query(
+      `SELECT btrim(COALESCE(c.code, '')) AS code, COALESCE(NULLIF(btrim(c.name), ''), '') AS name,
+              NULLIF(btrim(c.raw->>'groups'), '') AS sale, s.schedule_days
+       FROM customers c
+       LEFT JOIN debt_payment_schedules s ON s.branch = c.branch AND s.customer_id = c.id
+       WHERE c.branch = $1 AND c.id = $2::bigint AND ${ACTIVE_CUSTOMER_SQL}`,
+      [code, id]
+    );
+    if (!customer.rowCount) throw httpError(404, 'Không tìm thấy khách hàng.', 'CUSTOMER_NOT_FOUND');
+    const { rows } = await pool.query(
+      `SELECT r.cycle_date::text AS cycle_date, r.taken_at, dc.customer_id IS NOT NULL AS present,
+              dc.current_debt, dc.overdue_debt, dc.overdue_streak,
+              f.status, f.status_by, f.status_at
+       FROM (SELECT cycle_date, taken_at FROM debt_cycle_runs ORDER BY cycle_date DESC LIMIT $3) r
+       LEFT JOIN debt_cycle_customers dc
+         ON dc.cycle_date = r.cycle_date AND dc.branch = $1 AND dc.customer_id = $2::bigint
+       LEFT JOIN debt_cycle_feedback f
+         ON f.cycle_date = r.cycle_date AND f.branch = $1 AND f.customer_id = $2::bigint
+       ORDER BY r.cycle_date`,
+      [code, id, CYCLE_HISTORY_DAYS]
+    );
+    const dates = rows.map(row => row.cycle_date);
+    const closedMonths = await finalizedRewardMonths(pool, dates);
+    const days = rows.map(row => {
+      const status = WORKFLOW_STATUSES.includes(row.status) ? row.status : 'Chưa xử lý';
+      const overdue = row.overdue_debt === null || row.overdue_debt === undefined ? null : Number(row.overdue_debt);
+      const streak = Number(row.overdue_streak) || 0;
+      return {
+        cycleDate: row.cycle_date, takenAt: row.taken_at, present: Boolean(row.present),
+        currentDebt: row.present ? Number(row.current_debt) || 0 : null,
+        overdueDebt: row.present ? overdue : null,
+        overdueStreak: row.present ? (status === RESOLVED_STATUS ? 0 : streak) : null,
+        status, statusBy: row.status_by || '', statusAt: row.status_at || null,
+        penalty: row.present ? dayPenalty(overdue || 0, streak, status) : null,
+        rewardFinalized: closedMonths.has(`${row.cycle_date.slice(0, 7)}-01`)
+      };
+    });
+    const first = customer.rows[0];
+    return {
+      customer: { branch: code, customerId: id, customerCode: first.code, customerName: first.name, sale: first.sale || '', scheduleDays: first.schedule_days },
+      days,
+      totalPenalty: days.reduce((sum, day) => sum + (day.penalty || 0), 0)
+    };
+  }
+
+  /**
+   * Doi TRANG THAI cua mot ngay cu (toi da 7 ban chot) cua 1 khach, roi tinh lai so phien + tien phat cac
+   * ngay SAU do trong 1 transaction: debt_cycle_customers.overdue_streak va, voi ngay da chot so,
+   * debt_penalty_daily. Ngay thuoc thang da chot thuong/phat van sua duoc (ban thuong da chot khong doi).
+   */
+  async function saveHistoricalStatus({ branch, customerId, cycleDate, status, user }) {
+    if (!WORKFLOW_STATUSES.includes(status)) throw httpError(400, 'Trạng thái xử lý không hợp lệ.', 'INVALID_DEBT_STATUS');
+    const code = assertBranch(branch);
+    const id = assertCustomerId(customerId);
+    const day = String(cycleDate || '').trim();
+    if (!CYCLE_DATE_PATTERN.test(day)) throw httpError(400, 'Ngày chu kỳ công nợ không hợp lệ.', 'INVALID_CYCLE_DATE');
     const actor = actorOf(user);
     const result = await withTransaction(async client => {
-      const { cycleDate: current } = await lockCurrentCycleCustomer(client, code, id, cycleDate);
-      const previous = await client.query(
-        'SELECT amount FROM debt_cycle_penalties WHERE cycle_date = $1::date AND branch = $2 AND customer_id = $3::bigint FOR UPDATE',
-        [current, code, id]
+      const runList = await client.query(
+        'SELECT cycle_date::text AS cycle_date FROM (SELECT cycle_date FROM debt_cycle_runs ORDER BY cycle_date DESC LIMIT $1) r ORDER BY cycle_date',
+        [CYCLE_HISTORY_DAYS]
       );
-      const oldValue = previous.rowCount ? Number(previous.rows[0].amount) : null;
-      if (oldValue === value) return { cycleDate: current, amount: value, by: actor.name, changed: false };
-      if (value === null) {
-        await client.query(
-          'DELETE FROM debt_cycle_penalties WHERE cycle_date = $1::date AND branch = $2 AND customer_id = $3::bigint',
-          [current, code, id]
-        );
-      } else {
-        await client.query(
-          `INSERT INTO debt_cycle_penalties (cycle_date, branch, customer_id, amount, updated_by_user_id, updated_by_name, updated_at)
-           VALUES ($1::date, $2, $3::bigint, $4, $5, $6, now())
-           ON CONFLICT (cycle_date, branch, customer_id) DO UPDATE SET
-             amount = EXCLUDED.amount, updated_by_user_id = EXCLUDED.updated_by_user_id,
-             updated_by_name = EXCLUDED.updated_by_name, updated_at = now()`,
-          [current, code, id, value, actor.id, actor.name]
-        );
+      const runs = runList.rows.map(row => row.cycle_date);
+      const index = runs.indexOf(day);
+      if (index < 0) throw httpError(404, 'Không có bản chốt công nợ của ngày này (chỉ lưu 7 ngày gần nhất).', 'DEBT_CYCLE_NOT_FOUND');
+      const affected = runs.slice(index);
+      await client.query('SELECT cycle_date FROM debt_cycle_runs WHERE cycle_date = ANY($1::date[]) ORDER BY cycle_date FOR SHARE', [affected]);
+      const customer = await client.query(
+        `SELECT btrim(COALESCE(c.code, '')) AS code, COALESCE(c.name, '') AS name, NULLIF(btrim(c.raw->>'groups'), '') AS sale
+         FROM debt_cycle_customers dc JOIN customers c ON c.branch = dc.branch AND c.id = dc.customer_id
+         WHERE dc.cycle_date = $1::date AND dc.branch = $2 AND dc.customer_id = $3::bigint AND ${ACTIVE_CUSTOMER_SQL}
+         FOR SHARE OF c`,
+        [day, code, id]
+      );
+      if (!customer.rowCount) throw httpError(404, 'Không tìm thấy khách này trong bản chốt công nợ.', 'DEBT_CUSTOMER_NOT_FOUND');
+      await client.query(
+        `INSERT INTO debt_cycle_feedback (cycle_date, branch, customer_id) VALUES ($1::date, $2, $3::bigint)
+         ON CONFLICT (cycle_date, branch, customer_id) DO NOTHING`,
+        [day, code, id]
+      );
+      const locked = await client.query(
+        'SELECT status FROM debt_cycle_feedback WHERE cycle_date = $1::date AND branch = $2 AND customer_id = $3::bigint FOR UPDATE',
+        [day, code, id]
+      );
+      const oldStatus = locked.rows[0].status || 'Chưa xử lý';
+      if (oldStatus === status) return { cycleDate: day, status, changed: false, recalculatedDays: 0 };
+
+      const chain = await client.query(
+        `SELECT dc.cycle_date::text AS cycle_date, dc.overdue_debt, dc.overdue_streak, COALESCE(f.status, 'Chưa xử lý') AS status
+         FROM debt_cycle_customers dc
+         LEFT JOIN debt_cycle_feedback f ON f.cycle_date = dc.cycle_date AND f.branch = dc.branch AND f.customer_id = dc.customer_id
+         WHERE dc.cycle_date = ANY($1::date[]) AND dc.branch = $2 AND dc.customer_id = $3::bigint`,
+        [affected, code, id]
+      );
+      const byDate = new Map(chain.rows.map(row => [row.cycle_date, row]));
+      const results = applyStatusEdit(affected.map(date => {
+        const row = byDate.get(date);
+        return row ? { cycleDate: date, overdue: Number(row.overdue_debt) || 0, streak: Number(row.overdue_streak) || 0, status: row.status } : null;
+      }), 0, status);
+
+      const sealed = new Set((await client.query(
+        'SELECT cycle_date::text AS cycle_date FROM debt_penalty_cycles WHERE cycle_date = ANY($1::date[])', [affected]
+      )).rows.map(row => row.cycle_date));
+      let recalculated = 0;
+      for (const item of results) {
+        if (!item) continue;
+        if (item.streakChanged) {
+          recalculated += 1;
+          await client.query(
+            'UPDATE debt_cycle_customers SET overdue_streak = $4 WHERE cycle_date = $1::date AND branch = $2 AND customer_id = $3::bigint',
+            [item.cycleDate, code, id, item.streak]
+          );
+        }
+        if (!sealed.has(item.cycleDate)) continue;
+        if (item.penalty > 0) {
+          await client.query(
+            `INSERT INTO debt_penalty_daily
+               (cycle_date, branch, customer_id, sale, customer_code, customer_name, overdue_debt, overdue_streak, amount, is_manual, status)
+             VALUES ($1::date, $2, $3::bigint, $4, $5, $6, $7, $8, $9, false, $10)
+             ON CONFLICT (cycle_date, branch, customer_id) DO UPDATE SET
+               overdue_debt = EXCLUDED.overdue_debt, overdue_streak = EXCLUDED.overdue_streak,
+               amount = EXCLUDED.amount, is_manual = false, status = EXCLUDED.status`,
+            [item.cycleDate, code, id, customer.rows[0].sale || '', customer.rows[0].code, customer.rows[0].name,
+              item.overdue, item.streak, item.penalty, item.status]
+          );
+        } else {
+          await client.query(
+            'DELETE FROM debt_penalty_daily WHERE cycle_date = $1::date AND branch = $2 AND customer_id = $3::bigint',
+            [item.cycleDate, code, id]
+          );
+        }
       }
-      await insertHistory(client, {
-        cycleDate: current, branch: code, customerId: id, field: 'penalty', oldValue, newValue: value, actor
-      });
-      return { cycleDate: current, amount: value, by: actor.name, changed: true };
+      const updated = await client.query(
+        `UPDATE debt_cycle_feedback SET status = $4, status_by = $5, status_at = now()
+         WHERE cycle_date = $1::date AND branch = $2 AND customer_id = $3::bigint
+         RETURNING status, status_by, status_at`,
+        [day, code, id, status, actor.name]
+      );
+      await insertHistory(client, { cycleDate: day, branch: code, customerId: id, field: 'status', oldValue: oldStatus, newValue: status, actor });
+      return {
+        cycleDate: day, status: updated.rows[0].status, updatedBy: updated.rows[0].status_by, updatedAt: updated.rows[0].status_at,
+        changed: true, recalculatedDays: recalculated
+      };
     });
     if (result.changed) bumpVersion();
     return result;
@@ -485,7 +596,8 @@ function createDebtScheduleRepository({ pool = getPool(), now = Date.now } = {})
     listCycles,
     saveFeedback,
     saveStatus,
-    savePenalty,
+    listCustomerHistory,
+    saveHistoricalStatus,
     listFeedbackHistory,
     listPenaltyDays,
     setSchedule,

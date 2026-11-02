@@ -1,168 +1,79 @@
-# Danh sách việc: vá đổi email + dọn BE/FE (2026-10-05)
+# Công việc: Xuất kho và chỉ định đơn Đang bốc
 
-**Trạng thái 2026-10-09:** T1–T15 đã làm và commit trên main (toàn bộ test auth & dọn dẹp đều đạt). Các hạng mục tiếp nối sau đó bao gồm Báo cáo kinh doanh (migration 0036-0037), Báo cáo Marketing (kết nối KiotViet & sửa ngược Sheets), Sổ quỹ (0033-0035), Lịch làm việc & Hạn đăng ký nghỉ phép (0038, 0042), Trạng thái nhân sự & Phúc lợi (0039, 0041), Lịch sử tài khoản (0040) và Table controls dùng chung đều đã hoàn thiện và cập nhật đồng bộ.
+Ngày: 02/11/2026. Kế hoạch: [plan.md](plan.md).
+Các lệnh chạy trong server/. Đã sửa mã giao diện; chưa deploy ứng dụng. Migration 0101 đã áp DB đã cấu hình.
 
-Thiết kế, rủi ro và quyết định đã chốt: xem [plan.md](plan.md).
-Lệnh test (chạy trong `server/`; `node --test` cần glob):
-`node --max-old-space-size=4096 --test "auth/**/*.test.js"`, đổi glob theo thư mục. Chạy cả bộ: `npm test`.
+## T1: Khắc phục Xuất kho từ Excel/CSV
+**Mô tả:** Tái hiện lỗi từ upload qua stockOutFile đến truy vấn cập nhật/xóa và ghi lịch sử. Kiểm tra migration 0101, ràng buộc phiếu bốc và lỗi SQL thực tế. Chỉ sửa sau khi có bằng chứng nguyên nhân.
 
----
+**Tiêu chí nghiệm thu:**
+- [ ] File hợp lệ trừ đúng mã + vị trí + cơ sở; hết tồn xử lý đúng và có lịch sử Xuất kho, không trả 500.
+- [ ] Dòng sai/vượt tồn/đang giữ chỗ bị bỏ qua và báo rõ; không ảnh hưởng cơ sở khác.
+- [x] Lỗi ghi DB rollback cả tồn và lịch sử; test hồi quy tái hiện lỗi gốc trước bản sửa.
 
-## Giai đoạn 1: Vá bảo mật (commit + deploy riêng)
+**Kiểm chứng:**
+- [ ] `node --test stockPositions/stockPositionsService.test.js stockPositions/stockPositionsRoutes.test.js test/frontend/vt-positions.test.js`
+- [x] `npm run build`
+- [ ] Thử trên dữ liệu cục bộ: XLSX/CSV, trừ một phần/hết tồn, dòng trùng, vị trí có phiếu tham chiếu.
 
-### T0: Kiểm tra DB đã bị khai thác chưa (chỉ đọc)
-**Mô tả:** Soạn câu SQL chỉ đọc, tìm TK có dấu hiệu bị gắn sai nhân sự: `app_users.email` khác `hr_employees.email` của dòng `hr_employee_id`; `role_source='sheet'` mà vai trò khác `sheetVaiTro` của dòng đang gắn; TK `hrManaged` có SĐT rỗng; nhiều TK cùng khớp một nhân sự.
-**Tiêu chí:**
-- [x] Có file SQL trong scratchpad/`tasks/`, chỉ `SELECT`
-- [x] Chạy và báo kết quả — agent chạy thay 19/10/2026 trên DB thật, CHỈ ĐỌC (`BEGIN READ ONLY` … `ROLLBACK`, không ghi gì). Kết quả: khối 1 (nhiều TK cùng 1 nhân sự) 0 dòng; khối 2 (trùng email) 0 dòng; không có TK `hr_managed` thiếu `hr_employee_id`; mọi TK Kế toán/Trợ lý/Trưởng kho/`DuyNN` (27 TK gắn nhân sự) khớp email + SĐT dòng nhân sự; mọi TK `role_source='sheet'` thuộc bộ phận KẾ TOÁN/TRỢ LÝ/KHO/BAN QUẢN TRỊ, các TK `override` (DuyNN, Lê Ngọc Anh, Lê Quang Khánh Duy…) là Quản lý đặt tay. Khối 3 trả 13 dòng: phần lớn chỉ là username (kiểu `nhansu-excel-N`, SĐT, email viết khác) không trùng email/SĐT hiện tại của dòng nhân sự trong khi email + SĐT của TK vẫn khớp (kể cả DuyNN, Lê Ngọc Anh); chỉ 2 TK mua hàng lệch email (xem dưới). KHÔNG có dấu hiệu bị khai thác.
-  - [ ] (chờ người dùng/ngoài phạm vi) Quản lý xem 3 TK nghi vấn NHẸ, tự xử lý tay (không đổi dữ liệu ở đây): (a) `tongkhotokosi@gmail.com` (Nguyễn Văn Quân) vai trò **Quản lý**, cơ sở "both", không gắn nhân sự (`hr_managed=false`, không có dòng `hr_employees` trùng email/SĐT), không phải admin cứng, tạo 28/09/2026, đăng nhập 19/10 — xác nhận người này đúng là Quản lý; (b) `phuongluuxuan10@gmail.com` (Nhân viên mua hàng) gắn nhân sự bộ phận ĐẶT HÀNG nhưng cả email lẫn SĐT khác dòng nhân sự; (c) `tkscongty303@gmail.com` (Nhân viên mua hàng) email khác dòng nhân sự (SĐT khớp). (b)(c) quyền thấp, rủi ro thấp. Ghi chú khác: `admin` (admin cứng, Quản lý, SĐT rỗng) và `thangnnv2003@gmail.com` (admin cứng/chủ sở hữu, không gắn nhân sự) là bình thường; `Test Sale`, `tks0101.ai@gmail.com` là TK sale thử.
-**Xác minh:** người dùng xác nhận kết quả
-**Phụ thuộc:** không · **File:** `tasks/audit-hr-binding.sql` · **Cỡ:** XS
+**Phụ thuộc:** Không.
+**File dự kiến (tối đa 5):** server/stockPositions/stockPositionsService.js; server/stockPositions/stockPositionsService.test.js; server/stockPositions/stockPositionsRoutes.js; server/stockPositions/stockPositionsRoutes.test.js; server/test/frontend/vt-positions.test.js. Nếu bằng chứng cần migration, điều chỉnh phạm vi task trước khi thêm.
+**Quy mô:** M.
 
-### T1: Resolver không gắn lại TK sang nhân sự khác
-**Mô tả:** Trong `resolveUser`, nếu `user.hrManaged` và `user.hrRowIndex` đã có mà nhân sự khớp được có `rowIndex` khác, thì không dùng dòng mới: giữ nguyên vai trò/cơ sở/email, `console.warn` kèm id TK và hai rowIndex. Cũng không để TK đó gây `HR_IDENTITY_CONFLICT` cho TK thật của nhân sự kia (trong `findAccountForEmployee`, ưu tiên TK có `hrRowIndex` trùng `employee.rowIndex`).
-**Tiêu chí:**
-- [x] Test: TK Sale (`hrRowIndex=A`) đổi email sang email Quản lý (`rowIndex=B`) → vẫn là Sale, `hrRowIndex` vẫn là A
-- [x] Test: TK Quản lý thật (`hrRowIndex=B`) vẫn resolve bình thường khi có TK khác trùng email (hết DoS)
-- [x] Test: TK mới chưa gắn khớp lần đầu vẫn gắn như cũ; Quản lý đổi email qua `adminChange` vẫn giữ ràng buộc
-**Xác minh:** `node --test "auth/**/*.test.js"`
-**Phụ thuộc:** không · **File:** `server/auth/effectiveUserResolver.js`, `server/auth/effectiveUserResolver.test.js` · **Cỡ:** S
+## T2: Cho sửa chỉ định đơn Đang bốc trực tiếp
+**Mô tả:** Kiểm tra và sửa đường mở hộp chỉ định hiện có, cho sửa vị trí/số lượng rồi lưu bằng reassign cùng version; đối chiếu cache/phiên bản phục vụ nếu mã hiện tại đã đạt yêu cầu.
 
-### T2: `POST /api/auth/profile` không đổi email
-**Mô tả:** Email gửi lên khác email hiện tại (không phân biệt hoa thường): TK `hrManaged` → 403 `EMAIL_CHANGE_LOCKED` ("Liên hệ Quản lý để đổi email"); TK thường → 409 `EMAIL_CHANGE_REQUIRES_OTP`. Bỏ `email` khỏi `fields` ghi xuống. Bỏ trường `email` hoặc gửi đúng email cũ vẫn lưu được họ tên/Telegram.
-**Tiêu chí:**
-- [x] Test hai mã lỗi trên; DB không đổi email
-- [x] Test: đổi họ tên với email giữ nguyên/không gửi vẫn 200
-**Xác minh:** `node --test "auth/**/*.test.js"`
-**Phụ thuộc:** không · **File:** `server/auth/authRoutes.js`, `server/auth/authRoutes.test.js`, `server/auth/profileTelegram.test.js` · **Cỡ:** S
+**Tiêu chí nghiệm thu:**
+- [x] Mở đơn Đang bốc thấy chỉ định cũ, sửa vị trí/số lượng và lưu bằng Cập nhật chỉ định & In phiếu mà không phải bấm Hủy.
+- [x] Lưu thành công thay giữ chỗ nguyên tử, trạng thái cuối vẫn Đang bốc, phiếu in theo chỉ định mới; phần chính đơn đang giữ được tính đúng, giữ chỗ đơn khác được bảo vệ.
+- [x] Đóng chưa lưu không thay đổi dữ liệu; lưu lỗi/xung đột không mất lượt cũ, hiển thị lỗi và đồng bộ lại; không mở thêm hành vi cho Đã bốc.
 
-### T3: `contact-change` dành cho TK không gắn nhân sự
-**Mô tả:** Đảo điều kiện: `beginChange`/`confirmChange` từ chối TK `hrManaged` (403 `EMAIL_CHANGE_LOCKED`) và nhận TK thường. `confirmChange` chỉ ghi `app_users` (`email`, `verifiedEmail: true`), không đụng `hr_employees`. Giữ kiểm trùng email/username với TK khác. `adminChange` giữ nguyên cho TK HR.
-**Tiêu chí:**
-- [x] Test: TK Khách xin OTP → xác minh → email đổi, `verifiedEmail=true`
-- [x] Test: TK HR gọi `contact-change` → 403; OTP sai/hết hạn → lỗi, email không đổi
-- [x] Test: route `/verify` vẫn ký lại cookie với user đã resolve
-**Xác minh:** `node --test "auth/**/*.test.js"`
-**Phụ thuộc:** không · **File:** `server/auth/contactChangeService.js`, `server/auth/contactChangeService.test.js`, `server/auth/authRoutes.test.js` · **Cỡ:** S
+**Kiểm chứng:**
+- [x] `node --test pickAssignments/pickAssignmentsService.test.js pickAssignments/pickAssignmentsRoutes.test.js test/frontend/lifecycle-pick.test.js test/frontend/lifecycle-pick-status.test.js`
+- [x] `npm run build`
+- [ ] Thử mở Đang bốc → đổi vị trí/số lượng → lưu/in; đóng không lưu; hai phiên cùng sửa; Kiot tự chốt trong lúc sửa.
 
-### T4: Form hồ sơ: email chỉ đọc (HR) / đổi qua OTP (TK thường)
-**Mô tả:** Trong `public/account/index.html`: TK `hrManaged` (lấy từ `/api/auth/profile`, thêm cờ vào `publicProfile` nếu thiếu) → ô email `readonly` kèm gợi ý "Liên hệ Quản lý". TK thường → nút "Đổi email" mở hộp nhập email mới → `contact-change` → nhập OTP → `contact-change/verify`. `handleSaveProfile` không gửi `email` nữa.
-**Tiêu chí:**
-- [x] HR: không có cách nào gửi email mới từ form
-- [x] TK thường: luồng OTP chạy hết vòng, hiển thị lỗi cooldown (`waitSeconds`)
-- [x] Test frontend trích code từ HTML (theo quy ước dự án) phủ hai nhánh
-**Xác minh:** `node --test "test/frontend/*.test.js"`; xem trên preview bằng harness không đăng nhập (memory `reference-tokosi-view-pages-without-login`), chụp cả hai loại TK
-**Phụ thuộc:** T2, T3 · **File:** `server/public/account/index.html`, `server/auth/authRoutes.js` (publicProfile), `server/test/frontend/profile-telegram.test.js` (+ có thể thêm `profile-email-change.test.js`) · **Cỡ:** M
+**Phụ thuộc:** Không về chức năng; làm sau T1 để kiểm chứng lần lượt.
+**File dự kiến (tối đa 5):** server/public/shipment/lifecycle/pick/pick-assign.js; server/public/shipment/lifecycle/index.html; server/pickAssignments/pickAssignmentsService.js; server/pickAssignments/pickAssignmentsService.test.js; server/test/frontend/lifecycle-pick.test.js.
+**Quy mô:** M.
 
-### T5: `POST /api/auth/recovery` bỏ trường SĐT
-**Mô tả:** Xóa nhánh `soDienThoai` (đọc, kiểm, kiểm trùng, ghi). Body có `soDienThoai` thì bỏ qua (hoặc 400, chọn 400 để lộ lỗi sớm). Sửa docblock.
-**Tiêu chí:**
-- [x] Test: gửi `soDienThoai: ""` hoặc số khác → SĐT trong DB không đổi
-- [x] Test: đổi email khôi phục vẫn chạy
-**Xác minh:** `node --test "auth/**/*.test.js"`
-**Phụ thuộc:** không · **File:** `server/auth/authRoutes.js`, `server/auth/authRoutes.test.js` · **Cỡ:** XS
+## Checkpoint sau T1–T2
+- [x] Các test tập trung đạt, build đạt.
+- [x] Xuất kho không lấy phần đơn đang giữ; đổi chỉ định xong số khả dụng cập nhật đúng.
+- [x] Rollback, version conflict và phân quyền/cơ sở đều được kiểm chứng.
 
-### T6: Sửa lỗi Quản lý đổi SĐT TK nhân sự
-**Mô tả:** `contactChangeService.normalize` chỉ nhận `'email'`, nên `adminChange(…, 'phone', …)` từ `adminUserRoutes.js:280` luôn lỗi 400. Thêm nhánh `phone` (chuẩn hóa như `normalizePhone`, kiểm trùng SĐT với TK khác), `adminChange` ghi `soDienThoai` (và `verifiedPhone`) thay vì luôn ghi `email`. Kiểm `employeeDirectory.updateEmployeeContact` có nhận `'phone'` không.
-**Tiêu chí:**
-- [x] Test: Quản lý đổi SĐT TK HR → `app_users` và `hr_employees` cùng cập nhật, ràng buộc `hrRowIndex` không đổi
-- [x] Test: SĐT trùng TK khác → 409
-**Xác minh:** `node --test "auth/**/*.test.js"`
-**Phụ thuộc:** không (nên xong cùng T5) · **File:** `server/auth/contactChangeService.js`, `server/auth/contactChangeService.test.js`, `server/auth/adminUserRoutes.test.js` · **Cỡ:** S
+## T3: Xác minh hoàn tất và tài liệu
+**Mô tả:** Chạy kiểm thử tích hợp, kiểm tra giao diện thực tế khi có môi trường, ghi nguyên nhân xác nhận, phạm vi bản sửa và bước triển khai. Cập nhật tài liệu theo thay đổi thực tế.
 
-## Checkpoint 1: Bảo mật
-- [x] `npm test` xanh
-- [x] Bốn kịch bản khai thác trong plan.md (chiếm vai trò qua HR, qua Khách có `verifiedEmail`, xóa SĐT qua recovery, DoS Quản lý) đều có test và đều bị chặn
-- [x] Người dùng duyệt diff → commit riêng — commit `0a10477` (vá auth) đã nằm trong `main`, 4 kịch bản khai thác có test
-  - [ ] (chờ người dùng/ngoài phạm vi) Deploy bản vá lên production: repo không xác nhận được. Không cần migration.
+**Tiêu chí nghiệm thu:**
+- [ ] Có kết quả test và thử giao diện hai luồng trên dữ liệu kiểm thử; phần chưa kiểm chứng được nêu rõ.
+- [x] Tài liệu API/hướng dẫn phản ánh bản sửa; CURRENT ghi trạng thái cục bộ/triển khai chính xác.
+- [x] Mọi yêu cầu migration/cache-bust được ghi cụ thể; không báo đã sửa production khi chưa xác nhận.
 
----
+**Kiểm chứng:**
+- [ ] Chạy lại tập test T1/T2 sau thay đổi cuối, `npm run build`; mở rộng test khi phát hiện ảnh hưởng khác.
+- [x] Rà diff và danh sách file sửa; kiểm tra không có dữ liệu nhạy cảm trong log/tài liệu.
+- [ ] Nếu thay đổi mã, cập nhật graphify theo quy tắc dự án, ghi rõ nếu công cụ không khả dụng.
 
-## Giai đoạn 2: Gỡ API không còn giao diện
+**Phụ thuộc:** T1, T2, checkpoint.
+**File dự kiến (tối đa 5):** CURRENT.md; server/README.md; README.md; tasks/plan.md; tasks/todo.md. Nếu đổi yêu cầu nghiệp vụ/schema, tách bổ sung task tài liệu liên quan theo update-file.
+**Quy mô:** M.
 
-### T7: Gỡ `/api/search` + export `search.results`
-**Mô tả:** Xóa route trong `routes.js`, hàm tương ứng ở `dashboardData.js`/`dashboardPgReader.js`, nhánh ở `dashboardPermissionFilter.js`, khóa quyền ở `featureRegistry.js` (nếu chỉ dùng cho search), export `search.results` ở `exportService.js`, cùng test liên quan.
-**Tiêu chí:**
-- [x] `grep -rn "api/search\|search.results"` trong `server/` (trừ node_modules) không còn kết quả
-- [x] Quyền đã lưu có khóa cũ vẫn resolve được, không lỗi
-**Xác minh:** `npm test`
-**Phụ thuộc:** Checkpoint 1 · **File:** `server/routes.js`, `server/dashboard/{dashboardData,dashboardPgReader,dashboardPermissionFilter,exportService}.js`, `server/auth/featureRegistry.js` + test · **Cỡ:** M
+## Checkpoint hoàn tất
+- [ ] Mọi tiêu chí nghiệm thu đạt và có bằng chứng.
+- [x] Người dùng đã duyệt kế hoạch trước khi triển khai.
+- [ ] Sẵn sàng review; phân biệt rõ kiểm chứng cục bộ và triển khai.
 
-### T8: Gỡ `/api/customer-product-top`
-**Mô tả:** Xóa route, hàm dữ liệu chỉ phục vụ nó, sửa `test/overview-endpoints-access.test.js`.
-**Tiêu chí:**
-- [x] Không còn tham chiếu; truy vấn SQL riêng (nếu có) bị xóa
-**Xác minh:** `npm test`
-**Phụ thuộc:** T7 (cùng đụng `routes.js`/`dashboardData.js`) · **File:** `server/routes.js`, `server/dashboard/dashboardData.js`, `server/test/overview-endpoints-access.test.js` · **Cỡ:** S
+## Bằng chứng và việc còn lại (02/11/2026)
+- [x] Nguyên nhân xác nhận bằng metadata DB: ledger đến 0100, CHECK thiếu stock_out. Test cục bộ tái hiện 23514 và rollback; áp 0101 thì xuất được cả dòng cập nhật và hết tồn.
+- [x] Áp dụng riêng 0101 và ghi ledger cùng giao dịch; kiểm tra constraint sau commit đã có stock_out. Không thay đổi tồn thật.
+- [x] Giữ cơ chế reassign hiện có; đổi nhãn nút đơn picking và cache-bust JS. Test nút mới thất bại trước sửa, đạt sau sửa.
+- [x] 154/154 test: stockPositionsService, pickAssignmentsService, pickStatusFlow, lifecycle-pick, lifecycle-pick-status.
+- [x] 27/27 API: stockPositionsRoutes + pickAssignmentsRoutes (cần chạy ngoài sandbox để localhost không bị EACCES).
+- [x] vt-positions: 27/30, tất cả test Xuất kho đạt; 3 lỗi có sẵn trước sửa ở dòng test 340, 369 (kỳ vọng bộ lọc cũ) và 707 (Xuất Excel). Không sửa các chức năng ngoài phạm vi.
+- [x] npm run build và git diff --check đạt. Diff được rà để giữ nguyên quyền/cơ sở và trạng thái Đã bốc.
+- [ ] Kiểm tra file Excel gốc và thử giao diện trên môi trường đã đăng nhập: chưa có file gốc/môi trường kiểm thử trình duyệt.
+- [ ] Deploy thay đổi giao diện; chưa xác minh bản đang chạy tải JS mới. Không cần đợi deploy để DB chấp nhận stock_out.
+- [ ] Graphify: đã thử graphify update ., Windows Application Control chặn graphify.exe; đồ thị chưa cập nhật.
 
-### T9: Gỡ đăng ký OTP, `link-status`, `lifecycle/lookup`
-**Mô tả:** Xóa `POST /api/auth/register/{channels,send-otp,verify}` và phần `employeeRegistrationService` chỉ chúng dùng (giữ phần mà `POST /api/auth/register`/resolver còn gọi). Xóa `GET /api/hr/telegram/link-status` và `POST /api/shipment/lifecycle/lookup`. Đọc kỹ `hr-leave-loading.test.js`/`hr-leave-realtime-status.test.js`: nếu chúng khẳng định FE *không* gọi link-status thì giữ test đó.
-**Tiêu chí:**
-- [x] Không còn route; code chết trong service đi kèm bị xóa
-- [x] Đăng ký thường, đăng nhập, Telegram bot liên kết vẫn chạy (test hiện có xanh)
-**Xác minh:** `npm test`
-**Phụ thuộc:** Checkpoint 1 (cùng đụng `authRoutes.js`) · **File:** `server/auth/authRoutes.js`, `server/auth/employeeRegistrationService.js`, `server/hr/hrLeaveRoutes.js`, `server/shipment/orderLifecycleRoutes.js` + test · **Cỡ:** M
-
----
-
-## Giai đoạn 3: Gỡ trường BE thừa + nhánh FE cũ
-
-Quy tắc chung: trước khi xóa mỗi trường, grep toàn `server/` (kể cả `exportService.js`, `telegram/`, `dashboardViews.js`, `dashboardPermissionFilter.js`). Chỉ xóa *đầu ra* và phép tính chỉ phục vụ đầu ra đó. Sửa test frontend đang dựng dữ liệu giả có các trường này.
-
-### T10: Tổng quan: bỏ KPI "hôm nay", `activeProducts`, `inventoryValueCategoryCount`, bộ lọc `ov*`
-**Tiêu chí:**
-- [x] `kpi.revenueToday/invoicesToday/cancelledToday/activeProducts/inventoryValueCategoryCount` không còn trong payload và view
-- [x] `parseFilterSpec(req.query, 'ov', …)` bị bỏ; tab Tổng quan vẫn lọc theo `in*`
-- [x] Không còn truy vấn "hôm nay" thừa
-**Xác minh:** `npm test`; preview tab Tổng quan
-**Phụ thuộc:** T8 · **File:** `server/dashboard/{dashboardData,dashboardViews}.js`, `server/routes.js` + test · **Cỡ:** M
-
-### T11: Hóa đơn: bỏ `returnsCount`, `totalReturns`, `periodGrossRevenue` khỏi đầu ra
-**Tiêu chí:**
-- [x] Ba trường không còn trong payload
-- [x] Doanh thu/Thực thu/Giảm giá/Số giao dịch giữ nguyên số (test so sánh trước/sau trên cùng dữ liệu giả)
-**Xác minh:** `npm test`; preview tab Hóa đơn (4 thẻ)
-**Phụ thuộc:** không (sau T10 nếu cùng đụng một hàm) · **File:** `server/dashboard/dashboardData.js` + test · **Cỡ:** S
-
-### T12: Hàng hóa/tồn kho: bỏ `stockByCategory`, `stockValueByCategory`, `newlyImported.{topByRevenue,salesByCategory,countByCategory}`
-**Tiêu chí:**
-- [x] Trường không còn trong payload/view/permission filter
-- [x] Bảng Hàng mới nhập, Cơ cấu tồn kho, export `products.inventory` vẫn đúng
-**Xác minh:** `npm test`; preview tab Hàng hóa
-**Phụ thuộc:** không · **File:** `server/dashboard/{dashboardData,dashboardViews,dashboardPermissionFilter}.js` + test · **Cỡ:** M
-
-### T13: FE: bỏ nhánh `d.topSellingProducts`, `d.days`
-**Mô tả:** `public/index.html:6685` chỉ đọc `productsData.topSellingProducts`; dòng 7671/7791 chỉ dùng `d.filters.invoices.label`, fallback `state.days`. Lưu ý `products.topSellingProducts` BE **vẫn trả** và export vẫn dùng: không gỡ.
-**Tiêu chí:**
-- [x] Không còn `d.topSellingProducts`, `d.days` trong `index.html`
-**Xác minh:** `node --test "test/frontend/*.test.js"`; preview
-**Phụ thuộc:** T10–T12 · **File:** `server/public/index.html` + test frontend · **Cỡ:** XS
-
-## Checkpoint 2: Dọn dẹp
-- [x] `npm test` xanh
-- [x] Preview: Tổng quan, Hóa đơn, Hàng hóa, Khách hàng không lỗi console, số khớp trước khi sửa — 19/10/2026 bằng harness không đăng nhập (user tổng hợp + routes thật, DB đọc thật): tab Tổng quan (6 thẻ, không KPI hôm nay), Hóa đơn (4 thẻ), Hàng hóa (7 thẻ), Kinh doanh (6 thẻ) nạp đủ, `window.onerror`/`unhandledrejection`/`console.error` = 0. Tab "Khách hàng" cũ đã gỡ (nay là tab Kinh doanh, id `business`). Không so được "số trước khi sửa" (không còn bản cũ), nhưng doanh thu/thực thu được test so sánh trước/sau (`dashboardData.test.js:398`).
-- [x] Thử từng export Excel/HTML còn lại — `POST /api/export` (xlsx + html) trả 200 cho `overview.transactions`, `overview.productReport`, `debt.management`, `debt.penalty`, `debt.aging`. `customers.productDetail` (cần mã khách) và 3 bảng `stockout.*` (cần kết quả quét gửi kèm) chỉ được test tự động phủ (`exportService.test.js` xanh), chưa bấm tay.
-- [x] Người dùng duyệt → commit
-
----
-
-## Giai đoạn 4: Hoàn thiện
-
-### T14: Dropdown "Toàn bộ đơn hàng" thêm "Sự cố", "Đã hủy"
-**Mô tả:** Thêm `EXCEPTION`/`CANCELLED` vào `#bulkStatusFilter` (`public/shipment/lifecycle/index.html:438`), nhãn giống `#historyStatusFilter`. Kiểm `enhanceSelect` tự nhận option mới.
-**Tiêu chí:**
-- [x] Chọn hai trạng thái lọc đúng (BE đã hỗ trợ)
-**Xác minh:** `node --test "test/frontend/order-lifecycle*.test.js"`; preview
-**Phụ thuộc:** không (làm lúc nào cũng được) · **File:** `server/public/shipment/lifecycle/index.html`, `server/test/frontend/order-lifecycle-kiot.test.js` · **Cỡ:** XS
-
-### T15: Tài liệu + memory
-**Tiêu chí:**
-- [x] README: bỏ endpoint đăng ký OTP, search, customer-product-top, link-status, lookup; mô tả quy tắc đổi email/SĐT mới
-- [x] SRS/BRD: mục hồ sơ/tài khoản theo quyết định mới; kiểm lại bản sửa trước (4 thẻ Hóa đơn, không có KPI hôm nay)
-- [x] Cập nhật memory (auth & phân quyền, frontend) + ghi rõ trạng thái deploy
-**Xác minh:** grep tài liệu không còn tên endpoint/trường đã gỡ
-**Phụ thuộc:** tất cả · **File:** `README.md`, `docs/01-brd/*`, `docs/02-srs/*`, memory · **Cỡ:** S
-
-## Checkpoint 3: Hoàn tất
-- [x] Mọi tiêu chí đạt, `npm test` xanh
-- [ ] Sẵn sàng review / deploy đợt 2 (chờ người dùng/ngoài phạm vi: code đã trên `main` — `0a10477`, `643b85f`, `ceeffd4` — nhưng deploy production do người dùng xác nhận/làm)
+Log kiểm thử cục bộ: .codex_tmp/stockout-focused-test.log, .codex_tmp/stockout-routes-test.log, .codex_tmp/stockout-vt-test.log (không commit log).

@@ -7,8 +7,11 @@ const { getPool } = require('../db/pool');
 const carton = require('../public/shared/carton.js');
 const { stripTelegramId } = require('../dashboard/saleName');
 const { parseImportWorkbook } = require('./stockPositionsImport');
+const fuzzy = require('../shared/fuzzySearch');
 const { ACTION_LABELS, FIELD_LABELS, summaryText } = require('./stockPositionsHistoryLabels');
 const { announceChanged } = require('./stockPositionsEvents');
+// Chi phu thuoc carton.js (khong vong require voi pickAssignmentsService).
+const { deductAllocation } = require('../pickAssignments/pickAssignmentSnapshot');
 
 const BRANCH_CODES = Object.freeze(['HN', 'SG']);
 const DB_BRANCH = Object.freeze({ HN: 'hanoi', SG: 'saigon' });
@@ -33,7 +36,13 @@ const lower = value => normalizeCode(value).toLocaleLowerCase('vi');
 const normalizeLocation = value => String(value ?? '').replace(/\s+/gu, '').toLocaleUpperCase('vi');
 const keyOf = (code, location) => `${lower(code)}|${normalizeLocation(location)}`;
 // Bo dau tieng Viet + hoa/thuong + khoang trang de so khop tu khoa.
-const foldText = value => String(value ?? '').normalize('NFD').replace(/[̀-ͯ]/gu, '').replace(/[đĐ]/gu, 'd').toLowerCase().replace(/\s+/gu, ' ').trim();
+// Bang bo dau tieng Viet cho translate() cua goi y theo ten (ca chu thuong da duoc lower()).
+const ACCENTED = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';
+const UNACCENTED = [...ACCENTED].map(char => (char === 'đ' ? 'd' : char.normalize('NFD')[0])).join('');
+const foldVietnamese = value => String(value ?? '').normalize('NFC').toLocaleLowerCase('vi').replace(/[\s\S]/gu, char => {
+  const at = ACCENTED.indexOf(char);
+  return at < 0 ? char : UNACCENTED[at];
+});
 const isoOf = value => (value instanceof Date ? value : new Date(value)).toISOString();
 
 // Ngay loc xoa lich su: rong -> null; dung dang yyyy-mm-dd va la ngay that.
@@ -80,17 +89,8 @@ function validNotes(body) {
 const isEmptyNote = notes => { const spec = carton.parseSpec(notes); return Boolean(spec && spec.quantity === 0); };
 
 // Cong don 2 ghi chu (import "Bo sung them SL"): gop quy cach, cong phan tru le. null neu mot ben sai dinh dang.
-function mergeNotes(current, added) {
-  const a = carton.parseSpec(carton.normalizeStoredNote(current));
-  const b = carton.parseSpec(carton.normalizeStoredNote(added));
-  if (!a || !b) return null;
-  const terms = [...a.terms, ...b.terms];
-  if (!terms.length) return '';
-  const loose = a.loose + b.loose;
-  const annotation = [a.annotation, b.annotation].filter(Boolean).join(' ');
-  const text = terms.map(t => t.cartons + 'T x ' + t.perCarton + (t.suffix || '')).join(' + ') + (loose > 0 ? ' - ' + loose : '') + (annotation ? ' ' + annotation : '');
-  return carton.normalizeNote(text);
-}
+// Logic nam o public/shared/carton.js de hop Chi dinh vi tri (trinh duyet) dung chung; giu ten cu de module/test khac import.
+const mergeNotes = carton.mergeNotes;
 
 // Co so ma giao dich dang giu khoa (lockBranch) -> phat tin hieu "da doi" sau COMMIT, khong phat khi ROLLBACK.
 const touchedBranches = new WeakMap();
@@ -147,11 +147,27 @@ const HELD_SQL = `
 
 // Ma don "Dang boc" dang chi dinh vao tung vi tri (ke ca dong giu 0): cac dong nay KHONG duoc xoa (xoa tay, ve 0, import Thay the),
 // vi phieu boc tro thang vao id dong — xoa roi thi luc xac nhan Da boc bao "vi tri khong con ton tai".
+// $3 (tuy chon, lower(btrim(ma don))): bo qua chinh don dang sua VT trong hop Chi dinh vi tri.
 const HOLDERS_SQL = `
   SELECT l.position_id, array_agg(DISTINCT a.order_code ORDER BY a.order_code) AS orders
   FROM order_pick_lines l JOIN order_pick_assignments a ON a.id = l.assignment_id
   WHERE a.status = 'picking' AND a.branch = $1 AND l.position_id = ANY($2::bigint[])
+    AND ($3::text IS NULL OR lower(btrim(a.order_code)) <> $3)
   GROUP BY l.position_id`;
+
+// Tung dong giu cho tren 1 vi tri (tru don $3 neu co), theo thu tu chi dinh. allocation_snapshot doc qua to_jsonb de khong loi
+// khi chua ap migration 0097 (cot chua co -> null -> bo qua buoc kiem quy cach).
+const HOLD_LINES_SQL = `
+  SELECT a.order_code, l.reserved_qty::float8 AS reserved_qty, to_jsonb(l) -> 'allocation_snapshot' AS allocation_snapshot
+  FROM order_pick_lines l JOIN order_pick_assignments a ON a.id = l.assignment_id
+  WHERE a.status = 'picking' AND a.branch = $1 AND l.position_id = $2
+    AND ($3::text IS NULL OR lower(btrim(a.order_code)) <> $3)
+  ORDER BY a.id, l.id`;
+
+// Khoa so ma don (giong lower(btrim(order_code)) trong SQL); rong -> null = khong loai tru don nao.
+const orderKey = value => { const key = String(value ?? '').trim().toLowerCase(); return key || null; };
+// Summary lich su cho thao tac ghi tu hop Chi dinh vi tri (options.source = { orderCode }).
+const sourceSummary = options => (options && options.source ? { source: 'pick', orderCode: String(options.source.orderCode ?? '') } : null);
 
 const BASE_COLUMNS = 'id, branch, code, name, notes, arrival_date, location, version, updated_by_name, updated_at';
 const ROW_COLUMNS = BASE_COLUMNS + ', format_ack';
@@ -220,8 +236,8 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
     return held;
   }
 
-  // Map id dong -> [ma don Dang boc]. Fail-soft nhu heldByPosition khi chua ap migration 0096.
-  async function holdersByPosition(db, branch, ids) {
+  // Map id dong -> [ma don Dang boc]. Fail-soft nhu heldByPosition khi chua ap migration 0096. excludeOrder: bo qua don nay.
+  async function holdersByPosition(db, branch, ids, excludeOrder = null) {
     const holders = new Map();
     if (!ids.length) return holders;
     if (!heldTablesReady) {
@@ -229,19 +245,56 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
       heldTablesReady = Boolean(probe && probe.ready);
       if (!heldTablesReady) return holders;
     }
-    for (const row of (await db.query(HOLDERS_SQL, [branch, ids])).rows) holders.set(Number(row.position_id), row.orders);
+    for (const row of (await db.query(HOLDERS_SQL, [branch, ids, orderKey(excludeOrder)])).rows) holders.set(Number(row.position_id), row.orders);
     return holders;
   }
 
-  async function assertNotHeld(client, row) {
-    const orders = (await holdersByPosition(client, row.branch, [Number(row.id)])).get(Number(row.id));
+  async function assertNotHeld(client, row, excludeOrder = null) {
+    const orders = (await holdersByPosition(client, row.branch, [Number(row.id)], excludeOrder)).get(Number(row.id));
     if (orders && orders.length) {
       throw fail(409, 'POSITION_HELD', `Dòng này đang được đơn Đang bốc ${orders.join(', ')} chỉ định nên không xóa được. Hãy chỉ định lại hoặc hủy bốc đơn đó trước.`, { orders });
     }
   }
 
+  /* Ghi chu moi cua dong van du cho cac don Dang boc khac dang giu cho (tru excludeOrder):
+     1) SL moi >= tong giu cho, khong thi 409 BELOW_HELD {orders, held};
+     2) tru lan luot quy cach da in cua tung don (allocation_snapshot) tren ghi chu moi van duoc, khong thi 409 HELD_SPEC_CONFLICT {orders}
+        (doi quy cach thung lam hong Xac nhan boc cua don kia). Dong giu cho chua co snapshot (phieu cu) thi chi kiem SL.
+     Fail-soft khi chua ap migration 0096 (khong co giu cho). */
+  async function assertHoldsFit(client, row, nextNotes, excludeOrder = null) {
+    if (!heldTablesReady) {
+      const probe = (await client.query(`SELECT to_regclass('order_pick_lines') IS NOT NULL AND to_regclass('order_pick_assignments') IS NOT NULL AS ready`)).rows[0];
+      heldTablesReady = Boolean(probe && probe.ready);
+      if (!heldTablesReady) return;
+    }
+    const lines = (await client.query(HOLD_LINES_SQL, [row.branch, Number(row.id), orderKey(excludeOrder)])).rows;
+    const held = lines.reduce((sum, line) => sum + (Number(line.reserved_qty) || 0), 0);
+    if (!(held > 0)) return;
+    const orders = [...new Set(lines.filter(line => Number(line.reserved_qty) > 0).map(line => line.order_code))];
+    const spec = carton.parseSpec(nextNotes);
+    if (!spec || spec.quantity < held) {
+      throw fail(409, 'BELOW_HELD', spec
+        ? `Đơn ${orders.join(', ')} đang giữ ${held} tại vị trí này, không hạ dưới ${held}.`
+        : `Đơn ${orders.join(', ')} đang giữ ${held} tại vị trí này nên ghi chú phải đọc được số lượng (không hạ dưới ${held}).`,
+      { orders, held });
+    }
+    let current = { ...row, notes: nextNotes };
+    const broken = [];
+    for (const line of lines) {
+      if (!line.allocation_snapshot) continue;
+      const result = deductAllocation(line.allocation_snapshot, current);
+      if (!result) { broken.push(line.order_code); continue; }
+      current = { ...current, notes: result.text };
+    }
+    if (broken.length) {
+      const names = [...new Set(broken)];
+      throw fail(409, 'HELD_SPEC_CONFLICT', `Quy cách thùng mới không khớp phiếu bốc đã in của đơn Đang bốc ${names.join(', ')}. Hãy giữ quy cách cũ hoặc chỉ định lại đơn đó trước.`, { orders: names });
+    }
+  }
+
   function shape(row, product, held = 0) {
-    const spec = product ? carton.parseSpec(row.notes) : null;
+    // parseSigned: dong am (xuat qua ton tu Don xuat kho) van co SL am de hien thi; "Co the boc" khong bao gio am.
+    const spec = product ? carton.parseSigned(row.notes) : null;
     const rawWarnings = carton.warnings(row.notes, { unknownCode: !product });
     return {
       id: Number(row.id),
@@ -288,12 +341,14 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
     if (!term) return { items: [] };
     const escape = value => value.replace(/[\\%_]/gu, '\\$&');
     const codeTerm = escape(lower(term));
+    // Gõ tên không dấu ("kem chong nang") vẫn ra "Kem chống nắng": bỏ dấu cả hai phía bằng translate (không cần extension unaccent).
     const { rows } = await getDb().query(
       `SELECT code, name FROM products
-       WHERE branch = $1 AND (lower(regexp_replace(code, '\\s+', '', 'g')) LIKE '%' || $2 || '%' ESCAPE '\\' OR name ILIKE '%' || $3 || '%' ESCAPE '\\')
+       WHERE branch = $1 AND (lower(regexp_replace(code, '\\s+', '', 'g')) LIKE '%' || $2 || '%' ESCAPE '\\' OR name ILIKE '%' || $3 || '%' ESCAPE '\\'
+         OR translate(lower(name), $4, $5) LIKE '%' || $6 || '%' ESCAPE '\\')
        ORDER BY (lower(regexp_replace(code, '\\s+', '', 'g')) LIKE $2 || '%' ESCAPE '\\') DESC, code
        LIMIT 12`,
-      [DB_BRANCH[branch], codeTerm, escape(term)]);
+      [DB_BRANCH[branch], codeTerm, escape(term), ACCENTED, UNACCENTED, escape(foldVietnamese(term))]);
     return { items: rows.map(row => ({ code: normalizeCode(row.code), name: clean(row.name) })) };
   }
 
@@ -311,9 +366,11 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
     return rows[0] || null;
   }
 
-  async function create(ctx, branch, body = {}) {
+  // options (hop Chi dinh vi tri): { source: { orderCode } } -> summary lich su ghi them { source: 'pick', orderCode }.
+  async function create(ctx, branch, body = {}, options = {}) {
     assertBranch(branch);
     assertScope(ctx, branch);
+    const src = sourceSummary(options);
     const code = textField(body, 'code', 'Mã hàng');
     if (!code) throw fail(400, 'VALIDATION', 'Vui lòng nhập mã hàng.', { field: 'code' });
     const notes = validNotes(body);
@@ -337,7 +394,7 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
           `UPDATE stock_positions SET notes = $2, arrival_date = $3, version = version + 1, updated_by_user_id = $4, updated_by_name = $5, updated_at = now() WHERE id = $1`,
           [same.id, added, nextDate, actor.id, actor.name]);
         const changes = fieldChanges(same, { notes: added, arrivalDate: nextDate });
-        await writeHistory(client, branch, actor, changes.map(change => ({ positionId: same.id, code: same.code, location: same.location, action: 'edit', ...change, summary: { merged: true, added: notes } })));
+        await writeHistory(client, branch, actor, changes.map(change => ({ positionId: same.id, code: same.code, location: same.location, action: 'edit', ...change, summary: { merged: true, added: notes, ...src } })));
         merged = true;
         return same.id;
       }
@@ -345,7 +402,7 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
         `INSERT INTO stock_positions (branch, code, name, notes, arrival_date, location, updated_by_user_id, updated_by_name)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
         [branch, finalCode, product ? product.name : '', notes, arrivalDate, location, actor.id, actor.name]);
-      await writeHistory(client, branch, actor, [{ positionId: rows[0].id, code: finalCode, location, action: 'create', newValue: notes, summary: { notes, arrivalDate, location } }]);
+      await writeHistory(client, branch, actor, [{ positionId: rows[0].id, code: finalCode, location, action: 'create', newValue: notes, summary: { notes, arrivalDate, location, ...src } }]);
       return rows[0].id;
     });
     productCache.get(branch)?.delete(code);
@@ -354,25 +411,32 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
   }
 
   // Doc 1 dong de sua (khoa dong), kiem tra pham vi co so + version.
-  async function lockRow(client, ctx, id, version) {
+  // options (hop Chi dinh vi tri): branch = co so cua don (khac -> 404 nhu khong co dong); allowRow(row) = dong thuoc ma hang cua don
+  // (khong -> 403 NOT_IN_ORDER). Kiem truoc version de khong lo du lieu dong ngoai don qua `latest`.
+  async function lockRow(client, ctx, id, version, options = {}) {
     if (!Number.isInteger(id) || id < 1) throw fail(400, 'VALIDATION', 'Mã dòng không hợp lệ.');
     const head = (await client.query('SELECT branch FROM stock_positions WHERE id = $1', [id])).rows[0];
     if (!head) throw fail(404, 'NOT_FOUND', 'Không tìm thấy dòng vị trí (có thể đã bị xóa).');
+    if (options.branch && head.branch !== options.branch) throw fail(404, 'NOT_FOUND', 'Không tìm thấy dòng vị trí (có thể đã bị xóa).');
     assertScope(ctx, head.branch);
     await lockBranch(client, head.branch);
     const row = (await client.query(`SELECT ${ROW_COLUMNS} FROM stock_positions WHERE id = $1 FOR UPDATE`, [id])).rows[0];
     if (!row) throw fail(404, 'NOT_FOUND', 'Không tìm thấy dòng vị trí (có thể đã bị xóa).');
+    if (options.allowRow && !options.allowRow(row)) throw fail(403, 'NOT_IN_ORDER', 'Dòng vị trí này không thuộc mã hàng nào của đơn.');
     if (version !== undefined && version !== null && Number(version) !== row.version) {
       throw fail(409, 'VERSION_CONFLICT', 'Dòng đã bị người khác sửa. Dữ liệu mới nhất đã được tải lại.', { latest: await shapeOne(client, row) });
     }
     return row;
   }
 
-  async function update(ctx, id, body = {}) {
+  /* options: { branch, allowRow } (xem lockRow); excludeOrder = ma don duoc bo qua khi kiem giu cho (chinh don trong hop Chi dinh vi tri);
+     checkHeld = doi ghi chu (khac rong) phai con du cho cac don Dang boc khac (assertHoldsFit); source = { orderCode } ghi vao lich su. */
+  async function update(ctx, id, body = {}, options = {}) {
     const actor = actorOf(ctx);
     const db = getDb();
+    const src = sourceSummary(options);
     return withTransaction(db, async client => {
-      const row = await lockRow(client, ctx, id, body.version);
+      const row = await lockRow(client, ctx, id, body.version, options);
       const next = {};
       const knownProduct = (await resolveCodes(client, row.branch, [row.code])).has(lower(row.code));
       if (body.notes !== undefined) next.notes = knownProduct ? validNotes(body) : textField(body, 'notes', 'Ghi chú');
@@ -385,16 +449,17 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
         throw fail(409, 'DUPLICATE_POSITION', 'Mã hàng này đã có ở vị trí đó. Hãy dùng Thêm dòng để cộng vào dòng sẵn có.', { field: 'location' });
       }
       if (knownProduct && next.notes !== undefined && isEmptyNote(merged.notes)) {
-        await assertNotHeld(client, row);
+        await assertNotHeld(client, row, options.excludeOrder);
         if (!body.confirmEmpty) throw fail(409, 'WOULD_AUTO_DELETE', 'Số lượng về 0 nên dòng sẽ bị xóa. Xác nhận để tiếp tục.');
-        await removeRow(client, row.branch, actor, row, 'auto_delete', { newValue: merged.notes });
+        await removeRow(client, row.branch, actor, row, 'auto_delete', { newValue: merged.notes, summary: src || undefined });
         return { deleted: true, id: Number(row.id) };
       }
+      if (options.checkHeld && changes.some(change => change.field === 'notes')) await assertHoldsFit(client, row, merged.notes, options.excludeOrder);
       const { rows } = await client.query(
         `UPDATE stock_positions SET notes = $2, arrival_date = $3, location = $4, version = version + 1,
            updated_by_user_id = $5, updated_by_name = $6, updated_at = now() WHERE id = $1 RETURNING ${ROW_COLUMNS}`,
         [row.id, merged.notes, merged.arrivalDate, merged.location, actor.id, actor.name]);
-      await writeHistory(client, row.branch, actor, changes.map(change => ({ positionId: row.id, code: row.code, location: merged.location, action: 'edit', ...change })));
+      await writeHistory(client, row.branch, actor, changes.map(change => ({ positionId: row.id, code: row.code, location: merged.location, action: 'edit', ...change, ...(src ? { summary: src } : {}) })));
       return { row: await shapeOne(client, rows[0]) };
     });
   }
@@ -426,12 +491,14 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
     });
   }
 
-  async function remove(ctx, id, version) {
+  // options: nhu update (branch, allowRow, excludeOrder, source); dong dang duoc don Dang boc KHAC giu thi van chan xoa.
+  async function remove(ctx, id, version, options = {}) {
     const actor = actorOf(ctx);
+    const src = sourceSummary(options);
     return withTransaction(getDb(), async client => {
-      const row = await lockRow(client, ctx, id, version);
-      await assertNotHeld(client, row);
-      await removeRow(client, row.branch, actor, row, 'delete');
+      const row = await lockRow(client, ctx, id, version, options);
+      await assertNotHeld(client, row, options.excludeOrder);
+      await removeRow(client, row.branch, actor, row, 'delete', { summary: src || undefined });
       return { deleted: true, id: Number(row.id) };
     });
   }
@@ -487,13 +554,14 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
       `SELECT id, created_at, branch, position_id, code, location, action, field, old_value, new_value, summary, actor_name
        FROM stock_position_history WHERE ${where} ORDER BY id DESC LIMIT $${params.length}`, params);
     const truncated = rows.length > HISTORY_EXPORT_MAX;
-    const needle = foldText(q);
+    const needle = String(q || '').trim();
     const entries = rows.slice(0, HISTORY_EXPORT_MAX).map(r => ({
       id: Number(r.id), createdAt: isoOf(r.created_at), branch: r.branch, positionId: r.position_id === null ? null : Number(r.position_id),
       code: r.code, location: r.location, action: r.action, field: r.field, oldValue: r.old_value, newValue: r.new_value, summary: r.summary, actorName: r.actor_name
     }));
-    const matches = entry => foldText([entry.actorName, entry.code, entry.location, ACTION_LABELS[entry.action], FIELD_LABELS[entry.field] || entry.field,
-      entry.oldValue, entry.newValue, summaryText(entry.summary)].join(' ')).includes(needle);
+    // Moi tu cua tu khoa phai xuat hien (khong can lien nhau / dung thu tu).
+    const matches = entry => fuzzy.matches([entry.actorName, entry.code, entry.location, ACTION_LABELS[entry.action], FIELD_LABELS[entry.field] || entry.field,
+      entry.oldValue, entry.newValue, summaryText(entry.summary)].join(' '), needle);
     return { rows: needle ? entries.filter(matches) : entries, truncated };
   }
 

@@ -141,8 +141,26 @@ test('Route ghi chuyển đúng tham số tới service', async t => {
   await fetch(base + '/7?version=3', { method: 'DELETE' });
   await fetch(base + '/history?branch=HN&limit=5&before=9');
   assert.deepEqual(calls.map(c => c[0]), ['create', 'update', 'deduct', 'remove', 'history']);
-  assert.deepEqual(calls[1].slice(1), [7, { version: 2, notes: '1T x 5' }]);
+  // PATCH bat checkHeld: trang VT cung khong ha ghi chu duoi phan don Dang boc dang giu.
+  assert.deepEqual(calls[1].slice(1), [7, { version: 2, notes: '1T x 5' }, { checkHeld: true }]);
   assert.deepEqual(calls[3].slice(1), [7, 3]);
+});
+
+test('Lỗi giữ chỗ trả kèm mã đơn (orders) + tổng giữ (held) trong body', async t => {
+  const app = express();
+  app.use(express.json());
+  app.use((req, res, next) => { req.user = MANAGER; next(); });
+  const failWith = Object.assign(new Error('Đơn DH1 đang giữ 150 tại vị trí này, không hạ dưới 150.'), { statusCode: 409, code: 'BELOW_HELD', orders: ['DH1'], held: 150 });
+  app.use(createStockPositionsRouter({
+    requireAuth: (req, res, next) => next(),
+    resolveBranch: (req, res, next) => { req.branch = 'Cả hai'; next(); },
+    service: { update: async () => { throw failWith; } }
+  }));
+  const server = await new Promise(resolve => { const s = app.listen(0, () => resolve(s)); });
+  t.after(() => server.close());
+  const res = await fetch(`http://127.0.0.1:${server.address().port}/api/stock-positions/7`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: 1, notes: '1T x 100' }) });
+  assert.equal(res.status, 409);
+  assert.deepEqual(await res.json(), { error: failWith.message, code: 'BELOW_HELD', orders: ['DH1'], held: 150 });
 });
 
 test('Import: nhận file multipart, chặn sai đuôi file, truyền chế độ + commit', async t => {

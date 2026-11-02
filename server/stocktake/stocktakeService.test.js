@@ -23,7 +23,7 @@ async function fixture() {
   const db = new PGlite();
   for (const file of ['0001_core_master_data.sql', '0003_orders.sql', '0009_app_users_hr_employees.sql', '0041_hr_employee_status.sql',
     '0064_sheet_snapshots.sql', '0095_stock_positions.sql', '0099_stock_position_ack_and_history_purge.sql',
-    '0101_stock_position_stock_out_action.sql', '0103_stocktake.sql']) {
+    '0101_stock_position_stock_out_action.sql', '0105_stocktake.sql']) {
     await db.exec(migration(file));
   }
   await db.exec(`

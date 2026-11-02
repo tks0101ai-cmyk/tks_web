@@ -32,7 +32,12 @@ async function setup() {
   }
   const snapshot=async date=>takeDebtCycleSnapshot(pool,date,{log(){},takenAt:new Date(`${date}T08:00:00Z`),loadAverages:async()=>({branches:[],codes:[],values:[]})});
   await snapshot('2026-10-14');
-  return {db,pool,repository,service,snapshot,setNow:value=>{instant=new Date(value);}};
+  // Khach HN 1 no 300k (< 400k, khong co hoa don trong lich) => qua han 300k => phat 25k/ngay theo quy che (khong con phat tay).
+  const owe=async(date='2026-10-14')=>{
+    await db.query("UPDATE debt_cycle_customers SET current_debt=300000, overdue_debt=300000 WHERE cycle_date=$1::date AND branch='hanoi' AND customer_id=1",[date]);
+    repository.bumpVersion();
+  };
+  return {db,pool,repository,service,snapshot,owe,setNow:value=>{instant=new Date(value);}};
 }
 
 test('real monthly SQL counts completed invoices, net returns and debt-free customers from both branches',async()=>{
@@ -54,22 +59,22 @@ test('real monthly SQL counts completed invoices, net returns and debt-free cust
 
 test('monthly board adds the open-cycle live penalty to sealed days and branch filtering preserves global ranking',async()=>{
   const f=await setup();try {
-    await f.repository.savePenalty({branch:'hanoi',customerId:'1',amount:90000,user:{hoTen:'QL'}});
-    assert.equal((await f.service.readBoard()).rows.find(r=>r.sale==='An').grossPenalty,90000);
+    await f.owe('2026-10-14');
+    assert.equal((await f.service.readBoard()).rows.find(r=>r.sale==='An').grossPenalty,25000);
     await f.snapshot('2026-10-15');f.repository.bumpVersion();
     await finalizePendingPenaltyCycles(f.pool,{repository:f.repository,log(){}});
     const all=await f.service.readBoard();const one=await f.service.readBoard({branches:['hanoi']});
     assert.equal(one.rows.length,1);assert.equal(one.rows[0].rank,2);assert.deepEqual(one.summary,all.summary);
-    await f.repository.savePenalty({branch:'hanoi',customerId:'1',amount:120000,user:{hoTen:'QL'}});
+    await f.owe('2026-10-15');
     const board=await f.service.readBoard();
-    assert.equal(board.rows.find(r=>r.sale==='An').grossPenalty,210000);
+    assert.equal(board.rows.find(r=>r.sale==='An').grossPenalty,50000);
     assert.equal(board.lastPenaltyDate,'2026-10-15');
   } finally {await f.db.close();}
 });
 
 test('month closes after next-month snapshot, final ledger and frozen sales; remains immutable after edits',async()=>{
   const f=await setup();try {
-    await f.repository.savePenalty({branch:'hanoi',customerId:'1',amount:90000,user:{hoTen:'QL'}});
+    await f.owe('2026-10-14');
     await f.snapshot('2026-10-15'); f.repository.bumpVersion();
     await finalizePendingPenaltyCycles(f.pool,{repository:f.repository,log(){}});
     await f.snapshot('2026-10-31'); f.repository.bumpVersion();
@@ -83,7 +88,7 @@ test('month closes after next-month snapshot, final ledger and frozen sales; rem
     await f.db.exec("INSERT INTO business_monthly_state(month) VALUES ('2026-10-01')");
     assert.deepEqual(await f.service.finalizePendingMonths(),['2026-10']);
     const closed=await f.service.readBoard({month:'2026-10'});
-    assert.equal(closed.status,'finalized');assert.equal(closed.rows.find(r=>r.sale==='An').grossPenalty,90000);
+    assert.equal(closed.status,'finalized');assert.equal(closed.rows.find(r=>r.sale==='An').grossPenalty,25000);
     assert.equal(closed.rows.find(r=>r.sale==='An').points,30);
     assert.equal(closed.rows.reduce((sum,r)=>sum+r.reward,0),3000000);
     await f.db.exec("UPDATE customers SET raw='{}'; DELETE FROM business_monthly_customer_sales; DELETE FROM debt_cycle_runs;");
@@ -103,7 +108,7 @@ test('invalid, future and unavailable history months fail clearly instead of fab
 
 test('inactive customers contribute neither monthly points nor sealed penalties, even with stale snapshots',async()=>{
   const f=await setup();try {
-    await f.repository.savePenalty({branch:'hanoi',customerId:'1',amount:90000,user:{hoTen:'QL'}});
+    await f.owe('2026-10-14');
     await f.snapshot('2026-10-15'); f.repository.bumpVersion();
     await finalizePendingPenaltyCycles(f.pool,{repository:f.repository,log(){}});
     await f.service.readBoard(); // Warm both caches before the status changes.
@@ -127,13 +132,13 @@ test('inactive customers contribute neither monthly points nor sealed penalties,
 
 test('customer reassignment refreshes points and moves the open-cycle live penalty to the new sale',async()=>{
   const f=await setup();try {
-    await f.repository.savePenalty({branch:'hanoi',customerId:'1',amount:90000,user:{hoTen:'QL'}});
-    assert.equal((await f.service.readBoard()).rows.find(r=>r.sale==='An').grossPenalty,90000);
+    await f.owe('2026-10-14');
+    assert.equal((await f.service.readBoard()).rows.find(r=>r.sale==='An').grossPenalty,25000);
     await f.db.exec(`UPDATE customers SET raw='{"groups":"Chi"}' WHERE branch='hanoi'`);
     f.setNow('2026-10-14T09:01:01Z');
     const board=await f.service.readBoard();
     assert.equal(board.rows.find(r=>r.sale==='Chi').points,30);
-    assert.equal(board.rows.find(r=>r.sale==='Chi').grossPenalty,90000);
+    assert.equal(board.rows.find(r=>r.sale==='Chi').grossPenalty,25000);
     assert.equal(board.rows.some(r=>r.sale==='An'),false);
   } finally {await f.db.close();}
 });

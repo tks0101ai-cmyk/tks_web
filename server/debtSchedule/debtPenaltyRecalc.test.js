@@ -37,7 +37,7 @@ const L = (cycleDate, customerId, over = {}) => ({
   cycleDate, branch: 'hanoi', customerId, sale: 'Lan', overdue: 900000, overdueStreak: 1, amount: 25000, isManual: false, status: 'Chưa xử lý', ...over
 });
 
-test('recalcLedger: "Đã xử lý" bị xóa (kể cả số tay), ngày liền kề sau đó là phiên 1, chuỗi đứt khi thiếu ngày', () => {
+test('recalcLedger: "Đã xử lý" bị xóa, ngày liền kề sau đó là phiên 1, chuỗi đứt khi thiếu ngày', () => {
   const cycleDates = ['2026-08-01', '2026-08-02', '2026-08-03', '2026-08-04', '2026-08-05'];
   const rows = [
     L('2026-08-01', '1', { overdueStreak: 1, amount: 25000 }),
@@ -52,7 +52,7 @@ test('recalcLedger: "Đã xử lý" bị xóa (kể cả số tay), ngày liền
     L('2026-08-02', '3', { overdueStreak: 2, amount: 25000 }),
     // nợ lẻ < 400k luôn 25k, streak 0
     L('2026-08-01', '4', { overdue: 100000, overdueStreak: 0, amount: 25000 }),
-    // số tay giữ nguyên amount, streak tính lại
+    // dòng cũ từng là số tay: không còn phạt tay nên amount cũng về mức quy chế, streak tính lại
     L('2026-08-01', '5', { overdueStreak: 1, amount: 25000 }),
     L('2026-08-02', '5', { overdueStreak: 7, amount: 33000, isManual: true })
   ];
@@ -66,7 +66,7 @@ test('recalcLedger: "Đã xử lý" bị xóa (kể cả số tay), ngày liền
   assert.equal(pick('2026-08-01', '3'), undefined);
   assert.equal(pick('2026-08-02', '3'), undefined);
   assert.equal(pick('2026-08-01', '4'), undefined);
-  assert.deepEqual(pick('2026-08-02', '5').after, { amount: 33000, streak: 2 });
+  assert.deepEqual(pick('2026-08-02', '5').after, { amount: 25000, streak: 2 });
 });
 
 test('recalcLedger: dòng seed (chu kỳ ngày trước tháng) chỉ đọc, không sửa; seed "Đã xử lý" reset chuỗi', () => {

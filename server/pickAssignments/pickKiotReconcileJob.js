@@ -2,6 +2,7 @@
 
 // Job nen: dong bo trang thai boc hang theo trang thai don KiotViet (xem pickAssignmentsService.reconcileWithKiot).
 //   Dang boc + Kiot "Hoan thanh" -> Da boc (luc nay moi tru thung that); Dang boc + Kiot "Da huy" -> Da huy (tra giu cho).
+//   Truoc do: bo dong chi dinh cua ma khong con tren don Kiot (tra giu cho vi tri, khong tru thung ma da xoa).
 // Chi doc bang orders DA DONG BO vao Postgres cho vai chuc don dang boc (khong goi API KiotViet, khong doc 60 nghin don).
 // Chay lai la an toan: chi dong 'picking', dung version cua chi dinh, nen nhieu instance / chay lap khong tru thung 2 lan.
 const CONFIG = require('../config');
@@ -27,14 +28,18 @@ function createPickKiotReconcileScheduler({
     running = true;
     try {
       const result = await service.reconcileWithKiot();
+      if (result.pruned) {
+        logger.log(`[PickKiotReconcile] Bo ${result.pruned} dong chi dinh cua ma khong con tren don Kiot (tra giu cho vi tri).`);
+      }
       if (result.confirmed || result.cancelled) {
         logger.log(`[PickKiotReconcile] Da boc tu dong ${result.confirmed} don (Kiot hoan thanh), tra giu cho ${result.cancelled} don (Kiot huy).`);
       }
       for (const failure of result.failed) {
-        const signature = `${failure.id}|${failure.code}`;
+        const signature = `${failure.id}|${failure.outcome}|${failure.code}`;
         if (reported.has(signature)) continue;
         reported.add(signature);
-        logger.error(`[PickKiotReconcile] Khong tu dong ${failure.outcome === 'completed' ? 'xac nhan boc' : 'huy chi dinh'} don ${failure.branch} ${failure.orderCode}: ${failure.code}. Can nguoi co quyen xu ly tay.`);
+        const what = failure.outcome === 'prune' ? 'bo dong chi dinh cua ma da xoa khoi' : failure.outcome === 'completed' ? 'xac nhan boc' : 'huy chi dinh';
+        logger.error(`[PickKiotReconcile] Khong tu dong ${what} don ${failure.branch} ${failure.orderCode}: ${failure.code}. Can nguoi co quyen xu ly tay.`);
       }
       return result;
     } catch (error) {

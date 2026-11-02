@@ -2,7 +2,7 @@
 
 // SAP DONG HANG DON DAT HANG THEO THU TU THAT CUA KIOTVIET. Public API tra `orderDetails` theo productId tang dan;
 // thu tu that (man hinh + ban in Kiot) = Id dong tang dan, chi doc duoc qua API noi bo (kiotInternalClient).
-// Dung o MOT cho: truoc khi ghi order_details (line_no) khi dong bo, va truoc khi PUT don tu kiotOrderEditor.
+// Dung o MOT cho: truoc khi ghi order_details (line_no) khi dong bo.
 // Fail-soft: chua cau hinh / loi mang / dong khong khop -> giu nguyen thu tu Public API.
 const { createKiotInternalClient, credentialsFor } = require('./kiotInternalClient');
 

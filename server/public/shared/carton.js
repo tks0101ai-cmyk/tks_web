@@ -108,6 +108,43 @@
     const terms=[];for(const t of s.terms){const same=terms.find(x=>x.perCarton===t.perCarton);if(same)same.cartons+=t.cartons;else terms.push({...t});}
     return {terms,loose:s.loose,quantity,cartons:terms.reduce((sum,t)=>sum+t.cartons,0),perCarton:terms[0].perCarton,multi:terms.length>1,...(s.annotation?{annotation:s.annotation}:{})};
   }
+  /* Số âm (vị trí bị trừ quá tồn): ghi chú là dấu trừ đứng đầu + một quy cách hợp lệ, vd "-2T x 100" = -200.
+     parseSpec KHÔNG đọc dạng này (vẫn trả null) để các chỗ chỉ chấp nhận tồn >= 0 giữ nguyên hành vi; chỗ nào cho phép âm thì gọi parseSigned. */
+  const NEGATIVE_PREFIX=/^\s*[-−]\s*(?=\d)/u;
+  function parseSigned(text){
+    const raw=String(text??''),prefix=NEGATIVE_PREFIX.exec(raw);
+    if(!prefix)return parseSpec(raw);
+    const spec=parseSpec(raw.slice(prefix[0].length));
+    if(!spec||spec.empty||spec.quantity<=0)return null;
+    return {...spec,quantity:-spec.quantity,negative:true};
+  }
+  // Ghi chú âm cho phần thiếu `deficit`: chẵn theo quy cách thì "-kT x p", không thì "-1T x deficit" (vẫn đọc lại đúng số lượng).
+  function negativeNote(deficit,perCarton){
+    const q=Math.round(deficit);
+    return perCarton>0&&q%perCarton===0?'-'+q/perCarton+'T x '+perCarton:'-1T x '+q;
+  }
+  /* Trừ `quantity` (số nguyên dương) khỏi ghi chú, cho phép âm. Đủ hàng thì trừ thông minh như deduct; thiếu thì ra ghi chú âm.
+     perCartonHint: quy cách ưu tiên khi biểu diễn phần thiếu (thường là quy cách của dòng xuất). Trả {text, quantity (sau khi trừ)} hoặc null nếu ghi chú sai định dạng. */
+  function subtractNotes(current,quantity,perCartonHint){
+    const spec=parseSigned(normalizeStoredNote(current));
+    if(!spec||!Number.isSafeInteger(quantity)||quantity<=0)return null;
+    const have=spec.quantity;
+    if(have>=quantity){
+      const result=deduct(spec,quantity);
+      return result?{text:result.text,quantity:have-quantity}:null;
+    }
+    const perCarton=perCartonHint>0?perCartonHint:spec.perCarton;
+    return {text:negativeNote(quantity-have,perCarton),quantity:have-quantity};
+  }
+  /* Cộng hai ghi chú khi một bên là số âm: -2T x 100 + 5T x 100 = 3T x 100; -2T x 100 + 1T x 100 = -1T x 100; bù đúng thì "Hết hàng". */
+  function mergeSigned(a,b){
+    const total=a.quantity+b.quantity;
+    if(total===0)return EMPTY_NOTE;
+    if(total<0)return negativeNote(-total,(a.negative?a:b).perCarton);
+    const positive=a.negative?b:a,owed=-(a.negative?a:b).quantity;
+    const result=deduct(positive,owed);
+    return result?result.text:null;
+  }
   /* formatSpec(spec) hoặc formatSpec(số thùng, SL/thùng). Số hạng hết thùng bị bỏ; hết sạch thì ghi "Hết hàng".
      Không bao giờ sinh số thùng thập phân: phần không tròn thùng đi vào phần trừ lẻ " - N". */
   function formatSpec(spec,perCarton){
@@ -121,7 +158,9 @@
   /* Chuẩn hóa ghi chú khi lưu: đọc được thì về dạng <thùng>T x <SL/thùng> nối ' + ', phần trừ ' - N', T hoa, c thường, bỏ khoảng trắng thừa;
      sai định dạng vẫn chuẩn hóa phần quy cách nhận ra được, giữ phần chữ chưa hiểu và cảnh báo; rỗng giữ rỗng. */
   function normalizeNote(text){
-    const raw=String(text??''),spec=parseSpec(raw);
+    const raw=String(text??''),negative=parseSigned(raw);
+    if(negative&&negative.negative)return '-'+normalizeNote(raw.slice(NEGATIVE_PREFIX.exec(raw)[0].length));
+    const spec=parseSpec(raw);
     if(!spec)return formatUnparsedNote(raw);
     if(spec.empty)return raw.trim().replace(/\s+/g,' ');
     return spec.terms.map(t=>t.cartons+'T x '+t.perCarton+(t.suffix||'')).join(' + ')+(spec.loose>0?' - '+spec.loose:'')+(spec.annotation?' '+spec.annotation:'');
@@ -270,6 +309,9 @@
      'badnumber' = đúng dạng nhưng số thùng hoặc SL/thùng không phải số nguyên dương (0.5Tx100, 0Tx50);
      'unknowncode' = (chỉ khi context.unknownCode) mã hàng nhập tay chưa có trong danh mục nên không tra được tên. */
   function warnings(notes,context={}){
+    const signed=parseSigned(notes);
+    // Số âm hợp lệ (xuất quá tồn): một cảnh báo riêng thay cho "sai định dạng", để dòng vẫn đỏ và lọc được.
+    if(signed&&signed.negative)return context.unknownCode?['negative','unknowncode']:['negative'];
     const spec=parseSpec(notes),reasons=[];
     if(spec){
       if(spec.multi)reasons.push('multi');
@@ -285,7 +327,7 @@
     if(context.unknownCode)reasons.push('unknowncode');
     return reasons;
   }
-  const WARNING_LABEL={multi:'Nhiều quy cách',loose:'Có phần trừ lẻ',unreadable:'Ghi chú sai định dạng',badnumber:'Số thùng và SL/thùng phải là số nguyên dương',unknowncode:'Mã hàng chưa có trong danh mục'};
+  const WARNING_LABEL={negative:'Số lượng âm (đã xuất quá tồn)',multi:'Nhiều quy cách',loose:'Có phần trừ lẻ',unreadable:'Ghi chú sai định dạng',badnumber:'Số thùng và SL/thùng phải là số nguyên dương',unknowncode:'Mã hàng chưa có trong danh mục'};
   /* Chuẩn hóa ghi chú khi LƯU vào DB (VT): như normalizeNote, và số trần (60) hiểu là 1 thùng (1T x 60).
      Chỉ dùng cho ghi chú đã lưu; ô nhập tự do ở nơi khác vẫn dùng normalizeNote. */
   function normalizeStoredNote(text){
@@ -293,7 +335,22 @@
     if(/^\d+$/.test(raw)&&Number(raw)>0)return '1T x '+Number(raw);
     return normalizeNote(raw);
   }
-  const api={normalizeNote,normalizeStoredNote,EMPTY_NOTE,warnings,WARNING_LABEL,parseSpec,formatSpec,cartonsOf,isWhole,deduct,cartonsFor,pickText,stFor,parseStText,mergeSt,restore,suggest};
+  /* Cộng dồn 2 ghi chú (import "Bổ sung thêm SL", Thêm dòng trùng vị trí, gõ "+1T x 50" trong hộp Chỉ định vị trí):
+     gộp quy cách, cộng phần trừ lẻ, giữ chú thích. null nếu một bên sai định dạng.
+     Vd mergeNotes('3T x 100 - 20','1T x 50') = '3T x 100 + 1T x 50 - 20'. */
+  function mergeNotes(current,added){
+    const signedA=parseSigned(normalizeStoredNote(current)),signedB=parseSigned(normalizeStoredNote(added));
+    if(signedA&&signedB&&(signedA.negative||signedB.negative))return mergeSigned(signedA,signedB);
+    const a=parseSpec(normalizeStoredNote(current)),b=parseSpec(normalizeStoredNote(added));
+    if(!a||!b)return null;
+    const terms=[...a.terms,...b.terms];
+    if(!terms.length)return '';
+    const loose=a.loose+b.loose;
+    const annotation=[a.annotation,b.annotation].filter(Boolean).join(' ');
+    const text=terms.map(t=>t.cartons+'T x '+t.perCarton+(t.suffix||'')).join(' + ')+(loose>0?' - '+loose:'')+(annotation?' '+annotation:'');
+    return normalizeNote(text);
+  }
+  const api={normalizeNote,normalizeStoredNote,EMPTY_NOTE,warnings,WARNING_LABEL,parseSpec,parseSigned,subtractNotes,negativeNote,formatSpec,cartonsOf,isWhole,deduct,cartonsFor,pickText,stFor,parseStText,mergeSt,restore,suggest,mergeNotes};
   if(typeof module!=='undefined')module.exports=api;
   else root.PickingCarton=api;
 })(typeof window!=='undefined'?window:globalThis);

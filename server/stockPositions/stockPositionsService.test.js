@@ -20,7 +20,7 @@ function poolFor(db) {
 const QL = { id: 'ql-1', hoTen: 'Quản Lý A - 123456789', username: 'ql' };
 const ctx = (scope = ['HN', 'SG']) => ({ user: QL, scope });
 
-async function fixture({ lines = [] } = {}) {
+async function fixture({ lines = [], stockOutMigration = true } = {}) {
   const db = new PGlite();
   await db.exec(migration('0001_core_master_data.sql'));
   await db.exec(migration('0064_sheet_snapshots.sql'));
@@ -31,7 +31,7 @@ async function fixture({ lines = [] } = {}) {
   }
   await db.exec(migration('0095_stock_positions.sql'));
   await db.exec(migration('0099_stock_position_ack_and_history_purge.sql'));
-  await db.exec(migration('0101_stock_position_stock_out_action.sql'));
+  if (stockOutMigration) await db.exec(migration('0101_stock_position_stock_out_action.sql'));
   await db.query(`INSERT INTO products (branch, id, code, name, raw) VALUES
     ('hanoi', 1, 'AAA1', 'Hàng A một', '{"inventories":[{"onHand":30},{"onHand":12}]}'),
     ('hanoi', 2, 'BBB2', 'Hàng B hai', '{"inventories":[{"onHand":5}]}'),
@@ -49,6 +49,30 @@ function workbook(rows, name = 'Sheet1') {
 
 const HEADER = ['Mã hàng', 'Ghi chú', 'Ngày về', 'Vị trí'];
 const OUT_HEADER = ['Mã hàng', 'Ghi chú', 'Vị trí'];
+
+test('stockOut: DB thiếu 0101 rollback tồn và lịch sử; áp migration thì xuất kho được', async () => {
+  const { db, service } = await fixture({ stockOutMigration: false, lines: [
+    { branch: 'HN', code: 'AAA1', notes: '2T x 100', location: 'A1' },
+    { branch: 'HN', code: 'BBB2', notes: '1T x 50', location: 'B1' }
+  ] });
+  try {
+    const buffer = workbook([OUT_HEADER, ['AAA1', '1T x 100', 'A1'], ['BBB2', '1T x 50', 'B1']]);
+    const snapshot = async () => ({
+      positions: (await db.query('SELECT * FROM stock_positions ORDER BY id')).rows,
+      history: (await db.query('SELECT * FROM stock_position_history ORDER BY id')).rows
+    });
+    const before = await snapshot();
+    await assert.rejects(service.stockOutFile(ctx(), 'HN', { buffer }), error =>
+      error.code === '23514' && error.constraint === 'stock_position_history_action_check');
+    assert.deepEqual(await snapshot(), before, 'cả dòng cập nhật và dòng xóa phải được rollback');
+    await db.exec(migration('0101_stock_position_stock_out_action.sql'));
+    const result = await service.stockOutFile(ctx(), 'HN', { buffer });
+    assert.equal(result.counts.applied, 2);
+    assert.equal(result.counts.deleted, 1);
+    assert.equal((await db.query('SELECT notes FROM stock_positions')).rows[0].notes, '1T x 100');
+    assert.equal((await db.query("SELECT count(*)::int AS n FROM stock_position_history WHERE action = 'stock_out'")).rows[0].n, 2);
+  } finally { await db.close(); }
+});
 
 test('import: known products keep unreadable notes as warnings through replace and additive merges', async () => {
   const { db, service } = await fixture({ lines: [{ branch: 'HN', code: 'AAA1', notes: '5T x 100', location: 'A1' }] });
@@ -617,6 +641,8 @@ test('historyAll: lọc theo hành động và từ khóa không dấu, tôn tr�
     assert.equal((await service.historyAll(ctx(), 'HN', { q: '2t x 100' })).rows.length, 1);
     assert.equal((await service.historyAll(ctx(), 'HN', { q: 'sửa' })).rows[0].action, 'edit');
     assert.equal((await service.historyAll(ctx(), 'HN', { q: 'khong-co-tu-nay' })).rows.length, 0);
+    assert.equal((await service.historyAll(ctx(), 'HN', { q: 'dat nguyen' })).rows.length, 1, 'moi tu khop, khong can dung thu tu');
+    assert.equal((await service.historyAll(ctx(), 'HN', { q: 'nguyen van dat zzz' })).rows.length, 0, 'thieu 1 tu la khong khop');
     await assert.rejects(() => service.historyAll(ctx(['SG']), 'HN'), { code: 'BRANCH_OUT_OF_SCOPE' });
     await assert.rejects(() => service.historyAll(ctx(), 'XX'), { code: 'INVALID_BRANCH' });
   } finally { await db.close(); }
@@ -1007,4 +1033,97 @@ test('stockOut: phát tín hiệu đổi sau COMMIT chỉ khi có dòng thật s
     await service.stockOutFile(ctx(), 'HN', { buffer: workbook([OUT_HEADER, ['AAA1', '1T x 100', 'A1']]) });
     assert.deepEqual(seen, ['HN']);
   } finally { await db.close(); }
+});
+
+// ---- Sua VT tu hop Chi dinh vi tri (options excludeOrder / checkHeld / allowRow / branch / source) ----
+const { makeAllocationSnapshot } = require('../pickAssignments/pickAssignmentSnapshot');
+
+async function heldFixture() {
+  const fx = await fixture({ lines: [
+    { branch: 'HN', code: 'AAA1', notes: '3T x 100', location: 'A1' },
+    { branch: 'HN', code: 'BBB2', notes: '1T x 10', location: 'B1' },
+    { branch: 'HN', code: 'BBB2', notes: '1T x 10', location: 'B2' }
+  ] });
+  await fx.db.exec(migration('0096_order_pick_assignments.sql'));
+  await fx.db.exec(migration('0097_order_pick_assignment_snapshots.sql'));
+  await fx.db.exec(migration('0101_stock_position_stock_out_action.sql')); // 0096 dung lai CHECK cu
+  const rows = (await fx.service.list(ctx(), 'HN')).rows;
+  const pos = (code, location) => rows.find(r => r.code === code && r.location === location);
+  // Don Dang boc giu cho kem snapshot quy cach da in (nhu assign that).
+  const hold = async (orderCode, picks) => {
+    const id = Number((await fx.db.query(`INSERT INTO order_pick_assignments (branch, order_code, status) VALUES ('HN', $1, 'picking') RETURNING id`, [orderCode])).rows[0].id);
+    for (const [position, qty] of picks) {
+      await fx.db.query(`INSERT INTO order_pick_lines (assignment_id, product_code, position_id, location, planned_qty, reserved_qty, allocation_snapshot) VALUES ($1, $2, $3, $4, $5, $5, $6::jsonb)`,
+        [id, position.code, position.id, position.location, qty, JSON.stringify(makeAllocationSnapshot(position, qty))]);
+    }
+  };
+  const versionOf = async id => (await fx.db.query('SELECT version FROM stock_positions WHERE id = $1', [id])).rows[0]?.version;
+  return { ...fx, pos, hold, versionOf };
+}
+
+test('hộp Chỉ định: đơn chính mình (excludeOrder) không chặn sửa/xóa; đơn Đang bốc khác: không hạ dưới phần giữ, không đổi quy cách đã in, không xóa', async () => {
+  const { db, service, pos, hold, versionOf } = await heldFixture();
+  try {
+    const a1 = pos('AAA1', 'A1'), b1 = pos('BBB2', 'B1'), b2 = pos('BBB2', 'B2');
+    await hold('DH1', [[a1, 120], [b1, 10], [b2, 10]]);
+    await hold('DH2', [[a1, 50]]);
+    const pick = { branch: 'HN', excludeOrder: ' dh1 ', checkHeld: true, source: { orderCode: 'DH1' } };
+    // Duoi phan DH2 giu (50) -> BELOW_HELD kem ma don + tong giu.
+    await assert.rejects(service.update(ctx(), a1.id, { notes: '1T x 40', version: a1.version }, pick),
+      e => e.statusCode === 409 && e.code === 'BELOW_HELD' && e.held === 50 && JSON.stringify(e.orders) === '["DH2"]' && /DH2/u.test(e.message) && /50/u.test(e.message));
+    // Ghi chu sai dinh dang khi dang co giu cho cung bi chan.
+    await assert.rejects(service.update(ctx(), a1.id, { notes: 'chờ kiểm', version: a1.version }, pick), { code: 'BELOW_HELD', held: 50 });
+    // Doi quy cach thung (100 -> 60) lam hong phieu da in cua DH2 -> HELD_SPEC_CONFLICT.
+    await assert.rejects(service.update(ctx(), a1.id, { notes: '2T x 60', version: a1.version }, pick),
+      e => e.code === 'HELD_SPEC_CONFLICT' && JSON.stringify(e.orders) === '["DH2"]');
+    // >= phan DH2 giu va dung quy cach: duoc (DH1 giu 120 khong tinh).
+    const edited = await service.update(ctx(), a1.id, { notes: '1T x 100', version: a1.version }, pick);
+    assert.equal(edited.row.notes, '1T x 100');
+    // Xoa: DH2 van dang giu -> POSITION_HELD.
+    await assert.rejects(service.remove(ctx(), a1.id, edited.row.version, pick), e => e.code === 'POSITION_HELD' && JSON.stringify(e.orders) === '["DH2"]');
+    // Dong chi DH1 giu: ve 0 can xac nhan roi tu xoa; xoa tay cung duoc.
+    await assert.rejects(service.update(ctx(), b1.id, { notes: '', version: b1.version }, pick), { code: 'WOULD_AUTO_DELETE' });
+    assert.deepEqual(await service.update(ctx(), b1.id, { notes: '', version: b1.version, confirmEmpty: true }, pick), { deleted: true, id: b1.id });
+    assert.deepEqual(await service.remove(ctx(), b2.id, b2.version, pick), { deleted: true, id: b2.id });
+    // Lich su: moi dong ghi tu hop co source + ma don.
+    const history = (await service.history(ctx(), 'HN')).rows.slice(0, 3);
+    assert.deepEqual(history.map(h => [h.action, h.summary]), [
+      ['delete', { source: 'pick', orderCode: 'DH1' }],
+      ['auto_delete', { source: 'pick', orderCode: 'DH1' }],
+      ['edit', { source: 'pick', orderCode: 'DH1' }]
+    ]);
+    // Trang VT (checkHeld, khong loai tru don nao): tong giu DH1 + DH2 = 170.
+    await assert.rejects(service.update(ctx(), a1.id, { notes: '1T x 100 + 1T x 50', version: await versionOf(a1.id) }, { checkHeld: true }),
+      e => e.code === 'BELOW_HELD' && e.held === 170 && JSON.stringify(e.orders) === '["DH1","DH2"]');
+    // Chi doi Ngay ve thi khong kiem giu cho.
+    assert.equal((await service.update(ctx(), a1.id, { arrivalDate: '1/11', version: await versionOf(a1.id) }, { checkHeld: true })).row.arrivalDate, '1/11');
+  } finally { await db.close(); }
+});
+
+test('hộp Chỉ định: allowRow / branch / create gộp ghi lịch sử theo đơn; checkHeld fail-soft khi chưa có bảng giữ chỗ', async () => {
+  const { db, service, pos } = await heldFixture();
+  try {
+    const a1 = pos('AAA1', 'A1');
+    const onlyB = { branch: 'HN', allowRow: row => row.code === 'BBB2', excludeOrder: 'DH1', checkHeld: true, source: { orderCode: 'DH1' } };
+    // Dong ngoai ma cua don: 403 truoc ca kiem version (khong lo `latest`).
+    await assert.rejects(service.update(ctx(), a1.id, { notes: '1T x 1', version: 99 }, onlyB), { statusCode: 403, code: 'NOT_IN_ORDER' });
+    await assert.rejects(service.remove(ctx(), a1.id, a1.version, onlyB), { code: 'NOT_IN_ORDER' });
+    // Sai co so cua don: 404 nhu khong co dong.
+    await assert.rejects(service.update(ctx(), a1.id, { notes: '1T x 1', version: a1.version }, { branch: 'SG' }), { statusCode: 404, code: 'NOT_FOUND' });
+    await assert.rejects(service.remove(ctx(), a1.id, a1.version, { branch: 'SG' }), { code: 'NOT_FOUND' });
+    // Them trung (ma, vi tri): cong don, lich su co merged + source.
+    const merged = await service.create(ctx(), 'HN', { code: 'AAA1', notes: '1T x 50', location: 'a1', arrivalDate: '' }, { source: { orderCode: 'DH9' } });
+    assert.equal(merged.merged, true);
+    assert.equal(merged.row.notes, '3T x 100 + 1T x 50');
+    const created = await service.create(ctx(), 'HN', { code: 'AAA1', notes: '2T x 10', location: 'Z9' }, { source: { orderCode: 'DH9' } });
+    assert.equal(created.merged, false);
+    const history = (await service.history(ctx(), 'HN')).rows.slice(0, 2);
+    assert.deepEqual(history[0].summary, { notes: '2T x 10', arrivalDate: '', location: 'Z9', source: 'pick', orderCode: 'DH9' });
+    assert.deepEqual(history[1].summary, { merged: true, added: '1T x 50', source: 'pick', orderCode: 'DH9' });
+  } finally { await db.close(); }
+  const plain = await fixture({ lines: [{ branch: 'HN', code: 'AAA1', notes: '3T x 100', location: 'A1' }] });
+  try {
+    const [row] = (await plain.service.list(ctx(), 'HN')).rows;
+    assert.equal((await plain.service.update(ctx(), row.id, { notes: '1T x 1', version: row.version }, { checkHeld: true })).row.notes, '1T x 1');
+  } finally { await plain.db.close(); }
 });

@@ -22,6 +22,7 @@
   <link rel="stylesheet" href="/vt-positions/vt-positions.css?v=20261030-1">
   <link rel="stylesheet" href="/vt-positions/vt-history.css?v=20261028-2">
   <link rel="stylesheet" href="/vt-positions/vt-detail.css?v=20261028-2">
+  <link rel="stylesheet" href="/vt-positions/vt-order.css?v=20261102-1">
 </head>
 <body>
   <div class="receipt-header">
@@ -82,6 +83,10 @@
           <button class="locations-columns-button vt-btn" id="vtStockOutButton" type="button" hidden title="Trừ số lượng hàng loạt theo file Excel/CSV">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"></path><path d="M8 12h8"></path></svg>
             Xuất kho
+          </button>
+          <button class="locations-columns-button vt-btn" id="vtOrderButton" type="button" title="Phiếu xuất kho tạm dùng chung: chỉ trừ tồn khi chốt đơn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"></path><path d="M14 3v5h5M9 13h6M9 17h4"></path></svg>
+            Đơn xuất kho
           </button>
           <button class="locations-columns-button vt-btn" id="vtExportButton" type="button" hidden>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12M7 11l5 5 5-5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"></path></svg>
@@ -279,6 +284,60 @@
     </div>
   </dialog>
 
+  <!-- Đơn xuất kho: đơn tạm dùng chung mỗi cơ sở, chốt đơn mới trừ tồn (có thể ra số âm) -->
+  <dialog class="vt-dialog vt-dialog-wide vt-order" id="vtOrderDialog" aria-labelledby="vtOrderTitle">
+    <div class="dp-head">
+      <div class="dp-head-text"><h3 class="dp-title" id="vtOrderTitle">Đơn xuất kho</h3><p class="dp-subtitle" id="vtOrderSubtitle"></p></div>
+      <button type="button" class="dp-close" data-vt-close aria-label="Đóng">×</button>
+    </div>
+    <div class="dp-body">
+      <div class="vt-order-tabs" role="tablist" aria-label="Đơn xuất kho">
+        <button type="button" role="tab" class="is-active" aria-selected="true" data-order-view="current">Đơn tạm</button>
+        <button type="button" role="tab" aria-selected="false" data-order-view="history">Lịch sử đơn</button>
+      </div>
+      <p class="vt-form-error" id="vtOrderError" role="alert"></p>
+      <section id="vtOrderCurrent">
+        <div class="vt-order-tools">
+          <p class="dp-note" id="vtOrderHint"></p>
+          <button type="button" class="locations-columns-button vt-btn" id="vtOrderImport" hidden>Import Excel</button>
+          <button type="button" class="vt-link-button" id="vtOrderTemplate" hidden>Tải file mẫu</button>
+          <input id="vtOrderFile" type="file" accept=".xlsx,.xls,.csv" tabindex="-1" hidden aria-label="Chọn file Excel để nạp vào đơn xuất kho">
+        </div>
+        <div class="dp-table-wrap vt-order-wrap">
+          <table class="dp-table vt-order-table" id="vtOrderTable" data-table-sort="off" data-table-controls="off">
+            <thead><tr><th class="num">#</th><th>Tên hàng</th><th>Vị trí</th><th>Ghi chú thùng</th><th class="num">SL xuất</th><th>Tồn VT hiện tại</th><th>Sau khi chốt</th><th></th></tr></thead>
+            <tbody id="vtOrderRows"></tbody>
+            <tfoot id="vtOrderFoot"></tfoot>
+          </table>
+        </div>
+        <datalist id="vtOrderSuggestions"></datalist>
+      </section>
+      <section id="vtOrderHistory" hidden>
+        <div class="dp-table-wrap vt-order-wrap">
+          <table class="dp-table vt-order-table" data-table-sort="off" data-table-controls="off">
+            <thead><tr><th>Mã đơn</th><th>Chốt lúc</th><th>Người chốt</th><th class="num">Số dòng</th><th class="num">Số vị trí</th><th class="num">Vị trí âm</th></tr></thead>
+            <tbody id="vtOrderHistoryRows"></tbody>
+          </table>
+        </div>
+        <button type="button" class="locations-columns-button" id="vtOrderMore" hidden>Tải thêm</button>
+      </section>
+      <section id="vtOrderDetail" hidden>
+        <div class="dp-table-wrap vt-order-wrap">
+          <table class="dp-table vt-order-table" data-table-sort="off" data-table-controls="off">
+            <thead><tr><th class="num">#</th><th>Tên hàng</th><th>Vị trí</th><th>Ghi chú thùng</th><th class="num">SL xuất</th><th>Tồn VT trước</th><th>Sau khi chốt</th><th></th></tr></thead>
+            <tbody id="vtOrderDetailRows"></tbody>
+          </table>
+        </div>
+        <p class="dp-note" id="vtOrderDetailNote"></p>
+      </section>
+      <div class="vt-dialog-actions">
+        <button type="button" class="locations-columns-button" data-vt-close>Đóng</button>
+        <button type="button" class="locations-columns-button" id="vtOrderBack" hidden>← Quay lại</button>
+        <button type="button" class="locations-columns-button vt-btn-primary" id="vtOrderConfirm" hidden>Chốt đơn</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- Chi tiết một dòng (bấm vào dòng của bảng) -->
   <dialog class="vt-dialog vt-dialog-wide vt-detail" id="vtDetailDialog" aria-labelledby="vtDetailTitle">
     <div class="dp-head vt-detail-head">
@@ -394,7 +453,8 @@
   <script src="/shared/carton.js?v=20261027-1"></script>
   <script src="/shared/search-clear.js?v=20261009-1"></script>
   <script src="/shared/shared-nav.js?v=20261102-stocktake"></script>
-  <script src="/vt-positions/vt-positions.js?v=20261030-1"></script>
+  <script src="/vt-positions/vt-stockout-order.js?v=20261102-1"></script>
+  <script src="/vt-positions/vt-positions.js?v=20261102-1"></script>
   <script>window.addEventListener('DOMContentLoaded', function () { TKSVtPositions.init(); });</script>
   <script src="/shared/shooting-star.js?v=20261019"></script>
 </body>

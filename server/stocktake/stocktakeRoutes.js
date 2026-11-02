@@ -1,6 +1,6 @@
 'use strict';
 
-// /api/stocktake/* — Kiem ke (doi chieu so dem don TEAM voi ton KiotViet), migration 0103.
+// /api/stocktake/* — Kiem ke (doi chieu so dem don TEAM voi ton KiotViet), migration 0105.
 // Xem (.view), sua (.edit) mac dinh chi Quan ly, cap them cho 3 quan ly kiem kho; dong dot / nap sheet (.close) chi Quan ly.
 const express = require('express');
 const { requireAuth, requireFeature } = require('../auth/authMiddleware');

@@ -66,12 +66,14 @@ test('v2 print uses original amounts, keeps ST and prints placement once per cod
 });
 
 test('delivery template has six columns, no prices, and uses saved order data', async () => {
-  const order={schemaVersion:2,orderCode:'DH7',branch:'SG',customerName:'Khách <A>',customerPhone:'0901234567',customerAddress:'Địa chỉ',saleName:'Sale',lines:[{productCode:'A',productName:'Bình',quantity:600,unitPrice:'10',amount:'6000',note:'15th'}]};
+  const order={schemaVersion:2,orderCode:'DH7',branch:'SG',customerName:'Khách <A>',customerPhone:'0901234567',customerAddress:'Địa chỉ',saleName:'Sale',note:'Giao trước 10h <gấp>',lines:[{productCode:'A',productName:'Bình',quantity:600,unitPrice:'10',amount:'6000',note:'15th'}]};
   const record={status:'picking',lines:[{productCode:'A',location:'128',plannedQty:600,stText:'12Tx50'}]};
   const dom=await invoice(order,record);
   try {
     await dom.window.PickingInvoice.show(order,record,'delivery');
     const d=dom.window.document;
+    assert.equal(d.querySelector('.delivery-note').textContent.trim(),'Ghi chú: Giao trước 10h <gấp>','ghi chú lấy từ đơn Kiot, không còn câu cố định');
+    assert.doesNotMatch(d.querySelector('.delivery-slip').textContent,/Quý khách vui lòng/);
     assert.deepEqual(headers(d),['TT','Tên hàng','SL','Vị trí','Thùng','Thực nhặt']);
     assert.match(d.querySelector('.delivery-slip').textContent,/TỔNG KHO GIA DỤNG SÀI GÒN/);
     assert.match(d.querySelector('.delivery-slip').textContent,/Khách <A>/);

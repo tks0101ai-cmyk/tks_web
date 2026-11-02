@@ -51,7 +51,8 @@ test('profile export fields require profile permission and format labels, dates,
 });
 
 test('filterRows khach: mac dinh chi giu khach hoat dong, inactive=1 giu tat ca', () => {
-  const rows = customerRows();
+  // Bao cao khach luon active = true (theo KiotViet); bo loc van ton trong co active tren dong.
+  const rows = [...customerRows(), { key: 'z', name: 'Z', active: false }];
   const active = filterRows('customers', rows, {});
   assert.ok(active.length > 0 && active.every(r => r.active));
   assert.ok(active.length < rows.length);

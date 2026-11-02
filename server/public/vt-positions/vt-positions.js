@@ -18,7 +18,7 @@
   };
   // Đủ cho từ dài nhất của tiêu đề + nút sắp xếp + lề ô (≥ 80px), và cho nội dung cột bẻ dòng được.
   const MIN_WIDTHS = { code: 110, name: 150, quantity: 90, available: 100, kiotQuantity: 90, notes: 130, arrivalDate: 90, location: 80, updated: 140, updatedByName: 120 };
-  const WARNING_LABELS = { multi: 'Nhiều quy cách', loose: 'Trừ lẻ', unreadable: 'Sai định dạng', badnumber: 'Số thùng sai', unknowncode: 'Mã SP lạ' };
+  const WARNING_LABELS = { negative: 'Số lượng âm', multi: 'Nhiều quy cách', loose: 'Trừ lẻ', unreadable: 'Sai định dạng', badnumber: 'Số thùng sai', unknowncode: 'Mã SP lạ' };
   const ACTION_LABELS = {
     seed: 'Nhập dữ liệu đầu', create: 'Thêm dòng', edit: 'Sửa', delete: 'Xóa dòng', auto_delete: 'Tự xóa (hết hàng)',
     deduct: 'Trừ SL', import_replace: 'Import thay toàn bộ', import_add: 'Import bổ sung',
@@ -835,7 +835,7 @@
     const needle = normalizeSearch($('vtImportSearch').value);
     return importState.rows.filter(row => (importState.filter === 'all' || row.kind === importState.filter)
       && (importState.warnFilter === 'all' || (importState.warnFilter === 'error' ? row.kind === 'error' : importWarning(row)))
-      && (!needle || normalizeSearch([row.code, row.name, row.notes, row.location, row.arrivalDate].join(' ')).includes(needle)))
+      && (!needle || (window.TKSFuzzySearch ? window.TKSFuzzySearch.matches([row.code, row.name, row.notes, row.location, row.arrivalDate].join(' '), $('vtImportSearch').value) : normalizeSearch([row.code, row.name, row.notes, row.location, row.arrivalDate].join(' ')).includes(needle))))
       .sort((a, b) => {
         const field = importState.sortField;
         if (!field) return importPriority(b) - importPriority(a);
@@ -1297,6 +1297,11 @@
       if (s.picked !== undefined) parts.push('Nhặt ' + s.picked);
       if ('confirmedBy' in s) parts.push(s.confirmedBy ? 'Xác nhận: ' + s.confirmedBy : 'Job Kiot');
       if (s.fileName) parts.push(s.fileName);
+      // Sửa/thêm/xóa VT ngay trong hộp Chỉ định vị trí của Vòng đời đơn hàng: ghi kèm mã đơn đang chỉ định.
+      if (s.source === 'pick') parts.unshift(s.orderCode ? 'Chỉ định đơn ' + s.orderCode : 'Chỉ định vị trí');
+      // Chốt Đơn xuất kho (migration 0104): mã đơn hiện thành nút mở chi tiết ở historyChange.
+      if (s.source === 'order') parts.unshift('Đơn xuất kho ' + (s.orderCode || ''));
+      if (s.negative === true) parts.push('Âm');
       if (!parts.length && Array.isArray(s.warnings)) return 'Không có cảnh báo';
       return parts.length ? parts.join(' · ') : JSON.stringify(s);
     }
@@ -1370,13 +1375,19 @@
     const box = document.createDocumentFragment();
     const add = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; node.textContent = text; box.appendChild(node); return node; };
     if (entry.summary) {
-      // Xuất kho: giữ cả ghi chú cũ → mới của dòng, rồi tóm tắt (số lượng trừ · file).
-      if (entry.action === 'stock_out') {
+      // Xuất kho và sửa VT từ hộp Chỉ định vị trí (source 'pick'): giữ cả giá trị cũ → mới của dòng, rồi tóm tắt (số lượng trừ · file · Chỉ định đơn X).
+      if (entry.action === 'stock_out' || entry.summary.source === 'pick' || entry.summary.source === 'order') {
         const was = String(entry.oldValue ?? ''), now = String(entry.newValue ?? '');
         if (was) add('del', 'vt-hist-old', was);
         if (was && now) add('span', 'vt-hist-arrow', ' → ');
         if (now) add('ins', 'vt-hist-new', now);
         add('span', 'vt-hist-summary', (was || now ? '  ' : '') + historyValue(entry, 'new'));
+        if (entry.summary.source === 'order' && entry.summary.orderId && window.TKSVtStockOutOrder) {
+          const link = add('button', 'vt-link-button vt-hist-order', 'Xem đơn ' + (entry.summary.orderCode || ''));
+          link.type = 'button';
+          link.title = 'Xem chi tiết đơn xuất kho';
+          link.addEventListener('click', () => window.TKSVtStockOutOrder.openDetail(entry.summary.orderId, entry.branch));
+        }
         return box;
       }
       add('span', 'vt-hist-summary', historyValue(entry, 'new'));
@@ -1869,6 +1880,13 @@
     applyScreenMode(mobileQuery ? mobileQuery.matches : window.innerWidth <= 600);
     if (mobileQuery) mobileQuery.addEventListener('change', event => applyScreenMode(event.matches));
     bindDialogs();
+    // Đơn xuất kho (vt-stockout-order.js): dùng chung request/xác nhận/hộp thoại của trang; chốt đơn xong tải lại bảng.
+    if (window.TKSVtStockOutOrder) {
+      window.TKSVtStockOutOrder.init({
+        branch: () => activeTab.toUpperCase(), request, jsonOptions, confirmBox, notify, openDialog,
+        onChanged: () => selectTab(activeTab)
+      });
+    }
     initImportTable();
     bindTable();
     bindDetail();

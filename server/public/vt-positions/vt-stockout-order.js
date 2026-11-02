@@ -1,0 +1,524 @@
+(function () {
+  'use strict';
+  // Đơn xuất kho của VT Hà Nội / VT Sài Gòn (migration 0104). Mỗi cơ sở có MỘT đơn tạm dùng chung: ghi lại hàng đã bốc thật (gõ theo tên,
+  // gợi ý), CHƯA trừ tồn; bấm "Chốt đơn" (có hộp xác nhận) mới trừ tồn VT, cho phép ra số lượng âm. Đóng tab/mở lại đơn tạm vẫn còn.
+  // Trang vt-positions.js truyền vào các hàm dùng chung (request, confirmBox, openDialog...) qua init(hooks).
+  const API = '/api/stock-positions/stock-out-orders';
+  const SUGGEST_API = '/api/stock-positions/code-suggestions';
+  const POLL_MS = 15000;
+  const NUMBER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 });
+  const state = { hooks: null, branch: '', order: null, canEdit: false, view: 'current', history: [], moreBefore: null, detail: null, returnView: 'history',
+    adding: false, editing: false, busy: false, timer: null, suggestions: [], suggestSeq: 0, suggestTimer: null, loadSeq: 0 };
+
+  const $ = id => document.getElementById(id);
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined && text !== null) node.textContent = text;
+    return node;
+  }
+  const formatNumber = value => (value === null || value === undefined || !Number.isFinite(Number(value)) ? '—' : NUMBER.format(Number(value)));
+  const formatTime = iso => {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '';
+    const pad = n => String(n).padStart(2, '0');
+    return pad(date.getDate()) + '/' + pad(date.getMonth() + 1) + '/' + date.getFullYear() + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes());
+  };
+  const setError = text => { $('vtOrderError').textContent = text || ''; };
+  const keyOf = line => String(line.code).toLowerCase() + '|' + String(line.location).toUpperCase();
+
+  async function call(path, options) {
+    try { return await state.hooks.request(path, options); }
+    catch (error) { return { response: { ok: false, status: 0 }, payload: { error: 'Không kết nối được máy chủ. Vui lòng thử lại.' } }; }
+  }
+
+  // ---------- Tải dữ liệu ----------
+  async function loadCurrent({ quiet = false } = {}) {
+    const seq = ++state.loadSeq;
+    const { response, payload } = await call(API + '/current?branch=' + state.branch);
+    if (seq !== state.loadSeq) return;
+    if (!response.ok) { if (!quiet) setError(payload.error || 'Không tải được đơn xuất kho.'); return; }
+    state.order = payload.order;
+    state.canEdit = payload.canEdit === true;
+    render();
+  }
+  async function loadHistory(append) {
+    const before = append && state.moreBefore ? '&before=' + state.moreBefore : '';
+    const { response, payload } = await call(API + '?branch=' + state.branch + before);
+    if (!response.ok) { setError(payload.error || 'Không tải được lịch sử đơn.'); return; }
+    state.history = append ? state.history.concat(payload.orders) : payload.orders;
+    state.moreBefore = payload.orders.length >= 50 ? payload.orders[payload.orders.length - 1].id : null;
+    render();
+  }
+  async function loadDetail(id) {
+    const { response, payload } = await call(API + '/' + encodeURIComponent(id));
+    if (!response.ok) { setError(payload.error || 'Không tải được đơn.'); return false; }
+    state.detail = payload.order;
+    return true;
+  }
+
+  // ---------- Dựng giao diện ----------
+  function preview(line) { return line.preview || null; }
+
+  function afterCell(line) {
+    const td = el('td', 'vt-order-after');
+    const info = preview(line);
+    if (!info) return td;
+    if (info.blocked) {
+      td.appendChild(el('span', 'vt-order-tag is-error', 'Không trừ được'));
+      td.title = info.reason || '';
+      return td;
+    }
+    td.appendChild(el('span', info.negative ? 'vt-order-neg' : '', info.after));
+    if (info.negative) td.appendChild(el('span', 'vt-order-tag is-neg', 'Âm'));
+    if (info.held > 0) {
+      const tag = el('span', 'vt-order-tag is-held', 'Giữ chỗ ' + formatNumber(info.held));
+      tag.title = 'Vị trí này đang được đơn Đang bốc giữ chỗ';
+      td.appendChild(tag);
+    }
+    return td;
+  }
+
+  function lineRow(line, index, editable) {
+    const tr = el('tr', 'vt-order-row');
+    tr.dataset.lineId = String(line.id);
+    const info = preview(line);
+    tr.appendChild(el('td', 'num', String(index + 1)));
+    const name = el('td', 'vt-order-name');
+    name.appendChild(el('span', 'vt-order-title', line.name || line.code));
+    name.appendChild(el('span', 'vt-order-code', line.code));
+    if (line.source === 'excel') name.appendChild(el('span', 'vt-order-tag', 'Excel'));
+    tr.appendChild(name);
+    const location = el('td', 'vt-order-loc');
+    location.appendChild(el('span', 'vt-pill', line.location));
+    const notes = el('td', 'vt-order-notes', line.notes);
+    if (editable) {
+      [[location, 'location'], [notes, 'notes']].forEach(([cell, field]) => {
+        cell.dataset.editable = 'true';
+        cell.dataset.field = field;
+        cell.title = 'Bấm để sửa';
+        cell.addEventListener('click', () => startEdit(cell, line, field));
+      });
+    }
+    tr.appendChild(location);
+    tr.appendChild(notes);
+    tr.appendChild(el('td', 'num', formatNumber(line.quantity)));
+    tr.appendChild(el('td', 'vt-order-before', info ? (info.missing ? 'Chưa có dòng VT' : info.before) : ''));
+    tr.appendChild(afterCell(line));
+    const actions = el('td', 'vt-order-actions');
+    if (editable) {
+      const remove = el('button', 'vt-row-button', 'Xóa');
+      remove.type = 'button';
+      remove.setAttribute('aria-label', 'Xóa dòng ' + line.code);
+      remove.addEventListener('click', () => removeLine(line));
+      actions.appendChild(remove);
+    }
+    tr.appendChild(actions);
+    return tr;
+  }
+
+  function resultRow(line, index) {
+    const tr = el('tr', 'vt-order-row');
+    const result = line.result || {};
+    tr.appendChild(el('td', 'num', String(index + 1)));
+    const name = el('td', 'vt-order-name');
+    name.appendChild(el('span', 'vt-order-title', line.name || line.code));
+    name.appendChild(el('span', 'vt-order-code', line.code));
+    tr.appendChild(name);
+    const location = el('td', 'vt-order-loc');
+    location.appendChild(el('span', 'vt-pill', line.location));
+    tr.appendChild(location);
+    tr.appendChild(el('td', 'vt-order-notes', line.notes));
+    tr.appendChild(el('td', 'num', formatNumber(line.quantity)));
+    tr.appendChild(el('td', 'vt-order-before', result.created ? 'Chưa có dòng VT' : (result.before || '')));
+    const after = el('td', 'vt-order-after');
+    after.appendChild(el('span', result.negative ? 'vt-order-neg' : '', result.after || ''));
+    if (result.negative) after.appendChild(el('span', 'vt-order-tag is-neg', 'Âm'));
+    tr.appendChild(after);
+    tr.appendChild(el('td', 'vt-order-actions'));
+    return tr;
+  }
+
+  function renderFoot(editable) {
+    const foot = $('vtOrderFoot');
+    foot.replaceChildren();
+    if (!editable) return;
+    const tr = el('tr', 'vt-order-addrow');
+    if (!state.adding) {
+      const td = el('td');
+      td.colSpan = 8;
+      const add = el('button', 'locations-columns-button vt-btn-primary vt-order-add', '+ Thêm dòng');
+      add.type = 'button';
+      add.id = 'vtOrderAdd';
+      add.addEventListener('click', () => { state.adding = true; renderFoot(true); const input = $('vtOrderName'); if (input) input.focus(); });
+      td.appendChild(add);
+      tr.appendChild(td);
+      foot.appendChild(tr);
+      return;
+    }
+    tr.appendChild(el('td', 'num', '+'));
+    const nameTd = el('td');
+    const name = el('input');
+    name.id = 'vtOrderName';
+    name.type = 'text';
+    name.autocomplete = 'off';
+    name.placeholder = 'Gõ tên hoặc mã hàng…';
+    name.setAttribute('list', 'vtOrderSuggestions');
+    name.setAttribute('aria-label', 'Tên hàng');
+    nameTd.appendChild(name);
+    const locTd = el('td');
+    const location = el('input');
+    location.id = 'vtOrderLocation';
+    location.type = 'text';
+    location.autocomplete = 'off';
+    location.placeholder = 'Vị trí';
+    location.setAttribute('aria-label', 'Vị trí');
+    locTd.appendChild(location);
+    const notesTd = el('td');
+    const notes = el('input');
+    notes.id = 'vtOrderNotes';
+    notes.type = 'text';
+    notes.autocomplete = 'off';
+    notes.placeholder = 'Ghi chú thùng, vd 5T x 100';
+    notes.setAttribute('aria-label', 'Ghi chú thùng');
+    notesTd.appendChild(notes);
+    const errorTd = el('td', 'vt-order-add-error');
+    errorTd.colSpan = 3;
+    errorTd.id = 'vtOrderAddError';
+    errorTd.setAttribute('role', 'alert');
+    const actions = el('td', 'vt-order-actions');
+    const save = el('button', 'locations-columns-button vt-btn-primary', 'Lưu');
+    save.type = 'button';
+    save.addEventListener('click', submitAdd);
+    const cancel = el('button', 'locations-columns-button', 'Hủy');
+    cancel.type = 'button';
+    cancel.addEventListener('click', () => { state.adding = false; renderFoot(true); });
+    actions.append(save, cancel);
+    tr.append(nameTd, locTd, notesTd, errorTd, actions);
+    foot.appendChild(tr);
+    name.addEventListener('input', onNameInput);
+    name.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); location.focus(); } });
+    location.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); notes.focus(); } });
+    notes.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); submitAdd(); } });
+    [name, location, notes].forEach(input => input.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); state.adding = false; renderFoot(true); } }));
+  }
+
+  function renderSubtitle() {
+    const order = state.view === 'detail' ? state.detail : state.order;
+    const parts = [state.branch === 'HN' ? 'VT Hà Nội' : 'VT Sài Gòn'];
+    if (state.view === 'history') parts.push('Các đơn đã chốt');
+    else if (order) {
+      parts.push(order.code);
+      if (order.status === 'draft') parts.push('Đơn tạm · tạo bởi ' + (order.createdByName || '—') + ' · chưa trừ tồn');
+      else parts.push('Đã chốt ' + formatTime(order.confirmedAt) + ' bởi ' + (order.confirmedByName || '—'));
+    } else parts.push('Chưa có đơn tạm');
+    $('vtOrderSubtitle').textContent = parts.join(' · ');
+  }
+
+  function render() {
+    const view = state.view;
+    $('vtOrderCurrent').hidden = view !== 'current';
+    $('vtOrderHistory').hidden = view !== 'history';
+    $('vtOrderDetail').hidden = view !== 'detail';
+    document.querySelectorAll('[data-order-view]').forEach(button => {
+      const active = button.dataset.orderView === (view === 'detail' ? state.returnView : view);
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-selected', String(active));
+    });
+    $('vtOrderBack').hidden = view !== 'detail';
+    renderSubtitle();
+    const order = state.order;
+    const editable = state.canEdit && order && order.status === 'draft';
+    $('vtOrderConfirm').hidden = !(view === 'current' && editable);
+    $('vtOrderConfirm').disabled = state.busy || !order || !order.lines.length;
+    $('vtOrderImport').hidden = !(view === 'current' && editable);
+    $('vtOrderTemplate').hidden = $('vtOrderImport').hidden;
+    $('vtOrderHint').textContent = !state.canEdit
+      ? 'Bạn chỉ xem được đơn. Người có quyền sửa VT mới thêm dòng và chốt đơn.'
+      : 'Đơn tạm dùng chung: ghi hàng đã bốc thật (gõ theo tên). Tồn VT chỉ bị trừ khi bấm Chốt đơn; dòng nào trừ quá tồn sẽ thành số âm.';
+
+    if (view === 'current') {
+      const body = $('vtOrderRows');
+      body.replaceChildren();
+      const lines = order ? order.lines : [];
+      lines.forEach((line, index) => body.appendChild(lineRow(line, index, editable)));
+      if (!lines.length) {
+        const tr = el('tr');
+        const td = el('td', 'table-note', order ? 'Đơn chưa có dòng nào. Bấm "+ Thêm dòng" hoặc Import Excel (xuất file hàng ở CONT).' : 'Chưa có đơn tạm.');
+        td.colSpan = 8;
+        tr.appendChild(td);
+        body.appendChild(tr);
+      }
+      if (!state.adding || !$('vtOrderName')) renderFoot(Boolean(editable));
+    } else if (view === 'history') {
+      const body = $('vtOrderHistoryRows');
+      body.replaceChildren();
+      state.history.forEach(item => {
+        const tr = el('tr', 'vt-order-row is-link');
+        tr.tabIndex = 0;
+        tr.title = 'Bấm để xem chi tiết đơn';
+        const stats = item.summary || {};
+        tr.append(el('td', 'vt-order-ordercode', item.code), el('td', '', formatTime(item.confirmedAt)), el('td', '', item.confirmedByName || '—'),
+          el('td', 'num', String(item.lineCount)), el('td', 'num', formatNumber(stats.positions)), el('td', 'num', formatNumber(stats.negative)));
+        const open = () => showDetail(item.id, 'history');
+        tr.addEventListener('click', open);
+        tr.addEventListener('keydown', event => { if (event.key === 'Enter') open(); });
+        body.appendChild(tr);
+      });
+      if (!state.history.length) {
+        const tr = el('tr');
+        const td = el('td', 'table-note', 'Chưa có đơn nào được chốt.');
+        td.colSpan = 6;
+        tr.appendChild(td);
+        body.appendChild(tr);
+      }
+      $('vtOrderMore').hidden = state.moreBefore === null;
+    } else if (view === 'detail' && state.detail) {
+      const body = $('vtOrderDetailRows');
+      body.replaceChildren();
+      state.detail.lines.forEach((line, index) => body.appendChild(state.detail.status === 'confirmed' ? resultRow(line, index) : lineRow(line, index, false)));
+      const stats = state.detail.summary;
+      $('vtOrderDetailNote').textContent = stats
+        ? `${stats.lines} dòng · ${stats.positions} vị trí · trừ ${formatNumber(stats.quantity)} · ${stats.negative} vị trí âm · ${stats.created} dòng VT tạo mới · ${stats.removed} dòng hết hàng đã xóa`
+        : '';
+    }
+  }
+
+  // ---------- Thao tác ----------
+  async function guarded(work) {
+    if (state.busy) return false;
+    state.busy = true;
+    setError('');
+    try { return await work(); }
+    finally { state.busy = false; if (state.order || state.view !== 'current') render(); }
+  }
+
+  async function afterFailure(payload) {
+    if (payload.code === 'VERSION_CONFLICT' || payload.code === 'ORDER_CONFIRMED') {
+      setError(payload.error || 'Đơn đã thay đổi.');
+      await loadCurrent();
+      return;
+    }
+    setError(payload.error || 'Không lưu được thay đổi.');
+  }
+
+  function parseNameInput(text) {
+    const value = String(text || '').trim();
+    const match = /\(([^()]+)\)\s*$/u.exec(value);
+    const code = (match ? match[1] : value).trim();
+    const hit = state.suggestions.find(item => item.code.toLowerCase() === code.toLowerCase());
+    return hit ? { code: hit.code, name: hit.name } : null;
+  }
+
+  async function submitAdd() {
+    const error = $('vtOrderAddError');
+    const picked = parseNameInput($('vtOrderName').value);
+    if (!picked) { error.textContent = 'Hãy chọn hàng trong danh sách gợi ý (gõ tên hoặc mã).'; $('vtOrderName').focus(); return; }
+    const location = $('vtOrderLocation').value.trim();
+    const notes = $('vtOrderNotes').value.trim();
+    if (!location) { error.textContent = 'Vui lòng nhập vị trí.'; $('vtOrderLocation').focus(); return; }
+    if (!notes) { error.textContent = 'Vui lòng nhập ghi chú thùng (vd 5T x 100).'; $('vtOrderNotes').focus(); return; }
+    error.textContent = '';
+    await guarded(async () => {
+      const { response, payload } = await call(API + '/' + state.order.id + '/lines', state.hooks.jsonOptions('POST', { code: picked.code, name: picked.name, location, notes }));
+      if (!response.ok) { error.textContent = payload.error || 'Không thêm được dòng.'; if (payload.code === 'ORDER_CONFIRMED') await afterFailure(payload); return false; }
+      state.suggestions = [];
+      state.adding = true;
+      await loadCurrent();
+      renderFoot(true);
+      const name = $('vtOrderName');
+      if (name) name.focus();
+      return true;
+    });
+  }
+
+  function startEdit(cell, line, field) {
+    if (state.editing || state.busy) return;
+    state.editing = true;
+    const input = el('input', 'vt-order-inline');
+    input.type = 'text';
+    input.value = line[field];
+    input.setAttribute('aria-label', field === 'notes' ? 'Ghi chú thùng' : 'Vị trí');
+    const original = cell.textContent;
+    cell.replaceChildren(input);
+    input.focus();
+    input.select();
+    let done = false;
+    const finish = async save => {
+      if (done) return;
+      done = true;
+      state.editing = false;
+      const value = input.value.trim();
+      if (!save || value === line[field] || !value) { render(); return; }
+      await guarded(async () => {
+        const { response, payload } = await call(API + '/lines/' + line.id, state.hooks.jsonOptions('PATCH', { [field]: value, version: line.version }));
+        if (!response.ok) { await afterFailure(payload); return false; }
+        await loadCurrent();
+        return true;
+      });
+    };
+    input.addEventListener('keydown', event => {
+      if (event.key === 'Enter') { event.preventDefault(); finish(true); }
+      else if (event.key === 'Escape') { event.stopPropagation(); finish(false); }
+    });
+    input.addEventListener('blur', () => finish(true));
+    cell.dataset.original = original;
+  }
+
+  async function removeLine(line) {
+    await guarded(async () => {
+      const { response, payload } = await call(API + '/lines/' + line.id + '?version=' + encodeURIComponent(line.version), { method: 'DELETE' });
+      if (!response.ok) { await afterFailure(payload); return false; }
+      await loadCurrent();
+      return true;
+    });
+  }
+
+  async function importFile(file) {
+    if (!file) return;
+    await guarded(async () => {
+      const form = new window.FormData();
+      form.append('file', file, file.name);
+      const { response, payload } = await call(API + '/' + state.order.id + '/import', { method: 'POST', body: form });
+      if (!response.ok) { await afterFailure(payload); return false; }
+      const counts = payload.counts || {};
+      const skipped = payload.errors || [];
+      state.hooks.notify(`Đã nạp ${counts.added || 0} dòng từ ${payload.fileName || 'file'} vào đơn xuất kho` + (counts.skipped ? `, bỏ qua ${counts.skipped} dòng sai` : '') + '.', counts.skipped > 0);
+      if (skipped.length) setError('Dòng bị bỏ qua: ' + skipped.slice(0, 5).map(item => `dòng ${item.row} (${item.code || '?'}): ${item.message}`).join('; ') + (skipped.length > 5 ? '…' : ''));
+      await loadCurrent();
+      return true;
+    });
+  }
+
+  // Tóm tắt trước khi chốt: mỗi (mã, vị trí) chỉ tính một lần theo kết quả cuối cùng của nhóm.
+  function confirmMessage(order) {
+    const last = new Map();
+    order.lines.forEach(line => last.set(keyOf(line), line));
+    const groups = [...last.values()];
+    const label = line => (line.name || line.code) + ' @ ' + line.location;
+    const negatives = groups.filter(line => preview(line) && preview(line).negative);
+    const missing = groups.filter(line => preview(line) && preview(line).missing);
+    const held = groups.filter(line => preview(line) && preview(line).held > 0 && preview(line).quantity < preview(line).held);
+    const list = items => items.slice(0, 5).map(label).join('; ') + (items.length > 5 ? '…' : '');
+    const text = [`Chốt đơn ${order.code}: ${order.lines.length} dòng, ${groups.length} vị trí sẽ bị TRỪ tồn thật. Không hoàn tác được.`];
+    if (negatives.length) text.push(`• ${negatives.length} vị trí sẽ ra số ÂM: ${list(negatives)}`);
+    if (missing.length) text.push(`• ${missing.length} vị trí chưa có dòng VT, sẽ tạo mới với số âm: ${list(missing)}`);
+    if (held.length) text.push(`• ${held.length} vị trí đang được đơn Đang bốc giữ chỗ, tồn sau chốt thấp hơn phần giữ: ${list(held)}`);
+    return text.join('\n');
+  }
+
+  async function confirmOrder() {
+    const order = state.order;
+    if (!order || !order.lines.length || state.busy) return;
+    if (!await state.hooks.confirmBox(confirmMessage(order), 'Chốt đơn')) return;
+    await guarded(async () => {
+      const { response, payload } = await call(API + '/' + order.id + '/confirm', state.hooks.jsonOptions('POST', { version: order.version }));
+      if (!response.ok) { await afterFailure(payload); return false; }
+      const stats = payload.stats || {};
+      state.hooks.notify(`Đã chốt đơn ${order.code}: trừ ${formatNumber(stats.quantity)} tại ${stats.positions || 0} vị trí` + (stats.negative ? `, ${stats.negative} vị trí âm` : '') + '.');
+      state.adding = false;
+      await loadCurrent();
+      if (state.hooks.onChanged) await state.hooks.onChanged();
+      return true;
+    });
+  }
+
+  // ---------- Gợi ý theo tên ----------
+  function onNameInput(event) {
+    clearTimeout(state.suggestTimer);
+    const term = event.target.value.trim();
+    state.suggestTimer = setTimeout(async () => {
+      if (!term || /\([^()]+\)\s*$/u.test(term)) return;
+      const seq = ++state.suggestSeq;
+      const { response, payload } = await call(SUGGEST_API + '?branch=' + state.branch + '&q=' + encodeURIComponent(term));
+      if (seq !== state.suggestSeq || !response.ok) return;
+      state.suggestions = Array.isArray(payload.items) ? payload.items : [];
+      const list = $('vtOrderSuggestions');
+      list.replaceChildren(...state.suggestions.map(item => { const option = el('option'); option.value = (item.name || item.code) + ' (' + item.code + ')'; return option; }));
+    }, 200);
+  }
+
+  // ---------- Chuyển màn hình ----------
+  async function setView(view) {
+    state.view = view;
+    setError('');
+    if (view === 'history') { render(); await loadHistory(false); }
+    else if (view === 'current') { render(); await loadCurrent(); }
+  }
+
+  async function showDetail(id, returnView) {
+    state.returnView = returnView || 'history';
+    if (!await loadDetail(id)) return;
+    state.view = 'detail';
+    render();
+  }
+
+  function downloadTemplate() {
+    const csv = '﻿Mã hàng,Ghi chú,Vị trí\r\nVASNAM,1T x 50,CONT\r\n';
+    const url = URL.createObjectURL(new window.Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'mau-don-xuat-kho.csv';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function startPolling() {
+    stopPolling();
+    state.timer = setInterval(() => {
+      const dialog = $('vtOrderDialog');
+      if (!dialog.open && !dialog.hasAttribute('open')) { stopPolling(); return; }
+      if (state.view !== 'current' || state.adding || state.editing || state.busy) return;
+      loadCurrent({ quiet: true });
+    }, POLL_MS);
+  }
+  function stopPolling() { clearInterval(state.timer); state.timer = null; }
+
+  async function open() {
+    state.branch = state.hooks.branch();
+    state.view = 'current';
+    state.adding = false;
+    state.editing = false;
+    state.order = null;
+    state.suggestions = [];
+    setError('');
+    render();
+    state.hooks.openDialog($('vtOrderDialog'));
+    startPolling();
+    await loadCurrent();
+  }
+
+  // Mở chi tiết một đơn đã chốt từ liên kết mã đơn trong Lịch sử cập nhật của VT.
+  async function openDetail(id, branch) {
+    state.branch = branch || state.hooks.branch();
+    state.adding = false;
+    state.editing = false;
+    state.returnView = 'history';
+    setError('');
+    if (!await loadDetail(id)) { state.hooks.notify('Không mở được đơn xuất kho.', true); return; }
+    state.canEdit = false;
+    state.view = 'detail';
+    render();
+    const dialog = $('vtOrderDialog');
+    if (!(dialog.open || dialog.hasAttribute('open'))) state.hooks.openDialog(dialog);
+  }
+
+  function init(hooks) {
+    state.hooks = hooks;
+    const button = $('vtOrderButton');
+    if (!button) return;
+    button.addEventListener('click', open);
+    document.querySelectorAll('[data-order-view]').forEach(tab => tab.addEventListener('click', () => setView(tab.dataset.orderView)));
+    $('vtOrderBack').addEventListener('click', () => { state.view = state.returnView === 'current' ? 'current' : 'history'; render(); if (state.view === 'history' && !state.history.length) loadHistory(false); });
+    $('vtOrderConfirm').addEventListener('click', confirmOrder);
+    $('vtOrderMore').addEventListener('click', () => loadHistory(true));
+    $('vtOrderImport').addEventListener('click', () => $('vtOrderFile').click());
+    $('vtOrderFile').addEventListener('change', event => { const file = event.target.files && event.target.files[0]; event.target.value = ''; importFile(file); });
+    $('vtOrderTemplate').addEventListener('click', downloadTemplate);
+    $('vtOrderDialog').addEventListener('close', () => { stopPolling(); state.adding = false; state.editing = false; });
+  }
+
+  window.TKSVtStockOutOrder = { init, open, openDetail, confirmMessage };
+})();

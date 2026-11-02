@@ -13,13 +13,18 @@ const ACTION_LABELS = Object.freeze({
 });
 const FIELD_LABELS = Object.freeze({ code: 'Mã hàng', name: 'Tên hàng', notes: 'Ghi chú', arrivalDate: 'Ngày về', location: 'Vị trí', quantity: 'Số lượng' });
 const SUMMARY_KEYS = Object.freeze([['added', 'Thêm'], ['updated', 'Đổi'], ['deleted', 'Xóa'], ['skippedEmpty', 'Bỏ qua']]);
-const WARNING_LABELS = Object.freeze({ multi: 'Nhiều quy cách', loose: 'Trừ lẻ', unreadable: 'Sai định dạng', badnumber: 'Số thùng sai', unknowncode: 'Mã SP lạ' });
+const WARNING_LABELS = Object.freeze({ negative: 'Số lượng âm', multi: 'Nhiều quy cách', loose: 'Trừ lẻ', unreadable: 'Sai định dạng', badnumber: 'Số thùng sai', unknowncode: 'Mã SP lạ' });
 const vnDate = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
 // Tom tat dong import (cot "Tom tat"): "Them 3 · Doi 1 · 12 dong · file.xlsx".
 function summaryText(summary) {
   if (!summary || typeof summary !== 'object') return '';
   const parts = [];
+  // Ghi tu hop Chi dinh vi tri (Vong doi don hang): { source: 'pick', orderCode } (+ merged/added khi Them trung vi tri).
+  if (summary.source === 'pick') parts.push(`Chỉ định đơn ${summary.orderCode || ''}`.trim());
+  // Chốt Đơn xuất kho (migration 0104): { source: 'order', orderId, orderCode }.
+  if (summary.source === 'order') parts.push(`Đơn xuất kho ${summary.orderCode || ''}`.trim());
+  if (summary.negative === true) parts.push('Âm');
   for (const [key, label] of SUMMARY_KEYS) if (summary[key] !== undefined) parts.push(`${label} ${summary[key]}`);
   if (summary.rows !== undefined) parts.push(`${summary.rows} dòng`);
   if ('from' in summary || 'to' in summary) {

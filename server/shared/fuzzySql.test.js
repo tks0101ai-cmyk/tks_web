@@ -24,3 +24,16 @@ test('chạy thật trên Postgres: cùng kết quả với luật JS', async ()
     assert.deepEqual(await run(q), expected, q);
   }
 });
+
+test('SQL: mọi từ phải khớp, cùng kết quả JS (không còn ngưỡng 80%)', async () => {
+  const db = new PGlite();
+  const texts = ['a b c d e', 'a b c d', 'e d c b a x'];
+  for (const q of ['a b c d e', 'a b c d e zzz', 'x a']) {
+    const params = [];
+    const p = fuzzySqlParts('t', q, (v) => { params.push(v); return `$${params.length}`; });
+    const { rows } = await db.query(`SELECT i FROM (SELECT * FROM unnest($${params.length + 1}::text[]) WITH ORDINALITY AS x(t,i)) s(t,i) WHERE ${p.where} ORDER BY i`, [...params, texts]);
+    const expected = texts.map((t, i) => [t, i]).filter(([t]) => fuzzy.matches(t, q)).map(([, i]) => i);
+    assert.deepEqual(rows.map((r) => Number(r.i) - 1), expected, q);
+  }
+  assert.deepEqual((await (async () => { const params = []; const p = fuzzySqlParts('t', 'a b c d e zzz', (v) => { params.push(v); return `$${params.length}`; }); return db.query(`SELECT 1 FROM (SELECT $${params.length + 1}::text AS t) s WHERE ${p.where}`, [...params, 'a b c d e']); })()).rows, []);
+});

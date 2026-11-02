@@ -361,3 +361,37 @@ test('cùng SL/thùng gộp kể cả khi cách nhau: 9X12+1Tx20+1TX12 = 10T x 1
   assert.equal(C.pickText(spec,120),'10Tx12');
   assert.equal(C.deduct(spec,20).text,'10T x 12');
 });
+test('mergeNotes cộng dồn ghi chú (gõ "+1T x 50" trong hộp Chỉ định vị trí): giữ phần trừ lẻ ở cuối, gộp cùng quy cách',()=>{
+  assert.equal(C.mergeNotes('3T x 100 - 20','1T x 50'),'3T x 100 + 1T x 50 - 20');
+  assert.equal(C.mergeNotes('3T x 100','1t*100'),'4T x 100');
+  assert.equal(C.mergeNotes('60','1T x 60'),'2T x 60','số trần = 1 thùng');
+  assert.equal(C.mergeNotes('5T x 100 - 30','2T x 50 - 10'),'5T x 100 + 2T x 50 - 40');
+  assert.equal(C.mergeNotes('rác','1T x 5'),null);
+  assert.equal(C.mergeNotes('1T x 5','rác'),null);
+  assert.equal(C.parseSpec(C.mergeNotes('3T x 100 - 20','1T x 50')).quantity,330);
+});
+
+test('số âm: parseSigned đọc "-2T x 100" = -200 còn parseSpec vẫn từ chối',()=>{
+  assert.equal(C.parseSpec('-2T x 100'),null);
+  const s=C.parseSigned('-2T x 100');assert.equal(s.quantity,-200);assert.equal(s.negative,true);
+  assert.equal(C.parseSigned('5T x 100').quantity,500);
+  for(const bad of ['- 30','-','-0T x 5','-abc'])assert.equal(C.parseSigned(bad),null,bad);
+  assert.equal(C.normalizeNote('- 2t*100'),'-2T x 100');
+  assert.deepEqual(C.warnings('-2T x 100'),['negative']);
+});
+test('số âm: subtractNotes trừ quá tồn ra dòng âm, đủ tồn thì trừ thông minh',()=>{
+  assert.deepEqual(C.subtractNotes('5T x 100',700,100),{text:'-2T x 100',quantity:-200});
+  assert.deepEqual(C.subtractNotes('5T x 100',150,100),{text:'5T x 100 - 150',quantity:350});
+  assert.equal(C.subtractNotes('5T x 100',500,100).text,'Hết hàng');
+  assert.equal(C.subtractNotes('Hết hàng',150,50).text,'-3T x 50');
+  assert.equal(C.subtractNotes('Hết hàng',70,100).text,'-1T x 70','không chẵn quy cách thì ghi một thùng thiếu');
+  assert.equal(C.subtractNotes('-2T x 100',100,100).text,'-3T x 100','đang âm thì âm thêm');
+  assert.equal(C.subtractNotes('abc',10),null);
+});
+test('số âm: mergeNotes tự bù khi cộng hàng vào dòng âm',()=>{
+  assert.equal(C.mergeNotes('-2T x 100','5T x 100'),'3T x 100');
+  assert.equal(C.mergeNotes('-2T x 100','1T x 100'),'-1T x 100');
+  assert.equal(C.mergeNotes('-2T x 100','2T x 100'),'Hết hàng');
+  assert.equal(C.mergeNotes('-2T x 100','-1T x 100'),'-3T x 100');
+  assert.equal(C.mergeNotes('3T x 100','1T x 50'),'3T x 100 + 1T x 50','không âm thì giữ hành vi cũ');
+});

@@ -1,0 +1,40 @@
+/* Hộp Đơn xuất kho của trang VT (vt-stockout-order.js). Chỉ dùng biến màu của shared.css nên đúng cả Sáng/Tối. */
+.vt-order{width:min(1100px,calc(100vw - 32px))}
+.vt-order .dp-body{display:flex;flex-direction:column;gap:12px}
+.vt-order-tabs{display:flex;gap:6px;border-bottom:1px solid var(--border)}
+.vt-order-tabs button{padding:8px 14px;border:0;border-bottom:2px solid transparent;background:none;color:var(--muted);font:600 13px var(--font-body);cursor:pointer}
+.vt-order-tabs button:hover{color:var(--text)}
+.vt-order-tabs button.is-active{color:var(--blue);border-bottom-color:var(--blue)}
+.vt-order-tabs button:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.vt-order-tools{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+.vt-order-tools .dp-note{flex:1 1 320px;margin:0}
+.vt-order-tools [hidden]{display:none}
+.vt-order-wrap{max-height:min(56vh,520px);overflow:auto}
+.vt-order-table{width:100%;min-width:760px}
+.vt-order-table th.num,.vt-order-table td.num{text-align:right;font-variant-numeric:tabular-nums}
+.vt-order-table td{vertical-align:middle}
+.vt-order-name{min-width:200px}
+.vt-order-title{display:block;font-weight:600}
+.vt-order-code{display:inline-block;margin-right:6px;color:var(--muted);font:600 11.5px var(--font-data)}
+.vt-order-notes,.vt-order-before{font-variant-numeric:tabular-nums}
+.vt-order-before{color:var(--muted)}
+.vt-order-actions{text-align:right;white-space:nowrap}
+.vt-order-row td[data-editable="true"]{cursor:text}
+.vt-order-row td[data-editable="true"]:hover{background:var(--surface-hover)}
+.vt-order-row.is-link{cursor:pointer}
+.vt-order-row.is-link:hover,.vt-order-row.is-link:focus-visible{background:var(--surface-hover);outline:none}
+.vt-order-ordercode{font:700 12.5px var(--font-data);color:var(--blue)}
+input.vt-order-inline,.vt-order-addrow input{box-sizing:border-box;width:100%;min-height:34px;padding:6px 9px;border:1px solid var(--blue);border-radius:var(--radius-sm);background:var(--panel-2);color:var(--text);font:13px var(--font-body)}
+.vt-order-addrow td{padding-top:10px;background:color-mix(in srgb,var(--blue) 6%,transparent)}
+.vt-order-add-error{color:var(--red);font-size:12.5px}
+.vt-order-add-error:empty{padding:0}
+.vt-order-tag{display:inline-block;margin-left:6px;padding:1px 7px;border:1px solid var(--border);border-radius:999px;background:var(--panel-2);color:var(--muted);font:600 11px var(--font-body);white-space:nowrap}
+.vt-order-tag.is-neg,.vt-order-tag.is-error{border-color:var(--red);color:var(--red);background:color-mix(in srgb,var(--red) 10%,transparent)}
+.vt-order-tag.is-held{border-color:var(--amber);color:var(--amber);background:color-mix(in srgb,var(--amber) 12%,transparent)}
+.vt-order-neg{color:var(--red);font-weight:700}
+@media (max-width:600px){
+  .vt-order{width:calc(100vw - 16px)}
+  .vt-order-wrap{max-height:50vh}
+}
+/* Hộp xác nhận chốt đơn liệt kê nhiều dòng (mỗi ý một dòng). */
+#vtConfirmMessage{white-space:pre-line}

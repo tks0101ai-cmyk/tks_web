@@ -1,6 +1,6 @@
 'use strict';
 
-// Kiem ke (doi chieu), migration 0103. So dem tinh truc tiep tu don dat hang cua khach "TEAM..." trong khoang ngay
+// Kiem ke (doi chieu), migration 0105. So dem tinh truc tiep tu don dat hang cua khach "TEAM..." trong khoang ngay
 // cua dot (ca don da huy) + phan sua tren web; ton/gia von la ton hien tai cua products. Dong dot -> chup ket qua.
 // Moi lenh ghi: 1 giao dich, khoa dong + so version (lech -> 409 kem ban moi), ghi stocktake_history cung giao dich.
 const { getPool } = require('../db/pool');

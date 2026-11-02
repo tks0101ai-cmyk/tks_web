@@ -257,11 +257,11 @@ test('Cần nhặt sửa tay: ô nhập số, dòng đỏ theo SL đã sửa, hi
   setNeed('0');
   assert.match(text(page, 'pickingStatus'), /nguyên dương/u);
   assert.equal(need().value, '50');
-  // Chỉ định gửi needs (chỉ mã đã sửa khác Kiot) và phân bổ theo SL mới; SL sửa sẽ GHI LÊN KIOT nên phải xác nhận trước.
+  // Chỉ định gửi needs (chỉ mã đã sửa khác Kiot) và phân bổ theo SL mới; SL sửa chỉ lưu trong chỉ định, không hỏi ghi lên Kiot.
   let askedText = '';
   page.window.confirm = message => { askedText = message; return true; };
   await click(page, 'pickingConfirm');
-  assert.match(askedText, /Ghi lên đơn KiotViet[\s\S]*A: 100 → 50/u);
+  assert.equal(askedText, '', 'không còn hỏi ghi lên đơn KiotViet');
   assert.equal(page.store.posted.length, 1);
   assert.deepEqual(page.store.posted[0].needs, { A: 50 });
   assert.deepEqual(page.store.posted[0].allocations, [{ productCode: 'A', positionId: 11, qty: 50 }]);
@@ -539,6 +539,7 @@ test('Đã hủy chỉ định mới ngay (không reassign); Đang nhặt đổi
   const store = newStore({ assignment: makeAssignment('picking', { version: 3 }) });
   const picking = await renderPage({ orders: [orderRow('DH1', { pickStatus: 'picking' })], store });
   await openPopup(picking);
+  assert.equal(picking.document.getElementById('openPickingBtn').textContent, 'Thay đổi chỉ định');
   await makeDirty(picking);
   await click(picking, 'pickingConfirm');
   assert.equal(store.posted.length, 1);
@@ -954,7 +955,7 @@ test('after printing or cancelling the browser print dialog returns to the lifec
 });
 
 
-test('sort lựa chọn theo chữ/số/vị trí, giữ phân bổ và in cả hai mẫu theo thứ tự đang chọn', async () => {
+test('sort lựa chọn theo chữ/số/vị trí, giữ phân bổ và in cả hai mẫu theo đúng thứ tự đang sort', async () => {
   const ls=[{productCode:'B',productName:'Bình',note:'Z',quantity:20,price:1000},{productCode:'A',productName:'Ấm',note:'A',quantity:100,price:1000},{productCode:'C',productName:'Chén',note:'M',quantity:3,price:1000}];
   const locations=['A10','A2','B1'];
   const jobs=ls.map((l,i)=>({productCode:l.productCode,positionId:i+11,location:locations[i],plannedQty:l.quantity,stCartons:l.quantity,stText:l.quantity+'Tx1'}));
@@ -983,9 +984,9 @@ test('sort lựa chọn theo chữ/số/vị trí, giữ phân bổ và in cả 
     const input=d.querySelector('#pickingRows tr:first-child [data-qty]');assert.equal(input.dataset.qline,'2');
     await click(page,'pickingReprint');
     const printed=()=>[...d.querySelectorAll('.invoice-goods tbody tr')].map(r=>r.cells[1].textContent.trim());
-    assert.deepEqual(printed(),['Bình','Ấm','Chén'],'phiếu in giữ thứ tự Kiot dù hộp đang sort');
+    assert.deepEqual(printed(),['Chén','Bình','Ấm'],'phiếu in theo thứ tự đang sort (Mã hàng giảm dần)');
     assert.deepEqual([...d.querySelectorAll('.invoice-goods tbody tr')].map(r=>r.cells[0].textContent.trim()),['1','2','3']);
-    await w.PickingInvoice.changeTemplate('delivery');assert.deepEqual(printed(),['Bình','Ấm','Chén']);
+    await w.PickingInvoice.changeTemplate('delivery');assert.deepEqual(printed(),['Chén','Bình','Ấm']);
     assert.deepEqual(store.assignment.snapshot.lines.map(l=>l.productCode),['B','A','C']);
     input.value='2';input.dispatchEvent(new w.Event('change',{bubbles:true}));await settle();
     assert.equal(w.TKSPick._state.allocations[2][0].quantity,2,'sửa hàng đã sort vẫn trỏ đúng mã C');
@@ -996,7 +997,7 @@ test('sort lựa chọn theo chữ/số/vị trí, giữ phân bổ và in cả 
 });
 
 
-test('Xác nhận & In giữ thứ tự Kiot dù hộp đang sort',async()=>{
+test('Xác nhận & In theo thứ tự đang sort trong hộp; không sort thì theo thứ tự Kiot',async()=>{
   const ls=[{productCode:'B',productName:'Bình',quantity:20,price:1000},{productCode:'A',productName:'Ấm',quantity:100,price:1000}];
   const store=newStore();store.order.lines=ls;
   store.candidates={b:[position(12,'B1','20T x 1',20,{code:'B'})],a:[position(11,'A1','100T x 1',100)]};
@@ -1012,6 +1013,12 @@ test('Xác nhận & In giữ thứ tự Kiot dù hộp đang sort',async()=>{
     await click(page,'pickingConfirm');
     assert.equal(store.posted.length,1);
     assert.deepEqual(store.posted[0].allocations.map(p=>[p.productCode,p.qty]),[['B',20],['A',100]]);
+    assert.deepEqual([...page.document.querySelectorAll('.invoice-goods tbody tr')].map(r=>r.cells[1].textContent.trim()),['Ấm','Bình'],'sort Mã hàng tăng dần');
+    // Mở lại (hết sort) rồi In lại: về thứ tự Kiot.
+    store.assignment=makeAssignment('picking',{snapshot:{lines:ls},lines:[{productCode:'B',positionId:12,location:'B1',plannedQty:20,stCartons:20,stText:'20Tx1'},{productCode:'A',positionId:11,location:'A1',plannedQty:100,stCartons:100,stText:'100Tx1'}]});
+    page.document.getElementById('pickingPrintClose').click();
+    await page.window.TKSPick.open(store.order);await settle();
+    await click(page,'pickingReprint');
     assert.deepEqual([...page.document.querySelectorAll('.invoice-goods tbody tr')].map(r=>r.cells[1].textContent.trim()),['Bình','Ấm']);
   }finally{page.dom.window.close();}
 });
@@ -1056,17 +1063,17 @@ test('kéo-thả đổi thứ tự dòng: bảng và phiếu in theo thứ tự 
   }finally{page.dom.window.close();}
 });
 
-test('Xóa dòng hàng: hỏi xác nhận, POST order-lines/remove, tải lại đơn, đơn còn một mã thì không có nút Xóa', async () => {
+test('Xóa dòng chỉ bỏ mã khỏi chỉ định: không gọi máy chủ ngay, gửi removed khi lưu, ↺ hoàn tác, mở lại khôi phục mã đã bỏ', async () => {
   const ls=[{productCode:'A',productName:'Ấm',quantity:100,price:1000},{productCode:'B',productName:'Bình',quantity:20,price:1000}];
   const store=newStore();store.order.lines=ls;store.assignment=null;
   store.candidates={a:[position(11,'A1','100T x 1',100)],b:[position(12,'B1','20T x 1',20,{code:'B'})]};
-  const removed=[];
+  const calls=[];
   const page=await renderPage({store,fetchImpl:async(url,options)=>{
-    if(url==='/api/shipment/pick/order-lines/remove'){
-      removed.push(JSON.parse(options.body));
-      if(store.removeError)return json(store.removeError,422);
-      store.order.lines=store.order.lines.filter(l=>l.productCode!==removed.at(-1).productCode);
-      return json({changed:true,assignment:null});
+    calls.push(url);
+    if(url==='/api/shipment/pick'&&options.method==='POST'){
+      const body=JSON.parse(options.body);store.posted.push(body);
+      store.assignment=makeAssignment('picking',{snapshot:{lines:ls.filter(l=>!(body.removed||[]).includes(l.productCode))},lines:[{productCode:'B',positionId:12,location:'B1',plannedQty:20,stCartons:20,stText:'20Tx1'}]});
+      return json({assignment:store.assignment},201);
     }
   }});
   try{
@@ -1074,24 +1081,34 @@ test('Xóa dòng hàng: hỏi xác nhận, POST order-lines/remove, tải lại 
     const d=page.document,w=page.window;
     const codes=()=>[...d.querySelectorAll('#pickingRows tr')].map(r=>r.querySelector('.picking-code-text').textContent);
     assert.equal(d.querySelectorAll('[data-remove-line]').length,2);
+    assert.equal(d.getElementById('pickingRemoved').hidden,true);
     let asked='';w.confirm=message=>{asked=message;return false;};
     d.querySelector('[data-remove-line="0"]').click();await settle();
-    assert.equal(removed.length,0,'không đồng ý thì không gọi máy chủ');
-    assert.match(asked,/KiotViet[\s\S]*A · Ấm[\s\S]*KHÔNG hoàn tác/u);
-    // Kiot từ chối: giữ nguyên bảng, báo lỗi.
-    store.removeError={error:'KiotViet không cho sửa đơn này: Đơn đã hoàn thành',code:'KIOT_REJECTED'};
+    assert.deepEqual(codes(),['A','B'],'không đồng ý thì giữ nguyên');
+    assert.match(asked,/A · Ấm[\s\S]*không bị sửa/u);
+    const before=calls.length;
     w.confirm=()=>true;
     d.querySelector('[data-remove-line="0"]').click();await settle();
-    assert.deepEqual(codes(),['A','B']);
-    assert.match(text(page,'pickingStatus'),/Đơn đã hoàn thành/u);
-    assert.equal(d.getElementById('pickingStatus').dataset.error,'true');
-    // Thành công.
-    store.removeError=null;
-    d.querySelector('[data-remove-line="0"]').click();await settle();
-    assert.deepEqual(removed.map(r=>[r.branch,r.orderCode,r.productCode]).at(-1),['HN','DH1','A']);
+    assert.equal(calls.length,before,'bỏ dòng không gọi máy chủ');
     assert.deepEqual(codes(),['B']);
-    assert.match(text(page,'pickingStatus'),/Đã xóa A khỏi đơn KiotViet/u);
-    assert.equal(d.querySelectorAll('[data-remove-line]').length,0,'đơn còn một mã hàng không xóa được nữa');
+    assert.equal(d.querySelectorAll('[data-remove-line]').length,0,'còn một mã thì không bỏ được nữa');
+    assert.equal(d.getElementById('pickingRemoved').hidden,false);
+    // Hoàn tác rồi bỏ lại.
+    d.querySelector('[data-restore-line="A"]').click();await settle();
+    assert.deepEqual(codes(),['A','B']);
+    assert.ok(w.TKSPick._state.allocations[0].length,'mã khôi phục được gợi ý lại vị trí');
+    d.querySelector('[data-remove-line="0"]').click();await settle();
+    await click(page,'pickingConfirm');
+    assert.equal(store.posted.length,1);
+    assert.deepEqual(store.posted[0].removed,['A']);
+    assert.deepEqual(store.posted[0].allocations.map(p=>p.productCode),['B']);
+    assert.equal(calls.some(url=>url.includes('order-lines')),false);
+    assert.deepEqual([...d.querySelectorAll('.invoice-goods tbody tr')].map(r=>r.cells[1].textContent.trim()),['Bình'],'phiếu in không có mã đã bỏ');
+    // Mở lại: mã có trên đơn Kiot nhưng không có trong snapshot -> vẫn là đã bỏ, không bẩn.
+    d.getElementById('pickingPrintClose').click();
+    await w.TKSPick.open(store.order);await settle();
+    assert.deepEqual(codes(),['B']);
+    assert.equal(d.getElementById('pickingReprint').disabled,false,'mở lại không tính là thay đổi chưa lưu');
   }finally{page.dom.window.close();}
 });
 

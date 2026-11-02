@@ -40,7 +40,7 @@ const deliveryTemplate=`<div class="delivery-heading"><strong class="delivery-ti
 <table class="invoice-goods" data-table-controls="off" data-table-sort="off"><colgroup><col style="width:5%"><col style="width:39%"><col style="width:8%"><col style="width:14%"><col style="width:18%"><col style="width:16%"></colgroup>
 <thead><tr><td>TT</td><td>Tên hàng</td><td>SL</td><td>Vị trí</td><td>Thùng</td><td>Thực nhặt</td></tr></thead>
 <tbody><tr><td>{STT}</td><td>{Ten_Hang_Hoa_Don_Gian}</td><td>{So_Luong}</td><td class="invoice-location">{Vi_Tri_Hang_Hoa}</td><td class="invoice-st">{ST}</td><td class="invoice-actual">{Thuc_Te_Nhat}</td></tr></tbody></table>
-<table class="invoice-layout-table delivery-note" data-print-table="deliveryNote" data-table-controls="off" data-table-sort="off"><colgroup><col style="width:100%"></colgroup><tbody><tr><td><strong><u>Quý khách vui lòng kiểm tra hàng khi nhận, gọi trước cho khách, báo sale thu tiền.</u></strong></td></tr></tbody></table>
+<table class="invoice-layout-table delivery-note" data-print-table="deliveryNote" data-table-controls="off" data-table-sort="off"><colgroup><col style="width:100%"></colgroup><tbody><tr><td><strong><u>Ghi chú: {Ghi_Chu}</u></strong></td></tr></tbody></table>
 <table class="invoice-layout-table delivery-signatures" data-print-table="deliverySignatures" data-table-controls="off" data-table-sort="off"><colgroup><col style="width:30%"><col style="width:30%"><col style="width:40%"></colgroup><tbody><tr><td><strong>Người nhận hàng</strong></td><td><strong>Nhân viên nhặt hàng</strong></td><td><em>Ngày {Ngay} tháng {Thang} năm {Nam}</em><br><strong>Nhân viên xuất hàng</strong></td></tr></tbody></table>`;
 let currentPrint=null;
 
@@ -62,7 +62,7 @@ function loadAssets(){
   if(window.PickingInvoiceTemplate&&window.PickingPrintCSS)return Promise.resolve();
   if(!assetsPromise){
     assetsPromise=(async()=>{
-      const [template,css]=await Promise.all([fetchText(BASE+'order-template.tpl?v=20261029-7'),fetchText(BASE+'invoice-a4.css?v=20261029-7')]);
+      const [template,css]=await Promise.all([fetchText(BASE+'order-template.tpl?v=20261029-7'),fetchText(BASE+'invoice-a4.css?v=20261102-1')]);
       let out=template;
       for(const id of new Set([...template.matchAll(CDN)].map(m=>m[1]))){
         const uri=await dataUri(BASE+'invoice-assets/'+id+'.jpg');
