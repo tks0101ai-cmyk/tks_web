@@ -51,13 +51,13 @@ function debtPayload(canEditStatus = true) {
 
 const day = (cycleDate, over = {}) => ({
   cycleDate, takenAt: cycleDate + 'T08:00:00Z', present: true, currentDebt: 500000, overdueDebt: 500000,
-  overdueStreak: 1, status: 'Chưa xử lý', statusBy: '', statusAt: null, penalty: 25000, locked: false, ...over
+  overdueStreak: 1, status: 'Chưa xử lý', statusBy: '', statusAt: null, penalty: 25000, rewardFinalized: false, ...over
 });
 
 function historyPayload() {
   return {
     customer: { branch: 'hanoi', customerId: '1', customerName: 'Khách A', sale: 'Lan', scheduleDays: 7 },
-    days: [day('2026-10-30', { overdueStreak: 3, penalty: 50000, locked: true }), day('2026-10-31', { overdueStreak: 4, penalty: 100000 }),
+    days: [day('2026-10-30', { overdueStreak: 3, penalty: 50000, rewardFinalized: true }), day('2026-10-31', { overdueStreak: 4, penalty: 100000 }),
       day('2026-11-01', { overdueStreak: 5, penalty: 150000, status: 'Bỏ qua', statusBy: 'Quản lý A', statusAt: '2026-11-01T09:00:00Z' })],
     totalPenalty: 300000
   };
@@ -74,7 +74,7 @@ async function openHistory(dom, payload = historyPayload()) {
   return { row, requests };
 }
 
-test('bam dong khach mo hop lich su: moi nhat truoc, tong phat, sua duoc ngay chua khoa', async () => {
+test('bam dong khach mo hop lich su: moi nhat truoc, tong phat, sua duoc moi ngay ke ca thang da chot thuong', async () => {
   const dom = createDashboard(debtPayload());
   const { requests } = await openHistory(dom);
   assert.deepEqual(requests, ['/api/debt-management/customer-history?branch=hanoi&customerId=1']);
@@ -82,18 +82,20 @@ test('bam dong khach mo hop lich su: moi nhat truoc, tong phat, sua duoc ngay ch
   assert.equal(doc.getElementById('docModalBackdrop').hidden, false);
   assert.match(doc.getElementById('docModalTitle').textContent, /Lịch sử công nợ.*Khách A/);
   const rows = [...doc.querySelectorAll('#docModalBody tbody tr')];
-  assert.deepEqual(rows.map(row => row.cells[0].textContent), ['01/11/2026', '31/10/2026', '30/10/2026']);
+  assert.deepEqual(rows.map(row => row.cells[0].textContent.slice(0, 10)), ['01/11/2026', '31/10/2026', '30/10/2026']);
   assert.match(doc.getElementById('docModalBody').textContent, /300,000/);
   assert.equal(rows[0].querySelector('select').value, 'Bỏ qua');
   assert.ok(rows[1].querySelector('select'));
-  assert.equal(rows[2].querySelector('select'), null, 'ngay thuoc thang da chot chi xem');
+  assert.ok(rows[2].querySelector('select'), 'ngay thuoc thang da chot thuong van sua duoc');
+  assert.match(rows[2].cells[0].textContent, /đã chốt thưởng/);
+  assert.doesNotMatch(rows[0].cells[0].textContent, /đã chốt thưởng/);
 });
 
-test('ngay thuoc thang da chot (locked) chi xem; khong co quyen thi khong co select', async () => {
+test('co quyen thi moi ngay deu co select; khong co quyen thi khong co select', async () => {
   const dom = createDashboard(debtPayload());
   await openHistory(dom);
   const selects = [...dom.window.document.querySelectorAll('#docModalBody select.debt-status-select')];
-  assert.deepEqual(selects.map(select => select.dataset.cycleDate), ['2026-11-01', '2026-10-31']);
+  assert.deepEqual(selects.map(select => select.dataset.cycleDate), ['2026-11-01', '2026-10-31', '2026-10-30']);
   const viewer = createDashboard(debtPayload(false));
   await openHistory(viewer);
   assert.equal(viewer.window.document.querySelectorAll('#docModalBody select').length, 0);
@@ -133,10 +135,10 @@ test('doi trang thai mot ngay cu gui PATCH historical voi cycleDate cua ngay do 
   dom.window.close();
 });
 
-test('loi 409 khi sua ngay cu tra select ve gia tri cu', async () => {
+test('loi khi sua ngay cu tra select ve gia tri cu', async () => {
   const dom = createDashboard(debtPayload());
   await openHistory(dom);
-  dom.window.fetch = async () => ({ ok: false, status: 409, json: async () => ({ error: 'Ngày này thuộc tháng đã chốt thưởng/phạt nên không sửa được.', code: 'DEBT_MONTH_FINALIZED' }) });
+  dom.window.fetch = async () => ({ ok: false, status: 409, json: async () => ({ error: 'Không có bản chốt công nợ của ngày này.', code: 'DEBT_CYCLE_NOT_FOUND' }) });
   const select = dom.window.document.querySelector('#docModalBody select[data-cycle-date="2026-10-31"]');
   select.value = 'Đã xử lý';
   await dom.window.handleDebtHistoryStatusChange(select);

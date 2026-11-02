@@ -59,7 +59,7 @@ test('listCustomerHistory tra 5 ngay cu -> moi voi phien, phat theo quy che va t
     assert.deepEqual(history.days.map(d => d.overdueStreak), [1, 2, 3, 4, 5]);
     assert.deepEqual(history.days.map(d => d.penalty), [25000, 25000, 50000, 100000, 150000]);
     assert.equal(history.totalPenalty, 350000);
-    assert.ok(history.days.every(d => d.locked === false && d.status === 'Chưa xử lý'));
+    assert.ok(history.days.every(d => d.rewardFinalized === false && d.status === 'Chưa xử lý'));
   } finally { await db.close(); }
 });
 
@@ -124,17 +124,19 @@ test('sua ngay chua chot so (ngay dang mo) chi doi chuoi trong ban chot, khong g
   } finally { await db.close(); }
 });
 
-test('thang da chot thuong/phat: tu choi sua ngay thuoc thang do hoac ngay keo theo thang do; lich su danh dau locked', async () => {
+test('thang da chot thuong/phat: lich su danh dau rewardFinalized, van sua duoc va tinh lai chuoi + so phat; ban thuong da chot khong doi', async () => {
   const { db, repo } = await setup();
   try {
     await db.exec(`INSERT INTO debt_reward_months (month, rule_version, result) VALUES ('2026-10-01', 'v', '{}')`);
     const history = await repo.listCustomerHistory({ branch: 'hanoi', customerId: '1' });
-    assert.deepEqual(history.days.map(d => d.locked), [true, true, true, true, false]);
-    await assert.rejects(repo.saveHistoricalStatus({ ...target, cycleDate: '2026-10-29', status: 'Đã xử lý' }),
-      error => error.statusCode === 409 && error.code === 'DEBT_MONTH_FINALIZED');
-    // Ngay 01/11 (thang 11) van sua duoc.
-    assert.equal((await repo.saveHistoricalStatus({ ...target, cycleDate: '2026-11-01', status: 'Bỏ qua' })).changed, true);
-    assert.equal((await db.query(`SELECT status FROM debt_cycle_feedback WHERE cycle_date = '2026-10-29'`)).rowCount, 0);
+    assert.deepEqual(history.days.map(d => d.rewardFinalized), [true, true, true, true, false]);
+    assert.ok(history.days.every(d => !('locked' in d)));
+    const result = await repo.saveHistoricalStatus({ ...target, cycleDate: '2026-10-29', status: 'Đã xử lý' });
+    assert.equal(result.changed, true);
+    assert.equal((await db.query(`SELECT status FROM debt_cycle_feedback WHERE cycle_date = '2026-10-29'`)).rows[0].status, 'Đã xử lý');
+    // 29/10 het phat (xoa dong); 30/10 phien 1, 31/10 phien 2 = 25k moi ngay.
+    assert.deepEqual(await ledger(db), [['2026-10-28', 1, 25000], ['2026-10-30', 1, 25000], ['2026-10-31', 2, 25000]]);
+    assert.equal((await db.query(`SELECT result::text AS r FROM debt_reward_months`)).rows[0].r, '{}');
   } finally { await db.close(); }
 });
 

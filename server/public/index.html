@@ -10696,7 +10696,7 @@
     }
 
     // Hộp lịch sử công nợ 7 ngày của 1 khách (Danh sách thao tác): mới nhất trước; Trạng thái sửa được nếu có quyền duyệt
-    // và ngày đó không kéo theo tháng đã chốt thưởng/phạt — các ngày sau tự tính lại số phiên và tiền phạt ở máy chủ.
+    // (kể cả ngày thuộc tháng đã chốt thưởng) — các ngày sau tự tính lại số phiên và tiền phạt ở máy chủ.
     function renderDebtCustomerHistoryModal(body, subtitle, data) {
       const item = docDetail.item || {};
       const customer = data.customer || {};
@@ -10714,15 +10714,16 @@
         if (!day.present) {
           return '<tr><td class="mono">' + escapeHtml(date) + '</td><td colspan="6" class="muted">Khách chưa có trong bản chốt này</td></tr>';
         }
-        const statusHtml = canEdit && !day.locked
+        const statusHtml = canEdit
           ? '<select class="debt-status-select" data-cycle-date="' + escapeHtml(day.cycleDate) + '" data-previous-status="' + escapeHtml(day.status) + '" ' +
             'data-status="' + escapeHtml(day.status) + '" onchange="handleDebtHistoryStatusChange(this)" aria-label="Trạng thái ngày ' + escapeHtml(date) + '">' +
             DEBT_WORKFLOW_STATUSES.map(function (status) {
               return '<option value="' + escapeHtml(status) + '"' + (status === day.status ? ' selected' : '') + '>' + escapeHtml(status) + '</option>';
             }).join('') + '</select>'
-          : '<span class="debt-status-text" data-status="' + escapeHtml(day.status) + '"' + (day.locked ? ' title="Tháng đã chốt thưởng/phạt, không sửa được"' : '') + '>' + escapeHtml(day.status) + '</span>';
+          : '<span class="debt-status-text" data-status="' + escapeHtml(day.status) + '">' + escapeHtml(day.status) + '</span>';
         const by = day.statusBy ? escapeHtml(day.statusBy) + (day.statusAt ? ' · ' + escapeHtml(formatDebtRefreshTime(day.statusAt)) : '') : '—';
-        return '<tr><td class="mono">' + escapeHtml(date) + '</td>' +
+        const dateHtml = escapeHtml(date) + (day.rewardFinalized ? ' <span class="muted" title="Tháng này đã chốt thưởng/phạt: sửa ở đây đổi lịch sử và sổ phạt, bảng thưởng đã chốt giữ nguyên">·đã chốt thưởng</span>' : '');
+        return '<tr><td class="mono">' + dateHtml + '</td>' +
           '<td class="num">' + formatNullableMoney(day.currentDebt) + '</td>' +
           '<td class="num">' + formatNullableMoney(day.overdueDebt) + '</td>' +
           '<td class="num">' + (day.overdueStreak > 0 ? fmtNumber(day.overdueStreak) : '—') + '</td>' +
@@ -10731,7 +10732,7 @@
           '<td>' + by + '</td></tr>';
       }).join('');
       const note = canEdit
-        ? '<div class="doc-modal-note">Đổi trạng thái một ngày thì số phiên và tiền phạt các ngày sau tự tính lại (Đã xử lý → ngày kế tiếp bắt đầu lại từ phiên 1).</div>'
+        ? '<div class="doc-modal-note">Đổi trạng thái một ngày thì số phiên và tiền phạt các ngày sau tự tính lại (Đã xử lý → ngày kế tiếp bắt đầu lại từ phiên 1). Ngày thuộc tháng đã chốt thưởng vẫn sửa được nhưng bảng thưởng đã chốt giữ nguyên.</div>'
         : '';
       body.innerHTML = detailStatsHtml(tiles) + note +
         '<div class="dp-section">' + detailSectionHeadHtml('Từng ngày chốt 15:00', fmtNumber(days.length) + ' ngày') +

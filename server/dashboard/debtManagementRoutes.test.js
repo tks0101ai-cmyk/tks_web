@@ -132,17 +132,6 @@ test('PATCH status voi historical=true sua ngay cu qua saveHistoricalStatus; kho
   assert.deepEqual(calls[0][1], { branch: 'hanoi', customerId: '1', cycleDate: '2026-10-30', status: 'Đã xử lý', user: { id: 'u1', hoTen: 'QL' } });
 });
 
-test('PATCH status: thang da chot thuong/phat tra 409 voi ma DEBT_MONTH_FINALIZED', async () => {
-  const handler = routeStack('/api/debt-management/status').at(-1);
-  const closed = Object.assign(new Error('Ngày này thuộc tháng đã chốt'), { statusCode: 409, code: 'DEBT_MONTH_FINALIZED' });
-  await withRepo({ saveHistoricalStatus: async () => { throw closed; } }, async () => {
-    const res = fakeRes();
-    await handler({ user: {}, body: { branch: 'hanoi', customerId: '1', cycleDate: '2026-10-30', status: 'Bỏ qua', historical: true } }, res);
-    assert.equal(res.statusCode, 409);
-    assert.equal(res.body.code, 'DEBT_MONTH_FINALIZED');
-  });
-});
-
 test('khong con route phat tay /api/debt-management/penalty', () => {
   assert.equal(router.stack.some(item => item.route?.path === '/api/debt-management/penalty'), false);
 });

@@ -317,8 +317,8 @@ function createDebtScheduleRepository({ pool = getPool(), now = Date.now } = {})
 
   /**
    * Lich su toi da 7 ban chot cua 1 khach (cu -> moi): so no qua han / phien / trang thai / tien phat tung ngay.
-   * `locked` = ngay khong sua duoc vi sua se keo theo mot thang da chot thuong/phat. Tien phat = quy che
-   * (khong con phat tay): "Da xu ly" = 0.
+   * `rewardFinalized` = ngay thuoc thang da chot thuong/phat: van sua duoc, nhung ban thuong da chot (debt_reward_months.result)
+   * la anh chup co dinh nen khong doi theo. Tien phat = quy che (khong con phat tay): "Da xu ly" = 0.
    */
   async function listCustomerHistory({ branch, customerId } = {}) {
     const code = assertBranch(branch);
@@ -346,7 +346,6 @@ function createDebtScheduleRepository({ pool = getPool(), now = Date.now } = {})
     );
     const dates = rows.map(row => row.cycle_date);
     const closedMonths = await finalizedRewardMonths(pool, dates);
-    const lastClosedDate = dates.filter(date => closedMonths.has(`${date.slice(0, 7)}-01`)).pop() || '';
     const days = rows.map(row => {
       const status = WORKFLOW_STATUSES.includes(row.status) ? row.status : 'Chưa xử lý';
       const overdue = row.overdue_debt === null || row.overdue_debt === undefined ? null : Number(row.overdue_debt);
@@ -358,7 +357,7 @@ function createDebtScheduleRepository({ pool = getPool(), now = Date.now } = {})
         overdueStreak: row.present ? (status === RESOLVED_STATUS ? 0 : streak) : null,
         status, statusBy: row.status_by || '', statusAt: row.status_at || null,
         penalty: row.present ? dayPenalty(overdue || 0, streak, status) : null,
-        locked: row.cycle_date <= lastClosedDate
+        rewardFinalized: closedMonths.has(`${row.cycle_date.slice(0, 7)}-01`)
       };
     });
     const first = customer.rows[0];
@@ -372,7 +371,7 @@ function createDebtScheduleRepository({ pool = getPool(), now = Date.now } = {})
   /**
    * Doi TRANG THAI cua mot ngay cu (toi da 7 ban chot) cua 1 khach, roi tinh lai so phien + tien phat cac
    * ngay SAU do trong 1 transaction: debt_cycle_customers.overdue_streak va, voi ngay da chot so,
-   * debt_penalty_daily. Tu choi neu mot ngay bi anh huong thuoc thang da chot thuong/phat.
+   * debt_penalty_daily. Ngay thuoc thang da chot thuong/phat van sua duoc (ban thuong da chot khong doi).
    */
   async function saveHistoricalStatus({ branch, customerId, cycleDate, status, user }) {
     if (!WORKFLOW_STATUSES.includes(status)) throw httpError(400, 'Trạng thái xử lý không hợp lệ.', 'INVALID_DEBT_STATUS');
@@ -391,9 +390,6 @@ function createDebtScheduleRepository({ pool = getPool(), now = Date.now } = {})
       if (index < 0) throw httpError(404, 'Không có bản chốt công nợ của ngày này (chỉ lưu 7 ngày gần nhất).', 'DEBT_CYCLE_NOT_FOUND');
       const affected = runs.slice(index);
       await client.query('SELECT cycle_date FROM debt_cycle_runs WHERE cycle_date = ANY($1::date[]) ORDER BY cycle_date FOR SHARE', [affected]);
-      if ((await finalizedRewardMonths(client, affected)).size) {
-        throw httpError(409, 'Ngày này thuộc tháng đã chốt thưởng/phạt nên không sửa được.', 'DEBT_MONTH_FINALIZED');
-      }
       const customer = await client.query(
         `SELECT btrim(COALESCE(c.code, '')) AS code, COALESCE(c.name, '') AS name, NULLIF(btrim(c.raw->>'groups'), '') AS sale
          FROM debt_cycle_customers dc JOIN customers c ON c.branch = dc.branch AND c.id = dc.customer_id
