@@ -42,7 +42,7 @@
 
   const state = {
     sessions: [], sessionId: null, board: null, canEdit: false, canClose: false,
-    query: '', filter: 'mismatch', recheck: '', status: '', sortKey: null, sortDir: null, headBranch: null, loadVersion: 0
+    query: '', filter: 'all', recheck: '', status: '', sortKey: null, sortDir: null, headBranch: null, loadVersion: 0
   };
   // view.rows: các dòng đã lọc + sort; view.drawn: số dòng đã vẽ.
   const view = { rows: [], drawn: 0, observer: null };
@@ -210,7 +210,6 @@
     if (!state.board) return [];
     const query = fold(state.query).trim();
     const rows = state.board.rows.filter(row => {
-      if (state.filter === 'mismatch' && row.diffQty === 0) return false;
       if (state.filter === 'forgotten' && !row.forgotten) return false;
       if (state.filter === 'noted' && !row.note) return false;
       if (state.recheck && recheckKey(row.note) !== state.recheck) return false;
@@ -637,7 +636,15 @@
     noteForm.elements.printTime.value = note.printTime || '';
     noteForm.elements.prevDiffManual.value = note.prevDiffManual === null || note.prevDiffManual === undefined ? '' : String(note.prevDiffManual);
     noteForm.elements.otherDiffManual.value = note.otherDiffManual === null || note.otherDiffManual === undefined ? '' : String(note.otherDiffManual);
-    $('stOtherManualLabel').textContent = 'Kiểm ' + otherLabel(state.board.session.branch) + ' (dán tay)';
+    // Hai ô này chỉ để GHI ĐÈ số web tự lấy; để trống thì cột trên bảng vẫn tự lấy (gợi ý ghi rõ số đang tự lấy).
+    const other = otherLabel(state.board.session.branch);
+    const autoText = value => (value === null || value === undefined ? 'trống' : num(value));
+    $('stPrevManualLabel').textContent = 'KK trước sai — nhập tay';
+    $('stOtherManualLabel').textContent = 'Kiểm ' + other + ' — nhập tay';
+    noteForm.elements.prevDiffManual.placeholder = 'Để trống = tự lấy từ đợt trước: ' + autoText(row.prevDiffAuto);
+    noteForm.elements.otherDiffManual.placeholder = state.board.counterpart
+      ? 'Để trống = tự lấy từ đợt ' + other + ': ' + autoText(row.otherDiffAuto)
+      : 'Chưa chọn đợt đối chiếu ' + other + ' — chỉ có số nhập tay';
     noteForm.dataset.version = note.version ? String(note.version) : '';
     $('stNoteMeta').textContent = note.updatedByName ? 'Sửa cuối: ' + note.updatedByName + ' · ' + time(note.updatedAt) : '';
     for (const [id, values] of [['stStatusSuggestions', state.board.suggestions.status], ['stReasonSuggestions', state.board.suggestions.reason]]) {

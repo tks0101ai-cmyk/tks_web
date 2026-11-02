@@ -76,10 +76,9 @@
             <input id="stSearch" type="search" placeholder="Tìm mã, tên hàng, cụm, lý do…" autocomplete="off">
           </label>
           <select id="stFilter" class="st-select" aria-label="Lọc mã">
-            <option value="mismatch" selected>Mã lệch</option>
+            <option value="all" selected>Tất cả mã</option>
             <option value="forgotten">Quên KK</option>
             <option value="noted">Đã ghi chú</option>
-            <option value="all">Tất cả mã</option>
           </select>
           <select id="stRecheckFilter" class="st-select" aria-label="Lọc theo người kiểm lại"><option value="">Mọi người kiểm lại</option></select>
           <select id="stStatusFilter" class="st-select" aria-label="Lọc theo trạng thái"><option value="">Mọi trạng thái</option></select>
@@ -184,8 +183,8 @@
           <label class="vt-field st-wide"><span>Chi tiết lý do</span><input name="reasonText" type="text" maxlength="1000" list="stReasonSuggestions" autocomplete="off"><datalist id="stReasonSuggestions"></datalist></label>
           <label class="vt-field"><span>Trang in</span><input name="printPage" type="text" maxlength="50" autocomplete="off"></label>
           <label class="vt-field"><span>Giờ in</span><input name="printTime" type="text" maxlength="50" autocomplete="off"></label>
-          <label class="vt-field"><span>KK trước sai (dán tay)</span><input name="prevDiffManual" type="text" inputmode="decimal" autocomplete="off" placeholder="Trống = tự lấy"></label>
-          <label class="vt-field"><span id="stOtherManualLabel">Kiểm SG (dán tay)</span><input name="otherDiffManual" type="text" inputmode="decimal" autocomplete="off" placeholder="Trống = tự lấy"></label>
+          <label class="vt-field"><span id="stPrevManualLabel">KK trước sai — nhập tay</span><input name="prevDiffManual" type="text" inputmode="decimal" autocomplete="off" placeholder="Trống = tự lấy"></label>
+          <label class="vt-field"><span id="stOtherManualLabel">Kiểm SG — nhập tay</span><input name="otherDiffManual" type="text" inputmode="decimal" autocomplete="off" placeholder="Trống = tự lấy"></label>
           <p class="st-meta st-wide" id="stNoteMeta"></p>
           <div class="vt-dialog-actions st-wide"><button type="submit" class="locations-columns-button vt-primary">Lưu kiểm lại</button></div>
         </form>
@@ -228,7 +227,7 @@
   <script src="/shared/search-clear.js?v=20261009-1"></script>
   <script src="/shared/shared-nav.js?v=20261102-stocktake"></script>
   <script src="/stocktake/stocktakePaste.js?v=20261102-3"></script>
-  <script src="/stocktake/stocktake.js?v=20261102-9"></script>
+  <script src="/stocktake/stocktake.js?v=20261102-10"></script>
   <script>window.addEventListener('DOMContentLoaded', function () { TKSStocktake.init(); });</script>
   <script src="/shared/shooting-star.js?v=20261019"></script>
 </body>
