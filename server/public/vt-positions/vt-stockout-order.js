@@ -246,7 +246,8 @@
     body.replaceChildren();
     const term = state.search.trim().toLowerCase();
     const matches = item => !term || [item.code, item.createdByName, item.confirmedByName].some(value => String(value || '').toLowerCase().includes(term));
-    const draftOrder = state.order && state.order.status === 'draft' && matches(state.order) ? state.order : null;
+    // Đơn tạm tự được tạo khi mở hộp; chưa có dòng nào thì chưa phải một đơn nên không đưa vào danh sách (vẫn mở được ở tab Đơn tạm).
+    const draftOrder = state.order && state.order.status === 'draft' && state.order.lines.length && matches(state.order) ? state.order : null;
     const done = state.history.filter(matches);
     if (draftOrder) body.appendChild(listRow(draftOrder, true));
     done.forEach(item => body.appendChild(listRow(item, false)));

@@ -217,6 +217,16 @@ test('Danh sách đơn: đơn tạm đứng đầu kèm trạng thái, đơn đ�
   assert.equal(doc.getElementById('vtOrderList').hidden, false, 'Quay lại về danh sách');
 });
 
+test('Danh sách đơn: đơn tạm chưa có dòng nào thì không hiện như một đơn', async t => {
+  const { doc } = await setup(t, { order: draft([]), historyRows: [] });
+  await openDialog(doc);
+  doc.querySelector('[data-order-view="list"]').click();
+  await settle();
+  assert.equal(doc.querySelectorAll('#vtOrderListRows tr.is-link').length, 0);
+  assert.match(doc.getElementById('vtOrderListRows').textContent, /Chưa có đơn nào/);
+  assert.doesNotMatch(doc.getElementById('vtOrderListNote').textContent, /đơn tạm/);
+});
+
 test('Danh sách đơn: bấm đơn tạm mở lại tab Đơn tạm; ô tìm lọc theo mã đơn / người', async t => {
   const confirmed = draft([], { id: 6, code: 'XK-HN-00000', status: 'confirmed', confirmedAt: '2026-11-02T10:00:00.000Z', confirmedByName: 'Lan', summary: { lines: 2, positions: 2, quantity: 5, negative: 0, removed: 0, created: 0 } });
   const { doc, window } = await setup(t, { historyRows: [{ ...confirmed, lineCount: 2 }] });
