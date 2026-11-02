@@ -585,14 +585,21 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       const session = await openSessionForWrite(client, ctx, sessionId);
       const inputs = await loadInputs(client, session, { withCounterpart: false });
       const known = new Set([...buildBoard(inputs).rows.map(r => r.code), ...inputs.products.map(p => codeKey(p.code))]);
-      const skipped = { notFound: 0, invalid: 0, unchanged: 0, empty: 0 };
+      const skipped = { notFound: 0, invalid: 0, unchanged: 0, empty: 0, duplicates: 0 };
       const isTag = Boolean(TAG_FIELDS[column]);
       const current = new Map((isTag ? inputs.tags : inputs.notes).map(item => [item.code, item]));
-      const employees = column === 'recheck' ? (await loadEmployees(client)).filter(e => e.branch === session.branch || !e.branch) : [];
+      const employees = column === 'recheck' ? (await loadEmployees(client)).filter(e => e.branch === session.branch) : [];
       const changes = [];
+      // Ma lap trong 1 lan dan (khac hoa/thuong): giu dong cuoi, dong truoc tinh vao duplicates (ON CONFLICT khong ghi 2 lan 1 khoa).
+      const latest = new Map();
       for (const item of input) {
         const code = codeKey(item && item.code);
-        if (!code || !known.has(code)) { skipped.notFound += 1; continue; }
+        if (!code) { skipped.notFound += 1; continue; }
+        if (latest.has(code)) skipped.duplicates += 1;
+        latest.set(code, item);
+      }
+      for (const [code, item] of latest) {
+        if (!known.has(code)) { skipped.notFound += 1; continue; }
         const parsed = normalizeValue(column, item.value);
         if (!parsed.ok) { skipped.invalid += 1; continue; }
         if (parsed.empty && mode === 'skip') { skipped.empty += 1; continue; }

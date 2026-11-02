@@ -215,7 +215,7 @@ test('dan cot: tung loai cot, bo qua / xoa o trong, ma la, gia tri sai, lich su 
   const paste = (column, rows, mode = 'skip') => service.pasteColumn(ctx(), session.id, { column, mode, rows });
 
   let result = await paste('prevDiffManual', [{ code: 'aaa1', value: '-1.234' }, { code: 'ZZZ9', value: '1' }, { code: 'BBB2', value: 'abc' }, { code: 'CCC3', value: '' }]);
-  assert.deepEqual(result, { changed: 1, skipped: { notFound: 1, invalid: 1, unchanged: 0, empty: 1 } });
+  assert.deepEqual(result, { changed: 1, skipped: { notFound: 1, invalid: 1, unchanged: 0, empty: 1, duplicates: 0 } });
   assert.deepEqual(announced.at(-1), session.id);
   let board = await service.getBoard(ctx(), session.id);
   assert.deepEqual([rowOf(board, 'AAA1').prevDiff, rowOf(board, 'AAA1').prevDiffManual], [-1234, true]);
@@ -247,4 +247,62 @@ test('dan cot: tung loai cot, bo qua / xoa o trong, ma la, gia tri sai, lich su 
   const fresh = await service.getBoard(ctx(), session.id);
   await service.closeSession(ctx(), session.id, { version: fresh.session.version });
   await assert.rejects(paste('statusText', [{ code: 'AAA1', value: 'y' }]), { statusCode: 409, code: 'STOCKTAKE_CLOSED' });
+});
+
+test('dan cot: ma lap trong 1 lan dan lay dong cuoi; cac cot con lai, clear, nguoi kiem lai mo ho, combo khong, lich su', async () => {
+  const { db, service, session } = await fixture();
+  await db.exec(`INSERT INTO hr_employees (id, branch, ho_ten) VALUES (502, 'hanoi', 'Thái Kho'), (503, 'hanoi', 'Thai Kho'), (504, 'saigon', 'Cận')`);
+  const paste = (column, rows, mode = 'skip', id = session.id) => service.pasteColumn(ctx(), id, { column, mode, rows });
+  const rowNow = async code => rowOf(await service.getBoard(ctx(), session.id), code);
+
+  // (1) trung ma khac hoa/thuong: dong cuoi thang, duplicates = 1
+  let result = await paste('statusText', [{ code: 'aaa1', value: 'cu' }, { code: 'AAA1', value: 'moi' }]);
+  assert.deepEqual([result.changed, result.skipped.duplicates], [1, 1]);
+  assert.equal((await rowNow('AAA1')).note.statusText, 'moi');
+
+  // (2a) cac cot ghi chu con lai
+  await paste('reasonText', [{ code: 'AAA1', value: 'lý do' }]);
+  await paste('printPage', [{ code: 'AAA1', value: '12' }]);
+  await paste('printTime', [{ code: 'AAA1', value: '14:30 03/10' }]);
+  await paste('otherDiffManual', [{ code: 'AAA1', value: '2,5' }]);
+  let a = await rowNow('AAA1');
+  assert.deepEqual([a.note.reasonText, a.note.printPage, a.note.printTime, a.otherDiffManual, a.otherDiff], ['lý do', '12', '14:30 03/10', true, 2.5]);
+  // cac cot khac cua ghi chu khong bi mat khi dan them cot
+  assert.equal(a.note.statusText, 'moi');
+
+  // (2c) hai nhan su cung co so trung ten sau khi bo dau: mo ho -> giu chu; nhan su co so khac khong tinh
+  await paste('recheck', [{ code: 'AAA1', value: 'thai kho' }, { code: 'BBB2', value: 'Cận' }]);
+  a = await rowNow('AAA1');
+  assert.deepEqual([a.note.recheckEmployeeId, a.note.recheckName], [null, 'thai kho']);
+  assert.deepEqual([(await rowNow('BBB2')).note.recheckEmployeeId, (await rowNow('BBB2')).note.recheckName], [null, 'Cận']);
+
+  // (2d) combo 'khong' / '0' -> false
+  await paste('combo', [{ code: 'AAA1', value: 'x' }]);
+  assert.equal((await rowNow('AAA1')).isCombo, true);
+  await paste('combo', [{ code: 'AAA1', value: '0' }]);
+  assert.equal((await rowNow('AAA1')).isCombo, false);
+
+  // (2b) clear cho cluster, combo, recheck
+  await paste('cluster', [{ code: 'AAA1', value: 'Cụm A' }]);
+  await paste('combo', [{ code: 'AAA1', value: 'x' }]);
+  assert.equal((await paste('cluster', [{ code: 'AAA1', value: '' }], 'clear')).changed, 1);
+  assert.equal((await paste('combo', [{ code: 'AAA1', value: '' }], 'clear')).changed, 1);
+  assert.equal((await paste('recheck', [{ code: 'AAA1', value: '' }], 'clear')).changed, 1);
+  a = await rowNow('AAA1');
+  assert.deepEqual([a.isCombo, a.note.recheckEmployeeId, a.note.recheckName], [false, null, '']);
+  assert.equal(a.clusterCount, null);
+
+  // (2e) lich su: before / after cua cot
+  await paste('statusText', [{ code: 'AAA1', value: 'sau' }]);
+  let { history } = await service.codeHistory(ctx(), session.id, 'AAA1');
+  const last = history.find(h => h.action === 'paste');
+  assert.equal(last.before.statusText, 'moi');
+  assert.deepEqual([last.after.column, last.after.statusText], ['statusText', 'sau']);
+
+  // (2f) dan Cum o dot nay hien trong lich su cua dot khac cung co so (khong hien voi cot ghi chu)
+  await paste('cluster', [{ code: 'AAA1', value: 'Cụm B' }]);
+  const other = (await service.createSession(ctx(), { branch: 'hanoi', name: 'Đợt khác', dateFrom: '2026-10-30', dateTo: '2026-10-30' })).session;
+  history = (await service.codeHistory(ctx(), other.id, 'AAA1')).history;
+  assert.ok(history.some(h => h.action === 'paste' && h.after.column === 'cluster' && h.after.cluster === 'Cụm B'));
+  assert.ok(!history.some(h => h.action === 'paste' && h.after.column === 'statusText'));
 });
