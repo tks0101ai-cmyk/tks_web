@@ -20,7 +20,7 @@ function createStocktakeRouter(dependencies = {}) {
     dependencies.requireAuth || requireAuth,
     requireFeature('stocktake.view'),
     dependencies.resolveBranch || resolveBranch,
-    express.json({ limit: '1mb' }));
+    express.json({ limit: '2mb' }));
   const edit = requireFeature('stocktake.edit');
   const close = requireFeature('stocktake.close');
 
@@ -52,6 +52,9 @@ function createStocktakeRouter(dependencies = {}) {
   }));
   router.post('/api/stocktake/sessions', edit, handle(async (req, res) => {
     res.status(201).json(await svc().createSession(ctxOf(req), req.body || {}));
+  }));
+  router.patch('/api/stocktake/sessions/:id', edit, handle(async (req, res) => {
+    res.json(await svc().updateSession(ctxOf(req), idOf(req), req.body || {}));
   }));
   router.get('/api/stocktake/sessions/:id/board', handle(async (req, res) => {
     res.json({ ...(await svc().getBoard(ctxOf(req), idOf(req))), ...can(req) });
@@ -101,15 +104,19 @@ function createStocktakeRouter(dependencies = {}) {
   router.put('/api/stocktake/sessions/:id/codes/:code/tag', edit, handle(async (req, res) => {
     res.json(await svc().saveTag(ctxOf(req), idOf(req), req.params.code, req.body || {}));
   }));
+  // Dan 1 cot tu sheet (Ma + gia tri) - xem truoc lam o trinh duyet, server kiem lai va ghi 1 giao dich.
+  router.post('/api/stocktake/sessions/:id/paste', edit, handle(async (req, res) => {
+    res.json(await svc().pasteColumn(ctxOf(req), idOf(req), req.body || {}));
+  }));
   router.get('/api/stocktake/sessions/:id/codes/:code/history', handle(async (req, res) => {
     res.json(await svc().codeHistory(ctxOf(req), idOf(req), req.params.code));
   }));
   router.post('/api/stocktake/sessions/:id/close', close, handle(async (req, res) => {
     res.json(await svc().closeSession(ctxOf(req), idOf(req), req.body || {}));
   }));
-  // Nap 1 lan dot T10 tu sheet kiem ke (nguon "KK truoc" cho dot dau tren web).
+  // Nap 1 lan dot T10 HN hoac KIEM SG tu sheet kiem ke (body.source = 't10' | 'sg').
   router.post('/api/stocktake/import-sheet', close, handle(async (req, res) => {
-    res.status(201).json(await (dependencies.sheetImport || sheetImport).importT10(ctxOf(req), req.body || {}));
+    res.status(201).json(await (dependencies.sheetImport || sheetImport).importSheet(ctxOf(req), req.body || {}));
   }));
 
   // Xuat Excel: POST { codes } = dung cac ma dang loc tren giao dien; GET = ca bang.

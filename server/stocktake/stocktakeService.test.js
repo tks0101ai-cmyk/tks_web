@@ -208,3 +208,43 @@ test('ghi chu: trang in, gio in, so dan tay L/M; dong dot luu prev_diff / other_
   assert.deepEqual([rowOf(board, 'AAA1').prevDiff, rowOf(board, 'AAA1').otherDiff], [-326, -1.5]);
   assert.equal(rowOf(board, 'AAA1').prevRatio, ratioOf(2 + -326, -326));
 });
+
+test('dan cot: tung loai cot, bo qua / xoa o trong, ma la, gia tri sai, lich su paste', async () => {
+  const { db, service, session, announced } = await fixture();
+  await db.exec(`INSERT INTO hr_employees (id, branch, ho_ten) VALUES (502, 'hanoi', 'Thái Kho')`);
+  const paste = (column, rows, mode = 'skip') => service.pasteColumn(ctx(), session.id, { column, mode, rows });
+
+  let result = await paste('prevDiffManual', [{ code: 'aaa1', value: '-1.234' }, { code: 'ZZZ9', value: '1' }, { code: 'BBB2', value: 'abc' }, { code: 'CCC3', value: '' }]);
+  assert.deepEqual(result, { changed: 1, skipped: { notFound: 1, invalid: 1, unchanged: 0, empty: 1 } });
+  assert.deepEqual(announced.at(-1), session.id);
+  let board = await service.getBoard(ctx(), session.id);
+  assert.deepEqual([rowOf(board, 'AAA1').prevDiff, rowOf(board, 'AAA1').prevDiffManual], [-1234, true]);
+
+  result = await paste('prevDiffManual', [{ code: 'AAA1', value: '' }], 'clear');
+  assert.equal(result.changed, 1);
+  board = await service.getBoard(ctx(), session.id);
+  assert.equal(rowOf(board, 'AAA1').prevDiffManual, false);
+
+  await paste('recheck', [{ code: 'AAA1', value: 'thai kho' }, { code: 'BBB2', value: 'CẬN' }]);
+  await paste('combo', [{ code: 'AAA1', value: 'x' }]);
+  await paste('cluster', [{ code: 'AAA1', value: 'Cụm ấm' }, { code: 'BBB2', value: 'cụm ấm' }]);
+  result = await paste('statusText', [{ code: 'AAA1', value: 'mất ko thấy' }, { code: 'AAA1x', value: 'x' }]);
+  assert.equal(result.skipped.notFound, 1);
+  assert.equal((await paste('statusText', [{ code: 'AAA1', value: 'mất ko thấy' }])).skipped.unchanged, 1);
+
+  board = await service.getBoard(ctx(), session.id);
+  assert.deepEqual([rowOf(board, 'AAA1').note.recheckEmployeeId, rowOf(board, 'AAA1').note.recheckName], [502, '']);
+  assert.deepEqual([rowOf(board, 'BBB2').note.recheckEmployeeId, rowOf(board, 'BBB2').note.recheckName], [null, 'CẬN']);
+  assert.equal(rowOf(board, 'AAA1').isCombo, true);
+  assert.equal(rowOf(board, 'BBB2').clusterCount, 2);
+  assert.equal(rowOf(board, 'AAA1').note.statusText, 'mất ko thấy');
+  const { history } = await service.codeHistory(ctx(), session.id, 'AAA1');
+  assert.ok(history.filter(h => h.action === 'paste').length >= 5);
+  assert.deepEqual(history.find(h => h.action === 'paste').after.column, 'statusText');
+
+  await assert.rejects(paste('bogus', [{ code: 'AAA1', value: '1' }]), { statusCode: 400 });
+  await assert.rejects(service.pasteColumn(ctx(), session.id, { column: 'statusText', mode: 'skip', rows: Array(10001).fill({ code: 'AAA1', value: 'x' }) }), { statusCode: 400 });
+  const fresh = await service.getBoard(ctx(), session.id);
+  await service.closeSession(ctx(), session.id, { version: fresh.session.version });
+  await assert.rejects(paste('statusText', [{ code: 'AAA1', value: 'y' }]), { statusCode: 409, code: 'STOCKTAKE_CLOSED' });
+});

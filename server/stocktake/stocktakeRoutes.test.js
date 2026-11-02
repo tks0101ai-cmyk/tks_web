@@ -30,7 +30,7 @@ async function start(t, { user = MANAGER, scope = 'Cả hai', events, fail } = {
     listSessions: async ctx => { calls.push(['listSessions', ctx.scope]); return { sessions: [SESSION] }; },
     getBoard: async (ctx, id) => { calls.push(['getBoard', id, ctx.scope]); return { session: SESSION, rows: ROWS, employees: [{ id: 501, name: 'Cảnh' }] }; },
     createSession: record('createSession'), saveLine: record('saveLine'), addLine: record('addLine'), saveNote: record('saveNote'),
-    saveTag: record('saveTag'), codeHistory: record('codeHistory'), closeSession: record('closeSession')
+    saveTag: record('saveTag'), updateSession: record('updateSession'), pasteColumn: record('pasteColumn'), codeHistory: record('codeHistory'), closeSession: record('closeSession')
   };
   const app = express();
   app.use((req, res, next) => { if (user) req.user = user; next(); });
@@ -38,7 +38,7 @@ async function start(t, { user = MANAGER, scope = 'Cả hai', events, fail } = {
     requireAuth: (req, res, next) => (req.user ? next() : res.status(401).json({ error: 'Chưa đăng nhập.' })),
     resolveBranch: (req, res, next) => { req.branch = scope; next(); },
     service,
-    sheetImport: { importT10: record('importT10') },
+    sheetImport: { importSheet: record('importSheet') },
     ...(events ? { events } : {})
   }));
   const server = await new Promise(resolve => { const s = app.listen(0, () => resolve(s)); });
@@ -59,10 +59,12 @@ test('Quan ly: xem, sua, dong dot; pham vi co so tu cookie', async t => {
   assert.equal((await fetch(base + '/sessions/7/lines', { method: 'POST', ...json({ productCode: 'A', quantity: 1 }) })).status, 201);
   assert.equal((await fetch(base + '/sessions/7/codes/AAA1/note', { method: 'PUT', ...json({ statusText: 'ok' }) })).status, 200);
   assert.equal((await fetch(base + '/sessions/7/codes/AAA1/tag', { method: 'PUT', ...json({ cluster: 'C' }) })).status, 200);
+  assert.equal((await fetch(base + '/sessions/7', { method: 'PATCH', ...json({ counterpartSessionId: 9, version: 1 }) })).status, 200);
+  assert.equal((await fetch(base + '/sessions/7/paste', { method: 'POST', ...json({ column: 'statusText', rows: [] }) })).status, 200);
   assert.equal((await fetch(base + '/sessions/7/close', { method: 'POST', ...json({ version: 1 }) })).status, 200);
   assert.equal((await fetch(base + '/import-sheet', { method: 'POST', ...json({}) })).status, 201);
   assert.deepEqual(calls.slice(1).map(c => c.slice(0, 2)), [
-    ['createSession', { name: 'x' }], ['saveLine', 7], ['addLine', 7], ['saveNote', 7], ['saveTag', 7], ['closeSession', 7], ['importT10', {}]
+    ['createSession', { name: 'x' }], ['saveLine', 7], ['addLine', 7], ['saveNote', 7], ['saveTag', 7], ['updateSession', 7], ['pasteColumn', 7], ['closeSession', 7], ['importSheet', {}]
   ]);
 });
 
@@ -73,7 +75,15 @@ test('Quan ly kiem kho duoc cap xem + sua: khong dong dot duoc', async t => {
   assert.equal((await fetch(base + '/sessions/7/codes/AAA1/note', { method: 'PUT', ...json({ statusText: 'ok' }) })).status, 200);
   assert.equal((await fetch(base + '/sessions/7/close', { method: 'POST', ...json({ version: 1 }) })).status, 403);
   assert.equal((await fetch(base + '/import-sheet', { method: 'POST', ...json({}) })).status, 403);
-  assert.ok(!calls.some(c => c[0] === 'closeSession' || c[0] === 'importT10'));
+  assert.ok(!calls.some(c => c[0] === 'closeSession' || c[0] === 'importSheet'));
+});
+
+test('Khong co quyen sua: khong dan cot, khong doi dot doi chieu', async t => {
+  const viewer = { id: 'v', vaiTro: 'Nhân viên kho', featurePermissions: { 'stocktake.view': true } };
+  const { base, calls } = await start(t, { user: viewer });
+  assert.equal((await fetch(base + '/sessions/7/paste', { method: 'POST', ...json({ column: 'statusText', rows: [] }) })).status, 403);
+  assert.equal((await fetch(base + '/sessions/7', { method: 'PATCH', ...json({ counterpartSessionId: 9 }) })).status, 403);
+  assert.ok(!calls.some(c => c[0] === 'pasteColumn' || c[0] === 'updateSession'));
 });
 
 test('Mac dinh vai tro khac khong xem duoc; Khach duoc ghi de van bi chan; chua dang nhap 401', async t => {

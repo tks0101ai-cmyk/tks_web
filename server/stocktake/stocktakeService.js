@@ -6,13 +6,42 @@
 const { getPool } = require('../db/pool');
 const { stripTelegramId } = require('../dashboard/saleName');
 const { codeKey, buildBoard, toResults, deriveColumns, totalsOf } = require('./stocktakeCompute');
-const { parseVnNumber } = require('../public/stocktake/stocktakePaste');
+const { PASTE_COLUMNS, normalizeValue, parseVnNumber, foldName } = require('../public/stocktake/stocktakePaste');
 const { announceChanged } = require('./stocktakeEvents');
 
 const BRANCHES = Object.freeze(['hanoi', 'saigon']);
 const CACHE_TTL_MS = 60 * 1000; // ton KiotViet dong bo moi 10 phut, 1 phut cache khong lam cham them
 const MAX = Object.freeze({ name: 120, text: 200, note: 1000, print: 50 });
 const MAX_QUANTITY = 1e9;
+const MAX_PASTE_ROWS = 10000;
+// Cot dan -> bang dich + truong trong ban ghi da shape.
+const NOTE_FIELDS = Object.freeze({ statusText: 'statusText', reasonText: 'reasonText', printPage: 'printPage', printTime: 'printTime', prevDiffManual: 'prevDiffManual', otherDiffManual: 'otherDiffManual' });
+const TAG_FIELDS = Object.freeze({ cluster: 'cluster', combo: 'isCombo' });
+const EMPTY_NOTE = Object.freeze({ statusText: '', reasonText: '', printPage: '', printTime: '', recheckEmployeeId: null, recheckName: '', prevDiffManual: null, otherDiffManual: null });
+const EMPTY_TAG = Object.freeze({ cluster: '', isCombo: false });
+
+// Nguoi kiem lai dan vao: khop dung 1 nhan su cung co so (so ten bo dau) -> gan id; khong -> giu chu.
+function recheckOf(value, employees) {
+  if (!value) return { recheckEmployeeId: null, recheckName: '' };
+  const matches = employees.filter(e => foldName(e.name) === foldName(value));
+  return matches.length === 1 ? { recheckEmployeeId: matches[0].id, recheckName: '' } : { recheckEmployeeId: null, recheckName: value };
+}
+
+function nextRecord(column, before, value, employees) {
+  if (TAG_FIELDS[column]) {
+    const base = { cluster: before ? before.cluster : '', isCombo: Boolean(before && before.isCombo) };
+    return { ...base, [TAG_FIELDS[column]]: column === 'combo' ? Boolean(value) : value };
+  }
+  const base = {};
+  for (const key of Object.keys(EMPTY_NOTE)) base[key] = before && before[key] !== undefined ? before[key] : EMPTY_NOTE[key];
+  if (column === 'recheck') return { ...base, ...recheckOf(value, employees) };
+  return { ...base, [NOTE_FIELDS[column]]: value };
+}
+
+function sameRecord(column, before, next) {
+  const empty = TAG_FIELDS[column] ? EMPTY_TAG : EMPTY_NOTE;
+  return Object.keys(empty).every(key => (before && before[key] !== undefined ? before[key] : empty[key]) === next[key]);
+}
 
 function fail(statusCode, code, message, extra = {}) {
   return Object.assign(new Error(message), { statusCode, code }, extra);
@@ -544,6 +573,72 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     }, sessionId);
   }
 
+  // Dan 1 cot tu sheet theo ma: ghi de co chu dich (khong kiem version), 1 giao dich, 1 dong lich su 'paste' moi ma co doi.
+  async function pasteColumn(ctx, sessionId, body = {}) {
+    const column = String(body.column || '');
+    if (!PASTE_COLUMNS[column]) throw fail(400, 'VALIDATION', 'Cột dán không hợp lệ.', { field: 'column' });
+    const mode = body.mode === 'clear' ? 'clear' : 'skip';
+    const input = Array.isArray(body.rows) ? body.rows : null;
+    if (!input || !input.length || input.length > MAX_PASTE_ROWS) throw fail(400, 'VALIDATION', `Cần từ 1 đến ${MAX_PASTE_ROWS} dòng dán.`, { field: 'rows' });
+    const actor = actorOf(ctx);
+    return withTransaction(async client => {
+      const session = await openSessionForWrite(client, ctx, sessionId);
+      const inputs = await loadInputs(client, session, { withCounterpart: false });
+      const known = new Set([...buildBoard(inputs).rows.map(r => r.code), ...inputs.products.map(p => codeKey(p.code))]);
+      const skipped = { notFound: 0, invalid: 0, unchanged: 0, empty: 0 };
+      const isTag = Boolean(TAG_FIELDS[column]);
+      const current = new Map((isTag ? inputs.tags : inputs.notes).map(item => [item.code, item]));
+      const employees = column === 'recheck' ? (await loadEmployees(client)).filter(e => e.branch === session.branch || !e.branch) : [];
+      const changes = [];
+      for (const item of input) {
+        const code = codeKey(item && item.code);
+        if (!code || !known.has(code)) { skipped.notFound += 1; continue; }
+        const parsed = normalizeValue(column, item.value);
+        if (!parsed.ok) { skipped.invalid += 1; continue; }
+        if (parsed.empty && mode === 'skip') { skipped.empty += 1; continue; }
+        const before = current.get(code) || null;
+        const next = nextRecord(column, before, parsed.value, employees);
+        if (sameRecord(column, before, next)) { skipped.unchanged += 1; continue; }
+        changes.push({ code, before, next });
+      }
+      if (changes.length) {
+        if (isTag) await upsertTags(client, session.branch, changes, actor);
+        else await upsertNotes(client, session.id, changes, actor);
+        await client.query(
+          `INSERT INTO stocktake_history (session_id, branch, product_code, action, before, after, actor_user_id, actor_name)
+           SELECT $1, $2, r.code, 'paste', r.before, r.after, $4, $5 FROM jsonb_to_recordset($3::jsonb) AS r(code text, before jsonb, after jsonb)`,
+          [session.id, session.branch, JSON.stringify(changes.map(c => ({ code: c.code, before: c.before, after: { column, ...c.next } }))), actor.id, actor.name]);
+      }
+      return { changed: changes.length, skipped };
+    }, sessionId);
+  }
+
+  async function upsertNotes(client, sessionId, changes, actor) {
+    await client.query(
+      `INSERT INTO stocktake_code_notes (session_id, product_code, status_text, reason_text, print_page, print_time, recheck_employee_id, recheck_name,
+                                         prev_diff_manual, other_diff_manual, updated_by_user_id, updated_by_name)
+       SELECT $1, r.code, r."statusText", r."reasonText", r."printPage", r."printTime", r."recheckEmployeeId", r."recheckName",
+              r."prevDiffManual", r."otherDiffManual", $3, $4
+       FROM jsonb_to_recordset($2::jsonb) AS r(code text, "statusText" text, "reasonText" text, "printPage" text, "printTime" text,
+            "recheckEmployeeId" bigint, "recheckName" text, "prevDiffManual" numeric, "otherDiffManual" numeric)
+       ON CONFLICT (session_id, product_code) DO UPDATE SET status_text = EXCLUDED.status_text, reason_text = EXCLUDED.reason_text,
+         print_page = EXCLUDED.print_page, print_time = EXCLUDED.print_time, recheck_employee_id = EXCLUDED.recheck_employee_id,
+         recheck_name = EXCLUDED.recheck_name, prev_diff_manual = EXCLUDED.prev_diff_manual, other_diff_manual = EXCLUDED.other_diff_manual,
+         version = stocktake_code_notes.version + 1, updated_by_user_id = EXCLUDED.updated_by_user_id,
+         updated_by_name = EXCLUDED.updated_by_name, updated_at = now()`,
+      [sessionId, JSON.stringify(changes.map(c => ({ code: c.code, ...c.next }))), actor.id, actor.name]);
+  }
+
+  async function upsertTags(client, branch, changes, actor) {
+    await client.query(
+      `INSERT INTO stocktake_product_tags (branch, product_code, cluster, is_combo, updated_by_user_id, updated_by_name)
+       SELECT $1, r.code, r.cluster, r."isCombo", $3, $4 FROM jsonb_to_recordset($2::jsonb) AS r(code text, cluster text, "isCombo" boolean)
+       ON CONFLICT (branch, product_code) DO UPDATE SET cluster = EXCLUDED.cluster, is_combo = EXCLUDED.is_combo,
+         version = stocktake_product_tags.version + 1, updated_by_user_id = EXCLUDED.updated_by_user_id,
+         updated_by_name = EXCLUDED.updated_by_name, updated_at = now()`,
+      [branch, JSON.stringify(changes.map(c => ({ code: c.code, ...c.next }))), actor.id, actor.name]);
+  }
+
   async function codeHistory(ctx, sessionId, code) {
     const db = getDb();
     const session = await readSession(db, ctx, sessionId);
@@ -551,7 +646,8 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     // Tag (Cum SP / Combo) giu qua cac dot nen lay ca lich su tag cua ma o dot khac.
     const { rows } = await db.query(
       `SELECT id, session_id, action, before, after, actor_name, created_at FROM stocktake_history
-       WHERE product_code = $1 AND (session_id = $2 OR (action = 'tag' AND branch = $3))
+       WHERE product_code = $1 AND (session_id = $2 OR (action = 'tag' AND branch = $3)
+              OR (action = 'paste' AND branch = $3 AND after->>'column' IN ('cluster', 'combo')))
        ORDER BY id DESC LIMIT 200`, [productCode, session.id, session.branch]);
     return {
       history: rows.map(row => ({
@@ -586,7 +682,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     }, sessionId);
   }
 
-  return { listSessions, createSession, updateSession, getBoard, saveLine, addLine, saveNote, saveTag, codeHistory, closeSession };
+  return { listSessions, createSession, updateSession, getBoard, saveLine, addLine, saveNote, saveTag, pasteColumn, codeHistory, closeSession };
 }
 
 module.exports = { createStockTakeService, TEAM_LINES_SQL, fail, ...createStockTakeService() };
