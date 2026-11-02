@@ -8,6 +8,10 @@
 .marketing-status:empty, .marketing-warnings:empty { display: none; }
 .marketing-warnings { color: var(--amber); }
 .marketing-section .kpi-card, .marketing-dialog .kpi-card { min-width: 0; }
+@media (min-width: 769px) {
+  #marketing-receipt-check-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  #marketing-receipt-check-kpis > .kpi-card { grid-column: auto; }
+}
 .marketing-section .kpi-card .value, .marketing-dialog .kpi-card .value { overflow-wrap: normal; word-break: normal; font-size: clamp(19px, 1.8vw, 23px); }
 .marketing-section .panel { min-width: 0; }
 .marketing-table .table-wrap { min-width: 0; }
