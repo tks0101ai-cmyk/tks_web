@@ -1,5 +1,9 @@
 # Supabase schema cho đồng bộ KiotViet
 
+## Migration 0103 — Kiểm kê (02/11/2026, chưa áp DB)
+
+`0103_stocktake.sql`: `stocktake_sessions` (đợt: `branch` hanoi|saigon, `name`, `date_from`/`date_to` DATE, `status` open|closed, `source` web|sheet_import, `source_ref` UNIQUE khi có, `version`, người tạo/đóng); `stocktake_line_edits` (sửa dòng đếm gốc `(order_id, line_no)` UNIQUE theo đợt, hoặc dòng thêm tay khi `order_id` NULL; cột NULL = giữ gốc; `quantity NUMERIC`, `removed`, `version`); `stocktake_code_notes` (PK `(session_id, product_code)`: `status_text`, `reason_text`, `recheck_employee_id` FK `hr_employees` ON DELETE SET NULL, `recheck_name` chữ từ sheet, `version`); `stocktake_product_tags` (PK `(branch, product_code)`, giữ qua các đợt: `cluster`, `is_combo`, `version`); `stocktake_session_results` (bản chụp lúc đóng: `counted`, `stock`, `cost`, `diff_qty`, `diff_value` NUMERIC); `stocktake_history` (chỉ thêm, trigger chặn UPDATE/DELETE, action `session_create|session_close|sheet_import|line_edit|line_add|note|tag`, `before`/`after` JSONB). Mã hàng lưu dạng chuẩn (viết hoa, bỏ khoảng trắng). Thu hồi `reporting_readonly` trên `stocktake_history`, `stocktake_code_notes`. Số đếm KHÔNG lưu: đọc từ `orders`/`order_details` (khách tên bắt đầu `TEAM`, ngày đặt giờ VN trong khoảng của đợt, kể cả đơn hủy).
+
 ## Migration 0102 — Nhật ký ghi ngược lên đơn KiotViet (30/10/2026, chưa áp DB)
 
 `0102_order_kiot_edit_log.sql`: bảng `order_kiot_edit_log` (`id`, `created_at`, `branch` HN|SG, `order_code`, `action` `remove_line|set_quantity|rollback`, `summary JSONB` {productCode/quantities, before[], after[] hoặc problems/restored}, `actor_user_id`, `actor_name`); trigger chặn UPDATE/DELETE; thu hồi `reporting_readonly`; index `(branch, lower(btrim(order_code)), id)`. Ghi bởi `kiotviet/kiotOrderEditor.js`, fail-soft khi bảng chưa tồn tại.

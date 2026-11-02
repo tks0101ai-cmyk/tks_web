@@ -24,7 +24,7 @@ function columns(employeeName) {
     { header: 'Combo', width: 8, value: row => (row.isCombo ? 'X' : '') },
     { header: 'KK trước sai', width: 12, numFmt: NUMBER, value: row => row.prevDiff },
     { header: 'Quên KK', width: 9, value: row => (row.forgotten ? 'X' : '') },
-    { header: 'Người kiểm lại', width: 20, value: row => safeText(employeeName(row.note && row.note.recheckEmployeeId)) },
+    { header: 'Người kiểm lại', width: 20, value: row => safeText(row.note ? employeeName(row.note.recheckEmployeeId) || row.note.recheckName : '') },
     { header: 'Trạng thái', width: 16, value: row => safeText(row.note ? row.note.statusText : '') },
     { header: 'Chi tiết lý do', width: 36, value: row => safeText(row.note ? row.note.reasonText : '') }
   ];

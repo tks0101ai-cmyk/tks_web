@@ -75,6 +75,7 @@ test('importT10: tao dot da dong, ghi chu + nguoi kiem lai, tag khong de tag san
   assert.equal(board.session.dateTo, '2026-10-03');
   const lumi = board.rows.find(r => r.code === 'LUMI3M');
   assert.equal(lumi.note.recheckEmployeeId, 501);
+  assert.equal(lumi.note.recheckName, 'cảnh');
   assert.equal(lumi.note.reasonText, 'MẤT- CHỜ TÌM SG');
   assert.equal(board.rows.find(r => r.code === 'LUMI3T').cluster, 'Cụm trên web');
 

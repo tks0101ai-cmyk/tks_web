@@ -138,6 +138,13 @@
     const found = state.board.employees.find(e => e.id === id);
     return found ? found.name : '';
   };
+  // Người kiểm lại: nhân sự trên web, hoặc tên chữ nạp từ sheet (biệt danh không khớp danh bạ).
+  const recheckKey = note => {
+    if (!note) return '';
+    if (note.recheckEmployeeId !== null && note.recheckEmployeeId !== undefined) return 'id:' + note.recheckEmployeeId;
+    return note.recheckName ? 'name:' + note.recheckName.trim().toUpperCase() : '';
+  };
+  const recheckLabel = note => (note ? employeeName(note.recheckEmployeeId) || note.recheckName || '' : '');
 
   function visibleRows() {
     if (!state.board) return [];
@@ -146,7 +153,7 @@
       if (state.filter === 'mismatch' && row.diffQty === 0) return false;
       if (state.filter === 'forgotten' && !row.forgotten) return false;
       if (state.filter === 'noted' && !row.note) return false;
-      if (state.recheck && String(row.note && row.note.recheckEmployeeId) !== state.recheck) return false;
+      if (state.recheck && recheckKey(row.note) !== state.recheck) return false;
       if (state.status && (row.note ? row.note.statusText : '') !== state.status) return false;
       if (!query) return true;
       return fold([row.code, row.name, row.cluster, row.note && row.note.statusText, row.note && row.note.reasonText].join(' ')).includes(query);
@@ -171,7 +178,7 @@
       case 'clusterDiff': return num(row.clusterDiff);
       case 'combo': return row.isCombo ? 'X' : '';
       case 'prevDiff': return num(row.prevDiff);
-      case 'recheck': return employeeName(note.recheckEmployeeId);
+      case 'recheck': return recheckLabel(row.note);
       case 'status': return note.statusText || '';
       case 'reason': return note.reasonText || '';
       case 'updated': return note.updatedByName ? note.updatedByName + ' · ' + time(note.updatedAt) : '';
@@ -278,11 +285,24 @@
     select.value = entries.some(([value]) => value === current) ? current : '';
   }
 
+  // Đếm số mã theo người kiểm lại: key -> { label, count }.
+  function recheckCounts() {
+    const counts = new Map();
+    if (!state.board) return counts;
+    for (const row of state.board.rows) {
+      const key = recheckKey(row.note);
+      if (!key) continue;
+      const entry = counts.get(key) || { label: recheckLabel(row.note), count: 0 };
+      entry.count += 1;
+      counts.set(key, entry);
+    }
+    return counts;
+  }
+
   function renderFilters() {
     const board = state.board;
-    const ids = new Set();
-    if (board) for (const row of board.rows) if (row.note && row.note.recheckEmployeeId !== null) ids.add(row.note.recheckEmployeeId);
-    fillSelect($('stRecheckFilter'), 'Mọi người kiểm lại', [...ids].map(id => [String(id), employeeName(id) || '#' + id]).sort((a, b) => a[1].localeCompare(b[1])), state.recheck);
+    const entries = [...recheckCounts()].map(([key, entry]) => [key, entry.label]).sort((a, b) => a[1].localeCompare(b[1]));
+    fillSelect($('stRecheckFilter'), 'Mọi người kiểm lại', entries, state.recheck);
     state.recheck = $('stRecheckFilter').value;
     fillSelect($('stStatusFilter'), 'Mọi trạng thái', board ? board.suggestions.status.map(s => [s, s]) : [], state.status);
     state.status = $('stStatusFilter').value;
@@ -293,22 +313,18 @@
     const list = $('stRecheckList');
     list.textContent = '';
     if (!state.board) return;
-    const counts = new Map();
-    for (const row of state.board.rows) {
-      const id = row.note && row.note.recheckEmployeeId;
-      if (id !== null && id !== undefined) counts.set(id, (counts.get(id) || 0) + 1);
-    }
+    const counts = recheckCounts();
     if (!counts.size) {
       list.textContent = 'Chưa giao mã nào.';
       return;
     }
-    for (const [id, count] of [...counts].sort((a, b) => b[1] - a[1])) {
+    for (const [key, entry] of [...counts].sort((a, b) => b[1].count - a[1].count)) {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'st-chip';
-      button.textContent = (employeeName(id) || '#' + id) + ' · ' + count;
+      button.textContent = entry.label + ' · ' + entry.count;
       button.addEventListener('click', () => {
-        state.recheck = String(id);
+        state.recheck = key;
         state.filter = 'all';
         $('stFilter').value = 'all';
         state.page = 1;
@@ -453,7 +469,7 @@
   const ACTION_LABELS = { line_edit: 'Sửa dòng đếm', line_add: 'Thêm dòng', note: 'Kiểm lại', tag: 'Cụm / Combo', session_close: 'Đóng đợt', sheet_import: 'Nạp từ sheet' };
   function historyText(item) {
     const after = item.after || {};
-    if (item.action === 'note') return [employeeName(after.recheckEmployeeId), after.statusText, after.reasonText].filter(Boolean).join(' · ');
+    if (item.action === 'note') return [recheckLabel(after), after.statusText, after.reasonText].filter(Boolean).join(' · ');
     if (item.action === 'tag') return [after.cluster && 'Cụm: ' + after.cluster, after.isCombo ? 'Combo' : ''].filter(Boolean).join(' · ');
     if (item.action === 'line_edit' || item.action === 'line_add') {
       return [after.removed ? 'Bỏ dòng' : after.quantity !== null && after.quantity !== undefined ? 'SL ' + num(after.quantity) : '', after.zone, after.team].filter(Boolean).join(' · ');

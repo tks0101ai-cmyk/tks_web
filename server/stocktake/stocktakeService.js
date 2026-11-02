@@ -88,7 +88,7 @@ const POSITION_BRANCH = Object.freeze({ hanoi: 'HN', saigon: 'SG' });
 
 const SESSION_COLUMNS = `id, branch, name, date_from, date_to, status, source, version, created_by_name, created_at, closed_by_name, closed_at`;
 const EDIT_COLUMNS = `id, order_id, line_no, product_code, team, zone, spec, quantity::float8 AS quantity, removed, version, updated_by_name, updated_at`;
-const NOTE_COLUMNS = `product_code, status_text, reason_text, recheck_employee_id, version, updated_by_name, updated_at`;
+const NOTE_COLUMNS = `product_code, status_text, reason_text, recheck_employee_id, recheck_name, version, updated_by_name, updated_at`;
 const TAG_COLUMNS = `product_code, cluster, is_combo, version, updated_by_name, updated_at`;
 
 const shapeSession = row => ({
@@ -124,6 +124,7 @@ const shapeNote = row => ({
   statusText: row.status_text,
   reasonText: row.reason_text,
   recheckEmployeeId: row.recheck_employee_id === null ? null : Number(row.recheck_employee_id),
+  recheckName: row.recheck_name || '',
   version: row.version,
   updatedByName: row.updated_by_name || '',
   updatedAt: isoOf(row.updated_at)

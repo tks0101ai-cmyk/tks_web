@@ -101,13 +101,14 @@ function createStocktakeSheetImport({ getDb = getPool, readValues = readSheetVal
          SELECT $1, r.code, r.name, r.counted, r.stock, r.cost, r."diffQty", r."diffValue"
          FROM jsonb_to_recordset($2::jsonb) AS r(code text, name text, counted numeric, stock numeric, cost numeric, "diffQty" numeric, "diffValue" numeric)`,
         [sessionId, payload]);
-      // Nguoi kiem lai: khop ten nhan su dang lam (khong phan biet hoa/thuong), trung ten / khong thay thi de trong.
+      // Nguoi kiem lai: giu nguyen chu trong sheet (thuong la biet danh "THAI KHO"); khop duoc dung 1 nhan su dang lam
+      // theo ho ten (khong phan biet hoa/thuong) thi gan them id.
       const notes = await client.query(
-        `INSERT INTO stocktake_code_notes (session_id, product_code, status_text, reason_text, recheck_employee_id, updated_by_user_id, updated_by_name)
+        `INSERT INTO stocktake_code_notes (session_id, product_code, status_text, reason_text, recheck_employee_id, recheck_name, updated_by_user_id, updated_by_name)
          SELECT $1, r.code, r."statusText", r."reasonText",
                 (SELECT CASE WHEN count(*) = 1 THEN min(e.id) END FROM hr_employees e
                  WHERE e.is_active AND r.recheck <> '' AND lower(btrim(e.ho_ten)) = lower(r.recheck)),
-                $3, $4
+                r.recheck, $3, $4
          FROM jsonb_to_recordset($2::jsonb) AS r(code text, "statusText" text, "reasonText" text, recheck text)
          WHERE r."statusText" <> '' OR r."reasonText" <> '' OR r.recheck <> ''`,
         [sessionId, payload, actor.id, actor.name]);

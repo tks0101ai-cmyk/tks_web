@@ -55,6 +55,8 @@ CREATE TABLE IF NOT EXISTS stocktake_code_notes (
   status_text         TEXT        NOT NULL DEFAULT '',
   reason_text         TEXT        NOT NULL DEFAULT '',
   recheck_employee_id BIGINT      REFERENCES hr_employees (id) ON DELETE SET NULL,
+  -- Ten nguoi kiem lai dang chu tu sheet (biet danh "THAI KHO"...), chi dot nap tu sheet; tren web dung recheck_employee_id.
+  recheck_name        TEXT        NOT NULL DEFAULT '',
   version             INTEGER     NOT NULL DEFAULT 1,
   updated_by_user_id  TEXT,
   updated_by_name     TEXT        NOT NULL DEFAULT '',
