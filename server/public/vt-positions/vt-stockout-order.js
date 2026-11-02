@@ -2,12 +2,13 @@
   'use strict';
   // Đơn xuất kho của VT Hà Nội / VT Sài Gòn (migration 0104). Mỗi cơ sở có MỘT đơn tạm dùng chung: ghi lại hàng đã bốc thật (gõ theo tên,
   // gợi ý), CHƯA trừ tồn; bấm "Chốt đơn" (có hộp xác nhận) mới trừ tồn VT, cho phép ra số lượng âm. Đóng tab/mở lại đơn tạm vẫn còn.
+  // Hộp có 3 tab: Đơn tạm · Danh sách đơn (đơn tạm + đơn đã chốt) · Xuất kho Excel (trừ tồn ngay theo file, logic nằm ở vt-positions.js).
   // Trang vt-positions.js truyền vào các hàm dùng chung (request, confirmBox, openDialog...) qua init(hooks).
   const API = '/api/stock-positions/stock-out-orders';
   const SUGGEST_API = '/api/stock-positions/code-suggestions';
   const POLL_MS = 15000;
   const NUMBER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 });
-  const state = { hooks: null, branch: '', order: null, canEdit: false, view: 'current', history: [], moreBefore: null, detail: null, returnView: 'history',
+  const state = { hooks: null, branch: '', order: null, canEdit: false, view: 'current', history: [], moreBefore: null, detail: null, returnView: 'list', search: '',
     adding: false, editing: false, busy: false, timer: null, suggestions: [], suggestSeq: 0, suggestTimer: null, loadSeq: 0 };
 
   const $ = id => document.getElementById(id);
@@ -206,7 +207,8 @@
   function renderSubtitle() {
     const order = state.view === 'detail' ? state.detail : state.order;
     const parts = [state.branch === 'HN' ? 'VT Hà Nội' : 'VT Sài Gòn'];
-    if (state.view === 'history') parts.push('Các đơn đã chốt');
+    if (state.view === 'list') parts.push('Danh sách đơn');
+    else if (state.view === 'excel') parts.push('Xuất kho Excel · trừ tồn ngay theo file Excel/CSV, không qua đơn tạm');
     else if (order) {
       parts.push(order.code);
       if (order.status === 'draft') parts.push('Đơn tạm · tạo bởi ' + (order.createdByName || '—') + ' · chưa trừ tồn');
@@ -215,11 +217,57 @@
     $('vtOrderSubtitle').textContent = parts.join(' · ');
   }
 
+  // Thống kê của đơn tạm để hiện cùng hàng với các đơn đã chốt: mỗi (mã, vị trí) chỉ tính một lần.
+  function draftStats(order) {
+    const last = new Map();
+    order.lines.forEach(line => last.set(keyOf(line), line));
+    const groups = [...last.values()];
+    return { lineCount: order.lines.length, positions: groups.length, negative: groups.filter(line => preview(line) && preview(line).negative).length };
+  }
+
+  function listRow(item, draftOrder) {
+    const tr = el('tr', 'vt-order-row is-link');
+    tr.tabIndex = 0;
+    const stats = draftOrder ? draftStats(item) : item.summary || {};
+    const status = el('td');
+    status.appendChild(el('span', draftOrder ? 'vt-order-tag is-draft' : 'vt-order-tag is-done', draftOrder ? 'Đơn tạm' : 'Đã chốt'));
+    tr.append(el('td', 'vt-order-ordercode', item.code), status,
+      el('td', '', formatTime(draftOrder ? item.createdAt : item.confirmedAt)), el('td', '', (draftOrder ? item.createdByName : item.confirmedByName) || '—'),
+      el('td', 'num', formatNumber(draftOrder ? stats.lineCount : item.lineCount)), el('td', 'num', formatNumber(stats.positions)), el('td', 'num', formatNumber(stats.negative)));
+    tr.title = draftOrder ? 'Bấm để mở đơn tạm' : 'Bấm để xem chi tiết đơn';
+    const open = () => { if (draftOrder) setView('current'); else showDetail(item.id, 'list'); };
+    tr.addEventListener('click', open);
+    tr.addEventListener('keydown', event => { if (event.key === 'Enter') open(); });
+    return tr;
+  }
+
+  function renderList() {
+    const body = $('vtOrderListRows');
+    body.replaceChildren();
+    const term = state.search.trim().toLowerCase();
+    const matches = item => !term || [item.code, item.createdByName, item.confirmedByName].some(value => String(value || '').toLowerCase().includes(term));
+    const draftOrder = state.order && state.order.status === 'draft' && matches(state.order) ? state.order : null;
+    const done = state.history.filter(matches);
+    if (draftOrder) body.appendChild(listRow(draftOrder, true));
+    done.forEach(item => body.appendChild(listRow(item, false)));
+    if (!draftOrder && !done.length) {
+      const tr = el('tr');
+      const td = el('td', 'table-note', term ? 'Không có đơn nào khớp từ khóa.' : 'Chưa có đơn nào.');
+      td.colSpan = 7;
+      tr.appendChild(td);
+      body.appendChild(tr);
+    }
+    $('vtOrderListNote').textContent = (draftOrder ? '1 đơn tạm · ' : '') + done.length + ' đơn đã chốt' + (state.moreBefore !== null ? ' (còn nữa, bấm Tải thêm)' : '');
+    $('vtOrderMore').hidden = state.moreBefore === null;
+  }
+
   function render() {
     const view = state.view;
     $('vtOrderCurrent').hidden = view !== 'current';
-    $('vtOrderHistory').hidden = view !== 'history';
+    $('vtOrderList').hidden = view !== 'list';
     $('vtOrderDetail').hidden = view !== 'detail';
+    $('vtOrderExcel').hidden = view !== 'excel';
+    $('vtOrderExcelTab').hidden = !state.canEdit;
     document.querySelectorAll('[data-order-view]').forEach(button => {
       const active = button.dataset.orderView === (view === 'detail' ? state.returnView : view);
       button.classList.toggle('is-active', active);
@@ -250,29 +298,8 @@
         body.appendChild(tr);
       }
       if (!state.adding || !$('vtOrderName')) renderFoot(Boolean(editable));
-    } else if (view === 'history') {
-      const body = $('vtOrderHistoryRows');
-      body.replaceChildren();
-      state.history.forEach(item => {
-        const tr = el('tr', 'vt-order-row is-link');
-        tr.tabIndex = 0;
-        tr.title = 'Bấm để xem chi tiết đơn';
-        const stats = item.summary || {};
-        tr.append(el('td', 'vt-order-ordercode', item.code), el('td', '', formatTime(item.confirmedAt)), el('td', '', item.confirmedByName || '—'),
-          el('td', 'num', String(item.lineCount)), el('td', 'num', formatNumber(stats.positions)), el('td', 'num', formatNumber(stats.negative)));
-        const open = () => showDetail(item.id, 'history');
-        tr.addEventListener('click', open);
-        tr.addEventListener('keydown', event => { if (event.key === 'Enter') open(); });
-        body.appendChild(tr);
-      });
-      if (!state.history.length) {
-        const tr = el('tr');
-        const td = el('td', 'table-note', 'Chưa có đơn nào được chốt.');
-        td.colSpan = 6;
-        tr.appendChild(td);
-        body.appendChild(tr);
-      }
-      $('vtOrderMore').hidden = state.moreBefore === null;
+    } else if (view === 'list') {
+      renderList();
     } else if (view === 'detail' && state.detail) {
       const body = $('vtOrderDetailRows');
       body.replaceChildren();
@@ -440,14 +467,17 @@
 
   // ---------- Chuyển màn hình ----------
   async function setView(view) {
+    if (state.hooks.excel && state.hooks.excel.busy()) return; // đang trừ kho theo file: không cho rời tab
+    if (view === 'excel' && !state.canEdit) return;
     state.view = view;
     setError('');
-    if (view === 'history') { render(); await loadHistory(false); }
+    if (view === 'list') { render(); await Promise.all([loadCurrent({ quiet: true }), loadHistory(false)]); }
     else if (view === 'current') { render(); await loadCurrent(); }
+    else if (view === 'excel') { state.hooks.excel.enter(); render(); }
   }
 
   async function showDetail(id, returnView) {
-    state.returnView = returnView || 'history';
+    state.returnView = returnView || 'list';
     if (!await loadDetail(id)) return;
     state.view = 'detail';
     render();
@@ -495,7 +525,7 @@
     state.branch = branch || state.hooks.branch();
     state.adding = false;
     state.editing = false;
-    state.returnView = 'history';
+    state.returnView = 'list';
     setError('');
     if (!await loadDetail(id)) { state.hooks.notify('Không mở được đơn xuất kho.', true); return; }
     state.canEdit = false;
@@ -511,7 +541,8 @@
     if (!button) return;
     button.addEventListener('click', open);
     document.querySelectorAll('[data-order-view]').forEach(tab => tab.addEventListener('click', () => setView(tab.dataset.orderView)));
-    $('vtOrderBack').addEventListener('click', () => { state.view = state.returnView === 'current' ? 'current' : 'history'; render(); if (state.view === 'history' && !state.history.length) loadHistory(false); });
+    $('vtOrderBack').addEventListener('click', () => { if (state.returnView === 'current') setView('current'); else if (state.history.length) { state.view = 'list'; render(); } else setView('list'); });
+    $('vtOrderSearch').addEventListener('input', event => { state.search = event.target.value; if (state.view === 'list') renderList(); });
     $('vtOrderConfirm').addEventListener('click', confirmOrder);
     $('vtOrderMore').addEventListener('click', () => loadHistory(true));
     $('vtOrderImport').addEventListener('click', () => $('vtOrderFile').click());

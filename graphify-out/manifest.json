@@ -654,9 +654,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1793612218.629012,
-    "seen": 1793612364.0482957,
-    "ast_hash": "9e71e2e0cddff971f3d1a351ffff922d",
+    "mtime": 1793614209.415665,
+    "seen": 1793614250.8230376,
+    "ast_hash": "cc0e67306f469eeb928db6fe18ae78de",
     "semantic_hash": ""
   },
   "design-system/tks-dashboard/MASTER.md": {
@@ -786,9 +786,9 @@
     "semantic_hash": "58e700daf0c14819a97499bd94f6f2e1"
   },
   "server/README.md": {
-    "mtime": 1793612218.6367993,
-    "seen": 1793612364.0482957,
-    "ast_hash": "cac7fa6f23b4ee72689961d16f534efc",
+    "mtime": 1793613135.0922544,
+    "seen": 1793614250.8230376,
+    "ast_hash": "64c4f579c0512c6b02fc674a23f6006e",
     "semantic_hash": ""
   },
   "server/kiotviet/API_ENDPOINTS.md": {
@@ -1386,9 +1386,9 @@
     "semantic_hash": ""
   },
   "server/db/SCHEMA.md": {
-    "mtime": 1793612218.5785246,
-    "seen": 1793612364.0482957,
-    "ast_hash": "06220d35033c6e525e099267be48fcd0",
+    "mtime": 1793613135.1587925,
+    "seen": 1793614250.8230376,
+    "ast_hash": "8e695150d4b45fe7f161de8de72ddea6",
     "semantic_hash": ""
   },
   "server/auth/appUsersRepository.js": {
@@ -3306,9 +3306,9 @@
     "semantic_hash": ""
   },
   "CURRENT.md": {
-    "mtime": 1793612218.6465912,
-    "seen": 1793612364.0482957,
-    "ast_hash": "760710066f41cbd7783f54cdd7538acc",
+    "mtime": 1793614209.4198265,
+    "seen": 1793614250.8230376,
+    "ast_hash": "9e0c6cbdc1114deec42fce0b5a6c952b",
     "semantic_hash": ""
   },
   "MEMORY.md": {
@@ -5766,8 +5766,8 @@
     "semantic_hash": ""
   },
   "server/public/prototypes/order-picking/index.html": {
-    "mtime": 1793599636.3037136,
-    "seen": 1793604482.273109,
+    "mtime": 1793612449.2072823,
+    "seen": 1793614250.8230376,
     "ast_hash": "26054dcc0904ce370cf31f4d5913c7a1",
     "semantic_hash": ""
   },
@@ -5784,8 +5784,8 @@
     "semantic_hash": ""
   },
   "server/public/prototypes/order-picking/order-template.html": {
-    "mtime": 1793599636.2864745,
-    "seen": 1793604482.273109,
+    "mtime": 1793612449.1817608,
+    "seen": 1793614250.8230376,
     "ast_hash": "a540c3585514b9a0455146e6f12398ee",
     "semantic_hash": ""
   },
@@ -5820,9 +5820,9 @@
     "semantic_hash": ""
   },
   "server/public/vt-positions/vt-positions.js": {
-    "mtime": 1793611883.3740733,
-    "seen": 1793612364.0467896,
-    "ast_hash": "400e7b896313a9467beb6d20ca8366e7",
+    "mtime": 1793614014.2226887,
+    "seen": 1793614250.8230376,
+    "ast_hash": "fc2f3c7adf4f703f88ad4c5cfbce37da",
     "semantic_hash": ""
   },
   "server/shipment/kiotOrderLink.js": {
@@ -5898,9 +5898,9 @@
     "semantic_hash": ""
   },
   "server/test/frontend/vt-positions.test.js": {
-    "mtime": 1793352899.2280345,
-    "seen": 1793353493.5007286,
-    "ast_hash": "8c4eb652f82cc8fa3c4a5c33f256966b",
+    "mtime": 1793614071.8909385,
+    "seen": 1793614250.8230376,
+    "ast_hash": "d39b60a31a8ab083c35112c40efebeaf",
     "semantic_hash": ""
   },
   "docs/superpowers/specs/2026-10-27-vat-status-by-vat-code-design.md": {
@@ -5916,9 +5916,9 @@
     "semantic_hash": ""
   },
   "server/public/vt-positions/index.html": {
-    "mtime": 1793611860.2901964,
-    "seen": 1793612364.0482957,
-    "ast_hash": "fac7b447c11eeeb9b20f443a64b5c56b",
+    "mtime": 1793613998.4610963,
+    "seen": 1793614250.8230376,
+    "ast_hash": "c35af333b7d8656a1ba74c90dab36f7a",
     "semantic_hash": ""
   },
   "server/db/migrations/0096_order_pick_assignments.sql": {
@@ -6258,9 +6258,9 @@
     "semantic_hash": ""
   },
   "design-system/tks-dashboard/pages/vt-positions.md": {
-    "mtime": 1793612218.629012,
-    "seen": 1793612364.0482957,
-    "ast_hash": "85437e08aa1a3a7524f598f25b15b3f7",
+    "mtime": 1793614215.9907963,
+    "seen": 1793614250.8230376,
+    "ast_hash": "8b6733b57f6571b5b84622732ae4bb94",
     "semantic_hash": ""
   },
   "docs/superpowers/specs/2026-10-30-remove-legacy-stock-locations-design.md": {
@@ -6390,9 +6390,9 @@
     "semantic_hash": ""
   },
   "server/public/vt-positions/vt-stockout-order.js": {
-    "mtime": 1793611840.4601867,
-    "seen": 1793612364.0467896,
-    "ast_hash": "b1d916f2837a24e86408bd3bf7bb60a4",
+    "mtime": 1793614036.3710787,
+    "seen": 1793614250.8230376,
+    "ast_hash": "afd531ce6b83820563259ac77be26353",
     "semantic_hash": ""
   },
   "server/stockPositions/stockOutOrdersRoutes.test.js": {
@@ -6414,9 +6414,9 @@
     "semantic_hash": ""
   },
   "server/test/frontend/vt-positions-stockout-order.test.js": {
-    "mtime": 1793612067.1653855,
-    "seen": 1793612364.0467896,
-    "ast_hash": "f5844e9d02d927edaeb5b589bf9fe137",
+    "mtime": 1793614094.3107922,
+    "seen": 1793614250.8230376,
+    "ast_hash": "600429dbc128f658d9cdf95158340242",
     "semantic_hash": ""
   }
 }
