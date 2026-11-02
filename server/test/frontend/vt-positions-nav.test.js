@@ -35,9 +35,9 @@ test('Module Vị trí hàng cũ đã gỡ: không còn mục /stock-locations/ 
     assert.equal(doc.querySelectorAll('[data-stock-location-tab]').length, 0);
     assert.equal([...doc.querySelectorAll('a')].filter(link => /stock-locations/.test(link.getAttribute('href') || '')).length, 0);
     assert.doesNotMatch(doc.getElementById('sidebar').textContent, /Vị trí HN|Vị trí SG/);
-    // Nhóm "Vị trí hàng" chỉ còn đúng 2 mục VT.
+    // Nhóm "Vị trí hàng": 2 mục VT + Kiểm kê (02/11/2026, Quản lý có stocktake.view mặc định).
     const groupLinks = [...doc.querySelectorAll('#tksStockLocationsGroupList a')];
-    assert.deepEqual(groupLinks.map(link => link.textContent.trim()), ['VT Hà Nội', 'VT Sài Gòn']);
+    assert.deepEqual(groupLinks.map(link => link.textContent.trim()), ['VT Hà Nội', 'VT Sài Gòn', 'Kiểm kê']);
     dom.window.close();
   }
 });
@@ -74,4 +74,16 @@ test('Registry thật: mọi vai trò, kể cả Khách, thấy mục VT khi m�
     assert.deepEqual(vtTabs(dom).map(link => link.dataset.vtPositionTab), ['hn', 'sg'], vaiTro);
     dom.window.close();
   }
+});
+
+test('Mục Kiểm kê chỉ hiện khi có stocktake.view và được đánh dấu khi đang ở /stocktake/', () => {
+  const kiemKe = dom => [...dom.window.document.querySelectorAll('#tksStockLocationsGroupList a')].filter(link => link.getAttribute('href') === '/stocktake/');
+  const kho = sidebarFor({ vaiTro: 'Nhân viên kho', branch: 'Hà Nội' });
+  assert.equal(kiemKe(kho).length, 0, 'mặc định chỉ Quản lý');
+  kho.window.close();
+  const granted = sidebarFor({ vaiTro: 'Nhân viên kho', branch: 'Hà Nội', permissions: ['stockLocationsV2.view', 'stocktake.view'] }, 'https://tokosi.test/stocktake/');
+  const [link] = kiemKe(granted);
+  assert.ok(link);
+  assert.ok(link.getAttribute('aria-current') === 'page' || link.classList.contains('active'));
+  granted.window.close();
 });
