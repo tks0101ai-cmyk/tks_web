@@ -10,6 +10,7 @@ const { BRANCHES, resolveBranchScope } = require('../branch/branches');
 const service = require('./stocktakeService');
 const { events: defaultEvents, CHANGED } = require('./stocktakeEvents');
 const { createStocktakeWorkbook } = require('./stocktakeExport');
+const sheetImport = require('./stocktakeSheetImport');
 
 function createStocktakeRouter(dependencies = {}) {
   const router = express.Router();
@@ -105,6 +106,10 @@ function createStocktakeRouter(dependencies = {}) {
   }));
   router.post('/api/stocktake/sessions/:id/close', close, handle(async (req, res) => {
     res.json(await svc().closeSession(ctxOf(req), idOf(req), req.body || {}));
+  }));
+  // Nap 1 lan dot T10 tu sheet kiem ke (nguon "KK truoc" cho dot dau tren web).
+  router.post('/api/stocktake/import-sheet', close, handle(async (req, res) => {
+    res.status(201).json(await (dependencies.sheetImport || sheetImport).importT10(ctxOf(req), req.body || {}));
   }));
 
   // Xuat Excel: POST { codes } = dung cac ma dang loc tren giao dien; GET = ca bang.

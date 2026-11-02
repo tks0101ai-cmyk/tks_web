@@ -38,6 +38,7 @@ async function start(t, { user = MANAGER, scope = 'Cả hai', events, fail } = {
     requireAuth: (req, res, next) => (req.user ? next() : res.status(401).json({ error: 'Chưa đăng nhập.' })),
     resolveBranch: (req, res, next) => { req.branch = scope; next(); },
     service,
+    sheetImport: { importT10: record('importT10') },
     ...(events ? { events } : {})
   }));
   const server = await new Promise(resolve => { const s = app.listen(0, () => resolve(s)); });
@@ -59,8 +60,9 @@ test('Quan ly: xem, sua, dong dot; pham vi co so tu cookie', async t => {
   assert.equal((await fetch(base + '/sessions/7/codes/AAA1/note', { method: 'PUT', ...json({ statusText: 'ok' }) })).status, 200);
   assert.equal((await fetch(base + '/sessions/7/codes/AAA1/tag', { method: 'PUT', ...json({ cluster: 'C' }) })).status, 200);
   assert.equal((await fetch(base + '/sessions/7/close', { method: 'POST', ...json({ version: 1 }) })).status, 200);
+  assert.equal((await fetch(base + '/import-sheet', { method: 'POST', ...json({}) })).status, 201);
   assert.deepEqual(calls.slice(1).map(c => c.slice(0, 2)), [
-    ['createSession', { name: 'x' }], ['saveLine', 7], ['addLine', 7], ['saveNote', 7], ['saveTag', 7], ['closeSession', 7]
+    ['createSession', { name: 'x' }], ['saveLine', 7], ['addLine', 7], ['saveNote', 7], ['saveTag', 7], ['closeSession', 7], ['importT10', {}]
   ]);
 });
 
@@ -70,7 +72,8 @@ test('Quan ly kiem kho duoc cap xem + sua: khong dong dot duoc', async t => {
   assert.deepEqual([board.canEdit, board.canClose], [true, false]);
   assert.equal((await fetch(base + '/sessions/7/codes/AAA1/note', { method: 'PUT', ...json({ statusText: 'ok' }) })).status, 200);
   assert.equal((await fetch(base + '/sessions/7/close', { method: 'POST', ...json({ version: 1 }) })).status, 403);
-  assert.ok(!calls.some(c => c[0] === 'closeSession'));
+  assert.equal((await fetch(base + '/import-sheet', { method: 'POST', ...json({}) })).status, 403);
+  assert.ok(!calls.some(c => c[0] === 'closeSession' || c[0] === 'importT10'));
 });
 
 test('Mac dinh vai tro khac khong xem duoc; Khach duoc ghi de van bi chan; chua dang nhap 401', async t => {
