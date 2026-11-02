@@ -835,7 +835,7 @@
     const needle = normalizeSearch($('vtImportSearch').value);
     return importState.rows.filter(row => (importState.filter === 'all' || row.kind === importState.filter)
       && (importState.warnFilter === 'all' || (importState.warnFilter === 'error' ? row.kind === 'error' : importWarning(row)))
-      && (!needle || normalizeSearch([row.code, row.name, row.notes, row.location, row.arrivalDate].join(' ')).includes(needle)))
+      && (!needle || (window.TKSFuzzySearch ? window.TKSFuzzySearch.matches([row.code, row.name, row.notes, row.location, row.arrivalDate].join(' '), $('vtImportSearch').value) : normalizeSearch([row.code, row.name, row.notes, row.location, row.arrivalDate].join(' ')).includes(needle))))
       .sort((a, b) => {
         const field = importState.sortField;
         if (!field) return importPriority(b) - importPriority(a);

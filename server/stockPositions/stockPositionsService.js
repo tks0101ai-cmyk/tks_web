@@ -7,6 +7,7 @@ const { getPool } = require('../db/pool');
 const carton = require('../public/shared/carton.js');
 const { stripTelegramId } = require('../dashboard/saleName');
 const { parseImportWorkbook } = require('./stockPositionsImport');
+const fuzzy = require('../shared/fuzzySearch');
 const { ACTION_LABELS, FIELD_LABELS, summaryText } = require('./stockPositionsHistoryLabels');
 const { announceChanged } = require('./stockPositionsEvents');
 // Chi phu thuoc carton.js (khong vong require voi pickAssignmentsService).
@@ -35,7 +36,6 @@ const lower = value => normalizeCode(value).toLocaleLowerCase('vi');
 const normalizeLocation = value => String(value ?? '').replace(/\s+/gu, '').toLocaleUpperCase('vi');
 const keyOf = (code, location) => `${lower(code)}|${normalizeLocation(location)}`;
 // Bo dau tieng Viet + hoa/thuong + khoang trang de so khop tu khoa.
-const foldText = value => String(value ?? '').normalize('NFD').replace(/[̀-ͯ]/gu, '').replace(/[đĐ]/gu, 'd').toLowerCase().replace(/\s+/gu, ' ').trim();
 const isoOf = value => (value instanceof Date ? value : new Date(value)).toISOString();
 
 // Ngay loc xoa lich su: rong -> null; dung dang yyyy-mm-dd va la ngay that.
@@ -544,13 +544,14 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
       `SELECT id, created_at, branch, position_id, code, location, action, field, old_value, new_value, summary, actor_name
        FROM stock_position_history WHERE ${where} ORDER BY id DESC LIMIT $${params.length}`, params);
     const truncated = rows.length > HISTORY_EXPORT_MAX;
-    const needle = foldText(q);
+    const needle = String(q || '').trim();
     const entries = rows.slice(0, HISTORY_EXPORT_MAX).map(r => ({
       id: Number(r.id), createdAt: isoOf(r.created_at), branch: r.branch, positionId: r.position_id === null ? null : Number(r.position_id),
       code: r.code, location: r.location, action: r.action, field: r.field, oldValue: r.old_value, newValue: r.new_value, summary: r.summary, actorName: r.actor_name
     }));
-    const matches = entry => foldText([entry.actorName, entry.code, entry.location, ACTION_LABELS[entry.action], FIELD_LABELS[entry.field] || entry.field,
-      entry.oldValue, entry.newValue, summaryText(entry.summary)].join(' ')).includes(needle);
+    // Moi tu cua tu khoa phai xuat hien (khong can lien nhau / dung thu tu).
+    const matches = entry => fuzzy.matches([entry.actorName, entry.code, entry.location, ACTION_LABELS[entry.action], FIELD_LABELS[entry.field] || entry.field,
+      entry.oldValue, entry.newValue, summaryText(entry.summary)].join(' '), needle);
     return { rows: needle ? entries.filter(matches) : entries, truncated };
   }
 

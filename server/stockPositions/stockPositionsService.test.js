@@ -641,6 +641,8 @@ test('historyAll: lọc theo hành động và từ khóa không dấu, tôn tr�
     assert.equal((await service.historyAll(ctx(), 'HN', { q: '2t x 100' })).rows.length, 1);
     assert.equal((await service.historyAll(ctx(), 'HN', { q: 'sửa' })).rows[0].action, 'edit');
     assert.equal((await service.historyAll(ctx(), 'HN', { q: 'khong-co-tu-nay' })).rows.length, 0);
+    assert.equal((await service.historyAll(ctx(), 'HN', { q: 'dat nguyen' })).rows.length, 1, 'moi tu khop, khong can dung thu tu');
+    assert.equal((await service.historyAll(ctx(), 'HN', { q: 'nguyen van dat zzz' })).rows.length, 0, 'thieu 1 tu la khong khop');
     await assert.rejects(() => service.historyAll(ctx(['SG']), 'HN'), { code: 'BRANCH_OUT_OF_SCOPE' });
     await assert.rejects(() => service.historyAll(ctx(), 'XX'), { code: 'INVALID_BRANCH' });
   } finally { await db.close(); }

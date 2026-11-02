@@ -884,6 +884,8 @@ Kiểm chứng phiên 26/10: bộ test tập trung Pancake client/sync/report đ
 
 28/10/2026 — **Import Vị trí hàng:** chọn file là có thể Xác nhận import, Xem trước là tùy chọn; máy chủ vẫn kiểm tra toàn bộ file trong giao dịch trước khi lưu. Khóa thao tác khi đang gửi, báo lỗi kết nối và cho thử lại. Ghi chú import luôn chuẩn hóa ngay trong DB, kể cả mã ngoài KiotViet; dòng trùng và chế độ bổ sung cộng/gộp quy cách đọc được, giữ phần chữ chưa hiểu. Ví dụ `5t100 + 1t*100 + 3T x100 + 3thX100` → `12T x 100`. Không migration, chưa deploy. Kiểm chứng tập trung: 46/46 test đạt (`.codex_tmp/vt-import-final-tests.log`); `npm test` toàn bộ đang chạy tại `.codex_tmp/vt-import-optional-full-tests.log`, đã gặp lỗi môi trường EPERM/EACCES. `graphify update .` đã hoàn thành (`.codex_tmp/vt-import-graphify.log`).
 
+02/11/2026 — **Báo cáo kinh doanh: khách "hoạt động" theo KiotViet (không migration, chưa commit/deploy):** `businessReportService.withMetrics` thêm tham số `activeOverride`; dòng khách (`customerRecords`, `mergeByName`) luôn `active = true` vì repository đã loại khách `isActive = false` của KiotViet khỏi snapshot. Trước đây `active = TB 4 tháng > 0` nên KH C Trang Hà Tĩnh (KH007491) và KH A Long Bình Hà Tĩnh (KH008727), vẫn hoạt động ở KiotViet nhưng doanh thu ròng T8–T10 âm do trả hàng, bị ẩn khỏi bảng Doanh số theo khách. Sale/Mã hàng giữ công thức cũ. SL Khách hoạt động nay = số khách còn trong snapshot. Đã sửa 4 test; `businessReport/*.test.js` 119/119 xanh.
+
 29/10/2026 — **Sync KiotViet:** nạp bù 45 hàng thiếu / đánh dấu ngừng 9 hàng thừa trong `products` trên Supabase, poll tăng dần `customers`/`products` sắp theo id + chồng lấn 5 phút; chưa deploy (xem ghi chú đầu file và mục 3).
 
 Cập nhật gần nhất: 29/10/2026.

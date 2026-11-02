@@ -21,7 +21,7 @@ test('bang khach: quy doi 30 ngay, tang truong, TB 4 thang, khach hoat dong, Kha
   assert.equal(le.name, 'Khách lẻ');
   assert.equal(le.growth, null);
   const old = r.rows.find(x => x.key === 'cũ');
-  assert.equal(old.active, false, 'chi co doanh so T3 => TB 4 thang = 0');
+  assert.equal(old.active, true, 'khach hoat dong do KiotViet: TB 4 thang = 0 van hoat dong');
   assert.deepEqual(r.monthLabels, ['T7/26', 'T8/26', 'T9/26', 'T10/26']);
   assert.equal('kpis' in r, false, 'the tong quan cu da bo');
 });
@@ -63,7 +63,7 @@ test('gop khach: khach chi co doanh so cu thi sale la sale cua ho so co tong lon
   snap.customers.push({ month: '2026-03-01', branch: 'saigon', customerCode: 'KH8', customerName: 'Cũ', netRevenue: 100 });
   const old = svc.buildCustomerReport(snap).rows.find(x => x.key === 'cũ');
   assert.equal(old.saleName, 'Trinh', 'KH9 HN (Trinh) 999 > KH8 SG (Khang) 100');
-  assert.equal(old.active, false);
+  assert.equal(old.active, true);
 });
 
 test('bang sale: thang chot doc bang sale, thang hien tai gom tu khach theo nhom hien tai; SL khach = so khach da gop hoat dong', () => {
@@ -123,7 +123,7 @@ test('overview: chi so tong quat toan cong ty (tang truong, TB 4 thang, tien tha
   const normalized = sales.reduce((s, r) => s + r.normalized, 0);
   assert.equal(v('growth'), normalized / prev * 100);
   assert.equal(v('saleCount'), 1, 'chi Khang hoat dong; Trinh chi co doanh so cu, Chua phan nhom khong tinh');
-  assert.equal(v('activeCustomers'), 3);                 // Chi A, Anh B, Khach le
+  assert.equal(v('activeCustomers'), 4);                 // moi khach con trong snapshot (Chi A, Anh B, Khach le, Cu): theo KiotViet, khong theo doanh so
   assert.equal(v('activeProducts'), 1);                  // SP1
   assert.equal(o.kpis.find(k => k.key === 'current').type, 'money');
   assert.equal(o.kpis.find(k => k.key === 'growth').type, 'percent');

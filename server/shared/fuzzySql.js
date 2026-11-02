@@ -1,6 +1,5 @@
 'use strict';
-// Tim gan dung ngay trong SQL (cung luat voi shared/fuzzySearch.js): bo dau + hoa thuong, 1 tu phai khop,
-// 2 tu khop ca 2, tu 3 tu khop qua nua; diem = so tu khop (+ so tu + 1 neu khop nguyen cum) de xep truoc.
+// Tim gan dung ngay trong SQL (cung luat voi shared/fuzzySearch.js): bo dau + hoa thuong, MOI tu cua cau tim phai khop; diem = so tu khop (+ so tu + 1 neu khop nguyen cum) de xep truoc.
 // Dung khi bang lon, can loc + phan trang + tong ngay o Postgres. Chi truyen tu khoa qua tham so.
 const fuzzy = require('./fuzzySearch');
 

@@ -13,9 +13,12 @@ function notFound(message) {
   return e;
 }
 
-function withMetrics(row, series, snap) {
+// active: mac dinh theo doanh so (TB 4 thang > 0) cho Sale / Ma hang. Khach KHONG dung cong thuc nay:
+// khach ngung hoat dong (isActive = false o KiotViet) da bi repository loai khoi snapshot nen moi dong
+// khach con lai deu dang hoat dong -> truyen activeOverride = true.
+function withMetrics(row, series, snap, activeOverride) {
   const m = buildMetrics(series, snap.currentMonth, snap.day);
-  return { ...row, series, ...m, active: m.avg4 > 0 };
+  return { ...row, series, ...m, active: activeOverride === undefined ? m.avg4 > 0 : activeOverride };
 }
 
 function header(snap) {
@@ -66,7 +69,7 @@ function customerRecords(snap) {
     }
     g.series[r.month] = (g.series[r.month] || 0) + Number(r.netRevenue || 0);
   }
-  return [...groups.values()].map(g => withMetrics(g.row, g.series, snap));
+  return [...groups.values()].map(g => withMetrics(g.row, g.series, snap, true));
 }
 
 const seriesTotal = series => Object.values(series).reduce((s, v) => s + v, 0);
@@ -98,7 +101,7 @@ function mergeByName(records, snap) {
     return withMetrics({
       key, name: main.name, saleName: best[1] > 0 ? best[0] : main.saleName, priceLevel: levelOf(recs),
       refs: recs.map(rec => ({ branch: rec.branch, code: rec.code }))
-    }, series, snap);
+    }, series, snap, true);
   });
 }
 

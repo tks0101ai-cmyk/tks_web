@@ -5262,7 +5262,7 @@
   <script src="/shared/fuzzy-search.js?v=20261021-1"></script>
   <script src="/js/table-explorer.js?v=20261021-1"></script>
   <script>
-    // Tìm gần đúng cho mọi bảng dùng filterTableItems (1 từ: phải khớp; 2 từ: khớp cả 2; ≥3 từ: khớp quá nửa; khớp nhiều từ
+    // Tìm gần đúng cho mọi bảng dùng filterTableItems (mọi từ của từ khóa phải khớp; khớp nhiều từ
     // xếp trước). Chế độ "Nhiều mã" và ô trống giữ nguyên hàm gốc. Máy chủ (xuất Excel) vẫn dùng khớp cụm của table-explorer.js.
     (function () {
       var baseFilter = window.filterTableItems;
@@ -9553,9 +9553,10 @@
       const search = pop.querySelector('.cp-ms-search');
       if (search) {
         search.addEventListener('input', function () {
-          const query = search.value.trim().toLocaleLowerCase('vi');
+          const query = search.value.trim();
+          const fz = window.TKSFuzzySearch;
           pop.querySelectorAll('.cp-ms-opt').forEach(function (label) {
-            label.hidden = !!query && label.textContent.toLocaleLowerCase('vi').indexOf(query) < 0;
+            label.hidden = !!query && !(fz ? fz.matches(label.textContent, query) : label.textContent.toLocaleLowerCase('vi').indexOf(query.toLocaleLowerCase('vi')) >= 0);
           });
         });
       }

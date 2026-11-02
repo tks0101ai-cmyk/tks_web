@@ -9,6 +9,7 @@ const {
   norm
 }=require('./marketingParsers');
 const { ACTIVE_PAGE_IDS } = require('./marketingRepository');
+const fuzzy = require('../shared/fuzzySearch');
 const fail=(statusCode,code,message)=>Object.assign(new Error(message),{
   statusCode,code
 });
@@ -265,9 +266,9 @@ function createDatabaseMarketingReportService({
   }
   async function customers(q={
   }){
-    const s=await directorySnapshot(),needle=norm(String(q.q||'').slice(0,200));
+    const s=await directorySnapshot(),needle=String(q.q||'').slice(0,200).trim();
     return {
-      customers:s.directory.filter(r=>!needle||norm(`${r.name} ${r.code} ${r.branch}`).includes(needle)).slice(0,100).map(r=>({
+      customers:s.directory.filter(r=>!needle||fuzzy.matches(`${r.name} ${r.code} ${r.branch}`,needle)).slice(0,100).map(r=>({
         ...r,id:`${r.branch}:${r.code}`
       }))
     };

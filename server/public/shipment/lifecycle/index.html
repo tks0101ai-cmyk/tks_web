@@ -2620,7 +2620,7 @@
       const query = historySearchInput.value;
       let filtered = allHistoryRows;
       if(normalizeSearchText(query)){
-        // Tim gan dung (shared/fuzzy-search.js): 1 tu phai khop, 2 tu khop ca 2, >=3 tu khop qua nua; khop nhieu tu xep truoc.
+        // Tim gan dung (shared/fuzzy-search.js): moi tu cua cau tim phai khop; khop nhieu tu xep truoc.
         const fuzzy = window.TKSFuzzySearch;
         const textOf = function(entry){ return [entry.orderCode, entry.changedBy, entry.note].join(' '); };
         filtered = fuzzy ? fuzzy.filter(filtered, query, textOf) : filtered.filter(function(entry){
