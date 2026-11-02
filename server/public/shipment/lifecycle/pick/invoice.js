@@ -62,7 +62,7 @@ function loadAssets(){
   if(window.PickingInvoiceTemplate&&window.PickingPrintCSS)return Promise.resolve();
   if(!assetsPromise){
     assetsPromise=(async()=>{
-      const [template,css]=await Promise.all([fetchText(BASE+'order-template.tpl?v=20261029-7'),fetchText(BASE+'invoice-a4.css?v=20261029-7')]);
+      const [template,css]=await Promise.all([fetchText(BASE+'order-template.tpl?v=20261029-7'),fetchText(BASE+'invoice-a4.css?v=20261102-1')]);
       let out=template;
       for(const id of new Set([...template.matchAll(CDN)].map(m=>m[1]))){
         const uri=await dataUri(BASE+'invoice-assets/'+id+'.jpg');
