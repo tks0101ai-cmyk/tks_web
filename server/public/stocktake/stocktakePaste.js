@@ -31,8 +31,8 @@
     let text = String(value ?? '').replace(/\s+/gu, '');
     if (!text) return null;
     if (/^-?\d{1,3}(\.\d{3})+(,\d+)?$/u.test(text)) text = text.replace(/\./gu, '').replace(',', '.');
-    else if (/^-?\d+,\d+$/u.test(text)) text = text.replace(',', '.');
     else if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/u.test(text)) text = text.replace(/,/gu, '');
+    else if (/^-?\d+,\d+$/u.test(text)) text = text.replace(',', '.');
     if (!/^-?\d+(\.\d+)?$/u.test(text)) return null;
     const n = Number(text);
     return Number.isFinite(n) && Math.abs(n) <= MAX_ABS ? n : null;

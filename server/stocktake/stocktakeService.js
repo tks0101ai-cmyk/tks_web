@@ -270,7 +270,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     if (dateTo < dateFrom) throw fail(400, 'VALIDATION', 'Đến ngày phải sau hoặc bằng Từ ngày.', { field: 'dateTo' });
     const actor = actorOf(ctx);
     return withTransaction(async client => {
-      const counterpartId = await counterpartOf(client, branch, body.counterpartSessionId);
+      const counterpartId = await counterpartOf(client, ctx, branch, body.counterpartSessionId);
       const { rows } = await client.query(
         `INSERT INTO stocktake_sessions (branch, name, date_from, date_to, created_by_user_id, created_by_name, counterpart_session_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ${SESSION_COLUMNS}`, [branch, name, dateFrom, dateTo, actor.id, actor.name, counterpartId]);
@@ -285,7 +285,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     return withTransaction(async client => {
       const session = await openSessionForWrite(client, ctx, sessionId);
       if (versionOf(body.version) !== session.version) throw fail(409, 'STOCKTAKE_CONFLICT', 'Đợt kiểm kê vừa được cập nhật. Tải lại rồi thử lại.', { latest: session });
-      const counterpartId = await counterpartOf(client, session.branch, body.counterpartSessionId);
+      const counterpartId = await counterpartOf(client, ctx, session.branch, body.counterpartSessionId);
       const { rows } = await client.query(
         `UPDATE stocktake_sessions SET counterpart_session_id = $2, version = version + 1 WHERE id = $1 RETURNING ${SESSION_COLUMNS}`,
         [session.id, counterpartId]);
@@ -296,11 +296,13 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
   }
 
   // Dot doi chieu phai thuoc co so kia; null = bo doi chieu.
-  async function counterpartOf(db, branch, value) {
+  async function counterpartOf(db, ctx, branch, value) {
     if (value === undefined || value === null || value === '') return null;
     const id = Number(value);
     const row = Number.isInteger(id) ? (await db.query('SELECT id, branch FROM stocktake_sessions WHERE id = $1', [id])).rows[0] : null;
     if (!row || row.branch === branch) throw fail(400, 'INVALID_COUNTERPART', 'Đợt đối chiếu phải là một đợt của cơ sở kia.', { field: 'counterpartSessionId' });
+    // Dat doi chieu sang co so ngoai pham vi nguoi dung bi chan (doc van mo).
+    assertScope(ctx, row.branch);
     return id;
   }
 
@@ -326,11 +328,25 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     }))));
   }
 
-  // Ket qua dot da dong gan nhat truoc dot nay (nguon "KK truoc sai").
-  async function previousResults(db, session) {
+  // Id dot da dong gan nhat truoc dot nay.
+  async function previousSessionIdOf(db, session) {
     const prev = (await db.query(
       `SELECT id FROM stocktake_sessions WHERE branch = $1 AND status = 'closed' AND id <> $2 AND date_to <= $3::date
        ORDER BY date_to DESC, id DESC LIMIT 1`, [session.branch, session.id, session.dateFrom])).rows[0];
+    return prev ? Number(prev.id) : null;
+  }
+
+  // Thong tin dot doi chieu (mot dong, khong tinh ket qua).
+  async function counterpartInfoOf(db, session) {
+    if (!session.counterpartSessionId) return null;
+    const row = (await db.query('SELECT id, name, branch, status FROM stocktake_sessions WHERE id = $1', [session.counterpartSessionId])).rows[0];
+    return row ? { id: Number(row.id), name: row.name, branch: row.branch, status: row.status } : null;
+  }
+
+  // Ket qua dot da dong gan nhat truoc dot nay (nguon "KK truoc sai").
+  async function previousResults(db, session) {
+    const prevId = await previousSessionIdOf(db, session);
+    const prev = prevId === null ? null : { id: prevId };
     if (!prev) return { previousSessionId: null, previous: [] };
     const { rows } = await db.query(`SELECT product_code, diff_qty::float8 AS diff_qty FROM stocktake_session_results WHERE session_id = $1`, [prev.id]);
     return { previousSessionId: Number(prev.id), previous: rows.map(row => ({ code: row.product_code, diffQty: Number(row.diff_qty) })) };
@@ -371,6 +387,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
 
   // Dot da dong: doc ban chup, ghi chu va tag van hien (khong co dong dem chi tiet).
   async function closedBoard(db, session) {
+    const sheetImport = session.source === 'sheet_import';
     const [results, tags, notes, prev, other, positions] = await Promise.all([
       db.query(`SELECT product_code, name, counted::float8 AS counted, stock::float8 AS stock, cost::float8 AS cost,
                        diff_qty::float8 AS diff_qty, diff_value::float8 AS diff_value,
@@ -378,8 +395,9 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
                 FROM stocktake_session_results WHERE session_id = $1 ORDER BY product_code`, [session.id]).then(r => r.rows),
       db.query(`SELECT ${TAG_COLUMNS} FROM stocktake_product_tags WHERE branch = $1`, [session.branch]).then(r => r.rows.map(shapeTag)),
       db.query(`SELECT ${NOTE_COLUMNS} FROM stocktake_code_notes WHERE session_id = $1`, [session.id]).then(r => r.rows.map(shapeNote)),
-      previousResults(db, session),
-      counterpartResults(db, session),
+      // Chi dot nap tu sheet moi can fallback tinh truc tiep; dot web dung ban chup nguyen trang (NULL giu NULL).
+      sheetImport ? previousResults(db, session) : previousSessionIdOf(db, session).then(id => ({ previousSessionId: id, previous: [] })),
+      sheetImport ? counterpartResults(db, session) : counterpartInfoOf(db, session).then(info => ({ counterpartInfo: info, counterpart: [] })),
       loadPositions(db, session.branch)
     ]);
     const tagByCode = new Map(tags.map(tag => [tag.code, tag]));

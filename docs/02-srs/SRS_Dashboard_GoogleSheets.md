@@ -15,7 +15,7 @@
 | Tên dự án          | Hệ thống Dashboard nội bộ TOKOSI                           |
 | Phiên bản          | 3.0                                                        |
 | Ngày tạo           | 27/07/2026                                                 |
-| Ngày cập nhật      | 30/10/2026                                                 |
+| Ngày cập nhật      | 02/11/2026                                                 |
 | Tài liệu liên quan | BRD v2.2 · BPMN v3.0 · Implementation Plan (cập nhật 05/10/2026) · CSNS-NP-01 (Chính sách nghỉ phép) · `server/db/SCHEMA.md` · Design System MASTER (mục 7 — ràng buộc hiệu năng) |
 | Trạng thái         | Nội dung nền rà soát tại HEAD `11751c4` (05/10); FR-15 Sổ quỹ bổ sung và kiểm chứng 06/10. Migration `0033` đã áp thành công lên Supabase DB. Deploy production còn chờ. Số kiểm thử 1.704/1.701/0/3 là mốc lịch sử 05/10. |
 

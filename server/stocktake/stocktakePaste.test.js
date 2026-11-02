@@ -7,6 +7,10 @@ test('parseVnNumber: kieu VN, kieu thuong, rong / chu', () => {
   assert.equal(parseVnNumber('1.234'), 1234);
   assert.equal(parseVnNumber('-1.234.567'), -1234567);
   assert.equal(parseVnNumber('-1,5'), -1.5);
+  assert.equal(parseVnNumber('1,900'), 1900, 'phay + dung 3 so = nghin (Sheet kieu My)');
+  assert.equal(parseVnNumber('-1,234'), -1234);
+  assert.equal(parseVnNumber('1,234,567'), 1234567);
+  assert.equal(parseVnNumber('12,25'), 12.25);
   assert.equal(parseVnNumber('1234'), 1234);
   assert.equal(parseVnNumber('12.5'), 12.5, 'mot dau cham, khong du 3 so sau -> thap phan');
   assert.equal(parseVnNumber(' -326 '), -326);

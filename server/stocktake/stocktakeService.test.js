@@ -191,6 +191,33 @@ test('dot doi chieu: Kiem SG tu dot SG dang mo / da dong, sai co so bi tu choi, 
   assert.equal(rowOf(board, 'AAA1').otherDiff, -3, 'tu ban chup dot SG');
 });
 
+test('dot web da dong: M/L la ban chup, doi chieu doi sau do khong lam doi; dot nap tu sheet moi co fallback', async () => {
+  const { db, service, session } = await fixture();
+  await db.exec(`INSERT INTO products (branch, id, code, name, raw) VALUES ('saigon', 3, 'CCC3', 'Hàng C', '{"inventories":[{"onHand":0,"cost":50}]}')`);
+  const { session: sg } = await service.createSession(ctx(), { branch: 'saigon', name: 'SG 29/10', dateFrom: '2026-10-29', dateTo: '2026-10-29' });
+  const { session: hn } = await service.updateSession(ctx(), session.id, { counterpartSessionId: sg.id, version: session.version });
+  await service.closeSession(ctx(), hn.id, { version: hn.version });
+  let board = await service.getBoard(ctx(), hn.id);
+  assert.equal(rowOf(board, 'AAA1').otherDiff, -3);
+  assert.equal(rowOf(board, 'CCC3').otherDiff, null);
+  assert.deepEqual(board.counterpart, { id: sg.id, name: 'SG 29/10', branch: 'saigon', status: 'open' });
+  await service.addLine(ctx(), sg.id, { productCode: 'CCC3', quantity: 2, zone: 'G1' });
+  await service.addLine(ctx(), sg.id, { productCode: 'AAA1', quantity: 5, zone: 'G1' });
+  board = await service.getBoard(ctx(), hn.id);
+  assert.equal(rowOf(board, 'CCC3').otherDiff, null, 'web: NULL giu nguyen');
+  assert.equal(rowOf(board, 'AAA1').otherDiff, -3, 'web: ban chup khong doi');
+});
+
+test('doi chieu ngoai pham vi co so bi chan 403 khi dat, doc van mo', async () => {
+  const { service, session } = await fixture();
+  const { session: sg } = await service.createSession(ctx(), { branch: 'saigon', name: 'SG', dateFrom: '2026-10-29', dateTo: '2026-10-29' });
+  const hnOnly = ctx(QL, ['hanoi']);
+  await assert.rejects(service.createSession(hnOnly, { branch: 'hanoi', name: 'HN2', dateFrom: '2026-10-30', dateTo: '2026-10-30', counterpartSessionId: sg.id }),
+    { statusCode: 403, code: 'BRANCH_OUT_OF_SCOPE' });
+  await assert.rejects(service.updateSession(hnOnly, session.id, { counterpartSessionId: sg.id, version: session.version }),
+    { statusCode: 403, code: 'BRANCH_OUT_OF_SCOPE' });
+});
+
 test('ghi chu: trang in, gio in, so dan tay L/M; dong dot luu prev_diff / other_diff', async () => {
   const { db, service, session } = await fixture();
   const { note } = await service.saveNote(ctx(), session.id, 'AAA1', { printPage: '12', printTime: '14:30 03/10', prevDiffManual: -326, otherDiffManual: '-1,5' });

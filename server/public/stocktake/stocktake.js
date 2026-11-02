@@ -311,7 +311,7 @@
     const counterpartField = $('stCounterpartField');
     counterpartField.hidden = !session;
     if (session) {
-      fillCounterpartSelect($('stCounterpart'), session.branch, session.counterpartSessionId);
+      fillCounterpartSelect($('stCounterpart'), session.branch, session.counterpartSessionId, board.counterpart);
       $('stCounterpart').disabled = !(state.canEdit && session.status === 'open');
     }
     $('stPasteButton').hidden = !(session && session.status === 'open' && state.canEdit);
@@ -386,9 +386,12 @@
     const gap = s => Math.abs(Date.parse(s.dateTo) - Date.parse(dateFrom));
     return others.slice().sort((a, b) => gap(a) - gap(b))[0] || null;
   }
-  function fillCounterpartSelect(select, branch, selected) {
-    fillSelect(select, '— Không —', state.sessions.filter(s => s.branch !== branch)
-      .map(s => [String(s.id), s.name + ' · ' + (s.branch === 'hanoi' ? 'HN' : 'SG')]), selected ? String(selected) : '');
+  function fillCounterpartSelect(select, branch, selected, linked) {
+    const label = s => s.name + ' · ' + (s.branch === 'hanoi' ? 'HN' : 'SG');
+    const options = state.sessions.filter(s => s.branch !== branch).map(s => [String(s.id), label(s)]);
+    // Đợt đối chiếu ngoài phạm vi của người xem: vẫn hiện đúng liên kết thay vì "— Không —".
+    if (linked && !options.some(([id]) => id === String(linked.id))) options.push([String(linked.id), label(linked)]);
+    fillSelect(select, '— Không —', options, selected ? String(selected) : '');
   }
 
   // Đếm số mã theo người kiểm lại: key -> { label, count }.
