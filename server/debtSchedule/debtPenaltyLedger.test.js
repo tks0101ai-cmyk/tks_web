@@ -69,15 +69,15 @@ test('14:59 freezes yesterday before reset and retries cannot rewrite the daily 
   const { db,pool,repository }=await setup();
   try {
     await snapshot(pool,'2026-08-08');
-    await repository.savePenalty({branch:'hanoi',customerId:'1',amount:90000,user});
     assert.equal(await finalizePenaltyBeforeReset(pool,{repository,now:new Date('2026-08-09T07:58:59Z')}),null);
-    await repository.savePenalty({branch:'hanoi',customerId:'1',amount:120000,user});
+    await repository.saveStatus({branch:'hanoi',customerId:'1',status:'Bỏ qua',user});
     await finalizePenaltyBeforeReset(pool,{repository,now:new Date('2026-08-09T07:59:00Z')});
-    assert.equal((await db.query("SELECT amount::int AS amount FROM debt_penalty_daily WHERE branch='hanoi'")).rows[0].amount,120000);
-    await assert.rejects(repository.savePenalty({branch:'hanoi',customerId:'1',amount:1,user}),e=>e.code==='DEBT_CYCLE_FINALIZED');
-    await db.exec("UPDATE debt_cycle_penalties SET amount=1 WHERE branch='hanoi'");
+    const frozen=async()=>(await db.query("SELECT amount::int AS amount, status FROM debt_penalty_daily WHERE branch='hanoi'")).rows;
+    assert.deepEqual(await frozen(),[{amount:25000,status:'Bỏ qua'}]);
+    await assert.rejects(repository.saveStatus({branch:'hanoi',customerId:'1',status:'Đã xử lý',user}),e=>e.code==='DEBT_CYCLE_FINALIZED');
+    await db.exec("UPDATE debt_cycle_feedback SET status='Đã xử lý' WHERE branch='hanoi'");
     await finalizePenaltyBeforeReset(pool,{repository,now:new Date('2026-08-09T08:00:00Z')});
-    assert.equal((await db.query("SELECT amount::int AS amount FROM debt_penalty_daily WHERE branch='hanoi'")).rows[0].amount,120000);
+    assert.deepEqual(await frozen(),[{amount:25000,status:'Bỏ qua'}]);
   } finally {await db.close();}
 });
 
@@ -90,11 +90,10 @@ test('manual refresh only seals early when advancing a missed cycle, not ordinar
  }finally{await db.close();}
 });
 
-test('chot so phat: chi khi co ban chot ke tiep, ghi dung so tay / "Da xu ly" = 0 / goi y, chay lai khong nhan doi', async () => {
+test('chot so phat: chi khi co ban chot ke tiep, ghi dung "Da xu ly" = 0 / muc quy che, chay lai khong nhan doi', async () => {
   const { db, pool, repository } = await setup();
   try {
     await snapshot(pool, '2026-08-08');
-    await repository.savePenalty({ branch: 'hanoi', customerId: '1', amount: 40000, user });
     await repository.saveStatus({ branch: 'saigon', customerId: '1', status: 'Đã xử lý', user });
 
     // Chu ky 08-08 van dang mo -> chua co gi de chot.
@@ -103,10 +102,10 @@ test('chot so phat: chi khi co ban chot ke tiep, ghi dung so tay / "Da xu ly" = 
 
     await snapshot(pool, '2026-08-09');
     const done = await finalizePendingPenaltyCycles(pool, { log: () => {} });
-    assert.deepEqual(done, [{ cycleDate: '2026-08-08', customers: 1, amount: 40000 }]);
+    assert.deepEqual(done, [{ cycleDate: '2026-08-08', customers: 1, amount: 25000 }]);
     const { rows } = await db.query(`SELECT branch, customer_id::int AS id, sale, amount::int AS amount, is_manual, status
       FROM debt_penalty_daily ORDER BY branch, customer_id`);
-    assert.deepEqual(rows, [{ branch: 'hanoi', id: 1, sale: 'Lan', amount: 40000, is_manual: true, status: 'Chưa xử lý' }]);
+    assert.deepEqual(rows, [{ branch: 'hanoi', id: 1, sale: 'Lan', amount: 25000, is_manual: false, status: 'Chưa xử lý' }]);
 
     // Da chot thi khong chot lai; goi truc tiep van idempotent.
     assert.deepEqual(await finalizePendingPenaltyCycles(pool, { log: () => {} }), []);
@@ -146,11 +145,10 @@ test('migration 0051: tien phat phai > 0, khoa chinh theo chu ky + khach', async
   } finally { await db.close(); }
 });
 
-test('chốt sổ phạt: khách "Đã xử lý" không vào sổ kể cả khi Quản lý đã nhập số tay', async () => {
+test('chốt sổ phạt: khách "Đã xử lý" không vào sổ', async () => {
   const { db, pool, repository } = await setup();
   try {
     await snapshot(pool, '2026-08-08');
-    await repository.savePenalty({ branch: 'hanoi', customerId: '1', amount: 90000, user });
     await repository.saveStatus({ branch: 'hanoi', customerId: '1', status: 'Đã xử lý', user });
     await snapshot(pool, '2026-08-09');
     const done = await finalizePendingPenaltyCycles(pool, { log: () => {} });

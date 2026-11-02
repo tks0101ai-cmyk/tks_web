@@ -514,7 +514,7 @@ Migration `0044_purchases_raw_hash.sql` thêm `purchases.raw_hash TEXT` (nullabl
 
 ## Tiền phạt công nợ + số phiên liên tiếp — migration 0048
 
-`0048_debt_penalty.sql` (2026-10-13): `debt_cycle_customers` thêm `overdue_debt`, `overdue_streak` (số phiên liên tiếp quá hạn ≥ 400k tại bản chốt); bảng `debt_cycle_penalties (cycle_date, branch, customer_id)` lưu tiền phạt Quản lý điền (không FK, không bị dọn 7 ngày; SELECT của `reporting_readonly` bị thu hồi); `debt_feedback_history.field` thêm `penalty`; `debt_cycle_feedback.status` bỏ `Đang xử lý` (dữ liệu cũ → `Chưa xử lý`).
+`0048_debt_penalty.sql` (2026-10-13): `debt_cycle_customers` thêm `overdue_debt`, `overdue_streak` (số phiên liên tiếp quá hạn ≥ 400k tại bản chốt); bảng `debt_cycle_penalties (cycle_date, branch, customer_id)` lưu tiền phạt Quản lý điền (không FK, không bị dọn 7 ngày; SELECT của `reporting_readonly` bị thu hồi); `debt_feedback_history.field` thêm `penalty`; `debt_cycle_feedback.status` bỏ `Đang xử lý` (dữ liệu cũ → `Chưa xử lý`). **Từ 02/11/2026** `debt_cycle_penalties` không còn được đọc/ghi (đã bỏ phạt tay); `debt_feedback_history.field = 'penalty'` chỉ còn dòng lịch sử cũ. Sửa trạng thái ngày cũ (`saveHistoricalStatus`) cập nhật `debt_cycle_customers.overdue_streak` và `debt_penalty_daily` của các ngày sau, không đổi schema.
 
 ## Sổ phạt công nợ theo ngày — migration 0051
 

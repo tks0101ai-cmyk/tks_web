@@ -1360,9 +1360,9 @@ test('Cong no: quyen sua tung cot theo nguoi xem va khoa cache tach theo quyen',
   installRichViewFixture(ctx);
   ctx.dashboardData.__test__.resetCaches();
   const sale = await ctx.dashboardData.getDashboardData(BASE_FILTERS, undefined, { permissions: ['reports.debt', 'reports.debt.saleFeedback'] }, { views: ['debt'] });
-  const manager = await ctx.dashboardData.getDashboardData(BASE_FILTERS, undefined, { permissions: ['reports.debt', 'reports.debt.managerFeedback', 'reports.debt.edit', 'reports.debt.schedule', 'reports.debt.penalty', 'reports.debt.refresh'] }, { views: ['debt'] });
-  assert.deepEqual(sale.debtManagement.access, { status: false, saleFeedback: true, managerFeedback: false, schedule: false, penalty: false, refresh: false });
-  assert.deepEqual(manager.debtManagement.access, { status: true, saleFeedback: false, managerFeedback: true, schedule: true, penalty: true, refresh: true });
+  const manager = await ctx.dashboardData.getDashboardData(BASE_FILTERS, undefined, { permissions: ['reports.debt', 'reports.debt.managerFeedback', 'reports.debt.edit', 'reports.debt.schedule', 'reports.debt.refresh'] }, { views: ['debt'] });
+  assert.deepEqual(sale.debtManagement.access, { status: false, saleFeedback: true, managerFeedback: false, schedule: false, refresh: false });
+  assert.deepEqual(manager.debtManagement.access, { status: true, saleFeedback: false, managerFeedback: true, schedule: true, refresh: true });
   assert.equal(sale.debtManagement.customers[0].canEditSaleFeedback, true);
   assert.equal(manager.debtManagement.customers[0].canEditSaleFeedback, false);
 });

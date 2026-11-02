@@ -91,11 +91,10 @@ function suggestedPenalty(overdue, streak) {
   return PENALTY_BY_SESSION[session - 1];
 }
 
-/** Tien phat cua phien truoc (chu ky ngay truoc): so tay neu co, "Da xu ly" -> 0, con lai theo goi y. null = khong co dong phien truoc. */
+/** Tien phat cua phien truoc (chu ky ngay truoc): "Da xu ly" -> 0, con lai theo quy che. null = khong co dong phien truoc. */
 function previousPenaltyOf(previous) {
   if (!previous) return null;
   if (previous.status === RESOLVED_STATUS) return 0;
-  if (previous.penaltyOverride !== null && previous.penaltyOverride !== undefined) return Number(previous.penaltyOverride);
   return suggestedPenalty(previous.overdueDebt, previous.overdueStreak);
 }
 
@@ -122,11 +121,11 @@ function buildCustomerRow(row, { cycleDate, dailyAmounts, anchorDate, access = {
   const feedback = row.feedback || {};
   const workflowStatus = WORKFLOW_STATUSES.includes(feedback.status) ? feedback.status : 'Chưa xử lý';
   const alertCodes = overdue > 0 ? ['overdue'] : [];
-  // "Da xu ly" = coi nhu khong no qua han cua phien nay: phat 0 (bo ca so tay), so phien ve 0; so no qua han van hien.
+  // "Da xu ly" = coi nhu khong no qua han cua phien nay: phat 0, so phien ve 0; so no qua han van hien.
+  // Tien phat luon tu tinh theo quy che (da bo phat tay 2026-11-02).
   const resolved = workflowStatus === RESOLVED_STATUS;
   const overdueStreak = resolved ? 0 : Math.max(0, Math.trunc(Number(row.overdueStreak) || 0));
   const suggested = resolved ? 0 : suggestedPenalty(overdue, overdueStreak);
-  const hasManualPenalty = !resolved && row.penaltyOverride !== null && row.penaltyOverride !== undefined;
   return {
     customerKey: customerKeyOf(row.branch, row.customerId),
     customerId: String(row.customerId),
@@ -148,10 +147,8 @@ function buildCustomerRow(row, { cycleDate, dailyAmounts, anchorDate, access = {
     alertCodes,
     overdueStreak,
     suggestedPenalty: suggested,
-    penaltyAmount: hasManualPenalty ? Number(row.penaltyOverride) : suggested,
+    penaltyAmount: suggested,
     previousPenaltyAmount: previousPenaltyOf(row.previousCycle),
-    penaltyIsManual: hasManualPenalty,
-    penaltyBy: hasManualPenalty ? row.penaltyBy || '' : '',
     dataIssues: [],
     saleFeedback: feedback.saleFeedback || '',
     saleFeedbackBy: feedback.saleFeedbackBy || '',
@@ -164,8 +161,7 @@ function buildCustomerRow(row, { cycleDate, dailyAmounts, anchorDate, access = {
     canEditStatus: Boolean(access.status),
     canEditSaleFeedback: Boolean(access.saleFeedback),
     canEditManagerFeedback: Boolean(access.managerFeedback),
-    canEditSchedule: Boolean(access.schedule),
-    canEditPenalty: Boolean(access.penalty)
+    canEditSchedule: Boolean(access.schedule)
   };
 }
 
@@ -227,7 +223,6 @@ function buildDebtReport({ cycle, customers, access = {}, dataWarnings = [] }) {
       saleFeedback: Boolean(access.saleFeedback),
       managerFeedback: Boolean(access.managerFeedback),
       schedule: Boolean(access.schedule),
-      penalty: Boolean(access.penalty),
       refresh: Boolean(access.refresh)
     },
     dataWarnings: warnings,

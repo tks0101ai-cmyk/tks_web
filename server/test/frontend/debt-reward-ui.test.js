@@ -214,10 +214,10 @@ test('sale detail uses frozen metrics and shows daily penalties, reward split an
 function editableDebt() {
   return { available: true, cycleDate: '2026-10-14', customers: [{ customerKey: 'hanoi:1', customerId: '1', branch: 'HN', branchCode: 'hanoi',
     customerName: 'Khách A', sale: 'Lan', workflowStatus: 'Chưa xử lý', needsAction: true, alertCodes: ['overdue'],
-    canEditStatus: true, canEditSchedule: true, canEditPenalty: true, scheduleDays: 7, paymentSchedule: '7',
-    penaltyAmount: 25000, suggestedPenaltyAmount: 25000, penaltyManual: false, currentDebt: 500000, overdueDebt: 100000 }], kpi: {} };
+    canEditStatus: true, canEditSchedule: true, scheduleDays: 7, paymentSchedule: '7',
+    penaltyAmount: 25000, suggestedPenaltyAmount: 25000, currentDebt: 500000, overdueDebt: 100000 }], kpi: {} };
 }
-for (const kind of ['status', 'schedule', 'penalty']) {
+for (const kind of ['status', 'schedule']) {
   test(kind + ' PATCH refreshes reward board even while dashboard refresh is pending', async () => {
     const dom = createDashboard(editableDebt());
     serve(dom, boardPayload());
@@ -231,11 +231,11 @@ for (const kind of ['status', 'schedule', 'penalty']) {
       assert.equal(options.method, 'PATCH');
       return { ok: true, json: async () => ({ status: 'Đã xử lý' }) };
     };
-    const selector = kind === 'status' ? '.debt-status-select' : kind === 'schedule' ? '.debt-schedule-input' : '.debt-penalty-input';
+    const selector = kind === 'status' ? '.debt-status-select' : '.debt-schedule-input';
     const input = doc.querySelector('#debtManagementRows ' + selector);
     assert.ok(input);
-    input.value = kind === 'status' ? 'Đã xử lý' : kind === 'schedule' ? '9' : '30000';
-    await dom.window[kind === 'status' ? 'handleDebtStatusChange' : kind === 'schedule' ? 'handleDebtScheduleChange' : 'handleDebtPenaltyChange'](input);
+    input.value = kind === 'status' ? 'Đã xử lý' : '9';
+    await dom.window[kind === 'status' ? 'handleDebtStatusChange' : 'handleDebtScheduleChange'](input);
     await new Promise(resolve => setImmediate(resolve));
     assert.ok(calls.some(url => url.startsWith('/api/debt-management/penalty-board')));
     assert.equal(doc.querySelector('#debtPenaltyRows tr.doc-row').cells[3].textContent, '55');

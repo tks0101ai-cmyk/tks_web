@@ -114,6 +114,57 @@ test('PATCH status tu choi trang thai ngoai danh sach truoc khi cham DB', async 
   });
 });
 
+test('PATCH status voi historical=true sua ngay cu qua saveHistoricalStatus; khong co co thi van la saveStatus', async () => {
+  const handler = routeStack('/api/debt-management/status').at(-1);
+  const calls = [];
+  const fake = {
+    saveStatus: async payload => { calls.push(['current', payload]); return { status: 'Đã xử lý' }; },
+    saveHistoricalStatus: async payload => { calls.push(['historical', payload]); return { status: 'Đã xử lý', changed: true, recalculatedDays: 2 }; }
+  };
+  await withRepo(fake, async () => {
+    const res = fakeRes();
+    await handler({ user: { id: 'u1', hoTen: 'QL' }, body: { branch: 'hanoi', customerId: '1', cycleDate: '2026-10-30', status: 'Đã xử lý', historical: true } }, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.recalculatedDays, 2);
+    await handler({ user: {}, body: { branch: 'hanoi', customerId: '1', cycleDate: '2026-10-30', status: 'Đã xử lý', historical: 'true' } }, fakeRes());
+  });
+  assert.deepEqual(calls.map(call => call[0]), ['historical', 'current']);
+  assert.deepEqual(calls[0][1], { branch: 'hanoi', customerId: '1', cycleDate: '2026-10-30', status: 'Đã xử lý', user: { id: 'u1', hoTen: 'QL' } });
+});
+
+test('PATCH status: thang da chot thuong/phat tra 409 voi ma DEBT_MONTH_FINALIZED', async () => {
+  const handler = routeStack('/api/debt-management/status').at(-1);
+  const closed = Object.assign(new Error('Ngày này thuộc tháng đã chốt'), { statusCode: 409, code: 'DEBT_MONTH_FINALIZED' });
+  await withRepo({ saveHistoricalStatus: async () => { throw closed; } }, async () => {
+    const res = fakeRes();
+    await handler({ user: {}, body: { branch: 'hanoi', customerId: '1', cycleDate: '2026-10-30', status: 'Bỏ qua', historical: true } }, res);
+    assert.equal(res.statusCode, 409);
+    assert.equal(res.body.code, 'DEBT_MONTH_FINALIZED');
+  });
+});
+
+test('khong con route phat tay /api/debt-management/penalty', () => {
+  assert.equal(router.stack.some(item => item.route?.path === '/api/debt-management/penalty'), false);
+});
+
+test('GET customer-history: can quyen Cong no, chi cho co so nguoi xem duoc phep, chuyen branch + customerId xuong repository', async () => {
+  const [authGuard, featureGuard, , handler] = routeStack('/api/debt-management/customer-history', 'get');
+  const res0 = fakeRes();
+  await authGuard({ cookies: {} }, res0, () => assert.fail('khong duoc next'));
+  assert.equal(res0.statusCode, 401);
+  assert.equal(typeof featureGuard, 'function');
+  let received;
+  await withRepo({ listCustomerHistory: async payload => { received = payload; return { customer: {}, days: [], totalPenalty: 0 }; } }, async () => {
+    const res = fakeRes();
+    await handler({ branch: 'Cả hai', user: {}, query: { branch: 'saigon', customerId: '9' } }, res);
+    assert.equal(res.statusCode, 200);
+    const forbidden = fakeRes();
+    await handler({ branch: 'Hà Nội', user: {}, query: { branch: 'saigon', customerId: '9' } }, forbidden);
+    assert.equal(forbidden.statusCode, 403);
+  });
+  assert.deepEqual(received, { branch: 'saigon', customerId: '9' });
+});
+
 test('PATCH schedule gui so ngay + nguoi sua xuong repository', async () => {
   const handler = routeStack('/api/debt-management/schedule').at(-1);
   let received;

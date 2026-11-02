@@ -90,9 +90,8 @@ const FEATURES = Object.freeze([
   // dinh Quan ly). Quan ly cap them tung tai khoan o /account/.
   { key: 'reports.debt.saleFeedback', groupKey: 'reports', label: 'Công nợ: điền Sale phản hồi (cần Công nợ)', roles: [ROLES.NHAN_VIEN_SALE], requires: 'reports.debt', escalationExempt: true },
   { key: 'reports.debt.managerFeedback', groupKey: 'reports', label: 'Công nợ: điền QL phản hồi (cần Công nợ)', roles: MANAGER_ONLY, requires: 'reports.debt' },
-  { key: 'reports.debt.edit', groupKey: 'reports', label: 'Công nợ: đổi trạng thái xử lý (cần Công nợ)', roles: MANAGER_ONLY, requires: 'reports.debt' },
+  { key: 'reports.debt.edit', groupKey: 'reports', label: 'Công nợ: đổi trạng thái xử lý, kể cả các ngày cũ trong lịch sử 7 ngày của khách (cần Công nợ)', roles: MANAGER_ONLY, requires: 'reports.debt' },
   { key: 'reports.debt.schedule', groupKey: 'reports', label: 'Công nợ: sửa lịch thanh toán (cần Công nợ)', roles: MANAGER_ONLY, requires: 'reports.debt' },
-  { key: 'reports.debt.penalty', groupKey: 'reports', label: 'Công nợ: điền tiền phạt phiên này (cần Công nợ)', roles: MANAGER_ONLY, requires: 'reports.debt' },
   { key: 'reports.debt.refresh', groupKey: 'reports', label: 'Công nợ: tính lại công nợ tại thời điểm bấm (cần Công nợ)', roles: MANAGER_ONLY, requires: 'reports.debt' },
   { key: 'reports.marketing', groupKey: 'reports', label: 'Báo cáo Marketing', roles: [...REPORTS_ROLES, ROLES.NHAN_VIEN_MARKETING] },
   // 2026-10-08: sua 2 cot Khach moi/Ghi chu cua BC thang Marketing va ghi nguoc Google Sheets.

@@ -8,8 +8,8 @@
 //
 // Pham vi: thang cua ban chot MOI NHAT (debt_cycle_runs). KHONG dung toi debt_reward_months (thang da chot).
 // 1) debt_penalty_daily cua thang: dong status 'Da xu ly' bi xoa (phat 0); streak tinh lai theo chuoi
-//    ngay lien ke (khach khong co dong o chu ky lien truoc = chuoi dut); dong khong phai so tay
-//    duoc tinh lai amount = suggestedPenalty(overdue, streak); so tay (khong Da xu ly) giu nguyen.
+//    ngay lien ke (khach khong co dong o chu ky lien truoc = chuoi dut); moi dong con lai duoc tinh lai
+//    amount = suggestedPenalty(overdue, streak) (da bo phat tay 2026-11-02 nen so tay cu cung ve muc quy che).
 //    Chu ky ngay truoc thang (gan nhat) chi doc de lay streak/trang thai dau chuoi, khong sua.
 // 2) debt_cycle_customers (chi giu 7 ngay): chay lai applyOverdueStreaks theo thu tu cho cac chu ky co
 //    chu ky truoc trong DB, de cot overdue_streak khop. Chu ky dau cua cua so giu nguyen.
@@ -93,7 +93,7 @@ function recalcLedger({ rows, cycleDates, seedDate = null }) {
       }
       const prev = previous.get(key);
       const streak = streakAfter(Number(row.overdue) || 0, prev ? prev.streak : 0, prev ? prev.status : undefined);
-      const amount = row.isManual ? before.amount : suggestedPenalty(Number(row.overdue) || 0, streak);
+      const amount = suggestedPenalty(Number(row.overdue) || 0, streak);
       current.set(key, { streak, status: row.status });
       if (streak !== before.streak || amount !== before.amount) {
         changes.push({ action: 'update', row, before, after: { amount, streak } });
