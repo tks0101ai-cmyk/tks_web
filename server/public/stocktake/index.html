@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kiểm kê · TOKOSI Dashboard</title>
+  <link rel="icon" type="image/jpeg" href="/Logo.jpg">
+  <script>
+    try { document.documentElement.dataset.theme = localStorage.getItem('tks-dashboard-theme') === 'light' ? 'light' : 'dark'; }
+    catch (error) { document.documentElement.dataset.theme = 'dark'; }
+    document.documentElement.style.visibility = 'hidden';
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/shared/shared.css?v=20261028-leave-btn">
+  <script src="/shared/motion.js?v=20261024-1" defer></script>
+  <link rel="stylesheet" href="/shared/search-clear.css?v=20261009-1">
+  <link rel="stylesheet" href="/vt-positions/vt-base.css?v=20261030">
+  <link rel="stylesheet" href="/shared/detail-panel.css?v=20261012">
+  <link rel="stylesheet" href="/shared/table-controls.css?v=20261016-1">
+  <link rel="stylesheet" href="/vt-positions/vt-positions.css?v=20261030-1">
+  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261102-2">
+</head>
+<body>
+  <div class="receipt-header">
+    <div class="brand">
+      <button class="menu-btn" id="menuBtn" type="button" aria-label="Mở menu điều hướng" aria-expanded="false" aria-controls="sidebar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>
+      </button>
+      <div class="brand-mark"><img src="/Logo.jpg" alt="TOKOSI Logo" width="44" height="44"></div>
+      <div class="brand-text"><h1>Tổng kho gia dụng Tokosi</h1></div>
+    </div>
+    <div class="status-line">
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="Chuyển chế độ giao diện">
+        <svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1 1M18 18l1 1M5 19l1-1M18 6l1-1"></path></svg>
+        <svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg>
+        <span id="themeLabel">Light mode</span>
+      </button>
+      <div class="account-chip" id="accountChip"></div>
+    </div>
+  </div>
+  <div class="shell">
+    <div class="backdrop" id="backdrop"></div>
+    <div class="sidebar" id="sidebar" data-tks-active-top="stockLocations"></div>
+    <main class="content">
+      <header class="vt-page-head">
+        <span class="vt-page-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"></path><rect x="9" y="3" width="6" height="4" rx="1"></rect><path d="m9 14 2 2 4-4"></path></svg>
+        </span>
+        <div class="vt-page-head-text">
+          <h2 class="locations-title">Kiểm kê</h2>
+          <p class="vt-page-sub">Đối chiếu số đếm của các team với tồn KiotViet</p>
+        </div>
+      </header>
+
+      <section class="locations-panel st-sessions" aria-label="Đợt kiểm kê">
+        <div class="locations-toolbar">
+          <label class="st-field st-session-pick"><span>Đợt kiểm kê</span><select id="stSession" aria-label="Chọn đợt kiểm kê"></select></label>
+          <span class="st-session-meta" id="stSessionMeta"></span>
+          <button class="locations-columns-button vt-btn vt-btn-primary" id="stCreateButton" type="button" hidden>+ Tạo đợt</button>
+          <button class="locations-columns-button vt-btn" id="stImportButton" type="button" hidden title="Nạp một lần tab KIỂM KÊ HN T10 làm số KK trước">Nạp đợt T10 từ sheet</button>
+          <button class="locations-columns-button vt-btn st-danger" id="stCloseButton" type="button" hidden>Đóng đợt</button>
+        </div>
+        <div class="st-stats" id="stStats" aria-live="polite"></div>
+      </section>
+
+      <section class="locations-panel" aria-labelledby="stTableTitle">
+        <div class="locations-toolbar">
+          <h3 id="stTableTitle">Bảng đối chiếu</h3>
+          <label class="locations-search">
+            <span class="locations-sr-only">Tìm theo mã, tên hàng, cụm hoặc lý do</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m16 16 4 4"></path></svg>
+            <input id="stSearch" type="search" placeholder="Tìm mã, tên hàng, cụm, lý do…" autocomplete="off">
+          </label>
+          <select id="stFilter" class="st-select" aria-label="Lọc mã">
+            <option value="mismatch" selected>Mã lệch</option>
+            <option value="forgotten">Quên KK</option>
+            <option value="noted">Đã ghi chú</option>
+            <option value="all">Tất cả mã</option>
+          </select>
+          <select id="stRecheckFilter" class="st-select" aria-label="Lọc theo người kiểm lại"><option value="">Mọi người kiểm lại</option></select>
+          <select id="stStatusFilter" class="st-select" aria-label="Lọc theo trạng thái"><option value="">Mọi trạng thái</option></select>
+          <select id="stSort" class="st-select" aria-label="Sắp xếp">
+            <option value="value">Giá trị chênh lớn trước</option>
+            <option value="qty">SL chênh lớn trước</option>
+            <option value="code">Theo mã</option>
+          </select>
+          <button class="locations-columns-button vt-btn" id="stExportButton" type="button">Xuất Excel</button>
+          <button class="locations-columns-button vt-btn" id="stColumnsButton" type="button" aria-haspopup="dialog" aria-expanded="false">Cột hiển thị</button>
+        </div>
+        <p id="stStatus" class="locations-status" role="status" aria-live="polite"></p>
+        <p id="stNotice" class="locations-status" role="status" aria-live="polite"></p>
+        <div class="locations-scroll" tabindex="0" aria-label="Bảng đối chiếu kiểm kê">
+          <table class="users-table locations-table st-table" id="stTable" data-table-key="stocktakeBoard" data-columns-button="stColumnsButton">
+            <thead><tr></tr></thead>
+            <tbody id="stRows"></tbody>
+          </table>
+        </div>
+        <div class="locations-pager" id="stPager" hidden>
+          <span id="stCount"></span>
+          <div class="locations-pager-controls">
+            <button id="stPrevious" type="button" aria-label="Trang trước">&lt;</button>
+            <span id="stPage"></span>
+            <button id="stNext" type="button" aria-label="Trang sau">&gt;</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="locations-panel st-recheck" aria-labelledby="stRecheckTitle">
+        <div class="locations-toolbar"><h3 id="stRecheckTitle">Số mã giao kiểm lại</h3></div>
+        <div class="st-recheck-list" id="stRecheckList"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Tạo đợt -->
+  <dialog class="vt-dialog" id="stCreateDialog" aria-labelledby="stCreateTitle">
+    <form id="stCreateForm" novalidate>
+      <div class="dp-head">
+        <div class="dp-head-text"><h3 class="dp-title" id="stCreateTitle">Tạo đợt kiểm kê</h3><p class="dp-subtitle">Web gom các đơn đặt hàng của khách "TEAM…" trong khoảng ngày, kể cả đơn đã hủy.</p></div>
+        <button type="button" class="dp-close" data-st-close aria-label="Đóng">×</button>
+      </div>
+      <div class="dp-body">
+        <label class="vt-field"><span>Tên đợt</span><input name="name" type="text" maxlength="120" required autocomplete="off" placeholder="VD: Kiểm kê HN 29/10"></label>
+        <label class="vt-field"><span>Cơ sở</span><select name="branch"><option value="hanoi">Hà Nội</option><option value="saigon">Sài Gòn</option></select></label>
+        <label class="vt-field"><span>Từ ngày</span><input name="dateFrom" type="date" required></label>
+        <label class="vt-field"><span>Đến ngày</span><input name="dateTo" type="date" required></label>
+        <p class="vt-form-error" id="stCreateError" role="alert"></p>
+        <div class="vt-dialog-actions">
+          <button type="button" class="locations-columns-button" data-st-close>Hủy</button>
+          <button type="submit" class="locations-columns-button vt-primary">Tạo đợt</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Xác nhận -->
+  <dialog class="vt-dialog vt-dialog-narrow" id="stConfirmDialog" aria-labelledby="stConfirmTitle">
+    <div class="dp-head"><div class="dp-head-text"><h3 class="dp-title" id="stConfirmTitle">Xác nhận</h3><p class="dp-subtitle" id="stConfirmMessage"></p></div></div>
+    <div class="dp-body">
+      <div class="vt-dialog-actions">
+        <button type="button" class="locations-columns-button" id="stConfirmCancel">Hủy</button>
+        <button type="button" class="locations-columns-button vt-primary" id="stConfirmOk">Đồng ý</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Chi tiết mã -->
+  <dialog class="vt-dialog vt-dialog-wide st-detail" id="stDetailDialog" aria-labelledby="stDetailTitle">
+    <div class="dp-head">
+      <div class="dp-head-text"><h3 class="dp-title" id="stDetailTitle"></h3><p class="dp-subtitle" id="stDetailSubtitle"></p></div>
+      <button type="button" class="dp-close" data-st-close aria-label="Đóng">×</button>
+    </div>
+    <div class="dp-body">
+      <div class="st-stats" id="stDetailStats"></div>
+      <p class="vt-form-error" id="stDetailError" role="alert"></p>
+      <div class="st-conflict" id="stConflict" hidden>
+        <span id="stConflictText"></span>
+        <button type="button" class="locations-columns-button" id="stConflictReload">Xem bản mới</button>
+      </div>
+
+      <section class="dp-section">
+        <h4 class="dp-section-title">Kiểm lại</h4>
+        <form class="st-grid" id="stNoteForm" novalidate>
+          <label class="vt-field"><span>Người kiểm lại</span><select name="recheckEmployeeId"><option value="">— Chưa giao —</option></select></label>
+          <label class="vt-field"><span>Trạng thái</span><input name="statusText" type="text" maxlength="200" list="stStatusSuggestions" autocomplete="off"><datalist id="stStatusSuggestions"></datalist></label>
+          <label class="vt-field st-wide"><span>Chi tiết lý do</span><input name="reasonText" type="text" maxlength="1000" list="stReasonSuggestions" autocomplete="off"><datalist id="stReasonSuggestions"></datalist></label>
+          <p class="st-meta st-wide" id="stNoteMeta"></p>
+          <div class="vt-dialog-actions st-wide"><button type="submit" class="locations-columns-button vt-primary">Lưu kiểm lại</button></div>
+        </form>
+      </section>
+
+      <section class="dp-section">
+        <h4 class="dp-section-title">Cụm SP / Combo <small>(giữ qua các đợt)</small></h4>
+        <form class="st-grid" id="stTagForm" novalidate>
+          <label class="vt-field"><span>Cụm SP</span><input name="cluster" type="text" maxlength="200" autocomplete="off" placeholder="Mã bị lẫn gom chung một cụm"></label>
+          <label class="st-check"><input name="isCombo" type="checkbox"> Combo (hàng nhiều phần, nhiều thùng)</label>
+          <div class="vt-dialog-actions st-wide"><button type="submit" class="locations-columns-button vt-primary">Lưu cụm / combo</button></div>
+        </form>
+      </section>
+
+      <section class="dp-section" id="stLinesSection">
+        <h4 class="dp-section-title">Dòng đếm theo team / khu</h4>
+        <div class="dp-table-wrap">
+          <table class="dp-table st-lines" data-table-sort="off" data-table-controls="off">
+            <thead><tr><th>Team</th><th>Khu</th><th>Quy cách</th><th class="num">SL</th><th>Đơn</th><th>Sửa bởi</th><th></th></tr></thead>
+            <tbody id="stLineRows"></tbody>
+          </table>
+        </div>
+        <form class="st-add-line" id="stAddLineForm" novalidate>
+          <input name="team" type="text" maxlength="200" placeholder="Team" aria-label="Team">
+          <input name="zone" type="text" maxlength="200" placeholder="Khu" aria-label="Khu">
+          <input name="spec" type="text" maxlength="200" placeholder="Quy cách" aria-label="Quy cách">
+          <input name="quantity" type="number" min="0" step="any" placeholder="SL" aria-label="Số lượng" required>
+          <button type="submit" class="locations-columns-button">+ Thêm dòng quên đếm</button>
+        </form>
+      </section>
+
+      <section class="dp-section">
+        <h4 class="dp-section-title">Lịch sử thay đổi</h4>
+        <ul class="st-history" id="stHistory"></ul>
+      </section>
+    </div>
+  </dialog>
+
+  <script src="/shared/table-controls.js?v=20261030-1"></script>
+  <script src="/shared/search-clear.js?v=20261009-1"></script>
+  <script src="/shared/shared-nav.js?v=20261102-stocktake"></script>
+  <script src="/stocktake/stocktake.js?v=20261102-3"></script>
+  <script>window.addEventListener('DOMContentLoaded', function () { TKSStocktake.init(); });</script>
+  <script src="/shared/shooting-star.js?v=20261019"></script>
+</body>
+</html>

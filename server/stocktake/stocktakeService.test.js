@@ -140,6 +140,8 @@ test('dong dot: chup ket qua, dot dong chi doc, dot sau co KK truoc', async () =
   const board = await service.getBoard(ctx(), session.id);
   assert.equal(rowOf(board, 'AAA1').stock, 10);
   assert.equal(rowOf(board, 'AAA1').diffQty, 2);
+  assert.equal(rowOf(board, 'BBB2').forgotten, true, 'Quen KK suy tu ban chup');
+  assert.equal(board.totals.forgotten, 1);
   await assert.rejects(service.saveNote(ctx(), session.id, 'AAA1', { statusText: 'x' }), { statusCode: 409, code: 'STOCKTAKE_CLOSED' });
   await assert.rejects(service.addLine(ctx(), session.id, { productCode: 'A', quantity: 1 }), { code: 'STOCKTAKE_CLOSED' });
 

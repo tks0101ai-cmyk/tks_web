@@ -295,7 +295,8 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       const tag = tagByCode.get(row.product_code);
       return {
         code: row.product_code, name: row.name, inKiot: true, counted: Number(row.counted), stock: Number(row.stock), cost: Number(row.cost),
-        diffQty: Number(row.diff_qty), diffValue: Number(row.diff_value), forgotten: false,
+        // Ban chup khong giu dong dem: khong ai dem (tong kiem 0) ma co ton = Quen KK.
+        diffQty: Number(row.diff_qty), diffValue: Number(row.diff_value), forgotten: Number(row.counted) === 0 && Number(row.stock) !== 0,
         cluster: (tag && tag.cluster) || '', clusterDiff: null, isCombo: Boolean(tag && tag.isCombo), tagVersion: tag ? tag.version : null,
         prevDiff: prevByCode.has(row.product_code) ? prevByCode.get(row.product_code) : null,
         latestPosition: null, note: noteByCode.get(row.product_code) || null, lines: []
@@ -307,6 +308,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     const totals = rows.reduce((sum, row) => {
       sum.codes += 1;
       if (row.diffQty !== 0) sum.mismatched += 1;
+      if (row.forgotten) sum.forgotten += 1;
       sum.diffValue += row.diffValue;
       return sum;
     }, { codes: 0, mismatched: 0, forgotten: 0, diffValue: 0 });

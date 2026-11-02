@@ -1,0 +1,56 @@
+/* Trang Kiểm kê: dùng lại khung + bảng của VT Hà Nội (vt-base.css, vt-positions.css), chỉ thêm phần riêng. */
+.st-sessions,.st-recheck{margin-bottom:16px}
+.st-recheck{margin-top:16px}
+.st-field{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+.st-session-pick select,.st-select{min-height:40px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel-2);color:var(--text);font:13px var(--font-body)}
+.st-session-pick select{min-width:260px}
+.st-session-meta{flex:1;color:var(--muted);font-size:13px}
+.st-danger{color:var(--red);border-color:color-mix(in srgb,var(--red) 45%,var(--border))}
+.st-stats{display:flex;flex-wrap:wrap;gap:10px;padding:0 16px 16px}
+.dp-body .st-stats{padding:0}
+.st-stat{display:flex;flex-direction:column;gap:2px;min-width:120px;padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel-2)}
+.st-stat b{font:600 18px var(--font-data);color:var(--text);font-variant-numeric:tabular-nums}
+.st-stat span{font-size:12px;color:var(--muted)}
+.st-stat.st-warn b{color:var(--amber,#d97706)}
+.st-stat.st-bad b{color:var(--red)}
+.st-table{--locations-min-width:1900px}
+.st-table td.num,.st-table th.num,.st-lines .num{text-align:right;font-variant-numeric:tabular-nums}
+.st-table tbody tr{cursor:pointer}
+.st-table tbody tr:hover td,.st-table tbody tr:focus-visible td{background:var(--panel-2)}
+.st-table tbody tr:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
+.st-table td[data-field="code"]{font-family:var(--font-data)}
+.st-neg{color:var(--red)}
+.st-pos{color:var(--green,#16a34a)}
+.st-forgotten td[data-field="code"]::after{content:" · Quên KK";font:600 11px var(--font-body);color:var(--amber,#d97706)}
+.st-recheck-list{display:flex;flex-wrap:wrap;gap:8px;padding:0 16px 16px;color:var(--muted);font-size:13px}
+.st-chip{min-height:36px;padding:6px 12px;border:1px solid var(--border);border-radius:999px;background:var(--panel-2);color:var(--text);font:13px var(--font-body);cursor:pointer}
+.st-chip:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.st-detail{width:min(900px,calc(100vw - 32px))}
+.st-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:end}
+.st-wide{grid-column:1 / -1}
+.st-meta{margin:0;color:var(--muted);font-size:12px}
+.st-meta:empty{display:none}
+.st-check{display:flex;align-items:center;gap:8px;min-height:40px;font-size:13px;color:var(--text)}
+.st-conflict{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border:1px solid var(--amber,#d97706);border-radius:var(--radius-sm);background:color-mix(in srgb,var(--amber,#d97706) 12%,transparent);color:var(--text);font-size:13px}
+.st-conflict[hidden]{display:none}
+.st-lines input{width:90px;min-height:32px;padding:4px 6px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel-2);color:var(--text);font:13px var(--font-data);text-align:right}
+.st-lines small{display:block;color:var(--muted);font-size:11px}
+.st-removed td{opacity:.5;text-decoration:line-through}
+.st-removed td:last-child{text-decoration:none;opacity:1}
+.st-add-line{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.st-add-line[hidden]{display:none}
+.st-add-line input{flex:1 1 120px;min-height:40px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel-2);color:var(--text);font:13px var(--font-body)}
+.st-history{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--muted)}
+.st-history li{display:flex;flex-direction:column;gap:2px;padding:8px 0;border-bottom:1px solid var(--border)}
+.st-history b{color:var(--text);font-weight:600}
+.dp-section-title small{font-weight:400;color:var(--muted)}
+#stLinesSection[hidden]{display:none}
+@media(max-width:600px){
+  .st-session-pick{grid-column:1 / -1}
+  .st-session-pick select{min-width:0;width:100%}
+  .st-session-meta{grid-column:1 / -1}
+  .st-select{width:100%}
+  .st-stat{min-width:calc(50% - 5px);flex:1 1 calc(50% - 5px)}
+  .st-grid{grid-template-columns:minmax(0,1fr)}
+  .st-table td[data-field="code"]{position:sticky;left:0;background:var(--panel);z-index:1;box-shadow:1px 0 0 var(--border)}
+}
