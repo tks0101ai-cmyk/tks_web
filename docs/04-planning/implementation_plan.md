@@ -338,9 +338,9 @@ Nút **Xuất kho** trên `/vt-positions/` trừ SL hàng loạt theo file Excel
 
 ## 02/11/2026 — Kiểm kê: đối chiếu Hà Nội (migration 0103, chưa migrate/deploy)
 
-- Module `server/stocktake/`: `stocktakeCompute.js` (hàm thuần gom số đếm + phần sửa, Quên KK, chênh theo Cụm SP), `stocktakeService.js` (đợt, sửa dòng, ghi chú, tag, đóng đợt chụp `stocktake_session_results`, khóa lạc quan `version` + lịch sử bất biến), `stocktakeRoutes.js` (`/api/stocktake`, SSE, xuất Excel), `stocktakeSheetImport.js` (nạp một lần tab KIỂM KÊ HN T10), `stocktakeEvents.js` (bus chung `dashboardRollupEvents`).
-- Trang `public/stocktake/` (menu Vị trí hàng → Kiểm kê, `table-controls.js`, sáng/tối, di động).
+- Module `server/stocktake/`: `stocktakeCompute.js` (hàm thuần gom số đếm + phần sửa, Quên KK, chênh theo Cụm SP), `stocktakeService.js` (đợt, sửa dòng, ghi chú, tag, đóng đợt chụp `stocktake_session_results`, khóa lạc quan `version` + lịch sử bất biến), `stocktakeRoutes.js` (`/api/stocktake`, SSE, xuất Excel), `stocktakeSheetImport.js` (nạp tab KIỂM KÊ HN T10 và KIỂM SG, `source: t10|sg`, tự nối đợt đối chiếu), `stocktakeEvents.js` (bus chung `dashboardRollupEvents`).
+- Trang `public/stocktake/` (menu Vị trí hàng → Kiểm kê, `table-controls.js`, sáng/tối, di động): đủ 23 cột T10 A→W theo thứ tự sheet, sắp xếp bằng bấm tiêu đề trên toàn bộ dòng đã lọc, đối chiếu chéo SG/HN (`counterpart_session_id`, `PATCH /sessions/:id`), dán cột từ Google Sheets (`POST /sessions/:id/paste`, `public/stocktake/stocktakePaste.js` dùng chung trình duyệt + server), xuất Excel 24 cột.
 - Quyền `stocktake.view`, `stocktake.edit`, `stocktake.close`; trang `/stocktake` trong `PAGE_FEATURES`.
-- Thiết kế: `docs/superpowers/specs/2026-10-31-stocktake-design.md`; kế hoạch: `docs/superpowers/plans/2026-10-31-stocktake.md`. Chưa làm: Sài Gòn, chia team, thưởng/phạt.
+- Thiết kế: `docs/superpowers/specs/2026-10-31-stocktake-design.md`; kế hoạch: `docs/superpowers/plans/2026-10-31-stocktake.md`. Thiết kế đợt cột T10 + Sài Gòn + dán cột: `docs/superpowers/specs/2026-11-02-stocktake-columns-sg-paste-design.md`; kế hoạch: `docs/superpowers/plans/2026-11-02-stocktake-columns-sg-paste.md`. Chưa làm: chia team, thưởng/phạt.
 
 Cập nhật gần nhất: 02/11/2026 (Kiểm kê đối chiếu Hà Nội, migration 0103; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot).

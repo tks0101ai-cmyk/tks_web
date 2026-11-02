@@ -959,10 +959,12 @@ Cập nhật gần nhất: 28/10/2026 (chỉnh sửa khi xem trước import VT)
 ## Bổ sung 02/11/2026 — Kiểm kê (FR-ST)
 
 - **FR-ST.1** Người có `stocktake.edit` tạo đợt kiểm kê (cơ sở, tên, từ ngày–đến ngày). Số đếm của đợt = tổng số lượng các dòng đơn đặt hàng của khách tên bắt đầu "TEAM" có ngày đặt (giờ VN) trong khoảng, kể cả đơn đã hủy; khu = ghi chú đơn, quy cách = ghi chú dòng.
-- **FR-ST.2** Bảng đối chiếu theo mã: Tổng kiểm, Tồn KIOT (tồn hiện tại khi đợt mở), SL chênh, Giá trị chênh (= SL chênh × giá vốn), Cụm SP + chênh cả cụm, Combo, KK trước sai (SL chênh của đợt đã đóng gần nhất), Vị trí gần nhất, Người kiểm lại, Trạng thái, Chi tiết lý do. Danh sách mã gồm cả mã có tồn mà không ai đếm (Quên KK).
+- **FR-ST.2** Bảng đối chiếu theo mã gồm đủ 23 cột T10 A→W đúng thứ tự sheet (+ cột ẩn "Cập nhật"): Tổng kiểm, Tồn KIOT (tồn hiện tại khi đợt mở), SL chênh, Giá trị chênh (= SL chênh × giá vốn), Cụm SP + chênh cả cụm, Combo, KK trước sai (SL chênh của đợt đã đóng gần nhất), Do KK trước, Lẫn + KK trước, Kiểm SG/HN, Do kiểm SG/HN, Trang in, Giờ in, Count, Vị trí gần nhất, Người kiểm lại, Trạng thái, Chi tiết lý do; kèm 3 tỷ lệ (Q/R/S, lưu dạng phân số, trống khi mẫu số trống hoặc 0). Bấm tiêu đề cột để sắp xếp trên toàn bộ dòng đã lọc. Danh sách mã gồm cả mã có tồn mà không ai đếm (Quên KK).
 - **FR-ST.3** Sửa từng dòng đếm (SL, quy cách, khu, bỏ dòng) hoặc thêm dòng quên đếm; số gốc từ KiotViet luôn được giữ để so; mỗi lần sửa ghi người và giờ, có lịch sử theo mã.
 - **FR-ST.4** Nhiều người sửa chung: mỗi bản ghi có số phiên bản; lưu đè bản cũ bị từ chối và báo tên người vừa sửa + giờ; bảng tự làm mới khi người khác sửa, không xóa ô đang nhập.
-- **FR-ST.5** Đóng đợt (`stocktake.close`, chỉ Quản lý) chụp tồn, giá vốn, chênh từng mã; đợt đóng chỉ xem. Nạp một lần tab KIỂM KÊ HN T10 thành đợt đã đóng để có KK trước.
-- **FR-ST.6** Xuất Excel bảng đối chiếu theo bộ lọc đang chọn.
+- **FR-ST.5** Đóng đợt (`stocktake.close`, chỉ Quản lý) chụp tồn, giá vốn, chênh từng mã; đợt đóng chỉ xem. Nạp tab KIỂM KÊ HN T10 (và tab KIỂM SG) thành đợt đã đóng để có KK trước.
+- **FR-ST.6** Xuất Excel bảng đối chiếu theo bộ lọc đang chọn: 24 cột đúng thứ tự T10, tên cột M/S theo cơ sở, tỷ lệ dạng `0%`.
+- **FR-ST.7** Sài Gòn + đối chiếu chéo: đợt kiểm kê có thể thuộc Hà Nội hoặc Sài Gòn; mỗi đợt gắn một đợt đối chiếu của cơ sở kia (`counterpart_session_id`, đổi bằng `PATCH /api/stocktake/sessions/:id`, nối hai chiều) để ra cột Kiểm SG / Kiểm HN và Do kiểm SG/HN. Nạp tab KIỂM KÊ HN T10 và KIỂM SG (`POST /api/stocktake/import-sheet {source: t10|sg}`) tự nối đợt đối chiếu hai chiều.
+- **FR-ST.8** Dán cột: người có `stocktake.edit` dán một cột từ Google Sheets (mã + giá trị) vào Trạng thái, Chi tiết lý do, Trang in, Giờ in, Người kiểm lại, Cụm SP, Combo, KK trước sai hoặc Kiểm SG/HN (`POST /api/stocktake/sessions/:id/paste {column, mode, rows}`); dùng chung bộ phân tích `public/stocktake/stocktakePaste.js` ở trình duyệt và server; đợt đóng không cho dán; mỗi lần dán ghi lịch sử `paste`.
 
-Cập nhật gần nhất: 02/11/2026 (Kiểm kê FR-ST; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; trước đó: gỡ module Vị trí hàng cũ).
+Cập nhật gần nhất: 02/11/2026 (Kiểm kê FR-ST.1–8, đủ cột T10, Sài Gòn, dán cột; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; trước đó: gỡ module Vị trí hàng cũ).

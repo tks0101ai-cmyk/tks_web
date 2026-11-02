@@ -517,6 +517,7 @@ Cập nhật gần nhất: 28/10/2026 (chỉnh sửa khi xem trước import VT)
 - Thay tab "KIỂM KÊ HN T10" của sheet kiểm kê: không còn xuất đơn TEAM / danh sách hàng từ KiotViet rồi dán vào sheet; web tự lấy số đếm từ đơn TEAM, tồn và giá vốn từ dữ liệu đồng bộ.
 - Ba quản lý kiểm kho (Thắng, Quân, Hưng) làm chung một bảng thay cho ba tab sao chép riêng; giao mã cho người kiểm lại, ghi trạng thái và lý do; bảng đếm số mã mỗi người được giao (thay Sheet87).
 - Quản lý đóng đợt để chốt số liệu; đợt sau tự có cột "KK trước sai".
-- Chưa làm trong đợt này: Sài Gòn, chia team/khu, thưởng/phạt; cân bằng kho trên KiotViet vẫn làm tay.
+- Bảng web có đủ 23 cột như tab T10 (kể cả Trang in, Giờ in, Do KK trước, Kiểm SG/HN) và bấm tiêu đề để sắp xếp; kiểm kê Sài Gòn dùng chung cách làm và đối chiếu chéo với Hà Nội; dán nhanh một cột từ Google Sheets thay cho gõ tay; nạp thêm tab KIỂM SG.
+- Chưa làm: chia team/khu, thưởng/phạt; cân bằng kho trên KiotViet vẫn làm tay.
 
-Cập nhật gần nhất: 02/11/2026 (Kiểm kê trên web; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; trước đó: gỡ module Vị trí hàng cũ).
+Cập nhật gần nhất: 02/11/2026 (Kiểm kê trên web: đủ cột T10, Sài Gòn, dán cột; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; trước đó: gỡ module Vị trí hàng cũ).
