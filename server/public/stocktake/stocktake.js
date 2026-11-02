@@ -279,6 +279,8 @@
     document.querySelectorAll('#stTable thead th').forEach(th => {
       const on = th.dataset.field === state.sortKey && state.sortDir;
       th.setAttribute('aria-sort', on ? (state.sortDir === 'asc' ? 'ascending' : 'descending') : 'none');
+      const mark = th.querySelector('.sort-indicator');
+      if (mark) mark.textContent = on ? (state.sortDir === 'asc' ? '▼' : '▲') : '▲▼';
     });
   }
 

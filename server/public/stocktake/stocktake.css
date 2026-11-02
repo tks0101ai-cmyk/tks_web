@@ -62,3 +62,4 @@
 .st-paste-preview p { margin: 2px 0; }
 #stPasteText { width: 100%; font-family: 'IBM Plex Mono', monospace; font-size: 13px; }
 @media (max-width: 720px) { .st-counterpart select { min-width: 0; width: 100%; } }
+#stCounterpartField[hidden]{display:none}
