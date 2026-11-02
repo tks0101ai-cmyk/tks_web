@@ -343,4 +343,4 @@ Nút **Xuất kho** trên `/vt-positions/` trừ SL hàng loạt theo file Excel
 - Quyền `stocktake.view`, `stocktake.edit`, `stocktake.close`; trang `/stocktake` trong `PAGE_FEATURES`.
 - Thiết kế: `docs/superpowers/specs/2026-10-31-stocktake-design.md`; kế hoạch: `docs/superpowers/plans/2026-10-31-stocktake.md`. Thiết kế đợt cột T10 + Sài Gòn + dán cột: `docs/superpowers/specs/2026-11-02-stocktake-columns-sg-paste-design.md`; kế hoạch: `docs/superpowers/plans/2026-11-02-stocktake-columns-sg-paste.md`. Chưa làm: chia team, thưởng/phạt.
 
-Cập nhật gần nhất: 02/11/2026 (Kiểm kê đối chiếu Hà Nội, migration 0103; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot).
+Cập nhật gần nhất: 02/11/2026 (Kiểm kê đối chiếu Hà Nội + Sài Gòn, đủ 23 cột T10, dán cột, nạp tab KIỂM SG, migration 0103; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot).

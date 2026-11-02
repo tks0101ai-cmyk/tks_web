@@ -834,3 +834,5 @@ Cập nhật gần nhất: 30/10/2026 (gỡ module Vị trí hàng cũ: `stock_l
 - Không thêm cột/bảng/trigger; dòng vị trí vẫn dùng `version`, `updated_by_*` như mọi thao tác ghi. Chưa áp migration thì `stockOutFile` lỗi 500 và rollback toàn bộ lượt (CHECK từ chối `stock_out`) — phải `npm run db:migrate` trước deploy.
 
 Cập nhật gần nhất: 30/10/2026.
+
+Cập nhật gần nhất: 02/11/2026 (Kiểm kê: đủ cột T10, Sài Gòn + đợt đối chiếu, dán cột, nạp tab KIỂM SG; migration `0103` chưa áp DB).
