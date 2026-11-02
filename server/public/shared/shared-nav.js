@@ -454,8 +454,8 @@
         '<div class="tks-notif-dropdown-header">' +
           '<div class="tks-notif-heading"><span>Thông báo</span><span class="tks-notif-summary" id="tksNotifSummary" hidden></span></div>' +
           '<div class="tks-notif-header-actions">' +
-            '<button type="button" class="tks-notif-mark-all" id="tksNotifMarkAll">Đánh dấu tất cả đã đọc</button>' +
-            '<button type="button" class="tks-notif-clear-all" id="tksNotifClearAll" hidden>Xóa tất cả</button>' +
+            '<button type="button" class="tks-notif-mark-all" id="tksNotifMarkAll"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2 12 4 4L16 6M12 16 22 6"></path></svg><span>Đánh dấu tất cả đã đọc</span></button>' +
+            '<button type="button" class="tks-notif-clear-all" id="tksNotifClearAll" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"></path></svg><span>Xóa tất cả</span></button>' +
           '</div>' +
         '</div>' +
         '<div class="tks-notif-desktop" id="tksNotifDesktop" hidden></div>' +
