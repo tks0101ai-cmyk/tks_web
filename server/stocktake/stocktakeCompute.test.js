@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { codeKey, applyLineEdits, buildBoard, toResults } = require('./stocktakeCompute');
+const { codeKey, applyLineEdits, buildBoard, toResults, deriveColumns } = require('./stocktakeCompute');
 
 const line = (orderId, lineNo, productCode, quantity, extra = {}) => ({
   orderId, lineNo, orderCode: 'DH' + orderId, team: 'TEAM 1', zone: 'G1', spec: '1t*10', productCode, productName: 'SP ' + productCode, quantity, ...extra
@@ -93,7 +93,7 @@ test('chenh theo Cum SP, KK truoc, vi tri, ghi chu', () => {
 
 test('toResults: ban chup gon theo ma', () => {
   const board = buildBoard({ lines: [line(1, 1, 'A', 2)], products: [{ code: 'A', name: 'Hang A', stock: 1, cost: 300 }] });
-  assert.deepEqual(toResults(board), [{ code: 'A', name: 'Hang A', counted: 2, stock: 1, cost: 300, diffQty: 1, diffValue: 300 }]);
+  assert.deepEqual(toResults(board), [{ code: 'A', name: 'Hang A', counted: 2, stock: 1, cost: 300, diffQty: 1, diffValue: 300, prevDiff: null, otherDiff: null }]);
 });
 
 test('applyLineEdits: khong co phan sua thi giu nguyen', () => {
@@ -101,4 +101,41 @@ test('applyLineEdits: khong co phan sua thi giu nguyen', () => {
   assert.equal(only.productCode, 'A');
   assert.equal(only.edit, null);
   assert.equal(only.removed, false);
+});
+
+test('deriveColumns: Count, chenh cum, 3 ty le; mau so 0 / trong -> null', () => {
+  const rows = deriveColumns([
+    { code: 'A', diffQty: -434, cluster: 'Tủ LUMI3', prevDiff: -326, otherDiff: null },
+    { code: 'B', diffQty: 45, cluster: 'tủ lumi3 ', prevDiff: null, otherDiff: 0 },
+    { code: 'C', diffQty: -5, cluster: '', prevDiff: 0, otherDiff: -10 }
+  ]);
+  const [a, b, c] = rows;
+  assert.equal(a.clusterCount, 2);
+  assert.equal(a.clusterDiff, -389);
+  assert.equal(a.prevRatio, 2.3313, '(E+L)/L = (-434-326)/-326');
+  assert.equal(a.clusterPrevRatio, 1.838, '(-389 + -326) / -389, L trong tinh 0');
+  assert.equal(b.clusterPrevRatio, 1.838);
+  assert.equal(b.prevRatio, null, 'L trong');
+  assert.equal(b.otherRatio, null, 'M = 0');
+  assert.equal(c.clusterCount, null);
+  assert.equal(c.clusterDiff, null);
+  assert.equal(c.clusterPrevRatio, null);
+  assert.equal(c.prevRatio, null, 'L = 0');
+  assert.equal(c.otherRatio, 1.5, '(-5 + -10) / -10');
+});
+
+test('buildBoard: so dan tay uu tien hon so tu lay cho L va M', () => {
+  const { rows } = buildBoard({
+    products: [{ code: 'A', name: 'A', stock: 10, cost: 1 }, { code: 'B', name: 'B', stock: 3, cost: 1 }],
+    previous: [{ code: 'A', diffQty: -2 }, { code: 'B', diffQty: -1 }],
+    counterpart: [{ code: 'A', diffQty: 4 }],
+    notes: [{ code: 'B', prevDiffManual: -7, otherDiffManual: 5, statusText: '', reasonText: '', version: 1 }]
+  });
+  const byCode = Object.fromEntries(rows.map(r => [r.code, r]));
+  assert.deepEqual([byCode.A.prevDiff, byCode.A.prevDiffManual, byCode.A.otherDiff], [-2, false, 4]);
+  assert.deepEqual([byCode.B.prevDiff, byCode.B.prevDiffAuto, byCode.B.prevDiffManual], [-7, -1, true]);
+  assert.deepEqual([byCode.B.otherDiff, byCode.B.otherDiffAuto, byCode.B.otherDiffManual], [5, null, true]);
+  const results = toResults({ rows });
+  assert.deepEqual(results.find(r => r.code === 'B').prevDiff, -7);
+  assert.deepEqual(results.find(r => r.code === 'B').otherDiff, 5);
 });
