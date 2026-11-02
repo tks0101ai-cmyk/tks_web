@@ -512,4 +512,11 @@ Cập nhật gần nhất: 28/10/2026 (chỉnh sửa khi xem trước import VT)
 
 - Chỉ định vị trí: người có quyền chỉ định kéo-thả (nhấn giữ) để đổi thứ tự dòng hàng trong hộp và trên phiếu in (chỉ trong lần mở hộp, không lưu); xóa dòng hàng khỏi đơn và sửa số lượng cần nhặt đều **ghi ngược lên đơn KiotViet** ở mọi trạng thái đơn, có hộp xác nhận, đối chiếu sau khi ghi, tự khôi phục nếu Kiot ghi lệch và nhật ký người thao tác. Không cho xóa dòng hàng cuối cùng của đơn.
 
-Cập nhật gần nhất: 30/10/2026 (Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; trước đó: gỡ module Vị trí hàng cũ).
+## Bổ sung 02/11/2026 — Kiểm kê trên web
+
+- Thay tab "KIỂM KÊ HN T10" của sheet kiểm kê: không còn xuất đơn TEAM / danh sách hàng từ KiotViet rồi dán vào sheet; web tự lấy số đếm từ đơn TEAM, tồn và giá vốn từ dữ liệu đồng bộ.
+- Ba quản lý kiểm kho (Thắng, Quân, Hưng) làm chung một bảng thay cho ba tab sao chép riêng; giao mã cho người kiểm lại, ghi trạng thái và lý do; bảng đếm số mã mỗi người được giao (thay Sheet87).
+- Quản lý đóng đợt để chốt số liệu; đợt sau tự có cột "KK trước sai".
+- Chưa làm trong đợt này: Sài Gòn, chia team/khu, thưởng/phạt; cân bằng kho trên KiotViet vẫn làm tay.
+
+Cập nhật gần nhất: 02/11/2026 (Kiểm kê trên web; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; trước đó: gỡ module Vị trí hàng cũ).

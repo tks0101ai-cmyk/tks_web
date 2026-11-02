@@ -336,4 +336,11 @@ Nút **Xuất kho** trên `/vt-positions/` trừ SL hàng loạt theo file Excel
 
 - **Chỉ định vị trí ghi ngược Kiot (30/10/2026):** hộp chỉ định có kéo-thả đổi thứ tự dòng (chỉ trong lần mở, phiếu in theo thứ tự đó), nút Xóa dòng và SL cần nhặt sửa tay ghi lên đơn đặt hàng Kiot qua `kiotviet/kiotOrderEditor.js` (đọc → PUT /orders/{id} giữ nguyên mọi trường khác → đọc lại đối chiếu → khôi phục nếu lệch → upsert DB cục bộ); nhật ký `order_kiot_edit_log` (migration `0102`), cờ `KIOT_ORDER_WRITE_ENABLED`, endpoint `POST /api/shipment/pick/order-lines/remove`.
 
-Cập nhật gần nhất: 30/10/2026 (Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot).
+## 02/11/2026 — Kiểm kê: đối chiếu Hà Nội (migration 0103, chưa migrate/deploy)
+
+- Module `server/stocktake/`: `stocktakeCompute.js` (hàm thuần gom số đếm + phần sửa, Quên KK, chênh theo Cụm SP), `stocktakeService.js` (đợt, sửa dòng, ghi chú, tag, đóng đợt chụp `stocktake_session_results`, khóa lạc quan `version` + lịch sử bất biến), `stocktakeRoutes.js` (`/api/stocktake`, SSE, xuất Excel), `stocktakeSheetImport.js` (nạp một lần tab KIỂM KÊ HN T10), `stocktakeEvents.js` (bus chung `dashboardRollupEvents`).
+- Trang `public/stocktake/` (menu Vị trí hàng → Kiểm kê, `table-controls.js`, sáng/tối, di động).
+- Quyền `stocktake.view`, `stocktake.edit`, `stocktake.close`; trang `/stocktake` trong `PAGE_FEATURES`.
+- Thiết kế: `docs/superpowers/specs/2026-10-31-stocktake-design.md`; kế hoạch: `docs/superpowers/plans/2026-10-31-stocktake.md`. Chưa làm: Sài Gòn, chia team, thưởng/phạt.
+
+Cập nhật gần nhất: 02/11/2026 (Kiểm kê đối chiếu Hà Nội, migration 0103; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot).

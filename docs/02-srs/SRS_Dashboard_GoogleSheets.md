@@ -956,4 +956,13 @@ Cập nhật gần nhất: 28/10/2026 (chỉnh sửa khi xem trước import VT)
 
 - **FR-PK.ghi-ngược (30/10/2026)** Chỉ định vị trí: người có quyền chỉ định kéo-thả (nhấn giữ) để đổi thứ tự dòng hàng trong hộp và trên phiếu in (chỉ trong lần mở hộp, không lưu); xóa dòng hàng khỏi đơn và sửa số lượng cần nhặt đều **ghi ngược lên đơn KiotViet** ở mọi trạng thái đơn, có hộp xác nhận, đối chiếu sau khi ghi, tự khôi phục nếu Kiot ghi lệch và nhật ký người thao tác. Không cho xóa dòng hàng cuối cùng của đơn.
 
-Cập nhật gần nhất: 30/10/2026 (Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; trước đó: gỡ module Vị trí hàng cũ).
+## Bổ sung 02/11/2026 — Kiểm kê (FR-ST)
+
+- **FR-ST.1** Người có `stocktake.edit` tạo đợt kiểm kê (cơ sở, tên, từ ngày–đến ngày). Số đếm của đợt = tổng số lượng các dòng đơn đặt hàng của khách tên bắt đầu "TEAM" có ngày đặt (giờ VN) trong khoảng, kể cả đơn đã hủy; khu = ghi chú đơn, quy cách = ghi chú dòng.
+- **FR-ST.2** Bảng đối chiếu theo mã: Tổng kiểm, Tồn KIOT (tồn hiện tại khi đợt mở), SL chênh, Giá trị chênh (= SL chênh × giá vốn), Cụm SP + chênh cả cụm, Combo, KK trước sai (SL chênh của đợt đã đóng gần nhất), Vị trí gần nhất, Người kiểm lại, Trạng thái, Chi tiết lý do. Danh sách mã gồm cả mã có tồn mà không ai đếm (Quên KK).
+- **FR-ST.3** Sửa từng dòng đếm (SL, quy cách, khu, bỏ dòng) hoặc thêm dòng quên đếm; số gốc từ KiotViet luôn được giữ để so; mỗi lần sửa ghi người và giờ, có lịch sử theo mã.
+- **FR-ST.4** Nhiều người sửa chung: mỗi bản ghi có số phiên bản; lưu đè bản cũ bị từ chối và báo tên người vừa sửa + giờ; bảng tự làm mới khi người khác sửa, không xóa ô đang nhập.
+- **FR-ST.5** Đóng đợt (`stocktake.close`, chỉ Quản lý) chụp tồn, giá vốn, chênh từng mã; đợt đóng chỉ xem. Nạp một lần tab KIỂM KÊ HN T10 thành đợt đã đóng để có KK trước.
+- **FR-ST.6** Xuất Excel bảng đối chiếu theo bộ lọc đang chọn.
+
+Cập nhật gần nhất: 02/11/2026 (Kiểm kê FR-ST; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; trước đó: gỡ module Vị trí hàng cũ).
