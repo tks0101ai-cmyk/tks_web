@@ -7,27 +7,40 @@
   const API = '/api/stocktake';
   const PAGE_SIZE = 100;
   const $ = id => document.getElementById(id);
+  // Đúng thứ tự tab "KIỂM KÊ HN T10" (A→W); đợt SG đổi nhãn otherDiff/otherRatio.
   const COLUMNS = [
-    { key: 'code', label: 'Mã hàng', width: 120, locked: true },
-    { key: 'name', label: 'Tên hàng', width: 240 },
-    { key: 'position', label: 'Vị trí gần nhất', width: 120 },
+    { key: 'code', label: 'Mã hàng', width: 120, locked: true, type: 'text' },
+    { key: 'name', label: 'Tên hàng', width: 240, type: 'text' },
     { key: 'counted', label: 'Tổng kiểm', width: 96, num: true },
     { key: 'stock', label: 'Tồn KIOT', width: 96, num: true },
     { key: 'diffQty', label: 'SL chênh', width: 96, num: true },
     { key: 'diffValue', label: 'Giá trị chênh', width: 120, num: true },
-    { key: 'cluster', label: 'Cụm SP', width: 140 },
-    { key: 'clusterDiff', label: 'Chênh cụm', width: 96, num: true },
-    { key: 'combo', label: 'Combo', width: 70 },
+    { key: 'status', label: 'Trạng thái', width: 130, type: 'text' },
+    { key: 'reason', label: 'Chi tiết lý do', width: 220, type: 'text' },
+    { key: 'printPage', label: 'Trang in', width: 80, type: 'text' },
+    { key: 'printTime', label: 'Giờ in', width: 90, type: 'text' },
+    { key: 'recheck', label: 'Người kiểm lại', width: 140, type: 'text' },
     { key: 'prevDiff', label: 'KK trước sai', width: 96, num: true },
-    { key: 'recheck', label: 'Người kiểm lại', width: 140 },
-    { key: 'status', label: 'Trạng thái', width: 130 },
-    { key: 'reason', label: 'Chi tiết lý do', width: 220 },
-    { key: 'updated', label: 'Sửa cuối', width: 140 }
+    { key: 'otherDiff', label: 'Kiểm SG', width: 96, num: true },
+    { key: 'cluster', label: 'Cụm SP', width: 140, type: 'text' },
+    { key: 'clusterCount', label: 'Count', width: 70, num: true },
+    { key: 'clusterDiff', label: 'Chênh cụm', width: 96, num: true },
+    { key: 'prevRatio', label: 'Do KK trước', width: 96, num: true, percent: true },
+    { key: 'clusterPrevRatio', label: 'Lẫn + KK trước', width: 110, num: true, percent: true },
+    { key: 'otherRatio', label: 'Do kiểm SG', width: 96, num: true, percent: true },
+    { key: 'forgotten', label: 'Quên KK', width: 80, type: 'flag' },
+    { key: 'combo', label: 'Combo', width: 70, type: 'flag' },
+    { key: 'position', label: 'Vị trí kho gần nhất', width: 130, type: 'text' },
+    { key: 'cost', label: 'Giá vốn', width: 96, num: true },
+    { key: 'updated', label: 'Cập nhật', width: 140, type: 'text' }
   ];
+  const otherLabel = branch => (branch === 'saigon' ? 'HN' : 'SG');
+  const labelOf = (column, branch) => (column.key === 'otherDiff' ? 'Kiểm ' + otherLabel(branch)
+    : column.key === 'otherRatio' ? 'Do kiểm ' + otherLabel(branch) : column.label);
 
   const state = {
     sessions: [], sessionId: null, board: null, canEdit: false, canClose: false,
-    query: '', filter: 'mismatch', recheck: '', status: '', sort: 'value', page: 1, loadVersion: 0
+    query: '', filter: 'mismatch', recheck: '', status: '', sortKey: null, sortDir: null, headBranch: null, page: 1, loadVersion: 0
   };
   const live = { source: null, timer: null };
   const detail = { code: null };
@@ -41,6 +54,7 @@
     const vn = new Date(new Date(iso).getTime() + 7 * 3600 * 1000).toISOString();
     return vn.slice(11, 16) + ' ' + vn.slice(8, 10) + '/' + vn.slice(5, 7);
   };
+  const pct = value => (value === null || value === undefined ? '' : Math.round(value * 100) + '%');
   const dateVn = text => (text ? text.split('-').reverse().join('/') : '');
   const fold = value => String(value ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[đĐ]/g, 'd').toLowerCase();
 
@@ -74,7 +88,9 @@
       select.appendChild(option);
     }
     $('stCreateButton').hidden = !state.canEdit;
-    $('stImportButton').hidden = !state.canClose || state.sessions.some(s => s.source === 'sheet_import');
+    const imported = branch => state.sessions.some(s => s.source === 'sheet_import' && s.branch === branch);
+    $('stImportT10Button').hidden = !state.canClose || imported('hanoi');
+    $('stImportSgButton').hidden = !state.canClose || imported('saigon');
     const wanted = selectId || Number(new URLSearchParams(window.location.hash.slice(1)).get('dot')) || (state.sessions[0] && state.sessions[0].id);
     const exists = state.sessions.some(s => s.id === wanted);
     state.sessionId = exists ? wanted : (state.sessions[0] ? state.sessions[0].id : null);
@@ -146,6 +162,43 @@
   };
   const recheckLabel = note => (note ? employeeName(note.recheckEmployeeId) || note.recheckName || '' : '');
 
+  // Giá trị để sort: số -> number, chữ -> chuỗi, đánh dấu -> 1/0; ô trống -> null (luôn nằm cuối).
+  function sortValue(row, column) {
+    const note = row.note || {};
+    switch (column.key) {
+      case 'name': return row.name || null;
+      case 'status': return note.statusText || null;
+      case 'reason': return note.reasonText || null;
+      case 'printPage': return note.printPage || null;
+      case 'printTime': return note.printTime || null;
+      case 'recheck': return recheckLabel(row.note) || null;
+      case 'cluster': return row.cluster || null;
+      case 'position': return row.latestPosition ? row.latestPosition.location || null : null;
+      case 'updated': return note.updatedAt || null;
+      case 'forgotten': return row.forgotten ? 1 : 0;
+      case 'combo': return row.isCombo ? 1 : 0;
+      default: {
+        const value = row[column.key];
+        return value === null || value === undefined ? null : value;
+      }
+    }
+  }
+  const byDefault = (a, b) => Math.abs(b.diffValue) - Math.abs(a.diffValue) || a.code.localeCompare(b.code);
+  function sortRows(rows) {
+    const column = COLUMNS.find(c => c.key === state.sortKey);
+    if (!column || !state.sortDir) return rows.sort(byDefault);
+    const factor = state.sortDir === 'desc' ? -1 : 1;
+    // Đánh dấu (Quên KK, Combo): "tăng" = có trước.
+    const flagFactor = column.type === 'flag' ? -1 : 1;
+    return rows.sort((a, b) => {
+      const x = sortValue(a, column);
+      const y = sortValue(b, column);
+      if (x === null || y === null) return x === y ? a.code.localeCompare(b.code) : x === null ? 1 : -1;
+      const diff = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'vi');
+      return diff * factor * flagFactor || a.code.localeCompare(b.code);
+    });
+  }
+
   function visibleRows() {
     if (!state.board) return [];
     const query = fold(state.query).trim();
@@ -158,10 +211,7 @@
       if (!query) return true;
       return fold([row.code, row.name, row.cluster, row.note && row.note.statusText, row.note && row.note.reasonText].join(' ')).includes(query);
     });
-    const by = state.sort === 'code' ? (a, b) => a.code.localeCompare(b.code)
-      : state.sort === 'qty' ? (a, b) => Math.abs(b.diffQty) - Math.abs(a.diffQty) || a.code.localeCompare(b.code)
-        : (a, b) => Math.abs(b.diffValue) - Math.abs(a.diffValue) || a.code.localeCompare(b.code);
-    return rows.sort(by);
+    return sortRows(rows);
   }
 
   function cellText(row, key) {
@@ -170,6 +220,15 @@
       case 'code': return row.code;
       case 'name': return row.name || (row.inKiot ? '' : '(không có trên KiotViet)');
       case 'position': return row.latestPosition ? row.latestPosition.location : '';
+      case 'printPage': return note.printPage || '';
+      case 'printTime': return note.printTime || '';
+      case 'otherDiff': return num(row.otherDiff);
+      case 'clusterCount': return num(row.clusterCount);
+      case 'prevRatio': return pct(row.prevRatio);
+      case 'clusterPrevRatio': return pct(row.clusterPrevRatio);
+      case 'otherRatio': return pct(row.otherRatio);
+      case 'forgotten': return row.forgotten ? 'Quên' : '';
+      case 'cost': return num(row.cost);
       case 'counted': return num(row.counted);
       case 'stock': return num(row.stock);
       case 'diffQty': return num(row.diffQty);
@@ -186,22 +245,41 @@
     }
   }
 
-  function renderHead() {
+  function renderHead(branch) {
+    state.headBranch = branch || 'hanoi';
     const tr = document.querySelector('#stTable thead tr');
     tr.textContent = '';
     for (const column of COLUMNS) {
       const th = document.createElement('th');
       th.dataset.field = column.key;
-      th.textContent = column.label;
       if (column.num) th.className = 'num';
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'sort-button';
+      button.dataset.stSort = column.key;
+      const label = document.createElement('span');
+      label.className = 'sort-label';
+      label.textContent = labelOf(column, state.headBranch);
+      const mark = document.createElement('span');
+      mark.className = 'sort-indicator';
+      mark.setAttribute('aria-hidden', 'true');
+      button.append(label, mark);
+      th.appendChild(button);
       tr.appendChild(th);
     }
+    syncSortHeader();
     if (window.TKSTables) {
       window.TKSTables.enhance($('stTable'), {
-        key: 'stocktake-board-v1', button: $('stColumnsButton'), sort: false,
-        columns: COLUMNS.map(c => ({ key: c.key, label: c.label, width: c.width, locked: !!c.locked, hidden: c.key === 'updated' }))
+        key: 'stocktake-board-v2', button: $('stColumnsButton'), sort: false,
+        columns: COLUMNS.map(c => ({ key: c.key, label: labelOf(c, state.headBranch), width: c.width, locked: !!c.locked, hidden: c.key === 'updated' }))
       });
     }
+  }
+  function syncSortHeader() {
+    document.querySelectorAll('#stTable thead th').forEach(th => {
+      const on = th.dataset.field === state.sortKey && state.sortDir;
+      th.setAttribute('aria-sort', on ? (state.sortDir === 'asc' ? 'ascending' : 'descending') : 'none');
+    });
   }
 
   function renderStats(node, items) {
@@ -221,12 +299,20 @@
   function render() {
     const board = state.board;
     const session = board && board.session;
+    if (session && session.branch !== state.headBranch) renderHead(session.branch);
     $('stSessionMeta').textContent = session
       ? dateVn(session.dateFrom) + (session.dateTo !== session.dateFrom ? ' – ' + dateVn(session.dateTo) : '')
         + (session.status === 'closed' ? ' · Đóng bởi ' + (session.closedByName || '—') + ' ' + time(session.closedAt) : ' · Tồn theo KiotViet hiện tại')
       : '';
     $('stCloseButton').hidden = !(session && session.status === 'open' && state.canClose);
     $('stCreateButton').hidden = !state.canEdit;
+    const counterpartField = $('stCounterpartField');
+    counterpartField.hidden = !session;
+    if (session) {
+      fillCounterpartSelect($('stCounterpart'), session.branch, session.counterpartSessionId);
+      $('stCounterpart').disabled = !(state.canEdit && session.status === 'open');
+    }
+    $('stPasteButton').hidden = !(session && session.status === 'open' && state.canEdit);
     renderStats($('stStats'), board ? [
       ['mã trong đợt', num(board.totals.codes)],
       ['mã lệch', num(board.totals.mismatched), board.totals.mismatched ? 'warn' : ''],
@@ -252,7 +338,12 @@
         td.dataset.field = column.key;
         if (column.num) td.className = 'num';
         td.textContent = cellText(row, column.key);
-        if ((column.key === 'diffQty' || column.key === 'diffValue' || column.key === 'clusterDiff') && row[column.key]) {
+        if ((column.key === 'prevDiff' && row.prevDiffManual) || (column.key === 'otherDiff' && row.otherDiffManual)) {
+          td.classList.add('st-manual');
+          const auto = column.key === 'prevDiff' ? row.prevDiffAuto : row.otherDiffAuto;
+          td.title = 'Số dán tay · web tự lấy: ' + (auto === null || auto === undefined ? 'trống' : num(auto));
+        }
+        if (['diffQty', 'diffValue', 'clusterDiff', 'prevDiff', 'otherDiff'].includes(column.key) && row[column.key]) {
           td.classList.add(row[column.key] < 0 ? 'st-neg' : 'st-pos');
         }
         tr.appendChild(td);
@@ -283,6 +374,19 @@
       select.appendChild(option);
     }
     select.value = entries.some(([value]) => value === current) ? current : '';
+  }
+
+  // Đợt cơ sở kia có khoảng ngày giao nhau; không có thì đợt có ngày cuối gần ngày bắt đầu nhất.
+  function suggestCounterpart(branch, dateFrom, dateTo) {
+    const others = state.sessions.filter(s => s.branch !== branch);
+    const overlap = others.find(s => s.dateFrom <= dateTo && s.dateTo >= dateFrom);
+    if (overlap) return overlap;
+    const gap = s => Math.abs(Date.parse(s.dateTo) - Date.parse(dateFrom));
+    return others.slice().sort((a, b) => gap(a) - gap(b))[0] || null;
+  }
+  function fillCounterpartSelect(select, branch, selected) {
+    fillSelect(select, '— Không —', state.sessions.filter(s => s.branch !== branch)
+      .map(s => [String(s.id), s.name + ' · ' + (s.branch === 'hanoi' ? 'HN' : 'SG')]), selected ? String(selected) : '');
   }
 
   // Đếm số mã theo người kiểm lại: key -> { label, count }.
@@ -389,6 +493,11 @@
     recheck.value = note.recheckEmployeeId === null || note.recheckEmployeeId === undefined ? '' : String(note.recheckEmployeeId);
     noteForm.elements.statusText.value = note.statusText || '';
     noteForm.elements.reasonText.value = note.reasonText || '';
+    noteForm.elements.printPage.value = note.printPage || '';
+    noteForm.elements.printTime.value = note.printTime || '';
+    noteForm.elements.prevDiffManual.value = note.prevDiffManual === null || note.prevDiffManual === undefined ? '' : String(note.prevDiffManual);
+    noteForm.elements.otherDiffManual.value = note.otherDiffManual === null || note.otherDiffManual === undefined ? '' : String(note.otherDiffManual);
+    $('stOtherManualLabel').textContent = 'Kiểm ' + otherLabel(state.board.session.branch) + ' (dán tay)';
     noteForm.dataset.version = note.version ? String(note.version) : '';
     $('stNoteMeta').textContent = note.updatedByName ? 'Sửa cuối: ' + note.updatedByName + ' · ' + time(note.updatedAt) : '';
     for (const [id, values] of [['stStatusSuggestions', state.board.suggestions.status], ['stReasonSuggestions', state.board.suggestions.reason]]) {
@@ -411,7 +520,8 @@
     renderStats($('stDetailStats'), [
       ['Tổng kiểm', num(row.counted)], ['Tồn KIOT', num(row.stock)],
       ['SL chênh', num(row.diffQty), row.diffQty ? 'warn' : ''], ['Giá trị chênh', num(row.diffValue), row.diffValue < 0 ? 'bad' : ''],
-      ['KK trước sai', row.prevDiff === null ? '—' : num(row.prevDiff)]
+      ['KK trước sai', row.prevDiff === null ? '—' : num(row.prevDiff)],
+      ['Kiểm ' + otherLabel(state.board.session.branch), row.otherDiff === null ? '—' : num(row.otherDiff)]
     ]);
     const closed = state.board.session.status === 'closed';
     $('stLinesSection').hidden = closed;
@@ -466,10 +576,12 @@
     }
   }
 
-  const ACTION_LABELS = { line_edit: 'Sửa dòng đếm', line_add: 'Thêm dòng', note: 'Kiểm lại', tag: 'Cụm / Combo', session_close: 'Đóng đợt', sheet_import: 'Nạp từ sheet' };
+  const ACTION_LABELS = { line_edit: 'Sửa dòng đếm', line_add: 'Thêm dòng', note: 'Kiểm lại', tag: 'Cụm / Combo', session_close: 'Đóng đợt', sheet_import: 'Nạp từ sheet', paste: 'Dán cột', session_update: 'Đổi đối chiếu' };
   function historyText(item) {
     const after = item.after || {};
-    if (item.action === 'note') return [recheckLabel(after), after.statusText, after.reasonText].filter(Boolean).join(' · ');
+    if (item.action === 'note') return [recheckLabel(after), after.statusText, after.reasonText, after.printPage && 'Trang ' + after.printPage].filter(Boolean).join(' · ');
+    if (item.action === 'paste') return 'Dán cột ' + ((window.TKSStocktakePaste.PASTE_COLUMNS[after.column] || {}).label || after.column);
+    if (item.action === 'session_update') return 'Đổi đợt đối chiếu';
     if (item.action === 'tag') return [after.cluster && 'Cụm: ' + after.cluster, after.isCombo ? 'Combo' : ''].filter(Boolean).join(' · ');
     if (item.action === 'line_edit' || item.action === 'line_add') {
       return [after.removed ? 'Bỏ dòng' : after.quantity !== null && after.quantity !== undefined ? 'SL ' + num(after.quantity) : '', after.zone, after.team].filter(Boolean).join(' · ');
@@ -544,6 +656,10 @@
         recheckEmployeeId: form.elements.recheckEmployeeId.value ? Number(form.elements.recheckEmployeeId.value) : null,
         statusText: form.elements.statusText.value,
         reasonText: form.elements.reasonText.value,
+        printPage: form.elements.printPage.value,
+        printTime: form.elements.printTime.value,
+        prevDiffManual: form.elements.prevDiffManual.value.trim() === '' ? null : form.elements.prevDiffManual.value,
+        otherDiffManual: form.elements.otherDiffManual.value.trim() === '' ? null : form.elements.otherDiffManual.value,
         version: form.dataset.version ? Number(form.dataset.version) : null
       });
     });
@@ -592,6 +708,12 @@
       state.page = 1;
       loadBoard();
     });
+    const createForm = $('stCreateForm');
+    const refill = () => {
+      const s = suggestCounterpart(createForm.elements.branch.value, createForm.elements.dateFrom.value, createForm.elements.dateTo.value);
+      fillCounterpartSelect(createForm.elements.counterpartSessionId, createForm.elements.branch.value, s && s.id);
+    };
+    ['branch', 'dateFrom', 'dateTo'].forEach(name => createForm.elements[name].addEventListener('change', refill));
     $('stCreateButton').addEventListener('click', () => {
       const form = $('stCreateForm');
       form.reset();
@@ -600,13 +722,15 @@
       form.elements.dateTo.value = today;
       form.elements.branch.value = user && user.branch === 'Sài Gòn' ? 'saigon' : 'hanoi';
       $('stCreateError').textContent = '';
+      refill();
       $('stCreateDialog').showModal();
     });
     $('stCreateForm').addEventListener('submit', async event => {
       event.preventDefault();
       const form = event.target;
       const { response, payload } = await request(API + '/sessions', jsonOptions('POST', {
-        name: form.elements.name.value, branch: form.elements.branch.value, dateFrom: form.elements.dateFrom.value, dateTo: form.elements.dateTo.value
+        name: form.elements.name.value, branch: form.elements.branch.value, dateFrom: form.elements.dateFrom.value, dateTo: form.elements.dateTo.value,
+        counterpartSessionId: form.elements.counterpartSessionId.value ? Number(form.elements.counterpartSessionId.value) : null
       }));
       if (!response.ok) { $('stCreateError').textContent = payload.error || 'Không tạo được đợt.'; return; }
       $('stCreateDialog').close();
@@ -616,23 +740,34 @@
       const session = state.board && state.board.session;
       if (!session) return;
       const ok = await confirmAction('Đóng đợt ' + session.name + '?',
-        'Web sẽ chụp lại tồn và chênh lệch của mọi mã ngay lúc này. Sau khi đóng, đợt chỉ xem được, không sửa được nữa, và là số "KK trước" cho đợt sau.', 'Đóng đợt');
+        'Web sẽ chụp lại tồn và chênh lệch của mọi mã ngay lúc này. Sau khi đóng, đợt chỉ xem được, không sửa được nữa, và là số "KK trước" cho đợt sau và số "Kiểm ' + otherLabel(session.branch) + '" của đợt đối chiếu.', 'Đóng đợt');
       if (!ok) return;
       const { response, payload } = await request(API + '/sessions/' + session.id + '/close', jsonOptions('POST', { version: session.version }));
       if (!response.ok) { notify(payload.error || 'Không đóng được đợt.', true); return; }
       notify('Đã đóng đợt ' + session.name + '.');
       await loadSessions(session.id);
     });
-    $('stImportButton').addEventListener('click', async () => {
-      const ok = await confirmAction('Nạp đợt T10 từ sheet?',
-        'Đọc tab KIỂM KÊ HN T10 (chỉ đọc) và lưu thành một đợt đã đóng, làm số "KK trước" cho đợt đầu tiên trên web. Chỉ nạp được một lần.', 'Nạp');
-      if (!ok) return;
+    $('stCounterpart').addEventListener('change', async event => {
+      const session = state.board && state.board.session;
+      if (!session) return;
+      const { response, payload } = await request(API + '/sessions/' + session.id, jsonOptions('PATCH', {
+        counterpartSessionId: event.target.value ? Number(event.target.value) : null, version: session.version
+      }));
+      if (!response.ok) { notify(payload.error || 'Không đổi được đợt đối chiếu.', true); }
+      await loadSessions(session.id);
+    });
+    const importSheet = (source, title, message) => async () => {
+      if (!(await confirmAction(title, message, 'Nạp'))) return;
       notify('Đang đọc sheet…');
-      const { response, payload } = await request(API + '/import-sheet', jsonOptions('POST', {}));
+      const { response, payload } = await request(API + '/import-sheet', jsonOptions('POST', { source }));
       if (!response.ok) { notify(payload.error || 'Không nạp được sheet.', true); return; }
       notify('Đã nạp ' + num(payload.codes) + ' mã (' + num(payload.mismatched) + ' mã lệch).');
       await loadSessions(payload.sessionId);
-    });
+    };
+    $('stImportT10Button').addEventListener('click', importSheet('t10', 'Nạp đợt T10 Hà Nội từ sheet?',
+      'Đọc tab KIỂM KÊ HN T10 (chỉ đọc) và lưu thành một đợt đã đóng. Chỉ nạp được một lần.'));
+    $('stImportSgButton').addEventListener('click', importSheet('sg', 'Nạp KIỂM SG từ sheet?',
+      'Đọc tab KIỂM SG (chỉ đọc) và lưu thành một đợt Sài Gòn đã đóng, tự đối chiếu với đợt T10 Hà Nội. Chỉ nạp được một lần.'));
     $('stExportButton').addEventListener('click', async () => {
       if (!state.board) return;
       const codes = visibleRows().map(row => row.code);
@@ -656,9 +791,106 @@
     $('stFilter').addEventListener('change', event => { state.filter = event.target.value; rerender(); });
     $('stRecheckFilter').addEventListener('change', event => { state.recheck = event.target.value; rerender(); });
     $('stStatusFilter').addEventListener('change', event => { state.status = event.target.value; rerender(); });
-    $('stSort').addEventListener('change', event => { state.sort = event.target.value; rerender(); });
+    // Bấm tiêu đề: tăng -> giảm -> mặc định (giá trị chênh lớn trước). Sort toàn bộ dòng đã lọc rồi mới chia trang.
+    document.querySelector('#stTable thead').addEventListener('click', event => {
+      const button = event.target.closest('[data-st-sort]');
+      if (!button || event.target.closest('.tks-column-resizer')) return;
+      const key = button.dataset.stSort;
+      if (state.sortKey !== key) { state.sortKey = key; state.sortDir = 'asc'; }
+      else if (state.sortDir === 'asc') state.sortDir = 'desc';
+      else { state.sortKey = null; state.sortDir = null; }
+      syncSortHeader();
+      rerender();
+    });
     $('stPrevious').addEventListener('click', () => { state.page -= 1; render(); });
     $('stNext').addEventListener('click', () => { state.page += 1; render(); });
+  }
+
+  // ---------- Dán cột ----------
+  const paste = { rows: [], plan: null };
+  function pasteColumnLabel(key) {
+    const spec = window.TKSStocktakePaste.PASTE_COLUMNS[key];
+    return key === 'otherDiffManual' ? 'Kiểm ' + otherLabel(state.board.session.branch) : spec.label;
+  }
+  // Giá trị hiện tại của cột trên một dòng, cùng kiểu với normalizeValue để so "sẽ đổi".
+  function currentValue(row, column) {
+    const note = row.note || {};
+    switch (column) {
+      case 'recheck': return recheckLabel(row.note);
+      case 'cluster': return row.cluster || '';
+      case 'combo': return !!row.isCombo;
+      case 'prevDiffManual': case 'otherDiffManual': return note[column] === undefined ? null : note[column];
+      default: return note[column] || '';
+    }
+  }
+  function previewPaste() {
+    const lib = window.TKSStocktakePaste;
+    const form = $('stPasteForm');
+    const column = form.elements.column.value;
+    const mode = form.elements.mode.value;
+    const byCode = new Map(state.board.rows.map(row => [row.code, row]));
+    const { rows, duplicates } = lib.parsePasteText(form.elements.text.value, { isKnownCode: code => byCode.has(code), column });
+    const plan = { send: [], matched: 0, notFound: [], changed: 0, invalid: 0, empty: 0, duplicates };
+    for (const item of rows) {
+      const row = byCode.get(item.code);
+      if (!row) { plan.notFound.push(item.code); plan.send.push(item); continue; } // server trả notFound nếu mã không có trên KiotViet
+      plan.matched += 1;
+      const parsed = lib.normalizeValue(column, item.value);
+      if (!parsed.ok) { plan.invalid += 1; continue; }
+      if (parsed.empty && mode === 'skip') { plan.empty += 1; continue; }
+      const before = currentValue(row, column);
+      const same = column === 'recheck' ? lib.foldName(before) === lib.foldName(parsed.value) : before === parsed.value;
+      if (!same) plan.changed += 1;
+      plan.send.push(item);
+    }
+    paste.plan = plan;
+    const lines = [
+      num(plan.matched) + ' mã khớp với đợt · ' + num(plan.changed) + ' ô sẽ đổi',
+      plan.invalid ? num(plan.invalid) + ' ô không hợp lệ (bỏ qua)' : '',
+      plan.empty ? num(plan.empty) + ' ô trống (bỏ qua)' : '',
+      plan.duplicates ? num(plan.duplicates) + ' mã lặp (lấy dòng cuối)' : '',
+      plan.notFound.length ? num(plan.notFound.length) + ' mã không có trong đợt: ' + plan.notFound.slice(0, 20).join(', ') + (plan.notFound.length > 20 ? '…' : '') : ''
+    ].filter(Boolean);
+    const box = $('stPastePreview');
+    box.textContent = '';
+    for (const text of lines) { const p = document.createElement('p'); p.textContent = text; box.appendChild(p); }
+    $('stPasteSave').disabled = !plan.send.length || (!plan.changed && !plan.notFound.length);
+  }
+  function bindPaste() {
+    $('stPasteButton').addEventListener('click', () => {
+      const form = $('stPasteForm');
+      form.reset();
+      const select = form.elements.column;
+      select.textContent = '';
+      for (const key of Object.keys(window.TKSStocktakePaste.PASTE_COLUMNS)) {
+        const option = document.createElement('option');
+        option.value = key;
+        option.textContent = pasteColumnLabel(key);
+        select.appendChild(option);
+      }
+      paste.plan = null;
+      $('stPasteError').textContent = '';
+      $('stPastePreview').textContent = '';
+      $('stPasteSave').disabled = true;
+      $('stPasteDialog').showModal();
+    });
+    $('stPasteForm').addEventListener('input', previewPaste);
+    $('stPasteForm').addEventListener('change', previewPaste);
+    $('stPasteForm').addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!paste.plan || !paste.plan.send.length) return;
+      const form = event.target;
+      $('stPasteSave').disabled = true;
+      const { response, payload } = await request(API + '/sessions/' + state.sessionId + '/paste', jsonOptions('POST', {
+        column: form.elements.column.value, mode: form.elements.mode.value, rows: paste.plan.send
+      }));
+      if (!response.ok) { $('stPasteError').textContent = payload.error || 'Không lưu được.'; $('stPasteSave').disabled = false; return; }
+      $('stPasteDialog').close();
+      const s = payload.skipped || {};
+      notify('Đã dán ' + num(payload.changed) + ' ô' + (s.notFound ? ' · ' + num(s.notFound) + ' mã không có' : '') + (s.invalid ? ' · ' + num(s.invalid) + ' ô sai' : '')
+        + (s.duplicates ? ' · ' + num(s.duplicates) + ' mã lặp' : '') + '.');
+      await loadBoard({ background: true, forms: true });
+    });
   }
 
   function syncTheme() {
@@ -684,10 +916,11 @@
     $('backdrop').addEventListener('click', toggleSidebar);
     user = await window.TKSNav.authGuard();
     window.TKSNav.renderTopSidebar($('sidebar'), 'stockLocations', user);
-    renderHead();
+    renderHead('hanoi');
     bindSessions();
     bindTable();
     bindDetail();
+    bindPaste();
     window.addEventListener('pagehide', stopLive);
     try {
       await loadSessions();
@@ -697,5 +930,5 @@
     }
   }
 
-  window.TKSStocktake = { init, visibleRows, cellText, state };
+  window.TKSStocktake = { init, visibleRows, cellText, sortRows, state };
 })();

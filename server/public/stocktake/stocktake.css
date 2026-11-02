@@ -54,3 +54,11 @@
   .st-grid{grid-template-columns:minmax(0,1fr)}
   .st-table td[data-field="code"]{position:sticky;left:0;background:var(--panel);z-index:1;box-shadow:1px 0 0 var(--border)}
 }
+.st-table td.st-manual { box-shadow: inset 2px 0 0 var(--amber, #c48a2c); font-style: italic; }
+.st-table th .sort-button { width: 100%; justify-content: space-between; }
+.st-counterpart select { min-width: 220px; }
+.st-paste-mode { display: flex; gap: 16px; border: 0; padding: 0; margin: 0; }
+.st-paste-mode legend { font-weight: 600; margin-bottom: 4px; }
+.st-paste-preview p { margin: 2px 0; }
+#stPasteText { width: 100%; font-family: 'IBM Plex Mono', monospace; font-size: 13px; }
+@media (max-width: 720px) { .st-counterpart select { min-width: 0; width: 100%; } }
