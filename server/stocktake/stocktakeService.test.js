@@ -30,7 +30,8 @@ async function fixture() {
     INSERT INTO products (branch, id, code, name, raw) VALUES
       ('hanoi', 1, 'AAA1', 'Hàng A', '{"inventories":[{"onHand":10,"cost":1000}]}'),
       ('hanoi', 2, 'BBB2', 'Hàng B', '{"inventories":[{"onHand":5,"cost":200}]}'),
-      ('hanoi', 3, 'CCC3', 'Hàng C', '{"inventories":[{"onHand":0,"cost":50}]}');
+      ('hanoi', 3, 'CCC3', 'Hàng C', '{"inventories":[{"onHand":0,"cost":50}]}'),
+      ('saigon', 1, 'AAA1', 'Hàng A', '{"inventories":[{"onHand":7,"cost":1000}]}');
     INSERT INTO customers (branch, id, code, name, raw) VALUES
       ('hanoi', 11, 'KH1', 'TEAM 1 : HIỂU KHO', '{}'),
       ('hanoi', 12, 'KH2', 'Khách thường', '{}');
@@ -45,6 +46,9 @@ async function fixture() {
       ('hanoi', 102, 1, 1, 4, '{"productCode":"AAA1","quantity":4}'),
       ('hanoi', 103, 1, 2, 99, '{"productCode":"BBB2","quantity":99}'),
       ('hanoi', 104, 1, 2, 99, '{"productCode":"BBB2","quantity":99}');
+    INSERT INTO customers (branch, id, code, name, raw) VALUES ('saigon', 21, 'KS1', 'TEAM 2 : SG', '{}');
+    INSERT INTO orders (branch, id, code, order_date, customer_id, raw) VALUES ('saigon', 201, 'DS201', '2026-10-29 09:00+07', 21, '{}');
+    INSERT INTO order_details (branch, order_id, line_no, product_id, quantity, raw) VALUES ('saigon', 201, 1, 1, 4, '{"productCode":"AAA1","quantity":4}');
     INSERT INTO hr_employees (id, branch, ho_ten) VALUES (501, 'hanoi', 'Cảnh');
     INSERT INTO stock_positions (branch, code, location, arrival_date) VALUES ('HN', 'AAA1', 'G1-15', 'KK 4.10');
   `);
@@ -54,6 +58,7 @@ async function fixture() {
   return { db, service, session, announced };
 }
 
+const ratioOf = (a, b) => Math.round((a / b) * 10000) / 10000;
 const rowOf = (board, code) => board.rows.find(row => row.code === code);
 
 test('bang doi chieu: don TEAM trong ngay (gio VN, ca don huy), khach thuong bi bo, Quen KK', async () => {
@@ -163,4 +168,43 @@ test('pham vi co so va kiem tra du lieu tao dot', async () => {
 test('lich su chi them: UPDATE bi trigger chan', async () => {
   const { db } = await fixture();
   await assert.rejects(db.query(`UPDATE stocktake_history SET actor_name = 'x'`), /immutable/u);
+});
+
+test('dot doi chieu: Kiem SG tu dot SG dang mo / da dong, sai co so bi tu choi, doi bang PATCH', async () => {
+  const { service, session } = await fixture();
+  await assert.rejects(service.createSession(ctx(), { branch: 'hanoi', name: 'x', dateFrom: '2026-10-29', dateTo: '2026-10-29', counterpartSessionId: session.id }),
+    { statusCode: 400, code: 'INVALID_COUNTERPART' });
+  const { session: sg } = await service.createSession(ctx(), { branch: 'saigon', name: 'SG 29/10', dateFrom: '2026-10-29', dateTo: '2026-10-29', counterpartSessionId: session.id });
+  assert.equal(sg.counterpartSessionId, session.id);
+  const { session: hn } = await service.updateSession(ctx(), session.id, { counterpartSessionId: sg.id, version: session.version });
+  assert.equal(hn.counterpartSessionId, sg.id);
+  assert.equal(hn.version, session.version + 1);
+  await assert.rejects(service.updateSession(ctx(), session.id, { counterpartSessionId: null, version: session.version }), { statusCode: 409 });
+
+  let board = await service.getBoard(ctx(), session.id);
+  assert.equal(rowOf(board, 'AAA1').otherDiff, -3, 'SG: dem 4, ton 7');
+  assert.equal(rowOf(board, 'AAA1').otherRatio, ratioOf(2 + -3, -3));
+  assert.deepEqual(board.counterpart, { id: sg.id, name: 'SG 29/10', branch: 'saigon', status: 'open' });
+
+  await service.closeSession(ctx(), sg.id, { version: sg.version });
+  board = await service.getBoard(ctx(), session.id);
+  assert.equal(rowOf(board, 'AAA1').otherDiff, -3, 'tu ban chup dot SG');
+});
+
+test('ghi chu: trang in, gio in, so dan tay L/M; dong dot luu prev_diff / other_diff', async () => {
+  const { db, service, session } = await fixture();
+  const { note } = await service.saveNote(ctx(), session.id, 'AAA1', { printPage: '12', printTime: '14:30 03/10', prevDiffManual: -326, otherDiffManual: '-1,5' });
+  assert.deepEqual([note.printPage, note.printTime, note.prevDiffManual, note.otherDiffManual], ['12', '14:30 03/10', -326, -1.5]);
+  await assert.rejects(service.saveNote(ctx(), session.id, 'AAA1', { printPage: 'x'.repeat(51), version: note.version }), { statusCode: 400 });
+  await assert.rejects(service.saveNote(ctx(), session.id, 'AAA1', { prevDiffManual: 'abc', version: note.version }), { statusCode: 400 });
+  let board = await service.getBoard(ctx(), session.id);
+  assert.deepEqual([rowOf(board, 'AAA1').prevDiff, rowOf(board, 'AAA1').prevDiffManual], [-326, true]);
+
+  const fresh = await service.getBoard(ctx(), session.id);
+  await service.closeSession(ctx(), session.id, { version: fresh.session.version });
+  const stored = (await db.query(`SELECT prev_diff::float8 AS p, other_diff::float8 AS o FROM stocktake_session_results WHERE product_code = 'AAA1'`)).rows[0];
+  assert.deepEqual([stored.p, stored.o], [-326, -1.5]);
+  board = await service.getBoard(ctx(), session.id);
+  assert.deepEqual([rowOf(board, 'AAA1').prevDiff, rowOf(board, 'AAA1').otherDiff], [-326, -1.5]);
+  assert.equal(rowOf(board, 'AAA1').prevRatio, ratioOf(2 + -326, -326));
 });

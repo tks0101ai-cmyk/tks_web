@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS stocktake_sessions (
   -- 'sheet_import': dot nap mot lan tu sheet (dot T10), chi co ban chup ket qua.
   source             TEXT        NOT NULL DEFAULT 'web' CHECK (source IN ('web', 'sheet_import')),
   source_ref         TEXT,
+  -- Dot cua co so kia de doi chieu cot "Kiem SG" / "Kiem HN" (SL chenh cung ma o dot do).
+  counterpart_session_id BIGINT REFERENCES stocktake_sessions (id) ON DELETE SET NULL,
   version            INTEGER     NOT NULL DEFAULT 1,
   created_by_user_id TEXT,
   created_by_name    TEXT        NOT NULL DEFAULT '',
@@ -57,6 +59,11 @@ CREATE TABLE IF NOT EXISTS stocktake_code_notes (
   recheck_employee_id BIGINT      REFERENCES hr_employees (id) ON DELETE SET NULL,
   -- Ten nguoi kiem lai dang chu tu sheet (biet danh "THAI KHO"...), chi dot nap tu sheet; tren web dung recheck_employee_id.
   recheck_name        TEXT        NOT NULL DEFAULT '',
+  print_page          TEXT        NOT NULL DEFAULT '',
+  print_time          TEXT        NOT NULL DEFAULT '',
+  -- So dan tay de len so tu lay: KK truoc sai (L) va Kiem SG/HN (M). NULL = dung so tu lay.
+  prev_diff_manual    NUMERIC,
+  other_diff_manual   NUMERIC,
   version             INTEGER     NOT NULL DEFAULT 1,
   updated_by_user_id  TEXT,
   updated_by_name     TEXT        NOT NULL DEFAULT '',
@@ -86,6 +93,8 @@ CREATE TABLE IF NOT EXISTS stocktake_session_results (
   cost         NUMERIC NOT NULL DEFAULT 0,
   diff_qty     NUMERIC NOT NULL DEFAULT 0,
   diff_value   NUMERIC NOT NULL DEFAULT 0,
+  prev_diff    NUMERIC,
+  other_diff   NUMERIC,
   PRIMARY KEY (session_id, product_code)
 );
 
@@ -97,7 +106,7 @@ CREATE TABLE IF NOT EXISTS stocktake_history (
   session_id    BIGINT,
   branch        TEXT        NOT NULL CHECK (branch IN ('hanoi', 'saigon')),
   product_code  TEXT        NOT NULL DEFAULT '',
-  action        TEXT        NOT NULL CHECK (action IN ('session_create', 'session_close', 'sheet_import', 'line_edit', 'line_add', 'note', 'tag')),
+  action        TEXT        NOT NULL CHECK (action IN ('session_create', 'session_update', 'session_close', 'sheet_import', 'line_edit', 'line_add', 'note', 'tag', 'paste')),
   before        JSONB,
   after         JSONB,
   actor_user_id TEXT,
