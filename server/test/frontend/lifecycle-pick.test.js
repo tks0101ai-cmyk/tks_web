@@ -1161,3 +1161,65 @@ test('Đã bốc: phân bổ lưu thiếu so với cần nhặt vẫn báo đỏ
     page.dom.window.close();
   }
 });
+
+test('tải trước candidates: mở hộp trong 30 giây dùng lại kết quả (1 request); quá 30 giây, đã quên hoặc mở lại thì tải mới', async () => {
+  const page = await renderPage();
+  try {
+    let now = 1_000_000;
+    page.window.Date.now = () => now;
+    await openDetail(page);
+    const base = page.store.candidateCalls; // 0 trước Task 8, 1 sau Task 8 (mở chi tiết tự tải trước)
+    page.window.TKSPick.prefetch({ branch: 'HN', orderCode: 'DH1' });
+    await settle();
+    assert.equal(page.store.candidateCalls, base + 1, 'prefetch gọi 1 lần');
+    await click(page, 'openPickingBtn');
+    assert.equal(page.store.candidateCalls, base + 1, 'mở hộp dùng lại kết quả tải trước');
+    assert.equal(page.document.querySelectorAll('#pickingRows tr').length, 1);
+    await click(page, 'pickingClose');
+    await click(page, 'openPickingBtn');
+    assert.equal(page.store.candidateCalls, base + 2, 'mở lại: tải mới');
+    await click(page, 'pickingClose');
+
+    page.window.TKSPick.prefetch({ branch: 'HN', orderCode: 'DH1' });
+    await settle();
+    now += 30_001;
+    await click(page, 'openPickingBtn');
+    assert.equal(page.store.candidateCalls, base + 4, 'quá 30 giây: tải mới');
+    await click(page, 'pickingClose');
+
+    page.window.TKSPick.prefetch({ branch: 'HN', orderCode: 'DH1' });
+    await settle();
+    page.window.TKSPick.forgetPrefetch();
+    await click(page, 'openPickingBtn');
+    assert.equal(page.store.candidateCalls, base + 6, 'đã quên: tải mới');
+  } finally { page.dom.window.close(); }
+});
+
+test('tải trước lỗi thì mở hộp tải lại bình thường', async () => {
+  let fail = true;
+  const page = await renderPage({ fetchImpl: href => (fail && href.startsWith('/api/shipment/pick/candidates') ? { ok: false, status: 500, json: async () => ({ error: 'x' }) } : null) });
+  try {
+    await openDetail(page);
+    page.window.TKSPick.prefetch({ branch: 'HN', orderCode: 'DH1' });
+    await settle();
+    fail = false;
+    await click(page, 'openPickingBtn');
+    assert.equal(page.document.querySelectorAll('#pickingRows tr').length, 1, 'đã tải lại và vẽ bảng');
+  } finally { page.dom.window.close(); }
+});
+
+test('Hủy nhặt: không tải lại candidates, về Hủy nhặt với gợi ý mới và sửa được ngay', async () => {
+  const store = newStore({ assignment: makeAssignment('picking') });
+  const page = await renderPage({ orders: [orderRow('DH1', { pickStatus: 'picking' })], store });
+  try {
+    await openPopup(page);
+    const before = store.candidateCalls;
+    await click(page, 'pickingCancelPick');
+    assert.equal(store.candidateCalls, before, 'không gọi lại /candidates');
+    assert.equal(text(page, 'pickingOrderStatus'), 'Hủy nhặt');
+    assert.equal(text(page, 'pickingConfirm'), 'Xác nhận & In phiếu nhặt');
+    assert.equal(page.document.getElementById('pickingConfirm').disabled, false);
+    assert.equal(page.document.querySelector('[data-qty][data-qloc="11"]').disabled, false, 'sửa được ngay');
+    assert.equal(page.document.querySelectorAll('.picking-loc.selected').length, 1, 'có gợi ý mới (A07 x 100)');
+  } finally { page.dom.window.close(); }
+});
