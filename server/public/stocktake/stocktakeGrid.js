@@ -85,5 +85,19 @@
     return list[at];
   }
 
-  return { EDIT_COLUMNS, parseClipboard, planPaste, planFill, moveIndex };
+  // Bo loc chinh cua bang. Trang thai / Trang in "co chu" = khac rong sau khi bo khoang trang; mau va Gio in khong tinh.
+  function matchesFilter(row, filter) {
+    const note = row.note || {};
+    const hasStatus = String(note.statusText ?? '').trim() !== '';
+    const hasPrint = String(note.printPage ?? '').trim() !== '';
+    switch (filter) {
+      case 'forgotten': return Boolean(row.forgotten);
+      case 'statusOnly': return hasStatus && !hasPrint;
+      case 'printOnly': return hasPrint && !hasStatus;
+      case 'neither': return !hasStatus && !hasPrint;
+      default: return true;
+    }
+  }
+
+  return { EDIT_COLUMNS, parseClipboard, planPaste, planFill, moveIndex, matchesFilter };
 });
