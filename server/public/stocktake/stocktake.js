@@ -580,13 +580,35 @@
     return parts.join(' · ') + '.';
   }
 
+  // Ghi gia tri moi vao du lieu bang ngay (truoc khi tai lai) de sua tiep o vua luu van gui dung `expected`.
+  function applyLocally(applied) {
+    if (!state.board || !applied.length) return;
+    const byCode = new Map(state.board.rows.map(row => [row.code, row]));
+    for (const { code, column, after } of applied) {
+      const row = byCode.get(code);
+      if (!row) continue;
+      if (column === 'cluster') row.cluster = after;
+      else if (column === 'combo') row.isCombo = after;
+      else if (column === 'recheck') row.note = Object.assign({}, row.note, { recheckEmployeeId: null, recheckName: after });
+      else row.note = Object.assign({}, row.note, { [column]: after });
+    }
+  }
+
   // Gui /cells; thanh cong thi day buoc hoan tac (tru khi dang hoan tac) va tai nen bang (giu thu tu dong).
   async function sendCells(cells, { undo = false } = {}) {
     if (!cells.length) return null;
     if (cells.length > MAX_CELLS) { notify('Tối đa ' + num(MAX_CELLS) + ' ô mỗi lần.', true); return null; }
     const sessionId = state.sessionId;
-    const { response, payload } = await request(API + '/sessions/' + sessionId + '/cells', jsonOptions('POST', { cells }));
+    let response;
+    let payload;
+    try {
+      ({ response, payload } = await request(API + '/sessions/' + sessionId + '/cells', jsonOptions('POST', { cells })));
+    } catch (error) {
+      notify('Không lưu được: mất kết nối máy chủ.', true);
+      return null;
+    }
     if (!response.ok) { notify(payload.error || 'Không lưu được.', true); return null; }
+    applyLocally(payload.applied);
     if (!undo && payload.applied.length) {
       undoStack.push({ sessionId, cells: payload.applied });
       if (undoStack.length > UNDO_LIMIT) undoStack.shift();
