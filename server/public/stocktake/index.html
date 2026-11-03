@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261012">
   <link rel="stylesheet" href="/shared/table-controls.css?v=20261016-1">
   <link rel="stylesheet" href="/vt-positions/vt-positions.css?v=20261030-1">
-  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261103-8">
+  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261103-9">
 </head>
 <body>
   <div class="receipt-header">
@@ -157,8 +157,7 @@
         <h4 class="dp-section-title">Kiểm lại</h4>
         <form class="st-grid" id="stNoteForm" novalidate>
           <label class="vt-field"><span>Người kiểm lại</span><input name="recheckName" type="text" maxlength="200" list="stRecheckSuggestions" autocomplete="off" placeholder="Gõ tên hoặc biệt danh, để trống = chưa giao"><datalist id="stRecheckSuggestions"></datalist></label>
-          <label class="vt-field"><span>Trạng thái</span><input name="statusText" type="text" maxlength="200" list="stStatusSuggestions" autocomplete="off"><datalist id="stStatusSuggestions"></datalist></label>
-          <fieldset class="st-color-pick st-wide" id="stStatusColors"><legend>Màu trạng thái</legend></fieldset>
+          <label class="vt-field"><span>Trạng thái</span><select name="statusText" class="st-select"></select></label>
           <label class="vt-field st-wide"><span>Chi tiết lý do</span><input name="reasonText" type="text" maxlength="1000" list="stReasonSuggestions" autocomplete="off"><datalist id="stReasonSuggestions"></datalist></label>
           <label class="vt-field"><span>Trang in</span><input name="printPage" type="text" maxlength="50" autocomplete="off"></label>
           <label class="vt-field"><span>Giờ in</span><input name="printTime" type="text" maxlength="50" autocomplete="off"></label>
@@ -206,11 +205,11 @@
   <script src="/shared/search-clear.js?v=20261009-1"></script>
   <script src="/shared/shared-nav.js?v=20261103-stocktake"></script>
   <script src="/vendor/fuse.min.js?v=7.1.0"></script>
-  <script src="/stocktake/stocktakePaste.js?v=20261103-2"></script>
+  <script src="/stocktake/stocktakePaste.js?v=20261103-3"></script>
   <script src="/stocktake/stocktakeSearch.js?v=20261103-2"></script>
   <script src="/stocktake/stocktakeGrid.js?v=20261103-2"></script>
   <script src="/stocktake/stocktakeStatus.js?v=20261103-1"></script>
-  <script src="/stocktake/stocktake.js?v=20261103-9"></script>
+  <script src="/stocktake/stocktake.js?v=20261103-10"></script>
   <script>window.addEventListener('DOMContentLoaded', function () { TKSStocktake.init(); });</script>
   <script src="/shared/shooting-star.js?v=20261019"></script>
 </body>

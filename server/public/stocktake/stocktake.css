@@ -71,26 +71,6 @@
 /* Vùng chọn kiểu sheet. */
 .st-table tbody{user-select:none}
 .st-table td.st-sel{background:color-mix(in srgb,#06b6d4 38%,var(--panel)) !important;box-shadow:inset 0 0 0 1px #06b6d4}
-/* Màu Trạng thái do người dùng chọn. */
-.st-table td[data-field="status"][data-color]{font-weight:600}
-[data-color="red"]{--st-color:#ef4444}
-[data-color="orange"]{--st-color:#f97316}
-[data-color="yellow"]{--st-color:#eab308}
-[data-color="green"]{--st-color:#22c55e}
-[data-color="cyan"]{--st-color:#06b6d4}
-[data-color="blue"]{--st-color:#3b82f6}
-[data-color="purple"]{--st-color:#a855f7}
-[data-color="gray"]{--st-color:#9ca3af}
-.st-table td[data-field="status"][data-color]{background:color-mix(in srgb,var(--st-color) 30%,transparent)}
-.st-color-pick{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:0;border:0}
-.st-color-pick legend{margin-bottom:6px;font-size:12px;color:var(--muted)}
-.st-swatch{position:relative;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;cursor:pointer}
-.st-swatch input{position:absolute;inset:0;margin:0;opacity:0;cursor:pointer}
-.st-swatch span{width:26px;height:26px;border-radius:50%;background:var(--st-color,transparent);border:2px solid var(--border)}
-.st-swatch[data-color=""] span{background:linear-gradient(135deg,transparent 45%,var(--red) 45%,var(--red) 55%,transparent 55%)}
-.st-swatch input:checked+span{border-color:var(--text);box-shadow:0 0 0 3px color-mix(in srgb,var(--text) 25%,transparent)}
-.st-swatch input:focus-visible+span{outline:2px solid var(--blue);outline-offset:2px}
-.st-swatch input:disabled,.st-swatch input:disabled+span{cursor:not-allowed;opacity:.5}
 /* Sua tren bang kieu sheet: o nhap de len o, nut keo goc vung chon, vien vung se dien. */
 .st-scroll{position:relative}
 .st-table td[data-editable]{cursor:cell}
@@ -127,3 +107,10 @@
 .st-status-card[aria-pressed="true"]{border-color:var(--text);border-left-color:var(--st-status,var(--muted));box-shadow:inset 0 0 0 1px var(--text)}
 .st-status-card[data-status-key="pending"][aria-pressed="true"]{border-left-color:var(--muted)}
 .st-status-card:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+/* Danh sách chọn Trạng thái (gõ / Enter trên ô Trạng thái). */
+.st-status-menu{position:absolute;z-index:7;display:flex;flex-direction:column;padding:4px;border:2px solid #06b6d4;background:var(--panel);box-shadow:0 6px 16px rgba(0,0,0,.3);outline:none}
+.st-status-option{display:flex;align-items:center;gap:8px;min-height:32px;padding:4px 10px;color:var(--text);font:13px var(--font-body);cursor:pointer;white-space:nowrap}
+.st-status-option::before{content:"";flex:0 0 auto;width:12px;height:12px;border-radius:50%;background:var(--st-status);border:1px solid var(--border)}
+.st-status-option:hover{background:color-mix(in srgb,#06b6d4 18%,var(--panel))}
+.st-status-option[aria-selected="true"]{background:color-mix(in srgb,#06b6d4 32%,var(--panel))}

@@ -34,7 +34,6 @@
     { key: 'cost', label: 'Giá vốn', width: 84, num: true },
     { key: 'updated', label: 'Cập nhật', width: 120, type: 'text' }
   ];
-  const STATUS_COLORS = window.TKSStocktakePaste ? window.TKSStocktakePaste.STATUS_COLORS : {};
   const Search = window.TKSStocktakeSearch;
   // Chi muc tim kiem dung lai cho den khi bang tai lai (4.000 ma x Fuse, khong lap lai moi lan go).
   const finder = { board: null, index: null };
@@ -535,7 +534,7 @@
       const td = event.target.closest('td[data-col]');
       if (!td || event.button !== 0) return;
       event.preventDefault(); // không bôi đen chữ khi kéo
-      if (editor.input) closeEditor(true); // preventDefault chặn blur nên tự đóng ô nhập (nhấp sang ô khác = lưu, như Sheets)
+      if (editor.input) closeEditor(!editor.options); // nhap chu: luu nhu Sheets; danh sach Trang thai: bam ra ngoai = khong luu
       const pos = cellPos(td);
       if (event.shiftKey && selection.anchor) selection.focus = pos;
       else selection.anchor = selection.focus = pos;
@@ -697,19 +696,31 @@
     return payload;
   }
 
+  const statusSkipText = count => 'Bỏ qua ' + num(count) + ' ô trạng thái không thuộc danh sách.';
   // targets: [{ row, col, raw }] theo chi so view.rows / COLUMNS. O cot khong sua duoc / gia tri sai -> bo qua.
+  // Cot Trang thai: chu dan / keo -> ten loai chuan theo co so (chu cu "lẫn bình" -> "Lẫn"); khong xep duoc loai thi bo qua.
   async function writeTargets(targets, verb, { countIgnored = true } = {}) {
+    const branch = state.board.session.branch;
     const cells = [];
     let ignored = 0;
+    let badStatus = 0;
     for (const target of targets) {
       const column = editColumnOf(target.col);
       const row = view.rows[target.row];
-      if (!column || !row || !Paste.normalizeValue(column, target.raw).ok) { ignored += 1; continue; }
-      cells.push({ code: row.code, column, value: target.raw, expected: expectedOf(row, column) });
+      let raw = target.raw;
+      if (column === 'statusText') {
+        raw = Status.canonical(raw, branch);
+        if (raw === null) { badStatus += 1; continue; }
+      }
+      if (!column || !row || !Paste.normalizeValue(column, raw).ok) { ignored += 1; continue; }
+      cells.push({ code: row.code, column, value: raw, expected: expectedOf(row, column) });
     }
-    if (!cells.length) { notify('Không có ô nào sửa được trong vùng này.', true); return; }
+    if (!cells.length) { notify(badStatus ? statusSkipText(badStatus) : 'Không có ô nào sửa được trong vùng này.', true); return; }
     const payload = await sendCells(cells);
-    if (payload) notify(cellsMessage(verb, payload, countIgnored ? ignored : 0), payload.conflicts.length > 0);
+    if (payload) {
+      const text = cellsMessage(verb, payload, countIgnored ? ignored : 0) + (badStatus ? ' ' + statusSkipText(badStatus) : '');
+      notify(text, payload.conflicts.length > 0 || badStatus > 0);
+    }
   }
 
   async function undo() {
@@ -744,6 +755,7 @@
     const td = cellAt(pos);
     const row = view.rows[pos.row];
     if (!td || !row) return;
+    if (column === 'statusText') { openStatusMenu(td, row, initial); return; }
     const start = cellText(row, COLUMNS[pos.col].key);
     const box = boxIn(td);
     const input = document.createElement('input');
@@ -764,11 +776,86 @@
     input.addEventListener('blur', () => closeEditor(true));
   }
 
+  // O Trang thai: mo danh sach 7 loai (thay o nhap) duoi o. Dung chung `editor` (editor.input = khung danh sach,
+  // editor.options = cac lua chon) nen moi cho dang chan khi co o nhap mo cung chan khi danh sach mo.
+  function openStatusMenu(td, row, initial) {
+    const options = Status.optionsFor(state.board.session.branch);
+    const current = Status.classify(row.note ? row.note.statusText : '');
+    const box = boxIn(td);
+    const list = document.createElement('div');
+    list.className = 'st-status-menu';
+    list.setAttribute('role', 'listbox');
+    list.setAttribute('aria-label', 'Chọn trạng thái');
+    list.tabIndex = -1;
+    options.forEach((option, index) => {
+      const item = document.createElement('div');
+      item.className = 'st-status-option';
+      item.setAttribute('role', 'option');
+      item.dataset.index = String(index);
+      item.style.setProperty('--st-status', option.color);
+      item.textContent = option.label;
+      list.appendChild(item);
+    });
+    Object.assign(list.style, { left: box.left + 'px', top: box.top + box.height + 'px', minWidth: Math.max(box.width, 140) + 'px' });
+    Object.assign(editor, {
+      input: list, code: row.code, column: 'statusText', start: (row.note && row.note.statusText) || '',
+      expected: expectedOf(row, 'statusText'), sessionId: state.sessionId,
+      options, index: Math.max(0, options.findIndex(option => option.key === current)), typed: '', typedAt: 0
+    });
+    box.scroller.appendChild(list);
+    list.focus({ preventScroll: true });
+    highlightStatusMenu();
+    if (initial) typeInStatusMenu(initial);
+    positionFill();
+    list.addEventListener('keydown', event => {
+      event.stopPropagation();
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const step = event.key === 'ArrowDown' ? 1 : editor.options.length - 1;
+        editor.index = (editor.index + step) % editor.options.length;
+        highlightStatusMenu();
+      } else if (event.key === 'Enter') { event.preventDefault(); closeEditor(true, [1, 0]); }
+      else if (event.key === 'Tab') { event.preventDefault(); closeEditor(true, [0, event.shiftKey ? -1 : 1]); }
+      else if (event.key === 'Escape') { event.preventDefault(); closeEditor(false); }
+      else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) { event.preventDefault(); typeInStatusMenu(event.key); }
+    });
+    // mousedown + preventDefault: giu focus o danh sach (khong blur) roi luu lua chon vua bam.
+    list.addEventListener('mousedown', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const item = event.target.closest('[data-index]');
+      if (!item) return;
+      editor.index = Number(item.dataset.index);
+      closeEditor(true);
+    });
+    list.addEventListener('blur', () => closeEditor(false));
+  }
+
+  function highlightStatusMenu() {
+    editor.input.querySelectorAll('[data-index]').forEach(item => {
+      const on = Number(item.dataset.index) === editor.index;
+      item.setAttribute('aria-selected', String(on));
+      if (on) item.scrollIntoView({ block: 'nearest' });
+    });
+  }
+
+  // Go chu khi danh sach mo: nhay toi lua chon dau tien bat dau bang chuoi da go (go lien trong 800 ms thi noi chuoi).
+  function typeInStatusMenu(key) {
+    const now = Date.now();
+    editor.typed = (now - editor.typedAt < 800 ? editor.typed : '') + key;
+    editor.typedAt = now;
+    const wanted = Status.fold(editor.typed);
+    const found = editor.options.findIndex(option => Status.fold(option.label).startsWith(wanted));
+    if (found >= 0) { editor.index = found; highlightStatusMenu(); }
+  }
+
   async function closeEditor(save, move) {
-    const { input, code, column, start, expected, sessionId } = editor;
+    const { input, code, column, start, expected, sessionId, options, index } = editor;
     if (!input) return;
     editor.input = null;
-    const value = input.value;
+    editor.options = null;
+    // Danh sach Trang thai: gia tri = ten loai dang chon ("Chưa XL" = trong).
+    const value = options ? (options[index].key === 'pending' ? '' : options[index].label) : input.value;
     input.remove();
     document.querySelector('.st-scroll').focus({ preventScroll: true });
     positionFill();
@@ -980,6 +1067,21 @@
     $('stConflict').hidden = false;
   }
 
+  // Hop chi tiet: 7 loai theo co so ("Chưa XL" = trong); chu cu (khong phai ten chuan) them 1 lua chon dau de luu lai khong doi.
+  function fillStatusSelect(select, current) {
+    const branch = state.board.session.branch;
+    const entries = Status.optionsFor(branch).map(option => [option.key === 'pending' ? '' : option.label, option.label]);
+    if (current && !Status.isValid(current, branch)) entries.unshift([current, '‹' + current + '›']);
+    select.textContent = '';
+    for (const [value, label] of entries) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      select.appendChild(option);
+    }
+    select.value = current;
+  }
+
   function renderDetail({ forms = true } = {}) {
     const row = rowOf(detail.code);
     if (!row) return;
@@ -1004,8 +1106,7 @@
       option.value = name;
       list.appendChild(option);
     }
-    noteForm.elements.statusText.value = note.statusText || '';
-    noteForm.elements.statusColor.value = STATUS_COLORS[note.statusColor] ? note.statusColor : '';
+    fillStatusSelect(noteForm.elements.statusText, note.statusText || '');
     noteForm.elements.reasonText.value = note.reasonText || '';
     noteForm.elements.printPage.value = note.printPage || '';
     noteForm.elements.printTime.value = note.printTime || '';
@@ -1022,11 +1123,9 @@
       : 'Chưa chọn đợt đối chiếu ' + other + ' — chỉ có số nhập tay';
     noteForm.dataset.version = note.version ? String(note.version) : '';
     $('stNoteMeta').textContent = note.updatedByName ? 'Sửa cuối: ' + note.updatedByName + ' · ' + time(note.updatedAt) : '';
-    for (const [id, values] of [['stStatusSuggestions', state.board.suggestions.status], ['stReasonSuggestions', state.board.suggestions.reason]]) {
-      const list = $(id);
-      list.textContent = '';
-      for (const value of values) { const option = document.createElement('option'); option.value = value; list.appendChild(option); }
-    }
+    const reasons = $('stReasonSuggestions');
+    reasons.textContent = '';
+    for (const value of state.board.suggestions.reason) { const option = document.createElement('option'); option.value = value; reasons.appendChild(option); }
     noteForm.querySelectorAll('input, select, button').forEach(el => { el.disabled = !canEditNote; });
 
     const tagForm = $('stTagForm');
@@ -1102,7 +1201,7 @@
   const actionLabel = item => (item.action === 'paste' && item.after && item.after.source === 'cells' ? 'Sửa trên bảng' : ACTION_LABELS[item.action] || item.action);
   function historyText(item) {
     const after = item.after || {};
-    if (item.action === 'note') return [recheckLabel(after), after.statusText, STATUS_COLORS[after.statusColor] && 'màu ' + STATUS_COLORS[after.statusColor].label.toLowerCase(), after.reasonText, after.printPage && 'Trang ' + after.printPage].filter(Boolean).join(' · ');
+    if (item.action === 'note') return [recheckLabel(after), after.statusText, after.reasonText, after.printPage && 'Trang ' + after.printPage].filter(Boolean).join(' · ');
     if (item.action === 'paste') {
       const label = (window.TKSStocktakePaste.PASTE_COLUMNS[after.column] || {}).label || after.column;
       return after.source === 'cells' ? label : 'Dán cột ' + label;
@@ -1160,26 +1259,6 @@
     return write(API + '/sessions/' + state.sessionId + '/lines', 'PATCH', Object.assign(base, patch, { version: line.edit ? line.edit.version : null }));
   }
 
-  // Ô chọn màu cho Trạng thái: "Không màu" + bảng màu dùng chung với server (STATUS_COLORS).
-  function bindStatusColors() {
-    const box = $('stStatusColors');
-    for (const [key, label] of [['', 'Không màu'], ...Object.entries(STATUS_COLORS).map(([k, v]) => [k, v.label])]) {
-      const option = document.createElement('label');
-      option.className = 'st-swatch';
-      option.dataset.color = key;
-      option.title = label;
-      const input = document.createElement('input');
-      input.type = 'radio';
-      input.name = 'statusColor';
-      input.value = key;
-      input.setAttribute('aria-label', label);
-      const dot = document.createElement('span');
-      dot.setAttribute('aria-hidden', 'true');
-      option.append(input, dot);
-      box.appendChild(option);
-    }
-  }
-
   function bindDetail() {
     // Nhấp một lần = chọn ô (như sheet); nhấp đúp = mở chi tiết mã.
     $('stRows').addEventListener('dblclick', event => {
@@ -1198,7 +1277,6 @@
       write(API + '/sessions/' + state.sessionId + '/codes/' + encodeURIComponent(detail.code) + '/note', 'PUT', {
         recheckName: form.elements.recheckName.value,
         statusText: form.elements.statusText.value,
-        statusColor: form.elements.statusColor.value || '',
         reasonText: form.elements.reasonText.value,
         printPage: form.elements.printPage.value,
         printTime: form.elements.printTime.value,
@@ -1394,7 +1472,6 @@
     bindTable();
     bindDetail();
     bindSelection();
-    bindStatusColors();
     window.addEventListener('pagehide', stopLive);
     try {
       await loadSessions();
