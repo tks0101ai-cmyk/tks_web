@@ -172,9 +172,9 @@ function readAccountingRows(values) {
     .filter(record => String(record.orderCode).trim() !== '');
 }
 
-async function readAccountingTab() {
+async function readAccountingTab(readOptions) {
   try {
-    return readAccountingRows(await client.getValues(CONFIG.ORDER_LIFECYCLE_SHEET_ACCOUNTING));
+    return readAccountingRows(await client.getValues(CONFIG.ORDER_LIFECYCLE_SHEET_ACCOUNTING, readOptions));
   } catch (err) {
     console.error(`=== CANH BAO: Khong doc duoc tab "${CONFIG.ORDER_LIFECYCLE_SHEET_ACCOUNTING}" (don ke toan/chung tu, bo qua) ===`);
     console.error(err.message);
@@ -183,8 +183,8 @@ async function readAccountingTab() {
   }
 }
 
-async function readTab(sheetName, branch, { fieldKeys = DELIVERY_FIELD_KEYS, flow = FLOW_DELIVERY } = {}) {
-  const values = await client.getValues(sheetName);
+async function readTab(sheetName, branch, { fieldKeys = DELIVERY_FIELD_KEYS, flow = FLOW_DELIVERY } = {}, readOptions) {
+  const values = await client.getValues(sheetName, readOptions);
   if (!values || values.length === 0) return [];
   const columnIndex = buildColumnIndex(values[0]);
   const dataRows = values.slice(1);
@@ -203,9 +203,9 @@ async function readTab(sheetName, branch, { fieldKeys = DELIVERY_FIELD_KEYS, flo
  * Tab phu (Bac-Nam, Khach_HN/SG) FAIL-SOFT: tab moi them, bi doi ten/xoa khong duoc lam sap ca man hinh tra cuu
  * (2 tab DonHang_HN/SG van throw nhu cu) — ghi log ro ten tab roi coi nhu rong.
  */
-async function readOptionalTab(sheetName, branch, options, label) {
+async function readOptionalTab(sheetName, branch, options, label, readOptions) {
   try {
-    return await readTab(sheetName, branch, options);
+    return await readTab(sheetName, branch, options, readOptions);
   } catch (err) {
     console.error(`=== CANH BAO: Khong doc duoc tab "${sheetName}" (${label}, bo qua) ===`);
     console.error(err.message);
@@ -217,17 +217,18 @@ async function readOptionalTab(sheetName, branch, options, label) {
 /**
  * Doc ca 5 tab + tab KeToan_ChungTu, gop thanh 1 danh sach theo thu tu HN -> Bac-Nam -> Khach_HN -> SG -> Khach_SG
  * -> Ke toan/Chung tu (cuoi cung: ma trung voi tab khac thi dong truoc thang, xem mergeRows). Don Bac-Nam tinh nhu don HN. Ma don khong bao gio trung giua cac tab (neu trung, dong gap truoc thang — xem mergeRows).
+ * readOptions.allowStale: xem orderLifecycleSheetsClient.getValues.
  */
-async function readAll() {
+async function readAll(readOptions) {
   const northSouth = { fieldKeys: NORTH_SOUTH_FIELD_KEYS, flow: FLOW_NORTH_SOUTH };
   const pickup = { fieldKeys: PICKUP_FIELD_KEYS, flow: FLOW_PICKUP };
   const [hnRows, northSouthRows, pickupHnRows, sgRows, pickupSgRows, accountingRows] = await Promise.all([
-    readTab(CONFIG.ORDER_LIFECYCLE_SHEET_HN, LIFECYCLE_BRANCH.HN),
-    readOptionalTab(CONFIG.ORDER_LIFECYCLE_SHEET_NORTH_SOUTH, LIFECYCLE_BRANCH.HN, northSouth, 'don Bac-Nam'),
-    readOptionalTab(CONFIG.ORDER_LIFECYCLE_SHEET_PICKUP_HN, LIFECYCLE_BRANCH.HN, pickup, 'khach/ship lay HN'),
-    readTab(CONFIG.ORDER_LIFECYCLE_SHEET_SG, LIFECYCLE_BRANCH.SG),
-    readOptionalTab(CONFIG.ORDER_LIFECYCLE_SHEET_PICKUP_SG, LIFECYCLE_BRANCH.SG, pickup, 'khach/ship lay SG'),
-    readAccountingTab()
+    readTab(CONFIG.ORDER_LIFECYCLE_SHEET_HN, LIFECYCLE_BRANCH.HN, undefined, readOptions),
+    readOptionalTab(CONFIG.ORDER_LIFECYCLE_SHEET_NORTH_SOUTH, LIFECYCLE_BRANCH.HN, northSouth, 'don Bac-Nam', readOptions),
+    readOptionalTab(CONFIG.ORDER_LIFECYCLE_SHEET_PICKUP_HN, LIFECYCLE_BRANCH.HN, pickup, 'khach/ship lay HN', readOptions),
+    readTab(CONFIG.ORDER_LIFECYCLE_SHEET_SG, LIFECYCLE_BRANCH.SG, undefined, readOptions),
+    readOptionalTab(CONFIG.ORDER_LIFECYCLE_SHEET_PICKUP_SG, LIFECYCLE_BRANCH.SG, pickup, 'khach/ship lay SG', readOptions),
+    readAccountingTab(readOptions)
   ]);
   return [...hnRows, ...northSouthRows, ...pickupHnRows, ...sgRows, ...pickupSgRows, ...accountingRows];
 }
@@ -241,10 +242,10 @@ async function readAll() {
  * hinh tra cuu vong doi don hang hien co (GET /api/shipment/lifecycle) von
  * hoat dong tot truoc khi tinh nang nay ton tai.
  */
-async function readOverrideHistory() {
+async function readOverrideHistory(readOptions) {
   let values;
   try {
-    values = await historyClient.getValues(CONFIG.ORDER_LIFECYCLE_SHEET_HISTORY);
+    values = await historyClient.getValues(CONFIG.ORDER_LIFECYCLE_SHEET_HISTORY, readOptions);
   } catch (err) {
     console.error('=== CANH BAO: Khong doc duoc tab "Lich su cap nhat" (bo qua override) ===');
     console.error(err.message);
