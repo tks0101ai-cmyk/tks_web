@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261012">
   <link rel="stylesheet" href="/shared/table-controls.css?v=20261016-1">
   <link rel="stylesheet" href="/vt-positions/vt-positions.css?v=20261030-1">
-  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261103-7">
+  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261103-8">
 </head>
 <body>
   <div class="receipt-header">
@@ -87,6 +87,7 @@
           <button class="locations-columns-button vt-btn" id="stExportButton" type="button">Xuất Excel</button>
           <button class="locations-columns-button vt-btn" id="stColumnsButton" type="button" aria-haspopup="dialog" aria-expanded="false">Cột hiển thị</button>
         </div>
+        <div class="st-status-cards" id="stStatusCards" role="group" aria-label="Tổng giá trị chênh theo trạng thái"></div>
         <p id="stStatus" class="locations-status" role="status" aria-live="polite"></p>
         <p id="stNotice" class="locations-status" role="status" aria-live="polite"></p>
         <p class="st-hint"><span id="stCount"></span> · Chọn ô rồi gõ để sửa · Ctrl+V dán, kéo ô vuông ở góc để nhân bản, Ctrl+Z hoàn tác · Nhấp đúp để mở chi tiết</p>
@@ -208,7 +209,8 @@
   <script src="/stocktake/stocktakePaste.js?v=20261103-2"></script>
   <script src="/stocktake/stocktakeSearch.js?v=20261103-2"></script>
   <script src="/stocktake/stocktakeGrid.js?v=20261103-2"></script>
-  <script src="/stocktake/stocktake.js?v=20261103-8"></script>
+  <script src="/stocktake/stocktakeStatus.js?v=20261103-1"></script>
+  <script src="/stocktake/stocktake.js?v=20261103-9"></script>
   <script>window.addEventListener('DOMContentLoaded', function () { TKSStocktake.init(); });</script>
   <script src="/shared/shooting-star.js?v=20261019"></script>
 </body>

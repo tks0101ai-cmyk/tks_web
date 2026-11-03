@@ -31,7 +31,6 @@
     { key: 'otherRatio', label: 'Do kiểm SG', width: 98, num: true, percent: true },
     { key: 'forgotten', label: 'Quên KK', width: 84, type: 'flag' },
     { key: 'combo', label: 'Combo', width: 76, type: 'flag' },
-    { key: 'position', label: 'Vị trí kho gần nhất', width: 130, type: 'text' },
     { key: 'cost', label: 'Giá vốn', width: 84, num: true },
     { key: 'updated', label: 'Cập nhật', width: 120, type: 'text' }
   ];
@@ -51,6 +50,7 @@
   }
   const Grid = window.TKSStocktakeGrid;
   const Paste = window.TKSStocktakePaste;
+  const Status = window.TKSStocktakeStatus;
   const MAX_CELLS = 10000;
   const UNDO_LIMIT = 50;
   // O nhap dang mo (de len 1 o) va cac buoc hoan tac cua chinh minh (chi trong bo nho trang).
@@ -202,7 +202,6 @@
       case 'printTime': return note.printTime || null;
       case 'recheck': return recheckLabel(row.note) || null;
       case 'cluster': return row.cluster || null;
-      case 'position': return row.latestPosition ? row.latestPosition.location || null : null;
       case 'updated': return note.updatedAt || null;
       case 'forgotten': return row.forgotten ? 1 : 0;
       case 'combo': return row.isCombo ? 1 : 0;
@@ -234,7 +233,7 @@
     const rows = state.board.rows.filter(row => {
       if (!Grid.matchesFilter(row, state.filter)) return false;
       if (state.recheck && recheckKey(row.note) !== state.recheck) return false;
-      if (state.status && (row.note ? row.note.statusText : '') !== state.status) return false;
+      if (state.status && Status.classify(row.note ? row.note.statusText : '') !== state.status) return false;
       return true;
     });
     searchFuzzy = false;
@@ -251,7 +250,6 @@
     switch (key) {
       case 'code': return row.code;
       case 'name': return row.name || (row.inKiot ? '' : '(không có trên KiotViet)');
-      case 'position': return row.latestPosition ? row.latestPosition.location : '';
       case 'printPage': return note.printPage || '';
       case 'printTime': return note.printTime || '';
       case 'otherDiff': return num(row.otherDiff);
@@ -302,7 +300,7 @@
     syncSortHeader();
     if (window.TKSTables) {
       window.TKSTables.enhance($('stTable'), {
-        key: 'stocktake-board-v4', button: $('stColumnsButton'), sort: false,
+        key: 'stocktake-board-v5', button: $('stColumnsButton'), sort: false,
         columns: COLUMNS.map(c => ({ key: c.key, label: labelOf(c, state.headBranch), width: c.width, locked: !!c.locked, hidden: c.key === 'updated' }))
       });
     }
@@ -327,6 +325,34 @@
       span.textContent = label;
       card.append(b, span);
       node.appendChild(card);
+    }
+  }
+
+  // The tong theo trang thai: tinh tren toan dot (khong theo tim kiem / loc); bam = loc theo loai, bam lai = bo loc.
+  function renderStatusCards(summary) {
+    const box = $('stStatusCards');
+    box.textContent = '';
+    if (!summary) return;
+    const branch = state.board.session.branch;
+    for (const [key, total] of summary) {
+      const type = Status.STATUS_TYPES.find(t => t.key === key);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'st-status-card';
+      button.dataset.statusKey = key;
+      if (type) button.style.setProperty('--st-status', type.color);
+      button.setAttribute('aria-pressed', String(state.status === key));
+      const name = document.createElement('span');
+      name.className = 'st-status-name';
+      name.textContent = Status.labelFor(key, branch);
+      const count = document.createElement('span');
+      count.className = 'st-status-count';
+      count.textContent = num(total.count) + ' mã';
+      const value = document.createElement('b');
+      value.textContent = num(total.diffValue);
+      if (total.diffValue < 0) value.className = 'st-neg';
+      button.append(name, count, value);
+      box.appendChild(button);
     }
   }
 
@@ -360,7 +386,9 @@
       ['Quên KK', num(board.totals.forgotten), board.totals.forgotten ? 'warn' : ''],
       ['tổng giá trị chênh', num(board.totals.diffValue), board.totals.diffValue < 0 ? 'bad' : '']
     ] : []);
-    renderFilters();
+    const summary = board ? Status.summarize(board.rows) : null;
+    renderFilters(summary);
+    renderStatusCards(summary);
     renderRecheck();
 
     // Tải nền (SSE / sau khi lưu) giữ số dòng đã vẽ và vùng chọn để không nhảy về đầu bảng.
@@ -397,7 +425,14 @@
       if (['diffQty', 'diffValue', 'clusterDiff', 'prevDiff', 'otherDiff'].includes(column.key) && row[column.key]) {
         td.classList.add(row[column.key] < 0 ? 'st-neg' : 'st-pos');
       }
-      if (column.key === 'status' && row.note && STATUS_COLORS[row.note.statusColor]) td.dataset.color = row.note.statusColor;
+      if (column.key === 'status') {
+        // Mau theo loai trang thai (chu cu T10 cung xep loai); Chua XL / Khac khong to.
+        const color = Status.colorOf(row.note ? row.note.statusText : '');
+        if (color) {
+          td.dataset.status = Status.classify(row.note.statusText);
+          td.style.setProperty('--st-status', color);
+        }
+      }
       tr.appendChild(td);
     });
     return tr;
@@ -880,12 +915,15 @@
     return counts;
   }
 
-  function renderFilters() {
-    const board = state.board;
+  function renderFilters(summary) {
     const entries = [...recheckCounts()].map(([key, entry]) => [key, entry.label]).sort((a, b) => a[1].localeCompare(b[1]));
     fillSelect($('stRecheckFilter'), 'Mọi người kiểm lại', entries, state.recheck);
     state.recheck = $('stRecheckFilter').value;
-    fillSelect($('stStatusFilter'), 'Mọi trạng thái', board ? board.suggestions.status.map(s => [s, s]) : [], state.status);
+    // Loc Trang thai theo loai (dong bo voi the tong); "Khác" chi khi dot co chu khong xep duoc loai.
+    const branch = state.board ? state.board.session.branch : 'hanoi';
+    const kinds = Status.optionsFor(branch).map(option => [option.key, option.label]);
+    if (summary && summary.has(Status.OTHER.key)) kinds.push([Status.OTHER.key, Status.OTHER.label]);
+    fillSelect($('stStatusFilter'), 'Mọi trạng thái', kinds, state.status);
     state.status = $('stStatusFilter').value;
   }
 
@@ -951,7 +989,7 @@
       return;
     }
     $('stDetailTitle').textContent = row.code;
-    $('stDetailSubtitle').textContent = [row.name, row.latestPosition && ('Vị trí: ' + row.latestPosition.location)].filter(Boolean).join(' · ');
+    $('stDetailSubtitle').textContent = row.name || '';
     const canEditNote = editable();
     const noteForm = $('stNoteForm');
     const note = row.note || {};
@@ -1304,6 +1342,13 @@
     $('stFilter').addEventListener('change', event => { state.filter = event.target.value; rerender(); });
     $('stRecheckFilter').addEventListener('change', event => { state.recheck = event.target.value; rerender(); });
     $('stStatusFilter').addEventListener('change', event => { state.status = event.target.value; rerender(); });
+    $('stStatusCards').addEventListener('click', event => {
+      const card = event.target.closest('[data-status-key]');
+      if (!card) return;
+      state.status = state.status === card.dataset.statusKey ? '' : card.dataset.statusKey;
+      $('stStatusFilter').value = state.status;
+      rerender();
+    });
     // Bấm tiêu đề: tăng -> giảm -> mặc định (giá trị chênh lớn trước). Sort toàn bộ dòng đã lọc rồi mới vẽ.
     document.querySelector('#stTable thead').addEventListener('click', event => {
       const button = event.target.closest('[data-st-sort]');
