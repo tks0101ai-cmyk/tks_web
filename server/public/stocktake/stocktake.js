@@ -538,11 +538,16 @@
       const block = Grid.parseClipboard(event.clipboardData.getData('text/plain'));
       const targets = Grid.planPaste(block, rect, { rowCount: view.rows.length, visibleCols: visibleColumnIndexes() });
       if (!targets.length) return;
-      const rows = targets.map(t => t.row);
-      const cols = targets.map(t => t.col);
-      const bottom = Math.max(...rows);
+      if (targets.length > MAX_CELLS) { notify('Tối đa ' + num(MAX_CELLS) + ' ô mỗi lần.', true); return; }
+      let top = Infinity, bottom = -Infinity, left = Infinity, right = -Infinity;
+      for (const t of targets) {
+        if (t.row < top) top = t.row;
+        if (t.row > bottom) bottom = t.row;
+        if (t.col < left) left = t.col;
+        if (t.col > right) right = t.col;
+      }
       if (bottom >= view.drawn) drawMore(bottom - view.drawn + 1);
-      selectRect(Math.min(...rows), Math.min(...cols), bottom, Math.max(...cols));
+      selectRect(top, left, bottom, right);
       writeTargets(targets, 'Đã dán');
     });
     // Phim kieu sheet tren o dang chon. Khong chay khi dang mo o nhap, hop thoai, hoac focus o o nhap khac.
@@ -710,6 +715,7 @@
     box.scroller.appendChild(input);
     input.focus({ preventScroll: true });
     input.setSelectionRange(input.value.length, input.value.length);
+    positionFill();
     input.addEventListener('keydown', event => {
       event.stopPropagation();
       if (event.key === 'Enter') { event.preventDefault(); closeEditor(true, [1, 0]); }
@@ -726,6 +732,7 @@
     const value = input.value;
     input.remove();
     document.querySelector('.st-scroll').focus({ preventScroll: true });
+    positionFill();
     if (move) moveFocus(move[0], move[1], false);
     if (!save || value === start || sessionId !== state.sessionId) return;
     const payload = await sendCells([{ code, column, value, expected }]);
@@ -767,7 +774,7 @@
     const handle = fillHandle();
     const rect = selectionRect();
     const td = rect && cellAt({ row: rect.bottom, col: rect.right });
-    const show = Boolean(td && editable() && !fill.active && visibleColumnsIn(rect).some(editColumnOf));
+    const show = Boolean(td && editable() && !editor.input && !fill.active && visibleColumnsIn(rect).some(editColumnOf));
     handle.hidden = !show;
     if (!show) return;
     const box = boxIn(td);
@@ -789,6 +796,8 @@
     event.preventDefault();
     event.stopPropagation();
     if (!canWrite()) return;
+    // preventDefault chan blur nen tu luu o nhap dang mo truoc khi doc gia tri nguon (sendCells va bang dong bo truoc await).
+    if (editor.input) closeEditor(true);
     Object.assign(fill, { active: true, rect: selectionRect(), to: null, lastY: event.clientY });
     fill.handle.hidden = true;
     // Gan mep tren / duoi khung cuon thi tu cuon (dong chua ve se ve khi cuon toi canh).
