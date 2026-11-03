@@ -654,9 +654,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1793667315.620341,
-    "seen": 1793667367.882917,
-    "ast_hash": "58911455ec94db29397aa8d20a8385be",
+    "mtime": 1793672887.43449,
+    "seen": 1793673012.604214,
+    "ast_hash": "a918ec15a03ae7cd70ea252e90bcdbaa",
     "semantic_hash": ""
   },
   "design-system/tks-dashboard/MASTER.md": {
@@ -672,9 +672,9 @@
     "semantic_hash": ""
   },
   "docs/02-srs/SRS_Dashboard_GoogleSheets.md": {
-    "mtime": 1793667315.644336,
-    "seen": 1793667367.8829346,
-    "ast_hash": "93910cd61b5216e3af2b5bc736269805",
+    "mtime": 1793672887.424148,
+    "seen": 1793673012.6089237,
+    "ast_hash": "6f51e303cfc19f737728cb4d854bfde7",
     "semantic_hash": ""
   },
   "docs/03-process/BPMN_Dashboard_GoogleSheets.md": {
@@ -786,9 +786,9 @@
     "semantic_hash": "58e700daf0c14819a97499bd94f6f2e1"
   },
   "server/README.md": {
-    "mtime": 1793667315.6293373,
-    "seen": 1793667367.8830655,
-    "ast_hash": "3d7131fbabc1cc74a5e0df5618b5899e",
+    "mtime": 1793672887.418147,
+    "seen": 1793673012.6408312,
+    "ast_hash": "7b3afa423d904d3338868203514262a1",
     "semantic_hash": ""
   },
   "server/kiotviet/API_ENDPOINTS.md": {
@@ -5754,9 +5754,9 @@
     "semantic_hash": ""
   },
   "server/public/prototypes/order-picking/index.html": {
-    "mtime": 1793667242.2210245,
-    "seen": 1793667367.8830774,
-    "ast_hash": "d3d65aa89ab1393ae3e69c9e91fdb04f",
+    "mtime": 1793671073.7228436,
+    "seen": 1793673012.6433308,
+    "ast_hash": "62547770d9f3e4e2871d397d16902a9e",
     "semantic_hash": ""
   },
   "server/public/prototypes/order-picking/invoice-template.html": {
@@ -5772,8 +5772,8 @@
     "semantic_hash": ""
   },
   "server/public/prototypes/order-picking/order-template.html": {
-    "mtime": 1793613906.6750743,
-    "seen": 1793667367.883081,
+    "mtime": 1793670922.447714,
+    "seen": 1793673012.643834,
     "ast_hash": "a540c3585514b9a0455146e6f12398ee",
     "semantic_hash": ""
   },
@@ -6414,15 +6414,15 @@
     "semantic_hash": ""
   },
   "server/public/stocktake/stocktake.js": {
-    "mtime": 1793613366.5827632,
-    "seen": 1793667367.882624,
-    "ast_hash": "7208e4b0fafd534020f1e3316344bc63",
+    "mtime": 1793672722.3626182,
+    "seen": 1793673012.4952111,
+    "ast_hash": "7510364c88ce4648699d5c443bb630c1",
     "semantic_hash": ""
   },
   "server/public/stocktake/stocktakePaste.js": {
-    "mtime": 1793610807.7745605,
-    "seen": 1793667367.8826253,
-    "ast_hash": "a33c7f7d74a5fab51383811faea8459c",
+    "mtime": 1793670497.767276,
+    "seen": 1793673012.4952257,
+    "ast_hash": "075e866e4a9a9c8ebcb313877e1874b3",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeCompute.js": {
@@ -6450,33 +6450,33 @@
     "semantic_hash": ""
   },
   "server/stocktake/stocktakePaste.test.js": {
-    "mtime": 1793610767.611902,
-    "seen": 1793667367.8827229,
-    "ast_hash": "5909522577b33fb13cf45b23b422b804",
+    "mtime": 1793670489.1744194,
+    "seen": 1793673012.5243008,
+    "ast_hash": "0f93153e593e9aed190a71f3348ea978",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeRoutes.js": {
-    "mtime": 1793667315.6503358,
-    "seen": 1793667367.8827238,
-    "ast_hash": "098b42feb2d1651902eba6492128ee10",
+    "mtime": 1793671411.3362176,
+    "seen": 1793673012.524305,
+    "ast_hash": "e07400fe749902982ac4918376d1b344",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeRoutes.test.js": {
-    "mtime": 1793610886.2518,
-    "seen": 1793667367.8827252,
-    "ast_hash": "69bda85d478b3001f4afea7c2c2e5f61",
+    "mtime": 1793671403.863529,
+    "seen": 1793673012.5243106,
+    "ast_hash": "b14d1ca61a3744a52313cd0807410c61",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeService.js": {
-    "mtime": 1793613621.6223745,
-    "seen": 1793667367.8827262,
-    "ast_hash": "8109d9bdf494b9add3796cbf3467b999",
+    "mtime": 1793671363.2557592,
+    "seen": 1793673012.5243163,
+    "ast_hash": "bff91979fb1562387286ca99690a5fcb",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeService.test.js": {
-    "mtime": 1793613621.6233797,
-    "seen": 1793667367.882727,
-    "ast_hash": "e055da0528e465e7b77c6104e8345197",
+    "mtime": 1793671328.3283634,
+    "seen": 1793673012.524319,
+    "ast_hash": "6202c31a9b8b4368e63b41a13fa649ae",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeSheetImport.js": {
@@ -6516,9 +6516,51 @@
     "semantic_hash": ""
   },
   "server/public/stocktake/index.html": {
-    "mtime": 1793667242.3911512,
-    "seen": 1793667367.8830853,
-    "ast_hash": "bc2e0a481768096bc659c7960e8437f4",
+    "mtime": 1793672887.4475002,
+    "seen": 1793673012.6445627,
+    "ast_hash": "0667f99e41cf395ce3fde30d2bc086b9",
+    "semantic_hash": ""
+  },
+  "server/public/stocktake/stocktakeGrid.js": {
+    "mtime": 1793671179.1222012,
+    "seen": 1793673012.4952207,
+    "ast_hash": "95e059633506b53a772d76054b833104",
+    "semantic_hash": ""
+  },
+  "server/public/stocktake/stocktakeSearch.js": {
+    "mtime": 1793670670.673358,
+    "seen": 1793673012.4952295,
+    "ast_hash": "79eb088bb44486c5a76715c99cd8cd38",
+    "semantic_hash": ""
+  },
+  "server/public/vendor/fuse.min.js": {
+    "mtime": 1793670653.0659883,
+    "seen": 1793673012.4973893,
+    "ast_hash": "20bb220ac589785167bd87d1acc1f0a7",
+    "semantic_hash": ""
+  },
+  "server/stocktake/stocktakeGrid.test.js": {
+    "mtime": 1793671171.6316905,
+    "seen": 1793673012.524296,
+    "ast_hash": "c9a6be329c76d0d33c40dee0ebee99c3",
+    "semantic_hash": ""
+  },
+  "server/stocktake/stocktakeSearch.test.js": {
+    "mtime": 1793670661.8628225,
+    "seen": 1793673012.5243137,
+    "ast_hash": "28388976ae3d2aed070f3bd3bebf4dcd",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-11-03-stocktake-inline-edit-search.md": {
+    "mtime": 1793670358.0726054,
+    "seen": 1793673012.6279929,
+    "ast_hash": "903642f471c30a8c704f21eeac10d8cc",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-11-03-stocktake-inline-edit-search-design.md": {
+    "mtime": 1793669636.0125995,
+    "seen": 1793673012.6405559,
+    "ast_hash": "ca28127d73e9ebf0fb1371bbd34f0268",
     "semantic_hash": ""
   },
   "server/package-lock.json": {
