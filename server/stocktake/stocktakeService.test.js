@@ -270,6 +270,7 @@ test('dan cot: tung loai cot, bo qua / xoa o trong, ma la, gia tri sai, lich su 
   assert.deepEqual(history.find(h => h.action === 'paste').after.column, 'statusText');
 
   await assert.rejects(paste('bogus', [{ code: 'AAA1', value: '1' }]), { statusCode: 400 });
+  await assert.rejects(paste('__proto__', [{ code: 'AAA1', value: '1' }]), { statusCode: 400 });
   await assert.rejects(service.pasteColumn(ctx(), session.id, { column: 'statusText', mode: 'skip', rows: Array(10001).fill({ code: 'AAA1', value: 'x' }) }), { statusCode: 400 });
   const fresh = await service.getBoard(ctx(), session.id);
   await service.closeSession(ctx(), session.id, { version: fresh.session.version });
@@ -430,6 +431,7 @@ test('sua tren bang: kiem tra dau vao, dot da dong', async () => {
   await assert.rejects(send({}), { statusCode: 400 });
   await assert.rejects(send({ cells: Array(10001).fill({ code: 'AAA1', column: 'statusText', value: 'x' }) }), { statusCode: 400 });
   await assert.rejects(send({ cells: [{ code: 'AAA1', column: 'bogus', value: 'x' }] }), { statusCode: 400 });
+  await assert.rejects(send({ cells: [{ code: 'AAA1', column: 'constructor', value: 'x' }] }), { statusCode: 400 });
   const fresh = await service.getBoard(ctx(), session.id);
   await service.closeSession(ctx(), session.id, { version: fresh.session.version });
   await assert.rejects(send({ cells: [{ code: 'AAA1', column: 'statusText', value: 'x' }] }), { statusCode: 409, code: 'STOCKTAKE_CLOSED' });

@@ -817,11 +817,18 @@
     paintFillPreview();
     if (to === null || (to >= rect.top && to <= rect.bottom)) { positionFill(); return; }
     const cols = visibleColumnsIn(rect);
-    const targets = Grid.planFill(rect, to, cols)
-      .filter(target => editColumnOf(target.col))
-      .map(target => ({ row: target.row, col: target.col, raw: cellText(view.rows[target.fromRow], COLUMNS[target.col].key) }));
+    // Nguon lay tu gia tri luu (khong phai chu hien thi); 2 cot so chi chep so nhap tay, o dang la so tu dong (null) thi bo qua.
+    const targets = [];
+    for (const target of Grid.planFill(rect, to, cols)) {
+      const column = editColumnOf(target.col);
+      if (!column) continue;
+      const value = expectedOf(view.rows[target.fromRow], column);
+      if ((column === 'prevDiffManual' || column === 'otherDiffManual') && value === null) continue;
+      targets.push({ row: target.row, col: target.col, raw: Paste.rawOf(column, value) });
+    }
     selectRect(Math.min(rect.top, to), rect.left, Math.max(rect.bottom, to), rect.right);
     if (targets.length) await writeTargets(targets, 'Đã nhân bản', { countIgnored: false });
+    else notify('Không có ô nào cần nhân bản.');
   }
 
   function fillSelect(select, firstLabel, entries, current) {
