@@ -5,19 +5,24 @@
 //   GET    /export                xuat Excel TOAN BO tap dang loc/sap xep (can them reports.export)
 //   GET    /customer-suggest      ?branch=&q=  goi y khach { id, code, name } cua co so
 //   GET    /product-suggest       ?branch=&q=  goi y san pham { id, code, name } cua co so
+//   POST   /import               nhap tu file Excel/CSV (multipart "file"); ?commit=1 ghi that, khong co = xem truoc (quyen manage)
 //   POST   /                      tao (chi quyen ...approvedPrice)
 //   PUT    /:id                   sua toan bo + expectedVersion
 //   DELETE /:id                   xoa (?expectedVersion=)
 // Xem: reports.invoices.approvedPrice (mac dinh chi Quan ly). Tao / sua / xoa: reports.invoices.approvedPrice.manage (mac dinh chi Quan ly).
 
 const express = require('express');
+const multer = require('multer');
 const authMiddleware = require('../auth/authMiddleware');
 const { hasFeature } = require('../auth/featureRegistry');
 const { getApprovedPriceRepository } = require('./approvedPriceRepository');
 const { createApprovedPriceExport } = require('./approvedPriceExport');
+const { parseImportWorkbook } = require('./approvedPriceImport');
 const rules = require('./approvedPriceRules');
 
 const ID_RE = /^[1-9]\d{0,17}$/;
+const IMPORT_MAX_BYTES = 4 * 1024 * 1024;
+const IMPORT_EXTENSIONS = /\.(xlsx|xls|csv)$/iu;
 
 const actorOf = user => [user?.hoTen, user?.username, user?.id]
   .map(value => String(value ?? '').trim()).find(Boolean) || 'unknown';
@@ -27,6 +32,7 @@ function createApprovedPriceRouter({
   requireAuth = authMiddleware.requireAuth
 } = {}) {
   const repo = () => repository || getApprovedPriceRepository();
+  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: IMPORT_MAX_BYTES, fieldSize: IMPORT_MAX_BYTES, fields: 1, files: 1 } });
   const router = express.Router();
   router.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   router.use(express.json({ limit: '16kb' }));
@@ -88,6 +94,20 @@ function createApprovedPriceRouter({
   // Goi y chi phuc vu o nhap cua nguoi co quyen tao / sua.
   router.get('/customer-suggest', ...manage, suggest('customer'));
   router.get('/product-suggest', ...manage, suggest('product'));
+
+  // Import Excel/CSV: ?commit=1 ghi that, khong co = chi xem truoc (khong ghi). Dong trung ban ghi da co thi ghi de.
+  router.post('/import', ...manage, (req, res, next) => upload.single('file')(req, res, error => {
+    if (!error) return next();
+    const tooBig = error.code === 'LIMIT_FILE_SIZE';
+    return res.status(tooBig ? 413 : 400).json({ error: tooBig ? 'File quá lớn (tối đa 4 MB).' : 'Không đọc được file tải lên.', code: tooBig ? 'IMPORT_FILE_TOO_LARGE' : 'IMPORT_UPLOAD_FAILED' });
+  }), handle('Không nhập được file giá duyệt.', async (req, res) => {
+    if (!req.file) throw rules.bad('Vui lòng chọn file Excel hoặc CSV.', 'IMPORT_FILE_REQUIRED');
+    // multer giai ma ten file kieu latin1; doi ve UTF-8 truoc khi kiem tra duoi file.
+    const fileName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+    if (!IMPORT_EXTENSIONS.test(fileName)) throw rules.bad('Chỉ nhận file .xlsx, .xls hoặc .csv.', 'IMPORT_BAD_EXTENSION');
+    const rows = parseImportWorkbook(req.file.buffer, { fileName });
+    res.json(await repo().importPrices(rows, actorOf(req.user), { commit: req.query.commit === '1' }));
+  }));
 
   router.post('/', ...manage, handle('Không tạo được bản ghi giá duyệt.', async (req, res) => {
     const out = await repo().create(rules.parseCreate(req.body), actorOf(req.user));

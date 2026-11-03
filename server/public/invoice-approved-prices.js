@@ -110,6 +110,7 @@
     $('approvedPriceFirstPage').disabled = $('approvedPricePrevPage').disabled = state.page <= 1;
     $('approvedPriceNextPage').disabled = $('approvedPriceLastPage').disabled = state.page >= totalPages();
     $('approvedPriceCreateButton').hidden = !canManage();
+    $('approvedPriceImportButton').hidden = !canManage();
     $('approvedPriceExportButton').hidden = !can('reports.export');
     ['approver', 'from', 'to', 'q'].forEach(name => {
       const el = $(name === 'approver' ? 'approvedPriceApproverFilter' : name === 'from' ? 'approvedPriceFrom' : name === 'to' ? 'approvedPriceTo' : 'approvedPriceSearch');
@@ -395,6 +396,102 @@
     q(row ? 'apPriceNoVat' : 'apCustomer').focus();
   }
 
+  // ---------- nhập file (Excel / CSV): xem trước từng dòng, xác nhận rồi mới ghi ----------
+  // Máy chủ đọc file ở cả 2 bước (không giữ trạng thái giữa chừng): bước 1 gửi file để xem trước, bước 2 gửi lại cùng file với ?commit=1.
+  const IMPORT_STATUS = { create: 'Tạo mới', update: 'Ghi đè', unchanged: 'Không đổi', error: 'Lỗi' };
+
+  async function postImportFile(file, commit) {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    return readJson(await fetch(API + '/import' + (commit ? '?commit=1' : ''), { method: 'POST', credentials: 'same-origin', body: form }));
+  }
+
+  function importRowHtml(r) {
+    return '<tr class="ap-import-' + escape(r.status) + '"><td class="col-num">' + escape(r.row) + '</td>' +
+      '<td><span class="ap-import-badge ap-import-badge-' + escape(r.status) + '">' + escape(IMPORT_STATUS[r.status] || r.status) + '</span></td>' +
+      '<td>' + escape(r.customerName || r.customerCode || '—') + (r.customerName && r.customerCode ? ' <span class="muted">· ' + escape(r.customerCode) + '</span>' : '') + '</td>' +
+      '<td>' + escape(r.branchLabel || '—') + '</td>' +
+      '<td class="mono">' + escape(r.productCode || '—') + '</td>' +
+      '<td class="mono col-num">' + escape(fmtPrice(r.priceNoVat)) + '</td>' +
+      '<td class="mono col-num">' + escape(fmtPrice(r.priceWithVat)) + '</td>' +
+      '<td>' + escape(r.approver || '—') + '</td>' +
+      '<td class="mono">' + escape(r.approvedOn ? fmtDay(r.approvedOn) : '—') + '</td>' +
+      '<td class="ap-import-note">' + escape(r.message || '') + '</td></tr>';
+  }
+
+  function openImport(file) {
+    if (!canManage() || !file) return;
+    const old = $('approvedPriceImportDialog');
+    if (old) old.remove();
+    const opener = document.activeElement;
+    const dialog = document.createElement('div');
+    dialog.id = 'approvedPriceImportDialog';
+    dialog.className = 'ap-overlay';
+    dialog.innerHTML =
+      '<div class="ap-box ap-box-wide" role="dialog" aria-modal="true" aria-labelledby="approvedPriceImportTitle">' +
+      '<div class="ap-header"><h3 id="approvedPriceImportTitle">Nhập giá duyệt từ file</h3>' +
+      '<button type="button" class="ap-close" data-close aria-label="Đóng" title="Đóng">✕</button></div>' +
+      '<div class="ap-import-body">' +
+      '<small class="ap-hint" id="apImportFile"></small>' +
+      '<small class="ap-hint">Cột bắt buộc: <b>Mã KH, Cơ sở, Mã SP, Người duyệt, Ngày duyệt (dd/mm/yyyy)</b> và ít nhất một trong <b>Giá không VAT / Giá có VAT</b>. ' +
+      'Dòng trùng (cơ sở, khách, mã SP, ngày duyệt) với bản ghi đã có sẽ <b>ghi đè</b> giá và người duyệt; dòng lỗi bị bỏ qua. Có thể sửa trực tiếp file "Xuất file" rồi nhập lại.</small>' +
+      '<div class="ap-import-summary" id="apImportSummary" role="status" aria-live="polite">Đang kiểm tra file…</div>' +
+      '<div class="ap-error" id="apImportError" role="alert" hidden></div>' +
+      '<div class="ap-import-scroll" id="apImportTableBox" hidden><table class="ap-import-table"><thead><tr><th>Dòng</th><th>Kết quả</th><th>Khách hàng</th><th>Cơ sở</th><th>Mã SP</th>' +
+      '<th>Giá không VAT</th><th>Giá có VAT</th><th>Người duyệt</th><th>Ngày duyệt</th><th>Ghi chú</th></tr></thead><tbody id="apImportRows"></tbody></table></div></div>' +
+      '<div class="ap-footer"><button type="button" class="btn-secondary" data-close>Hủy</button>' +
+      '<button type="button" class="btn-primary" id="apImportConfirm" disabled>Nhập</button></div></div>';
+    document.body.appendChild(dialog);
+    const q = id => dialog.querySelector('#' + id);
+    q('apImportFile').textContent = 'File: ' + file.name;
+    const onKey = event => { if (event.key === 'Escape') close(); };
+    function close() {
+      document.removeEventListener('keydown', onKey);
+      dialog.remove();
+      if (opener && typeof opener.focus === 'function' && document.contains(opener)) opener.focus();
+    }
+    document.addEventListener('keydown', onKey);
+    dialog.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', close));
+    const confirm = q('apImportConfirm');
+    const showError = message => { const el = q('apImportError'); el.textContent = message; el.hidden = !message; };
+
+    postImportFile(file, false).then(preview => {
+      if (!dialog.isConnected) return;
+      const s = preview.summary;
+      q('apImportSummary').textContent = 'Tổng ' + NUMBER.format(s.total) + ' dòng: tạo mới ' + NUMBER.format(s.create) + ' · ghi đè ' + NUMBER.format(s.update) +
+        ' · không đổi ' + NUMBER.format(s.unchanged) + ' · lỗi (bỏ qua) ' + NUMBER.format(s.error) + '.';
+      q('apImportRows').innerHTML = preview.rows.map(importRowHtml).join('');
+      q('apImportTableBox').hidden = false;
+      const writable = s.create + s.update;
+      confirm.disabled = writable === 0;
+      confirm.textContent = writable ? 'Nhập ' + NUMBER.format(writable) + ' dòng' : 'Không có dòng hợp lệ để nhập';
+    }).catch(err => {
+      if (!dialog.isConnected) return;
+      q('apImportSummary').textContent = '';
+      showError(err.message || 'Không đọc được file.');
+    });
+
+    confirm.addEventListener('click', async () => {
+      showError('');
+      confirm.disabled = true;
+      const label = confirm.textContent;
+      confirm.textContent = 'Đang nhập…';
+      try {
+        const out = await postImportFile(file, true);
+        const s = out.summary;
+        close();
+        toast('Đã nhập giá duyệt: tạo mới ' + NUMBER.format(s.create) + ', ghi đè ' + NUMBER.format(s.update) +
+          (s.error ? ', bỏ qua ' + NUMBER.format(s.error) + ' dòng lỗi' : '') + '.' + recalcMessage(out.recalc), 'success');
+        afterWrite(out.recalc);
+      } catch (err) {
+        showError(err.message || 'Không nhập được file.');
+        confirm.disabled = false;
+        confirm.textContent = label;
+      }
+    });
+    confirm.focus();
+  }
+
   // Sau khi ghi: nạp lại bảng này, và bảng Kiểm tra giá bán nếu đã tính lại các dòng của nó.
   function afterWrite(recalc) {
     fetchPage();
@@ -458,6 +555,12 @@
     $('approvedPriceLastPage').addEventListener('click', go(() => totalPages()));
     $('approvedPriceCreateButton').addEventListener('click', () => openEditor(null));
     $('approvedPriceExportButton').addEventListener('click', exportExcel);
+    $('approvedPriceImportButton').addEventListener('click', () => $('approvedPriceImportFile').click());
+    $('approvedPriceImportFile').addEventListener('change', event => {
+      const file = event.target.files && event.target.files[0];
+      event.target.value = '';
+      if (file) openImport(file);
+    });
     $('approvedPriceRows').addEventListener('click', onRowsClick);
   }
 

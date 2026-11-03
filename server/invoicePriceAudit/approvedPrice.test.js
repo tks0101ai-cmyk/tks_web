@@ -386,11 +386,11 @@ test('HTTP: quyen xem / tao-sua-xoa, no-store, tao 201, sua + xoa co xac nhan ve
       const wb = new ExcelJS.Workbook();
       await wb.xlsx.load(xlsx.buffer);
       const sheet = wb.getWorksheet('Giá duyệt');
-      assert.deepEqual(sheet.getRow(1).values.slice(1), ['Khách hàng', 'Cơ sở', 'Mã SP', 'Tên SP', 'Giá không VAT', 'Giá có VAT', 'Người duyệt', 'Ngày duyệt']);
+      assert.deepEqual(sheet.getRow(1).values.slice(1), ['Khách hàng', 'Mã KH', 'Cơ sở', 'Mã SP', 'Tên SP', 'Giá không VAT', 'Giá có VAT', 'Người duyệt', 'Ngày duyệt']);
       assert.equal(sheet.rowCount, 3);
-      assert.deepEqual([1, 2, 3, 4, 5, 7, 8].map(c => sheet.getRow(2).getCell(c).value), ['Khach Vua', 'Hà Nội', 'T100', 'Ly giu nhiet', 23600, 'Anh Quân', '19/10/2026']);
-      assert.equal(sheet.getRow(2).getCell(6).value, null, 'giá có VAT để trống thì ô trống');
-      assert.equal(sheet.getRow(3).getCell(5).value, 50000);
+      assert.deepEqual([1, 2, 3, 4, 5, 6, 8, 9].map(c => sheet.getRow(2).getCell(c).value), ['Khach Vua', 'KH1', 'Hà Nội', 'T100', 'Ly giu nhiet', 23600, 'Anh Quân', '19/10/2026']);
+      assert.equal(sheet.getRow(2).getCell(7).value, null, 'giá có VAT để trống thì ô trống');
+      assert.equal(sheet.getRow(3).getCell(6).value, 50000);
       const onlyDuy = await call(base, '/export?approver=Anh%20Duy', { user: 'ql', raw: true });
       const wb2 = new ExcelJS.Workbook();
       await wb2.xlsx.load(onlyDuy.buffer);
@@ -528,6 +528,103 @@ test('HTTP: tao chi voi gia co VAT / ca 2 gia, ca 2 de trong -> 400, sort + loc 
       const desc = await call(base, '/?sort=priceWithVat&dir=desc', { user: 'ql' });
       assert.deepEqual(desc.body.rows.map(r => r.priceWithVat), ['53900', '25850']);
       assert.equal((await call(base, '/?sort=approvedPrice', { user: 'ql' })).status, 400);
+    });
+  } finally { await db.close(); }
+});
+
+// ---------------------------------------------------------------- import file
+
+async function sheetBuffer(rows, header = ['Mã KH', 'Cơ sở', 'Mã SP', 'Giá không VAT', 'Giá có VAT', 'Người duyệt', 'Ngày duyệt']) {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Giá duyệt');
+  ws.addRow(header);
+  rows.forEach(r => ws.addRow(r));
+  return Buffer.from(await wb.xlsx.writeBuffer());
+}
+async function postImport(base, user, buffer, { commit = false, name = 'gia-duyet.xlsx' } = {}) {
+  const form = new FormData();
+  form.append('file', new Blob([buffer]), name);
+  const res = await fetch(`${base}/import${commit ? '?commit=1' : ''}`, { method: 'POST', headers: { 'x-user': user }, body: form });
+  const text = await res.text();
+  return { status: res.status, body: text ? JSON.parse(text) : null };
+}
+
+test('import: doc file + kiem tra tung dong (ten cot linh hoat, so/ngay Excel, cac gia tri sai)', async () => {
+  const { parseImportWorkbook, validateRow } = require('./approvedPriceImport');
+  const buf = await sheetBuffer([
+    ['kh1', 'HN', 't100', 23500, '', 'anh quan', new Date(Date.UTC(2026, 9, 19))],
+    ['KH1', 'Sài Gòn', 'T100', '23.500', '25,850', 'Anh Duy', '19/10/2026'],
+    ['', '', '', '', '', '', '']
+  ]);
+  const rows = parseImportWorkbook(buf, { fileName: 'a.xlsx' });
+  assert.equal(rows.length, 2, 'dong trong bi bo');
+  assert.deepEqual(validateRow(rows[0]), { ok: true, value: { branch: 'hanoi', customerCode: 'kh1', productCode: 't100',
+    priceNoVat: '23500', priceWithVat: null, approver: 'Anh Quân', approvedOn: '2026-10-19' } });
+  const v2 = validateRow(rows[1]);
+  assert.equal(v2.ok, true);
+  assert.deepEqual([v2.value.branch, v2.value.priceNoVat, v2.value.priceWithVat, v2.value.approvedOn], ['saigon', '23500', '25850', '2026-10-19']);
+  assert.match(validateRow({ ...rows[0], branch: 'Da Nang' }).message, /Cơ sở/);
+  assert.match(validateRow({ ...rows[0], approver: 'Ai do' }).message, /Người duyệt/);
+  assert.match(validateRow({ ...rows[0], approvedOn: '2026-02-30' }).message, /Ngày duyệt/);
+  assert.match(validateRow({ ...rows[0], priceNoVat: '', priceWithVat: '' }).message, /ít nhất một/);
+  assert.match(validateRow({ ...rows[0], priceNoVat: '-5' }).message, /Giá không VAT/);
+  assert.throws(() => parseImportWorkbook(buf.subarray(0, 40), { fileName: 'a.xlsx' }), e => e.code === 'IMPORT_UNREADABLE');
+  const noPrice = await sheetBuffer([['KH1', 'HN', 'T100', 'Anh Duy', '2026-10-19']], ['Mã KH', 'Cơ sở', 'Mã SP', 'Người duyệt', 'Ngày duyệt']);
+  assert.throws(() => parseImportWorkbook(noPrice, { fileName: 'a.xlsx' }), e => e.code === 'IMPORT_HEADERS_MISSING' && /Giá không VAT hoặc Giá có VAT/.test(e.message));
+});
+
+test('HTTP import: xem truoc khong ghi; commit tao + ghi de + bo dong loi, tinh lai Kiem tra gia 1 lan; quyen manage', async () => {
+  const db = await setup();
+  try {
+    await addInvoice(db, 1, '2026-10-19 08:00:00+00'); // sai 3.000 neu khong co gia duyet (min 24000, ban 23700)
+    await runDailyAudit({ day: '2026-10-20', pool: pgliteAsPool(db), now: NOW, logger: quiet });
+    assert.equal((await line(db, 1)).original_status, 'wrong');
+    const repo = createApprovedPriceRepository({ pool: pgliteAsPool(db), now: () => NOW });
+    const app = makeApp({ repository: repo, users: JSON.parse(JSON.stringify(USERS)) });
+    await withServer(app, async base => {
+      const buf = await sheetBuffer([
+        ['KH1', 'Hà Nội', 'T100', 23500, '', 'Anh Quân', '19/10/2026'],     // tao
+        ['KH1', 'Hà Nội', 'T200', 49000, '', 'Anh Duy', '19/10/2026'],       // tao
+        ['KH999', 'Hà Nội', 'T100', 1000, '', 'Anh Duy', '19/10/2026'],      // loi: khach khong co
+        ['KH2', 'Hà Nội', 'T100', 1000, '', 'Anh Duy', '19/10/2026'],        // loi: khach ngung hoat dong
+        ['KH1', 'Hà Nội', 'T100', 23900, '', 'Anh Quân', '19/10/2026'],      // loi: trung dong 1 trong file
+        ['KH9', 'Sài Gòn', 'T100', 29000, 31000, 'Anh Quân', '19/10/2026']   // tao SG
+      ]);
+      assert.equal((await postImport(base, 'viewer', buf)).status, 403, 'chi xem khong nhap duoc');
+      assert.equal((await postImport(base, 'sale', buf)).status, 403);
+      assert.equal((await postImport(base, 'ql', buf, { name: 'x.txt' })).status, 400);
+
+      const preview = await postImport(base, 'ql', buf);
+      assert.equal(preview.status, 200);
+      assert.equal(preview.body.commit, false);
+      assert.deepEqual(preview.body.summary, { total: 6, create: 3, update: 0, unchanged: 0, error: 3 });
+      assert.deepEqual(preview.body.rows.map(r => r.status), ['create', 'create', 'error', 'error', 'error', 'create']);
+      assert.match(preview.body.rows[2].message, /KH999/);
+      assert.match(preview.body.rows[3].message, /ngừng hoạt động/);
+      assert.match(preview.body.rows[4].message, /Trùng dòng 2/);
+      assert.equal(preview.body.rows[0].customerName, 'Khach Vua');
+      assert.equal((await db.query('SELECT count(*)::int AS n FROM invoice_approved_prices')).rows[0].n, 0, 'xem truoc khong ghi');
+      assert.equal((await line(db, 1)).original_status, 'wrong');
+
+      const done = await postImport(base, 'ql', buf, { commit: true });
+      assert.equal(done.status, 200);
+      assert.deepEqual(done.body.summary, { total: 6, create: 3, update: 0, unchanged: 0, error: 3 });
+      assert.equal(done.body.recalc.status, 'applied');
+      assert.equal((await db.query('SELECT count(*)::int AS n FROM invoice_approved_prices')).rows[0].n, 3);
+      assert.equal((await db.query("SELECT count(*)::int AS n FROM invoice_approved_price_changes WHERE action = 'create'")).rows[0].n, 3);
+      const l = await line(db, 1);
+      assert.deepEqual([l.original_status, l.min, l.reason], ['correct', '23500', 'Theo giá duyệt']);
+
+      // Nhap lai: giong het -> khong doi; doi gia + nguoi duyet -> ghi de (version + 1, nhat ky 'update', tinh lai).
+      const again = await postImport(base, 'ql', await sheetBuffer([
+        ['KH1', 'Hà Nội', 'T100', 23500, '', 'Anh Quân', '19/10/2026'],
+        ['kh1', 'HN', 't200', 50000, 54000, 'Anh Duy Khánh', '2026-10-19']
+      ]), { commit: true });
+      assert.deepEqual(again.body.summary, { total: 2, create: 0, update: 1, unchanged: 1, error: 0 });
+      const t200 = (await db.query('SELECT price_no_vat::text AS nv, price_with_vat::text AS wv, approver, version FROM invoice_approved_prices WHERE product_id = 2')).rows[0];
+      assert.deepEqual([t200.nv, t200.wv, t200.approver, Number(t200.version)], ['50000', '54000', 'Anh Duy Khánh', 2]);
+      assert.equal((await db.query("SELECT count(*)::int AS n FROM invoice_approved_price_changes WHERE action = 'update'")).rows[0].n, 1);
+      assert.equal((await db.query('SELECT count(*)::int AS n FROM invoice_approved_prices')).rows[0].n, 3, 'ghi de, khong tao ban ghi trung');
     });
   } finally { await db.close(); }
 });

@@ -168,9 +168,20 @@ async function buildCaptureInputs({ day, client, now, includeSeen, who, scope = 
   let invoices = (await client.query(includeSeen ? ALL_INVOICES_SQL : INVOICES_SQL, [day])).rows;
   // scope (tinh lai sau khi sua Gia duyet): chi hoa don cua dung khach tu ngay duyet; loc TRUOC cac buoc kiem tra nguon
   // de hoa don khong lien quan khong lam vuong viec luu gia duyet.
+  // scope: 1 hoac nhieu { branch, customerId, productId, fromDay } (import Gia duyet tinh lai 1 lan cho ca file).
+  const scopeFrom = new Map();
+  const scopeCustomerFrom = new Map();
   if (scope) {
-    invoices = invoices.filter(i => i.branch === scope.branch && String(i.customer_id) === String(scope.customerId)
-      && i.sold_day >= scope.fromDay);
+    for (const s of Array.isArray(scope) ? scope : [scope]) {
+      const lineKey = `${s.branch}:${s.customerId}:${s.productId}`;
+      const customerKey = `${s.branch}:${s.customerId}`;
+      if (!(scopeFrom.get(lineKey) <= s.fromDay)) scopeFrom.set(lineKey, s.fromDay);
+      if (!(scopeCustomerFrom.get(customerKey) <= s.fromDay)) scopeCustomerFrom.set(customerKey, s.fromDay);
+    }
+    invoices = invoices.filter(i => {
+      const from = scopeCustomerFrom.get(`${i.branch}:${i.customer_id}`);
+      return from !== undefined && i.sold_day >= from;
+    });
   }
   if (invoices.length === 0) return { invoices, markers: [], lineInputs: [] };
   const approvedPrices = await readApprovedPrices(client);
@@ -245,7 +256,10 @@ async function buildCaptureInputs({ day, client, now, includeSeen, who, scope = 
     all.forEach((l, index) => {
       // Chi dong SL duong; so dong = vi tri trong hoa don nguon (1..n), giu ca khi bo dong SL <= 0.
       if (!(Number(l.quantity) > 0)) return;
-      if (scope && String(l.product_id) !== String(scope.productId)) return;
+      if (scope) {
+        const from = scopeFrom.get(`${inv.branch}:${inv.customer_id}:${l.product_id}`);
+        if (from === undefined || inv.sold_day < from) return;
+      }
       const fullVat = hasFullVat(l.line_note, inv.invoice_note);
       const approved = pickApprovedPrice(approvedPrices, inv.branch, inv.customer_id, l.product_id, inv.sold_day, fullVat);
       const code = l.raw_code || l.product_code;
@@ -392,6 +406,23 @@ const ROW_COLUMNS_SQL = `
   (SELECT NULLIF(btrim(c.raw->>'groups'), '') FROM customers c
     WHERE c.branch = l.branch AND c.id = l.customer_id) AS current_sale_group`;
 
+// Dong CU cua hoa don bi sua: KiotViet huy hoa don goc (HD000123) va tao hoa don moi cung ma them hau to (HD000123.01, .02...).
+// Dong da chup cua hoa don goc van duoc GIU trong bang (khong con trong nguon nen khong tinh lai) nhung khong con y nghia,
+// con lam "Sai gia" treo mai khi dong moi da dung. An khoi bao cao khi hoa don goc khong con "Hoan thanh", da co hoa don thay
+// the "Hoan thanh", VA dong chua duoc Chot (dong da Chot Ok/Phat la so lieu phat da ghi nhan, luon giu). Chi xet hau to
+// .01-.09 de truy van theo khoa UNIQUE (branch, code). Truy van con KHONG tuong quan voi dong l (chi dung cua so $1/$2): chay 1 lan
+// roi bam bang bam, nen khong quet lai bang hoa don cho tung dong (dang tuong quan thi ~50s tren du lieu that, nay <1s).
+const REPLACEMENT_CODES_SQL = `ARRAY[${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `i.code || '.0${n}'`).join(', ')}]`;
+const REPLACED_LINE_SQL = `(l.decision IS NULL AND (l.branch, l.invoice_id) IN (
+    SELECT i.branch, i.id FROM invoices i
+    WHERE i.purchase_date >= ($1::date::timestamp AT TIME ZONE 'UTC')
+      AND i.purchase_date < (($2::date + 1)::timestamp AT TIME ZONE 'UTC')
+      AND ${INVOICE_STATUS_SQL} <> 'Hoàn thành'
+      AND EXISTS (
+        SELECT 1 FROM invoices i2
+        WHERE i2.branch = i.branch AND i2.code = ANY (${REPLACEMENT_CODES_SQL})
+          AND ${INVOICE_STATUS_SQL.replace(/\bi\./g, 'i2.')} = 'Hoàn thành')))`;
+
 // Bo loc co dinh, moi gia tri qua tham so (NULL = khong loc). $1/$2 cua so cong bo.
 const BASE_WHERE = `
   WHERE l.sold_day BETWEEN GREATEST($1::date, COALESCE($3::date, $1::date)) AND LEAST($2::date, COALESCE($4::date, $2::date))
@@ -400,7 +431,8 @@ const BASE_WHERE = `
     AND ($7::text IS NULL OR ${S.effectiveStatusSql('l')} = $7)
     AND ($8::text IS NULL OR ($8 = 'pending' AND l.decision IS NULL) OR l.decision = $8)
     AND ($9::boolean IS NULL OR l.full_vat = $9)
-    AND ($10::boolean IS NULL OR l.freight_eligible = $10)`;
+    AND ($10::boolean IS NULL OR l.freight_eligible = $10)
+    AND NOT ${REPLACED_LINE_SQL}`;
 
 // Tim gan dung: JS cham diem cac dong ung vien (CANDIDATES_SQL) roi truyen cac dong khop xuong day dang
 // 4 mang song song $11..$14 (cơ sở, ID hóa đơn, số dòng, điểm). Không tìm kiếm -> $11 NULL (không lọc).
@@ -490,6 +522,7 @@ const FACETS_SQL = `
     WHERE l.sold_day BETWEEN GREATEST($1::date, COALESCE($3::date, $1::date)) AND LEAST($2::date, COALESCE($4::date, $2::date))
       AND ($5::text IS NULL OR l.branch = $5)
       AND ($11::text[] IS NULL OR m.branch IS NOT NULL)
+      AND NOT ${REPLACED_LINE_SQL}
   )
   SELECT 'sale' AS facet, sale_value AS value, count(*)::int AS n FROM base
     WHERE ok_status AND ok_decision AND ok_vat AND ok_freight GROUP BY 2
@@ -508,7 +541,7 @@ function mapFacets(rows) {
   return facets;
 }
 const SALES_SQL = `SELECT DISTINCT l.sale_name FROM invoice_price_audit_lines l
-  WHERE l.sold_day BETWEEN $1::date AND $2::date AND l.sale_name <> '' ORDER BY 1`;
+  WHERE l.sold_day BETWEEN $1::date AND $2::date AND l.sale_name <> '' AND NOT ${REPLACED_LINE_SQL} ORDER BY 1`;
 const ROW_BY_KEY_SQL = `SELECT ${ROW_COLUMNS_SQL} FROM invoice_price_audit_lines l
   WHERE l.branch = $1 AND l.invoice_id = $2::bigint AND l.source_line_no = $3::int`;
 
