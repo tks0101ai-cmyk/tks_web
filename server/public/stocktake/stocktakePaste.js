@@ -1,4 +1,4 @@
-/* Hieu du lieu dan tu Google Sheets cho trang Kiem ke (2 cot: Ma SP + gia tri, cach nhau bang tab).
+/* Gia tri 9 cot nhap tay cua trang Kiem ke (doc so kieu VN, chuan hoa, so sanh, dao nguoc de hoan tac).
    Dung chung trinh duyet (window.TKSStocktakePaste) va server (require) de hai ben hieu giong nhau. */
 (function (root, factory) {
   const api = factory();
@@ -102,29 +102,5 @@
     return spec && spec.kind === 'number' ? value : String(value);
   }
 
-  // Dong dau la tieu de khi o ma khong phai ma da biet VA o gia tri khong hop le voi cot dich.
-  function parsePasteText(text, { isKnownCode = () => true, column } = {}) {
-    const lines = String(text ?? '').split(/\r?\n/u);
-    const byCode = new Map();
-    let duplicates = 0;
-    let firstContent = true;
-    lines.forEach(line => {
-      if (!line.trim()) return;
-      const isFirst = firstContent;
-      firstContent = false;
-      const cells = line.split('\t');
-      const code = codeKey(cells[0]);
-      const value = clean(cells.slice(1).join(' '));
-      if (!code) return;
-      if (isFirst && !isKnownCode(code)) {
-        const check = normalizeValue(column, value);
-        if (!check.ok || PASTE_COLUMNS[column].kind !== 'number') return;
-      }
-      if (byCode.has(code)) { duplicates += 1; byCode.delete(code); }
-      byCode.set(code, value);
-    });
-    return { rows: [...byCode].map(([code, value]) => ({ code, value })), duplicates };
-  }
-
-  return { PASTE_COLUMNS, STATUS_COLORS, codeKey, foldName, parseVnNumber, parseComboFlag, normalizeValue, parsePasteText, columnValue, sameValue, rawOf };
+  return { PASTE_COLUMNS, STATUS_COLORS, codeKey, foldName, parseVnNumber, parseComboFlag, normalizeValue, columnValue, sameValue, rawOf };
 });

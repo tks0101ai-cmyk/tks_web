@@ -22,32 +22,40 @@ function createSellerPhoneLookup({
   createClient = require('../kiotviet/kiotVietApiClient').createKiotVietClient,
   now = Date.now
 } = {}) {
-  const cache = new Map();
+  const cache = new Map(); // key -> { phones (lan doc thanh cong gan nhat) | null, expires, pending }
+  function refresh(config, entry) {
+    entry.expires = Infinity;
+    entry.pending = (async () => {
+      try {
+        const phones = new Map();
+        const client = createClient({...config, requestOptions:{maxRetries:1,timeoutMs:5000}});
+        await client.fetchAllPages('users', {}, async users => {
+          for (const user of users) phones.set(String(user.id), toLocalPhone(user.mobilePhone));
+        }, {requireComplete:true});
+        entry.phones = phones;
+        entry.expires = now() + 300000;
+      } catch (error) {
+        entry.expires = now() + 30000;
+      }
+      return entry.phones || new Map();
+    })();
+    return entry.pending;
+  }
+  // Da tung doc duoc: het han thi tra ban cu ngay va lam moi o nen (in phieu khong cho API KiotViet). Chua tung doc duoc: cho.
   return async (branch, sellerId) => {
     if (!sellerId) return '';
     const config = getBranches().find(item => item.branch === branch);
     if (!config) return '';
     const key = branch + ':' + (config.retailer || '');
     let entry = cache.get(key);
-    if (!entry || entry.expires <= now()) {
-      entry = {expires:Infinity};
-      entry.pending = (async () => {
-        try {
-          const phones = new Map();
-          const client = createClient({...config, requestOptions:{maxRetries:1,timeoutMs:5000}});
-          await client.fetchAllPages('users', {}, async users => {
-            for (const user of users) phones.set(String(user.id), toLocalPhone(user.mobilePhone));
-          }, {requireComplete:true});
-          entry.expires = now() + 300000;
-          return phones;
-        } catch (error) {
-          entry.expires = now() + 30000;
-          return new Map();
-        }
-      })();
-      cache.set(key, entry);
+    if (!entry) { entry = { phones: null, expires: 0, pending: null }; cache.set(key, entry); }
+    if (entry.expires <= now()) {
+      const pending = refresh(config, entry);
+      if (!entry.phones) return (await pending).get(String(sellerId)) || '';
+    } else if (!entry.phones) {
+      return (await entry.pending).get(String(sellerId)) || '';
     }
-    return (await entry.pending).get(String(sellerId)) || '';
+    return entry.phones.get(String(sellerId)) || '';
   };
 }
 const readSellerPhone = createSellerPhoneLookup();

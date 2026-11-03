@@ -10,30 +10,30 @@
   const $ = id => document.getElementById(id);
   // Đúng thứ tự tab "KIỂM KÊ HN T10" (A→W); đợt SG đổi nhãn otherDiff/otherRatio.
   const COLUMNS = [
-    { key: 'code', label: 'Mã hàng', width: 120, locked: true, type: 'text' },
-    { key: 'name', label: 'Tên hàng', width: 240, type: 'text' },
-    { key: 'counted', label: 'Tổng kiểm', width: 110, num: true },
-    { key: 'stock', label: 'Tồn KIOT', width: 110, num: true },
-    { key: 'diffQty', label: 'SL chênh', width: 110, num: true },
-    { key: 'diffValue', label: 'Giá trị chênh', width: 150, num: true },
-    { key: 'status', label: 'Trạng thái', width: 130, type: 'text' },
-    { key: 'reason', label: 'Chi tiết lý do', width: 220, type: 'text' },
+    { key: 'code', label: 'Mã hàng', width: 104, locked: true, type: 'text' },
+    { key: 'name', label: 'Tên hàng', width: 200, type: 'text' },
+    { key: 'counted', label: 'Tổng kiểm', width: 92, num: true },
+    { key: 'stock', label: 'Tồn KIOT', width: 88, num: true },
+    { key: 'diffQty', label: 'SL chênh', width: 92, num: true },
+    { key: 'diffValue', label: 'Giá trị chênh', width: 120, num: true },
+    { key: 'status', label: 'Trạng thái', width: 90, type: 'text' },
+    { key: 'reason', label: 'Chi tiết lý do', width: 160, type: 'text' },
     { key: 'printPage', label: 'Trang in', width: 80, type: 'text' },
-    { key: 'printTime', label: 'Giờ in', width: 90, type: 'text' },
-    { key: 'recheck', label: 'Người kiểm lại', width: 140, type: 'text' },
-    { key: 'prevDiff', label: 'KK trước sai', width: 110, num: true },
-    { key: 'otherDiff', label: 'Kiểm SG', width: 110, num: true },
-    { key: 'cluster', label: 'Cụm SP', width: 140, type: 'text' },
+    { key: 'printTime', label: 'Giờ in', width: 70, type: 'text' },
+    { key: 'recheck', label: 'Người kiểm lại', width: 112, type: 'text' },
+    { key: 'prevDiff', label: 'KK trước sai', width: 100, num: true },
+    { key: 'otherDiff', label: 'Kiểm SG', width: 84, num: true },
+    { key: 'cluster', label: 'Cụm SP', width: 110, type: 'text' },
     { key: 'clusterCount', label: 'Count', width: 70, num: true },
-    { key: 'clusterDiff', label: 'Chênh cụm', width: 110, num: true },
-    { key: 'prevRatio', label: 'Do KK trước', width: 96, num: true, percent: true },
-    { key: 'clusterPrevRatio', label: 'Lẫn + KK trước', width: 110, num: true, percent: true },
-    { key: 'otherRatio', label: 'Do kiểm SG', width: 96, num: true, percent: true },
-    { key: 'forgotten', label: 'Quên KK', width: 80, type: 'flag' },
-    { key: 'combo', label: 'Combo', width: 70, type: 'flag' },
+    { key: 'clusterDiff', label: 'Chênh cụm', width: 96, num: true },
+    { key: 'prevRatio', label: 'Do KK trước', width: 100, num: true, percent: true },
+    { key: 'clusterPrevRatio', label: 'Lẫn + KK trước', width: 115, num: true, percent: true },
+    { key: 'otherRatio', label: 'Do kiểm SG', width: 98, num: true, percent: true },
+    { key: 'forgotten', label: 'Quên KK', width: 84, type: 'flag' },
+    { key: 'combo', label: 'Combo', width: 76, type: 'flag' },
     { key: 'position', label: 'Vị trí kho gần nhất', width: 130, type: 'text' },
-    { key: 'cost', label: 'Giá vốn', width: 110, num: true },
-    { key: 'updated', label: 'Cập nhật', width: 140, type: 'text' }
+    { key: 'cost', label: 'Giá vốn', width: 84, num: true },
+    { key: 'updated', label: 'Cập nhật', width: 120, type: 'text' }
   ];
   const STATUS_COLORS = window.TKSStocktakePaste ? window.TKSStocktakePaste.STATUS_COLORS : {};
   const Search = window.TKSStocktakeSearch;
@@ -230,8 +230,7 @@
   function visibleRows() {
     if (!state.board) return [];
     const rows = state.board.rows.filter(row => {
-      if (state.filter === 'forgotten' && !row.forgotten) return false;
-      if (state.filter === 'noted' && !row.note) return false;
+      if (!Grid.matchesFilter(row, state.filter)) return false;
       if (state.recheck && recheckKey(row.note) !== state.recheck) return false;
       if (state.status && (row.note ? row.note.statusText : '') !== state.status) return false;
       return true;
@@ -298,7 +297,7 @@
     syncSortHeader();
     if (window.TKSTables) {
       window.TKSTables.enhance($('stTable'), {
-        key: 'stocktake-board-v3', button: $('stColumnsButton'), sort: false,
+        key: 'stocktake-board-v4', button: $('stColumnsButton'), sort: false,
         columns: COLUMNS.map(c => ({ key: c.key, label: labelOf(c, state.headBranch), width: c.width, locked: !!c.locked, hidden: c.key === 'updated' }))
       });
     }
@@ -350,7 +349,6 @@
       fillCounterpartSelect($('stCounterpart'), session.branch, session.counterpartSessionId, board.counterpart);
       $('stCounterpart').disabled = !(state.canEdit && session.status === 'open');
     }
-    $('stPasteButton').hidden = !(session && session.status === 'open' && state.canEdit);
     renderStats($('stStats'), board ? [
       ['mã trong đợt', num(board.totals.codes)],
       ['mã lệch', num(board.totals.mismatched), board.totals.mismatched ? 'warn' : ''],
@@ -1313,93 +1311,6 @@
     });
   }
 
-  // ---------- Dán cột ----------
-  const paste = { rows: [], plan: null };
-  function pasteColumnLabel(key) {
-    const spec = window.TKSStocktakePaste.PASTE_COLUMNS[key];
-    return key === 'otherDiffManual' ? 'Kiểm ' + otherLabel(state.board.session.branch) : spec.label;
-  }
-  // Giá trị hiện tại của cột trên một dòng, cùng kiểu với normalizeValue để so "sẽ đổi".
-  function currentValue(row, column) {
-    const note = row.note || {};
-    switch (column) {
-      case 'recheck': return recheckLabel(row.note);
-      case 'cluster': return row.cluster || '';
-      case 'combo': return !!row.isCombo;
-      case 'prevDiffManual': case 'otherDiffManual': return note[column] === undefined ? null : note[column];
-      default: return note[column] || '';
-    }
-  }
-  function previewPaste() {
-    const lib = window.TKSStocktakePaste;
-    const form = $('stPasteForm');
-    const column = form.elements.column.value;
-    const mode = form.elements.mode.value;
-    const byCode = new Map(state.board.rows.map(row => [row.code, row]));
-    const { rows, duplicates } = lib.parsePasteText(form.elements.text.value, { isKnownCode: code => byCode.has(code), column });
-    const plan = { send: [], matched: 0, notFound: [], changed: 0, invalid: 0, empty: 0, duplicates };
-    for (const item of rows) {
-      const row = byCode.get(item.code);
-      if (!row) { plan.notFound.push(item.code); plan.send.push(item); continue; } // server trả notFound nếu mã không có trên KiotViet
-      plan.matched += 1;
-      const parsed = lib.normalizeValue(column, item.value);
-      if (!parsed.ok) { plan.invalid += 1; continue; }
-      if (parsed.empty && mode === 'skip') { plan.empty += 1; continue; }
-      const before = currentValue(row, column);
-      const same = column === 'recheck' ? lib.foldName(before) === lib.foldName(parsed.value) : before === parsed.value;
-      if (!same) plan.changed += 1;
-      plan.send.push(item);
-    }
-    paste.plan = plan;
-    const lines = [
-      num(plan.matched) + ' mã khớp với đợt · ' + num(plan.changed) + ' ô sẽ đổi',
-      plan.invalid ? num(plan.invalid) + ' ô không hợp lệ (bỏ qua)' : '',
-      plan.empty ? num(plan.empty) + ' ô trống (bỏ qua)' : '',
-      plan.duplicates ? num(plan.duplicates) + ' mã lặp (lấy dòng cuối)' : '',
-      plan.notFound.length ? num(plan.notFound.length) + ' mã không có trong đợt: ' + plan.notFound.slice(0, 20).join(', ') + (plan.notFound.length > 20 ? '…' : '') : ''
-    ].filter(Boolean);
-    const box = $('stPastePreview');
-    box.textContent = '';
-    for (const text of lines) { const p = document.createElement('p'); p.textContent = text; box.appendChild(p); }
-    $('stPasteSave').disabled = !plan.send.length || (!plan.changed && !plan.notFound.length);
-  }
-  function bindPaste() {
-    $('stPasteButton').addEventListener('click', () => {
-      const form = $('stPasteForm');
-      form.reset();
-      const select = form.elements.column;
-      select.textContent = '';
-      for (const key of Object.keys(window.TKSStocktakePaste.PASTE_COLUMNS)) {
-        const option = document.createElement('option');
-        option.value = key;
-        option.textContent = pasteColumnLabel(key);
-        select.appendChild(option);
-      }
-      paste.plan = null;
-      $('stPasteError').textContent = '';
-      $('stPastePreview').textContent = '';
-      $('stPasteSave').disabled = true;
-      $('stPasteDialog').showModal();
-    });
-    $('stPasteForm').addEventListener('input', previewPaste);
-    $('stPasteForm').addEventListener('change', previewPaste);
-    $('stPasteForm').addEventListener('submit', async event => {
-      event.preventDefault();
-      if (!paste.plan || !paste.plan.send.length) return;
-      const form = event.target;
-      $('stPasteSave').disabled = true;
-      const { response, payload } = await request(API + '/sessions/' + state.sessionId + '/paste', jsonOptions('POST', {
-        column: form.elements.column.value, mode: form.elements.mode.value, rows: paste.plan.send
-      }));
-      if (!response.ok) { $('stPasteError').textContent = payload.error || 'Không lưu được.'; $('stPasteSave').disabled = false; return; }
-      $('stPasteDialog').close();
-      const s = payload.skipped || {};
-      notify('Đã dán ' + num(payload.changed) + ' ô' + (s.notFound ? ' · ' + num(s.notFound) + ' mã không có' : '') + (s.invalid ? ' · ' + num(s.invalid) + ' ô sai' : '')
-        + (s.duplicates ? ' · ' + num(s.duplicates) + ' mã lặp' : '') + '.');
-      await loadBoard({ background: true, forms: true });
-    });
-  }
-
   function syncTheme() {
     const light = document.documentElement.dataset.theme === 'light';
     $('themeLabel').textContent = light ? 'Dark mode' : 'Light mode';
@@ -1429,7 +1340,6 @@
     bindDetail();
     bindSelection();
     bindStatusColors();
-    bindPaste();
     window.addEventListener('pagehide', stopLive);
     try {
       await loadSessions();

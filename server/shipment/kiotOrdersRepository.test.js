@@ -544,6 +544,24 @@ test('readOrderDetail: don KHONG con Phieu tam (vd Hoan thanh) thi cot ton/co ba
   assert.equal(pool.calls.onHand.length, 0);
 });
 
+test('readOrderDetail lite: khong doc ton / dang van chuyen / can do; dong hang va dau don giu nguyen', async () => {
+  const pool = createFakePool({ onHand: { hanoi: { A: 40 } } });
+  const measureCalls = [];
+  const { repo, inTransitCalls } = repoFor(pool, {
+    fetchOrderDetail: async () => detailFixture('Phiếu tạm', [L('A', 500, 1000)]),
+    lookupMeasures: async codes => { measureCalls.push(codes); return new Map(); }
+  });
+  const detail = await repo.readOrderDetail({ branch: 'HN', code: 'DH000001', lite: true });
+  assert.equal(pool.calls.onHand.length, 0, 'khong doc ton');
+  assert.equal(inTransitCalls.n, 0, 'khong doc dang van chuyen');
+  assert.equal(measureCalls.length, 0, 'khong doc can do');
+  assert.equal(detail.branch, 'HN');
+  assert.equal(detail.phieuTam, true);
+  assert.equal(detail.freight, undefined);
+  assert.deepEqual(detail.lines.map(l => [l.productCode, l.quantity, l.price]), [['A', 500, 1000]]);
+  assert.equal(detail.lines[0].onHand, undefined);
+});
+
 test('readOrderDetail: co so khong hop le -> 400; khong tim thay don -> 404 kem ma ORDER_NOT_FOUND', async () => {
   const { repo } = repoFor(createFakePool(), {
     fetchOrderDetail: async () => { const e = new Error('Không tìm thấy đơn đặt hàng này.'); e.statusCode = 404; throw e; }
