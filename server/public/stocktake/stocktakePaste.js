@@ -54,6 +54,10 @@
   function normalizeValue(column, raw) {
     const spec = PASTE_COLUMNS[column];
     if (!spec) return { ok: false };
+    // Hoan tac gui lai so that (vd 1.234): khong doc lai bang parseVnNumber (se thanh 1234).
+    if (spec.kind === 'number' && typeof raw === 'number') {
+      return Number.isFinite(raw) && Math.abs(raw) <= MAX_ABS ? { ok: true, value: raw, empty: false } : { ok: false };
+    }
     const text = clean(raw);
     if (spec.kind === 'number') {
       if (!text) return { ok: true, value: null, empty: true };
@@ -63,6 +67,39 @@
     if (spec.kind === 'combo') return { ok: true, value: parseComboFlag(text), empty: !text };
     if (spec.max && text.length > spec.max) return { ok: false };
     return { ok: true, value: text, empty: !text };
+  }
+
+  // Gia tri hien tai cua 1 cot dan tren 1 ma, cung dang normalizeValue().value.
+  // note: ban ghi ghi chu (hoac null), tag: { cluster, isCombo } (hoac null), nameOf: id nhan su -> ten.
+  function columnValue(column, note, tag, nameOf = () => '') {
+    const n = note || {};
+    switch (column) {
+      case 'recheck': {
+        const id = n.recheckEmployeeId;
+        return (id !== null && id !== undefined && nameOf(id)) || n.recheckName || '';
+      }
+      case 'cluster': return (tag && tag.cluster) || '';
+      case 'combo': return Boolean(tag && tag.isCombo);
+      case 'prevDiffManual': case 'otherDiffManual': return n[column] === null || n[column] === undefined ? null : n[column];
+      default: return n[column] || '';
+    }
+  }
+
+  function sameValue(column, a, b) {
+    const spec = PASTE_COLUMNS[column];
+    if (!spec) return false;
+    if (spec.kind === 'number') return (a ?? null) === (b ?? null);
+    if (spec.kind === 'combo') return Boolean(a) === Boolean(b);
+    if (spec.kind === 'recheck') return foldName(a) === foldName(b);
+    return clean(a) === clean(b);
+  }
+
+  // Nguoc cua normalizeValue: gia tri -> du lieu tho gui lai server (hoan tac).
+  function rawOf(column, value) {
+    const spec = PASTE_COLUMNS[column];
+    if (spec && spec.kind === 'combo') return value ? 'x' : '';
+    if (value === null || value === undefined) return '';
+    return spec && spec.kind === 'number' ? value : String(value);
   }
 
   // Dong dau la tieu de khi o ma khong phai ma da biet VA o gia tri khong hop le voi cot dich.
@@ -89,5 +126,5 @@
     return { rows: [...byCode].map(([code, value]) => ({ code, value })), duplicates };
   }
 
-  return { PASTE_COLUMNS, STATUS_COLORS, codeKey, foldName, parseVnNumber, parseComboFlag, normalizeValue, parsePasteText };
+  return { PASTE_COLUMNS, STATUS_COLORS, codeKey, foldName, parseVnNumber, parseComboFlag, normalizeValue, parsePasteText, columnValue, sameValue, rawOf };
 });
