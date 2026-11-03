@@ -485,10 +485,10 @@ const WARNING_BUCKET_MS = 60 * 1000;
 let mergedCache = null; // { sheetKey, kiotRef, bucket, rows }
 const selectionCache = query.createSelectionCache(); // tu bo het khi mang dong nguon doi (xem createSelectionCache)
 
-async function loadMergedRows(kiot) {
+async function loadMergedRows(kiot, { allowStale = false } = {}) {
   const [records, historyRows, kiotResult] = await Promise.all([
-    repo.readAll(),
-    repo.readOverrideHistory(),
+    repo.readAll({ allowStale }),
+    repo.readOverrideHistory({ allowStale }),
     kiot ? kiot.readOrders() : Promise.resolve(null)
   ]);
   const sheetKey = JSON.stringify([records, historyRows]);
@@ -564,8 +564,9 @@ function withPickStatus(items, pickMap) {
 }
 
 /** Dong gop cua 1 don theo (co so, ma don); null neu khong co (hoac Kiot loi va don khong co trong sheet). */
-async function findMergedOrder(branch, orderCode, { kiot } = {}) {
-  const { rows } = await loadMergedRows(kiot);
+// allowStale: Sheet het han cache van tra ban cu (lam moi nen) — chi hop Chi dinh vi tri (doc) dung.
+async function findMergedOrder(branch, orderCode, { kiot, allowStale = false } = {}) {
+  const { rows } = await loadMergedRows(kiot, { allowStale });
   const target = normalizeCode(orderCode);
   return rows.find(row => row.branch === branch && normalizeCode(row.orderCode) === target) || null;
 }

@@ -480,11 +480,33 @@
     $('pickingSource').textContent=hint;
   }
 
+  // ---------- Tải trước candidates ----------
+  /* Hộp chi tiết đơn gọi prefetch khi mở: bấm "Thay đổi chỉ định" trong 30 giây dùng lại kết quả (đang tải dở thì chờ đúng request đó).
+     Chỉ giữ 1 mục (đơn đang xem gần nhất) và chỉ dùng 1 lần; tồn có thể cũ vài giây nhưng khi lưu máy chủ vẫn kiểm lại (REFETCH_CODES). */
+  const PREFETCH_MS=30000;
+  let prefetched=null; // {key, at, promise}
+  const prefetchKey=o=>o.branch+'|'+key(o.orderCode);
+  const candidatesUrl=o=>API+'/candidates?branch='+encodeURIComponent(o.branch)+'&order='+encodeURIComponent(o.orderCode);
+  function prefetch(o){
+    if(!o||!o.branch||!o.orderCode)return;
+    const promise=api('GET',candidatesUrl(o));
+    promise.catch(()=>{});
+    prefetched={key:prefetchKey(o),at:Date.now(),promise};
+  }
+  function forgetPrefetch(){prefetched=null;}
+  function takePrefetched(o){
+    const hit=prefetched&&prefetched.key===prefetchKey(o)&&Date.now()-prefetched.at<=PREFETCH_MS?prefetched.promise:null;
+    prefetched=null;
+    return hit;
+  }
+
   // ---------- Tải dữ liệu ----------
   const current=epoch=>epoch===state.requestEpoch;
   async function load(epoch=state.requestEpoch){
     const o=state.listOrder;
-    const r=await api('GET',API+'/candidates?branch='+encodeURIComponent(o.branch)+'&order='+encodeURIComponent(o.orderCode));
+    const early=takePrefetched(o);
+    let r=early?await early.catch(()=>null):null;
+    if(!r||!r.ok)r=await api('GET',candidatesUrl(o));
     if(!current(epoch))return false;
     if(!r.ok||!r.data.order)throw new Error(r.data.error||'Không tải được dữ liệu chỉ định.');
     state.order=r.data.order;state.cand=r.data.candidates||{};
@@ -598,12 +620,18 @@
     $('pickingDialog').close();
     if(await printPick(printKeys))readyTiming?.();
   }
+  // Hủy nhặt: tồn khả dụng không đổi (candidates không trừ giữ chỗ của chính đơn đang xem) → làm đúng nhánh "chưa có chỉ định"
+  // của load() ngay tại chỗ, không tải lại /candidates.
+  function applyCancelled(){
+    state.assignment=null;state.reassignOf=null;state.posEdit=null;state.removed=new Set();state.needs=editedNeeds({});
+    if(state.order&&state.order.eligible!==false)suggest();else state.allocations={};
+    render();
+  }
   async function changeStatus(action){
     const a=state.latest;if(!a||state.busy||state.needsSync)return false;
     const epoch=state.requestEpoch;
     if(!await write(API+'/'+encodeURIComponent(a.id)+'/'+action,{version:a.version}))return false;
-    // Hủy nhặt: tải lại để có gợi ý mới theo tồn vừa được trả giữ chỗ, sẵn sàng chỉ định lại ngay.
-    if(action==='cancel')await reloadCurrent(epoch);
+    if(action==='cancel'&&current(epoch))applyCancelled();
     return true;
   }
   // Đã bốc → mở khóa để chỉ định lại. Chưa gọi máy chủ: chỉ khi lưu (reassign) thùng đã trừ mới được hoàn lại.
@@ -860,6 +888,20 @@
   }
 
   // ---------- Gắn vào hộp chi tiết đơn ----------
+  function openButton(o,status){
+    const button=document.createElement('button');button.type='button';button.id='openPickingBtn';button.className='picking-open-btn';button.textContent=status==='picking'?'Thay đổi chỉ định':'Chỉ định vị trí';
+    if(status==='picking')button.title='Đổi vị trí hoặc số lượng rồi lưu bằng Cập nhật chỉ định & In phiếu.';
+    button.addEventListener('click',()=>open(o));
+    return button;
+  }
+  // Gắn sớm nút mở hộp vào đầu hộp chi tiết khi bảng hàng chưa về: opts {order, buttonHost, canPick, status (pickStatus của dòng), onChange(assignment)}.
+  // onChange gắn ngay như attach(): bấm nút sớm rồi lưu vẫn cập nhật đúng đơn đang xem, không dính callback của đơn trước.
+  function attachButton(opts){
+    const host=opts&&opts.buttonHost;if(!host)return;
+    state.onChange=opts.onChange||null;
+    host.replaceChildren();
+    if(opts.canPick)host.appendChild(openButton(opts.order||{},opts.status||null));
+  }
   /* opts: {order (đơn đang xem, có summary.code và pickStatus), host (#lcDetailKiot), buttonHost (đầu hộp, bên trái nút đóng), canPick, assignment (nếu đã tải), onChange(assignment)}.
      Nút "Chỉ định vị trí" chỉ hiện với người có quyền ở mọi trạng thái đơn (để xem/in);
      chip "Đã chỉ định · <trạng thái>" hiện cho mọi người xem được hộp. */
@@ -874,11 +916,7 @@
     if(!canOpen&&!status)return;
     const head=host.querySelector('.dp-section-head');if(!head)return;
     const controls=document.createElement('span');controls.id='pickingActions';controls.className='picking-actions';
-    if(canOpen){
-      const button=document.createElement('button');button.type='button';button.id='openPickingBtn';button.className='picking-open-btn';button.textContent=status==='picking'?'Thay đổi chỉ định':'Chỉ định vị trí';
-      if(status==='picking')button.title='Đổi vị trí hoặc số lượng rồi lưu bằng Cập nhật chỉ định & In phiếu.';
-      button.addEventListener('click',()=>open(o));(buttonHost||controls).appendChild(button);
-    }
+    if(canOpen)(buttonHost||controls).appendChild(openButton(o,status));
     if(status){
       const chip=document.createElement('span');chip.className='picking-confirmed';chip.dataset.status=status;chip.textContent='✓ Đã chỉ định · '+(STATUS_LABEL[status]||status);controls.appendChild(chip);
     }
@@ -892,5 +930,5 @@
     }catch(error){return null;}
   }
 
-  window.TKSPick={attach,open,loadAssignment,STATUS_LABEL,_state:state,_moveLine:(from,to,after)=>{const moved=moveLine(key(from),key(to),after);if(moved)render();return moved;}};
+  window.TKSPick={attach,attachButton,open,prefetch,forgetPrefetch,loadAssignment,STATUS_LABEL,_state:state,_moveLine:(from,to,after)=>{const moved=moveLine(key(from),key(to),after);if(moved)render();return moved;}};
 })();

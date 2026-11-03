@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { parseVnNumber, parseComboFlag, foldName, parsePasteText, normalizeValue, PASTE_COLUMNS } = require('../public/stocktake/stocktakePaste');
+const { parseVnNumber, parseComboFlag, foldName, normalizeValue, PASTE_COLUMNS } = require('../public/stocktake/stocktakePaste');
 
 test('parseVnNumber: kieu VN, kieu thuong, rong / chu', () => {
   assert.equal(parseVnNumber('1.234'), 1234);
@@ -25,29 +25,6 @@ test('parseComboFlag + foldName', () => {
   for (const no of ['', '0', 'false', 'không']) assert.equal(parseComboFlag(no), false, no);
   assert.equal(foldName('  Thái   KHO '), 'thai kho');
   assert.equal(foldName('Đông'), 'dong');
-});
-
-test('parsePasteText: tab, bo tieu de, bo dong trong, ma lap lay dong cuoi', () => {
-  const known = new Set(['LUMI3M', 'LUMI3T']);
-  const text = 'Mã SP\tKK Trước Sai\r\nlumi3m\t-326\n\n LUMI3T \t-170\nLUMI3M\t-300\n';
-  const { rows, duplicates } = parsePasteText(text, { isKnownCode: code => known.has(code), column: 'prevDiffManual' });
-  assert.deepEqual(rows, [{ code: 'LUMI3T', value: '-170' }, { code: 'LUMI3M', value: '-300' }]);
-  assert.equal(duplicates, 1);
-});
-
-test('parsePasteText: dong dau la du lieu that thi giu', () => {
-  const { rows } = parsePasteText('LUMI3M\tmất ko thấy', { isKnownCode: () => true, column: 'statusText' });
-  assert.deepEqual(rows, [{ code: 'LUMI3M', value: 'mất ko thấy' }]);
-});
-
-test('parsePasteText: dong tieu de sau dong trong van bi bo', () => {
-  const { rows } = parsePasteText('\nMã SP\tKK\nA\t5', { isKnownCode: code => code === 'A', column: 'prevDiffManual' });
-  assert.deepEqual(rows, [{ code: 'A', value: '5' }]);
-});
-
-test('parsePasteText: tieu de cot chu bi bo, dong du lieu giu', () => {
-  const { rows } = parsePasteText('Mã SP\tTrạng thái\nLUMI3M\tOK', { isKnownCode: code => code === 'LUMI3M', column: 'statusText' });
-  assert.deepEqual(rows, [{ code: 'LUMI3M', value: 'OK' }]);
 });
 
 test('normalizeValue theo kieu cot', () => {

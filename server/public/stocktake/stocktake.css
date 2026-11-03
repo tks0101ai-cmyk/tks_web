@@ -13,7 +13,7 @@
 .st-stat span{font-size:12px;color:var(--muted)}
 .st-stat.st-warn b{color:var(--amber,#d97706)}
 .st-stat.st-bad b{color:var(--red)}
-.st-table{--locations-min-width:1900px}
+.st-table{--locations-min-width:0px}
 .st-table td.num,.st-table th.num,.st-lines .num{text-align:right;font-variant-numeric:tabular-nums}
 .st-table tbody td{cursor:cell}
 .st-table tbody tr:hover td,.st-table tbody tr:focus-visible td{background:var(--panel-2)}
@@ -55,12 +55,8 @@
   .st-table td[data-field="code"]{position:sticky;left:0;background:var(--panel);z-index:1;box-shadow:1px 0 0 var(--border)}
 }
 .st-table td.st-manual { box-shadow: inset 2px 0 0 var(--amber, #c48a2c); font-style: italic; }
-.st-table th .sort-button { width: 100%; justify-content: space-between; }
+.st-table th .sort-button { width: 100%; }
 .st-counterpart select { min-width: 220px; }
-.st-paste-mode { display: flex; gap: 16px; border: 0; padding: 0; margin: 0; }
-.st-paste-mode legend { font-weight: 600; margin-bottom: 4px; }
-.st-paste-preview p { margin: 2px 0; }
-#stPasteText { width: 100%; font-family: 'IBM Plex Mono', monospace; font-size: 13px; }
 @media (max-width: 720px) { .st-counterpart select { min-width: 0; width: 100%; } }
 #stCounterpartField[hidden]{display:none}
 /* Hàng tiêu đề màu cyan cho dễ nhìn (cả sáng / tối; chữ trắng trên #0e7490 đạt tương phản 5:1). */
@@ -95,7 +91,6 @@
 .st-swatch input:checked+span{border-color:var(--text);box-shadow:0 0 0 3px color-mix(in srgb,var(--text) 25%,transparent)}
 .st-swatch input:focus-visible+span{outline:2px solid var(--blue);outline-offset:2px}
 .st-swatch input:disabled,.st-swatch input:disabled+span{cursor:not-allowed;opacity:.5}
-.st-table td.num{white-space:nowrap;overflow-wrap:normal}
 /* Sua tren bang kieu sheet: o nhap de len o, nut keo goc vung chon, vien vung se dien. */
 .st-scroll{position:relative}
 .st-table td[data-editable]{cursor:cell}
@@ -103,3 +98,15 @@
 .st-fill{position:absolute;z-index:5;width:8px;height:8px;margin:0;padding:0;border:1px solid var(--panel);background:#06b6d4;cursor:crosshair}
 .st-fill[hidden]{display:none}
 .st-table td.st-fill-preview{outline:1px dashed #06b6d4;outline-offset:-2px}
+
+/* Tiêu đề và ô một dòng: cột hẹp hơn chữ thì chữ bị cắt ở mép ô (cột bên phải như đè lên, giống Excel),
+   không vỡ chữ xuống dòng. Ghi đè table-controls (white-space:normal; overflow-wrap:anywhere) chỉ cho bảng kiểm kê. */
+#stTable th,#stTable td{white-space:nowrap !important;overflow:hidden;overflow-wrap:normal !important;text-overflow:clip !important}
+#stTable thead th{padding-top:6px;padding-bottom:6px;padding-left:8px;padding-right:8px;font-size:11px;line-height:1.3;text-transform:none;letter-spacing:0}
+#stTable tbody td{padding-left:8px;padding-right:8px}
+#stTable thead th .sort-button,#stTable thead th .sort-button>.sort-label{white-space:nowrap !important;overflow:hidden;overflow-wrap:normal !important;font-size:11px}
+#stTable thead th .sort-button{position:relative}
+#stTable thead th .sort-indicator{position:absolute;right:2px;top:50%;transform:translateY(-50%);width:auto;pointer-events:none;opacity:.45}
+#stTable thead th .sort-button:hover .sort-indicator{opacity:1}
+#stTable thead th[aria-sort="ascending"] .sort-indicator,#stTable thead th[aria-sort="descending"] .sort-indicator{opacity:1}
+#stTable thead th .sort-button>.sort-label{flex:1 1 auto;margin-right:18px}

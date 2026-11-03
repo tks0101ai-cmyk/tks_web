@@ -342,6 +342,7 @@ Nút **Xuất kho** trên `/vt-positions/` trừ SL hàng loạt theo file Excel
 
 - Module `server/stocktake/`: `stocktakeCompute.js` (hàm thuần gom số đếm + phần sửa, Quên KK, chênh theo Cụm SP), `stocktakeService.js` (đợt, sửa dòng, ghi chú, tag, đóng đợt chụp `stocktake_session_results`, khóa lạc quan `version` + lịch sử bất biến), `stocktakeRoutes.js` (`/api/stocktake`, SSE, xuất Excel), `stocktakeSheetImport.js` (nạp tab KIỂM KÊ HN T10 và KIỂM SG, `source: t10|sg`, tự nối đợt đối chiếu), `stocktakeEvents.js` (bus chung `dashboardRollupEvents`).
 - Trang `public/stocktake/` (menu Vị trí hàng → Kiểm kê, `table-controls.js`, sáng/tối, di động): đủ 23 cột T10 A→W theo thứ tự sheet, sắp xếp bằng bấm tiêu đề trên toàn bộ dòng đã lọc, đối chiếu chéo SG/HN (`counterpart_session_id`, `PATCH /sessions/:id`), dán cột từ Google Sheets (`POST /sessions/:id/paste`, `public/stocktake/stocktakePaste.js` dùng chung trình duyệt + server), xuất Excel 24 cột.
+- **Cập nhật 03/11/2026 (bộ lọc + tiêu đề, bỏ Dán cột):** hộp Dán cột và `POST /api/stocktake/sessions/:id/paste` (service `pasteColumn`, `parsePasteText`) đã bỏ — dán cột từ Google Sheets nay là Ctrl+V trên bảng qua `POST /cells`; lịch sử cũ "Dán cột …" vẫn hiển thị, không migration. Bộ lọc `#stFilter` còn 5 lựa chọn (Tất cả mã, Quên KK, Chỉ có trạng thái, Chỉ có trang in, Không có cả hai; bỏ "Đã ghi chú"); tiêu đề/ô bảng một dòng, cắt chữ ở mép ô, cấu hình cột lưu khóa v4.
 - Quyền `stocktake.view`, `stocktake.edit`, `stocktake.close`; trang `/stocktake` trong `PAGE_FEATURES`.
 - Thiết kế: `docs/superpowers/specs/2026-10-31-stocktake-design.md`; kế hoạch: `docs/superpowers/plans/2026-10-31-stocktake.md`. Thiết kế đợt cột T10 + Sài Gòn + dán cột: `docs/superpowers/specs/2026-11-02-stocktake-columns-sg-paste-design.md`; kế hoạch: `docs/superpowers/plans/2026-11-02-stocktake-columns-sg-paste.md`. Chưa làm: chia team, thưởng/phạt.
 
@@ -353,9 +354,6 @@ Nút **Xuất kho** trên `/vt-positions/` trừ SL hàng loạt theo file Excel
 
 - **VT: Đơn xuất kho + số lượng âm (02/11/2026, migration `0104` chưa áp DB, chưa commit/deploy):** đơn tạm dùng chung mỗi cơ sở (`stock_out_orders` + `stock_out_order_lines`), chỉ trừ tồn VT khi chốt (`stockPositions/stockOutOrdersService.js`: `buildPlan` thuần trừ tuần tự theo (mã, vị trí), `confirm` một giao dịch dưới `lockBranch`, preview trước/sau ở `getCurrent`); số âm = ghi chú `-kT x size` (`carton.parseSigned`/`subtractNotes`/`negativeNote`, `mergeNotes` tự bù); lịch sử `stock_out` kèm `orderId`/`orderCode` để bấm xem đơn; hộp UI `vt-stockout-order.js`. Hộp Xuất kho Excel cũ giữ nguyên.
 
-Cập nhật gần nhất: 02/11/2026 (Kiểm kê đối chiếu Hà Nội + Sài Gòn, đủ 23 cột T10, dán cột, nạp tab KIỂM SG, migration 0105; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; VT Đơn xuất kho + số lượng âm, migration 0104; Chỉ định vị trí không ghi lên KiotViet; gỡ 2 cảnh báo Lệch Kiot / Lệch SL trong đơn) — trước đó 31/10/2026 (sửa vị trí VT ngay trong hộp Chỉ định vị trí; trước đó: bỏ dòng chỉ định của mã đã xóa khỏi đơn Kiot).
-
-
 ## 03/11/2026 — Tăng tốc chỉ định và in phiếu (cục bộ, chưa deploy)
 
 Đường chỉ định tra đúng mã đơn HN/SG và dùng lại quy tắc gộp Vòng đời/Accounting, không tải toàn bộ đơn hoặc tính cước/điều chuyển. Ghi dòng chỉ định theo lô trong cùng giao dịch/khóa PostgreSQL; bản in tiếp tục dùng snapshot sau commit. Tải trước tài nguyên phiếu và QR song song; chỉ cho in khi form chung đọc mới thành công và không còn lượt lưu form đang chạy.
@@ -366,4 +364,6 @@ Server-Timing cho `/api/shipment/pick/*`; browser measures `tokosi.pick.assets/r
 
 Kiểm chứng/triển khai: xem [kế hoạch Redis](../../tasks/redis-performance/plan.md), [benchmark cục bộ](../../tasks/redis-performance/benchmark.md) và [runbook](../../tasks/redis-performance/rollout.md). Giữ worker Singapore hiện có; tạo web Singapore thay thế Oregon sau kiểm chứng. Chưa thay đổi dịch vụ Render/domain hoặc xác nhận p95 production; không migration. Integration Redis thật đang chờ TEST Redis; công cụ browser dừng vì không xác định chắc chắn URL Windows.
 
-Cập nhật gần nhất: 03/11/2026.
+Sau khi gộp PR in phiếu nhặt nhanh: Redis là tầng L2 dưới cache L1 trong tiến trình của `sheets/sheetValuesCache.js` (trả bản cũ + làm mới nền); `appendRow` xóa L2 rồi L1. SĐT sale giữ bản Redis (`pickKiotData.createSellerPhoneLookup`: last-good 30 phút, worker làm mới 4 phút) thay cho cache trong RAM của PR; `shapeAssignment` bỏ bổ sung SĐT khi đang trong giao dịch.
+
+Cập nhật gần nhất: 03/11/2026 (Kiểm kê: bộ lọc 5 lựa chọn, tiêu đề bảng gọn, bỏ Dán cột; trước đó 02/11/2026: Kiểm kê đối chiếu Hà Nội + Sài Gòn, đủ 23 cột T10, dán cột, nạp tab KIỂM SG, migration 0105; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; VT Đơn xuất kho + số lượng âm, migration 0104; Chỉ định vị trí không ghi lên KiotViet; gỡ 2 cảnh báo Lệch Kiot / Lệch SL trong đơn) — trước đó 31/10/2026 (sửa vị trí VT ngay trong hộp Chỉ định vị trí; trước đó: bỏ dòng chỉ định của mã đã xóa khỏi đơn Kiot).

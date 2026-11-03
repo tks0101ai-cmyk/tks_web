@@ -31,7 +31,7 @@ async function start(t, { user = MANAGER, scope = 'Cả hai', events, fail } = {
     listSessions: async ctx => { calls.push(['listSessions', ctx.scope]); return { sessions: [SESSION] }; },
     getBoard: async (ctx, id) => { calls.push(['getBoard', id, ctx.scope]); return { session: SESSION, rows: ROWS, employees: [{ id: 501, name: 'Cảnh' }] }; },
     createSession: record('createSession'), saveLine: record('saveLine'), addLine: record('addLine'), saveNote: record('saveNote'),
-    saveTag: record('saveTag'), updateSession: record('updateSession'), pasteColumn: record('pasteColumn'), saveCells: record('saveCells'), codeHistory: record('codeHistory'), closeSession: record('closeSession')
+    saveTag: record('saveTag'), updateSession: record('updateSession'), saveCells: record('saveCells'), codeHistory: record('codeHistory'), closeSession: record('closeSession')
   };
   const app = express();
   app.use((req, res, next) => { if (user) req.user = user; next(); });
@@ -61,12 +61,12 @@ test('Quan ly: xem, sua, dong dot; pham vi co so tu cookie', async t => {
   assert.equal((await fetch(base + '/sessions/7/codes/AAA1/note', { method: 'PUT', ...json({ statusText: 'ok' }) })).status, 200);
   assert.equal((await fetch(base + '/sessions/7/codes/AAA1/tag', { method: 'PUT', ...json({ cluster: 'C' }) })).status, 200);
   assert.equal((await fetch(base + '/sessions/7', { method: 'PATCH', ...json({ counterpartSessionId: 9, version: 1 }) })).status, 200);
-  assert.equal((await fetch(base + '/sessions/7/paste', { method: 'POST', ...json({ column: 'statusText', rows: [] }) })).status, 200);
   assert.equal((await fetch(base + '/sessions/7/cells', { method: 'POST', ...json({ cells: [] }) })).status, 200);
+  assert.equal((await fetch(base + '/sessions/7/paste', { method: 'POST', ...json({ column: 'statusText', rows: [] }) })).status, 404);
   assert.equal((await fetch(base + '/sessions/7/close', { method: 'POST', ...json({ version: 1 }) })).status, 200);
   assert.equal((await fetch(base + '/import-sheet', { method: 'POST', ...json({}) })).status, 201);
   assert.deepEqual(calls.slice(1).map(c => c.slice(0, 2)), [
-    ['createSession', { name: 'x' }], ['saveLine', 7], ['addLine', 7], ['saveNote', 7], ['saveTag', 7], ['updateSession', 7], ['pasteColumn', 7], ['saveCells', 7], ['closeSession', 7], ['importSheet', {}]
+    ['createSession', { name: 'x' }], ['saveLine', 7], ['addLine', 7], ['saveNote', 7], ['saveTag', 7], ['updateSession', 7], ['saveCells', 7], ['closeSession', 7], ['importSheet', {}]
   ]);
 });
 
@@ -80,13 +80,12 @@ test('Quan ly kiem kho duoc cap xem + sua: khong dong dot duoc', async t => {
   assert.ok(!calls.some(c => c[0] === 'closeSession' || c[0] === 'importSheet'));
 });
 
-test('Khong co quyen sua: khong dan cot, khong doi dot doi chieu', async t => {
+test('Khong co quyen sua: khong sua o, khong doi dot doi chieu', async t => {
   const viewer = { id: 'v', vaiTro: 'Nhân viên kho', featurePermissions: { 'stocktake.view': true } };
   const { base, calls } = await start(t, { user: viewer });
-  assert.equal((await fetch(base + '/sessions/7/paste', { method: 'POST', ...json({ column: 'statusText', rows: [] }) })).status, 403);
   assert.equal((await fetch(base + '/sessions/7/cells', { method: 'POST', ...json({ cells: [] }) })).status, 403);
   assert.equal((await fetch(base + '/sessions/7', { method: 'PATCH', ...json({ counterpartSessionId: 9 }) })).status, 403);
-  assert.ok(!calls.some(c => c[0] === 'pasteColumn' || c[0] === 'updateSession' || c[0] === 'saveCells'));
+  assert.ok(!calls.some(c => c[0] === 'updateSession' || c[0] === 'saveCells'));
 });
 
 test('Mac dinh vai tro khac khong xem duoc; Khach duoc ghi de van bi chan; chua dang nhap 401', async t => {

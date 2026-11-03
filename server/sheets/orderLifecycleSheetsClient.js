@@ -12,6 +12,7 @@
 
 const { google } = require('googleapis');
 const CONFIG = require('../config');
+const { createSheetValuesCache } = require('./sheetValuesCache');
 
 const API_TIMEOUT_MS = 15000; // 15s
 const CACHE_TTL_MS = 15 * 1000; // 15s
@@ -52,19 +53,31 @@ function requireSpreadsheetId() {
 
 const {sharedCache} = require('../lib/sharedCache');
 
-// No process-local L1 when Redis is enabled: every reader observes shared invalidation.
-async function getValues(sheetName) {
-  const spreadsheetId = requireSpreadsheetId();
-  return sharedCache.readThrough(`lifecycle-sheets:${spreadsheetId}:${sheetName}`, CACHE_TTL_MS, async () => {
-    const sheets = await getSheetsApi();
-    const res = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: quoteSheetName(sheetName),
-      valueRenderOption: 'UNFORMATTED_VALUE',
-      dateTimeRenderOption: 'FORMATTED_STRING'
-    }, {timeout: API_TIMEOUT_MS});
-    return res.data.values || [];
-  }, {validate: rows => Array.isArray(rows) && rows.every(Array.isArray)});
+// L1 trong tien trinh (tra ban cu + lam moi nen) dung tren L2 Redis (sharedCache, fail-open): nhieu instance chia se mot lan doc Google.
+const valuesCache = createSheetValuesCache({
+  ttlMs: CACHE_TTL_MS,
+  load: sheetName => {
+    const spreadsheetId = requireSpreadsheetId();
+    return sharedCache.readThrough(`lifecycle-sheets:${spreadsheetId}:${sheetName}`, CACHE_TTL_MS, async () => {
+      const sheets = await getSheetsApi();
+      const res = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: quoteSheetName(sheetName),
+        valueRenderOption: 'UNFORMATTED_VALUE',
+        dateTimeRenderOption: 'FORMATTED_STRING'
+      }, { timeout: API_TIMEOUT_MS });
+      return res.data.values || [];
+    }, { validate: rows => Array.isArray(rows) && rows.every(Array.isArray) });
+  },
+  onBackgroundError: err => console.warn('[orderLifecycleSheetsClient] lam moi nen loi:', err.message)
+});
+
+/**
+ * Doc toan bo du lieu cua 1 tab, tra ve mang 2 chieu (giong sheetsClient.js).
+ * options.allowStale: cache het han van tra ban cu ngay va lam moi o nen (hop Chi dinh vi tri dung).
+ */
+function getValues(sheetName, options) {
+  return valuesCache.get(sheetName, options);
 }
 
 module.exports = { getValues };
