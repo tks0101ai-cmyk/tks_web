@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { EDIT_COLUMNS, parseClipboard, planPaste, planFill, moveIndex } = require('../public/stocktake/stocktakeGrid');
+const { EDIT_COLUMNS, parseClipboard, planPaste, planFill, moveIndex, matchesFilter } = require('../public/stocktake/stocktakeGrid');
 const { PASTE_COLUMNS } = require('../public/stocktake/stocktakePaste');
 
 test('EDIT_COLUMNS: 9 cot, deu la cot dan hop le', () => {
@@ -50,4 +50,17 @@ test('moveIndex: di trong cot dang hien, kep hai dau', () => {
   assert.equal(moveIndex([0, 1, 6, 8], 0, -1), 0);
   assert.equal(moveIndex([0, 1, 6, 8], 7, 1), 8, 'cot hien tai bi an: lay cot hien gan nhat ben phai');
   assert.equal(moveIndex([0, 1, 6, 8], 7, -1), 6);
+});
+
+test('matchesFilter: 5 bo loc; note null / chi khoang trang = trong; gia tri la = tat ca', () => {
+  const row = (statusText, printPage, forgotten = false) => ({ forgotten, note: statusText === null ? null : { statusText, printPage } });
+  const rows = { both: row('mất', '12'), status: row('mất', ''), print: row('  ', '12'), none: row('', ''), noNote: row(null), forgot: row(null, null, true) };
+  const pick = filter => Object.keys(rows).filter(key => matchesFilter(rows[key], filter));
+  assert.deepEqual(pick('all'), ['both', 'status', 'print', 'none', 'noNote', 'forgot']);
+  assert.deepEqual(pick('forgotten'), ['forgot']);
+  assert.deepEqual(pick('statusOnly'), ['status']);
+  assert.deepEqual(pick('printOnly'), ['print']);
+  assert.deepEqual(pick('neither'), ['none', 'noNote', 'forgot']);
+  assert.deepEqual(pick('noted'), pick('all'), 'gia tri cu / la = tat ca');
+  assert.equal(matchesFilter({ forgotten: false, note: { statusText: 'x', printPage: null } }, 'statusOnly'), true);
 });
