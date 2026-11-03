@@ -516,8 +516,16 @@ Cập nhật gần nhất: 28/10/2026 (chỉnh sửa khi xem trước import VT)
 
 - (Lịch sử 30/10/2026, phần ghi ngược Kiot đã gỡ 02/11/2026) Chỉ định vị trí: người có quyền chỉ định kéo-thả (nhấn giữ) để đổi thứ tự dòng hàng trong hộp và trên phiếu in (chỉ trong lần mở hộp, không lưu); xóa dòng hàng khỏi đơn và sửa số lượng cần nhặt đều **ghi ngược lên đơn KiotViet** ở mọi trạng thái đơn, có hộp xác nhận, đối chiếu sau khi ghi, tự khôi phục nếu Kiot ghi lệch và nhật ký người thao tác. Không cho xóa dòng hàng cuối cùng của đơn.
 
+## Bổ sung 02/11/2026 — Kiểm kê trên web
+
+- Thay tab "KIỂM KÊ HN T10" của sheet kiểm kê: không còn xuất đơn TEAM / danh sách hàng từ KiotViet rồi dán vào sheet; web tự lấy số đếm từ đơn TEAM, tồn và giá vốn từ dữ liệu đồng bộ.
+- Ba quản lý kiểm kho (Thắng, Quân, Hưng) làm chung một bảng thay cho ba tab sao chép riêng; giao mã cho người kiểm lại, ghi trạng thái và lý do; bảng đếm số mã mỗi người được giao (thay Sheet87).
+- Quản lý đóng đợt để chốt số liệu; đợt sau tự có cột "KK trước sai".
+- Bảng web có đủ 23 cột như tab T10 (kể cả Trang in, Giờ in, Do KK trước, Kiểm SG/HN) và bấm tiêu đề để sắp xếp; kiểm kê Sài Gòn dùng chung cách làm và đối chiếu chéo với Hà Nội; dán nhanh một cột từ Google Sheets thay cho gõ tay; nạp thêm tab KIỂM SG.
+- Chưa làm: chia team/khu, thưởng/phạt; cân bằng kho trên KiotViet vẫn làm tay.
+
 **Chỉ định vị trí không sửa đơn KiotViet (02/11/2026, chưa commit/deploy):** dashboard không còn ghi gì lên đơn đặt hàng KiotViet. Nút **Xóa dòng** chỉ bỏ mã hàng khỏi chỉ định và phiếu in của kho (đơn Kiot giữ nguyên; đơn phải còn ít nhất một dòng); mở lại chỉ định thấy dòng “Đã bỏ: MÃ ↺” để đưa mã trở lại. Sửa số lượng cần nhặt chỉ ghi trên phiếu in, không đổi đơn Kiot. Phiếu in theo đúng thứ tự dòng đang thấy trong hộp (đã kéo-thả hoặc đã sort cột; không sort thì theo thứ tự đơn Kiot). Bỏ hai cảnh báo Lệch Kiot và Lệch SL trong đơn; Vòng đời đơn hàng chỉ còn 6 cảnh báo giao hàng.
 
 - **Đơn xuất kho VT (02/11/2026, chưa commit/deploy):** hàng mới về ghi vị trí CONT, người bốc ghi lại vị trí thật; kho lập một Đơn xuất kho tạm dùng chung để ghi phần đã bốc (gõ theo tên hàng), chốt đơn mới trừ tồn VT, cho phép ra số âm để bù khi xếp hàng lên vị trí; lịch sử VT lưu người chốt và mã đơn, bấm xem lại chi tiết đơn.
 
-Cập nhật gần nhất: 02/11/2026 (VT Đơn xuất kho + số lượng âm, migration 0104; Chỉ định vị trí không sửa đơn KiotViet: Xóa dòng/SL cần nhặt chỉ nội bộ, phiếu in theo thứ tự trong hộp, gỡ cảnh báo Lệch Kiot / Lệch SL trong đơn) — trước đó 31/10/2026 (Chỉ định vị trí: thêm/sửa/xóa vị trí VT ngay trong hộp, bảo vệ giữ chỗ đơn Đang bốc khác; trước đó 30/10: kéo-thả, xóa dòng, ghi ngược Kiot; gỡ module Vị trí hàng cũ).
+Cập nhật gần nhất: 02/11/2026 (Kiểm kê trên web: đủ cột T10, Sài Gòn, dán cột; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; trước đó: gỡ module Vị trí hàng cũ; VT Đơn xuất kho + số lượng âm, migration 0104; Chỉ định vị trí không sửa đơn KiotViet: Xóa dòng/SL cần nhặt chỉ nội bộ, phiếu in theo thứ tự trong hộp, gỡ cảnh báo Lệch Kiot / Lệch SL trong đơn) — trước đó 31/10/2026 (Chỉ định vị trí: thêm/sửa/xóa vị trí VT ngay trong hộp, bảo vệ giữ chỗ đơn Đang bốc khác; trước đó 30/10: kéo-thả, xóa dòng, ghi ngược Kiot; gỡ module Vị trí hàng cũ).

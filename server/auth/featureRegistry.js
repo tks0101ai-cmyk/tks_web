@@ -120,6 +120,11 @@ const FEATURES = Object.freeze([
   { key: 'stockLocationsV2.edit', groupKey: 'stockLocations', label: 'Sửa / thêm / xóa / import VT Hà Nội / VT Sài Gòn (cần xem VT)', roles: MANAGER_ONLY, forbiddenRoles: [ROLES.KHACH], requires: 'stockLocationsV2.view' },
   { key: 'stockLocationsV2.export', groupKey: 'stockLocations', label: 'Xuất Excel VT Hà Nội / VT Sài Gòn (cần xem)', roles: ALL_ROLES, requires: 'stockLocationsV2.view', escalationExempt: true },
   { key: 'stockLocationsV2.historyDelete', groupKey: 'stockLocations', label: 'Xóa lịch sử VT Hà Nội / VT Sài Gòn (cần xem VT)', roles: MANAGER_ONLY, forbiddenRoles: [ROLES.KHACH], requires: 'stockLocationsV2.view' },
+  // 2026-10-31: Kiem ke (doi chieu so dem don TEAM voi ton KiotViet). Mac dinh chi Quan ly; Quan ly cap xem + sua cho
+  // 3 quan ly kiem kho. Dong dot / nap so lieu sheet tach rieng (.close) de chi Quan ly bam.
+  { key: 'stocktake.view', groupKey: 'stockLocations', label: 'Xem Kiểm kê', roles: MANAGER_ONLY, forbiddenRoles: [ROLES.KHACH] },
+  { key: 'stocktake.edit', groupKey: 'stockLocations', label: 'Kiểm kê: tạo đợt, sửa số đếm, giao kiểm lại, ghi lý do (cần xem)', roles: MANAGER_ONLY, forbiddenRoles: [ROLES.KHACH], requires: 'stocktake.view' },
+  { key: 'stocktake.close', groupKey: 'stockLocations', label: 'Kiểm kê: đóng đợt, nạp số liệu sheet (cần xem)', roles: MANAGER_ONLY, forbiddenRoles: [ROLES.KHACH], requires: 'stocktake.view' },
 
   // --- Quan ly nhan su ---
   { key: 'hr.rules', groupKey: 'hr', label: 'Quy định công ty', roles: ALL_ROLES },
@@ -189,6 +194,7 @@ const PAGE_FEATURES = Object.freeze([
   { path: '/shipment/lifecycle', href: '/shipment/lifecycle/', anyOf: ['shipment.lifecycle'] },
   { path: '/humanresources', href: '/humanresources/', anyOf: ['hr.rules', 'hr.employees', 'hr.leave', 'hr.leave.submit'] },
   { path: '/vt-positions', href: '/vt-positions/', anyOf: ['stockLocationsV2.view'] },
+  { path: '/stocktake', href: '/stocktake/', anyOf: ['stocktake.view'] },
   { path: '/cashbook', href: '/cashbook/', anyOf: ['cashbook.view'] },
   { path: '/vat-draft', href: '/vat-draft/', anyOf: ['accounting.vatDraft', 'accounting.qr'] },
   { path: '/vat-lookup', href: '/vat-lookup/', anyOf: ['accounting.vatLookup'] },

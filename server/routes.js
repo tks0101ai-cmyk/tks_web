@@ -43,6 +43,7 @@ const { createBotLifecycleIntegrationRouter, findKiotIdentity } = require('./shi
 const orderLifecycleService = require('./shipment/orderLifecycleService');
 const pickAssignmentsRoutes = require('./pickAssignments/pickAssignmentsRoutes');
 const stockPositionsRoutes = require('./stockPositions/stockPositionsRoutes');
+const stocktakeRoutes = require('./stocktake/stocktakeRoutes');
 const cashbookRoutes = require('./cashbook/cashbookRoutes');
 const { createVatDraftRouter } = require('./vatDraft/vatDraftRoutes');
 const { createVatRequestRouter } = require('./vatRequests/routes');
@@ -93,6 +94,7 @@ router.use(adminUserRoutes);
 router.use(branchRoutes);
 // VT Hà Nội / VT Sài Gòn (module Vị trí hàng duy nhất, sửa trực tiếp + import): quyền stockLocationsV2.*.
 router.use(stockPositionsRoutes);
+router.use(stocktakeRoutes);
 // Sổ quỹ toàn công ty: không áp cookie hoặc middleware chọn cơ sở.
 router.use('/api/cashbook', cashbookRoutes);
 // Kế toán – Nháp VAT (port vat-draft-app): chứng từ theo cookie cơ sở, gắn resolveBranch trong router.
