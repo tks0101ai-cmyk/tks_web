@@ -1347,7 +1347,11 @@
       if (!card) return;
       state.status = state.status === card.dataset.statusKey ? '' : card.dataset.statusKey;
       $('stStatusFilter').value = state.status;
+      const key = card.dataset.statusKey;
       rerender();
+      // The cards are rebuilt on render; give keyboard focus back to the same card.
+      const again = $('stStatusCards').querySelector('[data-status-key="' + key + '"]');
+      if (again) again.focus({ preventScroll: true });
     });
     // Bấm tiêu đề: tăng -> giảm -> mặc định (giá trị chênh lớn trước). Sort toàn bộ dòng đã lọc rồi mới vẽ.
     document.querySelector('#stTable thead').addEventListener('click', event => {
