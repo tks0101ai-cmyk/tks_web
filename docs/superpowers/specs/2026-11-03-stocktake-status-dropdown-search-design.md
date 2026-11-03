@@ -38,6 +38,7 @@ OTHER = { key: 'other', label: 'Khác', color: '' }; // chu cu khong xep duoc lo
 ```
 
 Hàm:
+- `isValid(text, branch)` → `text === ''` hoặc `canonical(text, branch) === text` (đúng tên chuẩn theo cơ sở).
 - `labelFor(key, branch)` → tên hiển thị; `wrong` ở `saigon` là "Nhầm HN", còn lại "Nhầm SG".
 - `optionsFor(branch)` → 7 lựa chọn `[ {key,label,color} ]` theo cơ sở.
 - `classify(text)` → key loại:
@@ -55,7 +56,7 @@ Hàm:
 
 - Ô Trạng thái hiện **chữ đang lưu** (chữ cũ T10 giữ nguyên, ví dụ "lẫn bình giữ nhiệt"), tô nền theo `colorOf(statusText)`, chữ màu tối `#111` trên mọi nền có màu (cả giao diện tối). `pending`/`other` không tô.
 - `td.dataset.color` cũ (theo `statusColor`) bỏ; dùng `td.dataset.status = key` + CSS cho từng key.
-- Cột `status_color` trong DB không còn dùng để hiển thị; server ghi `status_color = key` (hoặc `''` cho pending/other) cho nhất quán, không cần migration.
+- Cột `status_color` trong DB không còn dùng để hiển thị. CHECK của migration 0105 chỉ nhận tên màu cũ nên server **không ghi** cột này nữa (giữ nguyên giá trị đang có, dòng mới để `''`); không cần migration.
 - `STATUS_COLORS` trong `stocktakePaste.js` và phần chọn màu (`#stStatusColors`, `statusColor` trong form, nhãn "màu …" trong lịch sử) bỏ. Lịch sử cũ có `statusColor` chỉ không hiện nhãn màu nữa.
 
 ### 3.3 Sửa trên bảng
@@ -71,8 +72,8 @@ Hàm:
 
 ### 3.4 Máy chủ
 
-- `saveCells` (cột `status`) và lưu ghi chú (`PUT /api/stocktake/sessions/:id/codes/:code/note`): `statusText` mới phải là `''` hoặc `labelFor(key, session.branch)` của 1 trong 6 loại có chữ. Bằng đúng chữ đang lưu (chưa đổi) cũng nhận. Còn lại → 400 `VALIDATION` "Trạng thái phải là một trong: Mất, KK trước, OK, Nhầm SG, Thừa, Lẫn, Chưa XL." (`field: 'statusText'`) ở API ghi chú; ở `saveCells` ô sai được đếm vào `skipped.invalid` như giá trị sai hiện nay, các ô khác vẫn lưu.
-- `statusColor` gửi lên bị bỏ qua; server tự đặt `status_color` theo `classify`.
+- `saveCells` (cột `status`) và lưu ghi chú (`PUT /api/stocktake/sessions/:id/codes/:code/note`): `statusText` mới phải qua `isValid(text, session.branch)` (`''` hoặc đúng tên chuẩn của 1 trong 6 loại có chữ). Bằng đúng chữ đang lưu (chưa đổi) cũng nhận. Còn lại → 400 `VALIDATION` "Trạng thái phải là một trong: Mất, KK trước, OK, Nhầm SG, Thừa, Lẫn, Chưa XL." (`field: 'statusText'`) ở API ghi chú; ở `saveCells` ô sai được đếm vào `skipped.invalid` như giá trị sai hiện nay, các ô khác vẫn lưu.
+- `statusColor` gửi lên bị bỏ qua; `saveNote` giữ nguyên `status_color` đang có (`saveCells` vốn không ghi cột này).
 - `suggestions.status` thôi tính/gửi (giữ `suggestions.reason`).
 - Nạp sheet (`stocktakeSheetImport.js`) không đổi: vẫn lưu chữ gốc.
 - Xuất Excel: tô nền ô Trạng thái theo `colorOf(statusText)` (ARGB từ `color`), thay cho `STATUS_COLORS[statusColor]`.
@@ -105,6 +106,6 @@ README (cập nhật gần nhất), server/README (bỏ vị trí kho khỏi mô
 
 - `stocktakeStatus.test.js` (mới): `classify` với các ví dụ ở 3.1 + chữ hoa/không dấu; `canonical` theo cơ sở (Nhầm SG/HN, Chưa XL → '', other → null); `colorOf`; `summarize` (đủ 7 loại, Khác chỉ khi có, cộng có dấu, dòng không có note → Chưa XL).
 - `stocktakeSearch.test.js`: "băng keo 10kg" không khớp "(11KG)", "(19KG)", "10cm … 15.5KG"; khớp "(10KG)" và "(10kg/thùng)"; "10" không khớp "100"; "ke" khớp "keo"; có kết quả chắc chắn thì không có mờ (`fuzzy:false`); không có thì có mờ (`fuzzy:true`).
-- `stocktakeService.test.js`: `saveCells` nhận "Lẫn", "Nhầm HN" ở đợt SG, `''`; từ chối "lẫn bình" (vào `skipped.invalid`) và "Nhầm HN" ở đợt HN; giữ chữ cũ không đổi vẫn lưu được; `status_color` tự đặt; board không còn `latestPosition`; `suggestions` không còn `status`.
+- `stocktakeService.test.js`: `saveCells` nhận "Lẫn", "Nhầm HN" ở đợt SG, `''`; từ chối "lẫn bình" (vào `skipped.invalid`) và "Nhầm HN" ở đợt HN; giữ chữ cũ không đổi vẫn lưu được; `saveNote` bỏ qua `statusColor`, giữ `status_color` cũ; board không còn `latestPosition`; `suggestions` không còn `status`.
 - `stocktakeCompute.test.js`, `stocktakeRoutes.test.js`, test xuất Excel: sửa theo bỏ vị trí kho, màu theo loại.
 - Server test dữ liệu thật: không còn cột Vị trí kho; ô dài xuống dòng, tiêu đề vẫn 1 dòng; thẻ ở đợt T10 ra số mã/tổng khớp đếm độc lập bằng JS; bấm thẻ lọc đúng, bấm lại bỏ lọc; danh sách chọn trạng thái bằng phím và chuột; nhân bản + dán + undo cột trạng thái; tìm "băng keo 10kg"; sáng/tối; 375px.
