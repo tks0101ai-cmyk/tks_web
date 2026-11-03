@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261012">
   <link rel="stylesheet" href="/shared/table-controls.css?v=20261016-1">
   <link rel="stylesheet" href="/vt-positions/vt-positions.css?v=20261030-1">
-  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261102-6">
+  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261103-1">
 </head>
 <body>
   <div class="receipt-header">
@@ -88,7 +88,7 @@
         </div>
         <p id="stStatus" class="locations-status" role="status" aria-live="polite"></p>
         <p id="stNotice" class="locations-status" role="status" aria-live="polite"></p>
-        <p class="st-hint"><span id="stCount"></span> · Kéo chuột để chọn nhiều ô, Ctrl+C để copy sang sheet · Nhấp đúp vào dòng để mở chi tiết</p>
+        <p class="st-hint"><span id="stCount"></span> · Chọn ô rồi gõ để sửa · Ctrl+V dán, kéo ô vuông ở góc để nhân bản, Ctrl+Z hoàn tác · Nhấp đúp để mở chi tiết</p>
         <div class="locations-scroll st-scroll" tabindex="0" aria-label="Bảng đối chiếu kiểm kê">
           <table class="users-table locations-table st-table" id="stTable" data-table-key="stocktakeBoard" data-columns-button="stColumnsButton">
             <thead><tr></tr></thead>
@@ -226,8 +226,11 @@
   <script src="/shared/table-controls.js?v=20261030-1"></script>
   <script src="/shared/search-clear.js?v=20261009-1"></script>
   <script src="/shared/shared-nav.js?v=20261103-stocktake"></script>
-  <script src="/stocktake/stocktakePaste.js?v=20261102-3"></script>
-  <script src="/stocktake/stocktake.js?v=20261102-11"></script>
+  <script src="/vendor/fuse.min.js?v=7.1.0"></script>
+  <script src="/stocktake/stocktakePaste.js?v=20261103-1"></script>
+  <script src="/stocktake/stocktakeSearch.js?v=20261103-1"></script>
+  <script src="/stocktake/stocktakeGrid.js?v=20261103-1"></script>
+  <script src="/stocktake/stocktake.js?v=20261103-3"></script>
   <script>window.addEventListener('DOMContentLoaded', function () { TKSStocktake.init(); });</script>
   <script src="/shared/shooting-star.js?v=20261019"></script>
 </body>

@@ -6,7 +6,7 @@
 const { getPool } = require('../db/pool');
 const { stripTelegramId } = require('../dashboard/saleName');
 const { codeKey, buildBoard, toResults, deriveColumns, totalsOf } = require('./stocktakeCompute');
-const { PASTE_COLUMNS, STATUS_COLORS, normalizeValue, parseVnNumber, foldName } = require('../public/stocktake/stocktakePaste');
+const { PASTE_COLUMNS, STATUS_COLORS, normalizeValue, parseVnNumber, foldName, columnValue, sameValue } = require('../public/stocktake/stocktakePaste');
 const { announceChanged } = require('./stocktakeEvents');
 
 const BRANCHES = Object.freeze(['hanoi', 'saigon']);
@@ -602,10 +602,19 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     }, sessionId);
   }
 
+  // Khoa dong cum/combo cua cac ma (cung thu tu ma) va doc lai: saveTag cua phien khac cung co so chi khoa dong nay, doc khong khoa thi ghi de mat.
+  async function lockTags(client, branch, codes) {
+    if (!codes.length) return new Map();
+    const { rows } = await client.query(
+      `SELECT ${TAG_COLUMNS} FROM stocktake_product_tags WHERE branch = $1 AND product_code = ANY($2::text[]) ORDER BY product_code FOR UPDATE`,
+      [branch, [...new Set(codes)].sort()]);
+    return new Map(rows.map(shapeTag).map(tag => [tag.code, tag]));
+  }
+
   // Dan 1 cot tu sheet theo ma: ghi de co chu dich (khong kiem version), 1 giao dich, 1 dong lich su 'paste' moi ma co doi.
   async function pasteColumn(ctx, sessionId, body = {}) {
     const column = String(body.column || '');
-    if (!PASTE_COLUMNS[column]) throw fail(400, 'VALIDATION', 'Cột dán không hợp lệ.', { field: 'column' });
+    if (!Object.hasOwn(PASTE_COLUMNS, column)) throw fail(400, 'VALIDATION', 'Cột dán không hợp lệ.', { field: 'column' });
     const mode = body.mode === 'clear' ? 'clear' : 'skip';
     const input = Array.isArray(body.rows) ? body.rows : null;
     if (!input || !input.length || input.length > MAX_PASTE_ROWS) throw fail(400, 'VALIDATION', `Cần từ 1 đến ${MAX_PASTE_ROWS} dòng dán.`, { field: 'rows' });
@@ -615,8 +624,9 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       const inputs = await loadInputs(client, session, { withCounterpart: false });
       const known = new Set([...buildBoard(inputs).rows.map(r => r.code), ...inputs.products.map(p => codeKey(p.code))]);
       const skipped = { notFound: 0, invalid: 0, unchanged: 0, empty: 0, duplicates: 0 };
-      const isTag = Boolean(TAG_FIELDS[column]);
-      const current = new Map((isTag ? inputs.tags : inputs.notes).map(item => [item.code, item]));
+      const isTag = Object.hasOwn(TAG_FIELDS, column);
+      const current = isTag ? await lockTags(client, session.branch, input.map(item => codeKey(item && item.code)).filter(code => known.has(code)))
+        : new Map(inputs.notes.map(item => [item.code, item]));
       const employees = column === 'recheck' ? (await loadEmployees(client)).filter(e => e.branch === session.branch) : [];
       const changes = [];
       // Ma lap trong 1 lan dan (khac hoa/thuong): giu dong cuoi, dong truoc tinh vao duplicates (ON CONFLICT khong ghi 2 lan 1 khoa).
@@ -640,12 +650,75 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       if (changes.length) {
         if (isTag) await upsertTags(client, session.branch, changes, actor);
         else await upsertNotes(client, session.id, changes, actor);
-        await client.query(
-          `INSERT INTO stocktake_history (session_id, branch, product_code, action, before, after, actor_user_id, actor_name)
-           SELECT $1, $2, r.code, 'paste', r.before, r.after, $4, $5 FROM jsonb_to_recordset($3::jsonb) AS r(code text, before jsonb, after jsonb)`,
-          [session.id, session.branch, JSON.stringify(changes.map(c => ({ code: c.code, before: c.before, after: { column, ...c.next } }))), actor.id, actor.name]);
+        await insertPasteHistory(client, session, actor, changes.map(c => ({ code: c.code, before: c.before, after: { column, ...c.next } })));
       }
       return { changed: changes.length, skipped };
+    }, sessionId);
+  }
+
+  // Lich su dan cot / sua tren bang: action 'paste' (co san trong CHECK), 1 dong moi (ma, cot).
+  async function insertPasteHistory(client, session, actor, items) {
+    if (!items.length) return;
+    await client.query(
+      `INSERT INTO stocktake_history (session_id, branch, product_code, action, before, after, actor_user_id, actor_name)
+       SELECT $1, $2, r.code, 'paste', r.before, r.after, $4, $5 FROM jsonb_to_recordset($3::jsonb) AS r(code text, before jsonb, after jsonb)`,
+      [session.id, session.branch, JSON.stringify(items), actor.id, actor.name]);
+  }
+
+  // Sua tren bang (go / dan khoi / xoa / keo / hoan tac): nhieu (ma, cot) trong 1 giao dich.
+  // expected khac gia tri hien tai -> conflicts (khong ghi o do); thieu expected = khong kiem.
+  async function saveCells(ctx, sessionId, body = {}) {
+    const input = Array.isArray(body.cells) ? body.cells : null;
+    if (!input || !input.length || input.length > MAX_PASTE_ROWS) throw fail(400, 'VALIDATION', `Cần từ 1 đến ${MAX_PASTE_ROWS} ô.`, { field: 'cells' });
+    for (const cell of input) {
+      if (!Object.hasOwn(PASTE_COLUMNS, String((cell && cell.column) || ''))) throw fail(400, 'VALIDATION', 'Cột sửa không hợp lệ.', { field: 'column' });
+    }
+    const actor = actorOf(ctx);
+    return withTransaction(async client => {
+      const session = await openSessionForWrite(client, ctx, sessionId);
+      const inputs = await loadInputs(client, session, { withCounterpart: false });
+      const known = new Set([...buildBoard(inputs).rows.map(r => r.code), ...inputs.products.map(p => codeKey(p.code))]);
+      const allEmployees = await loadEmployees(client);
+      const employees = allEmployees.filter(e => e.branch === session.branch);
+      const names = new Map(allEmployees.map(e => [e.id, e.name]));
+      const nameOf = id => names.get(id) || '';
+      const notes = new Map(inputs.notes.map(note => [note.code, note]));
+      const tagCodes = input.filter(cell => Object.hasOwn(TAG_FIELDS, cell.column)).map(cell => codeKey(cell.code)).filter(code => known.has(code));
+      const tags = await lockTags(client, session.branch, tagCodes);
+      const skipped = { notFound: 0, invalid: 0, unchanged: 0 };
+      // (ma, cot) lap trong 1 lan gui: giu o cuoi, vi tri theo lan gap dau.
+      const latest = new Map();
+      for (const cell of input) {
+        const code = codeKey(cell.code);
+        if (!code || !known.has(code)) { skipped.notFound += 1; continue; }
+        latest.set(code + '\u0000' + cell.column, { code, column: cell.column, value: cell.value, expected: cell.expected, check: Object.hasOwn(cell, 'expected') });
+      }
+      const applied = [];
+      const conflicts = [];
+      const byStore = { note: new Map(), tag: new Map() };
+      for (const cell of latest.values()) {
+        const parsed = normalizeValue(cell.column, cell.value);
+        if (!parsed.ok) { skipped.invalid += 1; continue; }
+        const kind = Object.hasOwn(TAG_FIELDS, cell.column) ? 'tag' : 'note';
+        const original = (kind === 'tag' ? tags : notes).get(cell.code) || null;
+        const entry = byStore[kind].get(cell.code) || { code: cell.code, before: original, next: original, columns: [] };
+        const valueOf = record => columnValue(cell.column, kind === 'note' ? record : null, kind === 'tag' ? record : null, nameOf);
+        const current = valueOf(entry.next);
+        if (cell.check && !sameValue(cell.column, current, cell.expected)) { conflicts.push({ code: cell.code, column: cell.column, current }); continue; }
+        const next = nextRecord(cell.column, entry.next, parsed.value, employees);
+        if (sameRecord(cell.column, entry.next, next)) { skipped.unchanged += 1; continue; }
+        entry.next = next;
+        entry.columns.push(cell.column);
+        byStore[kind].set(cell.code, entry);
+        applied.push({ code: cell.code, column: cell.column, before: current, after: valueOf(next) });
+      }
+      const noteChanges = [...byStore.note.values()];
+      const tagChanges = [...byStore.tag.values()];
+      if (noteChanges.length) await upsertNotes(client, session.id, noteChanges, actor);
+      if (tagChanges.length) await upsertTags(client, session.branch, tagChanges, actor);
+      await insertPasteHistory(client, session, actor, [...noteChanges, ...tagChanges].flatMap(entry =>
+        entry.columns.map(column => ({ code: entry.code, before: entry.before, after: { column, source: 'cells', ...entry.next } }))));
+      return { applied, conflicts, skipped };
     }, sessionId);
   }
 
@@ -718,7 +791,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     }, sessionId);
   }
 
-  return { listSessions, createSession, updateSession, getBoard, saveLine, addLine, saveNote, saveTag, pasteColumn, codeHistory, closeSession };
+  return { listSessions, createSession, updateSession, getBoard, saveLine, addLine, saveNote, saveTag, pasteColumn, saveCells, codeHistory, closeSession };
 }
 
 module.exports = { createStockTakeService, TEAM_LINES_SQL, fail, ...createStockTakeService() };

@@ -68,3 +68,39 @@ test('STATUS_COLORS: bang mau trang thai dung chung', () => {
   assert.equal(STATUS_COLORS.red.label, 'Đỏ');
   assert.match(STATUS_COLORS.red.argb, /^FF[0-9A-F]{6}$/);
 });
+
+test('columnValue / sameValue / rawOf: dang gia tri cot dung chung trinh duyet + server', () => {
+  const { columnValue, sameValue, rawOf } = require('../public/stocktake/stocktakePaste');
+  const note = { statusText: 'mất', reasonText: '', printPage: '12', printTime: '', recheckEmployeeId: 502, recheckName: '', prevDiffManual: -1234, otherDiffManual: null };
+  const nameOf = id => (id === 502 ? 'Thái Kho' : '');
+  assert.equal(columnValue('statusText', note, null, nameOf), 'mất');
+  assert.equal(columnValue('reasonText', null, null, nameOf), '');
+  assert.equal(columnValue('recheck', note, null, nameOf), 'Thái Kho');
+  assert.equal(columnValue('recheck', { recheckEmployeeId: null, recheckName: 'CẬN' }, null, nameOf), 'CẬN');
+  assert.equal(columnValue('prevDiffManual', note, null, nameOf), -1234);
+  assert.equal(columnValue('otherDiffManual', note, null, nameOf), null);
+  assert.equal(columnValue('otherDiffManual', null, null, nameOf), null);
+  assert.equal(columnValue('cluster', null, { cluster: 'Cụm 1', isCombo: true }, nameOf), 'Cụm 1');
+  assert.equal(columnValue('combo', null, { cluster: '', isCombo: true }, nameOf), true);
+  assert.equal(columnValue('combo', null, null, nameOf), false);
+
+  assert.equal(sameValue('statusText', ' mất  ', 'mất'), true);
+  assert.equal(sameValue('recheck', 'thai kho', 'Thái Kho'), true);
+  assert.equal(sameValue('prevDiffManual', null, undefined), true);
+  assert.equal(sameValue('prevDiffManual', 0, null), false);
+  assert.equal(sameValue('combo', false, ''), true);
+  assert.equal(sameValue('bogus', 'a', 'a'), false);
+
+  assert.equal(rawOf('combo', true), 'x');
+  assert.equal(rawOf('combo', false), '');
+  assert.equal(rawOf('prevDiffManual', null), '');
+  assert.equal(rawOf('prevDiffManual', 1.234), 1.234);
+  assert.equal(rawOf('statusText', 'mất'), 'mất');
+});
+
+test('normalizeValue: so that cho cot so khong qua parseVnNumber', () => {
+  assert.deepEqual(normalizeValue('prevDiffManual', 1.234), { ok: true, value: 1.234, empty: false });
+  assert.deepEqual(normalizeValue('prevDiffManual', '1.234'), { ok: true, value: 1234, empty: false });
+  assert.equal(normalizeValue('prevDiffManual', Infinity).ok, false);
+  assert.equal(normalizeValue('prevDiffManual', 1e13).ok, false);
+});
