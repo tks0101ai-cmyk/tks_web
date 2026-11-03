@@ -1223,3 +1223,37 @@ test('Hủy nhặt: không tải lại candidates, về Hủy nhặt với gợi
     assert.equal(page.document.querySelectorAll('.picking-loc.selected').length, 1, 'có gợi ý mới (A07 x 100)');
   } finally { page.dom.window.close(); }
 });
+
+test('mở chi tiết đơn: nút hiện ngay, tải trước candidates và tải chỉ định song song với chi tiết Kiot', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const store = newStore({ assignment: makeAssignment('picking') });
+  const page = await renderPage({
+    orders: [orderRow('DH1', { pickStatus: 'picking' })], store,
+    fetchImpl: href => (href.startsWith('/api/shipment/lifecycle/order-detail') ? gate.then(() => json({ detail: kiotDetail('DH1') })) : null)
+  });
+  try {
+    await openDetail(page);
+    assert.equal(text(page, 'openPickingBtn'), 'Thay đổi chỉ định', 'nút có trước khi bảng hàng về');
+    assert.ok(page.calls.some(c => c.url === '/api/shipment/pick?branch=HN&order=DH1'), 'tải chỉ định song song');
+    assert.equal(store.candidateCalls, 1, 'đã tải trước candidates');
+    release();
+    await settle();
+    assert.ok(page.document.querySelector('#lcDetailKiot table.lc-lines'), 'bảng hàng vẽ sau khi về');
+    assert.equal(text(page, 'openPickingBtn'), 'Thay đổi chỉ định');
+    await click(page, 'openPickingBtn');
+    assert.equal(store.candidateCalls, 1, 'mở hộp không gọi thêm');
+  } finally { page.dom.window.close(); }
+});
+
+test('mở chi tiết: không có quyền thì không nút, không tải trước; đơn không có trên Kiot (404) thì bỏ nút', async () => {
+  const noPick = await renderPage({ permissions: ['shipment.lifecycle'] });
+  const missing = await renderPage({ fetchImpl: href => (href.startsWith('/api/shipment/lifecycle/order-detail') ? json({ error: 'x' }, 404) : null) });
+  try {
+    await openDetail(noPick);
+    assert.equal(noPick.document.getElementById('openPickingBtn'), null);
+    assert.equal(noPick.store.candidateCalls, 0);
+    await openDetail(missing);
+    assert.equal(missing.document.getElementById('openPickingBtn'), null, '404: như trước, không có nút');
+  } finally { [noPick, missing].forEach(page => page.dom.window.close()); }
+});
