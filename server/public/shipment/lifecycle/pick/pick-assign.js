@@ -528,6 +528,8 @@
   }
   async function open(listOrder){
     ensureDialogs();
+    // Warm static print resources while the user selects positions; printing retries failed preloads.
+    window.PickingInvoice?.loadAssets?.().catch(()=>{});
     const epoch=++state.requestEpoch;
     state.sort=null;state.manual=null;state.drag=null;state.listOrder=listOrder;state.reassignOf=null;state.reopened=false;state.order=null;state.needs={};state.removed=new Set();state.latest=null;state.assignment=null;state.allocations={};state.suggestions={};state.busy=false;state.needsSync=true;
     state.canEditPositions=false;state.posEdit=null;state.touched=new Set();
@@ -591,9 +593,10 @@
     const removed=(state.order.lines||[]).filter(l=>state.removed.has(key(l.productCode))).map(l=>l.productCode);
     // Chụp thứ tự in trước khi lưu: sort theo Vị trí/ST dựa vào phân bổ đang chọn.
     const printKeys=printOrderKeys();
+    const readyTiming=window.PickingInvoice?.startTiming?.('submit-ready');
     if(!await write(API,{branch:state.order.branch,orderCode:state.order.orderCode,allocations,...(Object.keys(needs).length?{needs}:{}),...(removed.length?{removed}:{}),...(mismatched.length?{allowMismatch:true}:{}),...reassign}))return;
     $('pickingDialog').close();
-    await printPick(printKeys);
+    if(await printPick(printKeys))readyTiming?.();
   }
   async function changeStatus(action){
     const a=state.latest;if(!a||state.busy||state.needsSync)return false;
@@ -622,7 +625,7 @@
         const rank=l=>{const at=keys.indexOf(key(l.productCode));return at<0?keys.length:at;};
         snapshot.lines=(snapshot.lines||[]).map((l,i)=>({l,i})).sort((x,y)=>rank(x.l)-rank(y.l)||x.i-y.i).map(e=>e.l);
       }
-      await window.PickingInvoice.show(snapshot,a);
+      return await window.PickingInvoice.show(snapshot,a);
     }
     catch(error){
       if(!$('pickingDialog').open)$('pickingDialog').showModal();

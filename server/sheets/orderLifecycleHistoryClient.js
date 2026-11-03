@@ -50,30 +50,21 @@ function requireSpreadsheetId() {
   return id;
 }
 
-let cache = null; // { data, expiresAt } | null
+const {sharedCache} = require('../lib/sharedCache');
+const cacheKey = (spreadsheetId,sheetName) => `lifecycle-sheets:${spreadsheetId}:${sheetName}`;
 
-function invalidateCache() {
-  cache = null;
-}
-
-/**
- * Doc toan bo du lieu tab "Lich su cap nhat" (mang 2 chieu, dong 1 la header).
- */
 async function getValues(sheetName) {
-  if (cache && Date.now() < cache.expiresAt) return cache.data;
-
   const spreadsheetId = requireSpreadsheetId();
-  const sheets = await getSheetsApi();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: quoteSheetName(sheetName),
-    valueRenderOption: 'UNFORMATTED_VALUE',
-    dateTimeRenderOption: 'FORMATTED_STRING'
-  }, { timeout: API_TIMEOUT_MS });
-
-  const values = res.data.values || [];
-  cache = { data: values, expiresAt: Date.now() + CACHE_TTL_MS };
-  return values;
+  return sharedCache.readThrough(cacheKey(spreadsheetId,sheetName), CACHE_TTL_MS, async () => {
+    const sheets = await getSheetsApi();
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: quoteSheetName(sheetName),
+      valueRenderOption: 'UNFORMATTED_VALUE',
+      dateTimeRenderOption: 'FORMATTED_STRING'
+    }, {timeout: API_TIMEOUT_MS});
+    return res.data.values || [];
+  }, {validate: rows => Array.isArray(rows) && rows.every(Array.isArray)});
 }
 
 /**
@@ -93,7 +84,7 @@ async function appendRow(sheetName, row) {
       requestBody: { values: [row] }
     }, { timeout: API_TIMEOUT_MS });
   } finally {
-    invalidateCache();
+    await sharedCache.invalidate(cacheKey(spreadsheetId,sheetName));
   }
 }
 

@@ -237,3 +237,27 @@ Cập nhật gần nhất: 02/11/2026 (Chỉ định vị trí không ghi lên K
 Cập nhật gần nhất: 03/11/2026 (Kiểm kê sửa trên bảng như sheet + tìm kiếm kiểu tra-cuu-vi-tri; trước đó 02/11/2026: Kiểm kê đối chiếu Hà Nội + Sài Gòn, đủ cột T10, dán cột `/stocktake/`, migration `0105`, quyền `stocktake.view/edit/close`) — trước đó 30/10/2026 (gỡ module Vị trí hàng cũ; VT Hà Nội/Sài Gòn mở xem + xuất Excel cho mọi vai trò; VT Đơn xuất kho + số lượng âm, migration 0104; Chỉ định vị trí: gỡ ghi ngược KiotViet, biến `KIOT_ORDER_WRITE_ENABLED`, endpoint `order-lines/remove` và 2 cảnh báo Lệch Kiot / Lệch SL trong đơn; Xóa dòng/SL cần nhặt chỉ nội bộ; phiếu in theo thứ tự trong hộp) — trước đó 31/10/2026 (Chỉ định vị trí: thêm/sửa/xóa vị trí VT HN/SG ngay trong hộp; trang VT chặn hạ ghi chú dưới phần đơn Đang bốc giữ) — trước đó 29/10/2026 (Công nợ: "Đã xử lý" = không phạt, kể cả số tay, số phiên reset; đối soát đầy đủ `products` mỗi 24 giờ, sync tăng dần `customers`/`products` sắp theo id + chồng lấn 5 phút, nạp bù 45 hàng thiếu / 9 hàng thừa).
 
 28/10/2026 — Phiếu in: đồng bộ chiều cao và cỡ chữ mọi hàng dữ liệu trong bảng, tiêu đề chỉnh riêng. Ctrl+L/R/E căn trái/phải/giữa và Ctrl+B/I đậm/nghiêng cho các cột bôi chọn ở mọi hàng cùng nhóm; ngoài bảng định dạng vùng chữ/đoạn chọn. Form chung JSONB thêm `groups.body/header` (height/size/columns: align/bold/italic), `blocks` (căn đoạn); `fonts` hỗ trợ đậm/nghiêng vùng chữ. Cấu hình áp dụng cả phiếu số dòng khác, qua tài khoản/máy/phiên; giữ kiểm tra version, chỉ lưu khi báo thành công. Không migration/API mới; nội dung chỉ đọc.
+
+
+## 03/11/2026 — Tăng tốc chỉ định và in phiếu (cục bộ, chưa deploy)
+
+Đường chỉ định tra đúng mã đơn HN/SG và dùng lại quy tắc gộp Vòng đời/Accounting, không tải toàn bộ đơn hoặc tính cước/điều chuyển. Ghi dòng chỉ định theo lô trong cùng giao dịch/khóa PostgreSQL; bản in tiếp tục dùng snapshot sau commit. Tải trước tài nguyên phiếu và QR song song; chỉ cho in khi form chung đọc mới thành công và không còn lượt lưu form đang chạy.
+
+Redis/Valkey dùng cho SĐT sale (fresh 5 phút, last-good tối đa 30 phút, worker hiện có làm mới 4 phút) và nguồn Sheets/lịch sử Vòng đời (15 giây, generation token chống ghi cache cũ kể cả eviction). Không cache tồn, giữ chỗ, auth hoặc form in. Redis lỗi thì đọc nguồn, lệnh cache tối đa 150ms, hàng đợi client tối đa 100 lệnh; cold SĐT chỉ chờ 1 giây. `REDIS_ENABLED=false` hoặc thiếu `REDIS_URL` dùng cache RAM; khi bật cần `REDIS_NAMESPACE` riêng môi trường và private URL cùng vùng trên web/worker.
+
+Server-Timing cho `/api/shipment/pick/*`; browser measures `tokosi.pick.assets/render/layout/preview-ready/submit-ready` không chứa dữ liệu đơn. Monitor bổ sung eventLoopP95/Max, poolTotal/Idle/Waiting, cacheHit/Miss/Error/Bypass bên cạnh RSS/heap.
+
+Cấu trúc bổ sung:
+```text
+server/lib/sharedCache.js                    # Redis client + cache-aside/generation/fallback
+server/lib/sharedCache.test.js               # timeout, expiry, invalidation, corruption
+server/lib/sharedCache.integration.test.js   # Redis thật qua REDIS_TEST_URL (TEST riêng)
+server/scripts/benchmarkPicking.js           # benchmark offline PGlite, không production
+server/pickAssignments/sellerPhoneCache.test.js
+server/sheets/lifecycleSourceCache.test.js
+tasks/redis-performance/                     # plan, todo, benchmark và runbook cutover
+```
+
+Kiểm chứng/triển khai: xem [kế hoạch Redis](tasks/redis-performance/plan.md), [benchmark cục bộ](tasks/redis-performance/benchmark.md) và [runbook](tasks/redis-performance/rollout.md). Giữ worker Singapore hiện có; tạo web Singapore thay thế Oregon sau kiểm chứng. Chưa thay đổi dịch vụ Render/domain hoặc xác nhận p95 production; không migration. Integration Redis thật đang chờ TEST Redis; công cụ browser dừng vì không xác định chắc chắn URL Windows.
+
+Cập nhật gần nhất: 03/11/2026.

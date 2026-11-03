@@ -67,6 +67,62 @@ async function fixture({ orders = { DH001: order() }, positions } = {}) {
 
 const assignBody = (allocations, extra = {}) => ({ branch: 'HN', orderCode: 'DH001', allocations, ...extra });
 
+test('assign and candidates share the contact lookup already performed by loadOrder, without repeating an empty lookup',async()=>{
+  const {db}=await fixture();
+  try {
+    const source=order({sellerPhone:''});let extraLookups=0;
+    const service=createPickAssignmentsService({getDb:()=>poolFor(db),loadOrder:async()=>source,
+      loadSellerPhone:async()=>{extraLookups++;return '0901234567';}});
+    const {assignment}=await service.assign(ctx(),assignBody([{productCode:'AAA1',positionId:1,qty:250}]));
+    assert.equal(assignment.snapshot.sellerPhone,'');
+    assert.equal(extraLookups,0);
+    const candidates=await service.candidates(ctx(),{branch:'HN',orderCode:'DH001'});
+    assert.equal(candidates.assignment.snapshot.sellerPhone,'');
+    assert.equal(extraLookups,0);
+    source.sellerPhone='0909876543';
+    const enriched=await service.candidates(ctx(),{branch:'HN',orderCode:'DH001'});
+    assert.equal(enriched.assignment.snapshot.sellerPhone,'0909876543');
+    assert.equal(extraLookups,0);
+    assert.equal((await db.query('SELECT order_snapshot FROM order_pick_assignments WHERE id=$1',[assignment.id])).rows[0].order_snapshot.sellerPhone,'');
+    const oldPrint=await service.get(ctx(),{branch:'HN',orderCode:'DH001'});
+    assert.equal(oldPrint.assignment.snapshot.sellerPhone,'0901234567');
+    assert.equal(extraLookups,1);
+  }finally{await db.close();}
+});
+
+test('assign inserts every position in one batch and never fetches seller contact while holding the transaction',async()=>{
+  const {db}=await fixture();
+  try {
+    let inTransaction=false, lineInserts=0;
+    const query=async(sql,params)=>{
+      if(sql==='BEGIN')inTransaction=true;
+      if(sql==='COMMIT'||sql==='ROLLBACK')inTransaction=false;
+      if(/INSERT INTO order_pick_lines\b/.test(sql))lineInserts++;
+      return db.query(sql,params);
+    };
+    const pool={query,connect:async()=>({query,release(){}})};
+    const service=createPickAssignmentsService({getDb:()=>pool,loadOrder:async()=>order(),loadSellerPhone:async()=>{assert.equal(inTransaction,false);return '0901234567';}});
+    const {assignment}=await service.assign(ctx(),assignBody([{productCode:'AAA1',positionId:1,qty:200},{productCode:'AAA1',positionId:2,qty:50}]));
+    assert.equal(lineInserts,1);
+    assert.equal(assignment.lines.length,2);
+    await assert.rejects(()=>service.assign(ctx(),assignBody([{productCode:'AAA1',positionId:1,qty:200}],{reassign:true,version:99})),{code:'VERSION_CONFLICT'});
+    assert.equal((await service.get(ctx(),{branch:'HN',orderCode:'DH001'})).assignment.id,assignment.id);
+    const failingQuery=async(sql,params)=>{
+      if(/INSERT INTO order_pick_lines\b/.test(sql))throw new Error('line insert failed');
+      return query(sql,params);
+    };
+    const failingPool={query:failingQuery,connect:async()=>({query:failingQuery,release(){}})};
+    const failingService=createPickAssignmentsService({getDb:()=>failingPool,loadOrder:async()=>order()});
+    await assert.rejects(()=>failingService.assign(ctx(),assignBody([{productCode:'AAA1',positionId:1,qty:200},{productCode:'AAA1',positionId:2,qty:50}],{reassign:true,version:1})),/line insert failed/);
+    const latest=(await service.get(ctx(),{branch:'HN',orderCode:'DH001'})).assignment;
+    assert.equal(latest.id,assignment.id);
+    assert.equal(latest.status,'picking');
+    assert.equal(latest.lines.length,2);
+    assert.equal(latest.history.length,1);
+    assert.equal(Number((await db.query('SELECT count(*) FROM order_pick_assignments')).rows[0].count),1);
+  }finally{await db.close();}
+});
+
 test('reject fractional source lines before merging and fractional allocations', async () => {
   for (const quantities of [[0.4], [0.6], [0.4, 0.6], [-1], [0]]) {
     const {db,service}=await fixture({orders:{DH001:order({lines:quantities.map(quantity=>({productCode:'AAA1',quantity,price:10}))})}});

@@ -570,6 +570,21 @@ async function findMergedOrder(branch, orderCode, { kiot } = {}) {
   return rows.find(row => row.branch === branch && normalizeCode(row.orderCode) === target) || null;
 }
 
+// Same merge rules as the full list, restricted to the requested order code.
+// Do not initialize the 60k-order cache or calculate stock/freight to open a pick.
+async function findPickingOrder(branch, orderCode, {kiot} = {}) {
+  const target = normalizeCode(orderCode);
+  if (!target) return null;
+  const [records, historyRows, orders] = await Promise.all([
+    repo.readAll(), repo.readOverrideHistory(), kiot.readOrderHeaders(orderCode.trim())
+  ]);
+  return mergeRows({
+    records: records.filter(row => normalizeCode(row.orderCode) === target),
+    overrides: latestOverrideByCode(historyRows.filter(row => normalizeCode(row.order_code) === target)),
+    kiotResult: {ok:true, orders}
+  }).find(row => row.branch === branch && normalizeCode(row.orderCode) === target) || null;
+}
+
 /**
  * Toan bo dong DA LOC + SAP XEP (moi trang, khong cat trang) de xuat Excel — cung bo tham so voi queryOrders
  * nen file khop dung bang tren man hinh. Khong truyen bo loc nao -> toan bo (don moi dat nhat truoc).
@@ -677,6 +692,6 @@ async function overrideStatus(orderCode, { code, changedBy, changedByRole, note 
 module.exports = {
   STATUS, STATUS_LABEL, STATUS_RANK,
   computeStatus, computeEffectiveStatus, WARNING, WARNING_LABEL, computeWarnings, workingMsBetween, parseSheetTimeMs, findOrder, listAllOrders, queryOrders,
-  exportOrders, overrideStatus, listHistory, findMergedOrder,
+  exportOrders, overrideStatus, listHistory, findMergedOrder, findPickingOrder,
   mergeRows, pickAccountingKiotOrder
 };

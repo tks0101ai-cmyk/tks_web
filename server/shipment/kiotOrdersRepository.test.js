@@ -85,6 +85,23 @@ const HR = (extra) => ({
 // Dong hang cua don Phieu tam (PENDING_LINES_SQL)
 const LR = (extra) => ({ branch: 'hanoi', order_id: '1', product_code: 'A', quantity: 500, amount: 500000, ...extra });
 
+test('picking reads only matching headers and raw detail without loading stock, transit or freight',async()=>{
+ const calls=[];
+ const detail={code:'DH1',lines:[{productCode:'A',quantity:2,price:10}]};
+ const pool={query:async(sql,params)=>{calls.push({sql,params});return {rows:[HR({code:'DH1',sale_telegram_id:'12345'})]};}};
+ const repo=createKiotOrdersRepository({pool,fetchOrderDetail:async args=>{assert.equal(args.branchCode,'hanoi');assert.equal(args.code,'DH1');return detail;},readInTransit:async()=>assert.fail('no transit'),lookupMeasures:async()=>assert.fail('no measures')});
+ const headers=await repo.readOrderHeaders(' dh1 ');
+ assert.equal(headers[0].saleTelegramId,'12345');
+ assert.equal(headers[0].branch,'HN');
+ assert.equal(calls.length,1);
+ assert.match(calls[0].sql,/lower\(btrim\(o\.code\)\) = \$1/);
+ assert.deepEqual(calls[0].params,['dh1']);
+ assert.match(calls[0].sql,/2026-10-10/);
+ assert.equal(await repo.readPickingDetail({branch:'HN',code:'DH1'}),detail);
+ assert.equal(calls.length,1);
+ await assert.rejects(()=>repo.readPickingDetail({branch:'both',code:'DH1'}),{statusCode:400});
+});
+
 /** Pool gia: nhan ra 3 loai truy van theo noi dung SQL; dem so lan goi. */
 function createFakePool({ headerRows = [], lineRows = [], onHand = {}, failOrders = false } = {}) {
   const calls = { orders: 0, lines: 0, onHand: [] };

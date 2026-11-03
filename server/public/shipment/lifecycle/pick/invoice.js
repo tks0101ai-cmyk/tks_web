@@ -44,6 +44,16 @@ const deliveryTemplate=`<div class="delivery-heading"><strong class="delivery-ti
 <table class="invoice-layout-table delivery-signatures" data-print-table="deliverySignatures" data-table-controls="off" data-table-sort="off"><colgroup><col style="width:30%"><col style="width:30%"><col style="width:40%"></colgroup><tbody><tr><td><strong>Người nhận hàng</strong></td><td><strong>Nhân viên nhặt hàng</strong></td><td><em>Ngày {Ngay} tháng {Thang} năm {Nam}</em><br><strong>Nhân viên xuất hàng</strong></td></tr></tbody></table>`;
 let currentPrint=null;
 
+// One retained measure per stage; observers can collect distributions without growing the timeline.
+// Numeric start/end isolate overlapping operations without leaving global marks behind.
+function startTiming(stage){
+  const started=performance.now();let ended=false;
+  return ()=>{
+    if(ended)return;ended=true;
+    try{const name='tokosi.pick.'+stage;performance.clearMeasures(name);performance.measure(name,{start:started,end:performance.now()});}catch(_){}
+  };
+}
+
 async function fetchText(url){
   const res=await fetch(url,{credentials:'same-origin'});
   if(!res.ok)throw new Error('Không tải được '+url);
@@ -61,23 +71,26 @@ async function dataUri(url){
 function loadAssets(){
   if(window.PickingInvoiceTemplate&&window.PickingPrintCSS)return Promise.resolve();
   if(!assetsPromise){
+    const finish=startTiming('assets');
     assetsPromise=(async()=>{
       const [template,css]=await Promise.all([fetchText(BASE+'order-template.tpl?v=20261029-7'),fetchText(BASE+'invoice-a4.css?v=20261102-1')]);
       let out=template;
-      for(const id of new Set([...template.matchAll(CDN)].map(m=>m[1]))){
-        const uri=await dataUri(BASE+'invoice-assets/'+id+'.jpg');
+      const images=await Promise.all([...new Set([...template.matchAll(CDN)].map(m=>m[1]))].map(async id=>[id,await dataUri(BASE+'invoice-assets/'+id+'.jpg')]));
+      for(const [id,uri] of images){
         out=out.split('https://cdn2-retail-images.kiotviet.vn/2026/10/05/chhanoi/'+id+'.jpg').join(uri);
       }
       window.PickingInvoiceTemplate=out;
       window.PickingPrintCSS=css;
-    })().catch(error=>{assetsPromise=null;throw error;});
+    })().catch(error=>{assetsPromise=null;throw error;}).finally(finish);
   }
   return assetsPromise;
 }
 
 /* order: assignment.snapshot (+ orderCode, branch); record: assignment. Trả Promise (nạp mẫu lần đầu cần mạng). */
 async function show(order,record,template='order'){
+  const readyTiming=startTiming('preview-ready');
   await loadAssets();
+  const renderTiming=startTiming('render');
   let style=document.getElementById('pickingInvoiceStyle');
   if(!style){style=document.createElement('style');style.id='pickingInvoiceStyle';document.head.append(style);}
   style.textContent=window.PickingPrintCSS;
@@ -179,9 +192,15 @@ async function show(order,record,template='order'){
   titleEl.replaceChildren(document.createTextNode(title+' · '),codeEl);
   document.getElementById('pickingPrintSheet').replaceChildren(root);
   currentPrint={order,record};
-  await window.PickingPrint?.prepare?.();
+  renderTiming();
+  const layoutTiming=startTiming('layout');
+  let ready;
+  try{ready=await window.PickingPrint?.prepare?.();}finally{layoutTiming();}
+  if(!root.isConnected)return false;
   const dialog=document.getElementById('pickingPrintDialog');
   if(!dialog.open)dialog.showModal();
+  if(ready!==false)readyTiming();
+  return ready!==false;
 }
-window.PickingInvoice={show,loadAssets,changeTemplate:template=>currentPrint?show(currentPrint.order,currentPrint.record,template):Promise.resolve()};
+window.PickingInvoice={show,loadAssets,startTiming,changeTemplate:template=>currentPrint?show(currentPrint.order,currentPrint.record,template):Promise.resolve()};
 })();

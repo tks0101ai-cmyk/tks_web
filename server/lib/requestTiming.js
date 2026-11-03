@@ -42,14 +42,19 @@ function markTiming(name) {
 
 // Chay 1 query va ghi thoi gian vao request hien tai (khong co request thi chay thang).
 async function timedQuery(pool, name, sql, params) {
+  return timedOperation(name, () => pool.query(sql, params));
+}
+
+// Independent stages can overlap: measure each stage from its own start.
+async function timedOperation(name, operation) {
   const timing = storage.getStore();
-  if (!timing) return pool.query(sql, params);
+  if (!timing) return operation();
   const began = performance.now();
   try {
-    return await pool.query(sql, params);
+    return await operation();
   } finally {
     timing.entries.push({ name, ms: performance.now() - began });
   }
 }
 
-module.exports = { startTiming, markTiming, timedQuery };
+module.exports = { startTiming, markTiming, timedQuery, timedOperation };

@@ -9,6 +9,9 @@ const CONFIG = require('./config');
 function startBackgroundJobs() {
   const stops = [];
 
+  // The same host as the existing sync jobs warms both retailer-specific phone maps.
+  stops.push(require('./pickAssignments/pickKiotData').startSellerPhoneRefresh());
+
   stops.push(require('./productContainers/sync').startContainerSchedule());
 
   // CÂN ĐO: đọc Google Sheets theo chu kỳ vào Postgres, web chỉ đọc DB (Vị trí hàng cũ đã gỡ 2026-10-30).

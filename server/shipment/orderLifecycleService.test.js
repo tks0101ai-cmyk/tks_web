@@ -72,6 +72,21 @@ function record(overrides) {
   }, overrides);
 }
 
+test('targeted picking lookup uses both matching Kiot branches and the existing merge rules without reading the full list', async () => {
+  const rows = [record({orderCode:'DH1',_flow:'ACCOUNTING',_branch:'',accountingSender:'KT'}),record({orderCode:'OTHER'})];
+  const context = freshService(rows, []);
+  try {
+    const orders = [{branch:'HN',code:'DH1',kiotStatus:'Hoàn thành',orderDate:'01/11/2026 09:00',saleTelegramId:'12345'},
+      {branch:'SG',code:'DH1',kiotStatus:'Phiếu tạm',orderDate:'01/11/2026 08:00',saleTelegramId:'54321'}];
+    let fullReads = 0;
+    const kiot = {readOrders:async()=>{fullReads++;throw new Error('must not scan all orders');},readOrderHeaders:async code=>{assert.equal(code,'DH1');return orders;}};
+    const expected = context.service.mergeRows({records:rows.slice(0,1),overrides:new Map(),kiotResult:{ok:true,orders}});
+    assert.deepEqual(await context.service.findPickingOrder('SG',' DH1 ',{kiot}),expected.find(row=>row.branch==='SG'));
+    assert.deepEqual(await context.service.findPickingOrder('HN','DH1',{kiot}),expected.find(row=>row.branch==='HN'));
+    assert.equal(fullReads,0);
+  } finally { context.restore(); }
+});
+
 test('computeStatus: không có gì -> NOT_SENT (Đơn chưa gửi kế toán)', () => {
   const ctx = freshService([]);
   try {
