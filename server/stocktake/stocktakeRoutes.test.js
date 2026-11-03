@@ -80,7 +80,7 @@ test('Quan ly kiem kho duoc cap xem + sua: khong dong dot duoc', async t => {
   assert.ok(!calls.some(c => c[0] === 'closeSession' || c[0] === 'importSheet'));
 });
 
-test('Khong co quyen sua: khong dan cot, khong doi dot doi chieu', async t => {
+test('Khong co quyen sua: khong sua o, khong doi dot doi chieu', async t => {
   const viewer = { id: 'v', vaiTro: 'Nhân viên kho', featurePermissions: { 'stocktake.view': true } };
   const { base, calls } = await start(t, { user: viewer });
   assert.equal((await fetch(base + '/sessions/7/cells', { method: 'POST', ...json({ cells: [] }) })).status, 403);
