@@ -10,30 +10,30 @@
   const $ = id => document.getElementById(id);
   // Đúng thứ tự tab "KIỂM KÊ HN T10" (A→W); đợt SG đổi nhãn otherDiff/otherRatio.
   const COLUMNS = [
-    { key: 'code', label: 'Mã hàng', width: 120, locked: true, type: 'text' },
-    { key: 'name', label: 'Tên hàng', width: 240, type: 'text' },
-    { key: 'counted', label: 'Tổng kiểm', width: 110, num: true },
-    { key: 'stock', label: 'Tồn KIOT', width: 110, num: true },
-    { key: 'diffQty', label: 'SL chênh', width: 110, num: true },
-    { key: 'diffValue', label: 'Giá trị chênh', width: 150, num: true },
-    { key: 'status', label: 'Trạng thái', width: 130, type: 'text' },
-    { key: 'reason', label: 'Chi tiết lý do', width: 220, type: 'text' },
-    { key: 'printPage', label: 'Trang in', width: 80, type: 'text' },
-    { key: 'printTime', label: 'Giờ in', width: 90, type: 'text' },
-    { key: 'recheck', label: 'Người kiểm lại', width: 140, type: 'text' },
-    { key: 'prevDiff', label: 'KK trước sai', width: 110, num: true },
-    { key: 'otherDiff', label: 'Kiểm SG', width: 110, num: true },
-    { key: 'cluster', label: 'Cụm SP', width: 140, type: 'text' },
-    { key: 'clusterCount', label: 'Count', width: 70, num: true },
-    { key: 'clusterDiff', label: 'Chênh cụm', width: 110, num: true },
-    { key: 'prevRatio', label: 'Do KK trước', width: 96, num: true, percent: true },
-    { key: 'clusterPrevRatio', label: 'Lẫn + KK trước', width: 110, num: true, percent: true },
-    { key: 'otherRatio', label: 'Do kiểm SG', width: 96, num: true, percent: true },
-    { key: 'forgotten', label: 'Quên KK', width: 80, type: 'flag' },
-    { key: 'combo', label: 'Combo', width: 70, type: 'flag' },
-    { key: 'position', label: 'Vị trí kho gần nhất', width: 130, type: 'text' },
-    { key: 'cost', label: 'Giá vốn', width: 110, num: true },
-    { key: 'updated', label: 'Cập nhật', width: 140, type: 'text' }
+    { key: 'code', label: 'Mã hàng', width: 96, locked: true, type: 'text' },
+    { key: 'name', label: 'Tên hàng', width: 200, type: 'text' },
+    { key: 'counted', label: 'Tổng kiểm', width: 84, num: true },
+    { key: 'stock', label: 'Tồn KIOT', width: 84, num: true },
+    { key: 'diffQty', label: 'SL chênh', width: 84, num: true },
+    { key: 'diffValue', label: 'Giá trị chênh', width: 110, num: true },
+    { key: 'status', label: 'Trạng thái', width: 110, type: 'text' },
+    { key: 'reason', label: 'Chi tiết lý do', width: 170, type: 'text' },
+    { key: 'printPage', label: 'Trang in', width: 64, type: 'text' },
+    { key: 'printTime', label: 'Giờ in', width: 70, type: 'text' },
+    { key: 'recheck', label: 'Người kiểm lại', width: 110, type: 'text' },
+    { key: 'prevDiff', label: 'KK trước sai', width: 84, num: true },
+    { key: 'otherDiff', label: 'Kiểm SG', width: 84, num: true },
+    { key: 'cluster', label: 'Cụm SP', width: 110, type: 'text' },
+    { key: 'clusterCount', label: 'Count', width: 64, num: true },
+    { key: 'clusterDiff', label: 'Chênh cụm', width: 84, num: true },
+    { key: 'prevRatio', label: 'Do KK trước', width: 72, num: true, percent: true },
+    { key: 'clusterPrevRatio', label: 'Lẫn + KK trước', width: 84, num: true, percent: true },
+    { key: 'otherRatio', label: 'Do kiểm SG', width: 72, num: true, percent: true },
+    { key: 'forgotten', label: 'Quên KK', width: 64, type: 'flag' },
+    { key: 'combo', label: 'Combo', width: 64, type: 'flag' },
+    { key: 'position', label: 'Vị trí kho gần nhất', width: 110, type: 'text' },
+    { key: 'cost', label: 'Giá vốn', width: 84, num: true },
+    { key: 'updated', label: 'Cập nhật', width: 120, type: 'text' }
   ];
   const STATUS_COLORS = window.TKSStocktakePaste ? window.TKSStocktakePaste.STATUS_COLORS : {};
   const Search = window.TKSStocktakeSearch;
@@ -297,7 +297,7 @@
     syncSortHeader();
     if (window.TKSTables) {
       window.TKSTables.enhance($('stTable'), {
-        key: 'stocktake-board-v3', button: $('stColumnsButton'), sort: false,
+        key: 'stocktake-board-v4', button: $('stColumnsButton'), sort: false,
         columns: COLUMNS.map(c => ({ key: c.key, label: labelOf(c, state.headBranch), width: c.width, locked: !!c.locked, hidden: c.key === 'updated' }))
       });
     }
