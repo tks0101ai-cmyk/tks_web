@@ -103,6 +103,7 @@
 /* Tiêu đề và ô một dòng: cột hẹp hơn chữ thì chữ bị cắt ở mép ô (cột bên phải như đè lên, giống Excel),
    không vỡ chữ xuống dòng. Ghi đè table-controls (white-space:normal; overflow-wrap:anywhere) chỉ cho bảng kiểm kê. */
 #stTable th,#stTable td{white-space:nowrap !important;overflow:hidden;overflow-wrap:normal !important;text-overflow:clip !important}
-#stTable thead th{padding-top:6px;padding-bottom:6px;font-size:11px;line-height:1.3}
+#stTable thead th{padding-top:6px;padding-bottom:6px;padding-left:8px;padding-right:8px;font-size:11px;line-height:1.3;text-transform:none;letter-spacing:0}
+#stTable tbody td{padding-left:8px;padding-right:8px}
 #stTable thead th .sort-button,#stTable thead th .sort-button>.sort-label{white-space:nowrap !important;overflow:hidden;overflow-wrap:normal !important;font-size:11px}
 #stTable thead th .sort-indicator{flex:none}
