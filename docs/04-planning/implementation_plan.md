@@ -338,7 +338,7 @@ Nút **Xuất kho** trên `/vt-positions/` trừ SL hàng loạt theo file Excel
 
 - **(Đã gỡ 02/11/2026, xem mục "Chỉ định vị trí không ghi lên KiotViet" ở cuối) Chỉ định vị trí ghi ngược Kiot (30/10/2026):** hộp chỉ định có kéo-thả đổi thứ tự dòng (chỉ trong lần mở, phiếu in theo thứ tự đó), nút Xóa dòng và SL cần nhặt sửa tay ghi lên đơn đặt hàng Kiot qua `kiotviet/kiotOrderEditor.js` (đọc → PUT /orders/{id} giữ nguyên mọi trường khác → đọc lại đối chiếu → khôi phục nếu lệch → upsert DB cục bộ); nhật ký `order_kiot_edit_log` (migration `0102`), cờ `KIOT_ORDER_WRITE_ENABLED`, endpoint `POST /api/shipment/pick/order-lines/remove`.
 
-## 02/11/2026 — Kiểm kê: đối chiếu Hà Nội (migration 0105, chưa migrate/deploy)
+## 02/11/2026 — Kiểm kê: đối chiếu Hà Nội (migration 0105, đã áp DB 03/11/2026, chưa deploy)
 
 - Module `server/stocktake/`: `stocktakeCompute.js` (hàm thuần gom số đếm + phần sửa, Quên KK, chênh theo Cụm SP), `stocktakeService.js` (đợt, sửa dòng, ghi chú, tag, đóng đợt chụp `stocktake_session_results`, khóa lạc quan `version` + lịch sử bất biến), `stocktakeRoutes.js` (`/api/stocktake`, SSE, xuất Excel), `stocktakeSheetImport.js` (nạp tab KIỂM KÊ HN T10 và KIỂM SG, `source: t10|sg`, tự nối đợt đối chiếu), `stocktakeEvents.js` (bus chung `dashboardRollupEvents`).
 - Trang `public/stocktake/` (menu Vị trí hàng → Kiểm kê, `table-controls.js`, sáng/tối, di động): đủ 23 cột T10 A→W theo thứ tự sheet, sắp xếp bằng bấm tiêu đề trên toàn bộ dòng đã lọc, đối chiếu chéo SG/HN (`counterpart_session_id`, `PATCH /sessions/:id`), dán cột từ Google Sheets (`POST /sessions/:id/paste`, `public/stocktake/stocktakePaste.js` dùng chung trình duyệt + server), xuất Excel 24 cột.
