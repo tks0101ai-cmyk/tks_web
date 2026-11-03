@@ -104,10 +104,6 @@ function createStocktakeRouter(dependencies = {}) {
   router.put('/api/stocktake/sessions/:id/codes/:code/tag', edit, handle(async (req, res) => {
     res.json(await svc().saveTag(ctxOf(req), idOf(req), req.params.code, req.body || {}));
   }));
-  // Dan 1 cot tu sheet (Ma + gia tri) - xem truoc lam o trinh duyet, server kiem lai va ghi 1 giao dich.
-  router.post('/api/stocktake/sessions/:id/paste', edit, handle(async (req, res) => {
-    res.json(await svc().pasteColumn(ctxOf(req), idOf(req), req.body || {}));
-  }));
   // Sua tren bang: go / dan khoi / xoa / keo nhan ban / hoan tac (nhieu ma x cot, kiem expected tung o).
   router.post('/api/stocktake/sessions/:id/cells', edit, handle(async (req, res) => {
     res.json(await svc().saveCells(ctxOf(req), idOf(req), req.body || {}));

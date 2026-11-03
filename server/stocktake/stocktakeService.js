@@ -611,52 +611,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     return new Map(rows.map(shapeTag).map(tag => [tag.code, tag]));
   }
 
-  // Dan 1 cot tu sheet theo ma: ghi de co chu dich (khong kiem version), 1 giao dich, 1 dong lich su 'paste' moi ma co doi.
-  async function pasteColumn(ctx, sessionId, body = {}) {
-    const column = String(body.column || '');
-    if (!Object.hasOwn(PASTE_COLUMNS, column)) throw fail(400, 'VALIDATION', 'Cột dán không hợp lệ.', { field: 'column' });
-    const mode = body.mode === 'clear' ? 'clear' : 'skip';
-    const input = Array.isArray(body.rows) ? body.rows : null;
-    if (!input || !input.length || input.length > MAX_PASTE_ROWS) throw fail(400, 'VALIDATION', `Cần từ 1 đến ${MAX_PASTE_ROWS} dòng dán.`, { field: 'rows' });
-    const actor = actorOf(ctx);
-    return withTransaction(async client => {
-      const session = await openSessionForWrite(client, ctx, sessionId);
-      const inputs = await loadInputs(client, session, { withCounterpart: false });
-      const known = new Set([...buildBoard(inputs).rows.map(r => r.code), ...inputs.products.map(p => codeKey(p.code))]);
-      const skipped = { notFound: 0, invalid: 0, unchanged: 0, empty: 0, duplicates: 0 };
-      const isTag = Object.hasOwn(TAG_FIELDS, column);
-      const current = isTag ? await lockTags(client, session.branch, input.map(item => codeKey(item && item.code)).filter(code => known.has(code)))
-        : new Map(inputs.notes.map(item => [item.code, item]));
-      const employees = column === 'recheck' ? (await loadEmployees(client)).filter(e => e.branch === session.branch) : [];
-      const changes = [];
-      // Ma lap trong 1 lan dan (khac hoa/thuong): giu dong cuoi, dong truoc tinh vao duplicates (ON CONFLICT khong ghi 2 lan 1 khoa).
-      const latest = new Map();
-      for (const item of input) {
-        const code = codeKey(item && item.code);
-        if (!code) { skipped.notFound += 1; continue; }
-        if (latest.has(code)) skipped.duplicates += 1;
-        latest.set(code, item);
-      }
-      for (const [code, item] of latest) {
-        if (!known.has(code)) { skipped.notFound += 1; continue; }
-        const parsed = normalizeValue(column, item.value);
-        if (!parsed.ok) { skipped.invalid += 1; continue; }
-        if (parsed.empty && mode === 'skip') { skipped.empty += 1; continue; }
-        const before = current.get(code) || null;
-        const next = nextRecord(column, before, parsed.value, employees);
-        if (sameRecord(column, before, next)) { skipped.unchanged += 1; continue; }
-        changes.push({ code, before, next });
-      }
-      if (changes.length) {
-        if (isTag) await upsertTags(client, session.branch, changes, actor);
-        else await upsertNotes(client, session.id, changes, actor);
-        await insertPasteHistory(client, session, actor, changes.map(c => ({ code: c.code, before: c.before, after: { column, ...c.next } })));
-      }
-      return { changed: changes.length, skipped };
-    }, sessionId);
-  }
-
-  // Lich su dan cot / sua tren bang: action 'paste' (co san trong CHECK), 1 dong moi (ma, cot).
+  // Lich su sua tren bang: action 'paste' (co san trong CHECK; truoc day dung cho Dan cot), 1 dong moi (ma, cot).
   async function insertPasteHistory(client, session, actor, items) {
     if (!items.length) return;
     await client.query(
@@ -791,7 +746,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     }, sessionId);
   }
 
-  return { listSessions, createSession, updateSession, getBoard, saveLine, addLine, saveNote, saveTag, pasteColumn, saveCells, codeHistory, closeSession };
+  return { listSessions, createSession, updateSession, getBoard, saveLine, addLine, saveNote, saveTag, saveCells, codeHistory, closeSession };
 }
 
 module.exports = { createStockTakeService, TEAM_LINES_SQL, fail, ...createStockTakeService() };

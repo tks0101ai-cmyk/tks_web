@@ -349,7 +349,6 @@
       fillCounterpartSelect($('stCounterpart'), session.branch, session.counterpartSessionId, board.counterpart);
       $('stCounterpart').disabled = !(state.canEdit && session.status === 'open');
     }
-    $('stPasteButton').hidden = !(session && session.status === 'open' && state.canEdit);
     renderStats($('stStats'), board ? [
       ['mã trong đợt', num(board.totals.codes)],
       ['mã lệch', num(board.totals.mismatched), board.totals.mismatched ? 'warn' : ''],
@@ -1312,93 +1311,6 @@
     });
   }
 
-  // ---------- Dán cột ----------
-  const paste = { rows: [], plan: null };
-  function pasteColumnLabel(key) {
-    const spec = window.TKSStocktakePaste.PASTE_COLUMNS[key];
-    return key === 'otherDiffManual' ? 'Kiểm ' + otherLabel(state.board.session.branch) : spec.label;
-  }
-  // Giá trị hiện tại của cột trên một dòng, cùng kiểu với normalizeValue để so "sẽ đổi".
-  function currentValue(row, column) {
-    const note = row.note || {};
-    switch (column) {
-      case 'recheck': return recheckLabel(row.note);
-      case 'cluster': return row.cluster || '';
-      case 'combo': return !!row.isCombo;
-      case 'prevDiffManual': case 'otherDiffManual': return note[column] === undefined ? null : note[column];
-      default: return note[column] || '';
-    }
-  }
-  function previewPaste() {
-    const lib = window.TKSStocktakePaste;
-    const form = $('stPasteForm');
-    const column = form.elements.column.value;
-    const mode = form.elements.mode.value;
-    const byCode = new Map(state.board.rows.map(row => [row.code, row]));
-    const { rows, duplicates } = lib.parsePasteText(form.elements.text.value, { isKnownCode: code => byCode.has(code), column });
-    const plan = { send: [], matched: 0, notFound: [], changed: 0, invalid: 0, empty: 0, duplicates };
-    for (const item of rows) {
-      const row = byCode.get(item.code);
-      if (!row) { plan.notFound.push(item.code); plan.send.push(item); continue; } // server trả notFound nếu mã không có trên KiotViet
-      plan.matched += 1;
-      const parsed = lib.normalizeValue(column, item.value);
-      if (!parsed.ok) { plan.invalid += 1; continue; }
-      if (parsed.empty && mode === 'skip') { plan.empty += 1; continue; }
-      const before = currentValue(row, column);
-      const same = column === 'recheck' ? lib.foldName(before) === lib.foldName(parsed.value) : before === parsed.value;
-      if (!same) plan.changed += 1;
-      plan.send.push(item);
-    }
-    paste.plan = plan;
-    const lines = [
-      num(plan.matched) + ' mã khớp với đợt · ' + num(plan.changed) + ' ô sẽ đổi',
-      plan.invalid ? num(plan.invalid) + ' ô không hợp lệ (bỏ qua)' : '',
-      plan.empty ? num(plan.empty) + ' ô trống (bỏ qua)' : '',
-      plan.duplicates ? num(plan.duplicates) + ' mã lặp (lấy dòng cuối)' : '',
-      plan.notFound.length ? num(plan.notFound.length) + ' mã không có trong đợt: ' + plan.notFound.slice(0, 20).join(', ') + (plan.notFound.length > 20 ? '…' : '') : ''
-    ].filter(Boolean);
-    const box = $('stPastePreview');
-    box.textContent = '';
-    for (const text of lines) { const p = document.createElement('p'); p.textContent = text; box.appendChild(p); }
-    $('stPasteSave').disabled = !plan.send.length || (!plan.changed && !plan.notFound.length);
-  }
-  function bindPaste() {
-    $('stPasteButton').addEventListener('click', () => {
-      const form = $('stPasteForm');
-      form.reset();
-      const select = form.elements.column;
-      select.textContent = '';
-      for (const key of Object.keys(window.TKSStocktakePaste.PASTE_COLUMNS)) {
-        const option = document.createElement('option');
-        option.value = key;
-        option.textContent = pasteColumnLabel(key);
-        select.appendChild(option);
-      }
-      paste.plan = null;
-      $('stPasteError').textContent = '';
-      $('stPastePreview').textContent = '';
-      $('stPasteSave').disabled = true;
-      $('stPasteDialog').showModal();
-    });
-    $('stPasteForm').addEventListener('input', previewPaste);
-    $('stPasteForm').addEventListener('change', previewPaste);
-    $('stPasteForm').addEventListener('submit', async event => {
-      event.preventDefault();
-      if (!paste.plan || !paste.plan.send.length) return;
-      const form = event.target;
-      $('stPasteSave').disabled = true;
-      const { response, payload } = await request(API + '/sessions/' + state.sessionId + '/paste', jsonOptions('POST', {
-        column: form.elements.column.value, mode: form.elements.mode.value, rows: paste.plan.send
-      }));
-      if (!response.ok) { $('stPasteError').textContent = payload.error || 'Không lưu được.'; $('stPasteSave').disabled = false; return; }
-      $('stPasteDialog').close();
-      const s = payload.skipped || {};
-      notify('Đã dán ' + num(payload.changed) + ' ô' + (s.notFound ? ' · ' + num(s.notFound) + ' mã không có' : '') + (s.invalid ? ' · ' + num(s.invalid) + ' ô sai' : '')
-        + (s.duplicates ? ' · ' + num(s.duplicates) + ' mã lặp' : '') + '.');
-      await loadBoard({ background: true, forms: true });
-    });
-  }
-
   function syncTheme() {
     const light = document.documentElement.dataset.theme === 'light';
     $('themeLabel').textContent = light ? 'Dark mode' : 'Light mode';
@@ -1428,7 +1340,6 @@
     bindDetail();
     bindSelection();
     bindStatusColors();
-    bindPaste();
     window.addEventListener('pagehide', stopLive);
     try {
       await loadSessions();

@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261012">
   <link rel="stylesheet" href="/shared/table-controls.css?v=20261016-1">
   <link rel="stylesheet" href="/vt-positions/vt-positions.css?v=20261030-1">
-  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261103-1">
+  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261103-2">
 </head>
 <body>
   <div class="receipt-header">
@@ -84,7 +84,6 @@
           </select>
           <select id="stRecheckFilter" class="st-select" aria-label="Lọc theo người kiểm lại"><option value="">Mọi người kiểm lại</option></select>
           <select id="stStatusFilter" class="st-select" aria-label="Lọc theo trạng thái"><option value="">Mọi trạng thái</option></select>
-          <button class="locations-columns-button vt-btn" id="stPasteButton" type="button" hidden>Dán cột</button>
           <button class="locations-columns-button vt-btn" id="stExportButton" type="button">Xuất Excel</button>
           <button class="locations-columns-button vt-btn" id="stColumnsButton" type="button" aria-haspopup="dialog" aria-expanded="false">Cột hiển thị</button>
         </div>
@@ -123,29 +122,6 @@
         <div class="vt-dialog-actions">
           <button type="button" class="locations-columns-button" data-st-close>Hủy</button>
           <button type="submit" class="locations-columns-button vt-primary">Tạo đợt</button>
-        </div>
-      </div>
-    </form>
-  </dialog>
-
-  <dialog class="vt-dialog vt-dialog-wide" id="stPasteDialog" aria-labelledby="stPasteTitle">
-    <form id="stPasteForm" novalidate>
-      <div class="dp-head">
-        <div class="dp-head-text"><h3 class="dp-title" id="stPasteTitle">Dán cột từ sheet</h3><p class="dp-subtitle">Trên sheet bôi đen cột Mã SP và cột cần dán, copy rồi dán vào ô dưới. Web khớp theo mã.</p></div>
-        <button type="button" class="dp-close" data-st-close aria-label="Đóng">×</button>
-      </div>
-      <div class="dp-body">
-        <label class="vt-field"><span>Cột cần dán</span><select name="column" id="stPasteColumn"></select></label>
-        <label class="vt-field st-wide"><span>Dữ liệu dán (Mã SP ⇥ giá trị)</span><textarea name="text" id="stPasteText" rows="10" spellcheck="false"></textarea></label>
-        <fieldset class="st-paste-mode"><legend>Ô trống</legend>
-          <label><input type="radio" name="mode" value="skip" checked> Bỏ qua</label>
-          <label><input type="radio" name="mode" value="clear"> Xóa giá trị cũ</label>
-        </fieldset>
-        <div class="st-paste-preview" id="stPastePreview" aria-live="polite"></div>
-        <p class="vt-form-error" id="stPasteError" role="alert"></p>
-        <div class="vt-dialog-actions">
-          <button type="button" class="locations-columns-button" data-st-close>Hủy</button>
-          <button type="submit" class="locations-columns-button vt-primary" id="stPasteSave" disabled>Lưu</button>
         </div>
       </div>
     </form>
@@ -229,10 +205,10 @@
   <script src="/shared/search-clear.js?v=20261009-1"></script>
   <script src="/shared/shared-nav.js?v=20261103-stocktake"></script>
   <script src="/vendor/fuse.min.js?v=7.1.0"></script>
-  <script src="/stocktake/stocktakePaste.js?v=20261103-1"></script>
+  <script src="/stocktake/stocktakePaste.js?v=20261103-2"></script>
   <script src="/stocktake/stocktakeSearch.js?v=20261103-1"></script>
   <script src="/stocktake/stocktakeGrid.js?v=20261103-2"></script>
-  <script src="/stocktake/stocktake.js?v=20261103-4"></script>
+  <script src="/stocktake/stocktake.js?v=20261103-5"></script>
   <script>window.addEventListener('DOMContentLoaded', function () { TKSStocktake.init(); });</script>
   <script src="/shared/shooting-star.js?v=20261019"></script>
 </body>
