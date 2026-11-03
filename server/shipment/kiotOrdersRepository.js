@@ -343,8 +343,9 @@ function createKiotOrdersRepository({
    * don dang Phieu tam them ton thuc / dieu chuyen SG (hang dang van chuyen — chi hien thi) / so co ban
    * tung dong. Don khac trang thai Phieu tam: cac cot ton = null (ton hien tai khong co y nghia voi don da
    * xuat). Nem loi 400/404 cua getOrderDetail.
+   * lite: true — chi dau don + dong hang (hop Chi dinh vi tri / phieu nhat khong dung ton, co ban, can do, cuoc): bot 1-2 luot DB.
    */
-  async function readOrderDetail({ branch, code }) {
+  async function readOrderDetail({ branch, code, lite = false }) {
     const dbBranch = LIFECYCLE_TO_DB_BRANCH[branch];
     if (!dbBranch) throw makeError('Cơ sở không hợp lệ (HN hoặc SG).', 400, 'INVALID_BRANCH');
     const db = getDb();
@@ -358,6 +359,7 @@ function createKiotOrdersRepository({
       throw error;
     }
     const isPending = detail.status === PHIEU_TAM;
+    if (lite) return { ...detail, branch, phieuTam: isPending, sellableValue: null };
     const orderLines = Array.isArray(detail.lines) ? detail.lines : [];
 
     let stock = null;
