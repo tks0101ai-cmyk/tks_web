@@ -67,6 +67,8 @@
   // view.rows: các dòng đã lọc + sort; view.drawn: số dòng đã vẽ.
   // view.order: ma theo thu tu dang hien; tai nen (sau luu / SSE) giu nguyen thu tu nay de dong vua sua khong nhay cho.
   const view = { rows: [], drawn: 0, observer: null, order: null };
+  // Lan tim gan nhat chi ra ma gan giong (khong co ma khop dung) -> bao duoi thanh cong cu.
+  let searchFuzzy = false;
   // Vùng chọn kiểu sheet: chỉ số dòng trong view.rows và chỉ số cột trong COLUMNS.
   const selection = { anchor: null, focus: null, dragging: false, painted: [] };
   const live = { source: null, timer: null };
@@ -235,9 +237,12 @@
       if (state.status && (row.note ? row.note.statusText : '') !== state.status) return false;
       return true;
     });
+    searchFuzzy = false;
     if (!state.query.trim()) return sortRows(rows);
     const allowed = new Set(rows);
-    const found = Search.search(searchIndex(), state.query).filter(row => allowed.has(row));
+    const result = Search.search(searchIndex(), state.query);
+    searchFuzzy = result.fuzzy;
+    const found = result.rows.filter(row => allowed.has(row));
     return state.sortKey && state.sortDir ? sortRows(found) : found;
   }
 
@@ -367,6 +372,7 @@
     drawMore(Math.max(CHUNK, keepDrawn));
     paintSelection();
     if (board && !view.rows.length) $('stStatus').textContent = 'Không có mã nào khớp bộ lọc.';
+    else if (board && searchFuzzy) { $('stStatus').textContent = 'Không có mã khớp đúng, đang hiện mã gần giống.'; $('stStatus').dataset.error = 'false'; }
     else if (board && $('stStatus').dataset.error !== 'true') $('stStatus').textContent = '';
     $('stCount').textContent = board ? num(view.rows.length) + ' mã' : '';
   }
