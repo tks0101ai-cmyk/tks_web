@@ -2790,14 +2790,14 @@
     "semantic_hash": ""
   },
   "server/shipment/kiotOrdersRepository.js": {
-    "mtime": 1793695202.7173376,
-    "seen": 1793695644.2759902,
+    "mtime": 1793696569.420371,
+    "seen": 1793697755.2309606,
     "ast_hash": "a179596a49cc5bbeaca041474c9cd028",
     "semantic_hash": ""
   },
   "server/shipment/kiotOrdersRepository.test.js": {
-    "mtime": 1793695189.384421,
-    "seen": 1793695644.2759902,
+    "mtime": 1793696569.420878,
+    "seen": 1793697755.2309606,
     "ast_hash": "5774d214f936878ac517897c0107c2dd",
     "semantic_hash": ""
   },
@@ -3306,9 +3306,9 @@
     "semantic_hash": ""
   },
   "CURRENT.md": {
-    "mtime": 1793696128.9405458,
-    "seen": 1793696169.9530163,
-    "ast_hash": "f788802f04aa7f0013d8aa41d8f95cac",
+    "mtime": 1793696569.3608015,
+    "seen": 1793697755.2325163,
+    "ast_hash": "32edba54c1908b37d722b1e2bcc45cad",
     "semantic_hash": ""
   },
   "MEMORY.md": {
@@ -5946,15 +5946,15 @@
     "semantic_hash": ""
   },
   "server/pickAssignments/pickAssignmentsService.js": {
-    "mtime": 1793695874.7332392,
-    "seen": 1793696016.6078756,
-    "ast_hash": "ec8d7685b384ab913f6b6edce4b6d145",
+    "mtime": 1793696569.4107838,
+    "seen": 1793697755.2309606,
+    "ast_hash": "e7cc106e4ff772474927aa23aeca8e3d",
     "semantic_hash": ""
   },
   "server/pickAssignments/pickAssignmentsService.test.js": {
-    "mtime": 1793695854.8174448,
-    "seen": 1793696016.6078756,
-    "ast_hash": "3685a35958b166e6c11f82da9882442e",
+    "mtime": 1793696569.4107838,
+    "seen": 1793697755.2309606,
+    "ast_hash": "acbfe950064f1dff4af93f66ac913573",
     "semantic_hash": ""
   },
   "server/pickAssignments/pickOrderSnapshot.js": {
@@ -5988,9 +5988,9 @@
     "semantic_hash": ""
   },
   "server/public/shipment/lifecycle/pick/pick-assign.js": {
-    "mtime": 1793695403.954619,
-    "seen": 1793695644.2759902,
-    "ast_hash": "fbc7b96b8b0b73924dc8f4d5f3842d20",
+    "mtime": 1793696569.4107838,
+    "seen": 1793697755.2309606,
+    "ast_hash": "376c7bf025151d6a630bb891aa132178",
     "semantic_hash": ""
   },
   "server/public/shipment/lifecycle/pick/print-tools.js": {
@@ -6006,9 +6006,9 @@
     "semantic_hash": ""
   },
   "server/test/frontend/lifecycle-pick.test.js": {
-    "mtime": 1793695626.562514,
-    "seen": 1793695644.2759902,
-    "ast_hash": "8f3c3345fe41a38d94215fb22dcd6fc8",
+    "mtime": 1793696569.4253438,
+    "seen": 1793697755.2309606,
+    "ast_hash": "126743ddde5a3f77a3e54c0d4df73e24",
     "semantic_hash": ""
   },
   "docs/superpowers/plans/2026-10-27-pick-assign-hardening.md": {
@@ -6054,8 +6054,8 @@
     "semantic_hash": ""
   },
   "server/pickAssignments/pickKiotData.js": {
-    "mtime": 1793695633.4169278,
-    "seen": 1793695644.2759902,
+    "mtime": 1793696569.4107838,
+    "seen": 1793697755.2309606,
     "ast_hash": "0666e5647b15cb075a0b1ac0533d60f0",
     "semantic_hash": ""
   },
@@ -6072,9 +6072,9 @@
     "semantic_hash": ""
   },
   "server/pickAssignments/pickStatusFlow.test.js": {
-    "mtime": 1793593334.146542,
-    "seen": 1793695644.2759902,
-    "ast_hash": "f272d7ebf47081eb755397e572595f8b",
+    "mtime": 1793696569.4107838,
+    "seen": 1793697755.2309606,
+    "ast_hash": "0299d0402c4d75f57be18aed0872bc58",
     "semantic_hash": ""
   },
   "server/test/frontend/lifecycle-pick-status.test.js": {
@@ -6414,14 +6414,14 @@
     "semantic_hash": ""
   },
   "server/public/stocktake/stocktake.js": {
-    "mtime": 1793676754.978845,
-    "seen": 1793695644.2759902,
+    "mtime": 1793696569.4107838,
+    "seen": 1793697755.2309606,
     "ast_hash": "ee9f5d0de61437f6052a3aa186d53d7d",
     "semantic_hash": ""
   },
   "server/public/stocktake/stocktakePaste.js": {
-    "mtime": 1793676755.0395355,
-    "seen": 1793695644.2759902,
+    "mtime": 1793696569.4107838,
+    "seen": 1793697755.2309606,
     "ast_hash": "80c31cc13765e121d836dbeb44cacf57",
     "semantic_hash": ""
   },
@@ -6450,32 +6450,32 @@
     "semantic_hash": ""
   },
   "server/stocktake/stocktakePaste.test.js": {
-    "mtime": 1793676755.438934,
-    "seen": 1793695644.2759902,
+    "mtime": 1793696569.4228978,
+    "seen": 1793697755.2309606,
     "ast_hash": "541f00a3f27e221e205ebe13f9e04734",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeRoutes.js": {
-    "mtime": 1793676755.4663014,
-    "seen": 1793695644.2759902,
+    "mtime": 1793696569.4233377,
+    "seen": 1793697755.2309606,
     "ast_hash": "929377d766bb228c32ce25e0b91e5a5f",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeRoutes.test.js": {
-    "mtime": 1793676755.4958396,
-    "seen": 1793695644.2759902,
+    "mtime": 1793696569.4233377,
+    "seen": 1793697755.2309606,
     "ast_hash": "dd7bc6ccd3238a005a3e074d1306509b",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeService.js": {
-    "mtime": 1793676755.5571482,
-    "seen": 1793695644.2759902,
+    "mtime": 1793696569.4233377,
+    "seen": 1793697755.2309606,
     "ast_hash": "b2d5bea1d0ac421dcf6928b597ee7d44",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeService.test.js": {
-    "mtime": 1793676755.590273,
-    "seen": 1793695644.2759902,
+    "mtime": 1793696569.4253438,
+    "seen": 1793697755.2309606,
     "ast_hash": "45f88f2354e8f29043d3e08d2d1df934",
     "semantic_hash": ""
   },
@@ -6516,14 +6516,14 @@
     "semantic_hash": ""
   },
   "server/public/stocktake/index.html": {
-    "mtime": 1793676754.9164171,
-    "seen": 1793695644.2770624,
+    "mtime": 1793696569.4107838,
+    "seen": 1793697755.2325163,
     "ast_hash": "6f5041a6d72f08a8a85da3e614407631",
     "semantic_hash": ""
   },
   "server/public/stocktake/stocktakeGrid.js": {
-    "mtime": 1793676755.0093238,
-    "seen": 1793695644.2759902,
+    "mtime": 1793696569.4107838,
+    "seen": 1793697755.2309606,
     "ast_hash": "da32b78a9b60a7cbee00d8df314ba22c",
     "semantic_hash": ""
   },
@@ -6540,8 +6540,8 @@
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeGrid.test.js": {
-    "mtime": 1793676755.4091282,
-    "seen": 1793695644.2759902,
+    "mtime": 1793696569.4218955,
+    "seen": 1793697755.2309606,
     "ast_hash": "28a12981b8b9c679b268635d27a41d5d",
     "semantic_hash": ""
   },
@@ -6648,9 +6648,9 @@
     "semantic_hash": ""
   },
   "tasks/redis-performance/todo.md": {
-    "mtime": 1793696128.9430592,
-    "seen": 1793696169.954058,
-    "ast_hash": "c8bd2256dea4ef73152916a4762ac957",
+    "mtime": 1793696176.7302902,
+    "seen": 1793697755.2325163,
+    "ast_hash": "3605203aaeb38c92a82d805b80d5ad61",
     "semantic_hash": ""
   },
   "tasks/redis-performance/benchmark.md": {
@@ -6663,6 +6663,42 @@
     "mtime": 1793695710.5451746,
     "seen": 1793696016.6078756,
     "ast_hash": "4166408dd62bef15de492fb89e24b661",
+    "semantic_hash": ""
+  },
+  "server/sheets/sheetValuesCache.js": {
+    "mtime": 1793696569.0019312,
+    "seen": 1793697755.2309606,
+    "ast_hash": "c3a1c2c817792c7827e96b41f2c67d92",
+    "semantic_hash": ""
+  },
+  "server/sheets/sheetValuesCache.test.js": {
+    "mtime": 1793696569.0019312,
+    "seen": 1793697755.2309606,
+    "ast_hash": "f713762729c810aea98f007da7f1d183",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-11-03-fast-pick-print.md": {
+    "mtime": 1793696567.5743923,
+    "seen": 1793697755.2325163,
+    "ast_hash": "8e86a9d3a6ff708b52f88f4ae9abbd31",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-11-03-stocktake-filter-header-trim.md": {
+    "mtime": 1793696567.5748982,
+    "seen": 1793697755.2325163,
+    "ast_hash": "66e1242303435d59784903841be0fbd0",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-11-03-fast-pick-print-design.md": {
+    "mtime": 1793696567.5755146,
+    "seen": 1793697755.2325163,
+    "ast_hash": "8efd4c39a752b5d35d6d2eee39e7ea5c",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-11-03-stocktake-filter-header-trim-design.md": {
+    "mtime": 1793696567.5760634,
+    "seen": 1793697755.2325163,
+    "ast_hash": "5e679671765c84e1b8a876ba8019c502",
     "semantic_hash": ""
   }
 }
