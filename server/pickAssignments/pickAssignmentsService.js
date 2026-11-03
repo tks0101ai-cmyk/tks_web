@@ -35,6 +35,15 @@ const AVAILABILITY_ERROR = /vượt số lượng khả dụng/u;
 const codeKey = value => String(value ?? '').trim().toLowerCase();
 const num = value => (value === null || value === undefined ? null : Number(value));
 
+// Vi tri ung vien cua cac ma trong don + giu cho cua cac don KHAC dang nhat, 1 luot DB (truoc la 2 luot noi tiep).
+const CANDIDATES_SQL = `SELECT p.*, COALESCE(h.held, 0)::float8 AS held
+  FROM (SELECT ${ROW_COLUMNS} FROM stock_positions WHERE branch = $1 AND lower(btrim(code)) = ANY($2::text[])) p
+  LEFT JOIN (SELECT l.position_id, SUM(l.reserved_qty) AS held
+               FROM order_pick_lines l JOIN order_pick_assignments a ON a.id = l.assignment_id
+              WHERE a.status = 'picking' AND a.branch = $1 AND lower(btrim(a.order_code)) <> $3
+              GROUP BY l.position_id) h ON h.position_id = p.id
+ ORDER BY p.id`;
+
 function quantityErrors(order) {
   const errors = [];
   const totals = new Map();
@@ -138,27 +147,41 @@ function applyRemovals(order, lines, removed) {
 }
 
 // Nguon don mac dinh: trang thai tu bang gop Vong doi don hang + dong hang tu don Kiot (khong tin du lieu tu trinh duyet).
-async function defaultLoadOrder({ branch, orderCode }) {
-  const kiot = require('../shipment/kiotOrdersRepository').kiotOrders;
-  const lifecycle = require('../shipment/orderLifecycleService');
-  const row = await lifecycle.findMergedOrder(branch, orderCode, { kiot });
-  if (!row) return null;
-  const detail = await kiot.readOrderDetail({ branch, code: row.orderCode });
-  return {
-    branch,
-    orderCode: row.orderCode,
-    customerName: row.customerName || detail.customerName || '',
-    saleName: row.saleName || detail.seller || '',
-    saleTelegramId: row.saleTelegramId || '',
-    orderDate: row.orderDate || detail.date || '',
-    status: { code: row.summary.code, label: row.summary.label },
-    invoiceDiscount: Number(detail.discount) || 0,
-    customerPhone: detail.customerPhone || '',
-    customerAddress: detail.customerAddress || '',
-    sellerPhone: detail.sellerPhone || await kiotData.readSellerPhone(tx.DB_BRANCH[branch], detail.sellerId),
-    note: detail.note || row.note || '',
-    lines: detail.lines
+// Bang gop va chi tiet Kiot (ban gon: hop chi dinh khong dung ton/cuoc) doc SONG SONG theo ma nguoi dung gui; ma chuan
+// cua bang gop khac (chu hoa/thuong, khoang trang) thi doc lai chi tiet theo ma chuan. allowStale: Sheet tra ban cu (chi /candidates).
+function createOrderLoader({ lifecycle, kiot, readSellerPhone }) {
+  const readDetail = (branch, code) => kiot.readOrderDetail({ branch, code, lite: true }).then(detail => ({ detail }), error => ({ error }));
+  return async function loadOrder({ branch, orderCode, allowStale = false }) {
+    const early = readDetail(branch, orderCode);
+    const row = await lifecycle.findMergedOrder(branch, orderCode, { kiot, allowStale });
+    if (!row) return null;
+    const { detail, error } = row.orderCode === orderCode ? await early : await readDetail(branch, row.orderCode);
+    if (error) throw error;
+    return {
+      branch,
+      orderCode: row.orderCode,
+      customerName: row.customerName || detail.customerName || '',
+      saleName: row.saleName || detail.seller || '',
+      saleTelegramId: row.saleTelegramId || '',
+      orderDate: row.orderDate || detail.date || '',
+      status: { code: row.summary.code, label: row.summary.label },
+      invoiceDiscount: Number(detail.discount) || 0,
+      customerPhone: detail.customerPhone || '',
+      customerAddress: detail.customerAddress || '',
+      sellerPhone: detail.sellerPhone || await readSellerPhone(tx.DB_BRANCH[branch], detail.sellerId),
+      note: detail.note || row.note || '',
+      lines: detail.lines
+    };
   };
+}
+
+// require luc goi (nhu truoc) de tranh vong require giua pickAssignments va shipment.
+function defaultLoadOrder(args) {
+  return createOrderLoader({
+    lifecycle: require('../shipment/orderLifecycleService'),
+    kiot: require('../shipment/kiotOrdersRepository').kiotOrders,
+    readSellerPhone: kiotData.readSellerPhone
+  })(args);
 }
 
 function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoadOrder,
@@ -269,8 +292,8 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
     };
   }
 
-  async function requireOrder(branch, orderCode) {
-    const order = await loadOrder({ branch, orderCode });
+  async function requireOrder(branch, orderCode, { allowStale = false } = {}) {
+    const order = await loadOrder({ branch, orderCode, allowStale });
     if (!order) throw fail(404, 'NOT_FOUND', 'Không tìm thấy đơn hàng này.');
     return { order, lines: mergeOrderLines(order.lines) };
   }
@@ -284,21 +307,23 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
   // ---------- API ----------
 
   // Dong don (da gop theo ma) + cac vi tri ung vien kem ton kha dung, va chi dinh moi nhat cua don (neu co).
+  // Don va chi dinh doc song song; ma chuan cua don khac ma gui (hiem) thi doc lai chi dinh theo ma chuan.
   async function candidates(ctx, { branch, orderCode } = {}) {
     assertBranch(branch);
     assertScope(ctx, branch);
     const code = cleanOrderCode(orderCode);
-    const { order, lines } = await requireOrder(branch, code);
     const db = getDb();
+    const [{ order, lines }, latestByCode] = await Promise.all([
+      requireOrder(branch, code, { allowStale: true }),
+      readLatest(db, branch, code)
+    ]);
+    const assignment = codeKey(order.orderCode) === codeKey(code) ? latestByCode : await readLatest(db, branch, order.orderCode);
     const keys = [...new Set(lines.map(line => codeKey(line.productCode)))];
-    const rows = keys.length
-      ? (await db.query(`SELECT ${ROW_COLUMNS} FROM stock_positions WHERE branch = $1 AND lower(btrim(code)) = ANY($2::text[]) ORDER BY id`, [branch, keys])).rows
-      : [];
-    const held = await heldByPosition(db, branch, rows.map(row => Number(row.id)), order.orderCode);
+    const rows = keys.length ? (await db.query(CANDIDATES_SQL, [branch, keys, codeKey(order.orderCode)])).rows : [];
     const byCode = {};
     for (const key of keys) byCode[key] = [];
-    for (const row of rows) byCode[codeKey(row.code)].push(shapeCandidate(row, held.get(Number(row.id)) || 0));
-    return { order: orderView(order, lines), candidates: byCode, assignment: await readLatest(db, branch, order.orderCode) };
+    for (const row of rows) byCode[codeKey(row.code)].push(shapeCandidate(row, Number(row.held) || 0));
+    return { order: orderView(order, lines), candidates: byCode, assignment };
   }
 
   // Snapshot sau khi bo cac ma `isGone`: phieu in va canh bao Lech SL khong con ma da xoa; tinh lai tong tien khi snapshot du gia.
@@ -770,4 +795,4 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
   return { candidates, get, assign, confirm, cancel, setStatus, reconcileWithKiot, latestStatuses, createPosition, updatePosition, removePosition };
 }
 
-module.exports = { createPickAssignmentsService, mergeOrderLines, applyRemovals, applyNeeds, STATUS, CANCEL_REASON, PRUNE_REASON, ...createPickAssignmentsService() };
+module.exports = { createPickAssignmentsService, createOrderLoader, mergeOrderLines, applyRemovals, applyNeeds, STATUS, CANCEL_REASON, PRUNE_REASON, ...createPickAssignmentsService() };

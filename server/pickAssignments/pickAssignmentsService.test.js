@@ -62,7 +62,7 @@ function order(overrides = {}) {
   };
 }
 
-async function fixture({ orders = { DH001: order() }, positions } = {}) {
+async function fixture({ orders = { DH001: order() }, positions, loadOrder } = {}) {
   const db = new PGlite();
   await db.exec(migration('0001_core_master_data.sql'));
   await db.exec(migration('0064_sheet_snapshots.sql'));
@@ -81,10 +81,10 @@ async function fixture({ orders = { DH001: order() }, positions } = {}) {
   }
   const service = createPickAssignmentsService({
     getDb: () => poolFor(db),
-    loadOrder: async ({ branch, orderCode }) => {
+    loadOrder: loadOrder || (async ({ branch, orderCode }) => {
       const found = orders[orderCode];
       return found && found.branch === branch ? found : null;
-    }
+    })
   });
   const notesOf = async id => (await db.query('SELECT notes FROM stock_positions WHERE id = $1', [id])).rows[0]?.notes;
   return { db, service, notesOf };
@@ -520,4 +520,72 @@ test('sửa VT trong hộp Chỉ định: chỉ mã trong đơn, thêm trùng th
     await assert.rejects(()=>service.createPosition(ctx(),{branch:'HN',orderCode:'DH002',productCode:'AAA1',location:'A01',notes:'1T x 1'}),{statusCode:409,code:'INVALID_STATE'});
     await assert.rejects(()=>service.updatePosition(ctx(),1,{branch:'HN',orderCode:'DH002',notes:'1T x 1',version:3}),{code:'INVALID_STATE'});
   }finally{await db.close();}
+});
+
+test('candidates: tai don va chi dinh moi nhat song song, allowStale=true; ton tru giu cho don khac, khong tru chinh don', async () => {
+  const calls = [];
+  let gate = null; // chi chan loadOrder trong luot candidates (assign ben duoi khong bi chan)
+  let release;
+  const { db, service } = await fixture({
+    loadOrder: async args => {
+      calls.push(args);
+      if (gate && args.orderCode === 'DH001') await gate;
+      return args.orderCode === 'DH001' ? order() : order({ orderCode: 'DH002' });
+    }
+  });
+  try {
+    await service.assign(ctx(), { branch: 'HN', orderCode: 'DH002', allocations: [{ productCode: 'AAA1', positionId: 1, qty: 100 }], allowMismatch: true });
+    await service.assign(ctx(), { branch: 'HN', orderCode: 'DH001', allocations: [{ productCode: 'AAA1', positionId: 2, qty: 50 }], allowMismatch: true });
+    calls.length = 0;
+    gate = new Promise(resolve => { release = resolve; });
+    const seen = [];
+    const originalQuery = db.query.bind(db);
+    db.query = (sql, params) => { seen.push(sql); return originalQuery(sql, params); };
+    const pending = service.candidates(ctx(), { branch: 'HN', orderCode: 'DH001' });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.ok(seen.some(sql => sql.includes('FROM order_pick_assignments WHERE branch')), 'doc chi dinh truoc khi don tai xong');
+    release();
+    const view = await pending;
+    db.query = originalQuery;
+    assert.deepEqual(calls.map(c => c.allowStale), [true]);
+    const byId = Object.fromEntries(view.candidates.aaa1.map(c => [c.positionId, c]));
+    assert.equal(byId[1].held, 100, 'giu cho cua DH002');
+    assert.equal(byId[1].available, 200);
+    assert.equal(byId[2].held, 0, 'giu cho cua chinh DH001 khong tru');
+    assert.equal(byId[2].available, 200);
+    assert.equal(view.assignment.orderCode, 'DH001');
+    assert.equal(view.assignment.status, 'picking');
+  } finally { await db.close(); }
+});
+
+test('assign doc don voi allowStale=false', async () => {
+  const calls = [];
+  const { db, service } = await fixture({ loadOrder: async args => { calls.push(args); return order(); } });
+  try {
+    await service.assign(ctx(), assignBody([{ productCode: 'AAA1', positionId: 1, qty: 250 }], { allowMismatch: true }));
+    assert.deepEqual(calls.map(c => c.allowStale), [false]);
+  } finally { await db.close(); }
+});
+
+test('createOrderLoader: bang gop va chi tiet Kiot (lite) doc song song; ma chuan khac thi doc lai; khong co don -> null', async () => {
+  const { createOrderLoader } = require('./pickAssignmentsService');
+  const events = [];
+  let releaseRow;
+  const rowGate = new Promise(resolve => { releaseRow = resolve; });
+  const row = { orderCode: 'DH001', customerName: 'KH', saleName: 'Sale', saleTelegramId: '1', orderDate: 'd', summary: { code: 'SENT_TO_ACCOUNTANT', label: 'x' }, note: '' };
+  const loader = createOrderLoader({
+    lifecycle: { findMergedOrder: async (branch, code, opts) => { events.push(['row', code, opts.allowStale]); await rowGate; return code === 'none' ? null : row; } },
+    kiot: { readOrderDetail: async args => { events.push(['detail', args.code, args.lite]); return { lines: [{ productCode: 'A', quantity: 1 }], sellerId: 9, sellerPhone: '' }; } },
+    readSellerPhone: async () => '0901'
+  });
+  const pending = loader({ branch: 'HN', orderCode: 'dh001', allowStale: true });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(events, [['detail', 'dh001', true], ['row', 'dh001', true]], 'chi tiet bat dau truoc khi bang gop xong');
+  releaseRow();
+  const loaded = await pending;
+  assert.deepEqual(events.slice(2), [['detail', 'DH001', true]], 'ma chuan khac ma gui -> doc lai theo ma chuan');
+  assert.equal(loaded.orderCode, 'DH001');
+  assert.equal(loaded.sellerPhone, '0901');
+  assert.equal(loaded.status.code, 'SENT_TO_ACCOUNTANT');
+  assert.equal(await loader({ branch: 'HN', orderCode: 'none' }), null);
 });
