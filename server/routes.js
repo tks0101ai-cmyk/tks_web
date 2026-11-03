@@ -139,9 +139,10 @@ router.use('/api/internal/kiotviet-sync/status', requireAuth, requireFeature('sy
 router.use(kiotvietSyncStatusRoutes);
 
 // Tra cuu & quan ly vong doi don hang — Khach (xem don cua minh) + vai tro noi bo.
-router.use('/api/shipment/lifecycle', requireAuth, orderLifecycleRoutes);
+router.use('/api/shipment/lifecycle', startTiming, requireAuth, orderLifecycleRoutes);
 // Chi dinh vi tri hang cho don (giu cho / in phieu nhat / xac nhan, huy nhat): quyen shipment.pick (mac dinh chi Quan ly).
-router.use('/api/shipment/pick', pickAssignmentsRoutes);
+// startTiming: request >= REQUEST_TIMING_SLOW_MS (500ms) ghi 1 dong [timing] tren log Render de do toc do in phieu.
+router.use('/api/shipment/pick', startTiming, pickAssignmentsRoutes);
 
 // Toan bo API "Bao cao tong hop" ben duoi day duoc gac bang QUYEN TINH NANG
 // (server/auth/featureRegistry.js), khong con bang mang vai tro. Mac dinh chi
