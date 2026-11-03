@@ -36,6 +36,19 @@
     { key: 'updated', label: 'Cập nhật', width: 140, type: 'text' }
   ];
   const STATUS_COLORS = window.TKSStocktakePaste ? window.TKSStocktakePaste.STATUS_COLORS : {};
+  const Search = window.TKSStocktakeSearch;
+  // Chi muc tim kiem dung lai cho den khi bang tai lai (4.000 ma x Fuse, khong lap lai moi lan go).
+  const finder = { board: null, index: null };
+  function searchIndex() {
+    if (finder.board !== state.board) {
+      finder.board = state.board;
+      finder.index = Search.buildIndex(state.board.rows.map(row => ({
+        row, code: row.code, name: row.name,
+        extra: [row.cluster, row.note && row.note.statusText, row.note && row.note.reasonText].filter(Boolean).join(' ')
+      })), { Fuse: window.Fuse });
+    }
+    return finder.index;
+  }
   const otherLabel = branch => (branch === 'saigon' ? 'HN' : 'SG');
   const labelOf = (column, branch) => (column.key === 'otherDiff' ? 'Kiểm ' + otherLabel(branch)
     : column.key === 'otherRatio' ? 'Do kiểm ' + otherLabel(branch) : column.label);
@@ -45,7 +58,8 @@
     query: '', filter: 'all', recheck: '', status: '', sortKey: null, sortDir: null, headBranch: null, loadVersion: 0
   };
   // view.rows: các dòng đã lọc + sort; view.drawn: số dòng đã vẽ.
-  const view = { rows: [], drawn: 0, observer: null };
+  // view.order: ma theo thu tu dang hien; tai nen (sau luu / SSE) giu nguyen thu tu nay de dong vua sua khong nhay cho.
+  const view = { rows: [], drawn: 0, observer: null, order: null };
   // Vùng chọn kiểu sheet: chỉ số dòng trong view.rows và chỉ số cột trong COLUMNS.
   const selection = { anchor: null, focus: null, dragging: false, painted: [] };
   const live = { source: null, timer: null };
@@ -63,7 +77,6 @@
   };
   const pct = value => (value === null || value === undefined ? '' : Math.round(value * 100) + '%');
   const dateVn = text => (text ? text.split('-').reverse().join('/') : '');
-  const fold = value => String(value ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[đĐ]/g, 'd').toLowerCase();
 
   async function request(path, options) {
     const response = await fetch(path, Object.assign({ credentials: 'same-origin', cache: 'no-store' }, options));
@@ -128,7 +141,7 @@
       $('stStatus').textContent = '';
       window.history.replaceState(null, '', '#dot=' + sessionId);
       startLive(sessionId);
-      render();
+      render({ keepOrder: background });
       if (detail.code) renderDetail({ forms });
     } catch (error) {
       if (version !== state.loadVersion) return;
@@ -206,18 +219,20 @@
     });
   }
 
+  // Loc theo bo loc truoc; co tu khoa thi xep theo muc khop (tra-cuu-vi-tri), tru khi da bam sort cot.
   function visibleRows() {
     if (!state.board) return [];
-    const query = fold(state.query).trim();
     const rows = state.board.rows.filter(row => {
       if (state.filter === 'forgotten' && !row.forgotten) return false;
       if (state.filter === 'noted' && !row.note) return false;
       if (state.recheck && recheckKey(row.note) !== state.recheck) return false;
       if (state.status && (row.note ? row.note.statusText : '') !== state.status) return false;
-      if (!query) return true;
-      return fold([row.code, row.name, row.cluster, row.note && row.note.statusText, row.note && row.note.reasonText].join(' ')).includes(query);
+      return true;
     });
-    return sortRows(rows);
+    if (!state.query.trim()) return sortRows(rows);
+    const allowed = new Set(rows);
+    const found = Search.search(searchIndex(), state.query).filter(row => allowed.has(row));
+    return state.sortKey && state.sortDir ? sortRows(found) : found;
   }
 
   function cellText(row, key) {
@@ -304,7 +319,15 @@
     }
   }
 
-  function render() {
+  // Giu tap dong + thu tu dang hien voi du lieu moi; ma moi them cuoi, ma khong con trong dot bi bo.
+  function keptRows() {
+    const byCode = new Map(state.board.rows.map(row => [row.code, row]));
+    const known = new Set(view.order);
+    const kept = view.order.filter(code => byCode.has(code)).map(code => byCode.get(code));
+    return kept.concat(visibleRows().filter(row => !known.has(row.code)));
+  }
+
+  function render({ keepOrder = false } = {}) {
     const board = state.board;
     const session = board && board.session;
     if (session && session.branch !== state.headBranch) renderHead(session.branch);
@@ -332,7 +355,8 @@
 
     // Tải nền (SSE / sau khi lưu) giữ số dòng đã vẽ và vùng chọn để không nhảy về đầu bảng.
     const keepDrawn = view.drawn;
-    view.rows = visibleRows();
+    view.rows = keepOrder && view.order && board ? keptRows() : visibleRows();
+    view.order = view.rows.map(row => row.code);
     view.drawn = 0;
     $('stRows').textContent = '';
     drawMore(Math.max(CHUNK, keepDrawn));
@@ -406,6 +430,7 @@
   // Đổi bộ lọc / sort / đợt: vẽ lại từ đầu, bỏ vùng chọn, cuộn về đầu bảng.
   function resetView() {
     view.drawn = 0;
+    view.order = null;
     selection.anchor = selection.focus = null;
     const scroller = document.querySelector('.st-scroll');
     if (scroller) scroller.scrollTop = 0;
@@ -722,10 +747,14 @@
   }
 
   const ACTION_LABELS = { line_edit: 'Sửa dòng đếm', line_add: 'Thêm dòng', note: 'Kiểm lại', tag: 'Cụm / Combo', session_close: 'Đóng đợt', sheet_import: 'Nạp từ sheet', paste: 'Dán cột', session_update: 'Đổi đối chiếu' };
+  const actionLabel = item => (item.action === 'paste' && item.after && item.after.source === 'cells' ? 'Sửa trên bảng' : ACTION_LABELS[item.action] || item.action);
   function historyText(item) {
     const after = item.after || {};
     if (item.action === 'note') return [recheckLabel(after), after.statusText, STATUS_COLORS[after.statusColor] && 'màu ' + STATUS_COLORS[after.statusColor].label.toLowerCase(), after.reasonText, after.printPage && 'Trang ' + after.printPage].filter(Boolean).join(' · ');
-    if (item.action === 'paste') return 'Dán cột ' + ((window.TKSStocktakePaste.PASTE_COLUMNS[after.column] || {}).label || after.column);
+    if (item.action === 'paste') {
+      const label = (window.TKSStocktakePaste.PASTE_COLUMNS[after.column] || {}).label || after.column;
+      return after.source === 'cells' ? label : 'Dán cột ' + label;
+    }
     if (item.action === 'session_update') return 'Đổi đợt đối chiếu';
     if (item.action === 'tag') return [after.cluster && 'Cụm: ' + after.cluster, after.isCombo ? 'Combo' : ''].filter(Boolean).join(' · ');
     if (item.action === 'line_edit' || item.action === 'line_add') {
@@ -746,7 +775,7 @@
     for (const item of payload.history) {
       const li = document.createElement('li');
       const head = document.createElement('b');
-      head.textContent = (ACTION_LABELS[item.action] || item.action) + ' — ' + (item.actorName || '—') + ' · ' + time(item.createdAt);
+      head.textContent = actionLabel(item) + ' — ' + (item.actorName || '—') + ' · ' + time(item.createdAt);
       const body = document.createElement('span');
       body.textContent = historyText(item);
       li.append(head, body);
@@ -954,7 +983,12 @@
 
   function bindTable() {
     const rerender = () => { resetView(); render(); };
-    $('stSearch').addEventListener('input', event => { state.query = event.target.value; rerender(); });
+    let searchTimer = null;
+    $('stSearch').addEventListener('input', event => {
+      clearTimeout(searchTimer);
+      const value = event.target.value;
+      searchTimer = setTimeout(() => { state.query = value; rerender(); }, 150);
+    });
     $('stFilter').addEventListener('change', event => { state.filter = event.target.value; rerender(); });
     $('stRecheckFilter').addEventListener('change', event => { state.recheck = event.target.value; rerender(); });
     $('stStatusFilter').addEventListener('change', event => { state.status = event.target.value; rerender(); });
