@@ -483,6 +483,38 @@ test('readReport: chua cong bo -> available=false; loc/KPI/sap xep/phan trang; D
   } finally { await db.close(); }
 });
 
+test('Hoa don bi sua (huy + HDxxx.01): dong cu chua Chot bi an khoi bao cao/KPI/facet, dong da Chot va hoa don huy khong co thay the van giu', async () => {
+  const db = await newDb();
+  try {
+    await baseHn(db);
+    const ln = { productId: 1, code: 'T100', name: 'Ly giu nhiet', qty: 10, price: 20000 }; // sai: min 24000 -> 40000 tien chenh
+    // 1 bi sua (goc 1 da huy -> 2 = 1.01 Hoan thanh); 3 huy nhung khong co ban thay the; 4 huy + co ban thay the nhung da Chot Phat.
+    await invoice(db, { id: 1, customerId: 1, purchaseDate: '2026-10-19 08:00:00+00', lines: [ln] });
+    await invoice(db, { id: 3, customerId: 1, purchaseDate: '2026-10-19 09:00:00+00', lines: [ln] });
+    await invoice(db, { id: 4, customerId: 1, purchaseDate: '2026-10-19 10:00:00+00', lines: [ln] });
+    await capture(db);
+    await invoice(db, { id: 2, customerId: 1, purchaseDate: '2026-10-19 08:00:00+00', lines: [{ ...ln, price: 23000 }] });
+    await invoice(db, { id: 5, customerId: 1, purchaseDate: '2026-10-19 10:00:00+00', lines: [{ ...ln, price: 23000 }] });
+    await db.query("UPDATE invoices SET code = 'HD1.01' WHERE branch = 'hanoi' AND id = 2");
+    await db.query("UPDATE invoices SET code = 'HD4.01' WHERE branch = 'hanoi' AND id = 5");
+    await db.query(`UPDATE invoices SET raw = jsonb_set(raw, '{statusValue}', '"Đã hủy"') WHERE branch = 'hanoi' AND id IN (1, 3, 4)`);
+    await db.query("UPDATE invoice_price_audit_lines SET decision = 'penalty' WHERE invoice_id = 4");
+    await publish(db, '2026-10-14', DAY);
+    const repo = createPriceAuditRepository({ pool: db });
+
+    const all = await repo.readReport({}, null);
+    assert.deepEqual(all.rows.map(r => r.invoiceId).sort(), ['3', '4'], 'dong cua hoa don 1 (da thay bang HD1.01) bi an');
+    assert.equal(all.totalRows, 2);
+    assert.equal(all.kpis.invoiceCount, 2);
+    assert.equal(all.kpis.wrongLines, 2);
+    assert.equal(all.kpis.pendingAmount, '40000', 'chi con hoa don 3 chua Chot');
+    assert.equal(all.kpis.penaltyAmount, '40000');
+    const sum = counts => Object.values(counts).reduce((a, b) => a + b, 0);
+    assert.equal(sum(all.filters.facets.status), 2, 'facet khop so dong hien thi');
+    assert.equal((await repo.readReport({ q: 'HD1' }, null)).totalRows, 0);
+  } finally { await db.close(); }
+});
+
 test('Mo ta HN boc HTML (dan tu Google Sheets): gia/bac nhu mo ta sach, ghi chu HN luu dang chu thuong', async () => {
   const db = await newDb();
   try {

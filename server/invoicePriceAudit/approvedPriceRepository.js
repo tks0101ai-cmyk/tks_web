@@ -11,6 +11,7 @@ const fuzzy = require('../shared/fuzzySearch');
 const { recalcWindow, SOURCE_NOT_READY } = require('./priceAuditRepository');
 const { LOCK_KEY } = require('./priceAuditRefresh');
 const { BRANCH_LABELS, bad } = require('./approvedPriceRules');
+const { validateRow } = require('./approvedPriceImport');
 
 const MAX_EXPORT_ROWS = 20000;
 const SUGGEST_LIMIT = 20;
@@ -79,6 +80,19 @@ const CHANGE_SQL = `INSERT INTO invoice_approved_price_changes (price_id, action
   VALUES ($1::bigint, $2, $3, $4::jsonb, $5::jsonb)`;
 const STATE_SQL = 'SELECT published_day::text AS published_day FROM invoice_price_audit_state WHERE id';
 
+// Import (xem importPrices): doi chieu ma KH / ma SP trong file voi KiotViet cua co so (khong phan biet hoa/thuong), roi tim
+// ban ghi da co cung (co so, khach, SP, ngay duyet) de ghi de.
+const IMPORT_CUSTOMERS_SQL = `SELECT c.id::text AS id, lower(btrim(c.code)) AS code, c.name FROM customers c
+  WHERE c.branch = $1 AND lower(btrim(c.code)) = ANY($2::text[]) AND ${ACTIVE_CUSTOMER_SQL}`;
+const IMPORT_PRODUCTS_SQL = `SELECT id::text AS id, lower(btrim(code)) AS code, name FROM products
+  WHERE branch = $1 AND lower(btrim(code)) = ANY($2::text[]) AND COALESCE(is_active, TRUE)`;
+const importExistingSql = lock => `SELECT p.id::text AS id, p.branch, p.customer_id::text AS customer_id, p.product_id::text AS product_id,
+  p.price_no_vat::text AS price_no_vat, p.price_with_vat::text AS price_with_vat, p.approver, p.approved_on::text AS approved_on, p.version
+  FROM invoice_approved_prices p
+  JOIN unnest($1::text[], $2::bigint[], $3::bigint[], $4::date[]) AS k(branch, customer_id, product_id, approved_on)
+    ON p.branch = k.branch AND p.customer_id = k.customer_id AND p.product_id = k.product_id AND p.approved_on = k.approved_on
+  ${lock ? 'FOR UPDATE OF p' : ''}`;
+
 function conflict(row) {
   return Object.assign(bad('Bản ghi vừa được người khác cập nhật. Hãy tải lại rồi thử lại.', 'VERSION_CONFLICT', 409), row ? { row } : {});
 }
@@ -106,13 +120,8 @@ async function applyRecalc(client, scopes, now) {
       await client.query('RELEASE SAVEPOINT approved_price_recalc');
       return { status: 'busy' };
     }
-    let recomputedLines = 0;
-    let resultChangedLines = 0;
-    for (const scope of scopes) {
-      const stats = await recalcWindow({ day, client, now, scope });
-      recomputedLines += stats.recomputedLines;
-      resultChangedLines += stats.resultChangedLines;
-    }
+    // 1 lan cho moi pham vi (doc nguon 1 lan, khong lap theo tung pham vi).
+    const { recomputedLines, resultChangedLines } = await recalcWindow({ day, client, now, scope: scopes });
     await client.query('RELEASE SAVEPOINT approved_price_recalc');
     return { status: 'applied', recomputedLines, resultChangedLines };
   } catch (err) {
@@ -245,6 +254,99 @@ function createApprovedPriceRepository({ pool = getPool(), now = () => new Date(
     });
   }
 
+  // ---- import: dong tho (approvedPriceImport.parseImportWorkbook) -> ke hoach tung dong (create / update / unchanged / error).
+  async function planImport(db, rawRows, lock) {
+    const items = rawRows.map(line => {
+      const check = validateRow(line);
+      return { row: line.row, customerCode: line.customerCode, productCode: line.productCode, status: check.ok ? 'pending' : 'error',
+        message: check.ok ? '' : check.message, value: check.ok ? check.value : null };
+    });
+    const codeMap = async (sql, branch, codes) => {
+      const map = new Map();
+      for (const r of (await db.query(sql, [branch, codes])).rows) {
+        if (!map.has(r.code)) map.set(r.code, []);
+        map.get(r.code).push(r);
+      }
+      return map;
+    };
+    for (const branch of ['hanoi', 'saigon']) {
+      const part = items.filter(i => i.value && i.value.branch === branch);
+      if (!part.length) continue;
+      const customers = await codeMap(IMPORT_CUSTOMERS_SQL, branch, [...new Set(part.map(i => i.value.customerCode.toLowerCase()))]);
+      const products = await codeMap(IMPORT_PRODUCTS_SQL, branch, [...new Set(part.map(i => i.value.productCode.toLowerCase()))]);
+      for (const i of part) {
+        const cs = customers.get(i.value.customerCode.toLowerCase()) || [];
+        const ps = products.get(i.value.productCode.toLowerCase()) || [];
+        if (cs.length !== 1) i.message = cs.length ? `Mã KH "${i.value.customerCode}" trùng ${cs.length} khách trên KiotViet.` : `Mã KH "${i.value.customerCode}" không có trên KiotViet ${BRANCH_LABELS[branch]} (hoặc khách đã ngừng hoạt động).`;
+        else if (ps.length !== 1) i.message = ps.length ? `Mã SP "${i.value.productCode}" trùng ${ps.length} sản phẩm trên KiotViet.` : `Mã SP "${i.value.productCode}" không có trên KiotViet ${BRANCH_LABELS[branch]}.`;
+        if (i.message) { i.status = 'error'; continue; }
+        i.customerId = cs[0].id;
+        i.customerName = cs[0].name;
+        i.productId = ps[0].id;
+        i.productName = ps[0].name;
+      }
+    }
+    const seen = new Map();
+    for (const i of items.filter(x => x.status === 'pending')) {
+      const key = `${i.value.branch}:${i.customerId}:${i.productId}:${i.value.approvedOn}`;
+      if (seen.has(key)) { i.status = 'error'; i.message = `Trùng dòng ${seen.get(key)} trong file (cùng khách, mã SP, cơ sở và ngày duyệt).`; } else seen.set(key, i.row);
+    }
+    const ready = items.filter(i => i.status === 'pending');
+    if (!ready.length) return items;
+    const existing = new Map((await db.query(importExistingSql(lock), [ready.map(i => i.value.branch), ready.map(i => i.customerId),
+      ready.map(i => i.productId), ready.map(i => i.value.approvedOn)])).rows
+      .map(r => [`${r.branch}:${r.customer_id}:${r.product_id}:${r.approved_on}`, r]));
+    for (const i of ready) {
+      const ex = existing.get(`${i.value.branch}:${i.customerId}:${i.productId}:${i.value.approvedOn}`);
+      if (!ex) { i.status = 'create'; continue; }
+      i.existing = ex;
+      i.priceChanged = !samePrice(ex.price_no_vat, i.value.priceNoVat) || !samePrice(ex.price_with_vat, i.value.priceWithVat);
+      i.status = i.priceChanged || ex.approver !== i.value.approver ? 'update' : 'unchanged';
+    }
+    return items;
+  }
+
+  function importResult(items, commit, recalc) {
+    const count = status => items.filter(i => i.status === status).length;
+    return {
+      commit, recalc: recalc || null,
+      summary: { total: items.length, create: count('create'), update: count('update'), unchanged: count('unchanged'), error: count('error') },
+      rows: items.map(i => ({ row: i.row, status: i.status, message: i.message || '', customerCode: i.customerCode, customerName: i.customerName || '',
+        productCode: i.productCode, productName: i.productName || '', branchLabel: i.value ? BRANCH_LABELS[i.value.branch] : '',
+        priceNoVat: i.value ? i.value.priceNoVat : null, priceWithVat: i.value ? i.value.priceWithVat : null,
+        approver: i.value ? i.value.approver : '', approvedOn: i.value ? i.value.approvedOn : '' }))
+    };
+  }
+
+  /**
+   * Nhap hang loat tu dong tho da doc (<= MAX_IMPORT_ROWS). commit=false: chi xem truoc (khong ghi). commit=true: 1 giao dich ghi cac dong
+   * hop le (dong loi bo qua, dong trung ban ghi da co thi GHI DE gia + nguoi duyet va ghi nhat ky 'update'), roi tinh lai Kiem tra gia ban 1 lan.
+   */
+  async function importPrices(rawRows, actor, { commit = false } = {}) {
+    if (!commit) return importResult(await planImport(pool, rawRows, false), false, null);
+    return inTransaction(async client => {
+      const items = await planImport(client, rawRows, true);
+      const scopes = [];
+      for (const i of items) {
+        const v = i.value;
+        if (i.status === 'create') {
+          const id = (await client.query(INSERT_SQL, [v.branch, i.customerId, i.productId, v.priceNoVat, v.priceWithVat, v.approver, v.approvedOn, actor])).rows[0].id;
+          await client.query(CHANGE_SQL, [id, 'create', actor, null, JSON.stringify(snapshot({ ...v, customerId: i.customerId, productId: i.productId, version: 1 }))]);
+          scopes.push({ branch: v.branch, customerId: i.customerId, productId: i.productId, fromDay: v.approvedOn });
+        } else if (i.status === 'update') {
+          const ex = i.existing;
+          const updated = (await client.query(UPDATE_SQL, [ex.id, v.branch, i.customerId, i.productId, v.priceNoVat, v.priceWithVat, v.approver,
+            v.approvedOn, actor, Number(ex.version)])).rows[0];
+          if (!updated) throw conflict(null);
+          await client.query(CHANGE_SQL, [ex.id, 'update', actor, JSON.stringify(snapshot(ex)),
+            JSON.stringify(snapshot({ ...v, customerId: i.customerId, productId: i.productId, version: Number(updated.version) }))]);
+          if (i.priceChanged) scopes.push({ branch: v.branch, customerId: i.customerId, productId: i.productId, fromDay: v.approvedOn });
+        }
+      }
+      return importResult(items, true, await applyRecalc(client, scopes, now()));
+    });
+  }
+
   // ---- goi y: doc toan bo (id, ma, ten) cua co so, cache ngan trong bo nho, loc gan dung (bo dau) o JS.
   const cache = new Map();
   async function cached(kind, branch, sql) {
@@ -280,7 +382,7 @@ function createApprovedPriceRepository({ pool = getPool(), now = () => new Date(
     return search(await cached('product', branch, productSql), q, Math.min(limit, 50));
   }
 
-  return { list, readOne, create, update, remove, suggestCustomers, suggestProducts };
+  return { list, readOne, create, update, remove, importPrices, suggestCustomers, suggestProducts };
 }
 
 let defaultRepository;

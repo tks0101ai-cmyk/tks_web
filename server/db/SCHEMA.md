@@ -844,3 +844,10 @@ Cập nhật gần nhất: 30/10/2026 (gỡ module Vị trí hàng cũ: `stock_l
 
 
 Cập nhật gần nhất: 02/11/2026 (Kiểm kê: đủ cột T10, Sài Gòn + đợt đối chiếu, dán cột, nạp tab KIỂM SG; migration `0105` đã áp DB 03/11/2026; ghi chú tài liệu: `order_kiot_edit_log` (0102) không còn được ghi; `prune` chỉ còn `kiot_line_missing`; snapshot có thể thiếu mã đã Xóa dòng nội bộ; không migration mới) — trước đó 31/10/2026 (ghi chú tài liệu: `stock_position_history.summary` có thể chứa `{source: 'pick', orderCode}` khi sửa VT từ hộp Chỉ định vị trí; không migration mới).
+
+
+## 03/11/2026 — Redis performance (không migration)
+
+Redis chỉ là cache nguồn Sheets/SĐT sale, không có bảng/cột hoặc schema PostgreSQL mới. `stock_positions`, `order_pick_assignments`, `order_pick_lines`, `order_pick_history` giữ nguyên hợp đồng và khóa/rollback. Bulk INSERT dùng jsonb_to_recordset với NUMERIC và thứ tự dòng gốc, vẫn trong một giao dịch; form chung tiếp tục PostgreSQL/version/409. Snapshot lịch sử không bị ghi lại. Chưa deploy/chuyển region; xem `tasks/redis-performance/rollout.md` tại gốc repo.
+
+Cập nhật gần nhất: 03/11/2026.

@@ -978,3 +978,16 @@ Cập nhật gần nhất: 28/10/2026 (chỉnh sửa khi xem trước import VT)
 - **FR-VT.30 — Đơn xuất kho và số lượng âm (02/11/2026, migration `0104` chưa áp DB, chưa commit/deploy):** mỗi cơ sở có một Đơn xuất kho tạm dùng chung (mã `XK-<cơ sở>-<số>`); người có quyền sửa VT thêm dòng theo tên hàng (gợi ý), vị trí thật và ghi chú thùng, import Excel, sửa/xóa dòng; đơn tạm không trừ tồn và không gộp dòng. **Chốt đơn** (có hộp xác nhận) trừ tồn VT trong một giao dịch theo (mã, vị trí), cho phép số âm (ghi chú `-2T x 100`, tự bù khi nhập thêm hàng vào vị trí), ghi lịch sử `stock_out` kèm mã đơn; bấm mã đơn trong Lịch sử cập nhật xem chi tiết đơn. Chốt chặn khi ghi chú VT/dòng đơn không đọc được.
 
 Cập nhật gần nhất: 03/11/2026 (Kiểm kê FR-ST.10 bộ lọc 5 lựa chọn + tiêu đề bảng một dòng, bỏ Dán cột; trước đó 03/11/2026: Kiểm kê FR-ST.9 sửa trên bảng như sheet + tìm kiếm kiểu tra-cuu-vi-tri; trước đó 02/11/2026: Kiểm kê FR-ST.1–8, đủ cột T10, Sài Gòn, dán cột; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; trước đó: gỡ module Vị trí hàng cũ; VT Đơn xuất kho + số lượng âm, migration 0104; FR-PK.24 Chỉ định vị trí không ghi lên KiotViet, Xóa dòng nội bộ `removed`, phiếu in theo thứ tự trong hộp; FR-PK.15 và FR-PK.ghi-ngược đánh dấu đã gỡ) — trước đó 31/10/2026 (FR-PK.23 thêm/sửa/xóa vị trí VT trong hộp Chỉ định vị trí, FR-13.13 trang VT chặn hạ dưới phần Đang bốc giữ; trước đó 30/10: Chỉ định vị trí kéo-thả, xóa dòng, ghi ngược Kiot; gỡ module Vị trí hàng cũ).
+
+
+## 03/11/2026 — Tăng tốc chỉ định và in phiếu (cục bộ, chưa deploy)
+
+Đường chỉ định tra đúng mã đơn HN/SG và dùng lại quy tắc gộp Vòng đời/Accounting, không tải toàn bộ đơn hoặc tính cước/điều chuyển. Ghi dòng chỉ định theo lô trong cùng giao dịch/khóa PostgreSQL; bản in tiếp tục dùng snapshot sau commit. Tải trước tài nguyên phiếu và QR song song; chỉ cho in khi form chung đọc mới thành công và không còn lượt lưu form đang chạy.
+
+Redis/Valkey dùng cho SĐT sale (fresh 5 phút, last-good tối đa 30 phút, worker hiện có làm mới 4 phút) và nguồn Sheets/lịch sử Vòng đời (15 giây, generation token chống ghi cache cũ kể cả eviction). Không cache tồn, giữ chỗ, auth hoặc form in. Redis lỗi thì đọc nguồn, lệnh cache tối đa 150ms, hàng đợi client tối đa 100 lệnh; cold SĐT chỉ chờ 1 giây. `REDIS_ENABLED=false` hoặc thiếu `REDIS_URL` dùng cache RAM; khi bật cần `REDIS_NAMESPACE` riêng môi trường và private URL cùng vùng trên web/worker.
+
+Server-Timing cho `/api/shipment/pick/*`; browser measures `tokosi.pick.assets/render/layout/preview-ready/submit-ready` không chứa dữ liệu đơn. Monitor bổ sung eventLoopP95/Max, poolTotal/Idle/Waiting, cacheHit/Miss/Error/Bypass bên cạnh RSS/heap.
+
+Kiểm chứng/triển khai: xem [kế hoạch Redis](../../tasks/redis-performance/plan.md), [benchmark cục bộ](../../tasks/redis-performance/benchmark.md) và [runbook](../../tasks/redis-performance/rollout.md). Giữ worker Singapore hiện có; tạo web Singapore thay thế Oregon sau kiểm chứng. Chưa thay đổi dịch vụ Render/domain hoặc xác nhận p95 production; không migration. Integration Redis thật đang chờ TEST Redis; công cụ browser dừng vì không xác định chắc chắn URL Windows.
+
+Cập nhật gần nhất: 03/11/2026.

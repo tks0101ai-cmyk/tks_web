@@ -42,6 +42,7 @@ test('GET candidates / GET chi dinh: truyen branch + order (ma don), khong cache
   const res = await fetch(base + '/candidates?branch=HN&order=DH001');
   assert.equal(res.status, 200);
   assert.equal(res.headers.get('cache-control'), 'no-store');
+  assert.match(res.headers.get('server-timing') || '', /auth;dur=[\d.]+.*total;dur=[\d.]+/);
   assert.equal((await res.json()).order.orderCode, 'DH001');
   assert.equal((await fetch(base + '?branch=SG&order=DH9')).status, 200);
   assert.deepEqual(calls, [['candidates', { branch: 'HN', orderCode: 'DH001' }], ['get', { branch: 'SG', orderCode: 'DH9' }]]);

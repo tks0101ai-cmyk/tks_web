@@ -7,14 +7,15 @@ const express = require('express');
 const { requireAuth, requireFeature } = require('../auth/authMiddleware');
 const { hasFeature } = require('../auth/featureRegistry');
 const service = require('./pickAssignmentsService');
+const { startTiming, markTiming, timedOperation } = require('../lib/requestTiming');
 
 function createPickAssignmentsRouter(dependencies = {}) {
   const router = express.Router();
   const svc = () => dependencies.service || service;
 
-  router.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); },
+  router.use(startTiming, (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); },
     dependencies.requireAuth || requireAuth,
-    requireFeature('shipment.pick'));
+    requireFeature('shipment.pick'), markTiming('auth'));
 
   const ctxOf = req => ({ user: req.user });
   const handle = fn => async (req, res) => {
@@ -40,7 +41,7 @@ function createPickAssignmentsRouter(dependencies = {}) {
   const layouts=dependencies.printLayouts || require('./printLayouts');
   const pool=()=>dependencies.pool || require('../db/pool').getPool();
   router.get('/print-layout/:template',handle(async(req,res)=>{
-    res.json(await layouts.readLayout(pool(),req.params.template));
+    res.json(await timedOperation('printLayout',()=>layouts.readLayout(pool(),req.params.template)));
   }));
   router.put('/print-layout/:template',handle(async(req,res)=>{
     res.json(await layouts.writeLayout(pool(),req.params.template,req.body,req.user.id));

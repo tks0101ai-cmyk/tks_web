@@ -313,6 +313,7 @@ Mục mới của tab Hóa đơn (`/reports/#invoices`, bước 2; "Giao dịch"
 | `GET /export` | `…approvedPrice` + `reports.export` | Excel `.xlsx` của tập đang lọc/sắp xếp, tối đa 20.000 dòng; cột Khách hàng, Cơ sở, Mã SP, Tên SP, Giá không VAT, Giá có VAT, Người duyệt, Ngày duyệt |
 | `GET /customer-suggest?branch=&q=`, `GET /product-suggest?branch=&q=` | `reports.invoices.approvedPrice.manage` | Gợi ý khách / sản phẩm cho hộp Tạo/Sửa |
 | `POST /` | `…approvedPrice.manage` | Tạo bản ghi (body `priceNoVat`, `priceWithVat`: được để trống/null một trong hai; 400 `PRICE_REQUIRED` nếu trống cả hai, 400 `INVALID_PRICE` nếu giá điền vào không phải số > 0); 422 nếu khách/sản phẩm không có trong cơ sở |
+| `POST /import` (multipart `file`; `?commit=1` ghi thật, bỏ trống = xem trước) | `…approvedPrice.manage` | Nhập Excel/CSV ≤ 4 MB, ≤ 1.000 dòng (`approvedPriceImport.js`): cột Mã KH, Cơ sở, Mã SP, Giá không VAT / Giá có VAT, Người duyệt, Ngày duyệt (khớp tên cột bỏ dấu; cột thừa bỏ qua nên sửa file "Xuất file" rồi nhập lại được). Mã KH/Mã SP đối chiếu KiotViet của cơ sở; dòng lỗi bị bỏ qua + báo lý do; dòng trùng (cơ sở, khách, SP, ngày duyệt) với bản ghi đã có **ghi đè** giá + người duyệt (nhật ký `update`); tính lại Kiểm tra giá bán **một lần** cho cả file (`recalcWindow` nhận danh sách phạm vi). Trả `{commit, summary{total,create,update,unchanged,error}, rows[], recalc}`. Chặn file .xlsx bị cắt dở (SheetJS treo vô hạn) bằng kiểm tra chữ ký |
 | `PUT /:id` | `…approvedPrice.manage` | Sửa toàn bộ trường (cùng quy tắc 2 giá như POST) kèm `expectedVersion`; 409 khi lệch `version` |
 | `DELETE /:id?expectedVersion=` | `…approvedPrice.manage` | Xóa (giao diện hỏi xác nhận trước); lịch sử giữ trong `invoice_approved_price_changes` |
 
@@ -949,3 +950,27 @@ Cập nhật gần nhất: 29/10/2026.
 
 
 Cập nhật gần nhất: 03/11/2026 (Kiểm kê: bộ lọc 5 lựa chọn, tiêu đề bảng một dòng, bỏ `POST /sessions/:id/paste`; trước đó 03/11/2026: sửa trên bảng như sheet, `POST /api/stocktake/sessions/:id/cells`, tìm kiếm kiểu tra-cuu-vi-tri, không migration; trước đó 02/11/2026: đủ cột T10, Sài Gòn + đợt đối chiếu, dán cột, nạp tab KIỂM SG; migration `0105` đã áp DB 03/11/2026; VT Đơn xuất kho + số lượng âm, migration 0104; gỡ ghi ngược KiotViet: `kiotviet/kiotOrderEditor.js`, `KIOT_ORDER_WRITE_ENABLED`, `POST /api/shipment/pick/order-lines/remove`; `removed` trong `POST /api/shipment/pick`; gỡ `PICK_KIOT_DIFF`/`PICK_ORDER_DIFF`; `0102` không còn được ghi) — trước đó 31/10/2026 (thêm/sửa/xóa vị trí VT trong hộp Chỉ định vị trí: `POST /api/shipment/pick/positions`, `PATCH`/`DELETE /api/shipment/pick/positions/:id`, `canEditPositions`; `PATCH /api/stock-positions/:id` chặn `BELOW_HELD`/`HELD_SPEC_CONFLICT`).
+
+
+## 03/11/2026 — Tăng tốc chỉ định và in phiếu (cục bộ, chưa deploy)
+
+Đường chỉ định tra đúng mã đơn HN/SG và dùng lại quy tắc gộp Vòng đời/Accounting, không tải toàn bộ đơn hoặc tính cước/điều chuyển. Ghi dòng chỉ định theo lô trong cùng giao dịch/khóa PostgreSQL; bản in tiếp tục dùng snapshot sau commit. Tải trước tài nguyên phiếu và QR song song; chỉ cho in khi form chung đọc mới thành công và không còn lượt lưu form đang chạy.
+
+Redis/Valkey dùng cho SĐT sale (fresh 5 phút, last-good tối đa 30 phút, worker hiện có làm mới 4 phút) và nguồn Sheets/lịch sử Vòng đời (15 giây, generation token chống ghi cache cũ kể cả eviction). Không cache tồn, giữ chỗ, auth hoặc form in. Redis lỗi thì đọc nguồn, lệnh cache tối đa 150ms, hàng đợi client tối đa 100 lệnh; cold SĐT chỉ chờ 1 giây. `REDIS_ENABLED=false` hoặc thiếu `REDIS_URL` dùng cache RAM; khi bật cần `REDIS_NAMESPACE` riêng môi trường và private URL cùng vùng trên web/worker.
+
+Server-Timing cho `/api/shipment/pick/*`; browser measures `tokosi.pick.assets/render/layout/preview-ready/submit-ready` không chứa dữ liệu đơn. Monitor bổ sung eventLoopP95/Max, poolTotal/Idle/Waiting, cacheHit/Miss/Error/Bypass bên cạnh RSS/heap.
+
+Cấu trúc bổ sung:
+```text
+server/lib/sharedCache.js                    # Redis client + cache-aside/generation/fallback
+server/lib/sharedCache.test.js               # timeout, expiry, invalidation, corruption
+server/lib/sharedCache.integration.test.js   # Redis thật qua REDIS_TEST_URL (TEST riêng)
+server/scripts/benchmarkPicking.js           # benchmark offline PGlite, không production
+server/pickAssignments/sellerPhoneCache.test.js
+server/sheets/lifecycleSourceCache.test.js
+tasks/redis-performance/                     # plan, todo, benchmark và runbook cutover
+```
+
+Kiểm chứng/triển khai: xem [kế hoạch Redis](../tasks/redis-performance/plan.md), [benchmark cục bộ](../tasks/redis-performance/benchmark.md) và [runbook](../tasks/redis-performance/rollout.md). Giữ worker Singapore hiện có; tạo web Singapore thay thế Oregon sau kiểm chứng. Chưa thay đổi dịch vụ Render/domain hoặc xác nhận p95 production; không migration. Integration Redis thật đang chờ TEST Redis; công cụ browser dừng vì không xác định chắc chắn URL Windows.
+
+Cập nhật gần nhất: 03/11/2026.

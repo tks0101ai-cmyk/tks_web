@@ -84,6 +84,7 @@ async function renderPage({ orders = [orderRow('DH1')], store = newStore(), perm
     if (isListUrl(href)) return json(lifecycleResponse(href, source.orders, { ok: true, stale: false, fetchedAt: null, count: 0 }));
     if (u.pathname === '/api/shipment/lifecycle/order-detail') return json({ detail: kiotDetail(u.searchParams.get('code')) });
     if (u.pathname === '/api/shipment/pick/candidates') { store.candidateCalls++; return json({ order: store.order, candidates: store.candidates, assignment: store.assignment }); }
+    if (u.pathname.startsWith('/api/shipment/pick/print-layout/') && (options.method || 'GET') === 'GET') return json({layout:null,version:0});
     if (u.pathname === '/api/shipment/pick' && (options.method || 'GET') === 'GET') return json({ assignment: store.assignment });
     if (u.pathname === '/api/shipment/pick' && options.method === 'POST') {
       store.posted.push(JSON.parse(options.body));
@@ -929,6 +930,22 @@ test('order without pickable stock still enables assignment and printing', async
   } finally {page.dom.window.close();}
 });
 
+
+test('opening assignment preloads print assets while candidates are still pending', async () => {
+  let release,assets=0;
+  const store=newStore();
+  const page=await renderPage({store,fetchImpl:async href=>{
+    if(href.includes('/pick/order-template.tpl'))assets++;
+    if(href.includes('/pick/candidates'))return new Promise(resolve=>{release=()=>resolve(json({order:store.order,candidates:store.candidates,assignment:null}));});
+  }});
+  try{
+    const opening=page.window.TKSPick.open(store.order);await settle();
+    assert.equal(assets,1,'static preload must not await the candidates API');
+    assert.equal(page.document.getElementById('pickingRows').children.length,0);
+    release();await opening;
+    assert.ok(page.document.getElementById('pickingRows').children.length>0);
+  }finally{page.dom.window.close();}
+});
 
 test('after printing or cancelling the browser print dialog returns to the lifecycle list', async () => {
   for (const outcome of ['print', 'cancel']) {

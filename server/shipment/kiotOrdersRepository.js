@@ -338,6 +338,29 @@ function createKiotOrdersRepository({
 
   function invalidate() { cache = null; nextTryAt = 0; forceFull = true; }
 
+  // Picking needs only one code. Query both retailers so the shared accounting
+  // sheet can select its branch using the same rules as the full lifecycle list.
+  async function readOrderHeaders(code) {
+    const target = String(code ?? '').trim().toLowerCase();
+    if (!target) return [];
+    const { rows } = await getDb().query(`${ALL_ORDERS_SQL}
+      AND lower(btrim(o.code)) = $1`, [target]);
+    return rows.map(row => ({
+      branch: DB_TO_LIFECYCLE_BRANCH[row.branch] || '',
+      code: String(row.code || ''),
+      customerName: row.customer_name || '', saleName: row.sale_name || '',
+      saleTelegramId: row.sale_telegram_id || '', orderDate: row.order_date_text || '',
+      total: toNumber(row.total), kiotStatus: row.kiot_status || '', note: row.note || '',
+      sellableValue: null
+    }));
+  }
+
+  async function readPickingDetail({branch, code}) {
+    const branchCode = LIFECYCLE_TO_DB_BRANCH[branch];
+    if (!branchCode) throw makeError('Cơ sở không hợp lệ (HN hoặc SG).', 400, 'INVALID_BRANCH');
+    return fetchOrderDetail({code, branchCode, pool:getDb()});
+  }
+
   /**
    * Chi tiet 1 don cho hop thoai: dau chung + dong hang (documentDetailRepository.getOrderDetail), voi
    * don dang Phieu tam them ton thuc / dieu chuyen SG (hang dang van chuyen — chi hien thi) / so co ban
@@ -414,7 +437,7 @@ function createKiotOrdersRepository({
     };
   }
 
-  return { readOrders, readOrderDetail, invalidate };
+  return { readOrders, readOrderDetail, readOrderHeaders, readPickingDetail, invalidate };
 }
 
 // Instance mac dinh dung pool that (getPool() duoc goi luc can, khong luc nap module).

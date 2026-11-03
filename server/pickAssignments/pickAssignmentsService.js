@@ -15,11 +15,17 @@ const { makeAllocationSnapshot, allocationMatches, deductAllocation } = require(
 const { makeOrderSnapshot } = require('./pickOrderSnapshot');
 const { tx, createStockPositionsService } = require('../stockPositions/stockPositionsService');
 const kiotData = require('./pickKiotData');
+const { timedOperation, timedQuery } = require('../lib/requestTiming');
 
 const {
-  withTransaction, lockBranch, writeHistory, removeRow, fail, assertBranch, assertScope, actorOf,
+  withTransaction: runTransaction, lockBranch: acquireBranchLock, writeHistory, removeRow, fail, assertBranch, assertScope, actorOf,
   lower, normalizeLocation, isEmptyNote, isoOf, ROW_COLUMNS
 } = tx;
+
+const withTransaction = (pool, work) => timedOperation('pickTransaction', () => runTransaction({
+  connect: () => timedOperation('pickPool', () => pool.connect())
+}, work));
+const lockBranch = (client, branch) => timedOperation('pickLock', () => acquireBranchLock(client, branch));
 
 const STATUS = Object.freeze({ PICKING: 'picking', CONFIRMED: 'confirmed', CANCELLED: 'cancelled' });
 // Ly do huy ghi trong order_pick_history.summary.reason (khong can migration). 'kiot_cancelled': don bi huy tren Kiot — giao
@@ -141,9 +147,9 @@ function applyRemovals(order, lines, removed) {
 async function defaultLoadOrder({ branch, orderCode }) {
   const kiot = require('../shipment/kiotOrdersRepository').kiotOrders;
   const lifecycle = require('../shipment/orderLifecycleService');
-  const row = await lifecycle.findMergedOrder(branch, orderCode, { kiot });
+  const row = await lifecycle.findPickingOrder(branch, orderCode, { kiot });
   if (!row) return null;
-  const detail = await kiot.readOrderDetail({ branch, code: row.orderCode });
+  const detail = await kiot.readPickingDetail({ branch, code: row.orderCode });
   return {
     branch,
     orderCode: row.orderCode,
@@ -155,7 +161,7 @@ async function defaultLoadOrder({ branch, orderCode }) {
     invoiceDiscount: Number(detail.discount) || 0,
     customerPhone: detail.customerPhone || '',
     customerAddress: detail.customerAddress || '',
-    sellerPhone: detail.sellerPhone || await kiotData.readSellerPhone(tx.DB_BRANCH[branch], detail.sellerId),
+    sellerPhone: detail.sellerPhone || await timedOperation('sellerPhone',()=>kiotData.readSellerPhone(tx.DB_BRANCH[branch], detail.sellerId)),
     note: detail.note || row.note || '',
     lines: detail.lines
   };
@@ -167,14 +173,27 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
   stockPositions = createStockPositionsService({ getDb }) } = {}) {
   // ---------- Doc / dinh dang ----------
 
-  async function readAssignment(db, id) {
+  async function readAssignment(db, id, { inTransaction = false, supplementPhone = true } = {}) {
     const head = (await db.query('SELECT * FROM order_pick_assignments WHERE id = $1', [id])).rows[0];
     if (!head) return null;
     // Older snapshots have no seller contact: supplement the print response without rewriting history.
     const snapshot = {...(head.order_snapshot || {})};
-    if (!snapshot.sellerPhone && loadSellerPhone) snapshot.sellerPhone = await loadSellerPhone(db, head.branch, head.order_code);
-    const lines = (await db.query('SELECT * FROM order_pick_lines WHERE assignment_id = $1 ORDER BY id', [id])).rows;
-    const history = (await db.query('SELECT created_at, action, actor_name, summary FROM order_pick_history WHERE assignment_id = $1 ORDER BY id', [id])).rows;
+    const loadLines = () => db.query('SELECT * FROM order_pick_lines WHERE assignment_id = $1 ORDER BY id', [id]);
+    const loadHistory = () => db.query('SELECT created_at, action, actor_name, summary FROM order_pick_history WHERE assignment_id = $1 ORDER BY id', [id]);
+    let lines, history;
+    if (inTransaction) {
+      // Conflict responses run under locks. Read only persisted snapshot data;
+      // never call Kiot or start competing queries on the transaction client.
+      lines = (await loadLines()).rows;
+      history = (await loadHistory()).rows;
+    } else {
+      const [lineResult, historyResult] = await Promise.all([loadLines(), loadHistory(),
+        supplementPhone && !snapshot.sellerPhone && loadSellerPhone
+          ? timedOperation('sellerPhone',async()=>{snapshot.sellerPhone=await loadSellerPhone(db,head.branch,head.order_code);})
+          : Promise.resolve()]);
+      lines = lineResult.rows;
+      history = historyResult.rows;
+    }
     const at = value => (value ? isoOf(value) : null);
     return {
       id: Number(head.id),
@@ -213,9 +232,9 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
     return row ? Number(row.id) : null;
   }
 
-  async function readLatest(db, branch, orderCode) {
+  async function readLatest(db, branch, orderCode, options) {
     const id = await readLatestId(db, branch, orderCode);
-    return id === null ? null : readAssignment(db, id);
+    return id === null ? null : readAssignment(db, id, options);
   }
 
   // Giu cho hien co theo vi tri: chi chi dinh 'picking' cua DON KHAC (exceptOrder bo qua chinh don dang xem/chi dinh).
@@ -267,7 +286,7 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
   }
 
   async function requireOrder(branch, orderCode) {
-    const order = await loadOrder({ branch, orderCode });
+    const order = await timedOperation('pickOrder',()=>loadOrder({ branch, orderCode }));
     if (!order) throw fail(404, 'NOT_FOUND', 'Không tìm thấy đơn hàng này.');
     return { order, lines: mergeOrderLines(order.lines) };
   }
@@ -289,13 +308,17 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
     const db = getDb();
     const keys = [...new Set(lines.map(line => codeKey(line.productCode)))];
     const rows = keys.length
-      ? (await db.query(`SELECT ${ROW_COLUMNS} FROM stock_positions WHERE branch = $1 AND lower(btrim(code)) = ANY($2::text[]) ORDER BY id`, [branch, keys])).rows
+      ? (await timedQuery(db,'pickPositions',`SELECT ${ROW_COLUMNS} FROM stock_positions WHERE branch = $1 AND lower(btrim(code)) = ANY($2::text[]) ORDER BY id`, [branch, keys])).rows
       : [];
-    const held = await heldByPosition(db, branch, rows.map(row => Number(row.id)), order.orderCode);
+    const held = await timedOperation('pickHeld',()=>heldByPosition(db, branch, rows.map(row => Number(row.id)), order.orderCode));
     const byCode = {};
     for (const key of keys) byCode[key] = [];
     for (const row of rows) byCode[codeKey(row.code)].push(shapeCandidate(row, held.get(Number(row.id)) || 0));
-    return { order: orderView(order, lines), candidates: byCode, assignment: await readLatest(db, branch, order.orderCode) };
+    // loadOrder already spent this request's contact-lookup budget. Reuse its
+    // result for old snapshots rather than waiting on a second cold lookup.
+    const assignment = await readLatest(db, branch, order.orderCode, {supplementPhone:false});
+    if (assignment && !assignment.snapshot.sellerPhone && order.sellerPhone) assignment.snapshot.sellerPhone = order.sellerPhone;
+    return { order: orderView(order, lines), candidates: byCode, assignment };
   }
 
   // Snapshot sau khi bo cac ma `isGone`: phieu in va canh bao Lech SL khong con ma da xoa; tinh lai tong tien khi snapshot du gia.
@@ -460,7 +483,7 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
           // In lai / chi dinh lai = huy luot cu (Dang nhat: tra giu cho; Da nhat: hoan thung da tru) + luot moi trong CUNG giao dich:
           // loi o buoc sau thi luot cu van giu nguyen.
           if (body.version !== undefined && body.version !== null && Number(body.version) !== active.version) {
-            throw fail(409, 'VERSION_CONFLICT', 'Chỉ định đã bị người khác thay đổi. Hãy tải lại.', { latest: await readAssignment(client, Number(active.id)) });
+            throw fail(409, 'VERSION_CONFLICT', 'Chỉ định đã bị người khác thay đổi. Hãy tải lại.', { latest: await readAssignment(client, Number(active.id), {inTransaction:true}) });
           }
           const wasConfirmed = active.status === STATUS.CONFIRMED;
           if (wasConfirmed) await revertConfirmed(client, { id: active.id, branch, order_code: order.orderCode }, actor);
@@ -496,6 +519,7 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
            VALUES ($1, $2, 'picking', $3::jsonb, $4, $5) RETURNING id`,
           [branch, order.orderCode, JSON.stringify(snapshot), actor.id, actor.name])).rows[0];
         let total = 0;
+        const insertLines = [];
         for (const [lineIndex, map] of perLine.entries()) {
           for (const [positionId, qty] of map) {
             const row = byId.get(positionId);
@@ -503,12 +527,17 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
             const allocationSnapshot = makeAllocationSnapshot(row, qty);
             if (!allocationSnapshot) throw fail(400, 'VALIDATION', `Không lập được quy cách nhặt cho mã ${row.code}.`);
             total += qty;
-            await client.query(
-              `INSERT INTO order_pick_lines (assignment_id, product_code, position_id, location, planned_qty, reserved_qty, st_cartons, st_text, allocation_snapshot)
-               VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8::jsonb)`,
-              [head.id, lines[lineIndex].productCode, positionId, row.location, qty, spec && carton.stFor(spec, qty) ? carton.stFor(spec, qty).cartons : null, spec ? carton.pickText(spec, qty) : null, JSON.stringify(allocationSnapshot)]);
+            insertLines.push({ line_order:insertLines.length, product_code:lines[lineIndex].productCode, position_id:positionId, location:row.location,
+              qty, st_cartons:spec && carton.stFor(spec, qty) ? carton.stFor(spec, qty).cartons : null,
+              st_text:spec ? carton.pickText(spec, qty) : null, allocation_snapshot:allocationSnapshot });
           }
         }
+        if (insertLines.length) await timedQuery(client,'pickInsertLines',
+          `INSERT INTO order_pick_lines (assignment_id, product_code, position_id, location, planned_qty, reserved_qty, st_cartons, st_text, allocation_snapshot)
+           SELECT $1, l.product_code, l.position_id, l.location, l.qty, l.qty, l.st_cartons, l.st_text, l.allocation_snapshot
+             FROM jsonb_to_recordset($2::jsonb) AS l(product_code text, position_id bigint, location text,
+               qty numeric, st_cartons numeric, st_text text, allocation_snapshot jsonb, line_order integer)
+            ORDER BY l.line_order`,[head.id,JSON.stringify(insertLines)]);
         await client.query(
           `INSERT INTO order_pick_history (assignment_id, branch, order_code, action, summary, actor_user_id, actor_name)
            VALUES ($1, $2, $3, 'assign', $4::jsonb, $5, $6)`,
@@ -519,7 +548,7 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
       if (error && error.code === '23505') throw fail(409, 'ALREADY_ASSIGNED', 'Đơn này đã được chỉ định vị trí. Hãy hủy nhặt rồi chỉ định lại.');
       throw error;
     }
-    return { assignment: await readAssignment(db, assignmentId) };
+    return { assignment: await readAssignment(db, assignmentId, {supplementPhone:false}) };
   }
 
   // Khoa + doc 1 chi dinh de doi trang thai: kiem pham vi co so, version (409 kem ban moi nhat) va trang thai hien tai.
@@ -533,10 +562,10 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
     if (!row) throw fail(404, 'NOT_FOUND', 'Không tìm thấy chỉ định vị trí.');
     if (version === undefined || version === null || !Number.isInteger(Number(version))) throw fail(400, 'VALIDATION', 'Thiếu phiên bản (version) của chỉ định.', { field: 'version' });
     if (Number(version) !== row.version) {
-      throw fail(409, 'VERSION_CONFLICT', 'Chỉ định đã bị người khác thay đổi. Dữ liệu mới nhất đã được tải lại.', { latest: await readAssignment(client, id) });
+      throw fail(409, 'VERSION_CONFLICT', 'Chỉ định đã bị người khác thay đổi. Dữ liệu mới nhất đã được tải lại.', { latest: await readAssignment(client, id, {inTransaction:true}) });
     }
     if (!allowed.includes(row.status)) {
-      throw fail(409, 'INVALID_STATE', `Chỉ định đang ở trạng thái "${row.status}", không thực hiện được thao tác này.`, { latest: await readAssignment(client, id) });
+      throw fail(409, 'INVALID_STATE', `Chỉ định đang ở trạng thái "${row.status}", không thực hiện được thao tác này.`, { latest: await readAssignment(client, id, {inTransaction:true}) });
     }
     return row;
   }
@@ -649,7 +678,7 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
       const head = await lockAssignment(client, ctx, id, body.version, [STATUS.PICKING, STATUS.CONFIRMED]);
       // Da boc la trang thai cuoi: khong huy / hoan tac duoc (thung da tru that). Chi 'picking' moi huy duoc (tra giu cho).
       if (head.status === STATUS.CONFIRMED) {
-        throw fail(409, 'ALREADY_CONFIRMED', 'Đơn đã bốc xong, không hủy được nữa.', { latest: await readAssignment(client, id) });
+        throw fail(409, 'ALREADY_CONFIRMED', 'Đơn đã bốc xong, không hủy được nữa.', { latest: await readAssignment(client, id, {inTransaction:true}) });
       }
       await client.query(
         `UPDATE order_pick_assignments SET status = 'cancelled', version = version + 1, cancelled_by_user_id = $2, cancelled_by_name = $3, cancelled_at = now(), updated_at = now() WHERE id = $1`,

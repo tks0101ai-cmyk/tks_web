@@ -164,6 +164,7 @@ async function startServer() {
 
     if (CONFIG.MEMORY_MONITOR) {
       const memoryMonitor = require('./lib/memoryMonitor').startMemoryMonitor({
+        getPoolStats: () => {const p=require('./db/pool').getPool();return {total:p.totalCount,idle:p.idleCount,waiting:p.waitingCount};},
         intervalMs: CONFIG.MEMORY_LOG_INTERVAL_MS,
         limitMb: CONFIG.MEMORY_LIMIT_MB
       });
