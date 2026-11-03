@@ -1247,15 +1247,42 @@ test('mở chi tiết đơn: nút hiện ngay, tải trước candidates và t�
 });
 
 test('mở chi tiết: không có quyền thì không nút, không tải trước; đơn không có trên Kiot (404) thì bỏ nút', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
   const noPick = await renderPage({ permissions: ['shipment.lifecycle'] });
-  const missing = await renderPage({ fetchImpl: href => (href.startsWith('/api/shipment/lifecycle/order-detail') ? json({ error: 'x' }, 404) : null) });
+  const missing = await renderPage({ fetchImpl: href => (href.startsWith('/api/shipment/lifecycle/order-detail') ? gate.then(() => json({ error: 'x' }, 404)) : null) });
   try {
     await openDetail(noPick);
     assert.equal(noPick.document.getElementById('openPickingBtn'), null);
     assert.equal(noPick.store.candidateCalls, 0);
     await openDetail(missing);
+    assert.ok(missing.document.getElementById('openPickingBtn'), 'nút hiện ngay trước khi chi tiết Kiot về');
+    release();
+    await settle();
     assert.equal(missing.document.getElementById('openPickingBtn'), null, '404: như trước, không có nút');
   } finally { [noPick, missing].forEach(page => page.dom.window.close()); }
+});
+
+test('bấm nút sớm rồi Hủy nhặt trước khi chi tiết Kiot về: chỉ định tải lúc mở hộp (cũ) không ghi đè chip / cột ST', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const store = newStore({ assignment: makeAssignment('picking') });
+  const page = await renderPage({
+    orders: [orderRow('DH1', { pickStatus: 'picking' })], store,
+    fetchImpl: href => (href.startsWith('/api/shipment/lifecycle/order-detail') ? gate.then(() => json({ detail: kiotDetail('DH1') })) : null)
+  });
+  try {
+    await openDetail(page);
+    await click(page, 'openPickingBtn');
+    await click(page, 'pickingCancelPick');
+    assert.deepEqual(store.statusCalls, [{ id: '7', action: 'cancel', body: { version: 1 } }]);
+    release();
+    await settle();
+    assert.ok(page.document.querySelector('#lcDetailKiot table.lc-lines'), 'bảng hàng vẽ sau khi về');
+    assert.match(page.document.querySelector('#lcDetailKiot .picking-confirmed').textContent, /Hủy nhặt/);
+    assert.doesNotMatch(page.document.querySelector('#lcDetailKiot .picking-confirmed').textContent, /Đang nhặt/);
+    assert.equal(page.document.querySelectorAll('#lcDetailKiot table.lc-lines thead th').length, 9, 'Hủy nhặt: bỏ cột ST');
+  } finally { page.dom.window.close(); }
 });
 
 test('bấm nút mở hộp sớm (chi tiết Kiot chưa về) rồi lưu: dòng danh sách vẫn cập nhật Đang nhặt, không dính chỉ định đơn khác', async () => {

@@ -881,6 +881,7 @@
     let detailOrder = null;  // don dang xem (dong bang hoac ket qua tra cuu)
     let detailKiot = null;   // ket qua order-detail cua Kiot (null = chua nap / khong co)
     let detailPick = null;   // chi dinh vi tri moi nhat cua don dang xem (null = chua co / khong tai)
+    let pickChangeSeq = 0;   // tang moi lan chi dinh doi (luu/xac nhan/huy nhat): ban chi dinh tai luc mo hop den muon khong duoc de len
     // { HN, SG } ten mien gian hang Kiot, do GET /api/shipment/lifecycle tra ve (server/shipment/kiotOrderLink.js).
     // Tra cuu cho Khach khong nhan truong nay nen khong bao gio hien nut "Mo don tren Kiot".
     let kiotOrderHosts = {};
@@ -1229,7 +1230,8 @@
         window.TKSPick.prefetch(order);
       }
       // Chi tiet Kiot va chi dinh (de ve cot ST) tai SONG SONG; loadAssignment khong bao gio loi (tra null).
-      const pickLoad = window.TKSPick && canPick && order.pickStatus ? window.TKSPick.loadAssignment(order) : Promise.resolve(undefined);
+      const pickSeq = pickChangeSeq; // nguoi dung co the luu/huy bang nut som truoc khi tai xong -> ban tai luc nay thanh cu
+      const pickLoad = window.TKSPick && canPick && order.pickStatus ?window.TKSPick.loadAssignment(order) : Promise.resolve(undefined);
       Promise.all([
         readDetailJSON('/api/shipment/lifecycle/order-detail?code=' + encodeURIComponent(order.orderCode) +
           '&branch=' + encodeURIComponent(order.branch)),
@@ -1247,7 +1249,7 @@
             return;
           }
           detailKiot = result.body.detail || {};
-          if(results[1] !== undefined) detailPick = results[1];
+          if(results[1] !== undefined && pickSeq === pickChangeSeq) detailPick = results[1];
           renderKiotHolder(order);
         })
         .catch(function(){
@@ -1284,6 +1286,7 @@
     function onPickChanged(order, assignment){
       const status = assignment ? assignment.status : null;
       detailPick = assignment || null;
+      pickChangeSeq++;
       applyPickStatus(order, status);
       if(detailOrder === order) renderKiotHolder(order);
       loadBulkOrders(true); // bo loc / so dem "Trang thai boc" do may chu tinh lai theo chi dinh moi
@@ -1333,7 +1336,7 @@
         const order = tr && tr._order;
         const assignment = body.assignment || null;
         if(order){
-          if(detailOrder === order) detailPick = assignment;
+          if(detailOrder === order){ detailPick = assignment; pickChangeSeq++; }
           applyPickStatus(order, assignment ? assignment.status : null);
           if(detailOrder === order) renderKiotHolder(order);
         }

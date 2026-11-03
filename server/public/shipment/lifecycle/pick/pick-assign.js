@@ -885,9 +885,6 @@
   }
 
   // ---------- Gắn vào hộp chi tiết đơn ----------
-  /* opts: {order (đơn đang xem, có summary.code và pickStatus), host (#lcDetailKiot), buttonHost (đầu hộp, bên trái nút đóng), canPick, assignment (nếu đã tải), onChange(assignment)}.
-     Nút "Chỉ định vị trí" chỉ hiện với người có quyền ở mọi trạng thái đơn (để xem/in);
-     chip "Đã chỉ định · <trạng thái>" hiện cho mọi người xem được hộp. */
   function openButton(o,status){
     const button=document.createElement('button');button.type='button';button.id='openPickingBtn';button.className='picking-open-btn';button.textContent=status==='picking'?'Thay đổi chỉ định':'Chỉ định vị trí';
     if(status==='picking')button.title='Đổi vị trí hoặc số lượng rồi lưu bằng Cập nhật chỉ định & In phiếu.';
@@ -902,6 +899,9 @@
     host.replaceChildren();
     if(opts.canPick)host.appendChild(openButton(opts.order||{},opts.status||null));
   }
+  /* opts: {order (đơn đang xem, có summary.code và pickStatus), host (#lcDetailKiot), buttonHost (đầu hộp, bên trái nút đóng), canPick, assignment (nếu đã tải), onChange(assignment)}.
+     Nút "Chỉ định vị trí" chỉ hiện với người có quyền ở mọi trạng thái đơn (để xem/in);
+     chip "Đã chỉ định · <trạng thái>" hiện cho mọi người xem được hộp. */
   function attach(opts){
     const host=opts&&opts.host;if(!host)return;
     const buttonHost=opts.buttonHost;
