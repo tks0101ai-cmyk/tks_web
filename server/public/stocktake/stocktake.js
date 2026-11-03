@@ -49,6 +49,13 @@
     }
     return finder.index;
   }
+  const Grid = window.TKSStocktakeGrid;
+  const Paste = window.TKSStocktakePaste;
+  const MAX_CELLS = 10000;
+  const UNDO_LIMIT = 50;
+  // O nhap dang mo (de len 1 o) va cac buoc hoan tac cua chinh minh (chi trong bo nho trang).
+  const editor = { input: null };
+  const undoStack = [];
   const otherLabel = branch => (branch === 'saigon' ? 'HN' : 'SG');
   const labelOf = (column, branch) => (column.key === 'otherDiff' ? 'Kiểm ' + otherLabel(branch)
     : column.key === 'otherRatio' ? 'Do kiểm ' + otherLabel(branch) : column.label);
@@ -370,13 +377,13 @@
     const tr = document.createElement('tr');
     tr.dataset.code = row.code;
     tr.dataset.index = String(index);
-    tr.tabIndex = 0;
     if (row.forgotten) tr.classList.add('st-forgotten');
     COLUMNS.forEach((column, col) => {
       const td = document.createElement('td');
       td.dataset.field = column.key;
       td.dataset.col = String(col);
       if (column.num) td.className = 'num';
+      if (Grid.EDIT_COLUMNS[column.key]) td.dataset.editable = '';
       td.textContent = cellText(row, column.key);
       if ((column.key === 'prevDiff' && row.prevDiffManual) || (column.key === 'otherDiff' && row.otherDiffManual)) {
         td.classList.add('st-manual');
@@ -488,11 +495,12 @@
       const td = event.target.closest('td[data-col]');
       if (!td || event.button !== 0) return;
       event.preventDefault(); // không bôi đen chữ khi kéo
+      if (editor.input) closeEditor(true); // preventDefault chặn blur nên tự đóng ô nhập (nhấp sang ô khác = lưu, như Sheets)
       const pos = cellPos(td);
       if (event.shiftKey && selection.anchor) selection.focus = pos;
       else selection.anchor = selection.focus = pos;
       selection.dragging = true;
-      td.parentElement.focus({ preventScroll: true });
+      document.querySelector('.st-scroll').focus({ preventScroll: true });
       paintSelection();
     });
     tbody.addEventListener('mouseover', event => {
@@ -513,12 +521,173 @@
       const rect = selectionRect();
       notify('Đã copy ' + num(rect.bottom - rect.top + 1) + ' dòng × ' + num(visibleColumnsIn(rect).length) + ' cột.');
     });
+    // Phim kieu sheet tren o dang chon. Khong chay khi dang mo o nhap, hop thoai, hoac focus o o nhap khac.
     document.addEventListener('keydown', event => {
-      if (event.key === 'Escape' && selectionRect() && !document.querySelector('dialog[open]')) {
-        selection.anchor = selection.focus = null;
-        paintSelection();
-      }
+      if (editor.input || document.querySelector('dialog[open]')) return;
+      const active = document.activeElement;
+      if (active && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(active.tagName)) return;
+      const ctrl = event.ctrlKey || event.metaKey;
+      if (ctrl && !event.shiftKey && event.key.toLowerCase() === 'z') { event.preventDefault(); undo(); return; }
+      if (!selection.focus) return;
+      if (event.key === 'Escape') { selection.anchor = selection.focus = null; paintSelection(); return; }
+      if (ctrl || event.altKey) return;
+      const arrows = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
+      if (arrows[event.key]) { event.preventDefault(); moveFocus(arrows[event.key][0], arrows[event.key][1], event.shiftKey); return; }
+      if (event.key === 'Tab') { event.preventDefault(); moveFocus(0, event.shiftKey ? -1 : 1, false); return; }
+      if (event.key === 'Enter' || event.key === 'F2') { event.preventDefault(); openEditor(); return; }
+      if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); clearSelectionCells(); return; }
+      // Bo go tieng Viet kieu IME (Windows Telex) bao key "Process": mo o nhap rong, de phim roi vao o nhap.
+      if (event.key === 'Process' || event.isComposing) { openEditor(''); return; }
+      if (event.key.length === 1) { event.preventDefault(); openEditor(event.key); }
     });
+  }
+
+  // ---------- Sửa trên bảng ----------
+  const editColumnOf = col => (COLUMNS[col] && Grid.EDIT_COLUMNS[COLUMNS[col].key]) || null;
+  const cellAt = pos => {
+    const tr = pos && $('stRows').rows[pos.row];
+    return tr && tr.dataset.code ? tr.cells[pos.col] || null : null;
+  };
+  const expectedOf = (row, column) => Paste.columnValue(column, row.note, row, employeeName);
+  function visibleColumnIndexes() {
+    return visibleColumnsIn({ left: 0, right: COLUMNS.length - 1 });
+  }
+  function canWrite() {
+    if (editable()) return true;
+    const closed = state.board && state.board.session.status === 'closed';
+    notify(closed ? 'Đợt đã đóng, không sửa được.' : 'Bạn không có quyền sửa đợt này.', true);
+    return false;
+  }
+  function selectRect(top, left, bottom, right) {
+    selection.anchor = { row: top, col: left };
+    selection.focus = { row: bottom, col: right };
+    paintSelection();
+  }
+  // O trong bang nam o vi tri nao trong khung cuon (de dat o nhap / nut keo).
+  function boxIn(td) {
+    const scroller = document.querySelector('.st-scroll');
+    const box = td.getBoundingClientRect();
+    const base = scroller.getBoundingClientRect();
+    return { scroller, left: box.left - base.left + scroller.scrollLeft, top: box.top - base.top + scroller.scrollTop, width: box.width, height: box.height };
+  }
+
+  function cellsMessage(verb, payload, ignored) {
+    const s = payload.skipped || {};
+    const parts = [verb + ' ' + num(payload.applied.length) + ' ô'];
+    const bad = ignored + (s.invalid || 0) + (s.notFound || 0);
+    if (bad) parts.push(num(bad) + ' ô bỏ qua (cột không sửa được / giá trị sai)');
+    if (payload.conflicts.length) parts.push(num(payload.conflicts.length) + ' ô người khác vừa sửa nên không ghi');
+    return parts.join(' · ') + '.';
+  }
+
+  // Gui /cells; thanh cong thi day buoc hoan tac (tru khi dang hoan tac) va tai nen bang (giu thu tu dong).
+  async function sendCells(cells, { undo = false } = {}) {
+    if (!cells.length) return null;
+    if (cells.length > MAX_CELLS) { notify('Tối đa ' + num(MAX_CELLS) + ' ô mỗi lần.', true); return null; }
+    const sessionId = state.sessionId;
+    const { response, payload } = await request(API + '/sessions/' + sessionId + '/cells', jsonOptions('POST', { cells }));
+    if (!response.ok) { notify(payload.error || 'Không lưu được.', true); return null; }
+    if (!undo && payload.applied.length) {
+      undoStack.push({ sessionId, cells: payload.applied });
+      if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+    }
+    await loadBoard({ background: true, forms: true });
+    return payload;
+  }
+
+  // targets: [{ row, col, raw }] theo chi so view.rows / COLUMNS. O cot khong sua duoc / gia tri sai -> bo qua.
+  async function writeTargets(targets, verb, { countIgnored = true } = {}) {
+    const cells = [];
+    let ignored = 0;
+    for (const target of targets) {
+      const column = editColumnOf(target.col);
+      const row = view.rows[target.row];
+      if (!column || !row || !Paste.normalizeValue(column, target.raw).ok) { ignored += 1; continue; }
+      cells.push({ code: row.code, column, value: target.raw, expected: expectedOf(row, column) });
+    }
+    if (!cells.length) { notify('Không có ô nào sửa được trong vùng này.', true); return; }
+    const payload = await sendCells(cells);
+    if (payload) notify(cellsMessage(verb, payload, countIgnored ? ignored : 0), payload.conflicts.length > 0);
+  }
+
+  async function undo() {
+    const step = undoStack.pop();
+    if (step && step.sessionId !== state.sessionId) undoStack.length = 0;
+    if (!step || step.sessionId !== state.sessionId) { notify('Không còn gì để hoàn tác.'); return; }
+    if (!canWrite()) { undoStack.push(step); return; }
+    const payload = await sendCells(step.cells.map(cell => ({
+      code: cell.code, column: cell.column, value: Paste.rawOf(cell.column, cell.before), expected: cell.after
+    })), { undo: true });
+    if (payload) {
+      notify(cellsMessage('Đã hoàn tác', payload, 0).replace('nên không ghi', 'nên không hoàn tác được'), payload.conflicts.length > 0);
+    } else undoStack.push(step);
+  }
+
+  function clearSelectionCells() {
+    const rect = selectionRect();
+    if (!rect || !canWrite()) return;
+    const targets = [];
+    for (let row = rect.top; row <= rect.bottom; row++) {
+      for (const col of visibleColumnsIn(rect)) if (editColumnOf(col)) targets.push({ row, col, raw: '' });
+    }
+    writeTargets(targets, 'Đã xóa', { countIgnored: false });
+  }
+
+  // Mo o nhap de len o dang chon. initial: ky tu vua go (thay noi dung); khong co = sua noi dung hien tai.
+  function openEditor(initial) {
+    const pos = selection.focus;
+    if (!pos || editor.input || !canWrite()) return;
+    const column = editColumnOf(pos.col);
+    if (!column) { notify('Cột "' + labelOf(COLUMNS[pos.col], state.headBranch) + '" không sửa được.', true); return; }
+    const td = cellAt(pos);
+    const row = view.rows[pos.row];
+    if (!td || !row) return;
+    const start = cellText(row, COLUMNS[pos.col].key);
+    const box = boxIn(td);
+    const input = document.createElement('input');
+    input.className = 'st-editor';
+    input.value = initial === undefined ? start : initial;
+    Object.assign(input.style, { left: box.left + 'px', top: box.top + 'px', width: Math.max(box.width, 140) + 'px', height: Math.max(box.height, 30) + 'px' });
+    Object.assign(editor, { input, code: row.code, column, start, expected: expectedOf(row, column), sessionId: state.sessionId });
+    box.scroller.appendChild(input);
+    input.focus({ preventScroll: true });
+    input.setSelectionRange(input.value.length, input.value.length);
+    input.addEventListener('keydown', event => {
+      event.stopPropagation();
+      if (event.key === 'Enter') { event.preventDefault(); closeEditor(true, [1, 0]); }
+      else if (event.key === 'Tab') { event.preventDefault(); closeEditor(true, [0, event.shiftKey ? -1 : 1]); }
+      else if (event.key === 'Escape') { event.preventDefault(); closeEditor(false); }
+    });
+    input.addEventListener('blur', () => closeEditor(true));
+  }
+
+  async function closeEditor(save, move) {
+    const { input, code, column, start, expected, sessionId } = editor;
+    if (!input) return;
+    editor.input = null;
+    const value = input.value;
+    input.remove();
+    document.querySelector('.st-scroll').focus({ preventScroll: true });
+    if (move) moveFocus(move[0], move[1], false);
+    if (!save || value === start || sessionId !== state.sessionId) return;
+    const payload = await sendCells([{ code, column, value, expected }]);
+    if (!payload) return;
+    if (payload.conflicts.length) notify('Người khác vừa sửa ô này — bảng đang hiện giá trị của họ.', true);
+    else if (payload.skipped.invalid) notify('Giá trị không hợp lệ cho cột ' + labelOf(COLUMNS.find(c => Grid.EDIT_COLUMNS[c.key] === column), state.headBranch) + '.', true);
+  }
+
+  // Doi o chon (mui ten / Enter / Tab); extend = Shift (mo rong vung). Dong chua ve thi ve them.
+  function moveFocus(dr, dc, extend) {
+    if (!view.rows.length) return;
+    const from = selection.focus || { row: 0, col: 0 };
+    const row = Math.max(0, Math.min(view.rows.length - 1, from.row + dr));
+    const col = dc ? Grid.moveIndex(visibleColumnIndexes(), from.col, dc) : from.col;
+    if (row >= view.drawn) drawMore(row - view.drawn + CHUNK);
+    selection.focus = { row, col };
+    if (!extend || !selection.anchor) selection.anchor = selection.focus;
+    paintSelection();
+    const td = cellAt(selection.focus);
+    if (td) td.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
 
   function fillSelect(select, firstLabel, entries, current) {
@@ -829,14 +998,10 @@
   }
 
   function bindDetail() {
-    // Nhấp một lần = chọn ô (như sheet); nhấp đúp hoặc Enter = mở chi tiết mã.
+    // Nhấp một lần = chọn ô (như sheet); nhấp đúp = mở chi tiết mã.
     $('stRows').addEventListener('dblclick', event => {
       const tr = event.target.closest('tr[data-code]');
       if (tr) openDetail(tr.dataset.code);
-    });
-    $('stRows').addEventListener('keydown', event => {
-      const tr = event.target.closest('tr[data-code]');
-      if (tr && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); openDetail(tr.dataset.code); }
     });
     $('stDetailDialog').addEventListener('close', () => { detail.code = null; });
     $('stConflictReload').addEventListener('click', async () => {
@@ -900,6 +1065,8 @@
   function bindSessions() {
     document.querySelectorAll('[data-st-close]').forEach(button => button.addEventListener('click', () => button.closest('dialog').close()));
     $('stSession').addEventListener('change', event => {
+      if (editor.input) closeEditor(false);
+      undoStack.length = 0;
       state.sessionId = Number(event.target.value);
       resetView();
       loadBoard();

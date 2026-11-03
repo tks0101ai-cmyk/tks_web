@@ -96,3 +96,10 @@
 .st-swatch input:focus-visible+span{outline:2px solid var(--blue);outline-offset:2px}
 .st-swatch input:disabled,.st-swatch input:disabled+span{cursor:not-allowed;opacity:.5}
 .st-table td.num{white-space:nowrap;overflow-wrap:normal}
+/* Sua tren bang kieu sheet: o nhap de len o, nut keo goc vung chon, vien vung se dien. */
+.st-scroll{position:relative}
+.st-table td[data-editable]{cursor:cell}
+.st-editor{position:absolute;z-index:6;box-sizing:border-box;margin:0;padding:4px 6px;border:2px solid #06b6d4;border-radius:0;background:var(--panel);color:var(--text);font:13px var(--font-body);outline:none;box-shadow:0 4px 12px rgba(0,0,0,.25)}
+.st-fill{position:absolute;z-index:5;width:8px;height:8px;margin:0;padding:0;border:1px solid var(--panel);background:#06b6d4;cursor:crosshair}
+.st-fill[hidden]{display:none}
+.st-table td.st-fill-preview{outline:1px dashed #06b6d4;outline-offset:-2px}
