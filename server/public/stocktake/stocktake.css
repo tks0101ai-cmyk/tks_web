@@ -55,7 +55,7 @@
   .st-table td[data-field="code"]{position:sticky;left:0;background:var(--panel);z-index:1;box-shadow:1px 0 0 var(--border)}
 }
 .st-table td.st-manual { box-shadow: inset 2px 0 0 var(--amber, #c48a2c); font-style: italic; }
-.st-table th .sort-button { width: 100%; justify-content: space-between; }
+.st-table th .sort-button { width: 100%; }
 .st-counterpart select { min-width: 220px; }
 @media (max-width: 720px) { .st-counterpart select { min-width: 0; width: 100%; } }
 #stCounterpartField[hidden]{display:none}
@@ -91,7 +91,6 @@
 .st-swatch input:checked+span{border-color:var(--text);box-shadow:0 0 0 3px color-mix(in srgb,var(--text) 25%,transparent)}
 .st-swatch input:focus-visible+span{outline:2px solid var(--blue);outline-offset:2px}
 .st-swatch input:disabled,.st-swatch input:disabled+span{cursor:not-allowed;opacity:.5}
-.st-table td.num{white-space:nowrap;overflow-wrap:normal}
 /* Sua tren bang kieu sheet: o nhap de len o, nut keo goc vung chon, vien vung se dien. */
 .st-scroll{position:relative}
 .st-table td[data-editable]{cursor:cell}
@@ -107,6 +106,7 @@
 #stTable tbody td{padding-left:8px;padding-right:8px}
 #stTable thead th .sort-button,#stTable thead th .sort-button>.sort-label{white-space:nowrap !important;overflow:hidden;overflow-wrap:normal !important;font-size:11px}
 #stTable thead th .sort-button{position:relative}
-#stTable thead th .sort-indicator{position:absolute;right:2px;top:50%;transform:translateY(-50%);width:auto;background:transparent !important;box-shadow:none;pointer-events:none;opacity:.45}
+#stTable thead th .sort-indicator{position:absolute;right:2px;top:50%;transform:translateY(-50%);width:auto;pointer-events:none;opacity:.45}
+#stTable thead th .sort-button:hover .sort-indicator{opacity:1}
 #stTable thead th[aria-sort="ascending"] .sort-indicator,#stTable thead th[aria-sort="descending"] .sort-indicator{opacity:1}
-#stTable thead th .sort-button>.sort-label{flex:1 1 auto;padding-right:14px}
+#stTable thead th .sort-button>.sort-label{flex:1 1 auto;margin-right:14px}
