@@ -70,7 +70,7 @@ test('bang doi chieu: don TEAM trong ngay (gio VN, ca don huy), khach thuong bi 
   assert.equal(rowOf(board, 'AAA1').lines.find(l => l.orderId === 101).zone, 'G1-15');
   assert.equal(rowOf(board, 'AAA1').lines.find(l => l.orderId === 101).spec, '1t*8');
   assert.equal(rowOf(board, 'AAA1').lines.find(l => l.orderId === 101).team, 'TEAM 1 : HIỂU KHO');
-  assert.deepEqual(rowOf(board, 'AAA1').latestPosition, { location: 'G1-15', arrivalDate: 'KK 4.10' });
+  assert.equal('latestPosition' in rowOf(board, 'AAA1'), false, 'khong con vi tri kho');
   assert.equal(rowOf(board, 'CCC3').counted, 1.5, 'so luong le doc tu raw');
   assert.equal(rowOf(board, 'BBB2').counted, 0, 'don khach thuong / ngoai ngay khong tinh');
   assert.equal(rowOf(board, 'BBB2').forgotten, true);
@@ -121,12 +121,12 @@ test('ghi chu ma + nguoi kiem lai, goi y trang thai; tag Cum SP giu qua dot', as
   const { service, session } = await fixture();
   const { note } = await service.saveNote(ctx(), session.id, 'aaa1', { statusText: 'KK trước', reasonText: 'lẫn mã', recheckEmployeeId: 501 });
   assert.equal(note.recheckEmployeeId, 501);
-  await assert.rejects(service.saveNote(ctx(), session.id, 'AAA1', { statusText: 'ok', version: 99 }), { statusCode: 409 });
+  await assert.rejects(service.saveNote(ctx(), session.id, 'AAA1', { statusText: 'OK', version: 99 }), { statusCode: 409 });
   await assert.rejects(service.saveNote(ctx(), session.id, 'BBB2', { recheckEmployeeId: 999 }), { statusCode: 400 });
   await service.saveTag(ctx(), session.id, 'AAA1', { cluster: 'Cụm ấm', isCombo: true });
   await service.saveTag(ctx(), session.id, 'BBB2', { cluster: 'cụm ấm' });
   const board = await service.getBoard(ctx(), session.id);
-  assert.deepEqual(board.suggestions.status, ['KK trước']);
+  assert.deepEqual(board.suggestions, { reason: ['lẫn mã'] });
   assert.equal(rowOf(board, 'AAA1').isCombo, true);
   assert.equal(rowOf(board, 'AAA1').clusterDiff, 2 + -5);
   const { history } = await service.codeHistory(ctx(), session.id, 'AAA1');
@@ -236,18 +236,49 @@ test('ghi chu: trang in, gio in, so dan tay L/M; dong dot luu prev_diff / other_
   assert.equal(rowOf(board, 'AAA1').prevRatio, ratioOf(2 + -326, -326));
 });
 
-test('mau trang thai: luu theo ma, mau la bi tu choi, sua tren bang giu nguyen mau', async () => {
-  const { service, session } = await fixture();
-  const { note } = await service.saveNote(ctx(), session.id, 'AAA1', { statusText: 'mất ko thấy', statusColor: 'red' });
-  assert.equal(note.statusColor, 'red');
-  await assert.rejects(service.saveNote(ctx(), session.id, 'AAA1', { statusColor: '#ff0000', version: note.version }), { statusCode: 400 });
-  await service.saveCells(ctx(), session.id, { cells: [{ code: 'AAA1', column: 'statusText', value: 'tìm thấy' }] });
-  let board = await service.getBoard(ctx(), session.id);
-  assert.deepEqual([rowOf(board, 'AAA1').note.statusText, rowOf(board, 'AAA1').note.statusColor], ['tìm thấy', 'red']);
-  const latest = rowOf(board, 'AAA1').note;
-  await service.saveNote(ctx(), session.id, 'AAA1', { statusColor: '', version: latest.version });
-  board = await service.getBoard(ctx(), session.id);
-  assert.equal(rowOf(board, 'AAA1').note.statusColor, '');
+test('trang thai: chi nhan 7 loai theo co so, giu chu cu khong doi, bo qua mau gui len', async () => {
+  const { db, service, session } = await fixture();
+  // Chu cu kieu dot nap tu sheet + mau cu nam san trong DB.
+  await db.exec(`INSERT INTO stocktake_code_notes (session_id, product_code, status_text, status_color) VALUES (${session.id}, 'BBB2', 'lẫn bình giữ nhiệt', 'red')`);
+  const cells = list => service.saveCells(ctx(), session.id, { cells: list });
+
+  // Ten chuan duoc nhan; chu tu do bi bo qua (invalid), o khac cung lan van ghi
+  let result = await cells([
+    { code: 'AAA1', column: 'statusText', value: 'Lẫn' },
+    { code: 'CCC3', column: 'statusText', value: 'lẫn bình' },
+    { code: 'CCC3', column: 'reasonText', value: 'ghi chú' }
+  ]);
+  assert.deepEqual(result.applied.map(a => [a.code, a.column, a.after]), [['AAA1', 'statusText', 'Lẫn'], ['CCC3', 'reasonText', 'ghi chú']]);
+  assert.equal(result.skipped.invalid, 1);
+  // Ten co so kia va chu "Chưa XL" khong luu; trong (= Chua XL) thi duoc
+  result = await cells([{ code: 'AAA1', column: 'statusText', value: 'Nhầm HN' }, { code: 'CCC3', column: 'statusText', value: 'Chưa XL' }]);
+  assert.deepEqual([result.applied.length, result.skipped.invalid], [0, 2]);
+  result = await cells([{ code: 'AAA1', column: 'statusText', value: '' }]);
+  assert.deepEqual(result.applied.map(a => a.after), ['']);
+
+  // Chu cu khong doi: gui lai dung chu cu = unchanged, cot khac cung ma van luu; mau cu giu nguyen
+  result = await cells([{ code: 'BBB2', column: 'statusText', value: 'lẫn bình giữ nhiệt' }, { code: 'BBB2', column: 'printPage', value: '3' }]);
+  assert.deepEqual([result.skipped.unchanged, result.applied.map(a => a.column)], [1, ['printPage']]);
+  let b = rowOf(await service.getBoard(ctx(), session.id), 'BBB2').note;
+  assert.deepEqual([b.statusText, b.statusColor, b.printPage], ['lẫn bình giữ nhiệt', 'red', '3']);
+
+  // saveNote: giu chu cu + sua ly do duoc; chu tu do moi -> 400; statusColor gui len bi bo qua
+  ({ note: b } = await service.saveNote(ctx(), session.id, 'BBB2', { statusText: 'lẫn bình giữ nhiệt', reasonText: 'lý do', statusColor: 'blue', version: b.version }));
+  assert.deepEqual([b.statusText, b.reasonText, b.statusColor], ['lẫn bình giữ nhiệt', 'lý do', 'red']);
+  await assert.rejects(service.saveNote(ctx(), session.id, 'BBB2', { statusText: 'mất ko thấy', version: b.version }),
+    { statusCode: 400, code: 'VALIDATION', field: 'statusText' });
+  ({ note: b } = await service.saveNote(ctx(), session.id, 'BBB2', { statusText: 'Mất', version: b.version }));
+  assert.deepEqual([b.statusText, b.statusColor], ['Mất', 'red']);
+  const cBefore = rowOf(await service.getBoard(ctx(), session.id), 'CCC3').note; // CCC3 da co ghi chu (ly do) -> can version
+  const { note: c } = await service.saveNote(ctx(), session.id, 'CCC3', { statusText: 'Thừa', statusColor: 'blue', version: cBefore.version });
+  assert.deepEqual([c.statusText, c.statusColor], ['Thừa', '']);
+
+  // Dot Sai Gon: "Nhầm HN" moi dung ten
+  const sg = (await service.createSession(ctx(), { branch: 'saigon', name: 'SG', dateFrom: '2026-10-29', dateTo: '2026-10-29' })).session;
+  result = await service.saveCells(ctx(), sg.id, { cells: [{ code: 'AAA1', column: 'statusText', value: 'Nhầm HN' }] });
+  assert.deepEqual(result.applied.map(a => a.after), ['Nhầm HN']);
+  result = await service.saveCells(ctx(), sg.id, { cells: [{ code: 'AAA1', column: 'statusText', value: 'Nhầm SG' }] });
+  assert.equal(result.skipped.invalid, 1);
 });
 
 test('sua tren bang: nguoi kiem lai khop / mo ho / co so khac, combo, cum dung chung, xoa so tay, lich su cum o dot khac', async () => {
@@ -278,7 +309,7 @@ test('sua tren bang: nguoi kiem lai khop / mo ho / co so khac, combo, cum dung c
   assert.equal((await rowNow('AAA1')).prevDiffManual, false);
 
   // Cum SP sua o dot nay hien trong lich su cua dot khac cung co so; cot ghi chu thi khong
-  await cells([{ code: 'AAA1', column: 'cluster', value: 'Cụm B' }, { code: 'AAA1', column: 'statusText', value: 'sau' }]);
+  await cells([{ code: 'AAA1', column: 'cluster', value: 'Cụm B' }, { code: 'AAA1', column: 'statusText', value: 'Thừa' }]);
   const other = (await service.createSession(ctx(), { branch: 'hanoi', name: 'Đợt khác', dateFrom: '2026-10-30', dateTo: '2026-10-30' })).session;
   const { history } = await service.codeHistory(ctx(), other.id, 'AAA1');
   assert.ok(history.some(h => h.action === 'paste' && h.after.column === 'cluster' && h.after.cluster === 'Cụm B'));
@@ -301,7 +332,7 @@ test('sua tren bang: nhieu cot cung ma (ghi chu + tag) 1 giao dich, ma la / gia 
   await db.exec(`INSERT INTO hr_employees (id, branch, ho_ten) VALUES (502, 'hanoi', 'Thái Kho')`);
   const cells = list => service.saveCells(ctx(), session.id, { cells: list });
   const result = await cells([
-    { code: 'aaa1', column: 'statusText', value: 'mất', expected: '' },
+    { code: 'aaa1', column: 'statusText', value: 'Mất', expected: '' },
     { code: 'AAA1', column: 'reasonText', value: 'lý do', expected: '' },
     { code: 'AAA1', column: 'cluster', value: 'Cụm 1', expected: '' },
     { code: 'AAA1', column: 'combo', value: 'x', expected: false },
@@ -313,13 +344,13 @@ test('sua tren bang: nhieu cot cung ma (ghi chu + tag) 1 giao dich, ma la / gia 
   assert.deepEqual(result.skipped, { notFound: 1, invalid: 1, unchanged: 0 });
   assert.deepEqual(result.conflicts, []);
   assert.deepEqual(result.applied.map(a => [a.code, a.column, a.before, a.after]), [
-    ['AAA1', 'statusText', '', 'mất'], ['AAA1', 'reasonText', '', 'lý do'], ['AAA1', 'cluster', '', 'Cụm 1'],
+    ['AAA1', 'statusText', '', 'Mất'], ['AAA1', 'reasonText', '', 'lý do'], ['AAA1', 'cluster', '', 'Cụm 1'],
     ['AAA1', 'combo', false, true], ['AAA1', 'recheck', '', 'Thái Kho'], ['AAA1', 'prevDiffManual', null, -1234]
   ]);
   assert.equal(announced.at(-1), session.id);
   const a = rowOf(await service.getBoard(ctx(), session.id), 'AAA1');
   assert.deepEqual([a.note.statusText, a.note.reasonText, a.cluster, a.isCombo, a.note.recheckEmployeeId, a.prevDiff, a.prevDiffManual],
-    ['mất', 'lý do', 'Cụm 1', true, 502, -1234, true]);
+    ['Mất', 'lý do', 'Cụm 1', true, 502, -1234, true]);
   const { history } = await service.codeHistory(ctx(), session.id, 'AAA1');
   const own = history.filter(h => h.action === 'paste' && h.after.source === 'cells');
   assert.equal(own.length, 6);
@@ -329,18 +360,18 @@ test('sua tren bang: nhieu cot cung ma (ghi chu + tag) 1 giao dich, ma la / gia 
 test('sua tren bang: expected lech -> conflict khong ghi, o khac van ghi; hoan tac; trong = xoa; so that; o lap', async () => {
   const { service, session } = await fixture();
   const cells = list => service.saveCells(ctx(), session.id, { cells: list });
-  await cells([{ code: 'AAA1', column: 'statusText', value: 'mất', expected: '' }, { code: 'AAA1', column: 'combo', value: 'x', expected: false }]);
+  await cells([{ code: 'AAA1', column: 'statusText', value: 'Mất', expected: '' }, { code: 'AAA1', column: 'combo', value: 'x', expected: false }]);
   let a = rowOf(await service.getBoard(ctx(), session.id), 'AAA1');
-  await service.saveNote(ctx(HUNG), session.id, 'AAA1', { statusText: 'Hưng sửa', statusColor: 'red', version: a.note.version });
+  await service.saveNote(ctx(HUNG), session.id, 'AAA1', { statusText: 'Lẫn', version: a.note.version });
 
   let result = await cells([
-    { code: 'AAA1', column: 'statusText', value: 'của tôi', expected: 'mất' },
+    { code: 'AAA1', column: 'statusText', value: 'Thừa', expected: 'Mất' },
     { code: 'AAA1', column: 'printPage', value: '12', expected: '' }
   ]);
-  assert.deepEqual(result.conflicts, [{ code: 'AAA1', column: 'statusText', current: 'Hưng sửa' }]);
+  assert.deepEqual(result.conflicts, [{ code: 'AAA1', column: 'statusText', current: 'Lẫn' }]);
   assert.deepEqual(result.applied.map(x => x.column), ['printPage']);
   a = rowOf(await service.getBoard(ctx(), session.id), 'AAA1');
-  assert.deepEqual([a.note.statusText, a.note.statusColor, a.note.printPage], ['Hưng sửa', 'red', '12'], 'mau trang thai giu nguyen');
+  assert.deepEqual([a.note.statusText, a.note.printPage], ['Lẫn', '12']);
 
   // hoan tac: gui lai before, expected = after
   result = await cells([{ code: 'AAA1', column: 'combo', value: '', expected: true }, { code: 'AAA1', column: 'printPage', value: '', expected: '12' }]);
@@ -351,13 +382,13 @@ test('sua tren bang: expected lech -> conflict khong ghi, o khac van ghi; hoan t
   // so that tu hoan tac khong bi doc thanh nghin; khong expected = khong kiem; o lap lay o cuoi; khong doi = unchanged
   result = await cells([
     { code: 'BBB2', column: 'otherDiffManual', value: 1.234 },
-    { code: 'BBB2', column: 'statusText', value: 'cu' },
-    { code: 'bbb2', column: 'statusText', value: 'moi' },
-    { code: 'AAA1', column: 'statusText', value: 'Hưng sửa' }
+    { code: 'BBB2', column: 'statusText', value: 'KK trước' },
+    { code: 'bbb2', column: 'statusText', value: 'Thừa' },
+    { code: 'AAA1', column: 'statusText', value: 'Lẫn' }
   ]);
   assert.deepEqual(result.skipped, { notFound: 0, invalid: 0, unchanged: 1 });
   const b = rowOf(await service.getBoard(ctx(), session.id), 'BBB2');
-  assert.deepEqual([b.otherDiff, b.note.statusText], [1.234, 'moi']);
+  assert.deepEqual([b.otherDiff, b.note.statusText], [1.234, 'Thừa']);
 });
 
 test('sua tren bang: kiem tra dau vao, dot da dong', async () => {

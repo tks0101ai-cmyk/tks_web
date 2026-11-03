@@ -16,8 +16,8 @@ const MANAGER = { id: 'ql', vaiTro: 'Quản lý' };
 const STOCK_MANAGER = { id: 'hung', vaiTro: 'Nhân viên kho', featurePermissions: { 'stocktake.view': true, 'stocktake.edit': true } };
 const SESSION = { id: 7, branch: 'hanoi', name: 'Đợt 29/10', status: 'open', version: 1 };
 const ROWS = [
-  { code: 'AAA1', name: 'Hàng A', counted: 12, stock: 10, cost: 1000, diffQty: 2, diffValue: 2000, cluster: '', clusterDiff: null, isCombo: false, prevDiff: null, prevRatio: 2.3313, forgotten: false, latestPosition: { location: 'G1' }, note: { recheckEmployeeId: 501, statusText: 'ok', statusColor: 'red', reasonText: '=lẫn' } },
-  { code: 'BBB2', name: 'Hàng B', counted: 0, stock: 5, cost: 200, diffQty: -5, diffValue: -1000, cluster: '', clusterDiff: null, isCombo: true, prevDiff: -1, forgotten: true, latestPosition: null, note: null }
+  { code: 'AAA1', name: 'Hàng A', counted: 12, stock: 10, cost: 1000, diffQty: 2, diffValue: 2000, cluster: '', clusterDiff: null, isCombo: false, prevDiff: null, prevRatio: 2.3313, forgotten: false, note: { recheckEmployeeId: 501, statusText: 'ok', reasonText: '=lẫn' } },
+  { code: 'BBB2', name: 'Hàng B', counted: 0, stock: 5, cost: 200, diffQty: -5, diffValue: -1000, cluster: '', clusterDiff: null, isCombo: true, prevDiff: -1, forgotten: true, note: null }
 ];
 
 async function start(t, { user = MANAGER, scope = 'Cả hai', events, fail } = {}) {
@@ -134,13 +134,15 @@ test('Xuat Excel: ca bang hoac chi ma dang loc; chan cong thuc', async t => {
   assert.equal(boardColumnHeaders('hanoi')[12], 'Kiểm SG');
   assert.equal(boardColumnHeaders('saigon')[12], 'Kiểm HN');
   assert.equal(boardColumnHeaders('saigon')[18], 'Do kiểm HN');
-  assert.equal(boardColumnHeaders('hanoi').length, 24);
+  assert.equal(boardColumnHeaders('hanoi').length, 23);
   assert.equal(rows.getRow(2).getCell(11).value, 'Cảnh');
   assert.equal(rows.getRow(2).getCell(8).value, "'=lẫn");
-  assert.equal(rows.getRow(2).getCell(22).value, 'G1');
+  assert.ok(!boardColumnHeaders('hanoi').includes('Vị trí kho gần nhất'));
+  assert.equal(rows.getRow(2).getCell(22).value, 1000, 'cot 22 nay la Gia von');
+  assert.equal(rows.getRow(2).getCell(7).fill.fgColor.argb, 'FFEEFF41', 'o Trang thai to theo loai (ok -> OK, vang neon)');
+  const plain = rows.getRow(3).getCell(7).fill;
+  assert.ok(!plain || plain.pattern !== 'solid', 'khong co trang thai -> khong to');
   assert.equal(rows.getRow(2).getCell(17).numFmt, '0%');
-  assert.equal(rows.getRow(2).getCell(7).fill.fgColor.argb, 'FFFCA5A5', 'o Trang thai to mau do');
-  assert.notEqual((rows.getRow(3).getCell(7).fill || {}).pattern, 'solid', 'khong mau thi khong to');
   assert.equal((await fetch(base + '/sessions/7/export', { method: 'POST', ...json({}) })).status, 400);
 });
 

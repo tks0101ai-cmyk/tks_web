@@ -70,13 +70,12 @@ test('ma co so dem nhung khong co trong KiotViet: ton 0, inKiot false', () => {
   assert.equal(rows.NEW.diffQty, 3);
 });
 
-test('chenh theo Cum SP, KK truoc, vi tri, ghi chu', () => {
+test('chenh theo Cum SP, KK truoc, ghi chu; khong con vi tri kho', () => {
   const board = buildBoard({
     lines: [line(1, 1, 'A', 12), line(1, 2, 'B', 3)],
     products: [{ code: 'A', stock: 10, cost: 1 }, { code: 'B', stock: 5, cost: 1 }, { code: 'C', stock: 1, cost: 1 }],
     tags: [{ code: 'A', cluster: 'Cum 1', isCombo: true, version: 1 }, { code: 'B', cluster: 'cum 1', version: 3 }],
     previous: [{ code: 'a', diffQty: -2 }],
-    positions: [{ code: 'A', location: 'G1-15', arrivalDate: 'KK 4.10' }, { code: 'A', location: 'cu' }],
     notes: [{ code: 'D', statusText: 'ok', version: 1 }]
   });
   const rows = byCode(board);
@@ -87,7 +86,7 @@ test('chenh theo Cum SP, KK truoc, vi tri, ghi chu', () => {
   assert.equal(rows.B.tagVersion, 3);
   assert.equal(rows.A.prevDiff, -2);
   assert.equal(rows.B.prevDiff, null);
-  assert.deepEqual(rows.A.latestPosition, { location: 'G1-15', arrivalDate: 'KK 4.10' });
+  assert.equal('latestPosition' in rows.A, false);
   assert.equal(rows.D.note.statusText, 'ok', 'ma co ghi chu van hien du khong dem / khong ton');
 });
 
