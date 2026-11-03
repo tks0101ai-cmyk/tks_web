@@ -456,7 +456,7 @@
     for (const td of selection.painted) td.classList.remove('st-sel');
     selection.painted = [];
     const rect = selectionRect();
-    if (!rect) return;
+    if (!rect) { positionFill(); return; }
     const tbody = $('stRows');
     for (let index = rect.top; index <= Math.min(rect.bottom, view.drawn - 1); index++) {
       const tr = tbody.rows[index];
@@ -467,6 +467,7 @@
         selection.painted.push(td);
       }
     }
+    positionFill();
   }
   // Cột đang hiện (bỏ cột ẩn bằng "Cột hiển thị") trong vùng chọn.
   function visibleColumnsIn(rect) {
@@ -504,6 +505,11 @@
       paintSelection();
     });
     tbody.addEventListener('mouseover', event => {
+      if (fill.active) {
+        const cell = event.target.closest('td[data-col]');
+        if (cell) { fill.to = cellPos(cell).row; paintFillPreview(); }
+        return;
+      }
       if (!selection.dragging) return;
       const td = event.target.closest('td[data-col]');
       if (!td) return;
@@ -512,7 +518,8 @@
       selection.focus = pos;
       paintSelection();
     });
-    document.addEventListener('mouseup', () => { selection.dragging = false; });
+    document.addEventListener('mouseup', () => { selection.dragging = false; endFill(); });
+    document.addEventListener('mousemove', event => { if (fill.active) fill.lastY = event.clientY; });
     document.addEventListener('copy', event => {
       const active = document.activeElement;
       if (!selectionRect() || (active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) || document.querySelector('dialog[open]')) return;
@@ -520,6 +527,23 @@
       event.preventDefault();
       const rect = selectionRect();
       notify('Đã copy ' + num(rect.bottom - rect.top + 1) + ' dòng × ' + num(visibleColumnsIn(rect).length) + ' cột.');
+    });
+    // Ctrl+V kieu Sheets: khoi tu o tren-trai vung chon (hoac 1 o dien ca vung), ghi 1 lan /cells.
+    document.addEventListener('paste', event => {
+      const active = document.activeElement;
+      const rect = selectionRect();
+      if (editor.input || !rect || (active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) || document.querySelector('dialog[open]')) return;
+      event.preventDefault();
+      if (!canWrite()) return;
+      const block = Grid.parseClipboard(event.clipboardData.getData('text/plain'));
+      const targets = Grid.planPaste(block, rect, { rowCount: view.rows.length, visibleCols: visibleColumnIndexes() });
+      if (!targets.length) return;
+      const rows = targets.map(t => t.row);
+      const cols = targets.map(t => t.col);
+      const bottom = Math.max(...rows);
+      if (bottom >= view.drawn) drawMore(bottom - view.drawn + 1);
+      selectRect(Math.min(...rows), Math.min(...cols), bottom, Math.max(...cols));
+      writeTargets(targets, 'Đã dán');
     });
     // Phim kieu sheet tren o dang chon. Khong chay khi dang mo o nhap, hop thoai, hoac focus o o nhap khac.
     document.addEventListener('keydown', event => {
@@ -540,6 +564,7 @@
       if (event.key === 'Process' || event.isComposing) { openEditor(''); return; }
       if (event.key.length === 1) { event.preventDefault(); openEditor(event.key); }
     });
+    window.addEventListener('resize', positionFill);
   }
 
   // ---------- Sửa trên bảng ----------
@@ -721,6 +746,73 @@
     paintSelection();
     const td = cellAt(selection.focus);
     if (td) td.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  // ---------- Kéo nút góc (fill handle) ----------
+  const fill = { handle: null, active: false, rect: null, to: null, painted: [], scrollTimer: null, lastY: 0 };
+  function fillHandle() {
+    if (!fill.handle) {
+      fill.handle = document.createElement('button');
+      fill.handle.type = 'button';
+      fill.handle.className = 'st-fill';
+      fill.handle.hidden = true;
+      fill.handle.tabIndex = -1;
+      fill.handle.setAttribute('aria-label', 'Kéo để nhân bản giá trị');
+      document.querySelector('.st-scroll').appendChild(fill.handle);
+      fill.handle.addEventListener('mousedown', startFill);
+    }
+    return fill.handle;
+  }
+  function positionFill() {
+    const handle = fillHandle();
+    const rect = selectionRect();
+    const td = rect && cellAt({ row: rect.bottom, col: rect.right });
+    const show = Boolean(td && editable() && !fill.active && visibleColumnsIn(rect).some(editColumnOf));
+    handle.hidden = !show;
+    if (!show) return;
+    const box = boxIn(td);
+    handle.style.left = box.left + box.width - 5 + 'px';
+    handle.style.top = box.top + box.height - 5 + 'px';
+  }
+  function paintFillPreview() {
+    for (const td of fill.painted) td.classList.remove('st-fill-preview');
+    fill.painted = [];
+    if (fill.to === null) return;
+    const cols = visibleColumnsIn(fill.rect);
+    for (const target of Grid.planFill(fill.rect, fill.to, cols)) {
+      const td = cellAt({ row: target.row, col: target.col });
+      if (td) { td.classList.add('st-fill-preview'); fill.painted.push(td); }
+    }
+  }
+  function startFill(event) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!canWrite()) return;
+    Object.assign(fill, { active: true, rect: selectionRect(), to: null, lastY: event.clientY });
+    fill.handle.hidden = true;
+    // Gan mep tren / duoi khung cuon thi tu cuon (dong chua ve se ve khi cuon toi canh).
+    const scroller = document.querySelector('.st-scroll');
+    fill.scrollTimer = setInterval(() => {
+      const box = scroller.getBoundingClientRect();
+      if (fill.lastY > box.bottom - 30) scroller.scrollTop += 24;
+      else if (fill.lastY < box.top + 50) scroller.scrollTop -= 24;
+    }, 50);
+  }
+  async function endFill() {
+    if (!fill.active) return;
+    clearInterval(fill.scrollTimer);
+    fill.active = false;
+    const { rect, to } = fill;
+    fill.to = null;
+    paintFillPreview();
+    if (to === null || (to >= rect.top && to <= rect.bottom)) { positionFill(); return; }
+    const cols = visibleColumnsIn(rect);
+    const targets = Grid.planFill(rect, to, cols)
+      .filter(target => editColumnOf(target.col))
+      .map(target => ({ row: target.row, col: target.col, raw: cellText(view.rows[target.fromRow], COLUMNS[target.col].key) }));
+    selectRect(Math.min(rect.top, to), rect.left, Math.max(rect.bottom, to), rect.right);
+    if (targets.length) await writeTargets(targets, 'Đã nhân bản', { countIgnored: false });
   }
 
   function fillSelect(select, firstLabel, entries, current) {
