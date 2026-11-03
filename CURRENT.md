@@ -321,6 +321,16 @@
 0. **Chỉ tính khách/mã hàng đang hoạt động ở mọi tab (15/10/2026, chưa commit):** tổng khách (Tổng quan) và bảng xếp hạng doanh thu theo khách bỏ khách `isActive=false` (hóa đơn/phiếu trả được đánh dấu cột mới `Khách ngừng hoạt động`, doanh thu công ty theo ngày giữ nguyên); gợi ý tìm khách, top khách theo mã hàng, Báo cáo hàng hóa (doanh số theo khách) và Báo cáo kinh doanh (khách + mã hàng, đọc lúc xem) cũng loại. Mã hàng ngừng kinh doanh vốn đã loại ở tab Hàng hóa, top bán chạy, ngày nhập đầu, báo cáo hàng hóa, đứt hàng và giá trị tồn.
 0. **Công nợ chỉ tính khách hoạt động (15/10/2026, main):** đồng bộ chuẩn hóa `customers.raw.isActive`; nhận `removedIds` từ KiotViet, đối soát toàn bộ lần đầu/mỗi ngày và chỉ đánh dấu khách vắng mặt sau khi kiểm tra đủ dữ liệu. Không xóa hồ sơ hoặc sổ phạt. Bộ lọc áp trước khi lấy khách trùng mã, loại doanh số khách ngừng/không còn hồ sơ khỏi điểm thưởng; bản chốt công nợ cũ đang xem cũng lọc trạng thái hiện tại. Đồng bộ xong xóa cache + thông báo trình duyệt; cache dự phòng 60 giây. Quy tắc thưởng mới `debt-reward-2026-10-v3-active-customers`; kết quả thưởng tháng đã chốt vẫn giữ nguyên. Đã đối soát DB thật: 8.089 khách hoạt động, 46 khách bị loại (HN 34, SG 12), không còn khách không hoạt động trong báo cáo công nợ. Chưa push/deploy.
 
+## In phiếu nhặt nhanh hơn (nhánh `perf/fast-pick-print`) — 03/11/2026
+
+**Đã làm (không migration, chưa push/deploy):** (1) Cache Google Sheet cho phép trả bản cũ (`allowStale`) chỉ ở `/api/shipment/pick/candidates`; mọi lần tra SĐT sale (hộp chỉ định, phản hồi chỉ định/xác nhận/hủy, in phiếu) lấy bản cũ và làm mới nền. (2) `readOrderDetail({ lite: true })` bỏ đọc tồn/cân đo, dùng cho mọi lần tải đơn của hộp chỉ định (candidates, chỉ định, sửa vị trí); `GET /api/shipment/lifecycle/order-detail` (hộp chi tiết) vẫn trả đủ. (3) `readLatest` còn 1 truy vấn đầu + lines/lịch sử/SĐT chạy song song; `/candidates` đọc đơn và chỉ định song song, gộp SQL vị trí + giữ chỗ. (4) Client: tải trước `/candidates` khi mở chi tiết đơn (dùng lại ≤ 30 s, một lần), nút hiện ngay, chi tiết Kiot + chỉ định tải song song, "Hủy nhặt" không tải lại `/candidates`. (5) `startTiming` cho `/api/shipment/lifecycle` và `/api/shipment/pick` (log `[timing]` khi ≥ 500 ms).
+
+**Kết quả test (03/11/2026):** `npm test` 4.210 test, 4.196 đạt, 3 skipped, 11 lỗi — đúng 11 lỗi có sẵn trên `origin/main` (account-work-assignment, business-report, dashboard-per-view-loading, vt-positions, vt-positions-live, adminUserExportService), không lỗi mới; chi tiết trong `.superpowers/sdd/2026-11-03-fast-pick-print/task-9-report.md`. Đã chạy `graphify update .`.
+
+**Việc tiếp:** sau deploy, đọc log `[timing] … /api/shipment/pick` trên Render để so trước/sau; hướng chuyển server sang Singapore (gần Supabase) chưa làm.
+
+---
+
 ## 1. Tổng quan trạng thái hiện tại (Current Status)
 
 Marketing 16/10/2026: đã kiểm tra readonly công thức thật sáu CHUẨN/THÔ, CHECK T10, ranking, BC T10 và trạng thái DB. Local vẫn nguồn Sheets, scheduler tắt, đủ sáu token; chưa kiểm tra cấu hình Render. Luồng DB còn trộn lịch sử Sheets và loại tin theo baseline. Chưa sửa runtime hoặc dữ liệu. Phương án và quyết định ngày ghi nhận cần chốt: [thiết kế Pancake độc lập](docs/superpowers/specs/2026-10-16-marketing-pancake-independent-design.md).
@@ -909,3 +919,5 @@ Kiểm chứng phiên 26/10: bộ test tập trung Pancake client/sync/report đ
 Cập nhật gần nhất: 29/10/2026.
 
 Cập nhật gần nhất: 03/11/2026 (Kiểm kê: bộ lọc 5 lựa chọn, tiêu đề bảng gọn, bỏ Dán cột; trước đó 03/11/2026: sửa trên bảng như sheet + tìm kiếm kiểu tra-cuu-vi-tri, `POST /api/stocktake/sessions/:id/cells`, không migration; trước đó 02/11/2026: VT Đơn xuất kho + số lượng âm, migration 0104; Chỉ định vị trí: gỡ ghi ngược KiotViet + 2 cảnh báo Lệch Kiot / Lệch SL trong đơn, Xóa dòng/SL cần nhặt chỉ nội bộ, phiếu in theo thứ tự trong hộp; chưa commit/deploy) — trước đó 31/10/2026 (Chỉ định vị trí: thêm/sửa/xóa vị trí VT ngay trong hộp, trang VT chặn hạ dưới phần Đang bốc giữ; trước đó 30/10: sửa trực tiếp trong ô VT + phím mũi tên table-controls; gỡ module Vị trí hàng cũ; VT Hà Nội/Sài Gòn mở xem + xuất Excel cho mọi vai trò; việc treo DROP `stock_location_lines` và 7 test nền đỏ).
+
+Cập nhật gần nhất: 03/11/2026 (In phiếu nhặt nhanh hơn: nhánh `perf/fast-pick-print`, đo `[timing]` cho `/api/shipment/pick` và `/lifecycle`).

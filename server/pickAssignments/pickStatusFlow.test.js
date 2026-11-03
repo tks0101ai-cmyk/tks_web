@@ -320,3 +320,20 @@ test('Kiot seller phones match ID and retailer, cache concurrent pages and retry
  assert.equal(await retry('hanoi',7),'');assert.equal(await retry('hanoi',7),'');assert.equal(attempts,1);
  fail=false;time+=31000;assert.equal(await retry('hanoi',7),'0903333333');
 });
+
+test('Kiot seller phones: het han tra ban cu ngay va lam moi nen; lam moi loi giu ban cu',async()=>{
+ let time=0,calls=0,gate=null,fail=false;
+ const lookup=kiotData.createSellerPhoneLookup({now:()=>time,getBranches:()=>[{branch:'hanoi'}],createClient:()=>({fetchAllPages:async(e,q,cb)=>{
+  calls++;if(gate)await gate;if(fail)throw new Error('API unavailable');await cb([{id:7,mobilePhone:calls===1?'0901111111':'0909999999'}]);
+ }})});
+ assert.equal(await lookup('hanoi',7),'0901111111');
+ time=301000;let open;gate=new Promise(r=>{open=r;});
+ assert.equal(await lookup('hanoi',7),'0901111111','khong cho API');
+ assert.equal(calls,2);
+ assert.equal(await lookup('hanoi',7),'0901111111','dang lam moi: khong goi them');assert.equal(calls,2);
+ open();gate=null;await new Promise(r=>setImmediate(r));
+ assert.equal(await lookup('hanoi',7),'0909999999','dung ban moi sau khi lam moi xong');
+ time=700000;fail=true;
+ assert.equal(await lookup('hanoi',7),'0909999999');await new Promise(r=>setImmediate(r));
+ assert.equal(await lookup('hanoi',7),'0909999999','loi giu ban cu');
+});
