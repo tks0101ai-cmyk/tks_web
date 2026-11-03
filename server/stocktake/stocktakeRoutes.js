@@ -108,6 +108,10 @@ function createStocktakeRouter(dependencies = {}) {
   router.post('/api/stocktake/sessions/:id/paste', edit, handle(async (req, res) => {
     res.json(await svc().pasteColumn(ctxOf(req), idOf(req), req.body || {}));
   }));
+  // Sua tren bang: go / dan khoi / xoa / keo nhan ban / hoan tac (nhieu ma x cot, kiem expected tung o).
+  router.post('/api/stocktake/sessions/:id/cells', edit, handle(async (req, res) => {
+    res.json(await svc().saveCells(ctxOf(req), idOf(req), req.body || {}));
+  }));
   router.get('/api/stocktake/sessions/:id/codes/:code/history', handle(async (req, res) => {
     res.json(await svc().codeHistory(ctxOf(req), idOf(req), req.params.code));
   }));
