@@ -12,6 +12,7 @@
 
 const { google } = require('googleapis');
 const CONFIG = require('../config');
+const { createSheetValuesCache } = require('./sheetValuesCache');
 
 const API_TIMEOUT_MS = 15000; // 15s
 const CACHE_TTL_MS = 15 * 1000; // 15s, invalidate ngay sau moi lan ghi
@@ -50,30 +51,32 @@ function requireSpreadsheetId() {
   return id;
 }
 
-let cache = null; // { data, expiresAt } | null
+const valuesCache = createSheetValuesCache({
+  ttlMs: CACHE_TTL_MS,
+  load: async sheetName => {
+    const spreadsheetId = requireSpreadsheetId();
+    const sheets = await getSheetsApi();
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: quoteSheetName(sheetName),
+      valueRenderOption: 'UNFORMATTED_VALUE',
+      dateTimeRenderOption: 'FORMATTED_STRING'
+    }, { timeout: API_TIMEOUT_MS });
+    return res.data.values || [];
+  },
+  onBackgroundError: err => console.warn('[orderLifecycleHistoryClient] lam moi nen loi:', err.message)
+});
 
 function invalidateCache() {
-  cache = null;
+  valuesCache.invalidate();
 }
 
 /**
  * Doc toan bo du lieu tab "Lich su cap nhat" (mang 2 chieu, dong 1 la header).
+ * options.allowStale: xem orderLifecycleSheetsClient.getValues. Sau moi lan ghi cache bi xoa nen luon doc ban moi.
  */
-async function getValues(sheetName) {
-  if (cache && Date.now() < cache.expiresAt) return cache.data;
-
-  const spreadsheetId = requireSpreadsheetId();
-  const sheets = await getSheetsApi();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: quoteSheetName(sheetName),
-    valueRenderOption: 'UNFORMATTED_VALUE',
-    dateTimeRenderOption: 'FORMATTED_STRING'
-  }, { timeout: API_TIMEOUT_MS });
-
-  const values = res.data.values || [];
-  cache = { data: values, expiresAt: Date.now() + CACHE_TTL_MS };
-  return values;
+function getValues(sheetName, options) {
+  return valuesCache.get(sheetName, options);
 }
 
 /**
