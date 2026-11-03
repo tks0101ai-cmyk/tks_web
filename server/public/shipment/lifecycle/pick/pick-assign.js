@@ -894,9 +894,11 @@
     button.addEventListener('click',()=>open(o));
     return button;
   }
-  // Gắn sớm nút mở hộp vào đầu hộp chi tiết khi bảng hàng chưa về: opts {order, buttonHost, canPick, status (pickStatus của dòng)}.
+  // Gắn sớm nút mở hộp vào đầu hộp chi tiết khi bảng hàng chưa về: opts {order, buttonHost, canPick, status (pickStatus của dòng), onChange(assignment)}.
+  // onChange gắn ngay như attach(): bấm nút sớm rồi lưu vẫn cập nhật đúng đơn đang xem, không dính callback của đơn trước.
   function attachButton(opts){
     const host=opts&&opts.buttonHost;if(!host)return;
+    state.onChange=opts.onChange||null;
     host.replaceChildren();
     if(opts.canPick)host.appendChild(openButton(opts.order||{},opts.status||null));
   }

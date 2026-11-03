@@ -1222,7 +1222,10 @@
       holder.innerHTML = '<p class="lc-lines-status">Đang tải chi tiết hàng hóa từ Kiot…</p>';
       // Nguoi co quyen: nut Chi dinh vi tri hien NGAY (theo pickStatus cua dong) + tai truoc hop chi dinh (bam la mo ngay).
       if(window.TKSPick && canPick){
-        window.TKSPick.attachButton({ order: order, buttonHost: pickActions, canPick: canPick, status: order.pickStatus || null });
+        window.TKSPick.attachButton({
+          order: order, buttonHost: pickActions, canPick: canPick, status: order.pickStatus || null,
+          onChange: function(assignment){ onPickChanged(order, assignment); } // bam nut som van cap nhat dung don dang xem
+        });
         window.TKSPick.prefetch(order);
       }
       // Chi tiet Kiot va chi dinh (de ve cot ST) tai SONG SONG; loadAssignment khong bao gio loi (tra null).

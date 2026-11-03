@@ -1257,3 +1257,23 @@ test('mở chi tiết: không có quyền thì không nút, không tải trướ
     assert.equal(missing.document.getElementById('openPickingBtn'), null, '404: như trước, không có nút');
   } finally { [noPick, missing].forEach(page => page.dom.window.close()); }
 });
+
+test('bấm nút mở hộp sớm (chi tiết Kiot chưa về) rồi lưu: dòng danh sách vẫn cập nhật Đang nhặt, không dính chỉ định đơn khác', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const page = await renderPage({
+    fetchImpl: href => (href.startsWith('/api/shipment/lifecycle/order-detail') ? gate.then(() => json({ detail: kiotDetail('DH1') })) : null)
+  });
+  try {
+    const status = () => rowsOf(page.document)[0].querySelector('[data-col="pickStatus"] .lc-pick-state').dataset.pickStatus;
+    await openDetail(page);
+    await click(page, 'openPickingBtn');
+    assert.equal(status(), 'none');
+    await click(page, 'pickingConfirm');
+    assert.equal(page.store.posted.length, 1);
+    assert.equal(status(), 'picking', 'onChange của đơn đang xem đã được gắn từ khi bấm nút sớm');
+    release();
+    await settle();
+    assert.ok(page.document.querySelector('#lcDetailKiot table.lc-lines'), 'bảng hàng vẽ sau khi về');
+  } finally { page.dom.window.close(); }
+});
