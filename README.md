@@ -125,6 +125,7 @@ server/
 │   └── customerProfileRules.js       # Luật thuần (không DB) kiểm tra đầu vào: quy mô kho, hình thức bán hàng, note ≤ 2000 ký tự, ngày đã đi, người sửa
 ├── cashbook/             # Sổ quỹ toàn công ty: số dư, sổ chi tiết, lịch sử chốt và xuất Excel/HTML; repository đọc qua view v_cash_book_transactions (0070, lùi về subquery nếu thiếu view)
 ├── dashboard/            # Tổng hợp dashboard (dashboardData + dashboardViews: API theo tab), xuất Excel/HTML, kiểm tra đứt hàng
+│   ├── productHistoryRepository.js  # Lịch sử hóa đơn hoàn thành / trả hàng thành công theo mã trong 90 ngày, lọc và tổng trước phân trang
 │   ├── documentDetailRepository.js  # Chi tiết hóa đơn (popup bảng Chi tiết giao dịch) và chi tiết đơn đặt hàng (trang Vòng đời đơn hàng)
 │   └── stockoutCheck/    # Engine kiểm tra đứt hàng + upload Trả NCC Excel; stockoutDaysStore.js lưu số ngày đứt 30 ngày theo cơ sở vào product_stockout_days (cột Đứt HN/SG của Báo cáo hàng hóa)
 ├── data/                 # Dữ liệu lưu trữ local (users.json.example, ...); chuông thông báo đã chuyển sang bảng Postgres `notifications` (0093)
@@ -259,5 +260,13 @@ tasks/redis-performance/                     # plan, todo, benchmark và runbook
 ```
 
 Kiểm chứng/triển khai: xem [kế hoạch Redis](tasks/redis-performance/plan.md), [benchmark cục bộ](tasks/redis-performance/benchmark.md) và [runbook](tasks/redis-performance/rollout.md). Giữ worker Singapore hiện có; tạo web Singapore thay thế Oregon sau kiểm chứng. Chưa thay đổi dịch vụ Render/domain hoặc xác nhận p95 production; không migration. Integration Redis thật đang chờ TEST Redis; công cụ browser dừng vì không xác định chắc chắn URL Windows.
+
+Cập nhật gần nhất: 03/11/2026.
+
+## 03/11/2026 — Chi tiết hàng hóa: lịch sử giao dịch 90 ngày
+
+Hộp chi tiết Báo cáo hàng hóa giữ doanh số theo khách và biểu đồ, thêm lịch sử hóa đơn Hoàn thành / phiếu trả Đã trả trong 90 ngày gồm hôm nay (hai cơ sở). Tìm tên khách không dấu + lọc Tất cả/Hóa đơn/Trả hàng cập nhật đồng thời bốn chỉ số mua/trả theo toàn bộ kết quả trước phân trang; mặc định 25 giao dịch/trang, mới nhất trước. Bảng có cấu hình cột, kéo độ rộng và cuộn ngang trên điện thoại, hỗ trợ Sáng/Tối.
+
+Module mới: `server/dashboard/productHistoryRepository.js` (SQL và kiểm tra tham số; test cạnh module), `server/public/js/product-history.js` (giao diện, chống phản hồi cũ), `server/public/shared/product-history.css` (responsive), `server/test/frontend/product-history.test.js` (hành vi giao diện). API `GET /api/product-report/history` dùng quyền `reports.products` + `reports.products.sales`; giá vốn cần `reports.products.price`. Giá vốn lịch sử chưa có trường nguồn xác minh được nên hiện “—”; không thay bằng giá bán/giá vốn hiện tại. Không migration, dependency hay biến môi trường mới. Mã cục bộ trên main, chưa deploy.
 
 Cập nhật gần nhất: 03/11/2026.

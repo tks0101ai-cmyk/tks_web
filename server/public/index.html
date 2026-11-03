@@ -50,6 +50,7 @@
   <script src="/shared/motion.js?v=20261024-1" defer></script>
   <link rel="stylesheet" href="/shared/search-clear.css?v=20261009-1">
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261016">
+  <link rel="stylesheet" href="/shared/product-history.css?v=20261103-1">
   <link rel="stylesheet" href="/marketing-report.css?v=20261102-kpis">
   <link rel="stylesheet" href="/invoice-approved-prices.css?v=20261024-4">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -5240,6 +5241,7 @@
        và inline script luôn chạy trước script defer — cách đặt này giữ đúng thứ tự mà không chặn parser. -->
   <script src="/vendor/chart.umd.min.js"></script>
   <script src="/js/pagination.js"></script>
+  <script src="/js/product-history.js?v=20261103-1"></script>
   <script src="/shared/fuzzy-search.js?v=20261021-1"></script>
   <script src="/js/table-explorer.js?v=20261021-1"></script>
   <script>
@@ -10619,8 +10621,15 @@
 
     function loadProductDocumentSections(requestId, item) {
       const customerBody = document.getElementById('productCustomerContent');
+      const historyBody = document.getElementById('productHistorySection');
+      if (productReportSalesAllowed() && window.TKSProductHistory) {
+        window.TKSProductHistory.mount(historyBody, {
+          code: item.code,
+          isCurrent: function () { return requestId === docDetail.requestId; }
+        });
+      }
       if (!productReportSalesAllowed()) {
-        // Hộp chỉ còn "Doanh số theo khách": không có quyền xem thì báo rõ thay vì để hộp trống.
+        // Doanh số và lịch sử cùng cần quyền sales; không để hộp trống khi thiếu quyền.
         customerBody.innerHTML = '<div class="doc-modal-note">Tài khoản của bạn không có quyền xem doanh số theo khách.</div>';
         scrollProductDetailToFocus(requestId);
         return;
@@ -10798,9 +10807,10 @@
       else setDocumentDetailTitle(kind.title, ' ', item.code);
       subtitle.textContent = isBusiness || isDebtPenalty || isExpectedArrival ? '' : isProduct ? '90 ngày gần nhất' : (item.branch ? 'Cơ sở ' + item.branch : '');
       if (status === 'loading' && isProduct) {
-        // Hộp chỉ còn "Doanh số theo khách" (chỉ số, bảng Khách hàng, biểu đồ tỷ trọng); hàng dự kiến nằm ở hộp của bảng Dự kiến hàng về.
+        // Doanh số theo khách và lịch sử giao dịch tải độc lập; hàng dự kiến nằm ở hộp riêng.
         body.innerHTML = '<section class="dp-section" id="productCustomerSection" aria-label="Doanh số theo khách">' +
-          detailSectionHeadHtml('Doanh số theo khách') + '<div id="productCustomerContent"><div class="doc-modal-note">Đang tải doanh số theo khách...</div></div></section>';
+          detailSectionHeadHtml('Doanh số theo khách') + '<div id="productCustomerContent"><div class="doc-modal-note">Đang tải doanh số theo khách...</div></div></section>' +
+          '<section class="dp-section" id="productHistorySection" aria-label="Lịch sử giao dịch 90 ngày"></section>';
       } else if (status === 'ready' && isExpectedArrival) {
         renderExpectedArrivalDetailModal(body, subtitle, data);
         if (window.TKSTables && typeof window.TKSTables.refreshAll === 'function') window.TKSTables.refreshAll();

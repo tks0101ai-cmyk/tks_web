@@ -978,3 +978,20 @@ Sau khi gộp PR in phiếu nhặt nhanh: Redis là tầng L2 dưới cache L1 t
 Cập nhật gần nhất: 03/11/2026 (Kiểm kê: bộ lọc 5 lựa chọn, tiêu đề bảng một dòng, bỏ `POST /sessions/:id/paste`; trước đó 03/11/2026: sửa trên bảng như sheet, `POST /api/stocktake/sessions/:id/cells`, tìm kiếm kiểu tra-cuu-vi-tri, không migration; trước đó 02/11/2026: đủ cột T10, Sài Gòn + đợt đối chiếu, dán cột, nạp tab KIỂM SG; migration `0105` đã áp DB 03/11/2026; VT Đơn xuất kho + số lượng âm, migration 0104; gỡ ghi ngược KiotViet: `kiotviet/kiotOrderEditor.js`, `KIOT_ORDER_WRITE_ENABLED`, `POST /api/shipment/pick/order-lines/remove`; `removed` trong `POST /api/shipment/pick`; gỡ `PICK_KIOT_DIFF`/`PICK_ORDER_DIFF`; `0102` không còn được ghi) — trước đó 31/10/2026 (thêm/sửa/xóa vị trí VT trong hộp Chỉ định vị trí: `POST /api/shipment/pick/positions`, `PATCH`/`DELETE /api/shipment/pick/positions/:id`, `canEditPositions`; `PATCH /api/stock-positions/:id` chặn `BELOW_HELD`/`HELD_SPEC_CONFLICT`).
 
 Cập nhật gần nhất: 03/11/2026 (In phiếu nhặt nhanh hơn: `startTiming` cho `/api/shipment/lifecycle` và `/api/shipment/pick`, `/candidates` đọc Sheet / SĐT sale bản cũ).
+
+## 03/11/2026 — API lịch sử hàng hóa 90 ngày
+
+`dashboard/productHistoryRepository.js` đọc trực tiếp hóa đơn/phiếu trả và dòng hàng từ PostgreSQL; UI ở `public/js/product-history.js`, CSS ở `public/shared/product-history.css`, kiểm thử giao diện ở `test/frontend/product-history.test.js` (repository có test PGlite cạnh module).
+
+`GET /api/product-report/history?code=SP1&q=&type=all&page=1&pageSize=25`:
+
+- Quyền `reports.products` + `reports.products.sales`. Phạm vi hanoi + saigon như phần khách hàng hiện có, không theo bộ chọn cơ sở.
+- `code` bắt buộc, tối đa 200 ký tự; `q` tên khách tối đa 500 ký tự, fuzzy dùng helper chung; `type=all|invoice|return`; `page` nguyên 1–1000000; `pageSize` nguyên 1–100, mặc định 25. Sai tham số trả 400; thiếu quyền trả 401/403; lỗi đọc trả 500.
+- Response: `{code,from,to,page,pageSize,totalRows,summary:{purchaseQuantity,returnQuantity,purchaseCount,returnCount},rows,canViewCost}`. Mỗi dòng `{documentId,documentCode,branch,time,customerName,type,quantity,unitCost?}`; ID chuỗi, số lượng dương có phần lẻ; `time` là giờ tường VN dạng YYYY-MM-DDTHH:mm:ss, không cộng thêm 7 giờ. `from`/`to` là ngày VN, gồm hôm nay và 89 ngày trước.
+- Một dòng/chứng từ/mã hàng, cộng dòng hàng lặp; khóa phân biệt branch + type + ID. Chỉ Hoàn thành / Đã trả. Tên khách hiện tại qua customers, dự phòng tên chứng từ rồi Khách lẻ; không loại lịch sử khi khách ngừng hoạt động.
+- SQL một snapshot: cùng tập lọc để tính tổng và cắt trang; trang vượt cuối được đưa về trang cuối. Sắp thời gian giảm dần, thêm khóa phân biệt để phân trang ổn định. Bốn chỉ số theo cả q và type; lượt đếm chứng từ sau gộp dòng.
+- `unitCost` hiện NULL vì chưa có trường giá vốn lịch sử xác minh được trong nguồn đã đồng bộ. Không dùng `price` hoặc inventories.cost hiện tại thay thế. Chỉ người có `reports.products.price` nhận trường này; người khác bị loại khỏi payload và không có cột giá vốn trên UI.
+
+Không thêm bảng, job, migration, dependency hay biến môi trường. UI tải lịch sử độc lập phần doanh số theo khách, có retry từng phần và bỏ phản hồi cũ sau đổi mã/đóng hộp. Mã cục bộ trên main, chưa deploy.
+
+Cập nhật gần nhất: 03/11/2026.

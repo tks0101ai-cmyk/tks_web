@@ -367,3 +367,9 @@ Kiểm chứng/triển khai: xem [kế hoạch Redis](../../tasks/redis-performa
 Sau khi gộp PR in phiếu nhặt nhanh: Redis là tầng L2 dưới cache L1 trong tiến trình của `sheets/sheetValuesCache.js` (trả bản cũ + làm mới nền); `appendRow` xóa L2 rồi L1. SĐT sale giữ bản Redis (`pickKiotData.createSellerPhoneLookup`: last-good 30 phút, worker làm mới 4 phút) thay cho cache trong RAM của PR; `shapeAssignment` bỏ bổ sung SĐT khi đang trong giao dịch.
 
 Cập nhật gần nhất: 03/11/2026 (Kiểm kê: bộ lọc 5 lựa chọn, tiêu đề bảng gọn, bỏ Dán cột; trước đó 02/11/2026: Kiểm kê đối chiếu Hà Nội + Sài Gòn, đủ 23 cột T10, dán cột, nạp tab KIỂM SG, migration 0105; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; VT Đơn xuất kho + số lượng âm, migration 0104; Chỉ định vị trí không ghi lên KiotViet; gỡ 2 cảnh báo Lệch Kiot / Lệch SL trong đơn) — trước đó 31/10/2026 (sửa vị trí VT ngay trong hộp Chỉ định vị trí; trước đó: bỏ dòng chỉ định của mã đã xóa khỏi đơn Kiot).
+
+## 03/11/2026 — Chi tiết hàng hóa: lịch sử 90 ngày
+
+Đã bổ sung repository SQL độc lập productHistoryRepository và GET /api/product-report/history; frontend product-history.js được nạp bởi index.html, mount mục mới dưới phần doanh số theo khách. Hai phần tải độc lập và dùng requestId/generation để bỏ phản hồi cũ. Truy vấn UNION hóa đơn Hoàn thành + phiếu trả Đã trả, gộp chứng từ, fuzzy tên khách, tính tổng trước LIMIT/OFFSET trong một SQL snapshot. Mặc định 25 dòng, mới nhất trước; table-controls quản lý cột, phân trang máy chủ riêng; Light/Dark, điện thoại cuộn ngang. Quyền sales cho lịch sử, price cho giá vốn; chưa có giá vốn lịch sử xác minh được nên unitCost null, không lấy giá hiện tại thay. Không migration/dependency/env mới; chưa deploy.
+
+Cập nhật gần nhất: 03/11/2026.

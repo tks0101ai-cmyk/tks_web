@@ -18,23 +18,37 @@ function sidebar(t, user, url = '/cashbook/') {
   t.after(() => dom.window.close());
   dom.window.eval(navSource);
   const mount = dom.window.document.getElementById('sidebar');
-  dom.window.TKSNav.renderTopSidebar(mount, 'cashbook', {
+  dom.window.TKSNav.renderTopSidebar(mount, 'accounting', {
     ...user, permissions: registry.resolvePermissions(user)
   });
   return mount;
 }
 
-test('Sổ quỹ là mục cấp 1 ngay dưới Quản lý nhân sự, trên nhóm Kế toán và đang active trên trang quỹ', t => {
+test('Sổ quỹ là mục con của nhóm Kế toán và đang active trên trang quỹ', t => {
   const mount = sidebar(t, { vaiTro: 'Quản lý', branch: 'Cả hai' });
   const link = mount.querySelector('a[href="/cashbook/"]');
   assert.ok(link, 'phải có liên kết Sổ quỹ');
   assert.equal(link.textContent, 'Sổ quỹ');
-  assert.equal(link.parentElement, mount, 'mục cấp 1 không nằm trong nhóm con');
-  assert.equal(link.previousElementSibling.querySelector('[data-tks-nav-group]').dataset.tksNavGroup, 'hr');
-  assert.equal(link.nextElementSibling.querySelector('[data-tks-nav-group]').dataset.tksNavGroup, 'accounting');
-  assert.ok(link.classList.contains('has-active'));
+  const group = link.closest('.nav-group');
+  assert.ok(group, 'mục nằm trong nhóm con');
+  assert.equal(group.querySelector('[data-tks-nav-group]').dataset.tksNavGroup, 'accounting');
+  assert.ok(group.querySelector('[data-tks-nav-group]').classList.contains('has-active'));
+  assert.ok(link.classList.contains('nav-item'));
+  assert.ok(link.classList.contains('active'));
   assert.equal(link.getAttribute('aria-current'), 'page');
   assert.ok(link.querySelector('svg.ic'));
+});
+
+test('Sổ quỹ không còn là mục cấp 1 trên sidebar', t => {
+  const mount = sidebar(t, { vaiTro: 'Quản lý', branch: 'Cả hai' });
+  assert.equal(mount.querySelector(':scope > a[href="/cashbook/"]'), null);
+});
+
+test('tài khoản chỉ được cấp riêng quyền Sổ quỹ vẫn thấy nhóm Kế toán chứa Sổ quỹ', t => {
+  const mount = sidebar(t, { vaiTro: 'Nhân viên kho', featurePermissions: { 'cashbook.view': true } });
+  const link = mount.querySelector('a[href="/cashbook/"]');
+  assert.ok(link);
+  assert.equal(link.closest('.nav-group').querySelector('[data-tks-nav-group]').dataset.tksNavGroup, 'accounting');
 });
 
 test('sidebar Sổ quỹ ẩn với Sale/Kho/Khách và khi Quản lý bị thu hồi quyền xem', t => {
@@ -51,11 +65,11 @@ test('Sổ quỹ không phụ thuộc cơ sở, chỉ active đúng đường d�
       featurePermissions: { 'cashbook.view': true } }, '/humanresources/');
     const link = mount.querySelector('a[href="/cashbook/"]');
     assert.ok(link, branch);
-    assert.equal(link.classList.contains('has-active'), false);
+    assert.equal(link.classList.contains('active'), false);
     assert.equal(link.hasAttribute('aria-current'), false);
   }
   for (const url of ['/cashbook', '/cashbook/index.html']) {
-    assert.ok(sidebar(t, { vaiTro: 'Quản lý' }, url).querySelector('a[href="/cashbook/"].has-active'));
+    assert.ok(sidebar(t, { vaiTro: 'Quản lý' }, url).querySelector('a[href="/cashbook/"].active'));
   }
 });
 
