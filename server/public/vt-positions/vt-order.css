@@ -32,6 +32,15 @@ input.vt-order-inline,.vt-order-addrow input{box-sizing:border-box;width:100%;mi
 .vt-order-tag.is-neg,.vt-order-tag.is-error{border-color:var(--red);color:var(--red);background:color-mix(in srgb,var(--red) 10%,transparent)}
 .vt-order-tag.is-held{border-color:var(--amber);color:var(--amber);background:color-mix(in srgb,var(--amber) 12%,transparent)}
 .vt-order-neg{color:var(--red);font-weight:700}
+.vt-order-tag.is-draft{border-color:var(--amber);color:var(--amber);background:color-mix(in srgb,var(--amber) 12%,transparent)}
+.vt-order-tag.is-done{border-color:var(--green);color:var(--green);background:color-mix(in srgb,var(--green) 10%,transparent)}
+.vt-order-tabs button[hidden]{display:none}
+.vt-order-search{box-sizing:border-box;flex:0 1 320px;min-height:36px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel-2);color:var(--text);font:13px var(--font-body)}
+.vt-order-search:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+/* Tab Xuất kho Excel: bê nguyên nội dung hộp Xuất kho cũ vào đây, bỏ bề rộng riêng của .vt-stockout. */
+.vt-order .vt-stockout{width:auto;display:flex;flex-direction:column;gap:16px}
+.vt-order .vt-stockout[hidden]{display:none}
+.vt-order .vt-stockout .vt-import-review{gap:16px}
 @media (max-width:600px){
   .vt-order{width:calc(100vw - 16px)}
   .vt-order-wrap{max-height:50vh}

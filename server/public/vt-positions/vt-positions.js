@@ -347,7 +347,6 @@
     $('vtAddButton').hidden = !canEdit;
     $('vtTable').dataset.editable = String(canEdit);
     $('vtImportButton').hidden = !canEdit;
-    $('vtStockOutButton').hidden = !canEdit;
     $('vtExportButton').hidden = state[activeTab].canExport !== true;
     const rows = sortRows(filterRows(current.rows, current.query, current.warnFilter), current.sortField, current.sortDirection);
     updateSortHeaders();
@@ -441,7 +440,7 @@
   }
   function closeDialog(dialog, force = false) {
     if (dialog.id === 'vtImportDialog' && importState.busy && !force) return;
-    if (dialog.id === 'vtStockOutDialog' && stockOutState.busy && !force) return;
+    if (dialog.id === 'vtOrderDialog' && stockOutState.busy && !force) return;
     if (dialog.close) dialog.close(); else dialog.removeAttribute('open');
   }
 
@@ -1138,12 +1137,11 @@
     }
   }
 
-  // ---------- Xuất kho: trừ SL theo file (một bước, kết quả hiển thị ngay trong hộp) ----------
+  // ---------- Xuất kho Excel: trừ SL theo file (một bước, kết quả hiển thị ngay trong tab "Xuất kho Excel" của hộp Đơn xuất kho) ----------
   const stockOutFile = () => ($('vtStockOutFile').files && $('vtStockOutFile').files[0]) || null;
   function setStockOutBusy(busy) {
     stockOutState.busy = busy;
-    $('vtStockOutButton').disabled = busy;
-    $('vtStockOutDialog').querySelectorAll('[data-vt-close]').forEach(button => { button.disabled = busy; });
+    $('vtOrderDialog').querySelectorAll('[data-vt-close], [data-order-view]').forEach(button => { button.disabled = busy; });
     $('vtStockOutFile').disabled = busy;
     $('vtStockOutPick').disabled = busy;
     $('vtStockOutBack').disabled = busy;
@@ -1161,7 +1159,6 @@
     $('vtStockOutBack').hidden = true;
     $('vtStockOutRun').hidden = false;
     $('vtStockOutError').textContent = '';
-    $('vtStockOutSubtitle').textContent = tabLabel(activeTab) + ' · trừ số lượng theo file Excel hoặc CSV';
     const file = stockOutFile();
     $('vtStockOutFileName').textContent = file ? file.name : '';
     $('vtStockOutDrop').classList.toggle('has-file', Boolean(file));
@@ -1676,12 +1673,6 @@
     $('vtImportWarnFilter').addEventListener('change', () => { importState.warnFilter = $('vtImportWarnFilter').value; importState.page = 0; renderImportPreviewRows(); });
     $('vtImportPrevPage').addEventListener('click', () => { importState.page -= 1; renderImportPreviewRows(); });
     $('vtImportNextPage').addEventListener('click', () => { importState.page += 1; renderImportPreviewRows(); });
-    $('vtStockOutButton').addEventListener('click', () => {
-      if (stockOutState.busy) return;
-      $('vtStockOutFile').value = '';
-      resetStockOut();
-      openDialog($('vtStockOutDialog'));
-    });
     $('vtStockOutFile').addEventListener('change', resetStockOut);
     $('vtStockOutPick').addEventListener('click', () => $('vtStockOutFile').click());
     $('vtStockOutBack').addEventListener('click', () => { $('vtStockOutFile').value = ''; resetStockOut(); });
@@ -1698,7 +1689,7 @@
       resetStockOut();
     });
     $('vtStockOutRun').addEventListener('click', runStockOut);
-    $('vtStockOutDialog').addEventListener('cancel', event => { if (stockOutState.busy) event.preventDefault(); });
+    $('vtOrderDialog').addEventListener('cancel', event => { if (stockOutState.busy) event.preventDefault(); });
     $('vtExportButton').addEventListener('click', exportExcel);
     $('vtHistoryButton').addEventListener('click', openHistory);
     $('vtHistorySearch').addEventListener('input', renderHistory);
@@ -1884,7 +1875,9 @@
     if (window.TKSVtStockOutOrder) {
       window.TKSVtStockOutOrder.init({
         branch: () => activeTab.toUpperCase(), request, jsonOptions, confirmBox, notify, openDialog,
-        onChanged: () => selectTab(activeTab)
+        onChanged: () => selectTab(activeTab),
+        // Tab "Xuất kho Excel" của hộp: vào tab thì về bước chọn file; đang trừ kho thì không cho chuyển tab.
+        excel: { enter: () => { $('vtStockOutFile').value = ''; resetStockOut(); }, busy: () => stockOutState.busy }
       });
     }
     initImportTable();

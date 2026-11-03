@@ -461,14 +461,18 @@ body::before{
 .tks-notif-heading{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .tks-notif-summary{ padding:4px 8px; border-radius:6px; background:color-mix(in srgb, var(--blue) 12%, var(--panel)); color:var(--text); font-size:11px; font-weight:600; }
 .tks-notif-summary[hidden], .tks-notif-badge[hidden]{ display:none; }
-.tks-notif-header-actions{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
-.tks-notif-mark-all{
-  background:none; border:none; color:var(--blue); font-size:12px; font-weight:600; cursor:pointer; padding:6px 0;
+.tks-notif-header-actions{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.tks-notif-mark-all, .tks-notif-clear-all{
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  min-height:36px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm);
+  background:var(--panel-2); color:var(--text-secondary); font-family:var(--font-body);
+  font-size:12px; font-weight:600; line-height:1.4; cursor:pointer;
 }
-.tks-notif-clear-all{
-  background:none; border:none; color:var(--red, #EF4444); font-size:12px; font-weight:600; cursor:pointer; padding:6px 0;
-}
-.tks-notif-header-actions button:hover{ text-decoration:underline; text-underline-offset:3px; }
+.tks-notif-mark-all{ flex:1 1 auto; }
+.tks-notif-clear-all{ flex:0 0 auto; }
+.tks-notif-header-actions button[hidden]{ display:none; }
+.tks-notif-header-actions button:hover{ background:var(--panel-3); color:var(--text); }
+.tks-notif-header-actions svg{ width:16px; height:16px; flex-shrink:0; }
 .tks-notif-dropdown button:focus-visible{ outline:2px solid var(--blue); outline-offset:2px; }
 .tks-notif-desktop{
   display:flex; align-items:flex-start; gap:10px; padding:12px; margin:12px 12px 4px; flex-shrink:0;

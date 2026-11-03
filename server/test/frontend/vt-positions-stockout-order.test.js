@@ -190,24 +190,141 @@ test('chỉ xem: không có nút Chốt/Import/Thêm dòng/Xóa, có lời nhắ
   assert.match(doc.getElementById('vtOrderHint').textContent, /chỉ xem được đơn/);
 });
 
-test('Lịch sử đơn: liệt kê đơn đã chốt, bấm vào xem chi tiết với tồn trước/sau và dòng âm', async t => {
+test('Danh sách đơn: đơn tạm đứng đầu kèm trạng thái, đơn đã chốt bên dưới; bấm đơn chốt xem chi tiết với tồn trước/sau và dòng âm', async t => {
   const confirmedLine = line(1, { result: { before: '5T x 100', after: '-2T x 100', quantity: -200, negative: true, created: false }, preview: null });
-  const confirmed = draft([confirmedLine], { status: 'confirmed', confirmedAt: '2026-11-02T10:00:00.000Z', confirmedByName: 'Quản lý B', summary: { lines: 1, positions: 1, quantity: 700, negative: 1, removed: 0, created: 0 } });
+  const confirmed = draft([confirmedLine], { id: 6, code: 'XK-HN-00000', status: 'confirmed', confirmedAt: '2026-11-02T10:00:00.000Z', confirmedByName: 'Quản lý B', summary: { lines: 1, positions: 1, quantity: 700, negative: 1, removed: 0, created: 0 } });
   const { doc } = await setup(t, {
     historyRows: [{ ...confirmed, lines: [], lineCount: 1 }],
-    handler: async parsed => (parsed.pathname === '/api/stock-positions/stock-out-orders/7' ? json({ order: confirmed }) : null)
+    handler: async parsed => (parsed.pathname === '/api/stock-positions/stock-out-orders/6' ? json({ order: confirmed }) : null)
   });
   await openDialog(doc);
-  doc.querySelector('[data-order-view="history"]').click();
+  doc.querySelector('[data-order-view="list"]').click();
   await settle();
-  const item = doc.querySelector('#vtOrderHistoryRows tr.is-link');
-  assert.match(item.textContent, /XK-HN-00001/);
-  item.click();
+  assert.equal(doc.getElementById('vtOrderList').hidden, false);
+  const rows = [...doc.querySelectorAll('#vtOrderListRows tr.is-link')];
+  assert.equal(rows.length, 2);
+  assert.match(rows[0].textContent, /XK-HN-00001.*Đơn tạm/, 'đơn tạm ở đầu');
+  assert.match(rows[1].textContent, /XK-HN-00000.*Đã chốt.*Quản lý B/);
+  assert.match(doc.getElementById('vtOrderListNote').textContent, /1 đơn tạm · 1 đơn đã chốt/);
+  rows[1].click();
   await settle();
   assert.equal(doc.getElementById('vtOrderDetail').hidden, false);
   assert.match(doc.getElementById('vtOrderSubtitle').textContent, /Đã chốt .* bởi Quản lý B/);
   assert.match(doc.querySelector('#vtOrderDetailRows .vt-order-neg').textContent, /-2T x 100/);
   assert.match(doc.getElementById('vtOrderDetailNote').textContent, /1 vị trí âm/);
+  doc.getElementById('vtOrderBack').click();
+  await settle();
+  assert.equal(doc.getElementById('vtOrderList').hidden, false, 'Quay lại về danh sách');
+});
+
+test('Danh sách đơn: đơn tạm chưa có dòng nào thì không hiện như một đơn', async t => {
+  const { doc } = await setup(t, { order: draft([]), historyRows: [] });
+  await openDialog(doc);
+  doc.querySelector('[data-order-view="list"]').click();
+  await settle();
+  assert.equal(doc.querySelectorAll('#vtOrderListRows tr.is-link').length, 0);
+  assert.match(doc.getElementById('vtOrderListRows').textContent, /Chưa có đơn nào/);
+  assert.doesNotMatch(doc.getElementById('vtOrderListNote').textContent, /đơn tạm/);
+});
+
+test('Danh sách đơn: bấm đơn tạm mở lại tab Đơn tạm; ô tìm lọc theo mã đơn / người', async t => {
+  const confirmed = draft([], { id: 6, code: 'XK-HN-00000', status: 'confirmed', confirmedAt: '2026-11-02T10:00:00.000Z', confirmedByName: 'Lan', summary: { lines: 2, positions: 2, quantity: 5, negative: 0, removed: 0, created: 0 } });
+  const { doc, window } = await setup(t, { historyRows: [{ ...confirmed, lineCount: 2 }] });
+  await openDialog(doc);
+  doc.querySelector('[data-order-view="list"]').click();
+  await settle();
+  const search = doc.getElementById('vtOrderSearch');
+  const type = value => { search.value = value; search.dispatchEvent(new window.Event('input')); };
+  type('lan');
+  assert.deepEqual([...doc.querySelectorAll('#vtOrderListRows .vt-order-ordercode')].map(td => td.textContent), ['XK-HN-00000']);
+  type('zzz');
+  assert.match(doc.getElementById('vtOrderListRows').textContent, /Không có đơn nào khớp/);
+  type('');
+  doc.querySelector('#vtOrderListRows tr.is-link').click();
+  await settle();
+  assert.equal(doc.getElementById('vtOrderCurrent').hidden, false);
+  assert.match(doc.getElementById('vtOrderSubtitle').textContent, /XK-HN-00001 · Đơn tạm/);
+});
+
+test('Xuất kho Excel: tab chỉ hiện khi được sửa; chọn file → Trừ kho gửi POST theo cơ sở, hiện kết quả + dòng bỏ qua, tải lại bảng', async t => {
+  const readonly = await setup(t, { canEdit: false });
+  await openDialog(readonly.doc);
+  assert.equal(readonly.doc.getElementById('vtOrderExcelTab').hidden, true);
+  assert.equal(readonly.doc.getElementById('vtStockOutButton'), null, 'nút Xuất kho riêng ở thanh công cụ đã gỡ');
+
+  const result = {
+    fileName: 'xuat.xlsx',
+    counts: { fileRows: 3, applied: 2, updated: 1, deleted: 1, skipped: 1, quantity: 250 },
+    errors: [{ row: 4, code: 'ZZZ9', location: 'K9', notes: '1T x 5', message: 'Không có dòng nào cùng mã hàng và vị trí trong cơ sở này.' }],
+    errorsTruncated: false
+  };
+  const { doc, calls, window } = await setup(t, {
+    handler: async parsed => (parsed.pathname === '/api/stock-positions/stock-out' ? json(result) : null)
+  });
+  await openDialog(doc);
+  const tab = doc.getElementById('vtOrderExcelTab');
+  assert.equal(tab.hidden, false);
+  tab.click();
+  await settle();
+  assert.equal(doc.getElementById('vtOrderExcel').hidden, false);
+  assert.equal(doc.getElementById('vtOrderCurrent').hidden, true);
+  assert.match(doc.getElementById('vtOrderSubtitle').textContent, /VT Hà Nội · Xuất kho Excel/);
+  assert.equal(doc.getElementById('vtStockOutRun').disabled, true, 'chưa chọn file thì không trừ được');
+  const input = doc.getElementById('vtStockOutFile');
+  Object.defineProperty(input, 'files', { value: [new window.File(['x'], 'xuat.xlsx')], configurable: true });
+  input.dispatchEvent(new window.Event('change'));
+  assert.equal(doc.getElementById('vtStockOutFileName').textContent, 'xuat.xlsx');
+  assert.equal(doc.getElementById('vtStockOutRun').disabled, false);
+  doc.getElementById('vtStockOutRun').click();
+  doc.getElementById('vtStockOutRun').click();
+  await settle();
+  const posts = calls.filter(c => c.path === '/api/stock-positions/stock-out');
+  assert.equal(posts.length, 1, 'chặn bấm lặp khi đang gửi');
+  assert.equal(posts[0].method, 'POST');
+  assert.equal(posts[0].query.get('branch'), 'HN');
+  assert.equal(posts[0].body.get('file').name, 'xuat.xlsx');
+  assert.ok(doc.getElementById('vtOrderDialog').hasAttribute('open'), 'giữ hộp để xem kết quả');
+  assert.deepEqual([...doc.querySelectorAll('#vtStockOutResult li')].map(li => li.dataset.count + ':' + li.querySelector('b').textContent),
+    ['applied:2', 'deleted:1', 'skipped:1', 'quantity:250']);
+  assert.equal(doc.getElementById('vtStockOutErrorsBox').hidden, false);
+  assert.deepEqual([...doc.querySelectorAll('#vtStockOutErrorRows tr td')].map(td => td.textContent),
+    ['4', 'ZZZ9', 'K9', '1T x 5', 'Không có dòng nào cùng mã hàng và vị trí trong cơ sở này.']);
+  assert.equal(doc.getElementById('vtStockOutRun').hidden, true);
+  assert.equal(doc.getElementById('vtStockOutBack').hidden, false);
+  assert.match(doc.getElementById('vtNotice').textContent, /trừ 2 dòng, xóa 1 dòng hết hàng, bỏ qua 1 dòng/);
+  assert.ok(calls.filter(c => c.method === 'GET' && c.path === '/api/stock-positions').length >= 2, 'tải lại bảng sau khi trừ');
+  doc.getElementById('vtStockOutBack').click();
+  assert.equal(doc.getElementById('vtStockOutPickPanel').hidden, false);
+  assert.equal(doc.getElementById('vtStockOutRun').hidden, false);
+});
+
+test('Xuất kho Excel: lỗi từ máy chủ / mất kết nối báo trong tab và cho thử lại', async t => {
+  let mode = 'server';
+  const { doc, calls, window } = await setup(t, {
+    handler: async parsed => {
+      if (parsed.pathname !== '/api/stock-positions/stock-out') return null;
+      if (mode === 'offline') throw new TypeError('Failed to fetch');
+      return json({ error: 'File thiếu cột: Vị trí.', code: 'IMPORT_HEADERS_MISSING' }, 400);
+    }
+  });
+  await openDialog(doc);
+  doc.getElementById('vtOrderExcelTab').click();
+  await settle();
+  const input = doc.getElementById('vtStockOutFile');
+  Object.defineProperty(input, 'files', { value: [new window.File(['x'], 'xuat.csv')], configurable: true });
+  input.dispatchEvent(new window.Event('change'));
+  doc.getElementById('vtStockOutRun').click();
+  await settle();
+  assert.equal(calls.find(c => c.path === '/api/stock-positions/stock-out').query.get('branch'), 'HN');
+  assert.match(doc.getElementById('vtStockOutError').textContent, /File thiếu cột: Vị trí/);
+  assert.equal(doc.getElementById('vtStockOutRun').disabled, false, 'lỗi không khóa nút thử lại');
+  assert.equal(doc.getElementById('vtStockOutReview').hidden, true);
+  mode = 'offline';
+  doc.getElementById('vtStockOutRun').click();
+  await settle();
+  assert.match(doc.getElementById('vtStockOutError').textContent, /Không kết nối được máy chủ/);
+  assert.equal(doc.getElementById('vtStockOutRun').disabled, false);
+  assert.ok(doc.getElementById('vtOrderDialog').hasAttribute('open'));
 });
 
 test('Lịch sử VT: dòng chốt đơn có nút "Xem đơn" mở chi tiết đơn xuất kho', async t => {
