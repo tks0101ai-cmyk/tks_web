@@ -230,8 +230,7 @@
   function visibleRows() {
     if (!state.board) return [];
     const rows = state.board.rows.filter(row => {
-      if (state.filter === 'forgotten' && !row.forgotten) return false;
-      if (state.filter === 'noted' && !row.note) return false;
+      if (!Grid.matchesFilter(row, state.filter)) return false;
       if (state.recheck && recheckKey(row.note) !== state.recheck) return false;
       if (state.status && (row.note ? row.note.statusText : '') !== state.status) return false;
       return true;
