@@ -28,6 +28,31 @@ test('old print snapshots receive seller contact without changing stored history
  assert.equal((await service.get(ctx(),{branch:'SG',orderCode:'DH1'})).assignment.snapshot.sellerPhone,'0907654321');assert.equal(lookups,1);
 });
 
+test('readLatest: 1 truy van dau chi dinh; dong, lich su va SDT sale doc song song', async () => {
+  const head = { id: 5, branch: 'HN', order_code: 'DH1', status: 'picking', version: 1, order_snapshot: { sellerPhone: '' } };
+  const seen = [];
+  const gates = [];
+  const db = { query: sql => {
+    seen.push(sql);
+    if (sql.includes('FROM order_pick_assignments')) return Promise.resolve({ rows: [head] });
+    return new Promise(resolve => gates.push(() => resolve({ rows: [] })));
+  } };
+  let phoneStarted = false, releasePhone;
+  const service = createPickAssignmentsService({ getDb: () => db, loadOrder: async () => null,
+    loadSellerPhone: () => { phoneStarted = true; return new Promise(resolve => { releasePhone = () => resolve('0901'); }); } });
+  const pending = service.get(ctx(), { branch: 'HN', orderCode: 'DH1' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(seen.filter(sql => sql.includes('FROM order_pick_assignments')).length, 1, 'chi 1 truy van dau chi dinh');
+  assert.equal(gates.length, 2, 'dong va lich su cung dang cho');
+  assert.equal(phoneStarted, true, 'SDT cung dang cho');
+  gates.forEach(open => open());
+  releasePhone();
+  const { assignment } = await pending;
+  assert.equal(assignment.id, 5);
+  assert.equal(assignment.status, 'picking');
+  assert.equal(assignment.snapshot.sellerPhone, '0901');
+});
+
 function order(overrides = {}) {
   return {
     branch: 'HN', orderCode: 'DH001', customerName: 'Khách A', saleName: 'Sale B', saleTelegramId: '555', orderDate: '27/10/2026 09:00',

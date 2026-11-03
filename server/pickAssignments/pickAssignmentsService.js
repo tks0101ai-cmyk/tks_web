@@ -167,14 +167,16 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
   stockPositions = createStockPositionsService({ getDb }) } = {}) {
   // ---------- Doc / dinh dang ----------
 
-  async function readAssignment(db, id) {
-    const head = (await db.query('SELECT * FROM order_pick_assignments WHERE id = $1', [id])).rows[0];
-    if (!head) return null;
+  // Hang order_pick_assignments -> JSON cho client. Dong, lich su va SDT sale (snapshot cu thieu) doc SONG SONG (1 luot DB thay vi 3).
+  async function shapeAssignment(db, head) {
     // Older snapshots have no seller contact: supplement the print response without rewriting history.
     const snapshot = {...(head.order_snapshot || {})};
-    if (!snapshot.sellerPhone && loadSellerPhone) snapshot.sellerPhone = await loadSellerPhone(db, head.branch, head.order_code);
-    const lines = (await db.query('SELECT * FROM order_pick_lines WHERE assignment_id = $1 ORDER BY id', [id])).rows;
-    const history = (await db.query('SELECT created_at, action, actor_name, summary FROM order_pick_history WHERE assignment_id = $1 ORDER BY id', [id])).rows;
+    const [sellerPhone, lines, history] = await Promise.all([
+      !snapshot.sellerPhone && loadSellerPhone ? loadSellerPhone(db, head.branch, head.order_code) : null,
+      db.query('SELECT * FROM order_pick_lines WHERE assignment_id = $1 ORDER BY id', [head.id]).then(result => result.rows),
+      db.query('SELECT created_at, action, actor_name, summary FROM order_pick_history WHERE assignment_id = $1 ORDER BY id', [head.id]).then(result => result.rows)
+    ]);
+    if (sellerPhone !== null) snapshot.sellerPhone = sellerPhone;
     const at = value => (value ? isoOf(value) : null);
     return {
       id: Number(head.id),
@@ -206,16 +208,17 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
     };
   }
 
-  async function readLatestId(db, branch, orderCode) {
-    const row = (await db.query(
-      'SELECT id FROM order_pick_assignments WHERE branch = $1 AND lower(btrim(order_code)) = $2 ORDER BY id DESC LIMIT 1',
-      [branch, codeKey(orderCode)])).rows[0];
-    return row ? Number(row.id) : null;
+  async function readAssignment(db, id) {
+    const head = (await db.query('SELECT * FROM order_pick_assignments WHERE id = $1', [id])).rows[0];
+    return head ? shapeAssignment(db, head) : null;
   }
 
+  // Chi dinh moi nhat cua don: lay luon ca hang (1 luot) thay vi id roi doc lai theo id.
   async function readLatest(db, branch, orderCode) {
-    const id = await readLatestId(db, branch, orderCode);
-    return id === null ? null : readAssignment(db, id);
+    const head = (await db.query(
+      'SELECT * FROM order_pick_assignments WHERE branch = $1 AND lower(btrim(order_code)) = $2 ORDER BY id DESC LIMIT 1',
+      [branch, codeKey(orderCode)])).rows[0];
+    return head ? shapeAssignment(db, head) : null;
   }
 
   // Giu cho hien co theo vi tri: chi chi dinh 'picking' cua DON KHAC (exceptOrder bo qua chinh don dang xem/chi dinh).
