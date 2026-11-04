@@ -325,6 +325,6 @@ Hộp chi tiết xếp 2 chỉ số/hàng bên trái, biểu đồ bên phải (
 
 Lịch sử gồm hóa đơn Hoàn thành, trả hàng Đã trả và đơn đang có `raw.statusValue = 'Phiếu tạm'` trong 90 ngày gồm hôm nay, gộp cả HN/SG. Cột mặc định: Thời gian / Loại giao dịch / Mã giao dịch · HN/SG / Khách hàng / Số lượng. Sắp xếp toàn bộ kết quả trên máy chủ, tìm khách, lọc loại, tổng mua/trả/đặt riêng, 25 dòng/trang; Giá vốn ẩn mặc định và chỉ được bật theo quyền. Xuất file chung với `tableKey: products.productHistory` lấy toàn bộ kết quả khớp và các cột đang chọn, số lượng trong Excel là số. Kiểm thử xuất mới: `server/dashboard/exportProductHistory.test.js`.
 
-Migration mới `0108_product_customer_periods.sql` và rollback `0108_product_customer_periods.down.sql`: thêm ba cột NUMERIC nullable vào `product_report_customers`, ngày kết thúc kỳ vào `product_report_state`. **Chưa áp DB thật, chưa deploy**. Áp migration trước khi chạy backend/worker mới; sau đó chạy lại tổng hợp tăng dần hoặc chờ lượt worker kế tiếp (thiếu kỳ tự buộc tính lại). Không dependency hoặc biến môi trường mới.
+Migration mới `0108_product_customer_periods.sql` và rollback `0108_product_customer_periods.down.sql`: thêm ba cột NUMERIC nullable vào `product_report_customers`, ngày kết thúc kỳ vào `product_report_state`. **Đã áp DB 04/11/2026, chưa deploy**. Áp migration trước khi chạy backend/worker mới; sau đó chạy lại tổng hợp tăng dần hoặc chờ lượt worker kế tiếp (thiếu kỳ tự buộc tính lại). Không dependency hoặc biến môi trường mới.
 
 Cập nhật gần nhất: 04/11/2026.

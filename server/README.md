@@ -1044,7 +1044,7 @@ Cập nhật gần nhất: 04/11/2026.
 
 Cập nhật gần nhất: 04/11/2026.
 
-## 04/11/2026 — Mở rộng API Chi tiết hàng hóa (migration 0108, chưa áp DB)
+## 04/11/2026 — Mở rộng API Chi tiết hàng hóa (migration 0108, đã áp DB 04/11/2026)
 
 - `GET /api/product-report/customers?code=SP1`: giữ response cũ, thêm `periods: [{key,label,from,to}]` theo thứ tự `1_30d`, `31_60d`, `61_90d`; mỗi khách thêm `revenue1_30d`, `revenue31_60d`, `revenue61_90d` (number hoặc null). Một câu SQL đọc khách và ngày snapshot; chưa tính → null / `periods:[]`, không giả số 0. Luồng tăng dần kết thúc hôm nay; luồng đầy đủ di sản kết thúc hôm qua, tooltip theo ngày đã lưu.
 - `GET /api/product-report/history`: `type=all|invoice|return|order`, `sort=time|type|documentCode|customerName|quantity`, `dir=asc|desc`; mặc định time desc, cùng khóa phụ branch/type/id để ổn định. `order` chỉ đơn có `raw->>'statusValue' = 'Phiếu tạm'`, dùng order_date. Bổ sung `summary.orderQuantity` / `orderCount`, không cộng vào số mua; tổng theo toàn bộ tập lọc trước phân trang. Quyền vẫn `reports.products` + `.sales`, unitCost theo `.price`.
