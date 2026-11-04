@@ -26,13 +26,18 @@
   top: 0;
   z-index: 3;
   white-space: normal;
-  vertical-align: bottom;
+  vertical-align: middle;
+  text-align: center !important;
   background: linear-gradient(var(--glass-head), var(--glass-head)), var(--panel);
 }
 .p90-table thead tr:nth-child(2) th { top: var(--p90-row2-top, 38px); }
-/* table-controls.css đặt vertical-align:top cho mọi ô bảng được điều khiển: tiêu đề Mã/Tên (rowspan 2) và tầng 2 canh đáy. */
-.p90-table.tks-controlled-table thead th { vertical-align: bottom; }
-.p90-table.tks-controlled-table thead th.p90-group { vertical-align: middle; }
+/* table-controls.css đặt vertical-align:top cho mọi ô bảng được điều khiển: mọi tiêu đề (2 tầng) canh GIỮA cả 2 chiều. */
+.p90-table.tks-controlled-table thead th { vertical-align: middle; }
+/* Nhãn tiêu đề nằm ĐÚNG giữa ô: biểu tượng ▲▼ (quy ước chung shared.css) đặt tuyệt đối sát mép phải nút, nút chừa đệm
+   2 bên bằng nhau đúng bằng chỗ của biểu tượng — chữ không bị đẩy lệch trái như bố cục flex chung (nhãn + cột biểu tượng). */
+.p90-table thead .sort-button { position: relative; justify-content: center; padding: 0 13px; }
+.p90-table thead .sort-button > .sort-label { flex: 0 1 auto; text-align: center; }
+.p90-table thead .sort-indicator { position: absolute; right: 0; top: 50%; width: 12px; transform: translateY(-50%); }
 .p90-table th.p90-group {
   vertical-align: middle;
   border-left: 1px solid var(--border);
