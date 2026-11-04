@@ -384,6 +384,8 @@ Thiết kế đã được người dùng duyệt qua phỏng vấn: 26 cột th
 - [x] Áp riêng 0106 và nạp Supabase 11.135 mã cho 06/08–03/11/2026; đối soát chứng từ nguồn và các kỳ con đạt, không thiếu dòng nguồn.
 - [x] Kiểm thử liên quan theo graphify: 65/65 đạt; gồm migration runner, báo cáo cũ, SQL doanh số, lịch polling, lịch sử mã hàng và module mới.
 - [ ] Deploy worker có code mới với KIOTVIET_SYNC_ENABLED=true; kiểm tra state tự sang kỳ mới sau 02:00 VN. Lịch trong code sẵn sàng, chưa hoạt động trên worker cũ.
-- [ ] Đợt sau: API chỉ đọc có phân quyền và giao diện mục 4 trong tab Hàng hóa, table-controls/light-dark/responsive theo chuẩn dự án.
+- [x] API chỉ đọc `GET /api/product-report/90d` (`dashboard/product90dReportRepository.js`, quyền `reports.products` + `reports.products.sales`): một SQL tham số hóa, tìm fuzzy + sắp xếp whitelist + phân trang ở máy chủ, `available:false` khi chưa có snapshot; kiểm thử repository/route đạt.
+- [x] Giao diện mục 4 "Hàng hóa 90 ngày" (`public/product-90d-report.js` + `.css`, `#product90dSection` trong `index.html`): bảng 26 cột, table-controls, Light/Dark, cuộn ngang trong khung với 2 cột Mã/Tên cố định, 4 trạng thái đang tải / không kết quả / chưa nạp / lỗi + Thử lại, hiện “Dữ liệu cập nhật lúc” theo giờ VN; web chỉ đọc, không tính lại, không nút làm mới. Có kiểm thử `test/frontend/product-90d-report.test.js`.
+- [ ] Deploy web (API + giao diện mục 4) cùng worker ở trên; sau lượt 02:00 đầu kiểm tra mục 4 hiển thị đúng kỳ mới với tài khoản có `reports.products.sales`.
 
 Cập nhật gần nhất: 04/11/2026.

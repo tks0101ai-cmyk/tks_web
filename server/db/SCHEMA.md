@@ -867,7 +867,14 @@ Cập nhật gần nhất: 03/11/2026.
 - Khách gộp theo tên hiện tại chuẩn hóa NFKC/hoa thường/khoảng trắng/ký tự rỗng, không bỏ dấu. Không loại khách ngừng hoạt động. SL khách chỉ đếm tên có hóa đơn thành công; lượt mua DISTINCT (branch,id) cho từng mã, không đếm trả, không giảm khi trả hết. Tổng 90 ngày đếm khách DISTINCT lại, không cộng số khách ba kỳ con.
 - Top 3 theo DS ròng giảm dần, hòa thì khóa tên tăng dần; tỷ trọng chia DS ròng toàn bộ khách cùng mã/kỳ (DS=0 thì NULL). Có ít hơn 3 khách thì giữ số thực có; khách chỉ trả vẫn tham gia DS/SL và xếp hạng nhưng không được tính lượt mua/SL khách. Không phát sinh: 0 ở các tổng/đếm, Giá TB NULL và Top 3 [].
 - Job `kiotvietSync/product90dReport.js` chạy một lần/ngày từ 02:00 VN, không liên kết các báo cáo tăng dần khác. Khóa advisory 20531106, staging + upsert chỉ dòng đổi/xóa mã rời danh mục + state trong cùng giao dịch, lỗi rollback giữ bản cũ. Đọc đồng thời vẫn thấy bản chốt trước COMMIT. Lệnh nạp tay có thể ép tính lại; lịch tự động chống lặp bằng as_of_date.
-- Hai bảng bật RLS, thu hồi quyền anon/authenticated/reporting_readonly. Web sẽ đọc qua backend có phân quyền trong đợt giao diện sau. Không sửa bảng chứng từ/khách/hàng nguồn. Rollback: `rollbacks/0106_product_90d_report.down.sql`.
+- Hai bảng bật RLS, thu hồi quyền anon/authenticated/reporting_readonly. Web đọc qua backend có phân quyền (`GET /api/product-report/90d`, xem mục “Hợp đồng đọc” bên dưới). Không sửa bảng chứng từ/khách/hàng nguồn. Rollback: `rollbacks/0106_product_90d_report.down.sql`.
 - Đã nạp đầu: 11.135 mã, kỳ 06/08–03/11/2026; tổng SL 78.131.018,83 và DS 406.836.857.112 khớp kiểm tra độc lập, 0 dòng chứng từ ngoài danh mục. Worker có lịch mới chưa deploy.
+
+### Hợp đồng đọc 0106 (`GET /api/product-report/90d`, 04/11/2026)
+
+- Chỉ `dashboard/product90dReportRepository.js` đọc hai bảng này (không ghi, không quét chứng từ); quyền `reports.products` + `reports.products.sales`. `product_key` là khóa kỹ thuật, không trả ra API/UI.
+- Một câu SQL tham số hóa đọc `product_90d_report_state` (id=1) + `product_90d_report` cùng một ảnh chụp: tổng dòng sau lọc, trang đã kẹp về trang cuối, sắp xếp/tìm trên toàn bộ kết quả trước `LIMIT/OFFSET`. Tìm `product_code || ' ' || product_name` bằng `shared/fuzzySql.js`; cột sắp xếp chỉ là whitelist tên cột (`product_code`, `product_name`, `qty|revenue|avg_price|customer_count|invoice_count` × 4 hậu tố); NULL xếp cuối, hòa bằng `product_code` rồi `product_key`.
+- NUMERIC đọc `::text` rồi đổi sang số, NULL giữ NULL (`avg_price_*` NULL khi SL = 0 hiển thị “—”, không thành 0). `top_customers_*` JSONB chuẩn hóa tối đa 3 phần tử `{name, share, revenue, quantity}`; dữ liệu hỏng → `[]`.
+- Không có dòng `product_90d_report_state` → API trả `available:false` (không phải bảng số 0). Kỳ hiển thị suy ra từ `as_of_date` (A): `61_90d` = A−90..A−61, `31_60d` = A−60..A−31, `1_30d` = A−30..A−1, `1_90d` = A−90..A−1; `computed_at` (TIMESTAMPTZ) trả ISO UTC, giao diện đổi sang giờ VN.
 
 Cập nhật gần nhất: 04/11/2026.

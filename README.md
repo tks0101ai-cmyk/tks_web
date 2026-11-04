@@ -124,7 +124,7 @@ server/
 │   ├── customerProfileRepository.js  # Ghi chú / thông tin theo khách của bảng Doanh số theo khách (22/10/2026, migration 0080): Thông tin chung, ảnh kho (BYTEA), note kiểu tin nhắn, ngày đã đi tiếp khách, người được gán sửa; fail-soft khi chưa có bảng
 │   └── customerProfileRules.js       # Luật thuần (không DB) kiểm tra đầu vào: quy mô kho, hình thức bán hàng, note ≤ 2000 ký tự, ngày đã đi, người sửa
 ├── cashbook/             # Sổ quỹ toàn công ty: số dư, sổ chi tiết, lịch sử chốt và xuất Excel/HTML; repository đọc qua view v_cash_book_transactions (0070, lùi về subquery nếu thiếu view)
-├── dashboard/            # Tổng hợp dashboard (dashboardData + dashboardViews: API theo tab), xuất Excel/HTML, kiểm tra đứt hàng
+├── dashboard/            # Tổng hợp dashboard (dashboardData + dashboardViews: API theo tab), xuất Excel/HTML, kiểm tra đứt hàng; product90dReportRepository.js (04/11/2026): đọc bảng tính sẵn Hàng hóa 90 ngày, `GET /api/product-report/90d`
 │   ├── productHistoryRepository.js  # Lịch sử hóa đơn hoàn thành / trả hàng thành công theo mã trong 90 ngày, lọc và tổng trước phân trang
 │   ├── documentDetailRepository.js  # Chi tiết hóa đơn (popup bảng Chi tiết giao dịch) và chi tiết đơn đặt hàng (trang Vòng đời đơn hàng)
 │   └── stockoutCheck/    # Engine kiểm tra đứt hàng + upload Trả NCC Excel; stockoutDaysStore.js lưu số ngày đứt 30 ngày theo cơ sở vào product_stockout_days (cột Đứt HN/SG của Báo cáo hàng hóa)
@@ -141,6 +141,7 @@ server/
 ├── notifications/        # Chuông thông báo: notificationRepository.js (bảng `notifications`, 0093), notificationRoutes.js (/api/notifications), specialDayNotifier.js; testHelpers/notificationTestPool.js (PGlite cho test)
 ├── productContainers/    # Parser CONT, snapshot repository, đồng bộ Sheets chỉ đọc mỗi 10 phút (ghi khác biệt) và kiểm thử; bảng Dự kiến hàng về (20/10/2026): expectedRefresh.js (job dựng bảng tính sẵn), expectedRepository.js (đọc + cache theo version), expectedRoutes.js (/api/expected-arrivals), expectedExport.js (xuất Excel/HTML); từ 21/10/2026 route trả `fullAccess` và bỏ trường giá khi thiếu quyền `reports.overview.containers.full`, xuất file thêm cột giá theo quyền
 ├── public/               # Frontend HTML/CSS/JS
+│   ├── product-90d-report.js / .css # Mục 4 "Hàng hóa 90 ngày" của tab Hàng hóa (04/11/2026): bảng 26 cột đọc API `/api/product-report/90d`, tìm/sắp xếp/phân trang ở máy chủ, 2 cột Mã/Tên cố định khi cuộn, 4 trạng thái đang tải / không có kết quả / chưa nạp / lỗi + Thử lại
 │   ├── invoice-approved-prices.js / .css # Mục Bảng giá duyệt của tab Hóa đơn (24/10/2026): bộ lọc Người duyệt + Ngày duyệt, sắp xếp phía máy chủ, hộp Tạo/Sửa/Xóa chọn khách + sản phẩm từ gợi ý KiotViet, 2 cột/ô giá tùy chọn Giá không VAT + Giá có VAT, xuất Excel
 │   ├── cashbook/         # Trang Sổ quỹ: bộ lọc/hash, số dư, chốt và xuất chọn cột
 │   ├── vat-draft/        # Trang Kế toán – Nháp VAT: dán mã HD/DH → Xử lý luôn (danh sách đã dán + hộp chi tiết) hoặc dán dữ liệu, kết quả phân bổ + Ghi chú tổng, QR; Tạo QR từ PDF (2 cột, QR to bên phải; sale dùng được qua accounting.qr); cell-select.js chọn ô kiểu Google Sheet + Ctrl+C
@@ -278,8 +279,20 @@ Cập nhật gần nhất: 03/11/2026.
 
 Migration `0106_product_90d_report.sql` đã áp Supabase ngày 04/11/2026. Bảng `product_90d_report` gồm 26 cột nghiệp vụ và khóa kỹ thuật `product_key`; `product_90d_report_state` lưu kỳ dữ liệu, thời điểm tính, số dòng và phiên bản. Nạp đầu lúc 08:00 giờ VN: **11.135 mã hàng**, kỳ **06/08–03/11/2026**. Đã đối soát SL/DS với chứng từ nguồn, không thiếu dòng nguồn; các kỳ con cộng đúng tổng 90 ngày.
 
-Module `server/kiotvietSync/product90dReport.js` tính trực tiếp hóa đơn Hoàn thành và trả hàng Đã trả trong DB, gộp toàn bộ danh mục hai miền (kể cả ngừng bán/không phát sinh), gộp khách theo tên hiện tại. Lịch gắn vào `scheduler.js`, kiểm tra mỗi phút và chỉ tính một lần/ngày từ **02:00 Asia/Ho_Chi_Minh**, chạy bù khi worker khởi động sau giờ hẹn. Cần deploy worker có code mới, với `KIOTVIET_SYNC_ENABLED=true`, để kích hoạt lịch. Không thêm biến môi trường hoặc endpoint mới trong đợt này; giao diện mục 4 làm sau.
+Module `server/kiotvietSync/product90dReport.js` tính trực tiếp hóa đơn Hoàn thành và trả hàng Đã trả trong DB, gộp toàn bộ danh mục hai miền (kể cả ngừng bán/không phát sinh), gộp khách theo tên hiện tại. Lịch gắn vào `scheduler.js`, kiểm tra mỗi phút và chỉ tính một lần/ngày từ **02:00 Asia/Ho_Chi_Minh**, chạy bù khi worker khởi động sau giờ hẹn. Cần deploy worker có code mới, với `KIOTVIET_SYNC_ENABLED=true`, để kích hoạt lịch. Không thêm biến môi trường mới. *(Cập nhật cùng ngày: API đọc và giao diện mục 4 đã làm xong ở phần ngay bên dưới.)*
 
 Chạy nạp tay trong `server/`: `npm run products:90d:refresh`. Lệnh chủ động tính lại ngay, kể cả đã tính trong ngày. Migration: `npm run db:migrate` theo quy trình hiện có; bản này đã áp riêng 0106 trên DB thật. Rollback thủ công: `server/db/rollbacks/0106_product_90d_report.down.sql` (xóa bảng dẫn xuất, không đụng chứng từ nguồn).
+
+Cập nhật gần nhất: 04/11/2026.
+
+## 04/11/2026 — Hàng hóa 90 ngày: API đọc + giao diện mục 4 (chưa deploy)
+
+Tab Hàng hóa có thêm **mục 4 "Hàng hóa 90 ngày"** (`#product90dSection` trong `server/public/index.html`, mã `public/product-90d-report.js` + `.css`). Web **chỉ đọc** hai bảng tính sẵn `product_90d_report` + `product_90d_report_state` qua `GET /api/product-report/90d` (`dashboard/product90dReportRepository.js`); không quét chứng từ, không tính lại, không có nút làm mới dữ liệu nguồn — dữ liệu chỉ đổi khi job 02:00 VN chạy. Quyền: `reports.products` (guard `/api/product-report`) **và** `reports.products.sales`; thiếu quyền API trả 403 và giao diện ẩn mục (tài khoản chỉ có Dự kiến hàng về không thấy, không gọi API).
+
+- Bảng 26 cột: Mã hàng, Tên hàng, rồi 4 nhóm **T.trc nữa | T.trc | T.này | 90 ngày**, mỗi nhóm 6 cột SL | DS | Giá TB | SL khách | Lượt mua | Top 3 khách. Gộp HN + SG theo mã, không có bộ lọc cơ sở. Khoảng ngày suy ra từ `as_of_date` (A): T.trc nữa = A−90..A−61, T.trc = A−60..A−31, T.này = A−30..A−1, 90 ngày = A−90..A−1 (API trả `periods[].from/to`, giao diện in dưới tiêu đề nhóm).
+- Tìm theo mã/tên bằng luật fuzzy chung (`shared/fuzzySql.js`, cùng luật `public/shared/fuzzy-search.js`), sắp xếp theo whitelist cột, phân trang 25/50/100/200 dòng — tất cả làm ở SQL trên toàn bộ kết quả trước khi cắt trang. Hiện “Dữ liệu cập nhật lúc …” từ `computed_at` (giờ VN).
+- Hiển thị: NULL → “—”, số 0 giữ 0, số âm/số lẻ giữ nguyên, Top 3 rỗng → “—”; số kiểu en-US. Bốn trạng thái tách biệt: đang tải / không có kết quả (tìm không ra) / chưa nạp báo cáo (`available:false`, chưa có dòng state) / lỗi + nút “Thử lại” (chỉ gọi lại API); lỗi không bao giờ thành bảng số 0. Dùng `table-controls.js` (ẩn/hiện cột, kéo độ rộng), Light/Dark, cuộn ngang trong khung trên mobile.
+- Kiểm thử: `server/dashboard/product90dReportRepository.test.js`, `product90dReportRoutes.test.js`, `server/test/frontend/product-90d-report.test.js` (cùng chỉnh nhẹ `business-report`, `dashboard-section-layout`, `expected-arrivals` test cho mục mới). Không migration/dependency/biến môi trường mới.
+- **Trạng thái:** worker có lịch 02:00 và mã web CHƯA deploy. Sau deploy: kiểm tra `product_90d_report_state` tự sang kỳ mới sau lượt 02:00 đầu và mở mục 4 bằng tài khoản có `reports.products.sales`.
 
 Cập nhật gần nhất: 04/11/2026.

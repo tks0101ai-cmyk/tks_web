@@ -1001,6 +1001,14 @@ Cập nhật gần nhất: 03/11/2026.
 
 Bảng 26 cột: Mã hàng, Tên hàng, rồi 6 chỉ số SL / DS / Giá TB / SL khách / Lượt mua / Top 3 khách cho bốn kỳ T.trc nữa (-90..-61), T.trc (-60..-31), T.này (-30..-1), Tổng 90 ngày (-90..-1). Toàn bộ danh mục hai miền gộp theo mã; không phát sinh vẫn có dòng. Nguồn duy nhất là hóa đơn thành công và trả hàng thành công trong PostgreSQL. SL/DS trừ trả theo ngày trả; DS là thành tiền dòng, không tự tính thêm VAT/chiết khấu toàn hóa đơn; Giá TB=DS/SL, SL=0 để trống. Khách gộp theo tên hiện tại; SL khách/lượt mua chỉ đếm hóa đơn, không giảm bởi trả. Lượt mua đếm một lần mỗi hóa đơn/mã/cơ sở, khách tổng 90 ngày đếm DISTINCT lại. Top 3 xếp DS thuần, mỗi khách một dòng Tên + %DS + DS + SL; %DS chia tổng DS thuần toàn kỳ của mã, mẫu số=0 để trống.
 
-Đã triển khai phần DB: migration 0106, product_90d_report và state, nạp 11.135 mã cho 06/08–03/11/2026. Job dựng sẵn một lần/ngày lúc 02:00 VN, giữ bản cũ khi lỗi, không chạy tính toán theo lượt mở web; worker cần deploy code mới để bật lịch. Giao diện mục 4 và API đọc có phân quyền là đợt tiếp theo, chưa triển khai. Công thức/ngoại lệ và hợp đồng JSON Top 3 xem server/db/SCHEMA.md mục 0106.
+Đã triển khai phần DB: migration 0106, product_90d_report và state, nạp 11.135 mã cho 06/08–03/11/2026. Job dựng sẵn một lần/ngày lúc 02:00 VN, giữ bản cũ khi lỗi, không chạy tính toán theo lượt mở web; worker cần deploy code mới để bật lịch. API đọc `GET /api/product-report/90d` và giao diện mục 4 đã làm xong (cùng ngày), chưa deploy. Công thức/ngoại lệ và hợp đồng JSON Top 3 xem server/db/SCHEMA.md mục 0106.
+
+**Yêu cầu giao diện/API (mục 4 tab Hàng hóa):**
+- FR-PRODUCT-90D.1 — Web chỉ đọc hai bảng tính sẵn `product_90d_report` + `product_90d_report_state` qua `GET /api/product-report/90d`; không quét chứng từ, không tính lại, không có nút làm mới dữ liệu nguồn. Hiển thị “Dữ liệu cập nhật lúc” theo `computed_at` giờ Việt Nam.
+- FR-PRODUCT-90D.2 — Phân quyền ở API (không chỉ ẩn UI): cần `reports.products` và `reports.products.sales`; thiếu quyền trả 403 và giao diện ẩn mục, không gọi API.
+- FR-PRODUCT-90D.3 — Bảng 26 cột gộp HN + SG, không có bộ lọc cơ sở; kỳ suy ra từ `as_of_date` (A): T.trc nữa = A−90..A−61, T.trc = A−60..A−31, T.này = A−30..A−1, 90 ngày = A−90..A−1.
+- FR-PRODUCT-90D.4 — Tìm theo mã/tên (luật fuzzy chung), sắp xếp theo cột (whitelist) và phân trang (mặc định 50, tối đa 200 dòng/trang) thực hiện ở máy chủ trên toàn bộ kết quả; `q` tối đa 200 ký tự.
+- FR-PRODUCT-90D.5 — NULL hiển thị “—”, số 0 giữ 0, số âm/số lẻ giữ nguyên, Top 3 rỗng “—”; số định dạng en-US. Phân biệt rõ bốn trạng thái: đang tải, không có kết quả, chưa nạp báo cáo (chưa có dòng state), lỗi + nút “Thử lại”; lỗi/chưa nạp không bao giờ hiển thị thành bảng số 0.
+- FR-PRODUCT-90D.6 — Dùng table-controls (ẩn/hiện cột, kéo độ rộng), 2 cột Mã/Tên cố định khi cuộn, Light/Dark và responsive (cuộn ngang trong khung).
 
 Cập nhật gần nhất: 04/11/2026.

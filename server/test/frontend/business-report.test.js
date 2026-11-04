@@ -138,7 +138,8 @@ test('tab Hang hoa: Bao cao hang hoa (muc 1) + Du kien hang ve (muc 2) + Tang tr
   assert.match(titles[0], /^Báo cáo hàng hóa/);
   assert.match(titles[1], /^Dự kiến hàng về/);
   assert.match(titles[2], /^Tăng trưởng mã hàng/);
-  assert.deepEqual([...view.querySelectorAll('.section-step')].map(s => s.textContent.trim()), ['1', '2', '3']);
+  assert.match(titles[3], /^Hàng hóa 90 ngày/);
+  assert.deepEqual([...view.querySelectorAll('.section-step')].map(s => s.textContent.trim()), ['1', '2', '3', '4']);
   assert.ok(view.querySelector('#productReportRows'), 'Bao cao hang hoa da chuyen tu Tong quan sang Hang hoa');
   assert.equal(page.$('view-overview').querySelector('#productReportRows'), null, 'Tong quan khong con Bao cao hang hoa');
   assert.ok(view.querySelector('#businessProductsRows'), 'Tang truong ma hang da chuyen tu Khach hang sang Hang hoa');
