@@ -30,10 +30,14 @@ async function start(t, { user = MANAGER, scope = 'Cả hai', events, fail } = {
     return { ok: name };
   };
   const service = {
-    listSessions: async ctx => { calls.push(['listSessions', ctx.scope]); return { sessions: [SESSION] }; },
+    listSessions: async (ctx, options = {}) => {
+      calls.push(['listSessions', ctx.scope, ...(options.includeCancelled ? ['includeCancelled'] : [])]);
+      return { sessions: [SESSION] };
+    },
     getBoard: async (ctx, id) => { calls.push(['getBoard', id, ctx.scope]); return { session: SESSION, rows: ROWS, employees: [{ id: 501, name: 'Cảnh' }] }; },
     createSession: record('createSession'), saveLine: record('saveLine'), addLine: record('addLine'), saveNote: record('saveNote'),
-    saveTag: record('saveTag'), updateSession: record('updateSession'), saveCells: record('saveCells'), codeHistory: record('codeHistory'), closeSession: record('closeSession')
+    saveTag: record('saveTag'), updateSession: record('updateSession'), saveCells: record('saveCells'), codeHistory: record('codeHistory'), closeSession: record('closeSession'),
+    cancelSession: record('cancelSession'), restoreSession: record('restoreSession'), dependents: record('dependents')
   };
   const app = express();
   app.use((req, res, next) => { if (user) req.user = user; next(); });
@@ -41,7 +45,7 @@ async function start(t, { user = MANAGER, scope = 'Cả hai', events, fail } = {
     requireAuth: (req, res, next) => (req.user ? next() : res.status(401).json({ error: 'Chưa đăng nhập.' })),
     resolveBranch: (req, res, next) => { req.branch = scope; next(); },
     service,
-    sheetImport: { importSheet: record('importSheet') },
+    sheetImport: { importSheet: record('importSheet'), reloadSheet: record('reloadSheet') },
     ...(events ? { events } : {})
   }));
   const server = await new Promise(resolve => { const s = app.listen(0, () => resolve(s)); });
@@ -173,4 +177,25 @@ test('SSE: chi bao dot dang xem; dot khong thuoc pham vi 404', async t => {
   assert.ok(!text.includes('"sessionId":8'));
 
   assert.equal((await fetch(base + '/sessions/99/events')).status, 404);
+});
+
+test('Huy / khoi phuc / dot phu thuoc / nap lai sheet: chi Quan ly; xem dot da huy chi Quan ly', async t => {
+  const manager = await start(t);
+  assert.equal((await fetch(manager.base + '/sessions/7/cancel', { method: 'POST', ...json({ version: 1, reason: 'Sai' }) })).status, 200);
+  assert.equal((await fetch(manager.base + '/sessions/7/restore', { method: 'POST', ...json({ version: 2 }) })).status, 200);
+  assert.equal((await fetch(manager.base + '/sessions/7/dependents')).status, 200);
+  assert.equal((await fetch(manager.base + '/sessions/7/reload-sheet', { method: 'POST', ...json({ version: 1, dryRun: true }) })).status, 200);
+  await fetch(manager.base + '/sessions?includeCancelled=1');
+  assert.deepEqual(manager.calls.map(c => c.slice(0, 3)), [
+    ['cancelSession', 7, { version: 1, reason: 'Sai' }], ['restoreSession', 7, { version: 2 }], ['dependents', 7, ['hanoi', 'saigon']],
+    ['reloadSheet', 7, { version: 1, dryRun: true }], ['listSessions', ['hanoi', 'saigon'], 'includeCancelled']
+  ]);
+
+  const stock = await start(t, { user: STOCK_MANAGER });
+  for (const [path, method] of [['/sessions/7/cancel', 'POST'], ['/sessions/7/restore', 'POST'], ['/sessions/7/dependents', 'GET'], ['/sessions/7/reload-sheet', 'POST']]) {
+    const res = await fetch(stock.base + path, method === 'GET' ? {} : { method, ...json({}) });
+    assert.equal(res.status, 403, path);
+  }
+  await fetch(stock.base + '/sessions?includeCancelled=1');
+  assert.deepEqual(stock.calls, [['listSessions', ['hanoi', 'saigon']]], 'khong phai Quan ly: bo qua includeCancelled');
 });

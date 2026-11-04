@@ -23,7 +23,7 @@ async function fixture() {
   const db = new PGlite();
   for (const file of ['0001_core_master_data.sql', '0003_orders.sql', '0009_app_users_hr_employees.sql', '0041_hr_employee_status.sql',
     '0064_sheet_snapshots.sql', '0095_stock_positions.sql', '0099_stock_position_ack_and_history_purge.sql',
-    '0101_stock_position_stock_out_action.sql', '0105_stocktake.sql']) {
+    '0101_stock_position_stock_out_action.sql', '0105_stocktake.sql', '0106_stocktake_previous_cancel.sql']) {
     await db.exec(migration(file));
   }
   await db.exec(`
@@ -184,7 +184,7 @@ test('dot doi chieu: Kiem SG tu dot SG dang mo / da dong, sai co so bi tu choi, 
   let board = await service.getBoard(ctx(), session.id);
   assert.equal(rowOf(board, 'AAA1').otherDiff, -3, 'SG: dem 4, ton 7');
   assert.equal(rowOf(board, 'AAA1').otherRatio, ratioOf(2 + -3, -3));
-  assert.deepEqual(board.counterpart, { id: sg.id, name: 'SG 29/10', branch: 'saigon', status: 'open' });
+  assert.deepEqual(board.counterpart, { id: sg.id, name: 'SG 29/10', branch: 'saigon', status: 'open', cancelled: false });
 
   await service.closeSession(ctx(), sg.id, { version: sg.version });
   board = await service.getBoard(ctx(), session.id);
@@ -200,7 +200,7 @@ test('dot web da dong: M/L la ban chup, doi chieu doi sau do khong lam doi; dot 
   let board = await service.getBoard(ctx(), hn.id);
   assert.equal(rowOf(board, 'AAA1').otherDiff, -3);
   assert.equal(rowOf(board, 'CCC3').otherDiff, null);
-  assert.deepEqual(board.counterpart, { id: sg.id, name: 'SG 29/10', branch: 'saigon', status: 'open' });
+  assert.deepEqual(board.counterpart, { id: sg.id, name: 'SG 29/10', branch: 'saigon', status: 'open', cancelled: false });
   await service.addLine(ctx(), sg.id, { productCode: 'CCC3', quantity: 2, zone: 'G1' });
   await service.addLine(ctx(), sg.id, { productCode: 'AAA1', quantity: 5, zone: 'G1' });
   board = await service.getBoard(ctx(), hn.id);
@@ -419,4 +419,129 @@ test('sua tren bang: tra ban ghi vua luu (version, nguoi sua) va bao tin hieu ke
   assert.deepEqual(signals, [[session.id, 'tab-1']]);
   const empty = await tracked.saveCells(ctx(), session.id, { cells: [{ code: 'AAA1', column: 'statusText', value: 'Lẫn' }] });
   assert.deepEqual([empty.notes, empty.tags], [[], []]);
+});
+
+// ---------- 0106: chon dot KK truoc, huy / khoi phuc dot ----------
+
+// Hai dot HN da dong (A: 29/10 AAA1 chenh +2; B: 30/10 them 5 AAA1 -> chenh +7) + dot mo C 31/10.
+async function previousFixture() {
+  const base = await fixture();
+  const { service, session: a } = base;
+  await service.closeSession(ctx(), a.id, { version: a.version });
+  const { session: b } = await service.createSession(ctx(), { branch: 'hanoi', name: 'Đợt B', dateFrom: '2026-10-30', dateTo: '2026-10-30' });
+  await service.addLine(ctx(), b.id, { productCode: 'AAA1', quantity: 17 });
+  const bNow = (await service.getBoard(ctx(), b.id)).session;
+  await service.closeSession(ctx(), b.id, { version: bNow.version });
+  const { session: c } = await service.createSession(ctx(), { branch: 'hanoi', name: 'Đợt C', dateFrom: '2026-10-31', dateTo: '2026-10-31' });
+  return { ...base, a, b, c };
+}
+
+test('KK truoc: tu dong lay dot dong gan nhat; chon tay dung dung dot, doi chieu khong bi xoa', async () => {
+  const { service, a, b, c } = await previousFixture();
+  let board = await service.getBoard(ctx(), c.id);
+  assert.deepEqual(board.previousSession, { id: b.id, name: 'Đợt B', mode: 'auto', manualInvalid: false });
+  assert.equal(rowOf(board, 'AAA1').prevDiff, 7);
+
+  const { session: sg } = await service.createSession(ctx(), { branch: 'saigon', name: 'SG', dateFrom: '2026-10-31', dateTo: '2026-10-31' });
+  const { session: c1 } = await service.updateSession(ctx(), c.id, { counterpartSessionId: sg.id, version: c.version });
+  const { session: c2 } = await service.updateSession(ctx(HUNG), c.id, { previousSessionId: a.id, version: c1.version });
+  assert.equal(c2.previousSessionId, a.id);
+  assert.equal(c2.counterpartSessionId, sg.id, 'doi KK truoc khong xoa doi chieu');
+  board = await service.getBoard(ctx(), c.id);
+  assert.deepEqual(board.previousSession, { id: a.id, name: 'Đợt 29/10', mode: 'manual', manualInvalid: false });
+  assert.equal(rowOf(board, 'AAA1').prevDiff, 2);
+
+  const { session: c3 } = await service.updateSession(ctx(), c.id, { counterpartSessionId: null, version: c2.version });
+  assert.equal(c3.previousSessionId, a.id, 'doi doi chieu khong xoa KK truoc');
+  await assert.rejects(service.updateSession(ctx(), c.id, { version: c3.version }), { statusCode: 400 });
+
+  // Dong dot C: prev_diff chup tu dot chon tay; lich su session_close ghi dot KK truoc da dung.
+  await service.closeSession(ctx(), c.id, { version: c3.version });
+  const closed = await service.getBoard(ctx(), c.id);
+  assert.equal(rowOf(closed, 'AAA1').prevDiff, 2);
+});
+
+test('KK truoc: chan dot khac co so / dang mo / chinh no / da huy; tao dot kem KK truoc', async () => {
+  const { service, a, b, c } = await previousFixture();
+  const { session: sg } = await service.createSession(ctx(), { branch: 'saigon', name: 'SG', dateFrom: '2026-10-29', dateTo: '2026-10-29' });
+  await service.closeSession(ctx(), sg.id, { version: sg.version });
+  const { session: open } = await service.createSession(ctx(), { branch: 'hanoi', name: 'Mở', dateFrom: '2026-11-01', dateTo: '2026-11-01' });
+  for (const previousSessionId of [sg.id, open.id, c.id, 999999]) {
+    await assert.rejects(service.updateSession(ctx(), c.id, { previousSessionId, version: c.version }), { statusCode: 400, code: 'INVALID_PREVIOUS' });
+  }
+  await service.cancelSession(ctx(), a.id, { version: (await service.getBoard(ctx(), a.id)).session.version, reason: 'Sai số' });
+  await assert.rejects(service.updateSession(ctx(), c.id, { previousSessionId: a.id, version: c.version }), { code: 'INVALID_PREVIOUS' });
+  const { session: d } = await service.createSession(ctx(), { branch: 'hanoi', name: 'D', dateFrom: '2026-10-01', dateTo: '2026-10-01', previousSessionId: b.id });
+  assert.equal(d.previousSessionId, b.id, 'chon tay khong rang buoc ngay');
+  assert.equal((await service.getBoard(ctx(), d.id)).previousSession.mode, 'manual');
+  await assert.rejects(service.createSession(ctx(), { branch: 'hanoi', name: 'E', dateFrom: '2026-10-01', dateTo: '2026-10-01', previousSessionId: sg.id }),
+    { code: 'INVALID_PREVIOUS' });
+});
+
+test('huy dot: an khoi danh sach, chi doc, KK truoc / doi chieu bo qua; khoi phuc tro lai', async () => {
+  const { db, service, a, b, c } = await previousFixture();
+  const { session: c1 } = await service.updateSession(ctx(), c.id, { previousSessionId: b.id, version: c.version });
+  const bVersion = (await service.getBoard(ctx(), b.id)).session.version;
+  await assert.rejects(service.cancelSession(ctx(), b.id, { version: bVersion, reason: '  ' }), { statusCode: 400 });
+  await assert.rejects(service.cancelSession(ctx(), b.id, { version: bVersion, reason: 'x'.repeat(501) }), { statusCode: 400 });
+  await assert.rejects(service.cancelSession(ctx(), b.id, { version: bVersion + 5, reason: 'Sai' }), { statusCode: 409, code: 'STOCKTAKE_CONFLICT' });
+
+  const deps = await service.dependents(ctx(), b.id);
+  assert.deepEqual(deps.previousOf.map(d => [d.id, d.mode, d.changes]), [[c.id, 'manual', true]]);
+
+  const { session: cancelled } = await service.cancelSession(ctx(HUNG), b.id, { version: bVersion, reason: 'Số sheet cũ' });
+  assert.equal(cancelled.cancelled, true);
+  assert.equal(cancelled.cancelledByName, 'Hưng');
+  assert.equal(cancelled.cancelReason, 'Số sheet cũ');
+  assert.equal(cancelled.status, 'closed', 'status giu nguyen');
+  await assert.rejects(service.cancelSession(ctx(), b.id, { version: cancelled.version, reason: 'lại' }), { code: 'STOCKTAKE_CANCELLED' });
+
+  assert.equal((await service.listSessions(ctx())).sessions.some(s => s.id === b.id), false);
+  assert.equal((await service.listSessions(ctx(), { includeCancelled: true })).sessions.find(s => s.id === b.id).cancelled, true);
+
+  // Chon tay tro toi dot huy -> tu dong (bo qua dot huy) -> dot A.
+  let board = await service.getBoard(ctx(), c.id);
+  assert.deepEqual(board.previousSession, { id: a.id, name: 'Đợt 29/10', mode: 'auto', manualInvalid: true });
+  assert.equal(rowOf(board, 'AAA1').prevDiff, 2);
+
+  // Dot huy van xem duoc nhung khong ghi duoc (ca tag).
+  assert.equal((await service.getBoard(ctx(), b.id)).session.cancelled, true);
+  await assert.rejects(service.saveTag(ctx(), b.id, 'AAA1', { cluster: 'X' }), { code: 'STOCKTAKE_CANCELLED' });
+  const { session: openOne } = await service.createSession(ctx(), { branch: 'hanoi', name: 'Mở', dateFrom: '2026-11-01', dateTo: '2026-11-01' });
+  const { session: openCancelled } = await service.cancelSession(ctx(), openOne.id, { version: openOne.version, reason: 'Tạo nhầm' });
+  await assert.rejects(service.addLine(ctx(), openOne.id, { productCode: 'AAA1', quantity: 1 }), { statusCode: 409, code: 'STOCKTAKE_CANCELLED' });
+  await assert.rejects(service.closeSession(ctx(), openOne.id, { version: openCancelled.version }), { code: 'STOCKTAKE_CANCELLED' });
+  await assert.rejects(service.updateSession(ctx(), openOne.id, { previousSessionId: null, version: openCancelled.version }), { code: 'STOCKTAKE_CANCELLED' });
+
+  await assert.rejects(service.restoreSession(ctx(), c.id, { version: c1.version }), { code: 'STOCKTAKE_NOT_CANCELLED' });
+  const { session: restored } = await service.restoreSession(ctx(), b.id, { version: cancelled.version });
+  assert.deepEqual([restored.cancelled, restored.cancelReason, restored.status], [false, '', 'closed']);
+  board = await service.getBoard(ctx(), c.id);
+  assert.deepEqual(board.previousSession, { id: b.id, name: 'Đợt B', mode: 'manual', manualInvalid: false });
+
+  const actions = (await db.query(`SELECT action FROM stocktake_history WHERE session_id = $1 ORDER BY id`, [b.id])).rows.map(r => r.action);
+  assert.deepEqual(actions.slice(-2), ['session_cancel', 'session_restore']);
+});
+
+test('huy dot doi chieu: bang khong con Kiem SG, khong dat lam doi chieu duoc; dot phu thuoc gom dot da dong', async () => {
+  const { service, session } = await fixture();
+  const { session: sg } = await service.createSession(ctx(), { branch: 'saigon', name: 'SG', dateFrom: '2026-10-29', dateTo: '2026-10-29' });
+  const { session: hn } = await service.updateSession(ctx(), session.id, { counterpartSessionId: sg.id, version: session.version });
+  assert.equal(rowOf(await service.getBoard(ctx(), hn.id), 'AAA1').otherDiff, -3);
+  const deps = await service.dependents(ctx(), sg.id);
+  assert.deepEqual(deps.counterpartOf.map(d => [d.id, d.changes]), [[hn.id, true]]);
+  await service.cancelSession(ctx(), sg.id, { version: sg.version, reason: 'Sai' });
+  const board = await service.getBoard(ctx(), hn.id);
+  assert.equal(rowOf(board, 'AAA1').otherDiff, null);
+  assert.equal(board.counterpart.cancelled, true);
+  const { session: hn2 } = await service.createSession(ctx(), { branch: 'hanoi', name: 'HN2', dateFrom: '2026-10-30', dateTo: '2026-10-30' });
+  await assert.rejects(service.updateSession(ctx(), hn2.id, { counterpartSessionId: sg.id, version: hn2.version }), { code: 'INVALID_COUNTERPART' });
+
+  // Dot da dong tung dung dot nay lam KK truoc: lay tu lich su luc dong, danh dau khong doi.
+  await service.closeSession(ctx(), hn.id, { version: hn.version });
+  const later = (await service.getBoard(ctx(), hn2.id)).session;
+  await service.closeSession(ctx(), hn2.id, { version: later.version });
+  const prevDeps = await service.dependents(ctx(), hn.id);
+  assert.deepEqual(prevDeps.previousOf.map(d => [d.id, d.mode, d.changes]), [[hn2.id, 'snapshot', false]]);
+  await assert.rejects(service.dependents(ctx(QL, ['saigon']), hn.id), { statusCode: 403 });
 });

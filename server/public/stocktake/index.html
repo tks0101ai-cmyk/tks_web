@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261012">
   <link rel="stylesheet" href="/shared/table-controls.css?v=20261016-1">
   <link rel="stylesheet" href="/vt-positions/vt-positions.css?v=20261030-1">
-  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261104-3">
+  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261104-4">
 </head>
 <body>
   <div class="receipt-header">
@@ -51,10 +51,19 @@
           <span class="st-session-meta" id="stSessionMeta"></span>
           <div class="st-stats" id="stStats" aria-live="polite"></div>
           <label class="st-field st-counterpart" id="stCounterpartField" hidden><span>Đối chiếu</span><select id="stCounterpart" class="st-select" aria-label="Đợt đối chiếu cơ sở kia"></select></label>
+          <label class="st-field st-previous" id="stPreviousField" hidden title="Đợt lấy số &quot;KK trước sai&quot;. Tự động = đợt đã đóng gần nhất cùng cơ sở."><span>KK trước</span><select id="stPrevious" class="st-select" aria-label="Đợt KK trước"></select></label>
           <button class="locations-columns-button vt-btn vt-btn-primary" id="stCreateButton" type="button" hidden>+ Tạo đợt</button>
           <button class="locations-columns-button vt-btn" id="stImportT10Button" type="button" hidden title="Nạp một lần tab KIỂM KÊ HN T10">Nạp T10 HN từ sheet</button>
           <button class="locations-columns-button vt-btn" id="stImportSgButton" type="button" hidden title="Nạp một lần tab KIỂM SG">Nạp KIỂM SG từ sheet</button>
+          <button class="locations-columns-button vt-btn" id="stReloadButton" type="button" hidden title="Đọc lại tab sheet và thay số liệu của đợt này">Nạp lại từ sheet</button>
           <button class="locations-columns-button vt-btn st-danger" id="stCloseButton" type="button" hidden>Đóng đợt</button>
+          <button class="locations-columns-button vt-btn st-danger" id="stCancelButton" type="button" hidden title="Ẩn đợt, không xóa dữ liệu; khôi phục được">Hủy đợt</button>
+          <label class="st-check" id="stShowCancelledField" hidden><input type="checkbox" id="stShowCancelled"> Hiện đợt đã hủy</label>
+        </div>
+        <p class="st-previous-note" id="stPreviousNote" role="status" hidden></p>
+        <div class="st-cancel-banner" id="stCancelBanner" role="status" hidden>
+          <span id="stCancelText"></span>
+          <button class="locations-columns-button vt-btn" id="stRestoreButton" type="button">Khôi phục</button>
         </div>
         <div class="st-status-cards" id="stStatusCards" role="group" aria-label="Tổng giá trị chênh theo trạng thái"></div>
       </section>
@@ -108,12 +117,56 @@
         <label class="vt-field"><span>Tên đợt</span><input name="name" type="text" maxlength="120" required autocomplete="off" placeholder="VD: Kiểm kê HN 29/10"></label>
         <label class="vt-field"><span>Cơ sở</span><select name="branch"><option value="hanoi">Hà Nội</option><option value="saigon">Sài Gòn</option></select></label>
         <label class="vt-field"><span>Đợt đối chiếu (cơ sở kia)</span><select name="counterpartSessionId"><option value="">— Không —</option></select></label>
+        <label class="vt-field"><span>Đợt KK trước</span><select name="previousSessionId"><option value="">Tự động</option></select></label>
         <label class="vt-field"><span>Từ ngày</span><input name="dateFrom" type="date" required></label>
         <label class="vt-field"><span>Đến ngày</span><input name="dateTo" type="date" required></label>
         <p class="vt-form-error" id="stCreateError" role="alert"></p>
         <div class="vt-dialog-actions">
           <button type="button" class="locations-columns-button" data-st-close>Hủy</button>
           <button type="submit" class="locations-columns-button vt-primary">Tạo đợt</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Hủy đợt -->
+  <dialog class="vt-dialog" id="stCancelDialog" aria-labelledby="stCancelTitle">
+    <form id="stCancelForm" novalidate>
+      <div class="dp-head">
+        <div class="dp-head-text"><h3 class="dp-title" id="stCancelTitle">Hủy đợt?</h3><p class="dp-subtitle">Đợt bị ẩn khỏi danh sách, chỉ xem được và không còn dùng làm KK trước / đối chiếu. Dữ liệu không bị xóa, khôi phục được. Cụm SP / Combo không bị gỡ.</p></div>
+        <button type="button" class="dp-close" data-st-close aria-label="Đóng">×</button>
+      </div>
+      <div class="dp-body">
+        <h4 class="dp-section-title">Đợt đang dùng đợt này</h4>
+        <div class="st-dependents" id="stCancelDependents"></div>
+        <label class="vt-field"><span>Lý do hủy</span><textarea name="reason" rows="2" maxlength="500" required placeholder="VD: Số liệu sheet cũ, nạp nhầm…"></textarea></label>
+        <p class="vt-form-error" id="stCancelError" role="alert"></p>
+        <div class="vt-dialog-actions">
+          <button type="button" class="locations-columns-button" data-st-close>Thôi</button>
+          <button type="submit" class="locations-columns-button st-danger">Hủy đợt</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Nạp lại từ sheet -->
+  <dialog class="vt-dialog" id="stReloadDialog" aria-labelledby="stReloadTitle">
+    <form id="stReloadForm" novalidate>
+      <div class="dp-head">
+        <div class="dp-head-text"><h3 class="dp-title" id="stReloadTitle">Nạp lại từ sheet</h3><p class="dp-subtitle">Đọc lại đúng tab sheet của đợt này và thay toàn bộ số liệu + ghi chú. Đợt giữ nguyên, nên các đợt đang dùng nó sẽ thấy số mới. Muốn giữ bản cũ thì Xuất Excel trước.</p></div>
+        <button type="button" class="dp-close" data-st-close aria-label="Đóng">×</button>
+      </div>
+      <div class="dp-body">
+        <label class="vt-field"><span>Tên đợt</span><input name="name" type="text" maxlength="120" required autocomplete="off"></label>
+        <label class="vt-field"><span>Ngày kiểm</span><input name="date" type="date" required></label>
+        <h4 class="dp-section-title">Đợt đang dùng đợt này</h4>
+        <div class="st-dependents" id="stReloadDependents"></div>
+        <div class="st-reload-preview" id="stReloadPreview" aria-live="polite"></div>
+        <p class="vt-form-error" id="stReloadError" role="alert"></p>
+        <div class="vt-dialog-actions">
+          <button type="button" class="locations-columns-button" data-st-close>Thôi</button>
+          <button type="button" class="locations-columns-button" id="stReloadPreviewButton">Xem trước</button>
+          <button type="submit" class="locations-columns-button vt-primary" disabled>Nạp lại</button>
         </div>
       </div>
     </form>
@@ -200,7 +253,7 @@
   <script src="/stocktake/stocktakeSearch.js?v=20261103-2"></script>
   <script src="/stocktake/stocktakeGrid.js?v=20261103-2"></script>
   <script src="/stocktake/stocktakeStatus.js?v=20261103-2"></script>
-  <script src="/stocktake/stocktake.js?v=20261104-2"></script>
+  <script src="/stocktake/stocktake.js?v=20261104-3"></script>
   <script>window.addEventListener('DOMContentLoaded', function () { TKSStocktake.init(); });</script>
   <script src="/shared/shooting-star.js?v=20261019"></script>
 </body>
