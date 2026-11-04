@@ -19,7 +19,7 @@ const settle = async () => { for (let i = 0; i < 10; i++) await new Promise(r =>
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
 // ---------- ham thuan ----------
-test('formatValue: NULL -> "—", 0 -> "0", so am va so le giu nguyen theo en-US', () => {
+test('formatValue: NULL -> "—", 0 -> "0", so am va lam tron so nguyen theo en-US', () => {
   assert.equal(H.formatValue(null), '—');
   assert.equal(H.formatValue(undefined), '—');
   assert.equal(H.formatValue(''), '—');
@@ -28,14 +28,18 @@ test('formatValue: NULL -> "—", 0 -> "0", so am va so le giu nguyen theo en-US
   assert.equal(H.formatValue(-0), '0');
   assert.equal(H.formatValue('0'), '0');
   assert.equal(H.formatValue(-3), '-3');
-  assert.equal(H.formatValue(-1250.5), '-1,250.5');
-  assert.equal(H.formatValue(2.5), '2.5');
-  assert.equal(H.formatValue(0.125), '0.125');
-  assert.equal(H.formatValue(1234567.5), '1,234,567.5');
-  assert.equal(H.formatValue('12.3456789'), '12.3456789', 'giu toi 8 chu so le, khong lam tron mat');
-  assert.equal(H.formatValue(100000.0238), '100,000.0238');
-  assert.equal(H.formatValue(1.123456789), '1.12345679');
-  assert.equal(H.formatValue(2.50000000), '2.5', 'bo so 0 thua');
+  assert.equal(H.formatValue(-1250.5), '-1,251');
+  assert.equal(H.formatValue(2.5), '3');
+  assert.equal(H.formatValue(-2.5), '-3', 'nua ra xa so 0');
+  assert.equal(H.formatValue(31933.3333), '31,933');
+  assert.equal(H.formatValue(-0.5), '-1');
+  assert.equal(H.formatValue(0.125), '0');
+  assert.equal(H.formatValue(-0.2), '0');
+  assert.equal(H.formatValue(1234567.5), '1,234,568');
+  assert.equal(H.formatValue('12.3456789'), '12');
+  assert.equal(H.formatValue(100000.0238), '100,000');
+  assert.equal(H.formatValue(1.123456789), '1');
+  assert.equal(H.formatValue(2.50000000), '3');
   assert.equal(H.formatValue(1500000), '1,500,000');
 });
 
@@ -60,13 +64,13 @@ test('topCustomerLines: moi khach 1 dong "Ten|%DS|DS" (khong SL, khong phan cach
     { name: 'HN C Vương Ninh HN', share: 0.1, revenue: 45000000, quantity: 3 },
     { name: 'Khách B', share: 0.622, revenue: 10300000, quantity: 1 },
     { name: 'Khách C', share: 0.125, revenue: 300000.5, quantity: 1.5 }
-  ]), ['HN C Vương Ninh HN|10%|45000000', 'Khách B|62.2%|10300000', 'Khách C|12.5%|300000.5']);
+  ]), ['HN C Vương Ninh HN|10%|45000000', 'Khách B|62.2%|10300000', 'Khách C|12.5%|300001']);
   // SL 0 (ke ca dong toan so 0) bi bo; SL am (tra hang) giu; ten rong -> "Khách lẻ"; share NULL -> "—"; doanh so am giu.
   assert.deepEqual(H.topCustomerLines([
     { name: 'Không mua', share: 0, revenue: 0, quantity: 0 },
     { name: '', share: null, revenue: -1250.5, quantity: -2 },
     { name: 'Chỉ SL 0', share: 0.3, revenue: 500, quantity: '0' }
-  ]), ['Khách lẻ|—|-1250.5']);
+  ]), ['Khách lẻ|—|-1251']);
   assert.deepEqual(H.topCustomerLines([{ name: 'A', share: 0, revenue: 0, quantity: 0 }]), [], 'loc het -> rong');
   assert.deepEqual(H.topCustomerLines(null), []);
   // Chi lay toi da 3 khach dau (du lieu da xep san).
@@ -90,7 +94,7 @@ test('topCustomersHtml: 1 dong / khach + title cung chu, rong hoac loc het -> "�
   assert.equal(items[0].textContent, 'Đặng <An> | "Cty"|50%|1200000');
   assert.equal(items[0].title, items[0].textContent);
   assert.equal(box.querySelector('an'), null);
-  assert.equal(items[1].textContent, 'Khách C|12.5%|300000.5');
+  assert.equal(items[1].textContent, 'Khách C|12.5%|300001');
 });
 
 test('exportContext + sortAction: payload Xuat file theo tu khoa da ap dung va nhan cot; nut sap xep bao hanh dong ke tiep', () => {
@@ -125,8 +129,8 @@ test('rowHtml: 26 o theo thu tu cot, NULL avg_price -> "—", 0 -> 0, am/le giu 
   assert.equal(at('top_customers_61_90d'), '—');
   assert.equal(at('qty_1_30d'), '-4');
   assert.equal(at('revenue_1_30d'), '-800,000');
-  assert.equal(at('qty_1_90d'), '2.75');
-  assert.equal(at('avg_price_1_90d'), '1,234.5');
+  assert.equal(at('qty_1_90d'), '3');
+  assert.equal(at('avg_price_1_90d'), '1,235');
 });
 
 test('buildQuery bo tham so rong; dir chi di kem sort; relevance khong gui', () => {
@@ -274,7 +278,7 @@ test('tai lan dau: goi API mac dinh, ve dong, khoang ngay tren tieu de, "Dữ li
     assert.equal(at('avg_price_1_30d'), '—');
     assert.equal(at('qty_1_30d'), '0');
     assert.equal(at('qty_31_60d'), '-2');
-    assert.equal(at('qty_1_90d'), '0.5');
+    assert.equal(at('qty_1_90d'), '1');
     assert.equal(at('top_customers_1_30d'), '—');
     assert.deepEqual([...p.w.document.querySelectorAll('th.p90-group .p90-group-range')].map(s => s.textContent),
       ['06/08–04/09/2026', '05/09–04/10/2026', '05/10–03/11/2026', '06/08–03/11/2026']);

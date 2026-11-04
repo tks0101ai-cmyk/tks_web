@@ -49,7 +49,7 @@ async function setup({ withState = true, filler = 205 } = {}) {
     qty_1_90d: 4.5, revenue_1_90d: 480.25, avg_price_1_90d: null, invoice_count_1_90d: 4,
     top_customers_1_90d: [{ name: 'Chỉ trả 0', share: 0, revenue: 0, quantity: 0 }]
   });
-  await put('SP3', 'Ấm đun nước', {});
+  await put('SP3', 'Ấm đun nước', { avg_price_1_30d: -0.2 });
   for (let i = 0; i < filler; i += 1) await put(`ZZ${String(i).padStart(3, '0')}`, `Hàng phụ ${i}`, { qty_1_90d: i });
   repository.getProduct90dReportForExport = args => original({ ...args, pool: db });
   return db;
@@ -134,7 +134,7 @@ test('dataset: TOAN BO dong (> 200), nhan co ngay that cua ky, NULL/0/am/le giu 
     assert.equal(sp2.qty_61_90d, 0.5);
     assert.equal(sp2.avg_price_1_90d, null, 'NULL khong thanh 0');
     assert.equal(sp3.qty_1_90d, 0, '0 giu 0');
-    assert.equal(sp1.top_customers_1_90d, 'Khách A|<b>|62.2%|870.8\nKhách lẻ|10%|140');
+    assert.equal(sp1.top_customers_1_90d, 'Khách A|<b>|62.2%|871\nKhách lẻ|10%|140', 'DS lam tron so nguyen, khong phan cach nghin');
     assert.equal(sp2.top_customers_1_90d, null, 'chi con khach SL 0 -> o trong');
     assert.equal(sp1.top_customers_61_90d, null);
     assert.equal(data.meta.title, 'Hàng hóa 90 ngày');
@@ -194,14 +194,16 @@ test('xlsx doc lai: 1 sheet du lieu 26 cot, o so la so that (le/am giu nguyen), 
     assert.equal(sp1.getCell(col('qty_1_30d')).value, -2);
     assert.equal(typeof sp1.getCell(col('revenue_1_90d')).value, 'number');
     assert.equal(sp1.getCell(col('avg_price_1_90d')).value, 107.69230769);
-    assert.equal(sp1.getCell(col('avg_price_1_90d')).numFmt, '#,##0.00000000;[Red]-#,##0.00000000');
+    assert.equal(sp1.getCell(col('avg_price_1_90d')).numFmt, '#,##0;[Red]-#,##0', 'gia tri goc, hien so nguyen');
     assert.equal(sp2.getCell(col('qty_61_90d')).value, 0.5);
-    assert.equal(sp2.getCell(col('qty_61_90d')).numFmt, '#,##0.0;[Red]-#,##0.0');
+    assert.equal(sp2.getCell(col('qty_61_90d')).numFmt, '#,##0;[Red]-#,##0');
+    assert.equal(sp3.getCell(col('avg_price_1_30d')).value, -0.2);
+    assert.equal(sp3.getCell(col('avg_price_1_30d')).numFmt, '#,##0;#,##0', 'am lam tron ve 0 -> khong hien "-0"');
     assert.equal(sp2.getCell(col('revenue_1_30d')).numFmt, '#,##0;[Red]-#,##0', 'so nguyen giu dinh dang cot');
     assert.equal(sp2.getCell(col('avg_price_1_90d')).value, null, 'NULL -> o trong');
     assert.equal(sp3.getCell(col('qty_1_90d')).value, 0);
     const top = sp1.getCell(col('top_customers_1_90d'));
-    assert.equal(top.value, 'Khách A|<b>|62.2%|870.8\nKhách lẻ|10%|140');
+    assert.equal(top.value, 'Khách A|<b>|62.2%|871\nKhách lẻ|10%|140');
     assert.equal(top.alignment.wrapText, true);
     assert.ok(sp1.height >= 30, 'dong 2 khach du chieu cao 2 dong');
     const notes = workbook.worksheets[1];
@@ -255,14 +257,14 @@ test('HTML: bieu do "Xu huong 3 ky" + KPI 90 ngay tinh lai theo tu khoa (co dau 
     assert.equal(doc.querySelector('.trend-card h2').textContent, 'Xu hướng 3 kỳ');
     assert.deepEqual([...doc.querySelectorAll('#trendTable thead th')].map(th => th.innerHTML.replace('<br>', ' ')),
       ['Chỉ số', 'T.trc nữa 06/08–04/09', 'T.trc 05/09–04/10', 'T.này 05/10–03/11']);
-    assert.deepEqual(trendRow(doc, 'revenue'), ['1,050.25', '700', '130']);
-    assert.deepEqual(trendRow(doc, 'qty'), ['10.5', '6', '1']);
-    assert.deepEqual(trendRow(doc, 'avgPrice'), ['100.02380952', '116.66666667', '130']);
+    assert.deepEqual(trendRow(doc, 'revenue'), ['1,050', '700', '130']);
+    assert.deepEqual(trendRow(doc, 'qty'), ['11', '6', '1']);
+    assert.deepEqual(trendRow(doc, 'avgPrice'), ['100', '117', '130'], 'gia quyen tinh tren so goc 1050.25/10.5, chi lam tron khi hien');
     assert.deepEqual(trendRow(doc, 'invoices'), ['3', '2', '3']);
     const allKpis = kpis(doc);
     assert.equal(allKpis[0], 'Số dòng dữ liệu=208');
-    assert.equal(allKpis[1], 'Doanh số 90 ngày=1,880.25');
-    assert.equal(allKpis[2], `Số lượng 90 ngày=${(17.5 + 204 * 205 / 2).toLocaleString('en-US')}`);
+    assert.equal(allKpis[1], 'Doanh số 90 ngày=1,880', 'KPI so nguyen day du, khong rut gon');
+    assert.equal(allKpis[2], 'Số lượng 90 ngày=20,928');
     assert.match(allKpis[3], /^Giá TB 90 ngày=/);
 
     await search(win, doc, 'Bình');
@@ -271,8 +273,8 @@ test('HTML: bieu do "Xu huong 3 ky" + KPI 90 ngay tinh lai theo tu khoa (co dau 
     assert.deepEqual(kpis(doc).slice(0, 3), ['Số dòng dữ liệu=1', 'Doanh số 90 ngày=1,400', 'Số lượng 90 ngày=13']);
 
     await search(win, doc, 'dang my tho');
-    assert.deepEqual(trendRow(doc, 'qty'), ['0.5', '1', '3'], 'khong dau');
-    assert.equal(kpis(doc)[3], 'Giá TB 90 ngày=106.72', 'binh quan gia quyen 480.25 / 4.5');
+    assert.deepEqual(trendRow(doc, 'qty'), ['1', '1', '3'], 'khong dau');
+    assert.equal(kpis(doc)[3], 'Giá TB 90 ngày=107', 'binh quan gia quyen 480.25 / 4.5');
 
     // Tim chi tren ma + ten (searchKeys): ten khach trong Top 3 khong lam khop dong.
     await search(win, doc, 'Khách A');
@@ -282,7 +284,7 @@ test('HTML: bieu do "Xu huong 3 ky" + KPI 90 ngay tinh lai theo tu khoa (co dau 
     assert.equal(doc.querySelector('#tbody .no-rows').textContent, 'Không có dòng nào khớp bộ lọc.');
 
     await search(win, doc, '');
-    assert.deepEqual(trendRow(doc, 'revenue'), ['1,050.25', '700', '130'], 'xoa tu khoa -> ve toan bo');
+    assert.deepEqual(trendRow(doc, 'revenue'), ['1,050', '700', '130'], 'xoa tu khoa -> ve toan bo');
     assert.equal(kpis(doc)[0], 'Số dòng dữ liệu=208');
 
     // Doi chi so cua bieu do: hang dang chon doi theo, gia tri giu nguyen.
@@ -293,12 +295,12 @@ test('HTML: bieu do "Xu huong 3 ky" + KPI 90 ngay tinh lai theo tu khoa (co dau 
     assert.equal(doc.querySelector('#trendTable tr.is-selected').dataset.series, 'qty');
     await search(win, doc, 'sp2');
     assert.equal(doc.getElementById('trendMetric').value, 'qty', 'giu chi so da chon khi loc');
-    assert.deepEqual(trendRow(doc, 'qty'), ['0.5', '1', '3']);
+    assert.deepEqual(trendRow(doc, 'qty'), ['1', '1', '3']);
     // O Top 3 hien dung chu (escape HTML), cot so le hien du chu so.
     await search(win, doc, 'sp1');
     const cells = [...doc.querySelectorAll('#tbody tr')[0].cells].map(td => td.textContent);
-    assert.equal(cells[ALL_KEYS.indexOf('top_customers_1_90d')], 'Khách A|<b>|62.2%|870.8\nKhách lẻ|10%|140');
-    assert.equal(cells[ALL_KEYS.indexOf('avg_price_1_90d')], '107.69230769');
+    assert.equal(cells[ALL_KEYS.indexOf('top_customers_1_90d')], 'Khách A|<b>|62.2%|871\nKhách lẻ|10%|140');
+    assert.equal(cells[ALL_KEYS.indexOf('avg_price_1_90d')], '108');
     assert.equal(doc.querySelectorAll('#tbody b').length, 0);
     assert.equal(doc.getElementById('category').hidden, true, 'khong co bo loc phan loai');
   } finally { await teardown(db); }
@@ -311,7 +313,7 @@ test('HTML: bo cot can cho bieu do -> chi so do bi bo, khong ve so sai; khong co
     const { win, doc } = await openHtml({ columns: { product_90d: noQty } });
     t.after(() => win.close());
     assert.deepEqual([...doc.getElementById('trendMetric').options].map(o => o.value), ['revenue', 'invoices']);
-    assert.deepEqual(trendRow(doc, 'revenue'), ['1,050.25', '700', '130']);
+    assert.deepEqual(trendRow(doc, 'revenue'), ['1,050', '700', '130']);
     const bare = await openHtml({ columns: { product_90d: ['product_code', 'product_name'] } });
     t.after(() => bare.win.close());
     assert.equal(bare.doc.querySelector('.trend-card'), null);

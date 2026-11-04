@@ -78,7 +78,10 @@ function createReportKit() {
     var type = column && column.type;
     if (type === 'number') {
       var number = toNumber(value);
-      return isFinite(number) ? numberFormatFor(column).format(number) : String(value);
+      if (!isFinite(number)) return String(value);
+      var text = numberFormatFor(column).format(number);
+      // Cot fractionDigits: so am lam tron ve 0 (vd -0.2 voi 0 chu so le) hien "0", khong "-0".
+      return column && column.fractionDigits >= 0 && /^-0(\.0+)?$/.test(text) ? text.slice(1) : text;
     }
     if (type === 'percent') {
       var ratio = toNumber(value);
@@ -265,7 +268,9 @@ function createReportKit() {
       subtitle: 'Cộng dồn trên các dòng đang hiển thị',
       labels: groups.map(function (group) { return group.key.length > 38 ? group.key.slice(0, 36) + '…' : group.key; }),
       values: groups.map(function (group) { return group.value; }),
-      valueLabel: columns[metricIndex].label
+      valueLabel: columns[metricIndex].label,
+      // Cot so khai bao fractionDigits: tooltip/truc cua bieu do Top hien dung so chu so le do (bang khac: undefined, nhu cu).
+      fractionDigits: columns[metricIndex].fractionDigits
     };
   }
 
@@ -317,7 +322,8 @@ function createReportKit() {
         column: metric.column, numerator: metric.numerator, denominator: metric.denominator, inTotal: !!total && has(total, metric) };
     });
     if (!metrics.length) return null;
-    return { title: String(trend.title || 'Xu hướng theo kỳ'), subtitle: String(trend.subtitle || ''), points: points, total: total, metrics: metrics };
+    var digits = trend.fractionDigits >= 0 && trend.fractionDigits <= 20 && trend.fractionDigits % 1 === 0 ? trend.fractionDigits : undefined;
+    return { title: String(trend.title || 'Xu hướng theo kỳ'), subtitle: String(trend.subtitle || ''), points: points, total: total, metrics: metrics, fractionDigits: digits };
   }
 
   // Tong cac gia tri so; khong co gia tri nao -> null (khong bien thanh 0).
@@ -348,6 +354,7 @@ function createReportKit() {
       title: trend.title,
       subtitle: trend.subtitle,
       empty: rows.length === 0,
+      fractionDigits: trend.fractionDigits,
       labels: trend.points.map(function (point) { return point.range ? [point.label, point.range] : point.label; }),
       series: trend.metrics.map(function (metric) {
         return { key: metric.key, label: metric.label, hint: metric.hint,
@@ -356,8 +363,12 @@ function createReportKit() {
     };
   }
 
-  function formatExact(value) {
-    return value === null || !isFinite(value) ? '—' : exactFormat.format(value);
+  // digits (tuy chon, vd periodTrend.fractionDigits = 0): so chu so le toi da khi hien; khong co = toi 8 chu so.
+  function formatExact(value, digits) {
+    if (value === null || !isFinite(value)) return '—';
+    if (!(digits >= 0)) return exactFormat.format(value);
+    var text = numberFormatFor({ fractionDigits: digits }).format(value);
+    return /^-0(\.0+)?$/.test(text) ? text.slice(1) : text;
   }
   var exactFormat = new Intl.NumberFormat('en-US', { maximumFractionDigits: 8 });
 
@@ -398,8 +409,10 @@ function createReportKit() {
     if (totalMetrics.length) {
       totalMetrics.forEach(function (metric) {
         var value = rows.length ? trendValue(rows, trend.total, metric) : null;
-        var formatted = value === null ? '—' : formatMetric(value);
-        var exact = formatExact(value);
+        // fractionDigits khai bao: KPI hien so day du theo so chu so do (khong rut gon "543.9 triệu"); khong khai bao = nhu cu.
+        var whole = trend.fractionDigits >= 0;
+        var formatted = value === null ? '—' : (whole ? formatExact(value, trend.fractionDigits) : formatMetric(value));
+        var exact = formatExact(value, trend.fractionDigits);
         var range = trend.total.range ? ' (' + trend.total.range + ')' : '';
         kpis.push({ label: metric.label + ' ' + trend.total.label, value: value, formatted: formatted,
           hint: !rows.length ? 'Không có dòng nào khớp' : (formatted === exact ? (metric.hint || 'Cộng dồn') + range : exact + range) });
@@ -854,7 +867,7 @@ const REPORT_SCRIPT = `
     var hint = series.hint ? '<p class="trend-hint">' + kit.escapeHtml(series.hint) + '</p>' : '';
     var rows = spec.series.map(function (item, i) {
       return '<tr' + (i === selected ? ' class="is-selected"' : '') + ' data-series="' + kit.escapeHtml(item.key) + '"><th scope="row">' + kit.escapeHtml(item.label) + '</th>' +
-        item.values.map(function (value) { return '<td class="num' + (value !== null && value < 0 ? ' neg' : '') + '">' + kit.escapeHtml(kit.formatExact(value)) + '</td>'; }).join('') + '</tr>';
+        item.values.map(function (value) { return '<td class="num' + (value !== null && value < 0 ? ' neg' : '') + '">' + kit.escapeHtml(kit.formatExact(value, spec.fractionDigits)) + '</td>'; }).join('') + '</tr>';
     }).join('');
     return '<section class="card trend-card" data-trend="ready">' + head +
       '<div class="chart-box"><canvas id="chart' + index + '" role="img" aria-label="' + kit.escapeHtml(spec.title + ': ' + series.label) + '"></canvas></div>' + hint +
@@ -867,7 +880,9 @@ const REPORT_SCRIPT = `
 
   function trendChart(spec, index, colors, grid) {
     var series = spec.series[trendSelected(spec)];
-    var exact = function (value) { return kit.formatExact(value); };
+    var exact = function (value) { return kit.formatExact(value, spec.fractionDigits); };
+    // fractionDigits = 0: nhan truc la so nguyen day du (vd 31,000,000), khong rut gon co phan le ("30.5 triệu").
+    var tick = spec.fractionDigits >= 0 ? exact : function (v) { return kit.formatShort(v); };
     return new Chart($('chart' + index), {
       type: 'line',
       data: { labels: spec.labels, datasets: [{
@@ -886,7 +901,7 @@ const REPORT_SCRIPT = `
         // Truc tu co gian theo du lieu (khong ep tu 0); so am/duong lan nhau thi 0 tu nam trong khoang.
         scales: {
           x: { grid: { display: false }, border: { color: grid }, ticks: { maxRotation: 0, autoSkip: false } },
-          y: { beginAtZero: false, grace: '8%', grid: { color: grid }, border: { display: false }, ticks: { callback: function (v) { return kit.formatShort(v); } } }
+          y: { beginAtZero: false, grace: '8%', grid: { color: grid }, border: { display: false }, ticks: { precision: spec.fractionDigits >= 0 ? spec.fractionDigits : undefined, callback: function (v) { return tick(v); } } }
         }
       }
     });
@@ -946,9 +961,11 @@ const REPORT_SCRIPT = `
           var total = spec.values.reduce(function (s, v) { return s + v; }, 0);
           return ' ' + label + ': ' + fmt.format(value) + ' (' + fmt.format(total ? value / total * 100 : 0) + '%)';
         }
-        return ' ' + label + ': ' + fmt.format(value);
+        return ' ' + label + ': ' + (spec.fractionDigits >= 0 ? kit.formatExact(value, spec.fractionDigits) : fmt.format(value));
       } } };
-      var axisNum = { grid: { color: grid }, border: { display: false }, ticks: { callback: function (v) { return kit.formatShort(v); } } };
+      var axisNum = { grid: { color: grid }, border: { display: false }, ticks: spec.fractionDigits >= 0
+        ? { precision: spec.fractionDigits, callback: function (v) { return kit.formatExact(v, spec.fractionDigits); } }
+        : { callback: function (v) { return kit.formatShort(v); } } };
       var axisCat = { grid: { display: false }, border: { color: grid }, ticks: { autoSkip: true, maxRotation: 0 } };
       charts.push(new Chart($('chart' + index), {
         type: spec.type,

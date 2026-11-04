@@ -36,7 +36,7 @@
     }));
   }, []));
 
-  const NUMBER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 8 });
+  const NUMBER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
   const PERCENT = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
   const DASH = '—';
 
@@ -52,11 +52,18 @@
     return Number.isFinite(n) ? n : null;
   }
 
-  // NULL/không phải số → "—"; 0 → "0"; số âm và số lẻ giữ nguyên (tối đa 8 chữ số thập phân, bỏ số 0 thừa). KHÔNG dùng `||`.
+  // Làm tròn để HIỂN THỊ thành số nguyên, nửa ra xa số 0 (2.5 → 3, -2.5 → -3); -0.2 → 0 (không bao giờ "-0").
+  // Chỉ dùng khi định dạng — sắp xếp/tìm/cộng dồn luôn dùng giá trị gốc chưa làm tròn.
+  function roundHalfAway(n) {
+    const r = n < 0 ? -Math.round(-n) : Math.round(n);
+    return r === 0 ? 0 : r;
+  }
+
+  // NULL/không phải số → "—"; 0 → "0"; mọi số hiển thị KHÔNG có phần thập phân (en-US, 31933.3333 → "31,933"). KHÔNG dùng `||`.
   function formatValue(value) {
     const n = toNumber(value);
     if (n === null) return DASH;
-    return NUMBER.format(n === 0 ? 0 : n);
+    return NUMBER.format(roundHalfAway(n));
   }
 
   // share là tỷ lệ 0–1 → "45.2%".
@@ -97,12 +104,13 @@
   // Top 3 khách — hàm DÙNG CHUNG màn hình + file xuất (exportService require file này):
   // bỏ khách có SL = 0 (không góp gì; giữ SL âm = trả hàng thật), mỗi khách còn lại 1 dòng "Tên|%DS|DS", vd
   // "HN C Vương Ninh HN|10%|45000000": nối bằng "|" KHÔNG khoảng trắng, % = tỷ lệ × 100 (tối đa 1 chữ số lẻ, bỏ 0 thừa),
-  // DS là số thô KHÔNG phân cách hàng nghìn (giữ số lẻ/số âm). Không ghi SL. Không còn ai → mảng rỗng (hiển thị "—").
-  const PLAIN = new Intl.NumberFormat('en-US', { maximumFractionDigits: 8, useGrouping: false });
+  // DS là số nguyên thô (làm tròn nửa ra xa 0, giữ dấu âm) KHÔNG phân cách hàng nghìn. Không ghi SL. Không còn ai → mảng rỗng ("—").
+  const PLAIN = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0, useGrouping: false });
   const PLAIN_SHARE = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1, useGrouping: false });
   function plainNumber(value, format) {
     const n = toNumber(value);
-    return n === null ? DASH : format.format(n === 0 ? 0 : n).replace(/^-0$/, '0');
+    if (n === null) return DASH;
+    return format.format(format === PLAIN ? roundHalfAway(n) : (n === 0 ? 0 : n)).replace(/^-0$/, '0');
   }
   function topCustomerLines(list) {
     if (!Array.isArray(list)) return [];

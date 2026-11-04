@@ -402,8 +402,9 @@ const PRODUCT_90D_COLUMNS = [
   ...product90dReportRepository.PERIODS.flatMap(period => PRODUCT_90D_METRICS.map(m => ({
     ...aggregateColumn(`${m.metric}_${period.key}`, `${period.label} – ${m.label}`, m.type,
       `${m.describe}, ${PRODUCT_90D_PERIOD_HINTS[period.key]}.`, { wrapText: m.metric === 'top_customers' }),
-    // So le (SL 0,5; gia TB 100000,0238) giu du chu so trong Excel/HTML, khong lam tron ve so nguyen.
-    ...(m.type === 'number' ? { fractionDigits: 8 } : {}),
+    // Moi so cua bao cao HIEN THI la so nguyen (Excel dinh dang #,##0, HTML lam tron nua ra xa 0); gia tri o/du lieu
+    // nhung van la so goc chua lam tron de sap xep / cong don / Gia TB gia quyen tinh dung.
+    ...(m.type === 'number' ? { fractionDigits: 0 } : {}),
     period: period.key, metricLabel: m.label
   })))
 ];
@@ -430,6 +431,8 @@ function product90dPeriodTrend(periods) {
   const [p61, p31, p1, p90] = product90dReportRepository.PERIODS;
   return {
     title: 'Xu hướng 3 kỳ',
+    // So hien thi (KPI, truc, tooltip, bang so) la so nguyen; cong don + Gia TB gia quyen tinh tren gia tri goc.
+    fractionDigits: 0,
     subtitle: 'Cộng dồn các mã hàng đang hiển thị (lọc theo ô tìm kiếm); 3 kỳ 30 ngày không chồng nhau.',
     points: [point(p61), point(p31), point(p1)],
     total: point(p90),
@@ -1481,6 +1484,8 @@ function styleWorksheet(worksheet, columns, rows) {
 // o so nguyen giu '#,##0' — gia tri o van la so that, chi la hien thi khong bi lam tron.
 function excelFractionFormat(value, maxDigits) {
   if (typeof value !== 'number' || !Number.isFinite(value) || Number.isInteger(value)) return null;
+  // fractionDigits 0: dinh dang cot '#,##0' da lam tron; rieng so am lam tron ve 0 (-0.2) dung dinh dang khong dau tru de khong hien "-0".
+  if (maxDigits === 0) return value < 0 && Math.round(-value) === 0 ? '#,##0;#,##0' : null;
   const text = String(Number(value.toFixed(maxDigits)));
   const digits = /e/i.test(text) ? maxDigits : ((text.split('.')[1] || '').length);
   if (!digits) return null;
