@@ -6,6 +6,10 @@ const { vnDateKey, vnMinutesOfDay, addDaysToKey } = require('./vnTime');
 
 // Independent daily snapshot: never use the incremental customer/product reports,
 // whose windows include today and whose active-customer filters differ.
+// Catalog = only ACTIVE products: a code is included when at least one branch row has
+// is_active IS NOT FALSE (NULL counts as active); the code/name come from an active row
+// (Hanoi first). Sales/returns of inactive-only codes drop out because totals join the
+// catalog, and stored rows of codes that became inactive are deleted on the next refresh.
 const PERIODS = ['61_90d', '31_60d', '1_30d', '1_90d'];
 const METRICS = ['qty', 'revenue', 'avg_price', 'customer_count', 'invoice_count', 'top_customers'];
 const COLUMNS = ['product_key', 'product_code', 'product_name', ...PERIODS.flatMap(p => METRICS.map(m => `${m}_${p}`))];
@@ -26,6 +30,7 @@ WITH catalog AS (
     COALESCE(NULLIF(btrim(p.raw->>'fullName'),''), NULLIF(btrim(p.name),''), btrim(p.code)) AS product_name
   FROM products p
   WHERE p.branch IN ('hanoi','saigon') AND btrim(COALESCE(p.code,'')) <> ''
+    AND p.is_active IS NOT FALSE
   ORDER BY lower(btrim(p.code)), CASE p.branch WHEN 'hanoi' THEN 0 ELSE 1 END,
     p.synced_at DESC NULLS LAST, p.id DESC
 ), lines AS MATERIALIZED (

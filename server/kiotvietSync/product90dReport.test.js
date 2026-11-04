@@ -15,7 +15,7 @@ const poolFrom = db => ({ connect: async () => ({ query: (s, p) => db.query(s, p
 async function setup() {
   const db = new PGlite();
   await db.exec(`
-    CREATE TABLE products (branch text, id bigint, code text, name text, raw jsonb DEFAULT '{}', synced_at timestamptz, PRIMARY KEY(branch,id));
+    CREATE TABLE products (branch text, id bigint, code text, name text, raw jsonb DEFAULT '{}', synced_at timestamptz, is_active boolean, PRIMARY KEY(branch,id));
     CREATE TABLE customers (branch text, id bigint, name text, raw jsonb DEFAULT '{}', PRIMARY KEY(branch,id));
     CREATE TABLE invoices (branch text, id bigint, code text, purchase_date timestamptz, customer_id bigint, status int, raw jsonb, PRIMARY KEY(branch,id));
     CREATE TABLE invoice_details (branch text, invoice_id bigint, line_no int, product_id bigint, quantity numeric, price numeric, discount numeric, raw jsonb);
@@ -107,6 +107,73 @@ test('top three ranks NET revenue with shares of ALL customers, not just the top
     assert.equal(p.customer_count_61_90d, '0');
     assert.equal(p.invoice_count_61_90d, '0');
     assert.equal(p.revenue_61_90d, '-100');
+  } finally { await db.close(); }
+});
+
+async function activeFixture(db) {
+  await db.exec(`INSERT INTO products (branch,id,code,name,raw,synced_at,is_active) VALUES
+    ('hanoi',10,'GONE','Ngừng HN','{}',now(),false), ('saigon',10,'gone','Ngừng SG','{}',now(),false),
+    ('hanoi',11,'MIX','HN đã xóa','{}',now(),false), ('saigon',11,'MIX','SG đang bán','{}',now(),true),
+    ('hanoi',12,'NULLACT','HN null','{}',now(),NULL), ('hanoi',13,'HNOK','HN đang bán','{}',now(),true);`);
+}
+async function lineFor(db, { branch = 'hanoi', id, productId, day = '2026-11-01', revenue = 100 }) {
+  await db.query(`INSERT INTO invoices VALUES ($1,$2,$3,$4,1,1,$5)`,
+    [branch, id, 'HD' + id, day + 'T10:00:00Z', JSON.stringify({ statusValue: 'Hoàn thành' })]);
+  await db.query(`INSERT INTO invoice_details VALUES ($1,$2,1,$3,1,$4,0,$5)`,
+    [branch, id, productId, revenue, JSON.stringify({ subTotal: revenue })]);
+}
+
+test('catalog only has active products: inactive-only codes and their sales/returns are excluded', async () => {
+  const db = await setup();
+  try {
+    await activeFixture(db);
+    await lineFor(db, { id: 101, productId: 10, revenue: 500 }); // GONE (inactive both branches)
+    await lineFor(db, { branch: 'saigon', id: 102, productId: 10, revenue: 700 });
+    await db.exec(`INSERT INTO returns VALUES ('hanoi',50,'2026-11-02',1,1,'{"statusValue":"Đã trả"}');
+      INSERT INTO return_details VALUES ('hanoi',50,1,10,1,50,'{"subTotal":50}');`);
+    await lineFor(db, { id: 103, productId: 13, revenue: 300 });
+    const result = await job.refreshProduct90dReport(poolFrom(db), { now: () => NOW, log: quiet });
+    const keys = (await db.query('SELECT product_key FROM product_90d_report ORDER BY product_key')).rows.map(r => r.product_key);
+    assert.deepEqual(keys, ['hnok', 'mix', 'nullact', 'sgonly', 'sp1', 'zero']);
+    assert.equal(result.rowCount, 6);
+    assert.equal((await db.query("SELECT revenue_1_90d FROM product_90d_report WHERE product_key='hnok'")).rows[0].revenue_1_90d, '300');
+    assert.equal((await db.query('SELECT sum(revenue_1_90d)::text AS s FROM product_90d_report')).rows[0].s, '300');
+  } finally { await db.close(); }
+});
+
+test('catalog keeps a code active in one branch only (name from the active row) and treats is_active NULL as active', async () => {
+  const db = await setup();
+  try {
+    await activeFixture(db);
+    await lineFor(db, { branch: 'saigon', id: 201, productId: 11, revenue: 250 });
+    await job.refreshProduct90dReport(poolFrom(db), { now: () => NOW, log: quiet });
+    const mix = (await db.query("SELECT product_code, product_name, revenue_1_90d FROM product_90d_report WHERE product_key='mix'")).rows[0];
+    assert.equal(mix.product_name, 'SG đang bán');
+    assert.equal(mix.product_code, 'MIX');
+    assert.equal(mix.revenue_1_90d, '250');
+    const nullAct = (await db.query("SELECT product_name FROM product_90d_report WHERE product_key='nullact'")).rows[0];
+    assert.equal(nullAct.product_name, 'HN null');
+    // Both branches active: Hanoi name still wins, as before.
+    assert.equal((await db.query("SELECT product_name FROM product_90d_report WHERE product_key='sp1'")).rows[0].product_name, 'Tên hiện tại');
+  } finally { await db.close(); }
+});
+
+test('rows stored for a code that later becomes inactive are deleted by the next refresh', async () => {
+  const db = await setup();
+  try {
+    await activeFixture(db);
+    await db.exec("UPDATE products SET is_active=true WHERE code IN ('GONE','gone')");
+    const pool = poolFrom(db);
+    await lineFor(db, { id: 301, productId: 10, revenue: 400 });
+    const first = await job.refreshProduct90dReport(pool, { now: () => NOW, log: quiet });
+    assert.equal(first.rowCount, 7);
+    assert.equal((await db.query("SELECT revenue_1_90d FROM product_90d_report WHERE product_key='gone'")).rows[0].revenue_1_90d, '400');
+    await db.exec("UPDATE products SET is_active=false WHERE code IN ('GONE','gone')");
+    const second = await job.refreshProduct90dReport(pool, { now: () => NOW, log: quiet });
+    assert.equal(second.rowCount, 6);
+    assert.equal(second.deleted, 1);
+    assert.equal((await db.query("SELECT count(*)::int AS n FROM product_90d_report WHERE product_key='gone'")).rows[0].n, 0);
+    assert.equal((await db.query('SELECT row_count FROM product_90d_report_state')).rows[0].row_count, '6');
   } finally { await db.close(); }
 });
 

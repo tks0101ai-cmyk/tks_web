@@ -376,7 +376,7 @@ Cập nhật gần nhất: 03/11/2026.
 
 ## 04/11/2026 — Triển khai DB Hàng hóa 90 ngày
 
-Thiết kế đã được người dùng duyệt qua phỏng vấn: 26 cột theo BC 90 ngày.xlsx và nhóm tổng 90 ngày bổ sung; toàn bộ danh mục, gộp hai miền, snapshot kết thúc hôm qua. Chọn bảng dẫn xuất độc lập để không bị luồng báo cáo tăng dần gồm hôm nay thay đổi trong ngày. Dùng mẫu staging/upsert/transaction và lịch worker hiện có, không cần thư viện mới.
+Thiết kế đã được người dùng duyệt qua phỏng vấn: 26 cột theo BC 90 ngày.xlsx và nhóm tổng 90 ngày bổ sung; danh mục chỉ mã hàng đang hoạt động (is_active IS NOT FALSE ở ít nhất một cơ sở), gộp hai miền, snapshot kết thúc hôm qua. Chọn bảng dẫn xuất độc lập để không bị luồng báo cáo tăng dần gồm hôm nay thay đổi trong ngày. Dùng mẫu staging/upsert/transaction và lịch worker hiện có, không cần thư viện mới.
 
 - [x] Viết và chạy kiểm thử đỏ trước module/lịch; kiểm chứng SQL thật trên PGlite cho ranh giới kỳ, gộp miền/khách, trả hàng, lượt mua, Top 3, NUMERIC, rollback và phân quyền.
 - [x] Tạo migration 0106 + rollback, bảng product_90d_report (26 cột nghiệp vụ + khóa) và singleton state; RLS và thu hồi quyền truy cập trực tiếp.
