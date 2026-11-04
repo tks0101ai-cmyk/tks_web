@@ -399,7 +399,7 @@
     drawMore(Math.max(CHUNK, keepDrawn));
     paintSelection();
     if (board && !view.rows.length) $('stStatus').textContent = 'Không có mã nào khớp bộ lọc.';
-    else if (board && searchFuzzy) { $('stStatus').textContent = 'Không có mã khớp đúng, đang hiện mã gần giống.'; $('stStatus').dataset.error = 'false'; }
+    else if (board && searchFuzzy && $('stStatus').dataset.error !== 'true') { $('stStatus').textContent = 'Không có mã khớp đúng, đang hiện mã gần giống.'; $('stStatus').dataset.error = 'false'; }
     else if (board && $('stStatus').dataset.error !== 'true') $('stStatus').textContent = '';
     $('stCount').textContent = board ? num(view.rows.length) + ' mã' : '';
   }
@@ -732,7 +732,10 @@
       code: cell.code, column: cell.column, value: Paste.rawOf(cell.column, cell.before), expected: cell.after
     })), { undo: true });
     if (payload) {
-      notify(cellsMessage('Đã hoàn tác', payload, 0).replace('nên không ghi', 'nên không hoàn tác được'), payload.conflicts.length > 0);
+      let message = cellsMessage('Đã hoàn tác', payload, 0).replace('nên không ghi', 'nên không hoàn tác được');
+      const invalid = payload.skipped && payload.skipped.invalid;
+      if (invalid) message += ` Không khôi phục được ${num(invalid)} ô (chữ trạng thái cũ không còn hợp lệ) — xem Lịch sử của mã.`;
+      notify(message, payload.conflicts.length > 0 || Boolean(invalid));
     } else undoStack.push(step);
   }
 
@@ -845,6 +848,7 @@
     editor.typed = (now - editor.typedAt < 800 ? editor.typed : '') + key;
     editor.typedAt = now;
     const wanted = Status.fold(editor.typed);
+    if (!wanted) return;
     const found = editor.options.findIndex(option => Status.fold(option.label).startsWith(wanted));
     if (found >= 0) { editor.index = found; highlightStatusMenu(); }
   }

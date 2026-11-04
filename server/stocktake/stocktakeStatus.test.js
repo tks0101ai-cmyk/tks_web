@@ -18,7 +18,8 @@ test('classify: ten chuan, chu cu T10 theo tu khoa som nhat, trong = Chua XL, kh
     'Mất': 'lost', 'KK trước': 'previous', 'OK': 'ok', 'ok': 'ok', 'Nhầm SG': 'wrong', 'Nhầm HN': 'wrong', 'Thừa': 'surplus', 'Lẫn': 'mixed',
     'lẫn bình giữ nhiệt': 'mixed', 'Lẫn+kk trước': 'mixed', 'KK trước + lẫn': 'previous', 'đã kiểm lại thừa': 'surplus',
     'mất ko thấy': 'lost', 'Mất do thẻ kho xuất sai': 'lost', 'Nhầm SG + KK': 'wrong', 'xác nhận thừa đã có ảnh': 'surplus',
-    'LẪN HỘP CƠM': 'mixed', 'KK Trước': 'previous', 'Lẻ': 'other', 'tìm thấy': 'other'
+    'LẪN HỘP CƠM': 'mixed', 'KK Trước': 'previous', 'Lẻ': 'other', 'tìm thấy': 'other',
+    'Thiếu': 'lost', 'thiếu 2 cái': 'lost', 'KK': 'previous'
   };
   for (const [text, key] of Object.entries(cases)) assert.equal(Status.classify(text), key, JSON.stringify(text));
   assert.equal(Status.classify(null), 'pending');
@@ -28,6 +29,7 @@ test('canonical / isValid: ten chuan theo co so, Chua XL -> trong, Khac -> null'
   assert.equal(Status.canonical('lẫn bình giữ nhiệt', 'hanoi'), 'Lẫn');
   assert.equal(Status.canonical('nhầm sg', 'saigon'), 'Nhầm HN');
   assert.equal(Status.canonical('Nhầm HN', 'hanoi'), 'Nhầm SG');
+  assert.equal(Status.canonical('Thiếu', 'saigon'), 'Mất');
   assert.equal(Status.canonical('Chưa XL', 'hanoi'), '');
   assert.equal(Status.canonical('', 'hanoi'), '');
   assert.equal(Status.canonical('Lẻ', 'hanoi'), null);

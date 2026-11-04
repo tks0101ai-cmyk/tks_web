@@ -21,7 +21,7 @@
   const BY_KEY = new Map(STATUS_TYPES.map(type => [type.key, type]));
   // Tu khoa nguyen tu (sau khi gap chu); chu cu nhieu y ("Lẫn+kk trước") lay tu khoa xuat hien som nhat.
   const KEYWORDS = Object.freeze([
-    ['ok', 'ok'], ['mat', 'lost'], ['kk truoc', 'previous'], ['kk', 'previous'], ['nham', 'wrong'], ['thua', 'surplus'], ['lan', 'mixed']
+    ['ok', 'ok'], ['mat', 'lost'], ['kk truoc', 'previous'], ['kk', 'previous'], ['nham', 'wrong'], ['thua', 'surplus'], ['lan', 'mixed'], ['thieu', 'lost']
   ]);
 
   // "Lẫn+KK trước" -> "lan kk truoc": thuong, bo dau, d, ky tu khac chu/so -> khoang trang.
