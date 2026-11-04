@@ -1,3 +1,5 @@
+04/11/2026 — **Kiểm kê: thanh tổng vùng chọn kiểu Excel:** chọn nhiều ô hiện Tổng / Trung bình / Đếm ở góc dưới phải; thông báo hành động ("Đã xóa 1 ô") dồn sang phải hàng gợi ý.
+
 04/11/2026 — **Kiểm kê: giao diện gọn, tập trung vào bảng (không migration):** bỏ tiêu đề trang, 3 ô số mã / mã lệch / Quên KK (giữ Tổng chênh) và nhãn "· Quên KK" cạnh Mã hàng; khung đợt còn 1 hàng điều khiển + 1 hàng thẻ trạng thái; tiêu đề cột bảng đối chiếu xuống dòng thay vì bị cắt.
 
 04/11/2026 — **Kiểm kê: dán / kéo nhanh hơn, bảng vừa một màn hình (không migration):** sửa ô cập nhật tại chỗ (không tải lại cả bảng 2,7 MB hai lần như trước; `/cells` trả bản ghi vừa lưu, tín hiệu SSE bỏ qua tab vừa ghi). Độ rộng cột đo từ dữ liệu thật, cả bảng vừa khung màn 1920px không cần thanh cuộn ngang (Count 44px nhờ `data-min-column-width` của `shared/table-controls.js`); giá vốn / giá trị chênh làm tròn đồng. Thẻ trạng thái chuyển lên khung đợt cạnh 4 ô tổng. Rê chuột không còn làm mất màu ô Trạng thái.
