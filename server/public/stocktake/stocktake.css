@@ -151,3 +151,33 @@
   .st-bar .st-stat{flex:1 1 auto;justify-content:space-between}
   .st-status-cards{grid-template-columns:repeat(2,minmax(0,1fr));padding:0 12px 10px}
 }
+
+/* 0106: Đợt KK trước, hủy / khôi phục, nạp lại sheet */
+.st-bar .st-previous select{min-width:180px}
+.st-check{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);white-space:nowrap;cursor:pointer}
+.st-previous-note{margin:0 14px 8px;padding:6px 10px;border-radius:8px;font-size:12px;
+  color:var(--amber);background:color-mix(in srgb,var(--amber) 12%,transparent);border:1px solid color-mix(in srgb,var(--amber) 40%,var(--border))}
+.st-cancel-banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;margin:0 14px 10px;padding:8px 12px;
+  border-radius:8px;font-size:13px;color:var(--red);background:color-mix(in srgb,var(--red) 10%,transparent);border:1px solid color-mix(in srgb,var(--red) 40%,var(--border))}
+.st-cancel-banner[hidden],.st-previous-note[hidden]{display:none}
+.st-dependents{font-size:13px;color:var(--muted);margin-bottom:10px}
+.st-dependents ul{margin:4px 0 0;padding-left:18px}
+.st-dependents li{margin:2px 0}
+.st-dependents b{color:var(--text,inherit)}
+.st-reload-preview{font-size:13px;margin:6px 0}
+.st-reload-preview p{margin:4px 0}
+.st-muted{color:var(--muted)}
+.st-reload-table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.st-reload-table th,.st-reload-table td{padding:4px 8px;border-bottom:1px solid var(--border);text-align:right}
+.st-reload-table th:first-child,.st-reload-table td:first-child{text-align:left}
+@media (max-width: 720px){
+  .st-bar .st-previous{margin-left:0}
+  .st-bar .st-previous select{min-width:0;width:100%}
+  .st-previous-note,.st-cancel-banner{margin-left:12px;margin-right:12px}
+}
+/* Ô ngày + lý do trong hộp thoại kiểm kê dùng cùng kiểu với ô chữ của vt-field. */
+.vt-dialog .vt-field input[type="date"],.vt-dialog .vt-field textarea{box-sizing:border-box;width:100%;min-height:38px;padding:8px 10px;
+  border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel-2);color:var(--text);font:13px var(--font-body);color-scheme:light dark}
+.vt-dialog .vt-field textarea{resize:vertical}
+.vt-dialog .vt-field textarea:focus-visible,.vt-dialog .vt-field input[type="date"]:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.vt-dialog .vt-dialog-actions button:disabled{opacity:.5;cursor:not-allowed}

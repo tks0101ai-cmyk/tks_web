@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { PGlite } = require('@electric-sql/pglite');
-const { parseT10, parseSg, createStocktakeSheetImport, T10_SOURCE, SOURCES } = require('./stocktakeSheetImport');
+const { parseT10, parseSg, compareSnapshot, createStocktakeSheetImport, T10_SOURCE, SOURCES } = require('./stocktakeSheetImport');
 const { createStockTakeService } = require('./stocktakeService');
 
 const MIGRATIONS = path.join(__dirname, '../db/migrations');
@@ -20,7 +20,7 @@ async function migrated() {
   const db = new PGlite();
   for (const file of ['0001_core_master_data.sql', '0003_orders.sql', '0009_app_users_hr_employees.sql', '0041_hr_employee_status.sql',
     '0064_sheet_snapshots.sql', '0095_stock_positions.sql', '0099_stock_position_ack_and_history_purge.sql',
-    '0101_stock_position_stock_out_action.sql', '0105_stocktake.sql']) {
+    '0101_stock_position_stock_out_action.sql', '0105_stocktake.sql', '0109_stocktake_previous_cancel.sql']) {
     await db.exec(migration(file));
   }
   return db;
@@ -136,4 +136,85 @@ test('importSheet sg + t10: hai dot dong, noi doi chieu cheo, Kiem SG cua T10 = 
   assert.equal(sgBoard.session.branch, 'saigon');
   assert.equal(sgBoard.session.counterpartSessionId, t10.sessionId);
   assert.equal(sgBoard.rows.find(r => r.code === 'LUMI3M').otherDiff, -434);
+});
+
+// ---------- 0109: nap lai dot nap tu sheet ----------
+
+test('compareSnapshot: dem them / mat / doi, mau xep theo do lech lon nhat', () => {
+  const result = compareSnapshot(
+    [{ code: 'A', diffQty: 1 }, { code: 'B', diffQty: -5 }, { code: 'C', diffQty: 0 }],
+    [{ code: 'A', diffQty: 1 }, { code: 'B', diffQty: 3 }, { code: 'D', diffQty: -20 }]);
+  assert.deepEqual([result.added, result.removed, result.changed], [1, 1, 1]);
+  assert.deepEqual(result.sample.map(s => s.code), ['D', 'B', 'C']);
+  assert.deepEqual(result.sample[0], { code: 'D', before: null, after: -20 });
+});
+
+test('reloadSheet: xem truoc khong ghi; nap lai giu id, thay ket qua + ghi chu, khong de tag, doi ten / ngay', async () => {
+  const db = await migrated();
+  let current = VALUES;
+  const announced = [];
+  const importer = createStocktakeSheetImport({ getDb: () => poolFor(db), announce: id => announced.push(id), readValues: async () => current });
+  const ctx = { user: { id: 'ql', hoTen: 'Quản Lý A' }, scope: ['hanoi', 'saigon'] };
+  const { sessionId } = await importer.importT10(ctx, {});
+  await db.exec(`UPDATE stocktake_product_tags SET cluster = 'Sửa trên web' WHERE product_code = 'LUMI3M'`);
+  const service = createStockTakeService({ getDb: () => poolFor(db), announce: () => {} });
+  const version = (await service.getBoard(ctx, sessionId)).session.version;
+
+  // Sheet moi: LUMI3M doi SL chenh + bo ghi chu, LUMI3T mat, NEW1 them.
+  current = [HEADER, VALUES[1], row('LUMI3M', 60, 485, -425, { 13: 'Tủ LUMI3' }), row('SOLO', 1000, 1000, 0), row('NEW1', 3, 0, 3)];
+  const preview = await importer.reloadSheet(ctx, sessionId, { version, dryRun: true, date: '2026-10-25' });
+  assert.equal(preview.dryRun, true);
+  assert.deepEqual([preview.added, preview.removed, preview.changed, preview.codes], [1, 1, 1, 3]);
+  assert.deepEqual(preview.before, { codes: 3, mismatched: 2, name: 'Kiểm kê HN T10 (sheet)', date: '2026-10-03' });
+  assert.equal(preview.date, '2026-10-25');
+  let board = await service.getBoard(ctx, sessionId);
+  assert.equal(board.rows.find(r => r.code === 'LUMI3M').diffQty, -434, 'xem truoc khong ghi');
+  assert.equal(board.session.version, version);
+  assert.deepEqual(announced, [sessionId]);
+
+  await assert.rejects(importer.reloadSheet(ctx, sessionId, { version: version + 1 }), { statusCode: 409, code: 'STOCKTAKE_CONFLICT' });
+  const result = await importer.reloadSheet(ctx, sessionId, { version, name: 'T10 HN (nạp lại)', date: '2026-10-25' });
+  assert.equal(result.sessionId, sessionId);
+  assert.equal(result.version, version + 1);
+  board = await service.getBoard(ctx, sessionId);
+  assert.deepEqual(board.rows.map(r => r.code), ['LUMI3M', 'NEW1', 'SOLO']);
+  assert.equal(board.rows.find(r => r.code === 'LUMI3M').diffQty, -425);
+  assert.equal(board.rows.find(r => r.code === 'LUMI3M').note, null, 'ghi chu cu bi thay');
+  assert.equal(board.rows.find(r => r.code === 'LUMI3M').cluster, 'Sửa trên web', 'tag khong bi ghi de');
+  assert.deepEqual([board.session.name, board.session.dateFrom, board.session.dateTo], ['T10 HN (nạp lại)', '2026-10-25', '2026-10-25']);
+  assert.equal(board.session.reloadedByName, 'Quản Lý A');
+  const history = (await db.query(`SELECT before, after FROM stocktake_history WHERE action = 'sheet_reload'`)).rows;
+  assert.equal(history.length, 1);
+  assert.equal(history[0].before.codes, 3);
+  assert.equal(history[0].after.changed, 1);
+  assert.equal(history[0].after.sample, undefined);
+
+  // Dot mo sau do dung ban chup moi lam KK truoc.
+  const { session: next } = await service.createSession(ctx, { branch: 'hanoi', name: 'Sau', dateFrom: '2026-10-29', dateTo: '2026-10-29' });
+  assert.equal((await service.getBoard(ctx, next.id)).previousSessionId, sessionId);
+});
+
+test('reloadSheet: loi sheet -> khong doi gi; chan dot web, dot huy, ngoai pham vi, ngay sai', async () => {
+  const db = await migrated();
+  let current = VALUES;
+  const importer = createStocktakeSheetImport({ getDb: () => poolFor(db), announce: () => {}, readValues: async () => current });
+  const ctx = { user: { id: 'ql', hoTen: 'Quản Lý A' }, scope: ['hanoi', 'saigon'] };
+  const { sessionId } = await importer.importT10(ctx, {});
+  const service = createStockTakeService({ getDb: () => poolFor(db), announce: () => {} });
+  const version = (await service.getBoard(ctx, sessionId)).session.version;
+
+  current = [['Mã SP', 'Tên hàng']];
+  await assert.rejects(importer.reloadSheet(ctx, sessionId, { version }), { code: 'SHEET_FORMAT' });
+  current = [HEADER];
+  await assert.rejects(importer.reloadSheet(ctx, sessionId, { version }), { code: 'SHEET_EMPTY' });
+  current = VALUES;
+  assert.equal((await service.getBoard(ctx, sessionId)).rows.length, 3);
+  await assert.rejects(importer.reloadSheet(ctx, sessionId, { version, date: '2026-02-30' }), { statusCode: 400, code: 'VALIDATION' });
+  await assert.rejects(importer.reloadSheet({ ...ctx, scope: ['saigon'] }, sessionId, { version }), { statusCode: 403 });
+  await assert.rejects(importer.reloadSheet(ctx, 999999, { version }), { statusCode: 404 });
+
+  const { session: web } = await service.createSession(ctx, { branch: 'hanoi', name: 'Web', dateFrom: '2026-10-29', dateTo: '2026-10-29' });
+  await assert.rejects(importer.reloadSheet(ctx, web.id, { version: web.version }), { statusCode: 400, code: 'NOT_SHEET_IMPORT' });
+  const { session: cancelled } = await service.cancelSession(ctx, sessionId, { version, reason: 'Cũ' });
+  await assert.rejects(importer.reloadSheet(ctx, sessionId, { version: cancelled.version }), { statusCode: 409, code: 'STOCKTAKE_CANCELLED' });
 });

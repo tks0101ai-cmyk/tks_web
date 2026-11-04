@@ -61,6 +61,10 @@ function assertScope(ctx, branch) {
   if (ctx.scope && !ctx.scope.includes(branch)) throw fail(403, 'BRANCH_OUT_OF_SCOPE', 'Cơ sở của đợt kiểm kê không thuộc phạm vi đang chọn.');
 }
 
+function assertNotCancelled(session) {
+  if (session.cancelled) throw fail(409, 'STOCKTAKE_CANCELLED', 'Đợt kiểm kê đã bị hủy, không sửa được. Khôi phục đợt trước nếu cần sửa.');
+}
+
 function textOf(body, field, label, max = MAX.text) {
   const value = clean(body[field]);
   if (value.length > max) throw fail(400, 'VALIDATION', `${label} tối đa ${max} ký tự.`, { field });
@@ -122,7 +126,9 @@ const PRODUCTS_SQL = `
   FROM products p
   WHERE p.branch = $1`;
 
-const SESSION_COLUMNS = `id, branch, name, date_from, date_to, status, source, version, counterpart_session_id, created_by_name, created_at, closed_by_name, closed_at`;
+const SESSION_COLUMNS = `id, branch, name, date_from, date_to, status, source, version, counterpart_session_id, created_by_name, created_at, closed_by_name, closed_at,
+  previous_session_id, cancelled_at, cancelled_by_name, cancel_reason, reloaded_at, reloaded_by_name`;
+const MAX_CANCEL_REASON = 500;
 const EDIT_COLUMNS = `id, order_id, line_no, product_code, team, zone, spec, quantity::float8 AS quantity, removed, version, updated_by_name, updated_at`;
 const NOTE_COLUMNS = `product_code, status_text, status_color, reason_text, recheck_employee_id, recheck_name, print_page, print_time,
   prev_diff_manual::float8 AS prev_diff_manual, other_diff_manual::float8 AS other_diff_manual, version, updated_by_name, updated_at`;
@@ -141,7 +147,15 @@ const shapeSession = row => ({
   createdByName: row.created_by_name || '',
   createdAt: isoOf(row.created_at),
   closedByName: row.closed_by_name || '',
-  closedAt: isoOf(row.closed_at)
+  closedAt: isoOf(row.closed_at),
+  // Chon tay dot KK truoc (0109); null = tu dong.
+  previousSessionId: row.previous_session_id === null || row.previous_session_id === undefined ? null : Number(row.previous_session_id),
+  cancelled: Boolean(row.cancelled_at),
+  cancelledAt: isoOf(row.cancelled_at),
+  cancelledByName: row.cancelled_by_name || '',
+  cancelReason: row.cancel_reason || '',
+  reloadedAt: isoOf(row.reloaded_at),
+  reloadedByName: row.reloaded_by_name || ''
 });
 const shapeEdit = row => ({
   id: Number(row.id),
@@ -248,15 +262,21 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
   // Khoa dot (chan dong dot giua chung) va bao loi neu dot da dong.
   async function openSessionForWrite(client, ctx, id) {
     const session = await readSession(client, ctx, id, { lock: true });
+    assertNotCancelled(session);
     if (session.status !== 'open') throw fail(409, 'STOCKTAKE_CLOSED', 'Đợt kiểm kê đã đóng, không sửa được nữa.');
     return session;
   }
 
-  async function listSessions(ctx) {
+  // includeCancelled: chi route cho Quan ly bat (xem lai / khoi phuc dot da huy).
+  async function listSessions(ctx, { includeCancelled = false } = {}) {
     const scope = ctx.scope || BRANCHES;
     const { rows } = await getDb().query(
-      `SELECT ${SESSION_COLUMNS} FROM stocktake_sessions WHERE branch = ANY($1::text[]) ORDER BY date_to DESC, id DESC`, [scope]);
-    return { sessions: rows.map(shapeSession) };
+      `SELECT ${SESSION_COLUMNS} FROM stocktake_sessions WHERE branch = ANY($1::text[])${includeCancelled ? '' : ' AND cancelled_at IS NULL'}
+       ORDER BY date_to DESC, id DESC`, [scope]);
+    // Co so da nap tu sheet (ke ca dot da huy): an nut "Nap ... tu sheet" vi moi tab chi nap 1 lan.
+    const imported = await getDb().query(
+      `SELECT DISTINCT branch FROM stocktake_sessions WHERE source = 'sheet_import' AND branch = ANY($1::text[]) ORDER BY branch`, [scope]);
+    return { sessions: rows.map(shapeSession), importedBranches: imported.rows.map(row => row.branch) };
   }
 
   async function createSession(ctx, body = {}) {
@@ -271,11 +291,12 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     const actor = actorOf(ctx);
     return withTransaction(async client => {
       const counterpartId = await counterpartOf(client, ctx, branch, body.counterpartSessionId);
+      const previousId = await previousOf(client, ctx, { id: null, branch, dateFrom }, body.previousSessionId);
       const { rows } = await client.query(
-        `INSERT INTO stocktake_sessions (branch, name, date_from, date_to, created_by_user_id, created_by_name, counterpart_session_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ${SESSION_COLUMNS}`, [branch, name, dateFrom, dateTo, actor.id, actor.name, counterpartId]);
+        `INSERT INTO stocktake_sessions (branch, name, date_from, date_to, created_by_user_id, created_by_name, counterpart_session_id, previous_session_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING ${SESSION_COLUMNS}`, [branch, name, dateFrom, dateTo, actor.id, actor.name, counterpartId, previousId]);
       const session = shapeSession(rows[0]);
-      await writeHistory(client, session, actor, '', 'session_create', undefined, { name, dateFrom, dateTo, counterpartSessionId: counterpartId });
+      await writeHistory(client, session, actor, '', 'session_create', undefined, { name, dateFrom, dateTo, counterpartSessionId: counterpartId, previousSessionId: previousId });
       return { session };
     });
   }
@@ -285,12 +306,20 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     return withTransaction(async client => {
       const session = await openSessionForWrite(client, ctx, sessionId);
       if (versionOf(body.version) !== session.version) throw fail(409, 'STOCKTAKE_CONFLICT', 'Đợt kiểm kê vừa được cập nhật. Tải lại rồi thử lại.', { latest: session });
-      const counterpartId = await counterpartOf(client, ctx, session.branch, body.counterpartSessionId);
+      // Chi doi truong co trong body: doi doi chieu khong xoa KK truoc va nguoc lai.
+      const has = field => Object.hasOwn(body, field);
+      if (!has('counterpartSessionId') && !has('previousSessionId')) throw fail(400, 'VALIDATION', 'Không có gì để cập nhật.');
+      const counterpartId = has('counterpartSessionId') ? await counterpartOf(client, ctx, session.branch, body.counterpartSessionId) : session.counterpartSessionId;
+      const previousId = has('previousSessionId') ? await previousOf(client, ctx, session, body.previousSessionId) : session.previousSessionId;
       const { rows } = await client.query(
-        `UPDATE stocktake_sessions SET counterpart_session_id = $2, version = version + 1 WHERE id = $1 RETURNING ${SESSION_COLUMNS}`,
-        [session.id, counterpartId]);
+        `UPDATE stocktake_sessions SET counterpart_session_id = $2, previous_session_id = $3, version = version + 1 WHERE id = $1 RETURNING ${SESSION_COLUMNS}`,
+        [session.id, counterpartId, previousId]);
       const updated = shapeSession(rows[0]);
-      await writeHistory(client, updated, actor, '', 'session_update', { counterpartSessionId: session.counterpartSessionId }, { counterpartSessionId: counterpartId });
+      const before = {};
+      const after = {};
+      if (has('counterpartSessionId')) { before.counterpartSessionId = session.counterpartSessionId; after.counterpartSessionId = counterpartId; }
+      if (has('previousSessionId')) { before.previousSessionId = session.previousSessionId; after.previousSessionId = previousId; }
+      await writeHistory(client, updated, actor, '', 'session_update', before, after);
       return { session: updated };
     }, sessionId, ctx.clientId);
   }
@@ -299,10 +328,25 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
   async function counterpartOf(db, ctx, branch, value) {
     if (value === undefined || value === null || value === '') return null;
     const id = Number(value);
-    const row = Number.isInteger(id) ? (await db.query('SELECT id, branch FROM stocktake_sessions WHERE id = $1', [id])).rows[0] : null;
+    const row = Number.isInteger(id) ? (await db.query('SELECT id, branch, cancelled_at FROM stocktake_sessions WHERE id = $1', [id])).rows[0] : null;
     if (!row || row.branch === branch) throw fail(400, 'INVALID_COUNTERPART', 'Đợt đối chiếu phải là một đợt của cơ sở kia.', { field: 'counterpartSessionId' });
+    if (row.cancelled_at) throw fail(400, 'INVALID_COUNTERPART', 'Đợt đối chiếu đã bị hủy.', { field: 'counterpartSessionId' });
     // Dat doi chieu sang co so ngoai pham vi nguoi dung bi chan (doc van mo).
     assertScope(ctx, row.branch);
+    return id;
+  }
+
+  // Dot KK truoc chon tay: cung co so, da dong, chua huy, khac chinh no; null = tu dong. Khong rang buoc ngay.
+  async function previousOf(db, ctx, session, value) {
+    if (value === undefined || value === null || value === '') return null;
+    const id = Number(value);
+    const row = Number.isInteger(id) && id > 0
+      ? (await db.query('SELECT id, branch, status, cancelled_at FROM stocktake_sessions WHERE id = $1', [id])).rows[0] : null;
+    const invalid = message => fail(400, 'INVALID_PREVIOUS', message, { field: 'previousSessionId' });
+    if (!row || row.branch !== session.branch) throw invalid('Đợt KK trước phải là một đợt cùng cơ sở.');
+    if (session.id !== null && Number(row.id) === session.id) throw invalid('Đợt KK trước không thể là chính đợt này.');
+    if (row.status !== 'closed') throw invalid('Đợt KK trước phải là đợt đã đóng.');
+    if (row.cancelled_at) throw invalid('Đợt KK trước đã bị hủy.');
     return id;
   }
 
@@ -312,7 +356,8 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     const row = (await db.query(`SELECT ${SESSION_COLUMNS} FROM stocktake_sessions WHERE id = $1`, [session.counterpartSessionId])).rows[0];
     if (!row) return { counterpartInfo: null, counterpart: [] };
     const other = shapeSession(row);
-    const counterpartInfo = { id: other.id, name: other.name, branch: other.branch, status: other.status };
+    const counterpartInfo = { id: other.id, name: other.name, branch: other.branch, status: other.status, cancelled: other.cancelled };
+    if (other.cancelled) return { counterpartInfo, counterpart: [] };
     if (other.status === 'closed') {
       const { rows } = await db.query(`SELECT product_code, diff_qty::float8 AS diff_qty FROM stocktake_session_results WHERE session_id = $1`, [other.id]);
       return { counterpartInfo, counterpart: rows.map(r => ({ code: r.product_code, diffQty: Number(r.diff_qty) })) };
@@ -321,28 +366,36 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     return { counterpartInfo, counterpart: board.rows.map(r => ({ code: r.code, diffQty: r.diffQty })) };
   }
 
-  // Id dot da dong gan nhat truoc dot nay.
-  async function previousSessionIdOf(db, session) {
+  // Dot KK truoc cua dot nay: chon tay (con dung duoc) hoac tu dong = dot da dong gan nhat cung co so, chua huy,
+  // ket thuc truoc ngay bat dau. manualInvalid: co chon tay nhung dot do da huy / khong con hop le -> dang dung tu dong.
+  async function previousSessionOf(db, session) {
+    let manualInvalid = false;
+    if (session.previousSessionId) {
+      const picked = (await db.query(
+        `SELECT id, name FROM stocktake_sessions WHERE id = $1 AND branch = $2 AND status = 'closed' AND cancelled_at IS NULL AND id <> $3`,
+        [session.previousSessionId, session.branch, session.id])).rows[0];
+      if (picked) return { id: Number(picked.id), name: picked.name, mode: 'manual', manualInvalid: false };
+      manualInvalid = true;
+    }
     const prev = (await db.query(
-      `SELECT id FROM stocktake_sessions WHERE branch = $1 AND status = 'closed' AND id <> $2 AND date_to <= $3::date
+      `SELECT id, name FROM stocktake_sessions WHERE branch = $1 AND status = 'closed' AND cancelled_at IS NULL AND id <> $2 AND date_to <= $3::date
        ORDER BY date_to DESC, id DESC LIMIT 1`, [session.branch, session.id, session.dateFrom])).rows[0];
-    return prev ? Number(prev.id) : null;
+    return { id: prev ? Number(prev.id) : null, name: prev ? prev.name : '', mode: 'auto', manualInvalid };
   }
 
   // Thong tin dot doi chieu (mot dong, khong tinh ket qua).
   async function counterpartInfoOf(db, session) {
     if (!session.counterpartSessionId) return null;
-    const row = (await db.query('SELECT id, name, branch, status FROM stocktake_sessions WHERE id = $1', [session.counterpartSessionId])).rows[0];
-    return row ? { id: Number(row.id), name: row.name, branch: row.branch, status: row.status } : null;
+    const row = (await db.query('SELECT id, name, branch, status, cancelled_at FROM stocktake_sessions WHERE id = $1', [session.counterpartSessionId])).rows[0];
+    return row ? { id: Number(row.id), name: row.name, branch: row.branch, status: row.status, cancelled: Boolean(row.cancelled_at) } : null;
   }
 
   // Ket qua dot da dong gan nhat truoc dot nay (nguon "KK truoc sai").
   async function previousResults(db, session) {
-    const prevId = await previousSessionIdOf(db, session);
-    const prev = prevId === null ? null : { id: prevId };
-    if (!prev) return { previousSessionId: null, previous: [] };
-    const { rows } = await db.query(`SELECT product_code, diff_qty::float8 AS diff_qty FROM stocktake_session_results WHERE session_id = $1`, [prev.id]);
-    return { previousSessionId: Number(prev.id), previous: rows.map(row => ({ code: row.product_code, diffQty: Number(row.diff_qty) })) };
+    const info = await previousSessionOf(db, session);
+    if (info.id === null) return { previousSessionId: null, previousInfo: info, previous: [] };
+    const { rows } = await db.query(`SELECT product_code, diff_qty::float8 AS diff_qty FROM stocktake_session_results WHERE session_id = $1`, [info.id]);
+    return { previousSessionId: info.id, previousInfo: info, previous: rows.map(row => ({ code: row.product_code, diffQty: Number(row.diff_qty) })) };
   }
 
   async function loadEmployees(db) {
@@ -370,7 +423,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       })))),
       db.query(`SELECT ${TAG_COLUMNS} FROM stocktake_product_tags WHERE branch = $1`, [session.branch]).then(r => r.rows.map(shapeTag)),
       db.query(`SELECT ${NOTE_COLUMNS} FROM stocktake_code_notes WHERE session_id = $1`, [session.id]).then(r => r.rows.map(shapeNote)),
-      withPrevious ? previousResults(db, session) : { previousSessionId: null, previous: [] },
+      withPrevious ? previousResults(db, session) : { previousSessionId: null, previousInfo: null, previous: [] },
       withCounterpart ? counterpartResults(db, session) : { counterpartInfo: null, counterpart: [] }
     ]);
     return { lines, edits, products, tags, notes, ...prev, ...other };
@@ -387,7 +440,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       db.query(`SELECT ${TAG_COLUMNS} FROM stocktake_product_tags WHERE branch = $1`, [session.branch]).then(r => r.rows.map(shapeTag)),
       db.query(`SELECT ${NOTE_COLUMNS} FROM stocktake_code_notes WHERE session_id = $1`, [session.id]).then(r => r.rows.map(shapeNote)),
       // Chi dot nap tu sheet moi can fallback tinh truc tiep; dot web dung ban chup nguyen trang (NULL giu NULL).
-      sheetImport ? previousResults(db, session) : previousSessionIdOf(db, session).then(id => ({ previousSessionId: id, previous: [] })),
+      sheetImport ? previousResults(db, session) : previousSessionOf(db, session).then(info => ({ previousSessionId: info.id, previousInfo: info, previous: [] })),
       sheetImport ? counterpartResults(db, session) : counterpartInfoOf(db, session).then(info => ({ counterpartInfo: info, counterpart: [] }))
     ]);
     const tagByCode = new Map(tags.map(tag => [tag.code, tag]));
@@ -411,7 +464,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       };
     });
     deriveColumns(rows);
-    return { rows, totals: totalsOf(rows), previousSessionId: prev.previousSessionId, counterpart: other.counterpartInfo };
+    return { rows, totals: totalsOf(rows), previousSessionId: prev.previousSessionId, previousSession: prev.previousInfo, counterpart: other.counterpartInfo };
   }
 
   async function getBoard(ctx, id) {
@@ -420,7 +473,9 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     const [board, employees] = await Promise.all([
       session.status === 'closed'
         ? closedBoard(db, session)
-        : loadInputs(db, session).then(inputs => ({ ...buildBoard(inputs), previousSessionId: inputs.previousSessionId, counterpart: inputs.counterpartInfo })),
+        : loadInputs(db, session).then(inputs => ({
+          ...buildBoard(inputs), previousSessionId: inputs.previousSessionId, previousSession: inputs.previousInfo, counterpart: inputs.counterpartInfo
+        })),
       loadEmployees(db)
     ]);
     // Goi y Chi tiet ly do: cac gia tri da dung trong dot (Trang thai nay la danh sach co dinh, xem stocktakeStatus.js).
@@ -567,6 +622,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     if (!productCode) throw fail(400, 'VALIDATION', 'Thiếu mã hàng.');
     return withTransaction(async client => {
       const session = await readSession(client, ctx, sessionId);
+      assertNotCancelled(session);
       const current = (await client.query(`SELECT ${TAG_COLUMNS} FROM stocktake_product_tags WHERE branch = $1 AND product_code = $2 FOR UPDATE`,
         [session.branch, productCode])).rows[0];
       checkVersion(current, body.version, shapeTag);
@@ -733,12 +789,78 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
         `UPDATE stocktake_sessions SET status = 'closed', version = version + 1, closed_by_user_id = $2, closed_by_name = $3, closed_at = now()
          WHERE id = $1 RETURNING ${SESSION_COLUMNS}`, [session.id, actor.id, actor.name]);
       const closed = shapeSession(rows[0]);
-      await writeHistory(client, closed, actor, '', 'session_close', undefined, { codes: results.length, mismatched: results.filter(r => r.diffQty !== 0).length });
+      // Ghi dot KK truoc da dung luc dong: nguon "dot da dong phu thuoc" khi huy dot do.
+      await writeHistory(client, closed, actor, '', 'session_close', undefined, {
+        codes: results.length, mismatched: results.filter(r => r.diffQty !== 0).length, previousSessionId: inputs.previousSessionId
+      });
       return { session: closed };
     }, sessionId, ctx.clientId);
   }
 
-  return { listSessions, createSession, updateSession, getBoard, saveLine, addLine, saveNote, saveTag, saveCells, codeHistory, closeSession };
+  // Huy dot (dang mo hoac da dong): an khoi danh sach, chi doc, khong dung lam KK truoc / doi chieu. Khong xoa vat ly.
+  async function cancelSession(ctx, sessionId, body = {}) {
+    const actor = actorOf(ctx);
+    const reason = clean(body.reason);
+    if (!reason) throw fail(400, 'VALIDATION', 'Cần nhập lý do hủy đợt.', { field: 'reason' });
+    if (reason.length > MAX_CANCEL_REASON) throw fail(400, 'VALIDATION', `Lý do tối đa ${MAX_CANCEL_REASON} ký tự.`, { field: 'reason' });
+    return withTransaction(async client => {
+      const session = await readSession(client, ctx, sessionId, { lock: true });
+      assertNotCancelled(session);
+      if (versionOf(body.version) !== session.version) throw fail(409, 'STOCKTAKE_CONFLICT', 'Đợt kiểm kê vừa được cập nhật. Tải lại rồi thử lại.', { latest: session });
+      const { rows } = await client.query(
+        `UPDATE stocktake_sessions SET cancelled_at = now(), cancelled_by_user_id = $2, cancelled_by_name = $3, cancel_reason = $4, version = version + 1
+         WHERE id = $1 RETURNING ${SESSION_COLUMNS}`, [session.id, actor.id, actor.name, reason]);
+      const cancelled = shapeSession(rows[0]);
+      await writeHistory(client, cancelled, actor, '', 'session_cancel', { status: session.status }, { reason });
+      return { session: cancelled };
+    }, sessionId, ctx.clientId);
+  }
+
+  // Khoi phuc: dot tro lai dung trang thai mo / dong nhu truoc khi huy.
+  async function restoreSession(ctx, sessionId, body = {}) {
+    const actor = actorOf(ctx);
+    return withTransaction(async client => {
+      const session = await readSession(client, ctx, sessionId, { lock: true });
+      if (!session.cancelled) throw fail(409, 'STOCKTAKE_NOT_CANCELLED', 'Đợt kiểm kê chưa bị hủy.');
+      if (versionOf(body.version) !== session.version) throw fail(409, 'STOCKTAKE_CONFLICT', 'Đợt kiểm kê vừa được cập nhật. Tải lại rồi thử lại.', { latest: session });
+      const { rows } = await client.query(
+        `UPDATE stocktake_sessions SET cancelled_at = NULL, cancelled_by_user_id = NULL, cancelled_by_name = NULL, cancel_reason = '', version = version + 1
+         WHERE id = $1 RETURNING ${SESSION_COLUMNS}`, [session.id]);
+      const restored = shapeSession(rows[0]);
+      await writeHistory(client, restored, actor, '', 'session_restore', { reason: session.cancelReason, cancelledByName: session.cancelledByName }, { status: restored.status });
+      return { session: restored };
+    }, sessionId, ctx.clientId);
+  }
+
+  // Dot dang dung dot nay: lam KK truoc (dot mo: tinh lai theo quy tac hien tai; dot dong: theo lich su luc dong)
+  // hoac lam doi chieu. Dung cho hop xac nhan Huy / Nap lai.
+  async function dependents(ctx, sessionId) {
+    const db = getDb();
+    const session = await readSession(db, ctx, sessionId);
+    const brief = row => ({ id: Number(row.id), name: row.name, branch: row.branch, status: row.status });
+    const open = (await db.query(
+      `SELECT ${SESSION_COLUMNS} FROM stocktake_sessions WHERE branch = $1 AND status = 'open' AND cancelled_at IS NULL AND id <> $2
+       ORDER BY date_to DESC, id DESC`, [session.branch, session.id])).rows.map(shapeSession);
+    const asPrevious = [];
+    for (const other of open) {
+      const info = await previousSessionOf(db, other);
+      if (info.id === session.id) asPrevious.push({ ...brief(other), mode: info.mode, changes: true });
+    }
+    const closed = (await db.query(
+      `SELECT DISTINCT s.id, s.name, s.branch, s.status, s.date_to FROM stocktake_history h JOIN stocktake_sessions s ON s.id = h.session_id
+       WHERE h.action = 'session_close' AND h.after->>'previousSessionId' = $1::text AND s.cancelled_at IS NULL AND s.id <> $2
+       ORDER BY s.date_to DESC, s.id DESC`, [String(session.id), session.id])).rows;
+    for (const row of closed) asPrevious.push({ ...brief(row), mode: 'snapshot', changes: false });
+    const asCounterpart = (await db.query(
+      `SELECT id, name, branch, status FROM stocktake_sessions WHERE counterpart_session_id = $1 AND cancelled_at IS NULL ORDER BY date_to DESC, id DESC`,
+      [session.id])).rows.map(row => ({ ...brief(row), changes: row.status === 'open' }));
+    return { previousOf: asPrevious, counterpartOf: asCounterpart };
+  }
+
+  return {
+    listSessions, createSession, updateSession, getBoard, saveLine, addLine, saveNote, saveTag, saveCells, codeHistory, closeSession,
+    cancelSession, restoreSession, dependents
+  };
 }
 
 module.exports = { createStockTakeService, TEAM_LINES_SQL, fail, ...createStockTakeService() };
