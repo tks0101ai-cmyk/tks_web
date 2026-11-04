@@ -99,9 +99,10 @@ function buildSql({ includeToday = true } = {}) {
     SELECT product_key, orders_30d, orders_90d FROM order_counts
     RETURNING 1
   )
-  INSERT INTO pr_customers_new (product_key, customer_key, customer_name, revenue)
-  SELECT product_key, customer_key, MIN(customer_name), SUM(amount)
-  FROM sales90_lines
+  INSERT INTO pr_customers_new (product_key, customer_key, customer_name, revenue, revenue_1_30d, revenue_31_60d, revenue_61_90d)
+  SELECT product_key, customer_key, MIN(customer_name), SUM(amount),
+    ${includeToday ? legacy.CUSTOMER_PERIOD_AGG_SQL.replaceAll('today - 30', 'today - 29').replaceAll('today - 60', 'today - 59') : legacy.CUSTOMER_PERIOD_AGG_SQL}
+  FROM sales90_lines CROSS JOIN vn_today
   WHERE product_key <> '' AND customer_active
   GROUP BY product_key, customer_key
   HAVING SUM(amount) > 0`;
@@ -185,29 +186,34 @@ const INSERT_PRODUCTS_SQL = `INSERT INTO product_report (${PRODUCT_COLUMNS.join(
 
 const DELETE_CUSTOMERS_SQL = `DELETE FROM product_report_customers p
   WHERE NOT EXISTS (SELECT 1 FROM pr_customers_new n WHERE n.product_key = p.product_key AND n.customer_key = p.customer_key)`;
-const UPDATE_CUSTOMERS_SQL = `UPDATE product_report_customers p SET customer_name = n.customer_name, revenue = n.revenue
+const UPDATE_CUSTOMERS_SQL = `UPDATE product_report_customers p SET customer_name = n.customer_name, revenue = n.revenue, revenue_1_30d = n.revenue_1_30d, revenue_31_60d = n.revenue_31_60d, revenue_61_90d = n.revenue_61_90d
   FROM pr_customers_new n
   WHERE p.product_key = n.product_key AND p.customer_key = n.customer_key
-    AND (p.customer_name, p.revenue) IS DISTINCT FROM (n.customer_name, n.revenue)`;
-const INSERT_CUSTOMERS_SQL = `INSERT INTO product_report_customers (product_key, customer_key, customer_name, revenue)
-  SELECT n.product_key, n.customer_key, n.customer_name, n.revenue FROM pr_customers_new n
+    AND (p.customer_name, p.revenue, p.revenue_1_30d, p.revenue_31_60d, p.revenue_61_90d) IS DISTINCT FROM (n.customer_name, n.revenue, n.revenue_1_30d, n.revenue_31_60d, n.revenue_61_90d)`;
+const INSERT_CUSTOMERS_SQL = `INSERT INTO product_report_customers (product_key, customer_key, customer_name, revenue, revenue_1_30d, revenue_31_60d, revenue_61_90d)
+  SELECT n.product_key, n.customer_key, n.customer_name, n.revenue, n.revenue_1_30d, n.revenue_31_60d, n.revenue_61_90d FROM pr_customers_new n
   WHERE NOT EXISTS (SELECT 1 FROM product_report_customers p WHERE p.product_key = n.product_key AND p.customer_key = n.customer_key)`;
 
-const READ_STATE_SQL = 'SELECT computed_at, last_full_at, version FROM product_report_state WHERE id = 1';
+const READ_STATE_SQL = `SELECT computed_at, last_full_at, version, customer_window_end::text,
+  EXISTS (SELECT 1 FROM product_report_customers WHERE revenue_1_30d IS NULL OR revenue_31_60d IS NULL OR revenue_61_90d IS NULL) AS periods_missing
+  FROM product_report_state WHERE id = 1`;
 // $1 co so, $2 moc synced_at: co chung tu/khach nao vua dong bo? (chi doc duoi index 0054/0055)
 const GATE_SQL = `SELECT
     EXISTS (SELECT 1 FROM invoices  WHERE branch = ANY($1::text[]) AND synced_at >= $2::timestamptz) AS invoices_changed,
     EXISTS (SELECT 1 FROM returns   WHERE branch = ANY($1::text[]) AND synced_at >= $2::timestamptz) AS returns_changed,
     EXISTS (SELECT 1 FROM customers WHERE branch = ANY($1::text[]) AND synced_at >= $2::timestamptz) AS customers_changed,
     -- Con dong chua co SL don (vua ap migration 0067 hoac ma moi do luot nhe them) => chay luot nang de dien.
-    EXISTS (SELECT 1 FROM product_report WHERE orders_90d IS NULL) AS orders_missing`;
+    EXISTS (SELECT 1 FROM product_report WHERE orders_90d IS NULL) AS orders_missing,
+    EXISTS (SELECT 1 FROM product_report_customers WHERE revenue_1_30d IS NULL OR revenue_31_60d IS NULL OR revenue_61_90d IS NULL) AS periods_missing`;
 // $1 co thay doi that su (version +1), $2 vua chay phan nang (danh dau last_full_at).
-const UPSERT_STATE_SQL = `INSERT INTO product_report_state (id, computed_at, version, last_full_at)
-  VALUES (1, now(), 1, CASE WHEN $2::boolean THEN now() END)
+const UPSERT_STATE_SQL = `INSERT INTO product_report_state (id, computed_at, version, last_full_at, customer_window_end)
+  VALUES (1, now(), 1, CASE WHEN $2::boolean THEN now() END,
+    CASE WHEN $2::boolean THEN (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date END)
   ON CONFLICT (id) DO UPDATE SET
     computed_at = now(),
     version = product_report_state.version + CASE WHEN $1::boolean THEN 1 ELSE 0 END,
-    last_full_at = CASE WHEN $2::boolean THEN now() ELSE product_report_state.last_full_at END
+    last_full_at = CASE WHEN $2::boolean THEN now() ELSE product_report_state.last_full_at END,
+    customer_window_end = CASE WHEN $2::boolean THEN EXCLUDED.customer_window_end ELSE product_report_state.customer_window_end END
   RETURNING version, computed_at`;
 
 function decideHeavy(state, gate, now) {
@@ -215,6 +221,8 @@ function decideHeavy(state, gate, now) {
   if (vnDateKey(new Date(state.last_full_at)) !== vnDateKey(now)) return { heavy: true, reason: 'sang-ngay-moi' };
   if (gate && (gate.invoices_changed || gate.returns_changed || gate.customers_changed)) return { heavy: true, reason: 'co-chung-tu-moi' };
   if (gate && gate.orders_missing) return { heavy: true, reason: 'thieu-so-don' };
+  if (!state.customer_window_end || state.periods_missing || (gate && gate.periods_missing)) return { heavy: true, reason: 'thieu-ky-khach' };
+  if (state.customer_window_end !== vnDateKey(now)) return { heavy: true, reason: 'doi-cua-so-khach' };
   return { heavy: false, reason: 'khong-doi' };
 }
 
@@ -263,7 +271,8 @@ async function refreshProductReportIncremental(pool, {
       updated: (await client.query(UPDATE_PRODUCTS_SQL)).rowCount || 0,
       inserted: (await client.query(INSERT_PRODUCTS_SQL)).rowCount || 0
     };
-    const changed = [customers, products].some(t => t.deleted + t.updated + t.inserted > 0);
+    const changed = [customers, products].some(t => t.deleted + t.updated + t.inserted > 0)
+      || (heavy && (!state || state.customer_window_end !== vnDateKey(current)));
     const saved = await client.query(UPSERT_STATE_SQL, [changed, heavy]);
     await client.query('COMMIT');
     const result = {

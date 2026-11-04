@@ -398,8 +398,8 @@ router.get('/api/product-report/containers', async (req, res) => {
 // Nam duoi /api/product-report nen ke thua guard `reports.products` o tren.
 router.get('/api/product-report/history', requireFeature('reports.products.sales'), async (req, res) => {
   try {
-    const { code, q, type, page, pageSize } = req.query;
-    const data = await getProductHistory({ code, q, type, page, pageSize });
+    const { code, q, type, page, pageSize, sort, dir } = req.query;
+    const data = await getProductHistory({ code, q, type, page, pageSize, ...(sort !== undefined ? { sort } : {}), ...(dir !== undefined ? { dir } : {}) });
     const canViewCost = hasFeature(req.user, 'reports.products.price');
     const rows = data.rows.map(row => {
       const copy = { ...row };

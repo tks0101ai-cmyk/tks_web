@@ -1023,3 +1023,12 @@ Bảng 26 cột: Mã hàng, Tên hàng, rồi 6 chỉ số SL / DS / Giá TB / S
 Cập nhật gần nhất: 04/11/2026.
 
 Cập nhật gần nhất: 04/11/2026.
+
+## Bổ sung 04/11/2026 — Hộp Chi tiết hàng hóa
+
+- Tổng quan bố trí 2 chỉ số mỗi hàng cạnh biểu đồ tỷ trọng; bảng khách toàn chiều ngang; responsive và Sáng/Tối. Bảng khách: Khách hàng, DS 90 ngày, T.này, T.trước, T.trước nữa, % của SP; 3 kỳ là 30 ngày nối tiếp, có tooltip ngày thật. Giữ doanh số ròng và quy tắc khách của báo cáo hiện hành; thiếu kỳ hiển thị “—”.
+- Lịch sử 90 ngày gồm hôm nay: Thời gian, Loại giao dịch, Mã giao dịch kèm HN/SG, Khách hàng, Số lượng; giá vốn tùy chọn theo quyền. Bao gồm hóa đơn Hoàn thành, trả hàng Đã trả và đơn đang Phiếu tạm; gộp các dòng trùng mã trong cùng chứng từ. Tổng SL/lượt mua, trả và đặt tính riêng theo toàn bộ kết quả khớp tìm khách/lọc loại.
+- Sort theo 5 cột trên toàn bộ dữ liệu trước phân trang; ẩn/hiện và chỉnh độ rộng bằng table-controls. Xuất Excel lấy toàn bộ kết quả đúng bộ lọc, sort và các cột được chọn, giữ số lượng dạng số; quyền xem sản phẩm + doanh số + xuất file, giá vốn theo quyền riêng.
+- Migration 0108 lưu các kỳ trong bảng tổng hợp và ngày chốt; không cập nhật chứng từ KiotViet. Chưa migrate DB thật/chưa deploy; hợp đồng kỹ thuật trong server/README.md.
+
+Cập nhật gần nhất: 04/11/2026.

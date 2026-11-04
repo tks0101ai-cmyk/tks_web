@@ -50,7 +50,7 @@
   <script src="/shared/motion.js?v=20261024-1" defer></script>
   <link rel="stylesheet" href="/shared/search-clear.css?v=20261009-1">
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261016">
-  <link rel="stylesheet" href="/shared/product-history.css?v=20261103-1">
+  <link rel="stylesheet" href="/shared/product-history.css?v=20261104-2">
   <link rel="stylesheet" href="/marketing-report.css?v=20261102-kpis">
   <link rel="stylesheet" href="/product-90d-report.css?v=20261104-9">
   <link rel="stylesheet" href="/invoice-approved-prices.css?v=20261024-4">
@@ -5322,7 +5322,7 @@
        và inline script luôn chạy trước script defer — cách đặt này giữ đúng thứ tự mà không chặn parser. -->
   <script src="/vendor/chart.umd.min.js"></script>
   <script src="/js/pagination.js"></script>
-  <script src="/js/product-history.js?v=20261103-1"></script>
+  <script src="/js/product-history.js?v=20261104-2"></script>
   <script src="/shared/fuzzy-search.js?v=20261021-1"></script>
   <script src="/js/table-explorer.js?v=20261021-1"></script>
   <script>
@@ -6919,6 +6919,15 @@
           customerProductCode: state.customerProductReport.productCode || ''
         }
       };
+      if (tableKey === 'products.productHistory') {
+        const history = window.TKSProductHistory && window.TKSProductHistory.exportState();
+        if (history) {
+          Object.assign(payload.context, history.context);
+          payload.columns = history.columns;
+          if (history.tableSort) payload.tableSort = history.tableSort;
+        }
+        return payload;
+      }
       // Hàng hóa 90 ngày: tìm/sắp xếp ở máy chủ — gửi đúng từ khóa đang áp dụng + nhãn cột sắp xếp do product-90d-report.js giữ.
       if (tableKey === 'products.product90d') {
         const context = window.TKSProduct90d && typeof window.TKSProduct90d.exportState === 'function' ? window.TKSProduct90d.exportState() : null;
@@ -7062,7 +7071,7 @@
     function closeExportDialog() {
       const dialog = state.exportDialog;
       document.getElementById('exportModalBackdrop').hidden = true;
-      document.body.style.overflow = '';
+      document.body.style.overflow = document.getElementById('docModalBackdrop').hidden ? '' : 'hidden';
       abortExportRequest();
       setExportBusy(false);
       document.getElementById('exportToolbar').hidden = true;
@@ -7237,9 +7246,12 @@
         const worksheetFields = worksheet.fields || [];
         const fields = worksheetFields.map(function (field) {
           const label = String(field.label || field.key || '');
+          const payload = state.exportDialog.payload;
+          const visible = payload && payload.tableKey === 'products.productHistory' && payload.columns && payload.columns[worksheet.key];
+          const checked = Array.isArray(visible) ? visible.includes(field.key) : field.selected !== false;
           // description (neu co) hien thi nhu tooltip cua muc truong.
           return '<label class="export-field-item" data-export-label="' + escapeHtml(label.toLocaleLowerCase('vi-VN')) + '"' + (field.description ? ' title="' + escapeHtml(field.description) + '"' : '') + '>' +
-            '<input type="checkbox" data-export-sheet="' + escapeHtml(worksheet.key) + '" value="' + escapeHtml(field.key) + '"' + (field.selected !== false ? ' checked' : '') + ' onchange="updateExportSelectionStatus()">' +
+            '<input type="checkbox" data-export-sheet="' + escapeHtml(worksheet.key) + '" value="' + escapeHtml(field.key) + '"' + (checked ? ' checked' : '') + ' onchange="updateExportSelectionStatus()">' +
             '<span class="export-field-label">' + escapeHtml(label) + '</span></label>';
         }).join('');
         // rowCount la null khi may chu khong dem truoc so dong: chi hien "M trường".
@@ -10571,6 +10583,11 @@
       const barWidth = maxRevenue > 0 ? Math.max(2, Math.min(100, Math.round(row.revenue / maxRevenue * 100))) : 0;
       return '<tr data-slice="' + index + '"><td class="dp-cell-main"><span class="dp-swatch" style="background:' + color + '"></span>' + escapeHtml(name) + '</td>' +
         '<td class="num" data-sort-value="' + row.revenue + '">' + fmtTableMoney(row.revenue) + '</td>' +
+        ['revenue1_30d', 'revenue31_60d', 'revenue61_90d'].map(function (key) {
+          const value = row[key];
+          return '<td class="num"' + (value == null ? '' : ' data-sort-value="' + Number(value) + '"') + '>' +
+            (value == null ? '—' : fmtTableMoney(value)) + '</td>';
+        }).join('') +
         '<td class="num" data-sort-value="' + share + '"><span class="dp-share"><span>' + formatDebtRatio(row.share) + '</span>' +
         '<span class="dp-bar"><i style="width:' + barWidth + '%;--dp-bar-color:' + color + '"></i></span></span></td></tr>';
     }
@@ -10590,8 +10607,7 @@
       chart.update('none');
     }
 
-    // Hộp "Doanh số theo khách" của 1 mã hàng: hàng chỉ số (doanh số, số khách, khách lớn nhất, top 3, tồn kho, SL bán 30
-    // ngày — 2 thẻ cuối lấy từ dòng bảng Báo cáo hàng hóa) + bảng khách cạnh biểu đồ tròn. Vẽ biểu đồ SAU khi canvas đã vào DOM.
+    // Chỉ số hai cột cạnh biểu đồ; bảng khách và ba kỳ 30 ngày nằm trọn hàng phía dưới.
     function renderProductReportModal(body, subtitle, data) {
       const rows = (data && data.rows) || [];
       if (!rows.length) {
@@ -10618,15 +10634,23 @@
           ?{ label: 'SL bán 30 ngày', value: fmtNumber(item.qtySold30d) }
           : null
       ];
-      body.innerHTML = detailStatsHtml(tiles) +
-        '<div class="dp-split">' +
-        '<div class="dp-section">' + detailSectionHeadHtml('Khách hàng', fmtNumber(rows.length) + ' khách') +
-        '<div class="dp-table-wrap product-detail-table"><table class="dp-table" data-table-key="dashboard-table-21"><thead><tr><th>Khách hàng</th><th class="num">Doanh số 90 ngày</th><th class="num">% của SP</th></tr></thead>' +
-        '<tbody>' + rows.map(function (row, index) { return productDetailRowHtml(row, index, top.revenue); }).join('') + '</tbody></table></div></div>' +
+      const periodHeadings = [ ['1_30d', 'T.này'], ['31_60d', 'T.trước'], ['61_90d', 'T.trước nữa'] ].map(function (entry) {
+        const period = (data.periods || []).find(function (p) { return p.key === entry[0]; });
+        const date = function (key) { return key.split('-').reverse().join('/'); };
+        const title = period ? date(period.from) + ' – ' + date(period.to) : 'Chưa tính dữ liệu kỳ';
+        return '<th class="num" data-column-key="revenue-' + entry[0] + '" title="' + escapeHtml(title) + '">' + entry[1] + '</th>';
+      }).join('');
+      body.innerHTML = '<div class="product-detail-overview">' + detailStatsHtml(tiles) +
         '<div class="dp-section">' + detailSectionHeadHtml('Tỷ trọng doanh số') +
         '<div class="dp-chart is-donut"><canvas id="productDetailChart" role="img" ' +
         'aria-label="Biểu đồ tròn tỷ trọng doanh số 90 ngày của các khách theo sản phẩm đã chọn"></canvas></div>' +
-        '<p class="dp-chart-caption">Mỗi lát là một khách · rê chuột lên dòng bảng để tìm lát tương ứng</p></div></div>';
+        '<p class="dp-chart-caption">Mỗi lát là một khách · rê chuột lên dòng bảng để tìm lát tương ứng</p></div></div>' +
+        '<div class="dp-section">' + detailSectionHeadHtml('Khách hàng', fmtNumber(rows.length) + ' khách') +
+        '<div class="dp-table-wrap product-detail-table"><table class="dp-table" data-table-key="dashboard-table-21"><thead><tr>' +
+        '<th data-column-key="customer">Khách hàng</th><th class="num" data-column-key="revenue">DS 90 ngày</th>' + periodHeadings +
+        '<th class="num" data-column-key="share">% của SP</th></tr></thead><tbody>' +
+        rows.map(function (row, index) { return productDetailRowHtml(row, index, top.revenue); }).join('') + '</tbody></table></div>' +
+        (!(data.periods || []).length ? '<p class="dp-note">Ba kỳ 30 ngày chưa được tính. Số liệu sẽ có sau lần cập nhật báo cáo.</p>' : '') + '</div>';
       renderPieChartList(
         'productDetailChart', 'productDetailCustomers', productDetailPieList(rows),
         function (entry) { return entry.name; }, function (entry) { return entry.revenue; }, null, 'Tổng 90 ngày',
@@ -11112,7 +11136,7 @@
         openAgingRow(row);
       });
       document.addEventListener('keydown', function (event) {
-        if (event.key === 'Escape' && !document.getElementById('docModalBackdrop').hidden) {
+        if (event.key === 'Escape' && !event.defaultPrevented && !document.getElementById('docModalBackdrop').hidden && document.getElementById('exportModalBackdrop').hidden) {
           event.preventDefault();
           closeDocumentDetail();
         }

@@ -426,6 +426,7 @@ function payloadFor(tableKey, extra = {}) {
   if (tableKey === 'customers.productDetail') {
     payload.context = { customerProductCustomerCode: 'KH-01', customerProductCustomerName: 'Khách A' };
   }
+  if (tableKey === 'products.productHistory') payload.context = { productCode: 'SP1' };
   if (tableKey === 'stockout.recentScan') payload.recentStockoutResult = { branch: 'Hà Nội', rows: STOCKOUT_ROWS };
   if (tableKey === 'stockout.check90d') payload.stockout90dResult = { branch: 'Hà Nội', rows: STOCKOUT_ROWS };
   if (tableKey === 'stockout.check30d') payload.stockout30dResult = { branch: 'Hà Nội', rows: STOCKOUT_ROWS };
@@ -434,7 +435,7 @@ function payloadFor(tableKey, extra = {}) {
 
 const ALL_STATIC_TABLES = exportService.__test__.TABLE_SPEC_KEYS;
 // Hàng hóa 90 ngày đòi cờ quyền tường minh (reports.products + reports.products.sales) — xem test riêng ở exportProduct90d.test.js.
-const accessFor = tableKey => (tableKey === 'products.product90d' ? { canViewProducts: true, canViewSales: true } : undefined);
+const accessFor = tableKey => (['products.product90d', 'products.productHistory'].includes(tableKey) ? { canViewProducts: true, canViewSales: true } : undefined);
 
 function fixedEnv(stubs, branch = 'Hà Nội') {
   return { dashboard: stubs.dashboard, branch };
@@ -635,7 +636,7 @@ test('cot o buoc lay truong == cot cua dataset o buoc xuat cho moi bang co dinh'
   try {
     await withRewardService(async () => historicalRewardBoard(), () => withStubs({}, async () => {
       // Hàng hóa 90 ngày cố ý đổi nhãn sang nhãn có ngày thật của kỳ trong file (khóa/kiểu giữ nguyên) — test riêng.
-      const payloads = ALL_STATIC_TABLES.filter(tableKey => tableKey !== 'products.product90d').map(tableKey => payloadFor(tableKey));
+      const payloads = ALL_STATIC_TABLES.filter(tableKey => !['products.product90d', 'products.productHistory'].includes(tableKey)).map(tableKey => payloadFor(tableKey));
       for (const payload of payloads) {
         const metadata = await exportService.getExportFields(payload, 'Hà Nội');
         const dataset = await exportService.__test__.buildExportDataset(payload, 'Hà Nội');

@@ -34,7 +34,7 @@ function fakePool(client, { state, gate } = {}) {
     connect: async () => client
   };
 }
-const STATE_TODAY = { computed_at: new Date('2026-10-16T04:55:00Z'), last_full_at: FULL_TODAY, version: '6' };
+const STATE_TODAY = { customer_window_end: '2026-10-16', computed_at: new Date('2026-10-16T04:55:00Z'), last_full_at: FULL_TODAY, version: '6' };
 
 test('tat co => khong dong vao DB; thieu migration 0055 => bo qua', async () => {
   assert.deepEqual(await refreshProductReportIncremental({ query: async () => { throw new Error('khong duoc'); } }, { enabled: false }), { skipped: 'disabled' });
@@ -53,12 +53,12 @@ test('decideHeavy: chua co moc / sang ngay moi / co chung tu moi => nang; con la
   assert.equal(decideHeavy({ last_full_at: null }, null, NOW).heavy, true);
   assert.deepEqual(decideHeavy({ last_full_at: FULL_YESTERDAY }, quiet, NOW), { heavy: true, reason: 'sang-ngay-moi' });
   for (const key of Object.keys(quiet)) {
-    assert.deepEqual(decideHeavy({ last_full_at: FULL_TODAY }, { ...quiet, [key]: true }, NOW), { heavy: true, reason: 'co-chung-tu-moi' });
+    assert.deepEqual(decideHeavy({ last_full_at: FULL_TODAY, customer_window_end: '2026-10-16' }, { ...quiet, [key]: true }, NOW), { heavy: true, reason: 'co-chung-tu-moi' });
   }
-  assert.deepEqual(decideHeavy({ last_full_at: FULL_TODAY }, quiet, NOW), { heavy: false, reason: 'khong-doi' });
+  assert.deepEqual(decideHeavy({ last_full_at: FULL_TODAY, customer_window_end: '2026-10-16' }, quiet, NOW), { heavy: false, reason: 'khong-doi' });
   // Con dong orders_90d NULL (vua ap migration 0067 / ma moi do luot nhe them) => nang du khong co chung tu moi.
-  assert.deepEqual(decideHeavy({ last_full_at: FULL_TODAY }, { ...quiet, orders_missing: true }, NOW), { heavy: true, reason: 'thieu-so-don' });
-  assert.deepEqual(decideHeavy({ last_full_at: FULL_TODAY }, { ...quiet, orders_missing: false }, NOW), { heavy: false, reason: 'khong-doi' });
+  assert.deepEqual(decideHeavy({ last_full_at: FULL_TODAY, customer_window_end: '2026-10-16' }, { ...quiet, orders_missing: true }, NOW), { heavy: true, reason: 'thieu-so-don' });
+  assert.deepEqual(decideHeavy({ last_full_at: FULL_TODAY, customer_window_end: '2026-10-16' }, { ...quiet, orders_missing: false }, NOW), { heavy: false, reason: 'khong-doi' });
   assert.match(__sql__.GATE_SQL, /EXISTS \(SELECT 1 FROM product_report WHERE orders_90d IS NULL\) AS orders_missing/);
 });
 
@@ -157,7 +157,7 @@ test('IfDue che do tang dan: da chay phan nang hom nay => bo qua; chua => chay; 
     throw new Error('khong mong doi: ' + sql.slice(0, 40));
   };
   assert.deepEqual(
-    await refreshProductReportIfDue({ query: stateQuery([{ last_full_at: FULL_TODAY }]) }, { incremental: true, now: () => NOW, log: () => {} }),
+    await refreshProductReportIfDue({ query: stateQuery([{ last_full_at: FULL_TODAY, customer_window_end: '2026-10-16' }]) }, { incremental: true, now: () => NOW, log: () => {} }),
     { skipped: true }
   );
   // Chua co state => chay luot tang dan (khong TRUNCATE).
@@ -194,6 +194,7 @@ async function diffFixture() {
   // Chi cau CREATE TABLE cua 0055 (cac index cua no can bang hoa don/khach cua DB that).
   const m55 = fs.readFileSync(path.join(migrations, '0055_product_report_state.sql'), 'utf8');
   await db.exec(m55.slice(m55.indexOf('CREATE TABLE'), m55.indexOf(');', m55.indexOf('CREATE TABLE')) + 2));
+  await db.exec(fs.readFileSync(path.join(migrations, '0108_product_customer_periods.sql'), 'utf8'));
   for (const statement of __sql__.CREATE_STAGE_SQL) await db.exec(statement.replace(' ON COMMIT DROP', '')); // PGlite tu commit tung cau
   return db;
 }
@@ -461,5 +462,25 @@ test('ghi khac biet product_report_customers + state (SQL that): version chi tan
     assert.equal(Number(v3.version), 2);
     const state = (await db.query('SELECT last_full_at IS NOT NULL AS has_full FROM product_report_state')).rows[0];
     assert.equal(state.has_full, true, 'luot nhe khong xoa moc last_full_at');
+  } finally { await db.close(); }
+});
+
+test('period backfill gate and persisted window are required', () => {
+  assert.equal(__test__.decideHeavy({...STATE_TODAY, customer_window_end: null}, {}, NOW).heavy, true);
+  assert.equal(__test__.decideHeavy({...STATE_TODAY, customer_window_end: '2026-10-16'}, {periods_missing:true}, NOW).heavy, true);
+  assert.match(__sql__.UPDATE_CUSTOMERS_SQL, /revenue_31_60d/);
+});
+
+test('SQL period subdivisions update even when total revenue is unchanged; identical snapshots do not write', async () => {
+  const db = await diffFixture();
+  try {
+    await db.exec(`INSERT INTO product_report_customers (product_key,customer_key,customer_name,revenue,revenue_1_30d,revenue_31_60d,revenue_61_90d)
+      VALUES ('a','name:a','A',100,100,0,0);
+      INSERT INTO pr_customers_new (product_key,customer_key,customer_name,revenue,revenue_1_30d,revenue_31_60d,revenue_61_90d)
+      VALUES ('a','name:a','A',100,0,-10,110)`);
+    assert.equal((await db.query(__sql__.UPDATE_CUSTOMERS_SQL)).affectedRows,1);
+    assert.equal((await db.query(__sql__.UPDATE_CUSTOMERS_SQL)).affectedRows,0);
+    const r = (await db.query('SELECT revenue::float8 AS total,revenue_31_60d::float8 AS middle FROM product_report_customers')).rows[0];
+    assert.deepEqual(r,{total:100,middle:-10});
   } finally { await db.close(); }
 });

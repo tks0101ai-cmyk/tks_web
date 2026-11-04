@@ -1043,3 +1043,15 @@ Kiểm thử: `dashboard/product90dReportRepository.test.js`, `dashboard/product
 Cập nhật gần nhất: 04/11/2026.
 
 Cập nhật gần nhất: 04/11/2026.
+
+## 04/11/2026 — Mở rộng API Chi tiết hàng hóa (migration 0108, chưa áp DB)
+
+- `GET /api/product-report/customers?code=SP1`: giữ response cũ, thêm `periods: [{key,label,from,to}]` theo thứ tự `1_30d`, `31_60d`, `61_90d`; mỗi khách thêm `revenue1_30d`, `revenue31_60d`, `revenue61_90d` (number hoặc null). Một câu SQL đọc khách và ngày snapshot; chưa tính → null / `periods:[]`, không giả số 0. Luồng tăng dần kết thúc hôm nay; luồng đầy đủ di sản kết thúc hôm qua, tooltip theo ngày đã lưu.
+- `GET /api/product-report/history`: `type=all|invoice|return|order`, `sort=time|type|documentCode|customerName|quantity`, `dir=asc|desc`; mặc định time desc, cùng khóa phụ branch/type/id để ổn định. `order` chỉ đơn có `raw->>'statusValue' = 'Phiếu tạm'`, dùng order_date. Bổ sung `summary.orderQuantity` / `orderCount`, không cộng vào số mua; tổng theo toàn bộ tập lọc trước phân trang. Quyền vẫn `reports.products` + `.sales`, unitCost theo `.price`.
+- `POST /api/export/fields` và `POST /api/export`: `tableKey:'products.productHistory'`, `context:{productCode,historyType,historyQuery}`, `tableSort:{label,direction}`, `columns:{product_history:[...]}`. Nhãn sort theo 5 cột trên màn hình. Query tên khách tối đa 500 ký tự, cùng giới hạn API đọc. Quyền `reports.export` + `reports.products` + `reports.products.sales`, kiểm tra price khi chọn unitCost. Một SQL snapshot lấy mọi dòng; không lặp các trang hoặc cắt ngầm 100 dòng. Xuất gộp HN/SG, mã kèm cơ sở; ngày giờ giữ giờ tường VN, số lượng là số; sheet thông tin ghi mã/kỳ/bộ lọc.
+
+Migration: `db/migrations/0108_product_customer_periods.sql`; rollback: `db/rollbacks/0108_product_customer_periods.down.sql`. Áp `npm run db:migrate` trước triển khai backend và worker. Kích hoạt tính lại tăng dần sau áp migration: chạy trong thư mục server `node -e "require('dotenv').config(); const {getPool}=require('./db/pool'); require('./kiotvietSync/productReportIncremental').refreshProductReportIncremental(getPool(),{enabled:true}).finally(()=>getPool().end())"`, hoặc chờ worker. Kiểm tra `product_report_state.customer_window_end` và ba cột kỳ đã hết NULL trước nghiệm thu. Không chạy job `products:90d:refresh` cho phần này (đó là báo cáo 90 ngày độc lập).
+
+Kiểm thử mới: `dashboard/exportProductHistory.test.js`; mở rộng test repository, routes, refresh/incremental và giao diện chi tiết/xuất file. Không dependency/env mới. Chưa áp migration trên DB thật, chưa commit/deploy.
+
+Cập nhật gần nhất: 04/11/2026.

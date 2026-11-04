@@ -137,7 +137,7 @@ server/
 │   └── customerProfileRules.js       # Luật thuần (không DB) kiểm tra đầu vào: quy mô kho, hình thức bán hàng, note ≤ 2000 ký tự, ngày đã đi, người sửa
 ├── cashbook/             # Sổ quỹ toàn công ty: số dư, sổ chi tiết, lịch sử chốt và xuất Excel/HTML; repository đọc qua view v_cash_book_transactions (0070, lùi về subquery nếu thiếu view)
 ├── dashboard/            # Tổng hợp dashboard (dashboardData + dashboardViews: API theo tab), xuất Excel/HTML, kiểm tra đứt hàng; product90dReportRepository.js (04/11/2026): đọc bảng tính sẵn Hàng hóa 90 ngày, `GET /api/product-report/90d`
-│   ├── productHistoryRepository.js  # Lịch sử hóa đơn hoàn thành / trả hàng thành công theo mã trong 90 ngày, lọc và tổng trước phân trang
+│   ├── productHistoryRepository.js  # Lịch sử hóa đơn / trả hàng / Phiếu tạm theo mã, lọc/sort/tổng trước phân trang, xuất toàn bộ
 │   ├── documentDetailRepository.js  # Chi tiết hóa đơn (popup bảng Chi tiết giao dịch) và chi tiết đơn đặt hàng (trang Vòng đời đơn hàng)
 │   └── stockoutCheck/    # Engine kiểm tra đứt hàng + upload Trả NCC Excel; stockoutDaysStore.js lưu số ngày đứt 30 ngày theo cơ sở vào product_stockout_days (cột Đứt HN/SG của Báo cáo hàng hóa)
 ├── data/                 # Dữ liệu lưu trữ local (users.json.example, ...); chuông thông báo đã chuyển sang bảng Postgres `notifications` (0093)
@@ -316,5 +316,15 @@ Tab Hàng hóa có thêm **mục 4 "Hàng hóa 90 ngày"** (`#product90dSection`
 - Kiểm thử: `server/dashboard/exportProduct90d.test.js` (PGlite thật, đọc lại xlsx, mở HTML trong JSDOM), `product90dReportRepository.test.js`, `test/frontend/product-90d-report.test.js`, `test/frontend/export-ui.test.js`. Không migration/biến môi trường mới.
 
 Cập nhật gần nhất: 04/11/2026.
+
+Cập nhật gần nhất: 04/11/2026.
+
+## 04/11/2026 — Chi tiết hàng hóa: ba kỳ 30 ngày, Phiếu tạm và xuất Excel
+
+Hộp chi tiết xếp 2 chỉ số/hàng bên trái, biểu đồ bên phải (điện thoại xếp dọc), bảng khách toàn chiều ngang với DS 90 ngày → T.này → T.trước → T.trước nữa → % của SP. Ba cột là kỳ 1–30/31–60/61–90 ngày của cùng snapshot, tooltip ghi ngày thật, chưa tính hiện “—”. Giữ tên khách hiện tại, quy tắc doanh số ròng và lọc khách đang hoạt động như báo cáo hiện hành.
+
+Lịch sử gồm hóa đơn Hoàn thành, trả hàng Đã trả và đơn đang có `raw.statusValue = 'Phiếu tạm'` trong 90 ngày gồm hôm nay, gộp cả HN/SG. Cột mặc định: Thời gian / Loại giao dịch / Mã giao dịch · HN/SG / Khách hàng / Số lượng. Sắp xếp toàn bộ kết quả trên máy chủ, tìm khách, lọc loại, tổng mua/trả/đặt riêng, 25 dòng/trang; Giá vốn ẩn mặc định và chỉ được bật theo quyền. Xuất file chung với `tableKey: products.productHistory` lấy toàn bộ kết quả khớp và các cột đang chọn, số lượng trong Excel là số. Kiểm thử xuất mới: `server/dashboard/exportProductHistory.test.js`.
+
+Migration mới `0108_product_customer_periods.sql` và rollback `0108_product_customer_periods.down.sql`: thêm ba cột NUMERIC nullable vào `product_report_customers`, ngày kết thúc kỳ vào `product_report_state`. **Chưa áp DB thật, chưa deploy**. Áp migration trước khi chạy backend/worker mới; sau đó chạy lại tổng hợp tăng dần hoặc chờ lượt worker kế tiếp (thiếu kỳ tự buộc tính lại). Không dependency hoặc biến môi trường mới.
 
 Cập nhật gần nhất: 04/11/2026.

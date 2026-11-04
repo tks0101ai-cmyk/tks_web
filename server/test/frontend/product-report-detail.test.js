@@ -48,7 +48,7 @@ function createPage({ customers = code => customersPayload(code), history, meta,
     destroy() { this.destroyed = true; }
   };
   dom.window.setInterval = () => 1;
-  dom.window.requestAnimationFrame = callback => callback();
+  dom.window.requestAnimationFrame = callback => { if (dom.window.document) callback(); };
   dom.window.HTMLElement.prototype.scrollIntoView = function () {
     dom.window.__scrolled = (dom.window.__scrolled || 0) + 1;
     (dom.window.__scrolledTo = dom.window.__scrolledTo || []).push(this.id);
@@ -503,13 +503,35 @@ test('bam 1 dong: goi API dung ma, hop giua man hinh hien bang khach (so tien + 
   assert.equal(rows.length, 3);
   assert.match(rows[0].cells[0].textContent, /KH A/);
   assert.match(rows[0].cells[1].textContent, /300/);
-  assert.match(rows[0].cells[2].textContent, /50/); // 300 / 600
+  assert.match(rows[0].cells[5].textContent, /50/); // 300 / 600
 
   const pies = pieCharts(page);
   assert.equal(pies.length, 1);
   assert.deepEqual(pies[0].config.data.labels, ['KH A', 'KH B', 'KH C']);
   assert.deepEqual(pies[0].config.data.datasets[0].data, [300, 200, 100]);
   assert.ok(page.$('docModalBody').contains(page.$('productDetailChart')), 'bieu do nam trong hop');
+});
+
+test('product detail places chart beside stats, customer table below and renders three nullable rolling periods', async () => {
+  const page=createPage({customers:code=>({...customersPayload(code),periods:[
+    {key:'1_30d',label:'T.này',from:'2026-10-06',to:'2026-11-04'},
+    {key:'31_60d',label:'T.trước',from:'2026-09-06',to:'2026-10-05'},
+    {key:'61_90d',label:'T.trước nữa',from:'2026-08-07',to:'2026-09-05'}
+  ],rows:[{customerName:'Khách A',revenue:300,share:1,revenue1_30d:-20,revenue31_60d:0,revenue61_90d:320}]})});
+  await settle();rowOf(page,'SP-1').click();await settle();
+  const content=page.$('productCustomerContent');
+  const overview=content.querySelector('.product-detail-overview');
+  assert.ok(overview.querySelector('.dp-stats'));
+  assert.ok(overview.contains(page.$('productDetailChart')));
+  const table=content.querySelector('table');
+  assert.equal(overview.contains(table),false);
+  assert.deepEqual([...table.tHead.rows[0].cells].map(c=>c.textContent),['Khách hàng','DS 90 ngày','T.này','T.trước','T.trước nữa','% của SP']);
+  assert.match(table.tHead.rows[0].cells[2].title,/06\/10\/2026.*04\/11\/2026/);
+  assert.deepEqual([...table.tBodies[0].rows[0].cells].slice(2,5).map(c=>c.getAttribute('data-sort-value')),['-20','0','320']);
+  page.dom.window.close();
+  const missing=createPage();await settle();rowOf(missing,'SP-1').click();await settle();
+  assert.deepEqual([...missing.$('productCustomerContent').querySelector('tbody tr').cells].slice(2,5).map(c=>c.textContent),['—','—','—']);
+  missing.dom.window.close();
 });
 
 test('bam dong khac: huy bieu do cu, chi con 1 bieu do; dong hop huy bieu do', async () => {
@@ -630,7 +652,7 @@ test('hop co sort, thanh keo do rong cot va nut "Cột hiển thị" o dau khoi 
   const buttons = page.$('docModalBackdrop').querySelectorAll('.tks-columns-button');
   assert.equal(buttons.length, 1);
   assert.ok(buttons[0].parentElement.classList.contains('dp-section-head'), 'nut nam o dau khoi, khong them hang cong cu');
-  assert.equal(table.querySelectorAll('th > .tks-column-resizer').length, 3);
+  assert.equal(table.querySelectorAll('th > .tks-column-resizer').length, 6);
 
   // sort theo cot "Doanh so 90 ngay": tang dan roi giam dan, thu tu goc khi bam lan 3
   const names = () => [...table.tBodies[0].rows].map(row => row.cells[0].textContent.trim());

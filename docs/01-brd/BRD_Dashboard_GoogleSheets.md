@@ -559,3 +559,9 @@ Bổ sung mục 4 trong tab Hàng hóa để so sánh sức bán danh mục gộ
 Cập nhật gần nhất: 04/11/2026.
 
 Cập nhật gần nhất: 04/11/2026.
+
+## Bổ sung 04/11/2026 — Theo dõi khách mua và đơn tạm theo hàng hóa
+
+Hộp Chi tiết hàng hóa giúp người dùng xem nhanh chỉ số cạnh biểu đồ, so sánh doanh số từng khách qua ba kỳ 30 ngày liên tiếp và xem lịch sử bán/trả/đặt. Phiếu tạm được trình bày riêng với số lượng và số đơn đặt, không làm tăng doanh số hoặc số mua hoàn thành. Bảng giao dịch có mã kèm cơ sở HN/SG, tìm khách, lọc loại, sắp xếp và xuất Excel đầy đủ theo lựa chọn đang xem. Dùng trên điện thoại/máy tính với giao diện Sáng/Tối, giữ phân quyền hiện hành. Triển khai cần migration 0108 và tính lại dữ liệu tổng hợp; chưa áp DB thật/chưa deploy.
+
+Cập nhật gần nhất: 04/11/2026.

@@ -166,17 +166,30 @@ test('SSE: tab ẩn thì không tải, hiện lại thì tải bù một lần; 
 });
 
 test('SSE lỗi: bật tải bù định kỳ, kết nối lại thì tắt', async t => {
-  const { lists } = await setup(t, { withEvents: true });
+  const { window, lists } = await setup(t, { withEvents: true });
   const source = FakeEventSource.instances[0];
   const before = lists();
+  let callback;
+  let starts = 0;
+  let stopped;
+  const timer = 12345;
+  window.setInterval = (fn, ms) => {
+    assert.equal(ms, window.TKSVtPositions.live.fallbackMs);
+    callback = fn;
+    starts++;
+    return timer;
+  };
+  window.clearInterval = id => { stopped = id; };
   source.emit('error');
-  await sleep(150);
-  assert.ok(lists() >= before + 2, 'tải bù lặp theo fallbackMs');
+  source.emit('error');
+  assert.equal(starts, 1, 'nhiều lỗi không tạo nhiều bộ đếm');
+  for (let i = 0; i < 2; i++) { callback(); await settle(); }
+  assert.equal(lists(), before + 2, 'mỗi nhịp tải bù một lần');
+  Object.defineProperty(window.document, 'hidden', { value: true, configurable: true });
+  callback(); await settle();
+  assert.equal(lists(), before + 2, 'tab ẩn không tải bù');
   source.emit('open');
-  await sleep(30);
-  const settled = lists();
-  await sleep(150);
-  assert.equal(lists(), settled);
+  assert.equal(stopped, timer, 'kết nối lại hủy đúng bộ đếm tải bù');
 });
 
 test('hộp chi tiết đang mở: không bị đóng/mất chữ đang gõ; dòng đổi hiện dải cảnh báo, Xem bản mới nạp lại', async t => {

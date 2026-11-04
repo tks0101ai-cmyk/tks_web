@@ -894,3 +894,15 @@ Cập nhật gần nhất: 03/11/2026.
 Cập nhật gần nhất: 04/11/2026.
 
 Cập nhật gần nhất: 04/11/2026.
+
+## Migration 0108 — Doanh số khách theo ba kỳ 30 ngày (04/11/2026, chưa áp DB)
+
+`product_report_customers` thêm `revenue_1_30d`, `revenue_31_60d`, `revenue_61_90d` kiểu NUMERIC nullable, không default: NULL nghĩa chưa tính kỳ; 0 là kỳ đã tính không phát sinh. `product_report_state` thêm `customer_window_end DATE` nullable, lưu ngày kết thúc cửa sổ khách, cùng transaction với dữ liệu tổng hợp. Không thay khóa chính, bảng chứng từ nguồn hoặc quyền hiện hành.
+
+Ba kỳ tính từ ngày E đã lưu: E−29..E, E−59..E−30, E−89..E−60. Tổng ba kỳ bằng revenue; doanh số ròng giữ trả hàng theo ngày trả nên kỳ có thể âm. Giữ quy tắc khách đang hoạt động, gộp tên chuẩn hóa, tổng ròng >0 của báo cáo hiện hành. Luồng đầy đủ E=hôm qua; tăng dần E=hôm nay theo Asia/Ho_Chi_Minh; thời gian chứng từ đọc giờ tường VN mang nhãn UTC, không cộng 7 giờ lần nữa. Tăng dần buộc luồng nặng khi thiếu kỳ/ngày hoặc đổi ngày, so sánh cả ba cột khi ghi kể cả tổng 90 ngày không đổi. API đọc khách/ngày trong một snapshot.
+
+Lịch sử hàng hóa không thêm schema khác: UNION invoices/invoice_details + returns/return_details + orders/order_details. Đơn chỉ nhận chính xác `orders.raw->>'statusValue' = 'Phiếu tạm'` (dùng partial index hiện có), không suy ra từ số status. Gộp chứng từ theo branch/type/id. Không đưa đơn tạm vào doanh số hoặc tổng mua hoàn thành.
+
+Rollback: `0108_product_customer_periods.down.sql`; khi rollback phải dừng/quay lại backend và worker tương ứng trước. Chưa áp DB thật, chưa deploy.
+
+Cập nhật gần nhất: 04/11/2026.

@@ -395,3 +395,13 @@ Thiết kế đã được người dùng duyệt qua phỏng vấn: 26 cột th
 Cập nhật gần nhất: 04/11/2026.
 
 Cập nhật gần nhất: 04/11/2026.
+
+## 04/11/2026 — Chi tiết hàng hóa mở rộng
+
+Đã triển khai cục bộ: chỉ số 2 cột cạnh donut, bảng khách toàn hàng với 3 kỳ 30 ngày (tooltip ngày snapshot); lịch sử 5 cột chính, sort toàn bộ kết quả trước phân trang, đơn Phiếu tạm và 2 tổng đặt riêng. Frontend giữ table-controls cho cột/độ rộng; sort lịch sử do API xử lý; bỏ phản hồi cũ theo generation khi đổi lọc/mã/đóng hộp. Xuất qua registry chung `products.productHistory`, truyền mã/lọc/sort/cột hiện tại, đọc mọi dòng cùng một SQL snapshot, Excel giữ kiểu số. Hộp xuất đóng bằng Esc trả về hộp chi tiết và giữ khóa cuộn nền.
+
+Migration 0108 bổ sung 3 NUMERIC nullable + ngày kết thúc kỳ. Cả refresh đầy đủ và incremental tính kỳ trong cùng giao dịch; missing gate tự buộc chạy nặng; cập nhật so sánh cả kỳ khi tổng không đổi. API khách trả periods và revenue1_30d/revenue31_60d/revenue61_90d. Phạm vi HN+SG, giá vốn theo quyền, không sửa dữ liệu nguồn.
+
+Triển khai: migrate 0108 → backend/worker mới → tính lại tăng dần → đối chiếu tổng kỳ/ngày; xem lệnh và hợp đồng API ở server/README.md. Chưa áp DB thật, chưa commit/deploy.
+
+Cập nhật gần nhất: 04/11/2026.

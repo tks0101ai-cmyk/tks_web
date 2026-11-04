@@ -167,9 +167,9 @@ test('getProductReportCustomers tra khach xep giam dan theo doanh so, share = kh
   assert.equal(result.totalRevenue, 1000000);
   assert.equal(result.customerCount, 3);
   assert.deepEqual(result.rows, [
-    { customerName: 'KH A', revenue: 600000, share: 0.6 },
-    { customerName: 'KH B', revenue: 300000, share: 0.3 },
-    { customerName: 'Khách lẻ', revenue: 100000, share: 0.1 }
+    { customerName: 'KH A', revenue: 600000, revenue1_30d:null, revenue31_60d:null, revenue61_90d:null, share: 0.6 },
+    { customerName: 'KH B', revenue: 300000, revenue1_30d:null, revenue31_60d:null, revenue61_90d:null, share: 0.3 },
+    { customerName: 'Khách lẻ', revenue: 100000, revenue1_30d:null, revenue31_60d:null, revenue61_90d:null, share: 0.1 }
   ]);
   assert.ok(Math.abs(result.rows.reduce((sum, row) => sum + row.share, 0) - 1) < 1e-9);
 });
@@ -177,7 +177,7 @@ test('getProductReportCustomers tra khach xep giam dan theo doanh so, share = kh
 test('getProductReportCustomers tra rows rong (khong loi) neu ma hang chua co du lieu khach', async () => {
   const pool = { query: async () => ({ rows: [] }) };
   const result = await getProductReportCustomers({ code: 'XYZ', pool });
-  assert.deepEqual(result, { code: 'XYZ', totalRevenue: 0, customerCount: 0, rows: [] });
+  assert.deepEqual(result, { code: 'XYZ', totalRevenue: 0, customerCount: 0, periods: [], rows: [] });
 });
 
 test('getProductReportCustomers dat share = null neu tong doanh so = 0 (tranh chia cho 0)', async () => {
@@ -533,4 +533,47 @@ test('FAIL-SOFT chi nuot 42P01: loi khac van duoc nem ra', async () => {
     return { rows: [] };
   } };
   await assert.rejects(() => getProductReport({ pool }), /permission denied/);
+});
+
+test('customer periods derive from saved end, preserve signed zero/null and do not fabricate missing snapshots', async () => {
+  const row={customer_name:'A',revenue:'100',revenue_1_30d:'0',revenue_31_60d:'-10',revenue_61_90d:'110',customer_window_end:'2026-03-01'};
+  const pool={query:async()=>({rows:[row]})};
+  const result=await getProductReportCustomers({code:'A',pool});
+  assert.deepEqual(result.periods,[
+    {key:'1_30d',label:'T.này',from:'2026-01-31',to:'2026-03-01'},
+    {key:'31_60d',label:'T.trước',from:'2026-01-01',to:'2026-01-30'},
+    {key:'61_90d',label:'T.trước nữa',from:'2025-12-02',to:'2025-12-31'}
+  ]);
+  assert.deepEqual([result.rows[0].revenue1_30d,result.rows[0].revenue31_60d,result.rows[0].revenue61_90d],[0,-10,110]);
+  row.revenue_31_60d=null;
+  assert.equal((await getProductReportCustomers({code:'A',pool})).rows[0].revenue31_60d,null);
+  row.customer_window_end=null;
+  const missing=await getProductReportCustomers({code:'A',pool});
+  assert.deepEqual(missing.periods,[]);
+  assert.equal(missing.rows[0].revenue1_30d,null);
+});
+
+test('SQL customer snapshot reads saved dates with rows and returns dates even for an empty product', async () => {
+  const fs=require('node:fs');
+  const path=require('node:path');
+  const {PGlite}=require('@electric-sql/pglite');
+  const db=new PGlite();
+  try {
+    await db.exec(fs.readFileSync(path.join(__dirname,'../db/migrations/0023_product_report_customers.sql'),'utf8'));
+    await db.exec('CREATE TABLE product_report_state (id smallint PRIMARY KEY, customer_window_end date)');
+    await db.exec('ALTER TABLE product_report_state DROP COLUMN customer_window_end');
+    await db.exec(fs.readFileSync(path.join(__dirname,'../db/migrations/0108_product_customer_periods.sql'),'utf8'));
+    await db.exec("INSERT INTO product_report_customers VALUES ('a','name:a','A',100,0,-10,110)");
+    let result=await getProductReportCustomers({code:'A',pool:db});
+    assert.deepEqual(result.periods,[]);
+    assert.equal(result.rows[0].revenue1_30d,null);
+    await db.exec("INSERT INTO product_report_state VALUES (1,'2026-03-01')");
+    result=await getProductReportCustomers({code:'A',pool:db});
+    assert.equal(result.periods[0].to,'2026-03-01');
+    assert.equal(result.rows[0].revenue31_60d,-10);
+    result=await getProductReportCustomers({code:'EMPTY',pool:db});
+    assert.equal(result.periods[0].to,'2026-03-01');
+    assert.deepEqual(result.rows,[]);
+    await db.exec(fs.readFileSync(path.join(__dirname,'../db/rollbacks/0108_product_customer_periods.down.sql'),'utf8'));
+  } finally {await db.close();}
 });

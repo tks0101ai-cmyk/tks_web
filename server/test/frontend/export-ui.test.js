@@ -43,6 +43,25 @@ test('Hang hoa 90 ngay: nut Xuat file gui dung tu khoa dang ap dung + nhan cot s
   assert.equal(button.disabled, true, 'khoa cho toi khi co du lieu');
 });
 
+test('history export keeps visible columns and active filters; Escape returns to the open product detail', async () => {
+  const h=createExportDashboard();
+  h.win.TKSProductHistory={exportState:()=>({context:{productCode:'SP1',historyType:'order',historyQuery:'dang'},tableSort:{label:'Số lượng',direction:'asc'},columns:{product_history:['time','quantity']}})};
+  h.document.getElementById('docModalBackdrop').hidden=false;
+  await openExportWithFields(h,exportMetadata({tableKey:'products.productHistory',worksheets:[{key:'product_history',name:'Lịch sử',fields:[exportField('time','Thời gian'),exportField('type','Loại giao dịch'),exportField('quantity','Số lượng')]}]}),'products.productHistory');
+  assert.equal(h.fieldsCalls().at(-1).body.context.productCode,'SP1');
+  assert.deepEqual([...h.document.querySelectorAll('#exportFields input:checked')].map(c=>c.value),['time','quantity']);
+  h.click('exportConfirmButton');
+  const request=h.fileCalls().at(-1);
+  assert.deepEqual(request.body.columns,{product_history:['time','quantity']});
+  assert.equal(request.body.context.historyQuery,'dang');
+  assert.deepEqual(request.body.tableSort,{label:'Số lượng',direction:'asc'});
+  h.win.document.dispatchEvent(new h.win.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+  assert.equal(h.document.getElementById('exportModalBackdrop').hidden,true);
+  assert.equal(h.document.getElementById('docModalBackdrop').hidden,false);
+  assert.equal(h.document.body.style.overflow,'hidden');
+  h.win.close();
+});
+
 test('modal co du dieu khien chon truong va script inline bien dich hop le', () => {
   const html = readDashboardHtml();
   ['exportModalBackdrop', 'exportFieldSearch', 'exportFields', 'exportConfirmButton'].forEach(id => {
@@ -51,7 +70,6 @@ test('modal co du dieu khien chon truong va script inline bien dich hop le', () 
   const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
     .map(match => match[1]).filter(script => script.trim());
   scripts.forEach(script => assert.doesNotThrow(() => new Function(script)));
-  assert.match(html, /field\.selected !== false \? ' checked' : ''/);
 });
 
 test('thanh tim kiem chung dau tab da bo: khong con form tim kiem toan cuc va nut xuat ket qua tim kiem', () => {
@@ -81,7 +99,7 @@ function createExportDashboard() {
     destroy() {}
   };
   win.setInterval = () => 1;
-  win.requestAnimationFrame = callback => callback();
+  win.requestAnimationFrame = callback => { if (win.document) callback(); };
   win.TKSNav = { authGuard: () => new Promise(() => {}), can: () => true, handleBranchError: () => false, renderTopSidebar() {} };
 
   const harness = { win, document: win.document, calls: [], timers: [], downloads: [], alerts: [], routes: {}, ignoreAbort: false };

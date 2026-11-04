@@ -24,6 +24,7 @@ const debtScheduleService = require('../debtSchedule/debtScheduleService');
 const dashboardPgReader = require('./dashboardPgReader');
 const productReportRepository = require('./productReportRepository');
 const product90dReportRepository = require('./product90dReportRepository');
+const productHistoryRepository = require('./productHistoryRepository');
 const product90dScreen = require('../public/product-90d-report.js');
 const exportFieldCatalog = require('./exportFieldCatalog');
 const { BRANCHES, BRANCH_BOTH, branchLabelToCode, resolveBranchScope } = require('../branch/branches');
@@ -56,6 +57,7 @@ const TABLE_TITLES = Object.freeze({
   'customers.productDetail': 'Bảng chi tiết sản phẩm theo khách',
   'overview.productReport': 'Báo cáo hàng hóa',
   'products.product90d': 'Hàng hóa 90 ngày',
+  'products.productHistory': 'Lịch sử giao dịch hàng hóa',
   'debt.management': 'Quản lý công nợ',
   'debt.penalty': 'Thưởng/phạt sale theo công nợ',
   'debt.aging': 'Tuổi nợ theo hóa đơn',
@@ -829,6 +831,14 @@ function reportWorksheet(key, name, columns) {
 // tableKey -> (context) => { worksheets, loadRows? }. Bang co loadRows doc tu dashboard
 // (getDashboardData) + Postgres; bang khong co loadRows duoc dung rieng (xem buildExportDataset).
 const TABLE_SPECS = {
+  'products.productHistory': () => ({ worksheets: [reportWorksheet('product_history', 'Lịch sử giao dịch', [
+    { key: 'time', label: 'Thời gian', type: 'date', description: 'Thời điểm giao dịch theo giờ Việt Nam.' },
+    { key: 'type', label: 'Loại giao dịch', type: 'text', description: 'Hóa đơn, trả hàng hoặc đơn hàng Phiếu tạm.' },
+    { key: 'documentCode', label: 'Mã giao dịch', type: 'text', description: 'Mã chứng từ kèm cơ sở Hà Nội hoặc Sài Gòn.' },
+    { key: 'customerName', label: 'Khách hàng', type: 'text', description: 'Tên khách hàng trên chứng từ giao dịch.' },
+    { key: 'quantity', label: 'Số lượng', type: 'number', description: 'Tổng số lượng của mã hàng trong chứng từ.' },
+    { key: 'unitCost', label: 'Giá vốn', type: 'number', selected: false, description: 'Giá vốn của mã hàng; để trống khi chưa có dữ liệu.' }
+  ])] }),
   'overview.transactions': (context, scope) => singleSourceTable({
     key: 'transactions', name: 'Chi tiết giao dịch', sourceKey: 'invoices', branchColumn: scope.aggregate,
     items: dashboard => (((dashboard.invoices || {}).transactionsReport || {}).transactions) || [],
@@ -1132,6 +1142,38 @@ async function buildProduct90dDataset(description, payload, signal) {
   };
 }
 
+async function buildProductHistoryDataset(description, payload, signal) {
+  const context = description.context;
+  const worksheet = description.worksheets[0];
+  const requested = normalizeTableSort(payload.tableSort);
+  const sortable = new Set(['time', 'type', 'documentCode', 'customerName', 'quantity']);
+  const column = requested && worksheet.columns.find(item => normalizeSortLabel(item.label) === requested.label);
+  const data = await productHistoryRepository.getProductHistoryForExport({
+    code: normalizeText(context.productCode), q: normalizeText(context.historyQuery),
+    type: normalizeText(context.historyType) || 'all',
+    sort: column && sortable.has(column.key) ? column.key : 'time',
+    dir: column && sortable.has(column.key) ? requested.direction : 'desc', signal
+  });
+  throwIfAborted(signal);
+  if (!data.rows.length) throw exportError('Không có giao dịch phù hợp để xuất.', 404, 'EXPORT_NO_DATA');
+  const labels = { invoice: 'Hóa đơn', return: 'Trả hàng', order: 'Đơn hàng Phiếu tạm' };
+  const rows = data.rows.map(row => ({ time: row.time, type: labels[row.type] || row.type,
+    documentCode: `${normalizeText(row.documentCode)} · ${row.branch === 'hanoi' ? 'HN' : 'SG'}`,
+    customerName: row.customerName, quantity: Number(row.quantity),
+    ...(worksheet.columns.some(item => item.key === 'unitCost') ? { unitCost: row.unitCost } : {})
+  }));
+  const reportNotes = [
+    ['Mã hàng', normalizeText(context.productCode)],
+    ['Khoảng thời gian', `${formatDayKey(data.from) || '—'} – ${formatDayKey(data.to) || '—'}`],
+    ['Loại giao dịch', labels[context.historyType] || 'Tất cả'],
+    ['Phạm vi', 'Hà Nội + Sài Gòn']
+  ];
+  if (normalizeText(context.historyQuery)) reportNotes.push(['Từ khóa tìm', normalizeText(context.historyQuery)]);
+  return { tableKey: description.tableKey, title: description.title, selectionMode: 'custom',
+    reportNotes, reportNotesTitle: 'Thông tin lịch sử giao dịch',
+    sourceBranch: BRANCH_BOTH, worksheets: [{ ...worksheet, rows }] };
+}
+
 function productContainerExportNotes(sync) {
   const available = Boolean(sync && sync.available);
   const timestamp = sync && sync.lastSuccessAt ? new Date(sync.lastSuccessAt) : null;
@@ -1252,7 +1294,18 @@ function describeExport(payload, branch, options = {}) {
     if (product90dQuery(request.tableSearch).length > 200) throw exportError('Từ khóa tìm kiếm quá dài (tối đa 200 ký tự).');
   }
 
+  if (tableKey === 'products.productHistory') {
+    if (options.canViewProducts !== true || options.canViewSales !== true) {
+      throw exportError('Bạn không có quyền xuất lịch sử giao dịch hàng hóa.', 403, 'EXPORT_TABLE_NOT_ALLOWED');
+    }
+    if (!normalizeText(context.productCode)) throw exportError('Chưa chọn mã hàng để xuất lịch sử.');
+    if (normalizeText(context.historyQuery).length > 500) throw exportError('Từ khóa tìm kiếm quá dài (tối đa 500 ký tự).');
+    if (context.historyType && !['all', 'invoice', 'return', 'order'].includes(context.historyType)) throw exportError('Loại giao dịch không hợp lệ.');
+  }
   const spec = getTableSpec(tableKey, context, branch);
+  if (tableKey === 'products.productHistory' && options.canViewPrice !== true) {
+    spec.worksheets = spec.worksheets.map(worksheet => ({ ...worksheet, columns: worksheet.columns.filter(column => column.key !== 'unitCost') }));
+  }
   // Đơn giá và Giá trị có bán HN/SG (PRODUCT_REPORT_PRICE_KEYS) chỉ cho tài khoản có quyền reports.products.price (route truyền options.canViewPrice); thiếu cờ = không có giá,
   // nên cột không xuất hiện trong danh sách trường và yêu cầu tự gõ khóa cột giá bị từ chối EXPORT_FIELD_NOT_ALLOWED.
   if (tableKey === 'overview.productReport' && (!options.canViewPrice || options.canViewSales === false)) {
@@ -1310,6 +1363,7 @@ async function buildExportDataset(payload, branch, options = {}) {
   if (tableKey === 'products.product90d') {
     return buildProduct90dDataset(description, request, signal);
   }
+  if (tableKey === 'products.productHistory') return buildProductHistoryDataset(description, request, signal);
   if (tableKey === 'debt.penalty') {
     const branches = resolveBranchScope(branch || BRANCH_BOTH).map(branchLabelToCode).filter(Boolean);
     const month = description.context.debtRewardMonth || undefined;

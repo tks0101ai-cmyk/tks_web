@@ -260,6 +260,15 @@ async function readLegacy(pool) {
 // 0023). % = doanh so khach / TONG doanh so cac khach cua ma hang nen luon cong
 // lai 100%; co the lech rat nhe so voi cot "% Khach lon nhat" vi mau so cot do la
 // revenue_90d lay tu rollup daily_product_sales.
+function customerPeriods(end) {
+  if (!end) return [];
+  const date = new Date(String(end).slice(0, 10) + 'T00:00:00Z');
+  if (!Number.isFinite(date.getTime())) return [];
+  const offset = days => new Date(date.getTime() - days * 86400000).toISOString().slice(0, 10);
+  return [ ['1_30d', 'T.này'], ['31_60d', 'T.trước'], ['61_90d', 'T.trước nữa'] ]
+    .map(([key, label], i) => ({ key, label, from: offset(i * 30 + 29), to: offset(i * 30) }));
+}
+
 async function getProductReportCustomers({ code, pool = getPool() } = {}) {
   const trimmed = typeof code === 'string' ? code.trim() : '';
   if (!trimmed) {
@@ -268,22 +277,33 @@ async function getProductReportCustomers({ code, pool = getPool() } = {}) {
     throw error;
   }
   const { rows } = await timedQuery(pool, 'customers',
-    `SELECT customer_name, revenue
-     FROM product_report_customers
-     WHERE product_key = lower(btrim($1))
+    `SELECT c.*, s.customer_window_end::text
+     FROM (SELECT (SELECT customer_window_end FROM product_report_state WHERE id = 1) AS customer_window_end) s
+     LEFT JOIN LATERAL (
+       SELECT customer_name, revenue, revenue_1_30d, revenue_31_60d, revenue_61_90d
+       FROM product_report_customers
+       WHERE product_key = lower(btrim($1))
+       ORDER BY revenue DESC, customer_name
+     ) c ON true
      ORDER BY revenue DESC, customer_name`,
     [code]
   );
-  const totalRevenue = rows.reduce((sum, row) => sum + (Number(row.revenue) || 0), 0);
+  const periods = customerPeriods(rows[0] && rows[0].customer_window_end);
+  const customers = rows.filter(row => row.customer_name != null);
+  const totalRevenue = customers.reduce((sum, row) => sum + (Number(row.revenue) || 0), 0);
   return {
     code: trimmed,
     totalRevenue,
-    customerCount: rows.length,
-    rows: rows.map((row) => {
+    customerCount: customers.length,
+    periods,
+    rows: customers.map((row) => {
       const revenue = Number(row.revenue) || 0;
       return {
         customerName: row.customer_name || '',
         revenue,
+        revenue1_30d: periods.length ? nullableNumber(row.revenue_1_30d) : null,
+        revenue31_60d: periods.length ? nullableNumber(row.revenue_31_60d) : null,
+        revenue61_90d: periods.length ? nullableNumber(row.revenue_61_90d) : null,
         share: totalRevenue > 0 ? revenue / totalRevenue : null
       };
     })

@@ -211,7 +211,7 @@ test('muc 1 Chi so tong quat: 6 the (tang truong, TB 4 thang, doanh so thang nay
   await settle();
   const cards = cardsOf(page, 'businessOverviewKpis');
   assert.deepEqual(cards.map(c => c[0]), ['Tăng trưởng', 'TB 4 tháng', 'Doanh số tháng này (đến 06/10)', 'SL Sale', 'SL Khách hoạt động', 'SL Mã hoạt động']);
-  assert.deepEqual(cards.slice(3).map(c => c[1]), ['1', '3', '1']);
+  assert.deepEqual(cards.slice(3).map(c => c[1]), ['1', '4', '1']);
   assert.equal(cards[2][1], page.run('fmtMoney(160)'));
 });
 
@@ -303,7 +303,8 @@ test('o tim kiem cung doi hang 3 chi so cua bang', async () => {
 });
 
 test('bang khach: an khach khong hoat dong mac dinh, cong tac hien lai, loc theo sale, cot Level gia', async () => {
-  const page = createPage();
+  // Explicitly inactive fixture: low sales alone do not make a customer inactive.
+  const page = createPage({ customerRows: rows => rows.map(r => ({ ...r, active: r.key !== 'cũ' })) });
   page.run("switchView('business')");
   await settle();
   const ids = () => rowsOf(page, 'businessCustomersRows').map(tr => tr.dataset.tableItemId);
@@ -607,7 +608,7 @@ test('customer profile filters stay hidden and ignored without detail permission
   for (const id of ['businessCustomersSalesChannel', 'businessCustomersScale']) assert.equal(page.$(id).hidden, true);
   page.$('businessCustomersSalesChannel').value = 'san';
   assert.equal(new URLSearchParams(page.run("businessExportQuery('customers')")).has('salesChannel'), false);
-  assert.equal(page.run('businessFilteredCustomers().length'), 3);
+  assert.equal(page.run('businessFilteredCustomers().length'), 4);
 });
 
 test('price level dropdown locks, persists version, refreshes options and never opens row details', async () => {
