@@ -440,21 +440,21 @@ test('Xác nhận & In: POST đúng phân bổ, đóng popup, mở phiếu in c�
   assert.equal(rowsOf(page.document)[0].querySelector('[data-col="pickStatus"] .lc-pick-state').dataset.pickStatus, 'picking');
   // đơn đã có chỉ định (đang nhặt): bảng hàng hóa có thêm cột ST = 2
   const heads = [...page.document.querySelectorAll('#lcDetailKiot table.lc-lines thead th')].map(th => th.textContent);
-  assert.equal(heads.length, 10);
-  assert.match(heads[3], /^ST/, 'cột ST ngay sau SL đặt');
+  assert.equal(heads.length, 11);
+  assert.match(heads[4], /^ST/, 'cột ST ngay sau SL đặt');
   assert.equal(page.document.querySelector('#lcDetailKiot td.lc-st').dataset.st, '2');
   page.dom.window.close();
 });
 
-test('bảng hàng hóa mặc định giữ 9 cột (không ST) khi đơn chưa có chỉ định hoặc đã Hủy nhặt', async () => {
+test('bảng hàng hóa mặc định giữ 10 cột (không ST) khi đơn chưa có chỉ định hoặc đã Hủy nhặt', async () => {
   const page = await renderPage();
   await openDetail(page);
-  assert.equal(page.document.querySelectorAll('#lcDetailKiot table.lc-lines thead th').length, 9);
+  assert.equal(page.document.querySelectorAll('#lcDetailKiot table.lc-lines thead th').length, 10);
   assert.equal(page.document.querySelector('#lcDetailKiot td.lc-st'), null);
 
   const cancelled = await renderPage({ orders: [orderRow('DH1', { pickStatus: 'cancelled' })], store: newStore({ assignment: makeAssignment('cancelled') }) });
   await openDetail(cancelled);
-  assert.equal(cancelled.document.querySelectorAll('#lcDetailKiot table.lc-lines thead th').length, 9);
+  assert.equal(cancelled.document.querySelectorAll('#lcDetailKiot table.lc-lines thead th').length, 10);
   [page, cancelled].forEach(p => p.dom.window.close());
 });
 
@@ -526,7 +526,7 @@ test('Xác nhận nhặt gọi đúng API kèm version và là trạng thái cu�
   assert.deepEqual(cancelStore.statusCalls, [{ id: '7', action: 'cancel', body: { version: 1 } }]);
   assert.equal(text(cancelPage, 'pickingOrderStatus'), 'Hủy nhặt');
   assert.equal(rowsOf(cancelPage.document)[0].querySelector('[data-col="pickStatus"] .lc-pick-state').dataset.pickStatus, 'cancelled');
-  assert.equal(cancelPage.document.querySelectorAll('#lcDetailKiot table.lc-lines thead th').length, 9, 'Hủy nhặt: bỏ cột ST');
+  assert.equal(cancelPage.document.querySelectorAll('#lcDetailKiot table.lc-lines thead th').length, 10, 'Hủy nhặt: bỏ cột ST');
   [page, cancelPage].forEach(p => p.dom.window.close());
 });
 
@@ -1298,7 +1298,7 @@ test('bấm nút sớm rồi Hủy nhặt trước khi chi tiết Kiot về: ch�
     assert.ok(page.document.querySelector('#lcDetailKiot table.lc-lines'), 'bảng hàng vẽ sau khi về');
     assert.match(page.document.querySelector('#lcDetailKiot .picking-confirmed').textContent, /Hủy nhặt/);
     assert.doesNotMatch(page.document.querySelector('#lcDetailKiot .picking-confirmed').textContent, /Đang nhặt/);
-    assert.equal(page.document.querySelectorAll('#lcDetailKiot table.lc-lines thead th').length, 9, 'Hủy nhặt: bỏ cột ST');
+    assert.equal(page.document.querySelectorAll('#lcDetailKiot table.lc-lines thead th').length, 10, 'Hủy nhặt: bỏ cột ST');
   } finally { page.dom.window.close(); }
 });
 

@@ -397,6 +397,7 @@
   .lc-lines{ min-width:860px; }
   .lc-lines tr.is-service td{ color:var(--muted); }
   .lc-lines td.is-short{ color:var(--amber); font-weight:700; }
+  .lc-lines td.lc-line-note{ min-width:140px; font-size:12px; line-height:1.4; white-space:pre-line; overflow-wrap:anywhere; }
   .lc-lines-note{ margin:8px 0 0; color:var(--muted); font-size:12px; line-height:1.5; }
   .lc-lines-note-strong{ margin:8px 0 0; color:var(--text); font-size:14px; font-weight:800; line-height:1.5; }
   .lc-lines-note-warn{ margin:8px 0 0; color:var(--red); font-size:14px; font-weight:800; line-height:1.5; }
@@ -1077,8 +1078,8 @@
         return jobs.length && jobs.every(function(job){ return typeof job.stCartons === 'number'; })
           ? jobs.reduce(function(sum, job){ return sum + job.stCartons; }, 0) : null;
       };
-      let html = head + '<div class="dp-table-wrap is-flow"><table class="dp-table lc-lines" data-table-key="shipment-lifecycle-table-3' + (pick ? '-st' : '') + '"><thead><tr>' +
-        '<th>Mã hàng</th><th>Tên hàng</th><th class="num">SL đặt</th>' +
+      let html = head + '<div class="dp-table-wrap is-flow"><table class="dp-table lc-lines" data-table-key="shipment-lifecycle-table-4' + (pick ? '-st' : '') + '"><thead><tr>' +
+        '<th>Mã hàng</th><th>Tên hàng</th><th title="Ghi chú của hàng hóa trong đơn Kiot (cũng in ở phiếu)">Ghi chú</th><th class="num">SL đặt</th>' +
         (pick ? '<th class="num" title="Số thùng thực nhặt theo chỉ định vị trí (SL nhặt / SL mỗi thùng). Trống khi dòng chưa có chỉ định.">ST</th>' : '') +
         '<th class="num" title="Đơn giá sau chiết khấu của dòng">Đơn giá</th><th class="num">Thành tiền</th>' +
         '<th class="num" title="Tồn thực tế của Kiot tại cơ sở của đơn">Tồn ' + escapeHtml(detailOrder && detailOrder.branch === 'SG' ? 'SG' : 'HN') + '</th>' +
@@ -1092,6 +1093,7 @@
         html += '<tr' + (line.isService ? ' class="is-service"' : ' class="lc-product-open" tabindex="0" data-line-index="' + index + '" aria-label="Xem CONT của ' + escapeHtml(line.productCode || '') + '"') + '>' +
           '<td class="dp-code">' + escapeHtml(line.productCode || '—') + '</td>' +
           '<td class="dp-cell-main">' + escapeHtml(line.productName || '—') + '</td>' +
+          '<td class="lc-line-note">' + escapeHtml(line.note || '') + '</td>' +
           '<td class="num">' + escapeHtml(formatQty(line.quantity)) + '</td>' +
           (pick ? (function(){
             const st = line.isService ? null : stOf(line);

@@ -261,7 +261,7 @@ tasks/redis-performance/                     # plan, todo, benchmark và runbook
 
 Kiểm chứng/triển khai: xem [kế hoạch Redis](tasks/redis-performance/plan.md), [benchmark cục bộ](tasks/redis-performance/benchmark.md) và [runbook](tasks/redis-performance/rollout.md). Giữ worker Singapore hiện có; tạo web Singapore thay thế Oregon sau kiểm chứng. Chưa thay đổi dịch vụ Render/domain hoặc xác nhận p95 production; không migration. Integration Redis thật đang chờ TEST Redis; công cụ browser dừng vì không xác định chắc chắn URL Windows.
 
-04/11/2026 — Phiếu xác nhận giao hàng (`pick/invoice.js`) thêm cột **Ghi chú** (ghi chú hàng hóa của dòng đơn) giữa Thùng và Thực nhặt, thành 7 cột; không migration.
+04/11/2026 — Phiếu xác nhận giao hàng (`pick/invoice.js`) thêm cột **Ghi chú** (ghi chú hàng hóa của dòng đơn) giữa Thùng và Thực nhặt, thành 7 cột; hộp chi tiết đơn hàng Kiot (`lifecycle/index.html`) thêm cột **Ghi chú** giữa Tên hàng và SL đặt (thành 10 cột mặc định, 11 cột khi có ST); không migration.
 
 Cập nhật gần nhất: 04/11/2026.
 
