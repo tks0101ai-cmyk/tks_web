@@ -22,8 +22,10 @@ const ROWS = [
 
 async function start(t, { user = MANAGER, scope = 'Cả hai', events, fail } = {}) {
   const calls = [];
+  const contexts = [];
   const record = name => async (ctx, ...args) => {
     calls.push([name, ...args, ctx.scope]);
+    contexts.push(ctx);
     if (fail) throw fail;
     return { ok: name };
   };
@@ -44,7 +46,7 @@ async function start(t, { user = MANAGER, scope = 'Cả hai', events, fail } = {
   }));
   const server = await new Promise(resolve => { const s = app.listen(0, () => resolve(s)); });
   t.after(() => server.close());
-  return { calls, base: `http://127.0.0.1:${server.address().port}/api/stocktake` };
+  return { calls, contexts, base: `http://127.0.0.1:${server.address().port}/api/stocktake` };
 }
 
 const json = body => ({ headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -99,6 +101,14 @@ test('Mac dinh vai tro khac khong xem duoc; Khach duoc ghi de van bi chan; chua 
   const viewOnly = await start(t, { user: { vaiTro: 'Nhân viên kho', featurePermissions: { 'stocktake.view': true } } });
   assert.equal((await fetch(viewOnly.base + '/sessions/7/board')).status, 200);
   assert.equal((await fetch(viewOnly.base + '/sessions/7/lines', { method: 'POST', ...json({}) })).status, 403);
+});
+
+test('ma trinh duyet tu header X-Stocktake-Client vao ctx (loc ky tu la, toi da 64)', async t => {
+  const { base, contexts } = await start(t);
+  await fetch(base + '/sessions/7/cells', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Stocktake-Client': 'tab-1<script>' + 'x'.repeat(80) }, body: '{}' });
+  assert.equal(contexts.at(-1).clientId, ('tab-1script' + 'x'.repeat(80)).slice(0, 64));
+  await fetch(base + '/sessions/7/cells', { method: 'POST', ...json({}) });
+  assert.equal(contexts.at(-1).clientId, '', 'khong gui header -> rong');
 });
 
 test('409 tra kem latest; loi may chu khong lo chi tiet', async t => {
@@ -157,9 +167,9 @@ test('SSE: chi bao dot dang xem; dot khong thuoc pham vi 404', async t => {
   const decoder = new TextDecoder();
   let text = decoder.decode((await reader.read()).value);
   events.emit(CHANGED, { sessionId: 8 });
-  events.emit(CHANGED, { sessionId: 7 });
+  events.emit(CHANGED, { sessionId: 7, by: 'tab-1' });
   while (!text.includes('stocktake-changed')) text += decoder.decode((await reader.read()).value);
-  assert.ok(text.includes('data: {"sessionId":7}'));
+  assert.ok(text.includes('data: {"sessionId":7,"by":"tab-1"}'), 'kem ma trinh duyet vua ghi');
   assert.ok(!text.includes('"sessionId":8'));
 
   assert.equal((await fetch(base + '/sessions/99/events')).status, 404);

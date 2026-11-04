@@ -5,8 +5,9 @@ const { dashboardRollupEvents } = require('../kiotvietSync/dashboardRollupEvents
 
 const CHANGED = 'stocktake-changed';
 
-function announceChanged(sessionId) {
-  dashboardRollupEvents.emit(CHANGED, { sessionId: Number(sessionId) });
+// by: ma trinh duyet vua ghi (neu co) — trinh duyet do bo qua tin hieu cua chinh minh.
+function announceChanged(sessionId, by) {
+  dashboardRollupEvents.emit(CHANGED, { sessionId: Number(sessionId), by: by || '' });
 }
 
 module.exports = { events: dashboardRollupEvents, CHANGED, announceChanged };

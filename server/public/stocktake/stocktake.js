@@ -9,29 +9,31 @@
   const CHUNK = 200;
   const $ = id => document.getElementById(id);
   // Đúng thứ tự tab "KIỂM KÊ HN T10" (A→W); đợt SG đổi nhãn otherDiff/otherRatio.
+  // Độ rộng gọn để cả bảng vừa một màn hình 1920px (khung ~1590px, không cần thanh cuộn ngang): đo từ dữ liệu T10 thật,
+  // cột số đủ cho 99% giá trị của 4 đợt thật (Giá trị chênh, Giá vốn đủ cả số lớn nhất; số hiếm dài hơn thì "…"), cột chữ xuống dòng.
   const COLUMNS = [
-    { key: 'code', label: 'Mã hàng', width: 104, locked: true, type: 'text' },
-    { key: 'name', label: 'Tên hàng', width: 200, type: 'text' },
-    { key: 'counted', label: 'Tổng kiểm', width: 92, num: true },
-    { key: 'stock', label: 'Tồn KIOT', width: 88, num: true },
-    { key: 'diffQty', label: 'SL chênh', width: 92, num: true },
-    { key: 'diffValue', label: 'Giá trị chênh', width: 120, num: true },
-    { key: 'status', label: 'Trạng thái', width: 90, type: 'text' },
-    { key: 'reason', label: 'Chi tiết lý do', width: 160, type: 'text' },
-    { key: 'printPage', label: 'Trang in', width: 80, type: 'text' },
-    { key: 'printTime', label: 'Giờ in', width: 70, type: 'text' },
-    { key: 'recheck', label: 'Người kiểm lại', width: 112, type: 'text' },
-    { key: 'prevDiff', label: 'KK trước sai', width: 100, num: true },
-    { key: 'otherDiff', label: 'Kiểm SG', width: 84, num: true },
-    { key: 'cluster', label: 'Cụm SP', width: 110, type: 'text' },
-    { key: 'clusterCount', label: 'Count', width: 70, num: true },
-    { key: 'clusterDiff', label: 'Chênh cụm', width: 96, num: true },
-    { key: 'prevRatio', label: 'Do KK trước', width: 100, num: true, percent: true },
-    { key: 'clusterPrevRatio', label: 'Lẫn + KK trước', width: 115, num: true, percent: true },
-    { key: 'otherRatio', label: 'Do kiểm SG', width: 98, num: true, percent: true },
-    { key: 'forgotten', label: 'Quên KK', width: 84, type: 'flag' },
-    { key: 'combo', label: 'Combo', width: 76, type: 'flag' },
-    { key: 'cost', label: 'Giá vốn', width: 84, num: true },
+    { key: 'code', label: 'Mã hàng', width: 100, locked: true, type: 'text' },
+    { key: 'name', label: 'Tên hàng', width: 108, type: 'text' },
+    { key: 'counted', label: 'Tổng kiểm', width: 70, num: true },
+    { key: 'stock', label: 'Tồn KIOT', width: 70, num: true },
+    { key: 'diffQty', label: 'SL chênh', width: 80, num: true },
+    { key: 'diffValue', label: 'Giá trị chênh', width: 106, num: true },
+    { key: 'status', label: 'Trạng thái', width: 72, type: 'text' },
+    { key: 'reason', label: 'Chi tiết lý do', width: 104, type: 'text' },
+    { key: 'printPage', label: 'Trang in', width: 48, type: 'text' },
+    { key: 'printTime', label: 'Giờ in', width: 54, type: 'text' },
+    { key: 'recheck', label: 'Người kiểm lại', width: 64, type: 'text' },
+    { key: 'prevDiff', label: 'KK trước sai', width: 64, num: true },
+    { key: 'otherDiff', label: 'Kiểm SG', width: 72, num: true },
+    { key: 'cluster', label: 'Cụm SP', width: 68, type: 'text' },
+    { key: 'clusterCount', label: 'Count', width: 44, num: true },
+    { key: 'clusterDiff', label: 'Chênh cụm', width: 80, num: true },
+    { key: 'prevRatio', label: 'Do KK trước', width: 70, num: true, percent: true },
+    { key: 'clusterPrevRatio', label: 'Lẫn + KK trước', width: 66, num: true, percent: true },
+    { key: 'otherRatio', label: 'Do kiểm SG', width: 76, num: true, percent: true },
+    { key: 'forgotten', label: 'Quên KK', width: 54, type: 'flag' },
+    { key: 'combo', label: 'Combo', width: 44, type: 'flag' },
+    { key: 'cost', label: 'Giá vốn', width: 80, num: true },
     { key: 'updated', label: 'Cập nhật', width: 120, type: 'text' }
   ];
   const Search = window.TKSStocktakeSearch;
@@ -77,6 +79,9 @@
   // Số kiểu sheet kiểm kê: phẩy ngăn hàng nghìn, chấm thập phân (163,200 · 1.5).
   const fmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
   const num = value => (value === null || value === undefined ? '' : fmt.format(value));
+  // Tiền (giá vốn, giá trị chênh): làm tròn đồng — số lẻ thập phân từ công thức sheet chỉ làm cột rộng ra.
+  const fmtMoney = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+  const money = value => (value === null || value === undefined ? '' : fmtMoney.format(Math.round(value)));
   // "HH:mm dd/MM" theo giờ VN (cố định +7, không phụ thuộc múi giờ máy).
   const time = iso => {
     if (!iso) return '';
@@ -92,7 +97,9 @@
     try { payload = await response.json(); } catch (error) { /* tệp hoặc rỗng */ }
     return { response, payload };
   }
-  const jsonOptions = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  // Mã ngẫu nhiên của tab này: gửi kèm mỗi lệnh ghi để tín hiệu "đợt vừa đổi" do chính tab này gây ra không làm tải lại bảng lần nữa.
+  const CLIENT_ID = window.crypto && typeof window.crypto.randomUUID === 'function' ? window.crypto.randomUUID() : String(Math.random()).slice(2);
+  const jsonOptions = (method, body) => ({ method, headers: { 'Content-Type': 'application/json', 'X-Stocktake-Client': CLIENT_ID }, body: JSON.stringify(body) });
 
   function notify(text, isError) {
     const node = $('stNotice');
@@ -165,7 +172,10 @@
     const source = new window.EventSource(API + '/sessions/' + sessionId + '/events');
     source.sessionId = sessionId;
     live.source = source;
-    source.addEventListener('stocktake-changed', () => {
+    source.addEventListener('stocktake-changed', event => {
+      let by = '';
+      try { by = JSON.parse(event.data).by || ''; } catch (error) { /* tin hieu cu khong co ma */ }
+      if (by && by === CLIENT_ID) return; // chinh tab nay vua ghi: da cap nhat tai cho
       clearTimeout(live.timer);
       live.timer = setTimeout(() => loadBoard({ background: true }), 400);
     });
@@ -257,11 +267,11 @@
       case 'clusterPrevRatio': return pct(row.clusterPrevRatio);
       case 'otherRatio': return pct(row.otherRatio);
       case 'forgotten': return row.forgotten ? 'Quên' : '';
-      case 'cost': return num(row.cost);
+      case 'cost': return money(row.cost);
       case 'counted': return num(row.counted);
       case 'stock': return num(row.stock);
       case 'diffQty': return num(row.diffQty);
-      case 'diffValue': return num(row.diffValue);
+      case 'diffValue': return money(row.diffValue);
       case 'cluster': return row.cluster;
       case 'clusterDiff': return num(row.clusterDiff);
       case 'combo': return row.isCombo ? 'X' : '';
@@ -299,7 +309,7 @@
     syncSortHeader();
     if (window.TKSTables) {
       window.TKSTables.enhance($('stTable'), {
-        key: 'stocktake-board-v5', button: $('stColumnsButton'), sort: false,
+        key: 'stocktake-board-v6', button: $('stColumnsButton'), sort: false,
         columns: COLUMNS.map(c => ({ key: c.key, label: labelOf(c, state.headBranch), width: c.width, locked: !!c.locked, hidden: c.key === 'updated' }))
       });
     }
@@ -348,7 +358,7 @@
       count.className = 'st-status-count';
       count.textContent = num(total.count) + ' mã';
       const value = document.createElement('b');
-      value.textContent = num(total.diffValue);
+      value.textContent = money(total.diffValue);
       if (total.diffValue < 0) value.className = 'st-neg';
       button.append(name, count, value);
       box.appendChild(button);
@@ -383,7 +393,7 @@
       ['mã trong đợt', num(board.totals.codes)],
       ['mã lệch', num(board.totals.mismatched), board.totals.mismatched ? 'warn' : ''],
       ['Quên KK', num(board.totals.forgotten), board.totals.forgotten ? 'warn' : ''],
-      ['tổng giá trị chênh', num(board.totals.diffValue), board.totals.diffValue < 0 ? 'bad' : '']
+      ['tổng giá trị chênh', money(board.totals.diffValue), board.totals.diffValue < 0 ? 'bad' : '']
     ] : []);
     const summary = board ? Status.summarize(board.rows) : null;
     renderFilters(summary);
@@ -662,7 +672,24 @@
     }
   }
 
-  // Gui /cells; thanh cong thi day buoc hoan tac (tru khi dang hoan tac) va tai nen bang (giu thu tu dong).
+  // Cot lam doi so may chu tinh (Count / Chenh cum / KK truoc sai / Kiem SG-HN va cac ty le): sua cac cot nay thi tai lai bang.
+  const DERIVED_COLUMNS = new Set(['cluster', 'combo', 'prevDiffManual', 'otherDiffManual']);
+  // Ban ghi may chu vua luu (kem version, nguoi sua): thay vao dong de hop chi tiet / lan sua sau dung version moi.
+  function applySavedRecords(payload) {
+    finder.board = null; // chi muc tim kiem co chu cum / trang thai / ly do: dung lai khi tim lan sau
+    const byCode = new Map(state.board.rows.map(row => [row.code, row]));
+    for (const note of payload.notes || []) {
+      const row = byCode.get(note.code);
+      if (row) row.note = note;
+    }
+    for (const tag of payload.tags || []) {
+      const row = byCode.get(tag.code);
+      if (row) Object.assign(row, { cluster: tag.cluster, isCombo: tag.isCombo, tagVersion: tag.version });
+    }
+  }
+
+  // Gui /cells: ve lai ngay theo gia tri dang gui, thanh cong thi thay ban ghi may chu tra ve (khong tai lai ca bang,
+  // tru cot lam doi so tinh / co xung dot) va day buoc hoan tac (tru khi dang hoan tac).
   async function sendCells(cells, { undo = false } = {}) {
     if (!cells.length) return null;
     if (cells.length > MAX_CELLS) { notify('Tối đa ' + num(MAX_CELLS) + ' ô mỗi lần.', true); return null; }
@@ -670,6 +697,7 @@
     // Cap nhat bang ngay theo gia tri dang gui: sua tiep o vua go (khi yeu cau chua ve) van gui dung `expected`.
     applyLocally(cells.map(cell => ({ code: cell.code, column: cell.column, parsed: Paste.normalizeValue(cell.column, cell.value) }))
       .filter(cell => cell.parsed.ok).map(cell => ({ code: cell.code, column: cell.column, after: cell.parsed.value })));
+    render({ keepOrder: true });
     let response;
     let payload;
     try {
@@ -687,12 +715,17 @@
     if (state.sessionId === sessionId) {
       applyLocally(payload.applied);
       applyLocally(payload.conflicts.map(c => ({ code: c.code, column: c.column, after: c.current })));
+      applySavedRecords(payload);
     }
     if (!undo && payload.applied.length) {
       undoStack.push({ sessionId, cells: payload.applied });
       if (undoStack.length > UNDO_LIMIT) undoStack.shift();
     }
-    await loadBoard({ background: true, forms: true });
+    if (payload.conflicts.length || payload.applied.some(item => DERIVED_COLUMNS.has(item.column))) await loadBoard({ background: true, forms: true });
+    else if (state.sessionId === sessionId) {
+      render({ keepOrder: true });
+      if (detail.code) renderDetail({ forms: true });
+    }
     return payload;
   }
 
@@ -1144,7 +1177,7 @@
     const canEditNote = editable();
     renderStats($('stDetailStats'), [
       ['Tổng kiểm', num(row.counted)], ['Tồn KIOT', num(row.stock)],
-      ['SL chênh', num(row.diffQty), row.diffQty ? 'warn' : ''], ['Giá trị chênh', num(row.diffValue), row.diffValue < 0 ? 'bad' : ''],
+      ['SL chênh', num(row.diffQty), row.diffQty ? 'warn' : ''], ['Giá trị chênh', money(row.diffValue), row.diffValue < 0 ? 'bad' : ''],
       ['KK trước sai', row.prevDiff === null ? '—' : num(row.prevDiff)],
       ['Kiểm ' + otherLabel(state.board.session.branch), row.otherDiff === null ? '—' : num(row.otherDiff)]
     ]);

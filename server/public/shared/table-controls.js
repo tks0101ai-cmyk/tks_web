@@ -32,7 +32,7 @@
   function applySaved(session, column) {
     var saved = session.dirty[column.key];
     if (!saved) return;
-    if (typeof saved.width === 'number' && saved.width > 0) { column.width = Math.max(MIN_WIDTH, saved.width); session.fitted = true; }
+    if (typeof saved.width === 'number' && saved.width > 0) { column.width = Math.max(column.floor || MIN_WIDTH, saved.width); session.fitted = true; }
     if (typeof saved.hidden === 'boolean') column.hidden = saved.hidden;
   }
   // Ghi nhận lựa chọn của người dùng (không ghi độ rộng tự co giãn) rồi lưu sau một nhịp.
@@ -143,7 +143,7 @@
   // Native selects cannot wrap. Keep the longest option, arrow and cell padding
   // readable instead of letting a fixed-layout column shrink underneath them.
   function dropdownMinimums(ctrl) {
-    ctrl.columns.forEach(function (column) { column.minWidth = MIN_WIDTH; });
+    ctrl.columns.forEach(function (column) { column.minWidth = column.floor || MIN_WIDTH; });
     var sections = [ctrl.table.tHead].concat(Array.from(ctrl.table.tBodies), [ctrl.table.tFoot]).filter(Boolean);
     var measured = new Map();
     function horizontalSpace(style) {
@@ -718,6 +718,8 @@
     }
     ctrl.key = key; ctrl.mode = mode; ctrl.session = session; ctrl.head = head;
     var used = new Set();
+    // data-min-column-width="N" tren bang: muc toi thieu rieng (bang nhieu cot so ngan can hep hon 64px).
+    var floor = parseFloat(table.dataset.minColumnWidth) > 0 ? parseFloat(table.dataset.minColumnWidth) : MIN_WIDTH;
     ctrl.columns = head.leaves.map(function (entry, index) {
       var cell = entry.cell, metadata = ctrl.options.columns && ctrl.options.columns[index] || {};
       var label = metadata.label || labelOf(cell);
@@ -726,7 +728,7 @@
       if (used.has(colKey)) colKey += ':' + index; used.add(colKey);
       var column = session.columns.get(colKey);
       if (!column) {
-        column = { key: colKey, width: Math.max(MIN_WIDTH, pxWidth(metadata.width) || pxWidth(cell.dataset.defaultWidth) || pxWidth(cell.style.width) || defaultWidth(colKey, label, cell)), hidden: !!metadata.hidden || cell.dataset.columnDefaultHidden === 'true', locked: !!metadata.locked };
+        column = { key: colKey, floor: floor, width: Math.max(floor, pxWidth(metadata.width) || pxWidth(cell.dataset.defaultWidth) || pxWidth(cell.style.width) || defaultWidth(colKey, label, cell)), hidden: !!metadata.hidden || cell.dataset.columnDefaultHidden === 'true', locked: !!metadata.locked };
         session.columns.set(colKey, column);
         applySaved(session, column);
       }

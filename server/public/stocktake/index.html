@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261012">
   <link rel="stylesheet" href="/shared/table-controls.css?v=20261016-1">
   <link rel="stylesheet" href="/vt-positions/vt-positions.css?v=20261030-1">
-  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261103-10">
+  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261104-1">
 </head>
 <body>
   <div class="receipt-header">
@@ -64,7 +64,10 @@
           <button class="locations-columns-button vt-btn" id="stImportSgButton" type="button" hidden title="Nạp một lần tab KIỂM SG">Nạp KIỂM SG từ sheet</button>
           <button class="locations-columns-button vt-btn st-danger" id="stCloseButton" type="button" hidden>Đóng đợt</button>
         </div>
-        <div class="st-stats" id="stStats" aria-live="polite"></div>
+        <div class="st-summary">
+          <div class="st-stats" id="stStats" aria-live="polite"></div>
+          <div class="st-status-cards" id="stStatusCards" role="group" aria-label="Tổng giá trị chênh theo trạng thái"></div>
+        </div>
       </section>
 
       <section class="locations-panel" aria-labelledby="stTableTitle">
@@ -87,12 +90,11 @@
           <button class="locations-columns-button vt-btn" id="stExportButton" type="button">Xuất Excel</button>
           <button class="locations-columns-button vt-btn" id="stColumnsButton" type="button" aria-haspopup="dialog" aria-expanded="false">Cột hiển thị</button>
         </div>
-        <div class="st-status-cards" id="stStatusCards" role="group" aria-label="Tổng giá trị chênh theo trạng thái"></div>
         <p id="stStatus" class="locations-status" role="status" aria-live="polite"></p>
         <p id="stNotice" class="locations-status" role="status" aria-live="polite"></p>
         <p class="st-hint"><span id="stCount"></span> · Chọn ô rồi gõ để sửa · Ctrl+V dán, kéo ô vuông ở góc để nhân bản, Ctrl+Z hoàn tác · Nhấp đúp để mở chi tiết</p>
         <div class="locations-scroll st-scroll" tabindex="0" aria-label="Bảng đối chiếu kiểm kê">
-          <table class="users-table locations-table st-table" id="stTable" data-table-key="stocktakeBoard" data-columns-button="stColumnsButton">
+          <table class="users-table locations-table st-table" id="stTable" data-table-key="stocktakeBoard" data-min-column-width="40" data-columns-button="stColumnsButton">
             <thead><tr></tr></thead>
             <tbody id="stRows"></tbody>
           </table>
@@ -201,7 +203,7 @@
     </div>
   </dialog>
 
-  <script src="/shared/table-controls.js?v=20261030-1"></script>
+  <script src="/shared/table-controls.js?v=20261104-1"></script>
   <script src="/shared/search-clear.js?v=20261009-1"></script>
   <script src="/shared/shared-nav.js?v=20261103-stocktake"></script>
   <script src="/vendor/fuse.min.js?v=7.1.0"></script>
@@ -209,7 +211,7 @@
   <script src="/stocktake/stocktakeSearch.js?v=20261103-2"></script>
   <script src="/stocktake/stocktakeGrid.js?v=20261103-2"></script>
   <script src="/stocktake/stocktakeStatus.js?v=20261103-2"></script>
-  <script src="/stocktake/stocktake.js?v=20261103-10"></script>
+  <script src="/stocktake/stocktake.js?v=20261104-1"></script>
   <script>window.addEventListener('DOMContentLoaded', function () { TKSStocktake.init(); });</script>
   <script src="/shared/shooting-star.js?v=20261019"></script>
 </body>

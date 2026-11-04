@@ -403,3 +403,20 @@ test('sua tren bang: kiem tra dau vao, dot da dong', async () => {
   await service.closeSession(ctx(), session.id, { version: fresh.session.version });
   await assert.rejects(send({ cells: [{ code: 'AAA1', column: 'statusText', value: 'x' }] }), { statusCode: 409, code: 'STOCKTAKE_CLOSED' });
 });
+
+test('sua tren bang: tra ban ghi vua luu (version, nguoi sua) va bao tin hieu kem ma trinh duyet', async () => {
+  const { db, service, session } = await fixture();
+  const signals = [];
+  const tracked = createStockTakeService({ getDb: () => poolFor(db), announce: (id, by) => signals.push([id, by]) });
+  const result = await tracked.saveCells({ ...ctx(), clientId: 'tab-1' }, session.id, { cells: [
+    { code: 'AAA1', column: 'statusText', value: 'Lẫn' },
+    { code: 'AAA1', column: 'reasonText', value: 'lý do' },
+    { code: 'BBB2', column: 'cluster', value: 'Cụm X' }
+  ] });
+  assert.deepEqual(result.notes.map(n => [n.code, n.statusText, n.reasonText, n.version, n.updatedByName]), [['AAA1', 'Lẫn', 'lý do', 1, 'Quản Lý A']]);
+  assert.ok(result.notes[0].updatedAt);
+  assert.deepEqual(result.tags.map(t => [t.code, t.cluster, t.version]), [['BBB2', 'Cụm X', 1]]);
+  assert.deepEqual(signals, [[session.id, 'tab-1']]);
+  const empty = await tracked.saveCells(ctx(), session.id, { cells: [{ code: 'AAA1', column: 'statusText', value: 'Lẫn' }] });
+  assert.deepEqual([empty.notes, empty.tags], [[], []]);
+});

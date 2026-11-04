@@ -210,14 +210,15 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     return value;
   }
 
-  async function withTransaction(work, sessionId) {
+  // by: ma trinh duyet gui lenh (X-Stocktake-Client) — kem trong tin hieu de chinh trinh duyet do khong tai lai bang lan nua.
+  async function withTransaction(work, sessionId, by) {
     const client = await getDb().connect();
     try {
       await client.query('BEGIN');
       const result = await work(client);
       await client.query('COMMIT');
       if (sessionId) {
-        try { announce(sessionId); } catch (error) { console.error('[stocktake] khong phat duoc tin hieu doi:', error.message); }
+        try { announce(sessionId, by); } catch (error) { console.error('[stocktake] khong phat duoc tin hieu doi:', error.message); }
       }
       return result;
     } catch (error) {
@@ -291,7 +292,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       const updated = shapeSession(rows[0]);
       await writeHistory(client, updated, actor, '', 'session_update', { counterpartSessionId: session.counterpartSessionId }, { counterpartSessionId: counterpartId });
       return { session: updated };
-    }, sessionId);
+    }, sessionId, ctx.clientId);
   }
 
   // Dot doi chieu phai thuoc co so kia; null = bo doi chieu.
@@ -354,7 +355,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
 
   // Du lieu dau vao cua bo tinh cho dot dang mo.
   // fresh: bo cache (dong dot phai chup ton dung luc dong).
-  async function loadInputs(db, session, { fresh = false, withCounterpart = true } = {}) {
+  async function loadInputs(db, session, { fresh = false, withCounterpart = true, withPrevious = true } = {}) {
     if (fresh) {
       cache.delete('products:' + session.branch);
     }
@@ -369,7 +370,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       })))),
       db.query(`SELECT ${TAG_COLUMNS} FROM stocktake_product_tags WHERE branch = $1`, [session.branch]).then(r => r.rows.map(shapeTag)),
       db.query(`SELECT ${NOTE_COLUMNS} FROM stocktake_code_notes WHERE session_id = $1`, [session.id]).then(r => r.rows.map(shapeNote)),
-      previousResults(db, session),
+      withPrevious ? previousResults(db, session) : { previousSessionId: null, previous: [] },
       withCounterpart ? counterpartResults(db, session) : { counterpartInfo: null, counterpart: [] }
     ]);
     return { lines, edits, products, tags, notes, ...prev, ...other };
@@ -482,7 +483,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
         team: source.team, zone: source.zone, spec: source.spec, quantity: Number(source.quantity), productCode: codeKey(source.product_code)
       } }, after);
       return { edit: after };
-    }, sessionId);
+    }, sessionId, ctx.clientId);
   }
 
   async function addLine(ctx, sessionId, body = {}) {
@@ -502,7 +503,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       const edit = shapeEdit(rows[0]);
       await writeHistory(client, session, actor, productCode, 'line_add', undefined, edit);
       return { edit };
-    }, sessionId);
+    }, sessionId, ctx.clientId);
   }
 
   async function saveNote(ctx, sessionId, code, body = {}) {
@@ -556,7 +557,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       const note = shapeNote(rows[0]);
       await writeHistory(client, session, actor, productCode, 'note', before, note);
       return { note };
-    }, sessionId);
+    }, sessionId, ctx.clientId);
   }
 
   // Cum SP / Combo giu qua cac dot theo co so; sessionId chi de bao tin hieu cho bang dang mo.
@@ -582,7 +583,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       const tag = shapeTag(rows[0]);
       await writeHistory(client, session, actor, productCode, 'tag', before, tag);
       return { tag };
-    }, sessionId);
+    }, sessionId, ctx.clientId);
   }
 
   // Khoa dong cum/combo cua cac ma (cung thu tu ma) va doc lai: saveTag cua phien khac cung co so chi khoa dong nay, doc khong khoa thi ghi de mat.
@@ -614,7 +615,8 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     const actor = actorOf(ctx);
     return withTransaction(async client => {
       const session = await openSessionForWrite(client, ctx, sessionId);
-      const inputs = await loadInputs(client, session, { withCounterpart: false });
+      // Chi can tap ma cua dot (khong can KK truoc / doi chieu): bot 3 truy van moi lan sua.
+      const inputs = await loadInputs(client, session, { withCounterpart: false, withPrevious: false });
       const known = new Set([...buildBoard(inputs).rows.map(r => r.code), ...inputs.products.map(p => codeKey(p.code))]);
       const allEmployees = await loadEmployees(client);
       const employees = allEmployees.filter(e => e.branch === session.branch);
@@ -654,16 +656,17 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       }
       const noteChanges = [...byStore.note.values()];
       const tagChanges = [...byStore.tag.values()];
-      if (noteChanges.length) await upsertNotes(client, session.id, noteChanges, actor);
-      if (tagChanges.length) await upsertTags(client, session.branch, tagChanges, actor);
+      // Tra lai ban ghi vua luu (kem version / nguoi sua) de trang cap nhat tai cho, khong phai tai lai ca bang.
+      const savedNotes = noteChanges.length ? await upsertNotes(client, session.id, noteChanges, actor) : [];
+      const savedTags = tagChanges.length ? await upsertTags(client, session.branch, tagChanges, actor) : [];
       await insertPasteHistory(client, session, actor, [...noteChanges, ...tagChanges].flatMap(entry =>
         entry.columns.map(column => ({ code: entry.code, before: entry.before, after: { column, source: 'cells', ...entry.next } }))));
-      return { applied, conflicts, skipped };
-    }, sessionId);
+      return { applied, conflicts, skipped, notes: savedNotes, tags: savedTags };
+    }, sessionId, ctx.clientId);
   }
 
   async function upsertNotes(client, sessionId, changes, actor) {
-    await client.query(
+    const { rows } = await client.query(
       `INSERT INTO stocktake_code_notes (session_id, product_code, status_text, reason_text, print_page, print_time, recheck_employee_id, recheck_name,
                                          prev_diff_manual, other_diff_manual, updated_by_user_id, updated_by_name)
        SELECT $1, r.code, r."statusText", r."reasonText", r."printPage", r."printTime", r."recheckEmployeeId", r."recheckName",
@@ -674,18 +677,22 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
          print_page = EXCLUDED.print_page, print_time = EXCLUDED.print_time, recheck_employee_id = EXCLUDED.recheck_employee_id,
          recheck_name = EXCLUDED.recheck_name, prev_diff_manual = EXCLUDED.prev_diff_manual, other_diff_manual = EXCLUDED.other_diff_manual,
          version = stocktake_code_notes.version + 1, updated_by_user_id = EXCLUDED.updated_by_user_id,
-         updated_by_name = EXCLUDED.updated_by_name, updated_at = now()`,
+         updated_by_name = EXCLUDED.updated_by_name, updated_at = now()
+       RETURNING ${NOTE_COLUMNS}`,
       [sessionId, JSON.stringify(changes.map(c => ({ code: c.code, ...c.next }))), actor.id, actor.name]);
+    return rows.map(shapeNote);
   }
 
   async function upsertTags(client, branch, changes, actor) {
-    await client.query(
+    const { rows } = await client.query(
       `INSERT INTO stocktake_product_tags (branch, product_code, cluster, is_combo, updated_by_user_id, updated_by_name)
        SELECT $1, r.code, r.cluster, r."isCombo", $3, $4 FROM jsonb_to_recordset($2::jsonb) AS r(code text, cluster text, "isCombo" boolean)
        ON CONFLICT (branch, product_code) DO UPDATE SET cluster = EXCLUDED.cluster, is_combo = EXCLUDED.is_combo,
          version = stocktake_product_tags.version + 1, updated_by_user_id = EXCLUDED.updated_by_user_id,
-         updated_by_name = EXCLUDED.updated_by_name, updated_at = now()`,
+         updated_by_name = EXCLUDED.updated_by_name, updated_at = now()
+       RETURNING ${TAG_COLUMNS}`,
       [branch, JSON.stringify(changes.map(c => ({ code: c.code, ...c.next }))), actor.id, actor.name]);
+    return rows.map(shapeTag);
   }
 
   async function codeHistory(ctx, sessionId, code) {
@@ -728,7 +735,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       const closed = shapeSession(rows[0]);
       await writeHistory(client, closed, actor, '', 'session_close', undefined, { codes: results.length, mismatched: results.filter(r => r.diffQty !== 0).length });
       return { session: closed };
-    }, sessionId);
+    }, sessionId, ctx.clientId);
   }
 
   return { listSessions, createSession, updateSession, getBoard, saveLine, addLine, saveNote, saveTag, saveCells, codeHistory, closeSession };
