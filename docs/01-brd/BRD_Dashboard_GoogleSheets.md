@@ -523,6 +523,7 @@ Cập nhật gần nhất: 28/10/2026 (chỉnh sửa khi xem trước import VT)
 - Quản lý đóng đợt để chốt số liệu; đợt sau tự có cột "KK trước sai".
 - Bảng web có đủ 23 cột như tab T10 (kể cả Trang in, Giờ in, Do KK trước, Kiểm SG/HN) và bấm tiêu đề để sắp xếp; kiểm kê Sài Gòn dùng chung cách làm và đối chiếu chéo với Hà Nội; dán nhanh một cột từ Google Sheets thay cho gõ tay; nạp thêm tab KIỂM SG.
 - Chưa làm: chia team/khu, thưởng/phạt; cân bằng kho trên KiotViet vẫn làm tay.
+- **Trạng thái (03/11/2026):** mỗi mã chọn một trong 7 loại (Mất, KK trước, OK, Nhầm SG/HN, Thừa, Lẫn, Chưa XL), màu tự động theo loại; phía trên bảng có thẻ tổng số mã và giá trị chênh theo từng trạng thái, bấm thẻ để lọc.
 
 **Chỉ định vị trí không sửa đơn KiotViet (02/11/2026, chưa commit/deploy):** dashboard không còn ghi gì lên đơn đặt hàng KiotViet. Nút **Xóa dòng** chỉ bỏ mã hàng khỏi chỉ định và phiếu in của kho (đơn Kiot giữ nguyên; đơn phải còn ít nhất một dòng); mở lại chỉ định thấy dòng “Đã bỏ: MÃ ↺” để đưa mã trở lại. Sửa số lượng cần nhặt chỉ ghi trên phiếu in, không đổi đơn Kiot. Phiếu in theo đúng thứ tự dòng đang thấy trong hộp (đã kéo-thả hoặc đã sort cột; không sort thì theo thứ tự đơn Kiot). Bỏ hai cảnh báo Lệch Kiot và Lệch SL trong đơn; Vòng đời đơn hàng chỉ còn 6 cảnh báo giao hàng.
 
@@ -541,4 +542,4 @@ Server-Timing cho `/api/shipment/pick/*`; browser measures `tokosi.pick.assets/r
 
 Kiểm chứng/triển khai: xem [kế hoạch Redis](../../tasks/redis-performance/plan.md), [benchmark cục bộ](../../tasks/redis-performance/benchmark.md) và [runbook](../../tasks/redis-performance/rollout.md). Giữ worker Singapore hiện có; tạo web Singapore thay thế Oregon sau kiểm chứng. Chưa thay đổi dịch vụ Render/domain hoặc xác nhận p95 production; không migration. Integration Redis thật đang chờ TEST Redis; công cụ browser dừng vì không xác định chắc chắn URL Windows.
 
-Cập nhật gần nhất: 03/11/2026.
+Cập nhật gần nhất: 03/11/2026 (Kiểm kê: trạng thái 7 loại và thẻ tổng).
