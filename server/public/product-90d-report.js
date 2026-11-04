@@ -190,10 +190,10 @@
   }
 
   // Cột Tên dính sau cột Mã: left = độ rộng đang thấy của cột Mã (0 khi ẩn); tầng tiêu đề 2 dính dưới tầng 1.
-  let stickyFrame = 0;
+  // Gọi khi vẽ lại và từ ResizeObserver (đổi cỡ khung, kéo/ẩn cột); mục đang ẩn (chưa có bố cục) thì giữ nguyên giá trị cũ.
   function syncSticky() {
     const table = $('product90dTable');
-    if (!table || !table.tHead) return;
+    if (!table || !table.tHead || !table.getClientRects().length) return;
     const code = table.tHead.querySelector('th[data-column-key="product_code"]');
     const codeWidth = code && !code.classList.contains('tks-column-hidden') ? code.getBoundingClientRect().width : 0;
     const group = Array.from(table.tHead.rows[0].cells).find(function (cell) {
@@ -203,20 +203,20 @@
     const frame = $('product90dScroll');
     const frameWidth = frame ? Math.max(0, frame.clientWidth - 18) + 'px' : '';
     if (frameWidth && table.style.getPropertyValue('--p90-frame-w') !== frameWidth) table.style.setProperty('--p90-frame-w', frameWidth);
+    const nameCell = table.tHead.querySelector('th[data-column-key="product_name"]');
+    const nameWidth = nameCell && !nameCell.classList.contains('tks-column-hidden') ? nameCell.getBoundingClientRect().width : 0;
+    const stickyWidth = Math.round((codeWidth + nameWidth) * 100) / 100 + 'px';
+    if (table.style.getPropertyValue('--p90-sticky-w') !== stickyWidth) table.style.setProperty('--p90-sticky-w', stickyWidth);
     const left = Math.round(codeWidth * 100) / 100 + 'px';
     const top = Math.round(rowTop * 100) / 100 + 'px';
     if (table.style.getPropertyValue('--p90-name-left') !== left) table.style.setProperty('--p90-name-left', left);
     if (table.style.getPropertyValue('--p90-row2-top') !== top) table.style.setProperty('--p90-row2-top', top);
   }
-  function queueSticky() {
-    if (stickyFrame) return;
-    const raf = window.requestAnimationFrame || function (cb) { return setTimeout(cb, 16); };
-    stickyFrame = raf(function () { stickyFrame = 0; syncSticky(); }) || 0;
-  }
   function observeSticky() {
     const table = $('product90dTable');
     if (!table || typeof window.ResizeObserver !== 'function') return;
-    const observer = new window.ResizeObserver(queueSticky);
+    // ResizeObserver đã chạy đúng nhịp vẽ: đồng bộ ngay (không qua rAF, vốn bị treo ở tab nền / màn giả lập).
+    const observer = new window.ResizeObserver(syncSticky);
     observer.observe(table);
     if ($('product90dScroll')) observer.observe($('product90dScroll'));
     table.tHead.querySelectorAll('th').forEach(function (th) { observer.observe(th); });
@@ -298,7 +298,7 @@
     renderHeader();
     renderBody();
     renderMeta();
-    queueSticky();
+    syncSticky();
   }
 
   // ---------- tải ----------

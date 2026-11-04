@@ -350,6 +350,8 @@ test('dang tai lai: giu bang cu nhung danh dau ban; loi -> thong bao + Thu lai (
     assert.equal(p.$('product90dPagination').hidden, true);
     assert.equal(p.$('product90dUpdatedAt').textContent, '—');
     assert.equal(p.$('product90dScroll').hasAttribute('aria-busy'), false);
+    // Thong bao + nut nam trong khoi dinh mep trai rong bang khung (man hep van thay nut Thu lai).
+    assert.ok(p.$('product90dRows').querySelector('.p90-note-inner [data-action="retry"]'));
     p.$('product90dRows').querySelector('[data-action="retry"]').click();
     assert.equal(p.calls.length, 3);
     assert.equal(p.calls[2].url, p.calls[1].url, 'Thu lai chi goi lai dung truy van');

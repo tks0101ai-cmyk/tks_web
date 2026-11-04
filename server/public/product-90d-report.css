@@ -34,12 +34,15 @@
 .p90-table.tks-controlled-table thead th { vertical-align: bottom; }
 .p90-table.tks-controlled-table thead th.p90-group { vertical-align: middle; }
 .p90-table th.p90-group {
-  text-align: center;
   vertical-align: middle;
   border-left: 1px solid var(--border);
   padding-top: 7px;
   padding-bottom: 7px;
 }
+/* Nhãn kỳ + khoảng ngày dính ngay sau 2 cột Mã/Tên khi cuộn ngang (màn hẹp không phải cuộn tới giữa nhóm mới thấy kỳ). */
+/* shared.css căn giữa mọi tiêu đề bằng !important; riêng ô nhóm kỳ phải căn trái để nhãn dính được (nhãn giữa ô 700px sẽ khuất). */
+.p90-table th.p90-group { text-align: left !important; }
+.p90-group-inner { position: sticky; left: calc(var(--p90-sticky-w, 0px) + 8px); display: inline-block; max-width: 100%; }
 .p90-group-label { display: block; font-weight: 600; }
 .p90-group-range { display: block; color: var(--muted); font-family: var(--font-data); font-size: 11.5px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .p90-group-range:empty { display: none; }
