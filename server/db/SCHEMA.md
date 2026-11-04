@@ -857,3 +857,17 @@ Cập nhật gần nhất: 03/11/2026.
 Không thay schema. GET /api/product-report/history đọc invoices + invoice_details và returns + return_details, join products/customers theo branch + ID; cửa sổ 90 ngày gồm hôm nay theo VN. purchase_date/return_date dùng giờ tường VN mang nhãn UTC nên đọc AT TIME ZONE UTC, không chuyển thêm UTC+7. quantity vẫn NUMERIC; gộp theo chứng từ/mã hàng, tách cơ sở và loại. Chỉ hóa đơn Hoàn thành / phiếu trả Đã trả. Giá vốn lịch sử không có trường đã xác minh trong dữ liệu nguồn, API trả unitCost NULL (hoặc loại trường theo quyền); không suy ra từ giá bán hay giá vốn tồn hiện tại. Không backfill hoặc ghi lại dữ liệu nguồn.
 
 Cập nhật gần nhất: 03/11/2026.
+
+## Migration 0106 — Hàng hóa 90 ngày (04/11/2026, đã áp DB)
+
+- `product_90d_report`: khóa chính `product_key = lower(btrim(product_code))`, một dòng/mã gộp hai cơ sở. 26 cột nghiệp vụ gồm `product_code`, `product_name`, bốn nhóm hậu tố `61_90d`, `31_60d`, `1_30d`, `1_90d`; mỗi nhóm có `qty`, `revenue`, `avg_price`, `customer_count`, `invoice_count` kiểu NUMERIC và `top_customers` JSONB (tối đa 3 phần tử `{name, share, revenue, quantity}`, share dạng tỷ lệ 0–1, không kẹp giá trị âm hoặc >1 khi doanh số ròng có trả hàng).
+- `product_90d_report_state`: singleton `id=1`; `as_of_date`, `window_start=as_of_date-90`, `window_end=as_of_date-1`, `computed_at` TIMESTAMPTZ, `row_count` NUMERIC, `version` BIGINT. Không lưu lịch sử từng ngày.
+- Nguồn: `products` toàn bộ danh mục HN/SG, mã trùng ưu tiên tên hiện tại HN rồi SG, bản đồng bộ mới nhất/id lớn nhất; hóa đơn Hoàn thành + trả hàng Đã trả. Trạng thái ưu tiên statusValue, dùng status=1 khi thiếu chuỗi. Ngày chứng từ là giờ tường VN mang nhãn UTC, lấy AT TIME ZONE 'UTC'; ngày chạy theo Asia/Ho_Chi_Minh. Không lấy hôm nay.
+- SL/DS trừ trả theo ngày trả. Thành tiền ưu tiên subTotal, dự phòng giá × SL − giảm giá dòng; trả lấy trị tuyệt đối subTotal hoặc giá × SL. Không tự cộng VAT/phân bổ chiết khấu toàn hóa đơn. Mọi phép cộng dùng NUMERIC. Giá TB = DS/SL, SL=0 thì NULL.
+- Khách gộp theo tên hiện tại chuẩn hóa NFKC/hoa thường/khoảng trắng/ký tự rỗng, không bỏ dấu. Không loại khách ngừng hoạt động. SL khách chỉ đếm tên có hóa đơn thành công; lượt mua DISTINCT (branch,id) cho từng mã, không đếm trả, không giảm khi trả hết. Tổng 90 ngày đếm khách DISTINCT lại, không cộng số khách ba kỳ con.
+- Top 3 theo DS ròng giảm dần, hòa thì khóa tên tăng dần; tỷ trọng chia DS ròng toàn bộ khách cùng mã/kỳ (DS=0 thì NULL). Có ít hơn 3 khách thì giữ số thực có; khách chỉ trả vẫn tham gia DS/SL và xếp hạng nhưng không được tính lượt mua/SL khách. Không phát sinh: 0 ở các tổng/đếm, Giá TB NULL và Top 3 [].
+- Job `kiotvietSync/product90dReport.js` chạy một lần/ngày từ 02:00 VN, không liên kết các báo cáo tăng dần khác. Khóa advisory 20531106, staging + upsert chỉ dòng đổi/xóa mã rời danh mục + state trong cùng giao dịch, lỗi rollback giữ bản cũ. Đọc đồng thời vẫn thấy bản chốt trước COMMIT. Lệnh nạp tay có thể ép tính lại; lịch tự động chống lặp bằng as_of_date.
+- Hai bảng bật RLS, thu hồi quyền anon/authenticated/reporting_readonly. Web sẽ đọc qua backend có phân quyền trong đợt giao diện sau. Không sửa bảng chứng từ/khách/hàng nguồn. Rollback: `rollbacks/0106_product_90d_report.down.sql`.
+- Đã nạp đầu: 11.135 mã, kỳ 06/08–03/11/2026; tổng SL 78.131.018,83 và DS 406.836.857.112 khớp kiểm tra độc lập, 0 dòng chứng từ ngoài danh mục. Worker có lịch mới chưa deploy.
+
+Cập nhật gần nhất: 04/11/2026.

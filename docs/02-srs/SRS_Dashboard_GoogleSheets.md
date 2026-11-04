@@ -996,3 +996,11 @@ Cập nhật gần nhất: 03/11/2026 (Kiểm kê FR-ST.10 bộ lọc 5 lựa ch
 Hộp chi tiết hàng hóa giữ phần hiện có và thêm bảng Thời gian / Đối tượng / Loại giao dịch / Số lượng / Giá vốn. Chỉ hóa đơn Hoàn thành và phiếu trả Đã trả của hai cơ sở, 90 ngày gồm hôm nay. Tìm tên khách không dấu ngay khi nhập và lọc Tất cả/Hóa đơn/Trả hàng; bốn chỉ số Số lượng mua / Số lượng trả hàng / Số lượt mua / Số lượt trả hàng theo cả hai điều kiện trên toàn bộ kết quả trước phân trang. Một chứng từ có mặt hàng lặp chỉ tính một lượt, cộng số lượng; mua/trả hiển thị riêng số dương. Mặc định 25 giao dịch/trang, mới nhất trước. Cho chọn cột và kéo độ rộng, hỗ trợ Light/Dark/mobile. Giá vốn một đơn vị tại giao dịch; nguồn hiện chưa có trường xác minh được nên hiện “—”, không dùng giá bán hoặc giá vốn hiện tại. Quyền xem reports.products + reports.products.sales, cột giá vốn reports.products.price. Có trạng thái rỗng/lỗi/thử lại độc lập với doanh số theo khách, phản hồi cũ không ghi đè khi đổi hàng/đóng hộp. Không migration.
 
 Cập nhật gần nhất: 03/11/2026.
+
+## FR-PRODUCT-90D — Hàng hóa 90 ngày (04/11/2026)
+
+Bảng 26 cột: Mã hàng, Tên hàng, rồi 6 chỉ số SL / DS / Giá TB / SL khách / Lượt mua / Top 3 khách cho bốn kỳ T.trc nữa (-90..-61), T.trc (-60..-31), T.này (-30..-1), Tổng 90 ngày (-90..-1). Toàn bộ danh mục hai miền gộp theo mã; không phát sinh vẫn có dòng. Nguồn duy nhất là hóa đơn thành công và trả hàng thành công trong PostgreSQL. SL/DS trừ trả theo ngày trả; DS là thành tiền dòng, không tự tính thêm VAT/chiết khấu toàn hóa đơn; Giá TB=DS/SL, SL=0 để trống. Khách gộp theo tên hiện tại; SL khách/lượt mua chỉ đếm hóa đơn, không giảm bởi trả. Lượt mua đếm một lần mỗi hóa đơn/mã/cơ sở, khách tổng 90 ngày đếm DISTINCT lại. Top 3 xếp DS thuần, mỗi khách một dòng Tên + %DS + DS + SL; %DS chia tổng DS thuần toàn kỳ của mã, mẫu số=0 để trống.
+
+Đã triển khai phần DB: migration 0106, product_90d_report và state, nạp 11.135 mã cho 06/08–03/11/2026. Job dựng sẵn một lần/ngày lúc 02:00 VN, giữ bản cũ khi lỗi, không chạy tính toán theo lượt mở web; worker cần deploy code mới để bật lịch. Giao diện mục 4 và API đọc có phân quyền là đợt tiếp theo, chưa triển khai. Công thức/ngoại lệ và hợp đồng JSON Top 3 xem server/db/SCHEMA.md mục 0106.
+
+Cập nhật gần nhất: 04/11/2026.

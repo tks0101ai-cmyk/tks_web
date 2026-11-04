@@ -135,6 +135,7 @@ server/
 ├── invoicePriceAudit/    # Kiểm tra giá bán (20/10/2026): priceNoteParser.js + priceAuditRules.js (đọc mô tả giá, VAT, cấp khách), priceAuditSql.js (tính NUMERIC), priceAuditRepository.js (chụp hóa đơn, đọc bảng, sửa giải thích / Chốt có version), priceAuditRefresh.js + priceAuditScheduler.js (job 23:00 và cửa sổ 7 ngày), priceAuditService.js / priceAuditRoutes.js / priceAuditAccess.js (API `/api/invoice-price-audit`, quyền) và kiểm thử PGlite; sale có quyền sửa giải thích mọi hóa đơn, hiện tên người lưu gần nhất, giữ lâu dài qua các phiên chạy; bảng dùng nhãn cột rút gọn; mục 1 có thêm bảng Tiền phạt theo sale cạnh 5 khối KPI (`saleSummary`, `GET /export/sales`); **Bảng giá duyệt** (24/10/2026, migration `0091` + `0092` tách 2 giá `price_no_vat` / `price_with_vat`): approvedPriceRules.js / approvedPriceRepository.js / approvedPriceRoutes.js / approvedPriceExport.js, approvedPriceImport.js (nhập Excel/CSV, xem trước + ghi đè) (API `/api/invoice-approved-prices`, bảng `invoice_approved_prices` + nhật ký bất biến `invoice_approved_price_changes`), giá duyệt (giá có VAT cho dòng Full VAT, giá không VAT cho dòng còn lại) thay giá tối thiểu theo mô tả khi tính Kiểm tra giá bán
 ├── kiotviet/             # KiotViet API client và webhook receiver
 ├── kiotvietSync/         # Webhook, polling, backfill và rollup; businessCurrentMonthRefresh.js tính sẵn doanh số tháng hiện tại cho Báo cáo kinh doanh (0068)
+│   └── product90dReport.js  # Báo cáo 4 kỳ 90 ngày, chốt 02:00 VN; lệnh products:90d:refresh
 ├── lib/                  # Thư viện tiện ích nội bộ (TTL cache, ...)
 ├── marketingReport/      # Báo cáo Marketing: đọc 3 workbook Google Sheets, đối chiếu doanh số KiotViet theo tên khách, cập nhật ngược Sheets, xuất Excel/HTML; tính sẵn trong DB (0069): marketingAdsSync.js (chi phí ADS), marketingSummaryRefresh.js (gộp SĐT Pancake), view v_marketing_customer_revenue (doanh số theo tên)
 ├── notifications/        # Chuông thông báo: notificationRepository.js (bảng `notifications`, 0093), notificationRoutes.js (/api/notifications), specialDayNotifier.js; testHelpers/notificationTestPool.js (PGlite cho test)
@@ -272,3 +273,13 @@ Hộp chi tiết Báo cáo hàng hóa giữ doanh số theo khách và biểu đ
 Module mới: `server/dashboard/productHistoryRepository.js` (SQL và kiểm tra tham số; test cạnh module), `server/public/js/product-history.js` (giao diện, chống phản hồi cũ), `server/public/shared/product-history.css` (responsive), `server/test/frontend/product-history.test.js` (hành vi giao diện). API `GET /api/product-report/history` dùng quyền `reports.products` + `reports.products.sales`; giá vốn cần `reports.products.price`. Giá vốn lịch sử chưa có trường nguồn xác minh được nên hiện “—”; không thay bằng giá bán/giá vốn hiện tại. Không migration, dependency hay biến môi trường mới. Mã cục bộ trên main, chưa deploy.
 
 Cập nhật gần nhất: 03/11/2026.
+
+## 04/11/2026 — Hàng hóa 90 ngày (DB đã nạp, worker chưa deploy)
+
+Migration `0106_product_90d_report.sql` đã áp Supabase ngày 04/11/2026. Bảng `product_90d_report` gồm 26 cột nghiệp vụ và khóa kỹ thuật `product_key`; `product_90d_report_state` lưu kỳ dữ liệu, thời điểm tính, số dòng và phiên bản. Nạp đầu lúc 08:00 giờ VN: **11.135 mã hàng**, kỳ **06/08–03/11/2026**. Đã đối soát SL/DS với chứng từ nguồn, không thiếu dòng nguồn; các kỳ con cộng đúng tổng 90 ngày.
+
+Module `server/kiotvietSync/product90dReport.js` tính trực tiếp hóa đơn Hoàn thành và trả hàng Đã trả trong DB, gộp toàn bộ danh mục hai miền (kể cả ngừng bán/không phát sinh), gộp khách theo tên hiện tại. Lịch gắn vào `scheduler.js`, kiểm tra mỗi phút và chỉ tính một lần/ngày từ **02:00 Asia/Ho_Chi_Minh**, chạy bù khi worker khởi động sau giờ hẹn. Cần deploy worker có code mới, với `KIOTVIET_SYNC_ENABLED=true`, để kích hoạt lịch. Không thêm biến môi trường hoặc endpoint mới trong đợt này; giao diện mục 4 làm sau.
+
+Chạy nạp tay trong `server/`: `npm run products:90d:refresh`. Lệnh chủ động tính lại ngay, kể cả đã tính trong ngày. Migration: `npm run db:migrate` theo quy trình hiện có; bản này đã áp riêng 0106 trên DB thật. Rollback thủ công: `server/db/rollbacks/0106_product_90d_report.down.sql` (xóa bảng dẫn xuất, không đụng chứng từ nguồn).
+
+Cập nhật gần nhất: 04/11/2026.

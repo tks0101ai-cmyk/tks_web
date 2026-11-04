@@ -14,6 +14,7 @@ const {
 } = require('./dashboard/productReportRepository');
 const containerRepository = require('./productContainers/repository');
 const { getProductHistory } = require('./dashboard/productHistoryRepository');
+const { getProduct90dReport } = require('./dashboard/product90dReportRepository');
 const { getInventoryValueHistory } = require('./dashboard/inventoryValueHistory');
 const { getInvoiceDetail } = require('./dashboard/documentDetailRepository');
 const authRoutes = require('./auth/authRoutes');
@@ -425,6 +426,21 @@ router.get('/api/product-report/customers', requireFeature('reports.products.sal
       error: err.statusCode && err.statusCode < 500 ? err.message : 'Không lấy được doanh số khách theo mã hàng.',
       detail: err.message,
       code: err.code
+    });
+  }
+});
+
+// Muc 4 "Hang hoa 90 ngay" (tab Hang hoa): CHI DOC bang tinh san product_90d_report (+ _state), job 02:00 do
+// kiotvietSync/product90dReport.js dung. Nam duoi /api/product-report (guard reports.products) va them quyen
+// reports.products.sales vi doanh so/gia ban suy ra duoc; chua co snapshot -> 200 { available:false }.
+router.get('/api/product-report/90d', requireFeature('reports.products.sales'), async (req, res) => {
+  try {
+    const { q, sort, dir, page, pageSize } = req.query;
+    res.status(200).json(await getProduct90dReport({ q, sort, dir, page, pageSize }));
+  } catch (err) {
+    if (!err.statusCode || err.statusCode >= 500) console.error('product-report/90d:', err.message);
+    res.status(err.statusCode === 400 ? 400 : 500).json({
+      error: err.statusCode === 400 ? err.message : 'Không lấy được báo cáo hàng hóa 90 ngày.'
     });
   }
 });

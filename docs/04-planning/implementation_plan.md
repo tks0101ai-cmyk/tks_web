@@ -373,3 +373,17 @@ Cập nhật gần nhất: 03/11/2026 (Kiểm kê: bộ lọc 5 lựa chọn, ti
 Đã bổ sung repository SQL độc lập productHistoryRepository và GET /api/product-report/history; frontend product-history.js được nạp bởi index.html, mount mục mới dưới phần doanh số theo khách. Hai phần tải độc lập và dùng requestId/generation để bỏ phản hồi cũ. Truy vấn UNION hóa đơn Hoàn thành + phiếu trả Đã trả, gộp chứng từ, fuzzy tên khách, tính tổng trước LIMIT/OFFSET trong một SQL snapshot. Mặc định 25 dòng, mới nhất trước; table-controls quản lý cột, phân trang máy chủ riêng; Light/Dark, điện thoại cuộn ngang. Quyền sales cho lịch sử, price cho giá vốn; chưa có giá vốn lịch sử xác minh được nên unitCost null, không lấy giá hiện tại thay. Không migration/dependency/env mới; chưa deploy.
 
 Cập nhật gần nhất: 03/11/2026.
+
+## 04/11/2026 — Triển khai DB Hàng hóa 90 ngày
+
+Thiết kế đã được người dùng duyệt qua phỏng vấn: 26 cột theo BC 90 ngày.xlsx và nhóm tổng 90 ngày bổ sung; toàn bộ danh mục, gộp hai miền, snapshot kết thúc hôm qua. Chọn bảng dẫn xuất độc lập để không bị luồng báo cáo tăng dần gồm hôm nay thay đổi trong ngày. Dùng mẫu staging/upsert/transaction và lịch worker hiện có, không cần thư viện mới.
+
+- [x] Viết và chạy kiểm thử đỏ trước module/lịch; kiểm chứng SQL thật trên PGlite cho ranh giới kỳ, gộp miền/khách, trả hàng, lượt mua, Top 3, NUMERIC, rollback và phân quyền.
+- [x] Tạo migration 0106 + rollback, bảng product_90d_report (26 cột nghiệp vụ + khóa) và singleton state; RLS và thu hồi quyền truy cập trực tiếp.
+- [x] Tạo kiotvietSync/product90dReport.js; lịch độc lập một lần/ngày từ 02:00 VN, chạy bù sau giờ hẹn, khóa giữa các worker; npm products:90d:refresh nạp tay.
+- [x] Áp riêng 0106 và nạp Supabase 11.135 mã cho 06/08–03/11/2026; đối soát chứng từ nguồn và các kỳ con đạt, không thiếu dòng nguồn.
+- [x] Kiểm thử liên quan theo graphify: 65/65 đạt; gồm migration runner, báo cáo cũ, SQL doanh số, lịch polling, lịch sử mã hàng và module mới.
+- [ ] Deploy worker có code mới với KIOTVIET_SYNC_ENABLED=true; kiểm tra state tự sang kỳ mới sau 02:00 VN. Lịch trong code sẵn sàng, chưa hoạt động trên worker cũ.
+- [ ] Đợt sau: API chỉ đọc có phân quyền và giao diện mục 4 trong tab Hàng hóa, table-controls/light-dark/responsive theo chuẩn dự án.
+
+Cập nhật gần nhất: 04/11/2026.

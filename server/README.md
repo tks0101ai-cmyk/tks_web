@@ -995,3 +995,13 @@ Cập nhật gần nhất: 03/11/2026 (In phiếu nhặt nhanh hơn: `startTimin
 Không thêm bảng, job, migration, dependency hay biến môi trường. UI tải lịch sử độc lập phần doanh số theo khách, có retry từng phần và bỏ phản hồi cũ sau đổi mã/đóng hộp. Mã cục bộ trên main, chưa deploy.
 
 Cập nhật gần nhất: 03/11/2026.
+
+## 04/11/2026 — Hàng hóa 90 ngày (DB đã nạp, worker chưa deploy)
+
+Migration `0106_product_90d_report.sql` đã áp Supabase ngày 04/11/2026. Bảng `product_90d_report` gồm 26 cột nghiệp vụ và khóa kỹ thuật `product_key`; `product_90d_report_state` lưu kỳ dữ liệu, thời điểm tính, số dòng và phiên bản. Nạp đầu lúc 08:00 giờ VN: **11.135 mã hàng**, kỳ **06/08–03/11/2026**. Đã đối soát SL/DS với chứng từ nguồn, không thiếu dòng nguồn; các kỳ con cộng đúng tổng 90 ngày.
+
+Module `server/kiotvietSync/product90dReport.js` tính trực tiếp hóa đơn Hoàn thành và trả hàng Đã trả trong DB, gộp toàn bộ danh mục hai miền (kể cả ngừng bán/không phát sinh), gộp khách theo tên hiện tại. Lịch gắn vào `scheduler.js`, kiểm tra mỗi phút và chỉ tính một lần/ngày từ **02:00 Asia/Ho_Chi_Minh**, chạy bù khi worker khởi động sau giờ hẹn. Cần deploy worker có code mới, với `KIOTVIET_SYNC_ENABLED=true`, để kích hoạt lịch. Không thêm biến môi trường hoặc endpoint mới trong đợt này; giao diện mục 4 làm sau.
+
+Chạy nạp tay trong `server/`: `npm run products:90d:refresh`. Lệnh chủ động tính lại ngay, kể cả đã tính trong ngày. Migration: `npm run db:migrate` theo quy trình hiện có; bản này đã áp riêng 0106 trên DB thật. Rollback thủ công: `server/db/rollbacks/0106_product_90d_report.down.sql` (xóa bảng dẫn xuất, không đụng chứng từ nguồn).
+
+Cập nhật gần nhất: 04/11/2026.
