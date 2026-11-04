@@ -59,6 +59,10 @@ const DETAIL_AMOUNT_SQL = `CASE
 // doanh so khach lon nhat (I) de ty trong K = I/G khong bao gio vuot 100%
 // (file Sheets cu dung 2 cong thuc khac nhau nen co dong K > 100%, xem ke
 // hoach da duyet).
+const CUSTOMER_PERIOD_AGG_SQL = `COALESCE(SUM(amount) FILTER (WHERE line_at >= ((vn_today.today - 30)::timestamp AT TIME ZONE 'UTC')), 0) AS revenue_1_30d,
+      COALESCE(SUM(amount) FILTER (WHERE line_at >= ((vn_today.today - 60)::timestamp AT TIME ZONE 'UTC') AND line_at < ((vn_today.today - 30)::timestamp AT TIME ZONE 'UTC')), 0) AS revenue_31_60d,
+      COALESCE(SUM(amount) FILTER (WHERE line_at < ((vn_today.today - 60)::timestamp AT TIME ZONE 'UTC')), 0) AS revenue_61_90d`;
+
 const REFRESH_SQL = `
   WITH vn_today AS (
     SELECT (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date AS today
@@ -192,17 +196,25 @@ const REFRESH_SQL = `
   -- lan, khong de planner quet lai 90 ngay invoice_details. HAVING > 0: khach tra
   -- het (hoac tra nhieu hon da mua trong ky) khong con la khach mua hang cua ma nay.
   customer_agg AS MATERIALIZED (
-    SELECT product_key, customer_key, MIN(customer_name) AS customer_name, SUM(amount) AS revenue
-    FROM sales90_lines
+    SELECT product_key, customer_key, MIN(customer_name) AS customer_name, SUM(amount) AS revenue,
+      ${CUSTOMER_PERIOD_AGG_SQL}
+    FROM sales90_lines CROSS JOIN vn_today
     WHERE product_key <> '' AND customer_active
     GROUP BY product_key, customer_key
     HAVING SUM(amount) > 0
   ),
   -- CTE ghi du lieu luon chay du 1 lan du cau lenh chinh khong doc RETURNING.
   saved_customers AS (
-    INSERT INTO product_report_customers (product_key, customer_key, customer_name, revenue)
-    SELECT product_key, customer_key, customer_name, revenue
+    INSERT INTO product_report_customers (product_key, customer_key, customer_name, revenue, revenue_1_30d, revenue_31_60d, revenue_61_90d)
+    SELECT product_key, customer_key, customer_name, revenue, revenue_1_30d, revenue_31_60d, revenue_61_90d
     FROM customer_agg
+    RETURNING 1
+  ),
+  saved_window AS (
+    INSERT INTO product_report_state (id, computed_at, version, last_full_at, customer_window_end)
+    SELECT 1, now(), 1, now(), today - 1 FROM vn_today
+    ON CONFLICT (id) DO UPDATE SET computed_at = now(), last_full_at = now(),
+      version = product_report_state.version + 1, customer_window_end = EXCLUDED.customer_window_end
     RETURNING 1
   ),
   customer_ranked AS (
@@ -300,7 +312,7 @@ async function refreshProductReportIfDue(pool, {
     try {
       const { rows } = await pool.query(incrementalModule.__sql__.READ_STATE_SQL);
       const fullAt = rows[0] && rows[0].last_full_at;
-      if (fullAt && vnDateKey(new Date(fullAt)) === today) return { skipped: true };
+      if (fullAt && vnDateKey(new Date(fullAt)) === today && rows[0].customer_window_end === today && !rows[0].periods_missing) return { skipped: true };
       const result = await incrementalModule.refreshProductReportIncremental(pool, { log, now, enabled: true });
       return { skipped: false, ...result };
     } catch (error) {
@@ -323,7 +335,10 @@ async function refreshProductReportIfDue(pool, {
 const LAST_COMPUTED_SQL = 'SELECT MAX(computed_at) AS last_computed_at FROM product_report';
 const LAST_COMPUTED_WITH_BRANCH_COLUMNS_SQL = `SELECT MAX(computed_at) AS last_computed_at,
   COALESCE(bool_or(available_hanoi IS NULL OR price_hanoi IS NULL
-    OR qty_sold_30d_hanoi IS NULL OR orders_90d IS NULL), false) AS needs_branch_columns FROM product_report`;
+    OR qty_sold_30d_hanoi IS NULL OR orders_90d IS NULL), false)
+    OR EXISTS (SELECT 1 FROM product_report_customers WHERE revenue_1_30d IS NULL OR revenue_31_60d IS NULL OR revenue_61_90d IS NULL)
+    OR NOT EXISTS (SELECT 1 FROM product_report_state WHERE id = 1 AND customer_window_end IS NOT NULL)
+    AS needs_branch_columns FROM product_report`;
 async function readLastComputed(pool) {
   try {
     return await pool.query(LAST_COMPUTED_WITH_BRANCH_COLUMNS_SQL);
@@ -368,6 +383,6 @@ module.exports = {
   refreshProductReport,
   refreshProductReportIfDue,
   startProductReportSchedule,
-  __sql__: { REFRESH_SQL, DESCRIPTION_TRIM_CHARS },
+  __sql__: { REFRESH_SQL, DESCRIPTION_TRIM_CHARS, CUSTOMER_PERIOD_AGG_SQL },
   __test__: { vnDateKey }
 };

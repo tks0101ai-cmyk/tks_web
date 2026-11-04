@@ -15,6 +15,7 @@ async function start(t, { user = MANAGER, scope = 'Cả hai' } = {}) {
   const ordersService = {
     getCurrent: async (ctx, branch, options) => { calls.push(['getCurrent', branch, options, ctx.scope]); return { order: null }; },
     addLine: record('addLine'), updateLine: record('updateLine'), removeLine: record('removeLine'), confirm: record('confirm'), list: record('list'), get: record('get'),
+    events: async (ctx, id, options) => { calls.push(['events', id, options.limit]); return { events: [] }; },
     importLines: async (ctx, id, options) => { calls.push(['importLines', id, options.fileName, options.buffer.length]); return { counts: {} }; }
   };
   const app = express();
@@ -46,6 +47,12 @@ test('Quản lý: đọc đơn tạm (được tạo), thêm/sửa/xóa dòng, c
   assert.deepEqual(calls[3], ['removeLine', 9, 2]);
   assert.equal((await fetch(base + '?branch=HN')).status, 200);
   assert.equal((await fetch(base + '/7')).status, 200);
+});
+
+test('Lưu vết đơn: GET /:id/events gọi service với id và limit', async t => {
+  const { base, calls } = await start(t, { scope: 'Hà Nội' });
+  assert.equal((await fetch(base + '/7/events?limit=20')).status, 200);
+  assert.deepEqual(calls[0], ['events', 7, '20']);
 });
 
 test('Khách chỉ xem: đọc được đơn (không tạo), mọi thao tác ghi bị 403', async t => {

@@ -1,0 +1,94 @@
+/* Tab Hàng hóa — mục 4 "Hàng hóa 90 ngày" (product-90d-report.js). Dùng lại panel, table-search-*, sort-button (shared.css),
+   pagination-controls, price-audit-page-size của trang; ở đây chỉ còn khung cuộn có viền, tiêu đề 2 tầng, 2 cột Mã/Tên dính
+   khi cuộn ngang và ô Top 3 khách. Màu đều là biến chung nên tự đổi theo Sáng/Tối. */
+.p90-panel { min-width: 0; }
+.p90-status { margin: 0 0 8px; min-height: 0; color: var(--muted); font-size: 11.5px; }
+.p90-status:empty { display: none; }
+
+/* Khung cuộn riêng của bảng: trang không bao giờ tràn ngang, bảng rộng cuộn trong khung. */
+.p90-scroll {
+  max-width: 100%;
+  min-width: 0;
+  max-height: 640px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-7, 8px);
+  overscroll-behavior-x: contain;
+}
+.p90-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.p90-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-4, 4px); }
+.p90-scroll.is-busy tbody { opacity: .55; transition: opacity .15s ease; }
+
+.p90-table { border-collapse: separate; border-spacing: 0; }
+/* Nền đặc (lớp glass-head phủ lên panel) để chữ cột cuộn qua không lộ dưới ô dính. */
+.p90-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  white-space: normal;
+  vertical-align: middle;
+  text-align: center !important;
+  background: linear-gradient(var(--glass-head), var(--glass-head)), var(--panel);
+}
+.p90-table thead tr:nth-child(2) th { top: var(--p90-row2-top, 38px); }
+/* table-controls.css đặt vertical-align:top cho mọi ô bảng được điều khiển: mọi tiêu đề (2 tầng) canh GIỮA cả 2 chiều. */
+.p90-table.tks-controlled-table thead th { vertical-align: middle; }
+/* Nhãn tiêu đề nằm ĐÚNG giữa ô: biểu tượng ▲▼ (quy ước chung shared.css) đặt tuyệt đối sát mép phải nút, nút chừa đệm
+   2 bên bằng nhau đúng bằng chỗ của biểu tượng — chữ không bị đẩy lệch trái như bố cục flex chung (nhãn + cột biểu tượng). */
+.p90-table thead .sort-button { position: relative; justify-content: center; padding: 0 13px; }
+.p90-table thead .sort-button > .sort-label { flex: 0 1 auto; text-align: center; }
+.p90-table thead .sort-indicator { position: absolute; right: 0; top: 50%; width: 12px; transform: translateY(-50%); }
+.p90-table th.p90-group {
+  vertical-align: middle;
+  border-left: 1px solid var(--border);
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+/* Mọi tiêu đề căn giữa (shared.css, !important), kể cả ô nhóm kỳ trên toàn colspan. Ô nhóm (~840px) có thể rộng hơn phần
+   đang thấy của khung: nhãn kỳ + khoảng ngày là khối dính 2 phía — nằm giữa ô khi thấy được, còn khi tâm ô ra ngoài khung thì
+   bám mép phải khung (hoặc ngay sau 2 cột Mã/Tên khi đã cuộn qua) nên không bao giờ khuất. */
+.p90-group-inner { position: sticky; left: calc(var(--p90-sticky-w, 0px) + 8px); right: 16px; display: inline-block; max-width: 100%; }
+.p90-group-label { display: block; font-weight: 600; }
+.p90-group-range { display: block; color: var(--muted); font-family: var(--font-data); font-size: 11.5px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.p90-group-range:empty { display: none; }
+.p90-table .p90-group-start { border-left: 1px solid var(--border); }
+
+/* 2 cột Mã / Tên dính trái khi cuộn ngang; left của Tên = độ rộng đang thấy của cột Mã (JS đặt --p90-name-left). */
+.p90-table .p90-sticky { position: sticky; z-index: 2; background: var(--panel); }
+.p90-table thead .p90-sticky { z-index: 5; background: linear-gradient(var(--glass-head), var(--glass-head)), var(--panel); }
+.p90-table .p90-sticky-code { left: 0; }
+.p90-table .p90-sticky-name { left: var(--p90-name-left, 0px); box-shadow: inset -1px 0 0 var(--border); }
+.p90-table tbody tr:hover td { background-color: var(--surface-hover); }
+.p90-table tbody tr:hover td.p90-sticky { background: linear-gradient(var(--surface-hover), var(--surface-hover)), var(--panel); }
+
+.p90-table td.col-num { text-align: right; white-space: nowrap; }
+.p90-table td.name-cell { white-space: normal; overflow-wrap: anywhere; }
+.p90-table td.p90-sticky-code { overflow-wrap: anywhere; }
+.p90-table td.p90-negative { color: var(--red); }
+.p90-table td.p90-note { text-align: left; white-space: normal; }
+.p90-note-inner {
+  position: sticky;
+  left: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  width: var(--p90-frame-w, 100%);
+  max-width: 100%;
+}
+
+/* Top 3 khách: mỗi khách đúng 1 dòng "Tên|%DS|DS"; chỉ xuống dòng khi tên quá dài (title có đủ chữ). */
+.p90-table td.p90-top-cell { white-space: normal; vertical-align: top; }
+.p90-top { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.p90-top li { overflow-wrap: anywhere; line-height: 1.35; color: var(--text); }
+
+.p90-error { color: var(--red); margin-right: 8px; }
+.p90-retry { margin-left: 4px; }
+
+@media (max-width: 768px) {
+  .p90-scroll { max-height: 70vh; }
+  .p90-search-tools { justify-content: stretch; }
+  .p90-search-tools .table-search-input-wrap { flex: 1 1 auto; }
+}
+@media (prefers-reduced-motion: reduce) { .p90-scroll.is-busy tbody { transition: none; } }

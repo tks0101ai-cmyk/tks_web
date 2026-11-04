@@ -148,7 +148,7 @@ const shapeSession = row => ({
   createdAt: isoOf(row.created_at),
   closedByName: row.closed_by_name || '',
   closedAt: isoOf(row.closed_at),
-  // Chon tay dot KK truoc (0106); null = tu dong.
+  // Chon tay dot KK truoc (0109); null = tu dong.
   previousSessionId: row.previous_session_id === null || row.previous_session_id === undefined ? null : Number(row.previous_session_id),
   cancelled: Boolean(row.cancelled_at),
   cancelledAt: isoOf(row.cancelled_at),

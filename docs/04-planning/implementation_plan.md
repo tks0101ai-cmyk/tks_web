@@ -355,7 +355,7 @@ Nút **Xuất kho** trên `/vt-positions/` trừ SL hàng loạt theo file Excel
 
 - **VT: Đơn xuất kho + số lượng âm (02/11/2026, migration `0104` chưa áp DB, chưa commit/deploy):** đơn tạm dùng chung mỗi cơ sở (`stock_out_orders` + `stock_out_order_lines`), chỉ trừ tồn VT khi chốt (`stockPositions/stockOutOrdersService.js`: `buildPlan` thuần trừ tuần tự theo (mã, vị trí), `confirm` một giao dịch dưới `lockBranch`, preview trước/sau ở `getCurrent`); số âm = ghi chú `-kT x size` (`carton.parseSigned`/`subtractNotes`/`negativeNote`, `mergeNotes` tự bù); lịch sử `stock_out` kèm `orderId`/`orderCode` để bấm xem đơn; hộp UI `vt-stockout-order.js`. Hộp Xuất kho Excel cũ giữ nguyên.
 
-## 04/11/2026 — Kiểm kê: chọn đợt KK trước, hủy / khôi phục đợt, nạp lại sheet (migration 0106, chưa áp DB)
+## 04/11/2026 — Kiểm kê: chọn đợt KK trước, hủy / khôi phục đợt, nạp lại sheet (migration 0109, chưa áp DB)
 
 - `stocktakeService.js`: `previousSessionOf` (chọn tay còn hợp lệ, không thì tự động bỏ qua đợt hủy; trả `mode` + `manualInvalid`), `previousOf` (kiểm tra chọn tay), `updateSession` chỉ đổi trường có trong body, `cancelSession` / `restoreSession` / `dependents`, `assertNotCancelled` chặn mọi lệnh ghi; `counterpartResults` bỏ đợt hủy; `closeSession` ghi `previousSessionId` vào lịch sử.
 - `stocktakeSheetImport.js`: tách `writeSnapshot` dùng chung, thêm `reloadSheet` (đọc sheet trước giao dịch, khóa + so `version`, `dryRun`, `compareSnapshot`), tự nối đối chiếu bỏ qua đợt hủy.
@@ -363,7 +363,7 @@ Nút **Xuất kho** trên `/vt-positions/` trừ SL hàng loạt theo file Excel
 - Trang `/stocktake/`: ô KK trước, nút Hủy đợt / Nạp lại từ sheet, ô Hiện đợt đã hủy, dải cảnh báo + Khôi phục, hộp Hủy (lý do + đợt phụ thuộc), hộp Nạp lại (tên, ngày, xem trước bắt buộc).
 - Test: `stocktakeService.test.js`, `stocktakeSheetImport.test.js`, `stocktakeRoutes.test.js`, `db/rollbacks/stocktakeRollback.test.js`. Thiết kế: `docs/superpowers/specs/2026-11-04-stocktake-previous-cancel-reload-design.md`.
 
-Cập nhật gần nhất: 04/11/2026 (Kiểm kê: KK trước chọn tay, hủy đợt, nạp lại sheet, migration 0106; trước đó 03/11/2026: Kiểm kê: trạng thái 7 loại + thẻ tổng, bỏ Vị trí kho, tìm kiếm chặt; trước đó 03/11/2026: Kiểm kê: bộ lọc 5 lựa chọn, tiêu đề bảng gọn, bỏ Dán cột; trước đó 02/11/2026: Kiểm kê đối chiếu Hà Nội + Sài Gòn, đủ 23 cột T10, dán cột, nạp tab KIỂM SG, migration 0105; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; VT Đơn xuất kho + số lượng âm, migration 0104; Chỉ định vị trí không ghi lên KiotViet; gỡ 2 cảnh báo Lệch Kiot / Lệch SL trong đơn) — trước đó 31/10/2026 (sửa vị trí VT ngay trong hộp Chỉ định vị trí; trước đó: bỏ dòng chỉ định của mã đã xóa khỏi đơn Kiot).
+Cập nhật gần nhất: 04/11/2026 (Kiểm kê: KK trước chọn tay, hủy đợt, nạp lại sheet, migration 0109; trước đó 03/11/2026: Kiểm kê: trạng thái 7 loại + thẻ tổng, bỏ Vị trí kho, tìm kiếm chặt; trước đó 03/11/2026: Kiểm kê: bộ lọc 5 lựa chọn, tiêu đề bảng gọn, bỏ Dán cột; trước đó 02/11/2026: Kiểm kê đối chiếu Hà Nội + Sài Gòn, đủ 23 cột T10, dán cột, nạp tab KIỂM SG, migration 0105; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; VT Đơn xuất kho + số lượng âm, migration 0104; Chỉ định vị trí không ghi lên KiotViet; gỡ 2 cảnh báo Lệch Kiot / Lệch SL trong đơn) — trước đó 31/10/2026 (sửa vị trí VT ngay trong hộp Chỉ định vị trí; trước đó: bỏ dòng chỉ định của mã đã xóa khỏi đơn Kiot).
 ## 03/11/2026 — Tăng tốc chỉ định và in phiếu (cục bộ, chưa deploy)
 
 Đường chỉ định tra đúng mã đơn HN/SG và dùng lại quy tắc gộp Vòng đời/Accounting, không tải toàn bộ đơn hoặc tính cước/điều chuyển. Ghi dòng chỉ định theo lô trong cùng giao dịch/khóa PostgreSQL; bản in tiếp tục dùng snapshot sau commit. Tải trước tài nguyên phiếu và QR song song; chỉ cho in khi form chung đọc mới thành công và không còn lượt lưu form đang chạy.
@@ -381,5 +381,35 @@ Cập nhật gần nhất: 03/11/2026 (Kiểm kê: bộ lọc 5 lựa chọn, ti
 ## 03/11/2026 — Chi tiết hàng hóa: lịch sử 90 ngày
 
 Đã bổ sung repository SQL độc lập productHistoryRepository và GET /api/product-report/history; frontend product-history.js được nạp bởi index.html, mount mục mới dưới phần doanh số theo khách. Hai phần tải độc lập và dùng requestId/generation để bỏ phản hồi cũ. Truy vấn UNION hóa đơn Hoàn thành + phiếu trả Đã trả, gộp chứng từ, fuzzy tên khách, tính tổng trước LIMIT/OFFSET trong một SQL snapshot. Mặc định 25 dòng, mới nhất trước; table-controls quản lý cột, phân trang máy chủ riêng; Light/Dark, điện thoại cuộn ngang. Quyền sales cho lịch sử, price cho giá vốn; chưa có giá vốn lịch sử xác minh được nên unitCost null, không lấy giá hiện tại thay. Không migration/dependency/env mới; chưa deploy.
+
+Cập nhật gần nhất: 03/11/2026.
+
+## 04/11/2026 — Triển khai DB Hàng hóa 90 ngày
+
+Thiết kế đã được người dùng duyệt qua phỏng vấn: 26 cột theo BC 90 ngày.xlsx và nhóm tổng 90 ngày bổ sung; danh mục chỉ mã hàng đang hoạt động (is_active IS NOT FALSE ở ít nhất một cơ sở), gộp hai miền, snapshot kết thúc hôm qua. Chọn bảng dẫn xuất độc lập để không bị luồng báo cáo tăng dần gồm hôm nay thay đổi trong ngày. Dùng mẫu staging/upsert/transaction và lịch worker hiện có, không cần thư viện mới.
+
+- [x] Viết và chạy kiểm thử đỏ trước module/lịch; kiểm chứng SQL thật trên PGlite cho ranh giới kỳ, gộp miền/khách, trả hàng, lượt mua, Top 3, NUMERIC, rollback và phân quyền.
+- [x] Tạo migration 0106 + rollback, bảng product_90d_report (26 cột nghiệp vụ + khóa) và singleton state; RLS và thu hồi quyền truy cập trực tiếp.
+- [x] Tạo kiotvietSync/product90dReport.js; lịch độc lập một lần/ngày từ 02:00 VN, chạy bù sau giờ hẹn, khóa giữa các worker; npm products:90d:refresh nạp tay.
+- [x] Áp riêng 0106 và nạp Supabase 11.135 mã cho 06/08–03/11/2026; đối soát chứng từ nguồn và các kỳ con đạt, không thiếu dòng nguồn.
+- [x] Kiểm thử liên quan theo graphify: 65/65 đạt; gồm migration runner, báo cáo cũ, SQL doanh số, lịch polling, lịch sử mã hàng và module mới.
+- [ ] Deploy worker có code mới với KIOTVIET_SYNC_ENABLED=true; kiểm tra state tự sang kỳ mới sau 02:00 VN. Lịch trong code sẵn sàng, chưa hoạt động trên worker cũ.
+- [x] API chỉ đọc `GET /api/product-report/90d` (`dashboard/product90dReportRepository.js`, quyền `reports.products` + `reports.products.sales`): một SQL tham số hóa, tìm fuzzy + sắp xếp whitelist + phân trang ở máy chủ, `available:false` khi chưa có snapshot; kiểm thử repository/route đạt.
+- [x] Giao diện mục 4 "Hàng hóa 90 ngày" (`public/product-90d-report.js` + `.css`, `#product90dSection` trong `index.html`): bảng 26 cột, table-controls, Light/Dark, cuộn ngang trong khung với 2 cột Mã/Tên cố định, 4 trạng thái đang tải / không kết quả / chưa nạp / lỗi + Thử lại, hiện “Dữ liệu cập nhật lúc” theo giờ VN; web chỉ đọc, không tính lại, không nút làm mới. Có kiểm thử `test/frontend/product-90d-report.test.js`.
+- [x] Xuất Excel + HTML (`tableKey: products.product90d`, khung xuất chung `exportService` / `exportHtmlReport`): toàn bộ dòng khớp từ khóa + sắp xếp đang áp dụng (`getProduct90dReportForExport`), quyền `reports.export` + `reports.products` + `reports.products.sales` kiểm ở API, nhãn phẳng có ngày thật của kỳ, ô số là số thật; HTML có biểu đồ đường "Xu hướng 3 kỳ" + KPI 90 ngày tính lại theo từ khóa (tùy chọn chung `periodTrend` / `searchKeys` / `fractionDigits`). Kiểm thử `dashboard/exportProduct90d.test.js`; kiểm trên trình duyệt thật (Light/Dark, 375px).
+- [x] Theo phản hồi: Top 3 khách 1 dòng `Tên|%DS|DS`, bỏ SL và khách SL = 0 (dùng chung màn hình + file xuất); tiêu đề nhóm kỳ căn giữa, nhãn dính 2 phía khi cuộn ngang.
+- [ ] Deploy web (API + giao diện mục 4 + xuất file) cùng worker ở trên; sau lượt 02:00 đầu kiểm tra mục 4 hiển thị đúng kỳ mới với tài khoản có `reports.products.sales`, thử Xuất Excel/HTML.
+
+Cập nhật gần nhất: 04/11/2026.
+
+Cập nhật gần nhất: 04/11/2026.
+
+## 04/11/2026 — Chi tiết hàng hóa mở rộng
+
+Đã triển khai cục bộ: chỉ số 2 cột cạnh donut, bảng khách toàn hàng với 3 kỳ 30 ngày (tooltip ngày snapshot); lịch sử 5 cột chính, sort toàn bộ kết quả trước phân trang, đơn Phiếu tạm và 2 tổng đặt riêng. Frontend giữ table-controls cho cột/độ rộng; sort lịch sử do API xử lý; bỏ phản hồi cũ theo generation khi đổi lọc/mã/đóng hộp. Xuất qua registry chung `products.productHistory`, truyền mã/lọc/sort/cột hiện tại, đọc mọi dòng cùng một SQL snapshot, Excel giữ kiểu số. Hộp xuất đóng bằng Esc trả về hộp chi tiết và giữ khóa cuộn nền.
+
+Migration 0108 bổ sung 3 NUMERIC nullable + ngày kết thúc kỳ. Cả refresh đầy đủ và incremental tính kỳ trong cùng giao dịch; missing gate tự buộc chạy nặng; cập nhật so sánh cả kỳ khi tổng không đổi. API khách trả periods và revenue1_30d/revenue31_60d/revenue61_90d. Phạm vi HN+SG, giá vốn theo quyền, không sửa dữ liệu nguồn.
+
+Triển khai: migrate 0108 → backend/worker mới → tính lại tăng dần → đối chiếu tổng kỳ/ngày; xem lệnh và hợp đồng API ở server/README.md. Chưa áp DB thật, chưa commit/deploy.
 
 Cập nhật gần nhất: 04/11/2026.

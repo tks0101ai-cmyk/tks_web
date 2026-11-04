@@ -20,7 +20,7 @@ async function migrated() {
   const db = new PGlite();
   for (const file of ['0001_core_master_data.sql', '0003_orders.sql', '0009_app_users_hr_employees.sql', '0041_hr_employee_status.sql',
     '0064_sheet_snapshots.sql', '0095_stock_positions.sql', '0099_stock_position_ack_and_history_purge.sql',
-    '0101_stock_position_stock_out_action.sql', '0105_stocktake.sql', '0106_stocktake_previous_cancel.sql']) {
+    '0101_stock_position_stock_out_action.sql', '0105_stocktake.sql', '0109_stocktake_previous_cancel.sql']) {
     await db.exec(migration(file));
   }
   return db;
@@ -138,7 +138,7 @@ test('importSheet sg + t10: hai dot dong, noi doi chieu cheo, Kiem SG cua T10 = 
   assert.equal(sgBoard.rows.find(r => r.code === 'LUMI3M').otherDiff, -434);
 });
 
-// ---------- 0106: nap lai dot nap tu sheet ----------
+// ---------- 0109: nap lai dot nap tu sheet ----------
 
 test('compareSnapshot: dem them / mat / doi, mau xep theo do lech lon nhat', () => {
   const result = compareSnapshot(

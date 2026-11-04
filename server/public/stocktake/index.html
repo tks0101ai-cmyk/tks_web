@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261012">
   <link rel="stylesheet" href="/shared/table-controls.css?v=20261016-1">
   <link rel="stylesheet" href="/vt-positions/vt-positions.css?v=20261030-1">
-  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261104-4">
+  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261104-5">
 </head>
 <body>
   <div class="receipt-header">
@@ -89,8 +89,10 @@
           <button class="locations-columns-button vt-btn" id="stColumnsButton" type="button" aria-haspopup="dialog" aria-expanded="false">Cột hiển thị</button>
         </div>
         <p id="stStatus" class="locations-status" role="status" aria-live="polite"></p>
-        <p id="stNotice" class="locations-status" role="status" aria-live="polite"></p>
-        <p class="st-hint"><span id="stCount"></span> · Chọn ô rồi gõ để sửa · Ctrl+V dán, kéo ô vuông ở góc để nhân bản, Ctrl+Z hoàn tác · Nhấp đúp để mở chi tiết</p>
+        <div class="st-hint-row">
+          <p class="st-hint"><span id="stCount"></span> · Chọn ô rồi gõ để sửa · Ctrl+V dán (dán kèm cột Mã hàng ở đầu = ghi theo mã), kéo ô vuông ở góc để nhân bản, Ctrl+Z hoàn tác · Nhấp đúp để mở chi tiết</p>
+          <p id="stNotice" class="st-notice" role="status" aria-live="polite"></p>
+        </div>
         <div class="locations-scroll st-scroll" tabindex="0" aria-label="Bảng đối chiếu kiểm kê">
           <table class="users-table locations-table st-table" id="stTable" data-table-key="stocktakeBoard" data-min-column-width="40" data-columns-button="stColumnsButton">
             <thead><tr></tr></thead>
@@ -98,6 +100,9 @@
           </table>
         </div>
       </section>
+
+      <!-- Thanh tổng kiểu Excel: hiện khi chọn từ 2 ô trở lên. -->
+      <div class="st-sel-sum" id="stSelSum" role="status" aria-live="polite" hidden></div>
 
       <section class="locations-panel st-recheck" aria-labelledby="stRecheckTitle">
         <div class="locations-toolbar"><h3 id="stRecheckTitle">Số mã giao kiểm lại</h3></div>
@@ -251,9 +256,9 @@
   <script src="/vendor/fuse.min.js?v=7.1.0"></script>
   <script src="/stocktake/stocktakePaste.js?v=20261103-3"></script>
   <script src="/stocktake/stocktakeSearch.js?v=20261103-2"></script>
-  <script src="/stocktake/stocktakeGrid.js?v=20261103-2"></script>
+  <script src="/stocktake/stocktakeGrid.js?v=20261104-2"></script>
   <script src="/stocktake/stocktakeStatus.js?v=20261103-2"></script>
-  <script src="/stocktake/stocktake.js?v=20261104-3"></script>
+  <script src="/stocktake/stocktake.js?v=20261104-5"></script>
   <script>window.addEventListener('DOMContentLoaded', function () { TKSStocktake.init(); });</script>
   <script src="/shared/shooting-star.js?v=20261019"></script>
 </body>

@@ -64,12 +64,24 @@ function createReportKit() {
     return null;
   }
 
+  // Cot khai bao fractionDigits (vd SL le 0.125) hien du chu so le toi da do; cot khac giu 2 chu so nhu cu.
+  var fractionFormats = {};
+  function numberFormatFor(column) {
+    var digits = column && column.fractionDigits;
+    if (!(digits >= 0 && digits <= 20 && digits % 1 === 0)) return numberFormat;
+    if (!fractionFormats[digits]) fractionFormats[digits] = new Intl.NumberFormat('en-US', { maximumFractionDigits: digits });
+    return fractionFormats[digits];
+  }
+
   function formatCell(value, column) {
     if (isEmpty(value)) return '';
     var type = column && column.type;
     if (type === 'number') {
       var number = toNumber(value);
-      return isFinite(number) ? numberFormat.format(number) : String(value);
+      if (!isFinite(number)) return String(value);
+      var text = numberFormatFor(column).format(number);
+      // Cot fractionDigits: so am lam tron ve 0 (vd -0.2 voi 0 chu so le) hien "0", khong "-0".
+      return column && column.fractionDigits >= 0 && /^-0(\.0+)?$/.test(text) ? text.slice(1) : text;
     }
     if (type === 'percent') {
       var ratio = toNumber(value);
@@ -256,7 +268,9 @@ function createReportKit() {
       subtitle: 'Cộng dồn trên các dòng đang hiển thị',
       labels: groups.map(function (group) { return group.key.length > 38 ? group.key.slice(0, 36) + '…' : group.key; }),
       values: groups.map(function (group) { return group.value; }),
-      valueLabel: columns[metricIndex].label
+      valueLabel: columns[metricIndex].label,
+      // Cot so khai bao fractionDigits: tooltip/truc cua bieu do Top hien dung so chu so le do (bang khac: undefined, nhu cu).
+      fractionDigits: columns[metricIndex].fractionDigits
     };
   }
 
@@ -284,7 +298,81 @@ function createReportKit() {
    */
   // hints (tuy chon): { labelKey, categoryKey } chi dinh cot nhan cho bieu do Top va cot phan loai
   // cho bieu do co cau/bo loc khi doan tu dong chon sai; cot khong co trong file thi bo qua.
-  function planFor(columns, rows, summaryKeys, hints) {
+  // ---------- Xu huong theo ky (tuy chon, worksheet.periodTrend) ----------
+  // periodTrend = { title, subtitle, points:[{label, range, columns:{vai tro: khoa cot}}], total?:{label, range, columns},
+  //   metrics:[{key, label, hint?, agg:'sum', column:vai tro} | {key, label, agg:'ratio', numerator, denominator}] }.
+  // Moi diem la 1 ky KHONG chong nhau (truc x); `total` (vd ca 90 ngay) chi lam KPI. Tinh lai tren dong dang hien (sau tim
+  // kiem) nen KPI + bieu do nhay theo tu khoa. Chi so thieu cot o bat ky diem nao (nguoi dung bo cot khi xuat) thi bo chi so do.
+  function resolvePeriodTrend(columns, trend) {
+    if (!trend || !Array.isArray(trend.points) || trend.points.length < 2 || !Array.isArray(trend.metrics)) return null;
+    var indexOf = function (key) { return columns.findIndex(function (column) { return column.key === key && column.type === 'number'; }); };
+    var resolvePoint = function (point) {
+      var idx = {};
+      Object.keys((point && point.columns) || {}).forEach(function (role) { idx[role] = indexOf(point.columns[role]); });
+      return { label: String(point.label || ''), range: String(point.range || ''), idx: idx };
+    };
+    var points = trend.points.map(resolvePoint);
+    var total = trend.total ? resolvePoint(trend.total) : null;
+    var roles = function (metric) { return metric.agg === 'ratio' ? [metric.numerator, metric.denominator] : [metric.column]; };
+    var has = function (point, metric) { return roles(metric).every(function (role) { return point.idx[role] >= 0; }); };
+    var metrics = trend.metrics.filter(function (metric) {
+      return metric && (metric.agg === 'sum' || metric.agg === 'ratio') && points.every(function (point) { return has(point, metric); });
+    }).map(function (metric) {
+      return { key: String(metric.key), label: String(metric.label), hint: metric.hint ? String(metric.hint) : '', agg: metric.agg,
+        column: metric.column, numerator: metric.numerator, denominator: metric.denominator, inTotal: !!total && has(total, metric) };
+    });
+    if (!metrics.length) return null;
+    var digits = trend.fractionDigits >= 0 && trend.fractionDigits <= 20 && trend.fractionDigits % 1 === 0 ? trend.fractionDigits : undefined;
+    return { title: String(trend.title || 'Xu hướng theo kỳ'), subtitle: String(trend.subtitle || ''), points: points, total: total, metrics: metrics, fractionDigits: digits };
+  }
+
+  // Tong cac gia tri so; khong co gia tri nao -> null (khong bien thanh 0).
+  function sumOrNull(rows, index) {
+    var total = 0;
+    var seen = false;
+    for (var r = 0; r < rows.length; r += 1) {
+      var number = toNumber(rows[r][index]);
+      if (isFinite(number)) { total += number; seen = true; }
+    }
+    return seen ? total : null;
+  }
+
+  function trendValue(rows, point, metric) {
+    if (metric.agg === 'ratio') {
+      var numerator = sumOrNull(rows, point.idx[metric.numerator]);
+      var denominator = sumOrNull(rows, point.idx[metric.denominator]);
+      return numerator === null || denominator === null || denominator === 0 ? null : numerator / denominator;
+    }
+    return sumOrNull(rows, point.idx[metric.column]);
+  }
+
+  function periodTrendSummary(rows, trend) {
+    return {
+      id: 'periodTrend',
+      kind: 'periodTrend',
+      type: 'line',
+      title: trend.title,
+      subtitle: trend.subtitle,
+      empty: rows.length === 0,
+      fractionDigits: trend.fractionDigits,
+      labels: trend.points.map(function (point) { return point.range ? [point.label, point.range] : point.label; }),
+      series: trend.metrics.map(function (metric) {
+        return { key: metric.key, label: metric.label, hint: metric.hint,
+          values: trend.points.map(function (point) { return rows.length ? trendValue(rows, point, metric) : null; }) };
+      })
+    };
+  }
+
+  // digits (tuy chon, vd periodTrend.fractionDigits = 0): so chu so le toi da khi hien; khong co = toi 8 chu so.
+  function formatExact(value, digits) {
+    if (value === null || !isFinite(value)) return '—';
+    if (!(digits >= 0)) return exactFormat.format(value);
+    var text = numberFormatFor({ fractionDigits: digits }).format(value);
+    return /^-0(\.0+)?$/.test(text) ? text.slice(1) : text;
+  }
+  var exactFormat = new Intl.NumberFormat('en-US', { maximumFractionDigits: 8 });
+
+  function planFor(columns, rows, summaryKeys, hints, periodTrend) {
     var metrics = metricColumns(columns);
     // Bang co the chi dinh cot so dung lam KPI/bieu do chinh (vd so lieu "trong ky" thay vi tong toan thoi gian
     // cua KiotViet) de tong hop bam dung bo loc thoi gian; cot khong co trong file thi bo qua.
@@ -300,18 +388,36 @@ function createReportKit() {
     var label = keyIndex(hints && hints.labelKey);
     if (label < 0) label = labelColumn(columns);
     var category = keyIndex(hints && hints.categoryKey);
-    return {
+    var plan = {
       metrics: metrics.slice(0, 3),
       label: label,
-      category: category >= 0 ? category : categoryColumn(columns, rows, label),
+      // categoryKey: false = bang khong co cot phan loai (khong doan tu dong, khong bo loc/bieu do co cau).
+      category: hints && hints.categoryKey === false ? -1 : (category >= 0 ? category : categoryColumn(columns, rows, label)),
       date: dateColumn(columns)
     };
+    var trend = resolvePeriodTrend(columns, periodTrend);
+    if (trend) plan.periodTrend = trend;
+    return plan;
   }
 
   function buildSummary(columns, rows, plan) {
     var p = plan || planFor(columns, rows);
     var kpis = [{ label: 'Số dòng dữ liệu', value: rows.length, formatted: numberFormat.format(rows.length), hint: columns.length + ' cột' }];
-    p.metrics.forEach(function (index) {
+    var trend = p.periodTrend;
+    var totalMetrics = trend && trend.total ? trend.metrics.filter(function (metric) { return metric.inTotal; }).slice(0, 3) : [];
+    // Co xu huong theo ky + ky tong (vd 90 ngay): KPI = tong cua ky tong tren dong dang hien (ty le = binh quan gia quyen).
+    if (totalMetrics.length) {
+      totalMetrics.forEach(function (metric) {
+        var value = rows.length ? trendValue(rows, trend.total, metric) : null;
+        // fractionDigits khai bao: KPI hien so day du theo so chu so do (khong rut gon "543.9 triệu"); khong khai bao = nhu cu.
+        var whole = trend.fractionDigits >= 0;
+        var formatted = value === null ? '—' : (whole ? formatExact(value, trend.fractionDigits) : formatMetric(value));
+        var exact = formatExact(value, trend.fractionDigits);
+        var range = trend.total.range ? ' (' + trend.total.range + ')' : '';
+        kpis.push({ label: metric.label + ' ' + trend.total.label, value: value, formatted: formatted,
+          hint: !rows.length ? 'Không có dòng nào khớp' : (formatted === exact ? (metric.hint || 'Cộng dồn') + range : exact + range) });
+      });
+    } else p.metrics.forEach(function (index) {
       var total = sumColumn(rows, index);
       var formatted = formatMetric(total);
       var exact = numberFormat.format(total);
@@ -325,6 +431,7 @@ function createReportKit() {
     }
     var primary = p.metrics.length ? p.metrics[0] : -1;
     var charts = [];
+    if (trend) charts.push(periodTrendSummary(rows, trend));
     var teamIndex = columns.findIndex(function (column) { return column.key === 'saleTeam'; });
     if (teamIndex >= 0) {
       ['currentDebt', 'overdueDebt', 'payablePenalty', 'reward'].forEach(function (key) {
@@ -360,6 +467,7 @@ function createReportKit() {
     escapeHtml: escapeHtml,
     planFor: planFor,
     buildSummary: buildSummary,
+    formatExact: formatExact,
     kpiCardsHtml: kpiCardsHtml,
     formatShort: formatShort
   };
@@ -390,12 +498,16 @@ function embedWorksheet(worksheet) {
     const embedded = { key: column.key, label: column.label, type: column.type || 'general' };
     if (Number.isFinite(column.width) && column.width > 0) embedded.width = column.width;
     if (column.signTone) embedded.signTone = true;
+    if (Number.isInteger(column.fractionDigits)) embedded.fractionDigits = column.fractionDigits;
     return embedded;
   });
   const rows = worksheet.rows.map(row => columns.map(column => embedValue(row[column.key], column)));
   const embedded = { key: worksheet.key, name: worksheet.name, columns, rows };
   if (Array.isArray(worksheet.summaryKeys)) embedded.summaryKeys = worksheet.summaryKeys;
   if (worksheet.hints) embedded.hints = worksheet.hints;
+  // Tuy chon: o tim chi so cac cot nay (vd ma + ten) va bieu do xu huong theo ky (xem resolvePeriodTrend).
+  if (Array.isArray(worksheet.searchKeys)) embedded.searchKeys = worksheet.searchKeys;
+  if (worksheet.periodTrend) embedded.periodTrend = worksheet.periodTrend;
   return embedded;
 }
 
@@ -418,7 +530,7 @@ async function gzipWorksheets(worksheets) {
   await write('{"worksheets":[');
   for (let index = 0; index < worksheets.length; index += 1) {
     const worksheet = worksheets[index];
-    const head = JSON.stringify({ key: worksheet.key, name: worksheet.name, columns: worksheet.columns, summaryKeys: worksheet.summaryKeys, hints: worksheet.hints });
+    const head = JSON.stringify({ key: worksheet.key, name: worksheet.name, columns: worksheet.columns, summaryKeys: worksheet.summaryKeys, hints: worksheet.hints, searchKeys: worksheet.searchKeys, periodTrend: worksheet.periodTrend });
     await write(`${index ? ',' : ''}${head.slice(0, -1)},"rows":[`);
     for (let start = 0; start < worksheet.rows.length; start += GZIP_ROW_CHUNK) {
       const part = worksheet.rows.slice(start, start + GZIP_ROW_CHUNK).map(row => JSON.stringify(row)).join(',');
@@ -489,6 +601,18 @@ input[type=search]:focus,select:focus,button:focus-visible{outline:2px solid var
 .chart-box{position:relative;height:260px;padding:10px 14px 14px;min-width:0}
 .chart-box canvas{display:block;max-width:100%}
 .chart-empty{padding:28px 18px;color:var(--muted);font-size:13px;text-align:center}
+.trend-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:8px}
+.trend-head>div{flex:1 1 180px;min-width:0}
+select.trend-metric{width:auto;max-width:100%;height:32px;font-size:12.5px}
+.trend-hint{margin:-4px 18px 6px;font-size:12px;color:var(--muted)}
+.trend-table-wrap{overflow-x:auto;padding:0 14px 14px}
+.trend-table{width:100%;font-size:12.5px}
+.trend-table th,.trend-table td{padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:left;position:static;background:none;font-weight:500}
+.trend-table thead th{color:var(--muted);font-weight:600;white-space:normal;vertical-align:bottom}
+.trend-table .num{text-align:right}
+.trend-table td.neg{color:var(--neg)}
+.trend-table tr.is-selected th,.trend-table tr.is-selected td{color:var(--accent);font-weight:650}
+.trend-table tbody tr:nth-child(even) td{background:none}
 .table-card{display:flex;flex-direction:column;overflow:hidden}
 .table-card .card-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding-bottom:12px;border-bottom:1px solid var(--line)}
 .table-wrap{overflow:auto;max-height:calc(100vh - 150px);min-height:240px}
@@ -563,8 +687,13 @@ const REPORT_SCRIPT = `
   }
 
   var prepared = DATA.worksheets.map(function (sheet) {
-    return { plan: kit.planFor(sheet.columns, sheet.rows, sheet.summaryKeys, sheet.hints), haystack: null };
+    // searchKeys (tuy chon): o tim chi so cac cot nay (vd ma + ten hang) nhu o tim tren man hinh; khong co = moi cot.
+    var searchable = Array.isArray(sheet.searchKeys) ? sheet.columns.map(function (column) { return sheet.searchKeys.indexOf(column.key) >= 0; }) : null;
+    if (searchable && searchable.indexOf(true) < 0) searchable = null;
+    return { plan: kit.planFor(sheet.columns, sheet.rows, sheet.summaryKeys, sheet.hints, sheet.periodTrend), haystack: null, searchable: searchable };
   });
+  var trendMetric = {};
+  var lastSummary = null;
 
   // Chuoi tim kiem chi dung khi nguoi xem go lan dau (mo file nhanh, it RAM). Cot so/phan tram
   // chi giu gia tri tho; cot ngay them dang dd/mm/yyyy de go dung nhu tren bang van khop.
@@ -576,7 +705,7 @@ const REPORT_SCRIPT = `
       var parts = [];
       for (var c = 0; c < row.length; c += 1) {
         var value = row[c];
-        if (value === null) continue;
+        if (value === null || (prep.searchable && !prep.searchable[c])) continue;
         parts.push(ws.columns[c].type === 'date' ? value + ' ' + kit.formatCell(value, ws.columns[c]) : value);
       }
       return fold(parts.join(' | '));
@@ -680,6 +809,7 @@ const REPORT_SCRIPT = `
 
   function renderBody(rows) {
     var ws = sheet();
+    var searchable = prepared[state.sheet].searchable;
     var pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
     if (state.page >= pages) state.page = pages - 1;
     var start = state.page * PAGE_SIZE;
@@ -698,7 +828,7 @@ const REPORT_SCRIPT = `
           if (column.signTone && typeof value === 'number') cls.push(value < 0 ? 'tone' : value === 0 ? 'tone zero' : 'tone pos');
           if (value === null) cls.push('empty');
           var text = value === null ? '—' : kit.formatCell(value, column);
-          return '<td' + (cls.length ? ' class="' + cls.join(' ') + '"' : '') + '>' + (value === null ? text : highlight(text)) + '</td>';
+          return '<td' + (cls.length ? ' class="' + cls.join(' ') + '"' : '') + '>' + (value === null || (searchable && !searchable[index]) ? kit.escapeHtml(text) : highlight(text)) + '</td>';
         }).join('') + '</tr>';
       }).join('');
     }
@@ -714,6 +844,77 @@ const REPORT_SCRIPT = `
     return ['--chart-1', '--chart-2', '--chart-3', '--chart-4', '--chart-5', '--chart-6', '--chart-7', '--chart-8'].map(cssVar);
   }
 
+  // ---- Bieu do duong "xu huong theo ky" (worksheet.periodTrend): chon chi so, bang so chinh xac ben duoi ----
+  function trendSelected(spec) {
+    var key = trendMetric[state.sheet];
+    var index = spec.series.findIndex(function (series) { return series.key === key; });
+    return index >= 0 ? index : 0;
+  }
+
+  function trendLabelText(label) { return Array.isArray(label) ? label.join(' ') : String(label); }
+
+  function trendCardHtml(spec, index) {
+    var selected = trendSelected(spec);
+    var options = spec.series.map(function (series, i) {
+      return '<option value="' + kit.escapeHtml(series.key) + '"' + (i === selected ? ' selected' : '') + '>' + kit.escapeHtml(series.label) + '</option>';
+    }).join('');
+    var head = '<header class="card-head trend-head"><div><h2>' + kit.escapeHtml(spec.title) + '</h2><p>' + kit.escapeHtml(spec.subtitle) + '</p></div>' +
+      '<select class="trend-metric" id="trendMetric" aria-label="Chỉ số của biểu đồ xu hướng">' + options + '</select></header>';
+    if (spec.empty) {
+      return '<section class="card trend-card" data-trend="empty">' + head + '<div class="chart-empty" id="trendEmpty">Không có dòng nào khớp từ khóa — chưa có xu hướng để vẽ. Xóa ô tìm kiếm để xem lại toàn bộ.</div></section>';
+    }
+    var series = spec.series[selected];
+    var hint = series.hint ? '<p class="trend-hint">' + kit.escapeHtml(series.hint) + '</p>' : '';
+    var rows = spec.series.map(function (item, i) {
+      return '<tr' + (i === selected ? ' class="is-selected"' : '') + ' data-series="' + kit.escapeHtml(item.key) + '"><th scope="row">' + kit.escapeHtml(item.label) + '</th>' +
+        item.values.map(function (value) { return '<td class="num' + (value !== null && value < 0 ? ' neg' : '') + '">' + kit.escapeHtml(kit.formatExact(value, spec.fractionDigits)) + '</td>'; }).join('') + '</tr>';
+    }).join('');
+    return '<section class="card trend-card" data-trend="ready">' + head +
+      '<div class="chart-box"><canvas id="chart' + index + '" role="img" aria-label="' + kit.escapeHtml(spec.title + ': ' + series.label) + '"></canvas></div>' + hint +
+      '<div class="trend-table-wrap"><table class="trend-table" id="trendTable" data-table-controls="off"><thead><tr><th scope="col">Chỉ số</th>' +
+      spec.labels.map(function (label) {
+        return '<th scope="col" class="num">' + (Array.isArray(label) ? label.map(kit.escapeHtml).join('<br>') : kit.escapeHtml(label)) + '</th>';
+      }).join('') +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div></section>';
+  }
+
+  function trendChart(spec, index, colors, grid) {
+    var series = spec.series[trendSelected(spec)];
+    var exact = function (value) { return kit.formatExact(value, spec.fractionDigits); };
+    // fractionDigits = 0: nhan truc la so nguyen day du (vd 31,000,000), khong rut gon co phan le ("30.5 triệu").
+    var tick = spec.fractionDigits >= 0 ? exact : function (v) { return kit.formatShort(v); };
+    return new Chart($('chart' + index), {
+      type: 'line',
+      data: { labels: spec.labels, datasets: [{
+        label: series.label, data: series.values, borderColor: colors[0], backgroundColor: colors[0],
+        borderWidth: 2.5, tension: 0, fill: false, spanGaps: false, pointRadius: 4, pointHoverRadius: 6
+      }] },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: {
+            title: function (items) { return items.length ? trendLabelText(spec.labels[items[0].dataIndex]) : ''; },
+            label: function (ctx) { return ' ' + series.label + ': ' + exact(ctx.parsed.y); }
+          } }
+        },
+        // Truc tu co gian theo du lieu (khong ep tu 0); so am/duong lan nhau thi 0 tu nam trong khoang.
+        scales: {
+          x: { grid: { display: false }, border: { color: grid }, ticks: { maxRotation: 0, autoSkip: false } },
+          y: { beginAtZero: false, grace: '8%', grid: { color: grid }, border: { display: false }, ticks: { precision: spec.fractionDigits >= 0 ? spec.fractionDigits : undefined, callback: function (v) { return tick(v); } } }
+        }
+      }
+    });
+  }
+
+  $('charts').addEventListener('change', function (event) {
+    if (!event.target || event.target.id !== 'trendMetric' || !lastSummary) return;
+    trendMetric[state.sheet] = event.target.value;
+    renderCharts(lastSummary);
+    var select = $('trendMetric');
+    if (select) select.focus();
+  });
+
   function renderCharts(summary) {
     charts.forEach(function (chart) { chart.destroy(); });
     charts = [];
@@ -722,7 +923,9 @@ const REPORT_SCRIPT = `
       host.innerHTML = '<section class="card"><div class="chart-empty">Bảng này không có cột số phù hợp để vẽ biểu đồ.</div></section>';
       return;
     }
+    lastSummary = summary;
     host.innerHTML = summary.charts.map(function (spec, index) {
+      if (spec.kind === 'periodTrend') return trendCardHtml(spec, index);
       return '<section class="card"><header class="card-head"><h2>' + kit.escapeHtml(spec.title) + '</h2><p>' + kit.escapeHtml(spec.subtitle) +
         '</p></header><div class="chart-box"><canvas id="chart' + index + '" role="img" aria-label="' + kit.escapeHtml(spec.title) + '"></canvas></div></section>';
     }).join('');
@@ -734,6 +937,10 @@ const REPORT_SCRIPT = `
     Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
     Chart.defaults.color = ink;
     summary.charts.forEach(function (spec, index) {
+      if (spec.kind === 'periodTrend') {
+        if (!spec.empty) charts.push(trendChart(spec, index, colors, grid));
+        return;
+      }
       var horizontal = spec.type === 'bar';
       var dataset = {
         label: spec.valueLabel,
@@ -754,9 +961,11 @@ const REPORT_SCRIPT = `
           var total = spec.values.reduce(function (s, v) { return s + v; }, 0);
           return ' ' + label + ': ' + fmt.format(value) + ' (' + fmt.format(total ? value / total * 100 : 0) + '%)';
         }
-        return ' ' + label + ': ' + fmt.format(value);
+        return ' ' + label + ': ' + (spec.fractionDigits >= 0 ? kit.formatExact(value, spec.fractionDigits) : fmt.format(value));
       } } };
-      var axisNum = { grid: { color: grid }, border: { display: false }, ticks: { callback: function (v) { return kit.formatShort(v); } } };
+      var axisNum = { grid: { color: grid }, border: { display: false }, ticks: spec.fractionDigits >= 0
+        ? { precision: spec.fractionDigits, callback: function (v) { return kit.formatExact(v, spec.fractionDigits); } }
+        : { callback: function (v) { return kit.formatShort(v); } } };
       var axisCat = { grid: { display: false }, border: { color: grid }, ticks: { autoSkip: true, maxRotation: 0 } };
       charts.push(new Chart($('chart' + index), {
         type: spec.type,
@@ -861,7 +1070,7 @@ async function renderHtmlReport(dataset) {
   const meta = dataset.meta;
   const worksheets = dataset.worksheets.map(embedWorksheet);
   const first = worksheets[0];
-  const summary = kit.buildSummary(first.columns, first.rows, kit.planFor(first.columns, first.rows, first.summaryKeys, first.hints));
+  const summary = kit.buildSummary(first.columns, first.rows, kit.planFor(first.columns, first.rows, first.summaryKeys, first.hints, first.periodTrend));
   const totalRows = worksheets.reduce((sum, worksheet) => sum + worksheet.rows.length, 0);
   const generatedAt = formatGeneratedAt(meta.generatedAt || new Date());
   // base64 chi gom [A-Za-z0-9+/=] nen khong the dong the <script>.

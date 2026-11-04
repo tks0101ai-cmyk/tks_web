@@ -56,7 +56,7 @@ test('edit preloads account workplace and keeps approval scope separate in paylo
     w.openEditUserModal('staff'); await settle();
     assert.equal(doc.getElementById('editWorkCoSo')?.value, 'Hà Nội');
     assert.equal(doc.getElementById('editBoPhan')?.value, 'Kế toán');
-    assert.equal(doc.getElementById('editLeaveDepartments').closest('.form-group').hidden, false);
+    assert.equal(doc.getElementById('editLeaveDepartments').closest('.form-group').hidden, true);
     w.handleSaveEditUser({ preventDefault() {} }); await settle();
     assert.equal(posted[0].workCoSo, 'Hà Nội'); assert.equal(posted[0].boPhan, 'Kế toán');
     assert.deepEqual(posted[0].leaveApprovalDepartments, ['Kho HN']);
@@ -109,7 +109,7 @@ test('create form orders fields by dependency, marks required work fields and su
     assert.equal(posted.at(-1).telegramId, '6205968899');
   } finally { dom.window.close(); }
 });
-test('approval scope stays selectable for guests without clearing selection', async () => {
+test('approval scope is shown only for managers and preserves selection across role changes', async () => {
   const { dom, w, doc } = await page();
   try {
     w.openCreateUserModal(); await settle();
@@ -117,12 +117,14 @@ test('approval scope stays selectable for guests without clearing selection', as
     const group = doc.getElementById('createLeaveDepartments').closest('.form-group');
     for (const value of ['Nhân viên kho', 'Trợ lý', 'Nhân viên sale']) {
       role.value = value; role.dispatchEvent(new w.Event('change'));
-      assert.equal(group.hidden, false, value);
+      assert.equal(group.hidden, true, value);
       assert.ok([...group.querySelectorAll('input')].some(input => !input.disabled), value);
     }
+    role.value = 'Quản lý'; role.dispatchEvent(new w.Event('change'));
+    assert.equal(group.hidden, false);
     group.querySelector('input').checked = true;
     role.value = 'Khách'; role.dispatchEvent(new w.Event('change'));
-    assert.equal(group.hidden, false);
+    assert.equal(group.hidden, true);
     assert.ok([...group.querySelectorAll('input')].some(input => !input.disabled && input.checked));
     role.value = 'Nhân viên kho'; role.dispatchEvent(new w.Event('change'));
     assert.ok([...group.querySelectorAll('input')].some(input => !input.disabled));

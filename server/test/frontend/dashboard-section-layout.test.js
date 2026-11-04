@@ -59,11 +59,11 @@ test('Hóa đơn: Kiểm tra giá bán, Bảng giá duyệt rồi Giao dịch (�
   });
 });
 
-test('Hàng hóa có 3 phần: Báo cáo hàng hóa, Dự kiến hàng về (mới, ở giữa) và Tăng trưởng mã hàng', () => {
+test('Hàng hóa có 4 phần: Báo cáo hàng hóa, Dự kiến hàng về, Tăng trưởng mã hàng và Hàng hóa 90 ngày', () => {
   const titles = sectionTitles('products');
-  assert.deepEqual(titles.map(s => s.step), ['1', '2', '3']);
-  assert.deepEqual(titles.map(s => s.title), ['Báo cáo hàng hóa', 'Dự kiến hàng về', 'Tăng trưởng mã hàng']);
-  ['productReportRows', 'expectedArrivalsRows', 'businessProductsRows'].forEach(id => assert.ok(view('products').querySelector('#' + id), id));
+  assert.deepEqual(titles.map(s => s.step), ['1', '2', '3', '4']);
+  assert.deepEqual(titles.map(s => s.title), ['Báo cáo hàng hóa', 'Dự kiến hàng về', 'Tăng trưởng mã hàng', 'Hàng hóa 90 ngày']);
+  ['productReportRows', 'expectedArrivalsRows', 'businessProductsRows', 'product90dRows'].forEach(id => assert.ok(view('products').querySelector('#' + id), id));
   ['todayNewProductRows', 'newlyImportedRows', 'allProductRows', 'topSellingRows', 'inventoryValueRows'].forEach(id => {
     assert.equal(document.getElementById(id), null, id + ' da bi go cung cac muc cu cua tab Hang hoa');
   });
@@ -86,7 +86,8 @@ test('không còn mục Chỉ số then chốt đầu tab; mỗi mục con có h
     const sections = [...view(name).querySelectorAll(':scope > section.section')];
     assert.ok(!sectionTitles(name).some(s => s.title === 'Chỉ số then chốt'), name);
     sections.forEach((section, index) => {
-      if (section.id === 'expectedArrivalsSection') {
+      // Dự kiến hàng về và Hàng hóa 90 ngày (bảng tính sẵn, chỉ đọc) không có hàng chỉ số.
+      if (section.id === 'expectedArrivalsSection' || section.id === 'product90dSection') {
         assert.equal(section.querySelector('.section-kpis'), null);
         return;
       }

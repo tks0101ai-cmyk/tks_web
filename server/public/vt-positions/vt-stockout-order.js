@@ -58,6 +58,31 @@
     return true;
   }
 
+  // Nhật ký thao tác của đơn tạm (mới nhất trước): dòng đã xóa vẫn còn ảnh chụp mã/vị trí/ghi chú.
+  const AUDIT_ACTION = { add: 'Thêm dòng', update: 'Sửa dòng', delete: 'Xóa dòng', import: 'Import Excel', confirm: 'Chốt đơn' };
+  const auditLine = snap => snap ? [snap.code, snap.location, snap.notes].filter(Boolean).join(' · ') : '';
+  function auditText(event) {
+    const d = event.detail || {};
+    if (event.action === 'update') return auditLine(d.before) + ' → ' + auditLine(d.after);
+    if (event.action === 'import') return (d.fileName || 'file') + ': thêm ' + (d.added || 0) + ' dòng' + (d.skipped ? ', bỏ qua ' + d.skipped : '');
+    if (event.action === 'confirm') return (d.lines || 0) + ' dòng';
+    return auditLine(d.before || d.after);
+  }
+  async function loadAudit() {
+    const list = $('vtOrderAuditList');
+    if (!list || !state.order) return;
+    const { response, payload } = await call(API + '/' + state.order.id + '/events?limit=100');
+    if (!response.ok) { setError(payload.error || 'Không tải được nhật ký thao tác.'); return; }
+    list.replaceChildren();
+    if (!payload.events.length) { list.appendChild(el('li', 'table-note', 'Chưa có thao tác nào được ghi lại.')); return; }
+    payload.events.forEach(event => {
+      const item = el('li', 'vt-order-audit-item is-' + event.action);
+      item.append(el('span', 'vt-order-audit-time', formatTime(event.createdAt)), el('strong', '', event.userName || '—'),
+        el('span', 'vt-order-audit-act', AUDIT_ACTION[event.action] || event.action), el('span', 'vt-order-audit-detail', auditText(event)));
+      list.appendChild(item);
+    });
+  }
+
   // ---------- Dựng giao diện ----------
   function preview(line) { return line.preview || null; }
 
@@ -545,6 +570,7 @@
     $('vtOrderBack').addEventListener('click', () => { if (state.returnView === 'current') setView('current'); else if (state.history.length) { state.view = 'list'; render(); } else setView('list'); });
     $('vtOrderSearch').addEventListener('input', event => { state.search = event.target.value; if (state.view === 'list') renderList(); });
     $('vtOrderConfirm').addEventListener('click', confirmOrder);
+    $('vtOrderAudit').addEventListener('toggle', event => { if (event.target.open) loadAudit(); });
     $('vtOrderMore').addEventListener('click', () => loadHistory(true));
     $('vtOrderImport').addEventListener('click', () => $('vtOrderFile').click());
     $('vtOrderFile').addEventListener('change', event => { const file = event.target.files && event.target.files[0]; event.target.value = ''; importFile(file); });

@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { EDIT_COLUMNS, parseClipboard, planPaste, planFill, moveIndex, matchesFilter } = require('../public/stocktake/stocktakeGrid');
+const { EDIT_COLUMNS, parseClipboard, planPaste, planPasteByCode, planFill, moveIndex, matchesFilter, summarizeCells } = require('../public/stocktake/stocktakeGrid');
 const { PASTE_COLUMNS } = require('../public/stocktake/stocktakePaste');
 
 test('EDIT_COLUMNS: 9 cot, deu la cot dan hop le', () => {
@@ -63,4 +63,51 @@ test('matchesFilter: 5 bo loc; note null / chi khoang trang = trong; gia tri la 
   assert.deepEqual(pick('neither'), ['none', 'noNote', 'forgot']);
   assert.deepEqual(pick('noted'), pick('all'), 'gia tri cu / la = tat ca');
   assert.equal(matchesFilter({ forgotten: false, note: { statusText: 'x', printPage: null } }, 'statusOnly'), true);
+});
+
+test('summarizeCells: Dem o co gia tri, Tong / TB chi tinh o so (kieu thanh trang thai Excel)', () => {
+  const total = summarizeCells([
+    { text: '-1,200', number: -1200 },
+    { text: '0', number: 0 },
+    { text: '', number: null },
+    { text: 'Mất', number: null },
+    { text: '1.5', number: 1.5 }
+  ]);
+  assert.deepEqual(total, { count: 4, numeric: 3, sum: -1198.5, average: -399.5 });
+  assert.deepEqual(summarizeCells([{ text: 'OK', number: null }, { text: '', number: null }]), { count: 1, numeric: 0, sum: 0, average: null });
+  assert.equal(summarizeCells([{ text: 'x', number: NaN }]).numeric, 0, 'NaN khong tinh vao tong');
+  assert.deepEqual(summarizeCells([]), { count: 0, numeric: 0, sum: 0, average: null });
+});
+
+test('planPasteByCode: cot dau la ma hang -> ghi theo ma, khong theo thu tu dong', () => {
+  const codes = ['115CTCA', '20RDD', 'S100B250', 'kb8ibv'];
+  const visibleCols = [0, 1, 5, 6, 7];
+  // Tieu de + 3 ma theo thu tu khac bang, 1 ma khong co trong dot, 1 ma viet thuong/hoa khac, 1 dong trong.
+  const block = [['Mã hàng', 'KK trước sai'], ['S100B250', '-5'], [' 20rdd ', '3'], ['XYZ', '9'], ['', ''], ['KB8IBV', '1']];
+  const plan = planPasteByCode(block, { codes, visibleCols, startIndex: 2 });
+  assert.equal(plan.header, true);
+  assert.deepEqual(plan.targets, [
+    { code: 'S100B250', col: 5, raw: '-5' },
+    { code: '20RDD', col: 5, raw: '3' },
+    { code: 'kb8ibv', col: 5, raw: '1' }
+  ]);
+  assert.deepEqual(plan.missing, ['XYZ']);
+  assert.equal(plan.codes, 3);
+  assert.equal(plan.duplicates, 0);
+});
+
+test('planPasteByCode: nhieu cot gia tri, cot vuot cuoi bo, ma lap lai lay dong duoi', () => {
+  const plan = planPasteByCode([['A', 'x', 'y', 'z'], ['A', 'x2', 'y2', 'z2']], { codes: ['A'], visibleCols: [0, 3, 4], startIndex: 1 });
+  assert.equal(plan.header, false);
+  assert.equal(plan.duplicates, 1);
+  assert.deepEqual(plan.targets, [{ code: 'A', col: 3, raw: 'x2' }, { code: 'A', col: 4, raw: 'y2' }]);
+});
+
+test('planPasteByCode: khong phai khoi theo ma -> null (dan theo vi tri nhu cu)', () => {
+  const opts = { codes: ['A', 'B'], visibleCols: [0, 1, 2], startIndex: 1 };
+  assert.equal(planPasteByCode([['-5'], ['3']], opts), null, '1 cot');
+  assert.equal(planPasteByCode([['Mất', 'ly do'], ['OK', 'x']], opts), null, 'cot dau khong phai ma');
+  assert.equal(planPasteByCode([['A', '1'], ['Q', '2'], ['R', '3']], opts), null, 'duoi nua la ma');
+  assert.equal(planPasteByCode([], opts), null);
+  assert.notEqual(planPasteByCode([['A', '1'], ['Q', '2']], opts), null, 'dung nua van tinh');
 });

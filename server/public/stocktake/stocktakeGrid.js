@@ -59,6 +59,61 @@
     return targets;
   }
 
+  // Thanh tong kieu Excel cho vung chon. cells: [{ text, number }].
+  // Dem = o co gia tri (chu hoac so); Tong / TB chi tinh o co so (number la so huu han), bo o trong va o chu.
+  function summarizeCells(cells) {
+    let count = 0;
+    let numeric = 0;
+    let sum = 0;
+    for (const cell of cells) {
+      if (String(cell.text ?? '') !== '') count++;
+      if (typeof cell.number === 'number' && Number.isFinite(cell.number)) { numeric++; sum += cell.number; }
+    }
+    return { count, numeric, sum, average: numeric ? sum / numeric : null };
+  }
+
+  // Dan theo ma hang: khoi tu Sheets co cot dau la Ma hang (tu 2 cot tro len). Nhan la khoi theo ma khi it nhat nua so
+  // o cot dau (khong tinh dong tieu de) la ma co trong dot; dong dau khong phai ma = tieu de, bo qua.
+  // Cot gia tri thu j (j >= 1) vao cot dang hien visibleCols[startIndex + j - 1]. Ma lap lai: dong duoi cung thang.
+  // Khop ma: dung nguyen van (bo khoang trang dau/cuoi), khong thi khong phan biet hoa/thuong. Khong phai khoi theo ma -> null.
+  function planPasteByCode(block, { codes, visibleCols, startIndex }) {
+    if (!block.length || !block.some(cells => cells.length >= 2)) return null;
+    const exact = new Set(codes);
+    const loose = new Map();
+    for (const code of codes) {
+      const key = String(code).trim().toUpperCase();
+      if (!loose.has(key)) loose.set(key, code);
+    }
+    const find = raw => {
+      const text = String(raw ?? '').trim();
+      if (!text) return null;
+      if (exact.has(text)) return text;
+      return loose.get(text.toUpperCase()) ?? null;
+    };
+    let rows = block;
+    let header = false;
+    if (rows.length > 1 && !find(rows[0][0])) { rows = rows.slice(1); header = true; }
+    const filled = rows.filter(cells => String(cells[0] ?? '').trim() !== '');
+    const matched = filled.filter(cells => find(cells[0])).length;
+    if (!matched || matched * 2 < filled.length) return null;
+    const byCell = new Map();
+    const seen = new Set();
+    const missing = [];
+    let duplicates = 0;
+    for (const cells of filled) {
+      const code = find(cells[0]);
+      if (!code) { missing.push(String(cells[0]).trim()); continue; }
+      if (seen.has(code)) duplicates += 1;
+      seen.add(code);
+      for (let j = 1; j < cells.length; j++) {
+        const col = visibleCols[startIndex + j - 1];
+        if (col === undefined) break;
+        byCell.set(code + '\u0000' + col, { code, col, raw: cells[j] });
+      }
+    }
+    return { targets: [...byCell.values()], codes: seen.size, missing, duplicates, header };
+  }
+
   // Keo nut goc tu vung rect toi dong `to`: moi dong moi lay dong nguon theo vong, dem tu mep vung chon ra ngoai.
   function planFill(rect, to, cols) {
     const height = rect.bottom - rect.top + 1;
@@ -99,5 +154,5 @@
     }
   }
 
-  return { EDIT_COLUMNS, parseClipboard, planPaste, planFill, moveIndex, matchesFilter };
+  return { EDIT_COLUMNS, parseClipboard, planPaste, planPasteByCode, planFill, moveIndex, matchesFilter, summarizeCells };
 });

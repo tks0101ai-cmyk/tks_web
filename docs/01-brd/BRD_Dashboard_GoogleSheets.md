@@ -551,4 +551,18 @@ Cập nhật gần nhất: 03/11/2026.
 
 Người xem Báo cáo chung mở một hàng hóa để tra cứu thêm hóa đơn hoàn thành và trả hàng thành công trong 90 ngày gồm hôm nay, giữ phần doanh số/khách và biểu đồ cũ. Tìm khách và chọn loại giao dịch làm bốn tổng mua/trả (số lượng và lượt chứng từ) thay đổi đồng thời, giúp đối chiếu hành vi mua/trả của khách; phân trang không làm thay đổi tổng. Giá vốn lịch sử chỉ hiển thị cho người có quyền xem giá; dữ liệu nguồn chưa xác minh được thì hiện “—”, không thay bằng giá bán hoặc giá vốn hiện tại. Không thay quy trình tạo hóa đơn/trả hàng, không ghi KiotViet. Cục bộ trên main, chưa deploy.
 
+Cập nhật gần nhất: 03/11/2026.
+
+## 04/11/2026 — Hàng hóa 90 ngày
+
+Bổ sung mục 4 trong tab Hàng hóa để so sánh sức bán danh mục gộp hai miền, chỉ mã hàng đang hoạt động (is_active IS NOT FALSE ở ít nhất một cơ sở) qua ba khoảng 30 ngày liên tiếp và tổng 90 ngày. Mỗi khoảng thể hiện số lượng, doanh số, giá trung bình, số khách, lượt mua và ba khách lớn nhất kèm tỷ trọng/DS/SL. Dữ liệu chỉ từ hóa đơn/trả hàng thành công trong DB; trả hàng ảnh hưởng SL/DS theo ngày trả, không giảm số khách/lượt mua. Khách gộp theo tên hiện tại. Dùng báo cáo tính sẵn hằng ngày 02:00 giờ Việt Nam, kết thúc hết hôm qua, để web đọc nhanh và số liệu ổn định trong ngày. Đợt này đã tạo DB/nạp đầu 11.135 mã (06/08–03/11/2026), code lịch sẵn sàng chờ deploy worker. Giao diện mục 4 và API đọc đã làm xong (cùng ngày, chưa deploy): người có quyền xem doanh số hàng hóa (`reports.products` + `reports.products.sales`) tìm theo mã/tên, sắp xếp và phân trang bảng 26 cột, thấy rõ thời điểm dữ liệu cập nhật; web chỉ đọc số liệu tính sẵn, không có nút làm mới. Tài khoản thiếu quyền không thấy mục này. Chưa có số liệu thì báo “chưa nạp báo cáo”, lỗi thì cho thử lại, không bao giờ hiển thị thành số 0.
+
+Cập nhật gần nhất: 04/11/2026.
+
+Cập nhật gần nhất: 04/11/2026.
+
+## Bổ sung 04/11/2026 — Theo dõi khách mua và đơn tạm theo hàng hóa
+
+Hộp Chi tiết hàng hóa giúp người dùng xem nhanh chỉ số cạnh biểu đồ, so sánh doanh số từng khách qua ba kỳ 30 ngày liên tiếp và xem lịch sử bán/trả/đặt. Phiếu tạm được trình bày riêng với số lượng và số đơn đặt, không làm tăng doanh số hoặc số mua hoàn thành. Bảng giao dịch có mã kèm cơ sở HN/SG, tìm khách, lọc loại, sắp xếp và xuất Excel đầy đủ theo lựa chọn đang xem. Dùng trên điện thoại/máy tính với giao diện Sáng/Tối, giữ phân quyền hiện hành. Triển khai cần migration 0108 và tính lại dữ liệu tổng hợp; chưa áp DB thật/chưa deploy.
+
 Cập nhật gần nhất: 04/11/2026.

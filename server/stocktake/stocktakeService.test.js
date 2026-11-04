@@ -23,7 +23,7 @@ async function fixture() {
   const db = new PGlite();
   for (const file of ['0001_core_master_data.sql', '0003_orders.sql', '0009_app_users_hr_employees.sql', '0041_hr_employee_status.sql',
     '0064_sheet_snapshots.sql', '0095_stock_positions.sql', '0099_stock_position_ack_and_history_purge.sql',
-    '0101_stock_position_stock_out_action.sql', '0105_stocktake.sql', '0106_stocktake_previous_cancel.sql']) {
+    '0101_stock_position_stock_out_action.sql', '0105_stocktake.sql', '0109_stocktake_previous_cancel.sql']) {
     await db.exec(migration(file));
   }
   await db.exec(`
@@ -421,7 +421,7 @@ test('sua tren bang: tra ban ghi vua luu (version, nguoi sua) va bao tin hieu ke
   assert.deepEqual([empty.notes, empty.tags], [[], []]);
 });
 
-// ---------- 0106: chon dot KK truoc, huy / khoi phuc dot ----------
+// ---------- 0109: chon dot KK truoc, huy / khoi phuc dot ----------
 
 // Hai dot HN da dong (A: 29/10 AAA1 chenh +2; B: 30/10 them 5 AAA1 -> chenh +7) + dot mo C 31/10.
 async function previousFixture() {

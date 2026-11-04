@@ -50,7 +50,7 @@ async function setup(t, { branch = 'Cả hai', hash = '', data = { HN: [row(1)],
       const target = parsed.searchParams.get('branch');
       return json({ branch: target, canEdit, canExport, rows: data[target] });
     }
-    if (method === 'GET' && parsed.pathname === '/api/stock-positions/export') {
+    if (method === 'POST' && parsed.pathname === '/api/stock-positions/export') {
       return { ok: true, status: 200, headers: { get: name => (name === 'Content-Disposition' ? 'attachment; filename="VT-HN-2026.xlsx"' : null) }, blob: async () => ({ size: 3 }) };
     }
     if (handler) { const answer = await handler(url, options, parsed); if (answer) return answer; }
@@ -343,7 +343,7 @@ test('hàng cảnh báo đổi chữ sang đỏ (không tô nền); bộ lọc C
     SG: [row(4, { warnings: ['unreadable'], quantity: null })]
   };
   const { doc, window, changeTab } = await setup(t, { data });
-  assert.deepEqual(optionTexts(doc), ['Cảnh báo (2)', 'Hợp lệ (1)', 'Tất cả']);
+  assert.deepEqual(optionTexts(doc), ['Cảnh báo (2)', 'Hợp lệ (1)', 'Tất cả', 'Số lượng âm (0)', 'Nhiều quy cách (2)', 'Trừ lẻ (0)', 'Sai định dạng (0)', 'Số thùng sai (0)', 'Mã SP lạ (1)']);
   assert.equal(doc.getElementById('vtWarnFilter').value, 'all', 'mặc định Tất cả');
   assert.equal(doc.querySelectorAll('#vtRows tr.vt-warning').length, 2);
   assert.equal(doc.querySelector('#vtRows tr[data-id="3"]').classList.contains('vt-warning'), false);
@@ -361,7 +361,7 @@ test('hàng cảnh báo đổi chữ sang đỏ (không tô nền); bộ lọc C
   assert.equal(doc.querySelectorAll('#vtRows tr').length, 3);
   pickFilter(doc, window, 'warn');
   await changeTab('sg');
-  assert.deepEqual(optionTexts(doc), ['Cảnh báo (1)', 'Hợp lệ (0)', 'Tất cả']);
+  assert.deepEqual(optionTexts(doc), ['Cảnh báo (1)', 'Hợp lệ (0)', 'Tất cả', 'Số lượng âm (0)', 'Nhiều quy cách (0)', 'Trừ lẻ (0)', 'Sai định dạng (1)', 'Số thùng sai (0)', 'Mã SP lạ (0)']);
   assert.equal(doc.getElementById('vtWarnFilter').value, 'all', 'bộ lọc cảnh báo giữ riêng từng tab');
   assert.equal(doc.querySelector('#vtRows [data-field="quantity"]').textContent, '', 'SL trống khi ghi chú sai định dạng');
 });
@@ -376,7 +376,7 @@ test('bộ lọc cảnh báo: số đếm tính trên toàn bộ dòng (không t
   const search = doc.getElementById('vtSearch');
   search.value = 'MA7';
   search.dispatchEvent(new window.Event('input'));
-  assert.deepEqual(optionTexts(doc), ['Cảnh báo (3)', 'Hợp lệ (127)', 'Tất cả'], 'không đổi theo từ khóa');
+  assert.deepEqual(optionTexts(doc), ['Cảnh báo (3)', 'Hợp lệ (127)', 'Tất cả', 'Số lượng âm (0)', 'Nhiều quy cách (0)', 'Trừ lẻ (0)', 'Sai định dạng (3)', 'Số thùng sai (0)', 'Mã SP lạ (0)'], 'không đổi theo từ khóa');
   assert.equal(doc.getElementById('vtStatus').textContent, 'Không có dòng cảnh báo.');
   const noWarn = await setup(t, { data: { HN: [row(1)], SG: [] } });
   pickFilter(noWarn.doc, noWarn.window, 'warn');
@@ -717,6 +717,8 @@ test('nút Xuất Excel chỉ hiện khi canExport, tải file theo cơ sở v�
   doc.getElementById('vtExportButton').click();
   await settle();
   const exportCall = calls.find(c => c.path === '/api/stock-positions/export');
+  assert.equal(exportCall.method, 'POST');
+  assert.deepEqual(JSON.parse(exportCall.options.body), { ids: [1] });
   assert.equal(exportCall.query.get('branch'), 'HN');
   assert.equal(exportCall.options.credentials, 'same-origin');
   assert.equal(downloads[0].name, 'VT-HN-2026.xlsx');

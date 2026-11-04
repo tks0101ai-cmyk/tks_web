@@ -11,6 +11,7 @@ const {
 } = require('./dashboardRollupRefresh');
 const { startCustomerDebtReportRefreshSchedule } = require('./customerDebtReportRefresh');
 const { startProductReportSchedule } = require('./productReportRefresh');
+const { startProduct90dReportSchedule } = require('./product90dReport');
 const { refreshProductReportIncremental } = require('./productReportIncremental');
 const { startCustomerInvoiceLinesSchedule, refreshCustomerInvoiceLinesIncremental } = require('./customerInvoiceLinesRefresh');
 const { startInventoryValueSnapshotSchedule } = require('./inventoryValueSnapshot');
@@ -70,6 +71,7 @@ function createPollingScheduler({
   dashboardRollupIntervalMs = 30 * 60 * 1000,
   customerDebtReportIntervalMs = 5 * 60 * 1000,
   productReportIntervalMs = 5 * 60 * 1000,
+  product90dReportIntervalMs = 60 * 1000,
   customerInvoiceLinesIntervalMs = 5 * 60 * 1000,
   // Chup gia tri ton kho luc 23:59 VN: kiem tra moi 1 phut de khong truot qua phut do.
   inventoryValueSnapshotIntervalMs = 60 * 1000,
@@ -87,6 +89,7 @@ function createPollingScheduler({
   refreshDashboardRollupsAndNotify: refreshHotRollup = refreshDashboardRollupsAndNotify,
   startCustomerDebtReportRefreshSchedule: startCustomerDebtReportRefresh = startCustomerDebtReportRefreshSchedule,
   startProductReportSchedule: startProductReport = startProductReportSchedule,
+  startProduct90dReportSchedule: startProduct90dReport = startProduct90dReportSchedule,
   startCustomerInvoiceLinesSchedule: startCustomerInvoiceLines = startCustomerInvoiceLinesSchedule,
   refreshCustomerInvoiceLinesIncremental: refreshInvoiceLinesIncremental = refreshCustomerInvoiceLinesIncremental,
   refreshProductReportIncremental: refreshProductReportIncrementally = refreshProductReportIncremental,
@@ -237,6 +240,14 @@ function createPollingScheduler({
       // productReportRefresh.js) du duoc kiem tra moi 5 phut nhu cac job tren.
       startProductReport(getPoolFn(), {
         intervalMs: productReportIntervalMs,
+        setIntervalFn,
+        scheduleImmediate,
+        log: logger.log ? logger.log.bind(logger) : logger
+      }),
+      // Independent 90-day snapshot (0106): once per VN day at/after 02:00;
+      // minute ticks only check state, never trigger incremental refreshes.
+      startProduct90dReport(getPoolFn(), {
+        intervalMs: product90dReportIntervalMs,
         setIntervalFn,
         scheduleImmediate,
         log: logger.log ? logger.log.bind(logger) : logger

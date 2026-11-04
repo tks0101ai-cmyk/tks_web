@@ -87,6 +87,15 @@ test('GET /api/product-report/customers tra doanh so khach theo ma hang (?code=)
   assert.deepEqual(calls.at(-1), { code: '012CUTIE' });
 });
 
+test('history forwards draft type and whole-result server sorting', async () => {
+  const res=fakeRes();
+  await routeLayer('get','/api/product-report/history').route.stack.at(-1).handle({user:{vaiTro:'Quản lý'},query:{code:'SP1',type:'order',sort:'quantity',dir:'asc'}},res);
+  assert.equal(res.statusCode,200);
+  assert.equal(calls.at(-1).sort,'quantity');
+  assert.equal(calls.at(-1).dir,'asc');
+  assert.equal(calls.at(-1).type,'order');
+});
+
 test('GET /api/product-report/customers tra 400 (khong phai 500) khi thieu ma hang', async () => {
   const originalError = console.error;
   console.error = () => {};

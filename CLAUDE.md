@@ -17,7 +17,7 @@ Mỗi khi bắt đầu một phiên làm việc mới, AI Assistant cần:
    - [MEMORY.md](MEMORY.md): Bản đồ kiến trúc, nguyên tắc bất biến và các điều cấm kỵ.
    - [CURRENT.md](CURRENT.md): Bảng trạng thái thời gian thực của dự án và các đầu việc cần làm.
    - [README.md](README.md) & [server/README.md](server/README.md): Hướng dẫn kiến trúc, biến môi trường và chạy thử.
-   - [server/db/SCHEMA.md](server/db/SCHEMA.md): Hợp đồng dữ liệu schema Postgres (0001–0106).
+   - [server/db/SCHEMA.md](server/db/SCHEMA.md): Hợp đồng dữ liệu schema Postgres (0001–0109).
 2. Kiểm tra trạng thái Git hiện tại (`git status`) để đảm bảo không làm việc trên trạng thái bẩn ngoài ý muốn.
 
 ---

@@ -14,6 +14,7 @@ const {
 } = require('./dashboard/productReportRepository');
 const containerRepository = require('./productContainers/repository');
 const { getProductHistory } = require('./dashboard/productHistoryRepository');
+const { getProduct90dReport } = require('./dashboard/product90dReportRepository');
 const { getInventoryValueHistory } = require('./dashboard/inventoryValueHistory');
 const { getInvoiceDetail } = require('./dashboard/documentDetailRepository');
 const authRoutes = require('./auth/authRoutes');
@@ -397,8 +398,8 @@ router.get('/api/product-report/containers', async (req, res) => {
 // Nam duoi /api/product-report nen ke thua guard `reports.products` o tren.
 router.get('/api/product-report/history', requireFeature('reports.products.sales'), async (req, res) => {
   try {
-    const { code, q, type, page, pageSize } = req.query;
-    const data = await getProductHistory({ code, q, type, page, pageSize });
+    const { code, q, type, page, pageSize, sort, dir } = req.query;
+    const data = await getProductHistory({ code, q, type, page, pageSize, ...(sort !== undefined ? { sort } : {}), ...(dir !== undefined ? { dir } : {}) });
     const canViewCost = hasFeature(req.user, 'reports.products.price');
     const rows = data.rows.map(row => {
       const copy = { ...row };
@@ -425,6 +426,21 @@ router.get('/api/product-report/customers', requireFeature('reports.products.sal
       error: err.statusCode && err.statusCode < 500 ? err.message : 'Không lấy được doanh số khách theo mã hàng.',
       detail: err.message,
       code: err.code
+    });
+  }
+});
+
+// Muc 4 "Hang hoa 90 ngay" (tab Hang hoa): CHI DOC bang tinh san product_90d_report (+ _state), job 02:00 do
+// kiotvietSync/product90dReport.js dung. Nam duoi /api/product-report (guard reports.products) va them quyen
+// reports.products.sales vi doanh so/gia ban suy ra duoc; chua co snapshot -> 200 { available:false }.
+router.get('/api/product-report/90d', requireFeature('reports.products.sales'), async (req, res) => {
+  try {
+    const { q, sort, dir, page, pageSize } = req.query;
+    res.status(200).json(await getProduct90dReport({ q, sort, dir, page, pageSize }));
+  } catch (err) {
+    if (!err.statusCode || err.statusCode >= 500) console.error('product-report/90d:', err.message);
+    res.status(err.statusCode === 400 ? 400 : 500).json({
+      error: err.statusCode === 400 ? err.message : 'Không lấy được báo cáo hàng hóa 90 ngày.'
     });
   }
 });
@@ -504,7 +520,12 @@ function sendExportError(res, err, fallbackMessage) {
 
 router.post('/api/export/fields', async (req, res) => {
   try {
-    const metadata = await getExportFields(req.body || {}, req.branch, { canViewPrice: hasFeature(req.user, 'reports.products.price'), canViewSales: hasFeature(req.user, 'reports.products.sales') });
+    const metadata = await getExportFields(req.body || {}, req.branch, {
+      canViewPrice: hasFeature(req.user, 'reports.products.price'),
+      canViewSales: hasFeature(req.user, 'reports.products.sales'),
+      // products.product90d (Hàng hóa 90 ngày) đòi thêm quyền tab Hàng hóa — cùng điều kiện với GET /api/product-report/90d.
+      canViewProducts: hasFeature(req.user, 'reports.products')
+    });
     res.status(200).json(metadata);
   } catch (err) {
     sendExportError(res, err, 'Không lấy được danh sách trường xuất Excel.');
@@ -525,7 +546,8 @@ router.post('/api/export', async (req, res) => {
       signal: abortController.signal,
       // Cột Đơn giá HN/SG của Báo cáo hàng hóa chỉ xuất cho tài khoản có quyền xem giá (cùng quyền với GET /api/product-report).
       canViewPrice: hasFeature(req.user, 'reports.products.price'),
-      canViewSales: hasFeature(req.user, 'reports.products.sales')
+      canViewSales: hasFeature(req.user, 'reports.products.sales'),
+      canViewProducts: hasFeature(req.user, 'reports.products')
     });
     if (abortController.signal.aborted) return;
     res.setHeader('Content-Type', file.mimeType);

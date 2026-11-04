@@ -196,6 +196,9 @@ function createStockPositionsRouter(dependencies = {}) {
   router.get(BASE, handle(async (req, res) => {
     res.json(await orders().list(ctxOf(req), req.query.branch, { limit: req.query.limit, before: req.query.before }));
   }));
+  router.get(BASE + '/:id/events', handle(async (req, res) => {
+    res.json(await orders().events(ctxOf(req), intParam(req.params.id), { limit: req.query.limit }));
+  }));
   router.get(BASE + '/:id', handle(async (req, res) => {
     res.json(await orders().get(ctxOf(req), intParam(req.params.id)));
   }));

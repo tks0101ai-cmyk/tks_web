@@ -1,6 +1,6 @@
 # Kiểm kê: chọn đợt KK trước, hủy đợt, nạp lại sheet (đợt 1)
 
-Ngày: 04/11/2026 · Nhánh: `claude/awesome-cerf-yycv0b` · Trang: `/stocktake/` · Migration mới: `0106_stocktake_previous_cancel.sql`
+Ngày: 04/11/2026 · Nhánh: `claude/awesome-cerf-yycv0b` · Trang: `/stocktake/` · Migration mới: `0109_stocktake_previous_cancel.sql`
 
 ## Bối cảnh
 
@@ -21,7 +21,7 @@ Hai đợt nạp từ sheet ("Kiểm kê HN T10 (sheet)" và "Kiểm kê SG T10 
 
 Ngoài phạm vi: nhập CSV/XLSX hoặc tab sheet tùy chọn (đợt 2), sửa bản chụp hoặc mở lại đợt đã đóng (đợt 3), tự đồng bộ liên tục với sheet. Tự đồng bộ bị loại hẳn: đợt đã đóng là số liệu tại một thời điểm và không được tự trôi.
 
-## 1. Migration `0106_stocktake_previous_cancel.sql`
+## 1. Migration `0109_stocktake_previous_cancel.sql`
 
 ```sql
 ALTER TABLE stocktake_sessions
@@ -41,7 +41,7 @@ ALTER TABLE stocktake_history ADD CONSTRAINT stocktake_history_action_check CHEC
   'session_cancel', 'session_restore', 'sheet_reload'));
 ```
 
-- Rollback `server/db/rollbacks/0106_stocktake_previous_cancel.down.sql`: bỏ các cột mới và trả CHECK action về danh sách cũ. Rollback sẽ thất bại nếu lịch sử đã có action mới; ghi rõ điều này trong file.
+- Rollback `server/db/rollbacks/0109_stocktake_previous_cancel.down.sql`: bỏ các cột mới và trả CHECK action về danh sách cũ. Rollback sẽ thất bại nếu lịch sử đã có action mới; ghi rõ điều này trong file.
 - **Hủy dùng cột `cancelled_at`, không thêm giá trị `status`.** Lý do: giao diện có khoảng 10 chỗ kiểm `status === 'closed'` / `'open'`. Thêm `cancelled` vào `status` sẽ làm sai các chỗ đó, và khi khôi phục còn phải nhớ trạng thái cũ. Với cột riêng, khôi phục chỉ cần xóa `cancelled_at`.
 
 ## 2. A — Chọn đợt KK trước
@@ -139,7 +139,7 @@ Mỗi lệnh dùng `withTransaction`: khóa dòng đợt (`FOR UPDATE`), so `ver
 | `stocktakeService.test.js` | KK trước chọn tay dùng đúng đợt; chọn tay đợt bị hủy → tự động + `manualInvalid`; tự động bỏ qua đợt hủy; chặn chọn đợt khác cơ sở / đang mở / chính nó / đã hủy (`400 INVALID_PREVIOUS`); đổi KK trước không xóa đối chiếu và ngược lại; đóng đợt chụp `prev_diff` từ đợt chọn tay; hủy/khôi phục đúng `version` (409 khi lệch); mọi lệnh ghi lên đợt hủy → `409 STOCKTAKE_CANCELLED`; đối chiếu trỏ tới đợt hủy → không có đối chiếu; `listSessions` lọc đợt hủy, `includeCancelled` chỉ có tác dụng với Quản lý; `dependents` đúng |
 | `stocktakeSheetImport.test.js` | Nạp lại giữ id, thay kết quả và ghi chú, không ghi đè tag; lỗi parse → rollback, không đổi gì; `dryRun` không ghi; đếm `added/removed/changed` đúng; chặn đợt `web` và đợt hủy; đổi tên/ngày |
 | `stocktakeRoutes.test.js` | Quyền: `cancel`/`restore`/`reload-sheet` cần `stocktake.close`; `PATCH previousSessionId` cần `stocktake.edit`; phạm vi cơ sở (`BRANCH_OUT_OF_SCOPE`) |
-| `server/db/rollbacks/stocktakeRollback.test.js` | Migration 0106 chạy lại được (idempotent); rollback trả về schema 0105 |
+| `server/db/rollbacks/stocktakeRollback.test.js` | Migration 0109 chạy lại được (idempotent); rollback trả về schema 0105 |
 
 Kiểm tra trên trình duyệt: chọn KK trước → cột "KK trước sai" đổi; hủy đợt T10 → đợt mở chuyển sang tự động hoặc trống; khôi phục → trở lại; nạp lại T10 với ngày mới → xem trước rồi xác nhận. Kiểm tra cả giao diện sáng/tối và di động.
 
@@ -152,6 +152,6 @@ Kiểm tra trên trình duyệt: chọn KK trước → cột "KK trước sai" 
 
 ## 7. Tài liệu cần cập nhật khi code (skill `update-file`)
 
-`README.md`, `server/README.md` (migration 0106 + 4 route mới), `server/db/SCHEMA.md` (cột mới của `stocktake_sessions`, action lịch sử mới, phạm vi 0001–0106), `docs/04-planning/implementation_plan.md`, `docs/02-srs/…`, `docs/01-brd/…`, `CURRENT.md`, `CLAUDE.md` (dòng "0001–0105").
+`README.md`, `server/README.md` (migration 0109 + 4 route mới), `server/db/SCHEMA.md` (cột mới của `stocktake_sessions`, action lịch sử mới, phạm vi 0001–0109), `docs/04-planning/implementation_plan.md`, `docs/02-srs/…`, `docs/01-brd/…`, `CURRENT.md`, `CLAUDE.md` (dòng "0001–0105").
 
 _Cập nhật: 04/11/2026_

@@ -523,6 +523,42 @@
       }
     }
     positionFill();
+    renderSelectionSum(rect);
+  }
+  // Số của ô cho thanh tổng: chỉ cột số (bỏ cột tỷ lệ %, cộng tỷ lệ không có nghĩa); ô trống / chữ -> null.
+  function cellNumber(row, column) {
+    if (!column.num || column.percent) return null;
+    const value = sortValue(row, column);
+    return typeof value === 'number' ? value : null;
+  }
+  // Thanh tổng kiểu Excel ở góc dưới phải: Tổng · Trung bình · Đếm của vùng đang chọn (từ 2 ô trở lên, bỏ cột ẩn).
+  function renderSelectionSum(rect) {
+    const bar = $('stSelSum');
+    if (!rect || (rect.bottom === rect.top && rect.right === rect.left)) { bar.hidden = true; return; }
+    const cols = visibleColumnsIn(rect);
+    const cells = [];
+    for (let index = rect.top; index <= rect.bottom; index++) {
+      const row = view.rows[index];
+      if (!row) continue;
+      for (const col of cols) cells.push({ text: cellText(row, COLUMNS[col].key), number: cellNumber(row, COLUMNS[col]) });
+    }
+    if (cells.length < 2) { bar.hidden = true; return; }
+    const total = Grid.summarizeCells(cells);
+    bar.textContent = '';
+    const part = (label, value) => {
+      const item = document.createElement('span');
+      item.append(label + ': ');
+      const b = document.createElement('b');
+      b.textContent = value;
+      item.appendChild(b);
+      bar.appendChild(item);
+    };
+    if (total.numeric) {
+      part('Tổng', num(total.sum));
+      part('Trung bình', num(total.average));
+    }
+    part('Đếm', num(total.count));
+    bar.hidden = false;
   }
   // Cột đang hiện (bỏ cột ẩn bằng "Cột hiển thị") trong vùng chọn.
   function visibleColumnsIn(rect) {
@@ -591,6 +627,7 @@
       event.preventDefault();
       if (!canWrite()) return;
       const block = Grid.parseClipboard(event.clipboardData.getData('text/plain'));
+      if (pasteByCode(block, rect)) return;
       const targets = Grid.planPaste(block, rect, { rowCount: view.rows.length, visibleCols: visibleColumnIndexes() });
       if (!targets.length) return;
       if (targets.length > MAX_CELLS) { notify('Tối đa ' + num(MAX_CELLS) + ' ô mỗi lần.', true); return; }
@@ -740,14 +777,15 @@
   const statusSkipText = count => 'Bỏ qua ' + num(count) + ' ô trạng thái không thuộc danh sách.';
   // targets: [{ row, col, raw }] theo chi so view.rows / COLUMNS. O cot khong sua duoc / gia tri sai -> bo qua.
   // Cot Trang thai: chu dan / keo -> ten loai chuan theo co so (chu cu "lẫn bình" -> "Lẫn"); khong xep duoc loai thi bo qua.
-  async function writeTargets(targets, verb, { countIgnored = true } = {}) {
+  // target: { row (chỉ số dòng đang hiện) | rowRef (dòng dữ liệu, dán theo mã), col, raw }. extra: câu báo thêm; warn: báo màu đỏ.
+  async function writeTargets(targets, verb, { countIgnored = true, extra = '', warn = false } = {}) {
     const branch = state.board.session.branch;
     const cells = [];
     let ignored = 0;
     let badStatus = 0;
     for (const target of targets) {
       const column = editColumnOf(target.col);
-      const row = view.rows[target.row];
+      const row = target.rowRef || view.rows[target.row];
       let raw = target.raw;
       if (column === 'statusText') {
         raw = Status.canonical(raw, branch);
@@ -756,12 +794,32 @@
       if (!column || !row || !Paste.normalizeValue(column, raw).ok) { ignored += 1; continue; }
       cells.push({ code: row.code, column, value: raw, expected: expectedOf(row, column) });
     }
-    if (!cells.length) { notify(badStatus ? statusSkipText(badStatus) : 'Không có ô nào sửa được trong vùng này.', true); return; }
+    const tail = extra ? ' ' + extra + '.' : '';
+    if (!cells.length) { notify((badStatus ? statusSkipText(badStatus) : 'Không có ô nào sửa được trong vùng này.') + tail, true); return; }
     const payload = await sendCells(cells);
     if (payload) {
-      const text = cellsMessage(verb, payload, countIgnored ? ignored : 0) + (badStatus ? ' ' + statusSkipText(badStatus) : '');
-      notify(text, payload.conflicts.length > 0 || badStatus > 0);
+      const text = cellsMessage(verb, payload, countIgnored ? ignored : 0) + (badStatus ? ' ' + statusSkipText(badStatus) : '') + tail;
+      notify(text, payload.conflicts.length > 0 || badStatus > 0 || warn);
     }
+  }
+
+  // Dán theo mã hàng: khối có cột đầu là Mã hàng -> ghi đúng mã (không theo thứ tự dòng), kể cả mã đang bị lọc / tìm ẩn khỏi bảng.
+  // Cột giá trị đầu tiên vào cột đang chọn (chọn ô Mã hàng thì vào cột ngay bên phải). Không phải khối theo mã -> false (dán theo vị trí).
+  function pasteByCode(block, rect) {
+    const visibleCols = visibleColumnIndexes();
+    let startIndex = visibleCols.indexOf(rect.left);
+    if (startIndex === -1) return false;
+    if (COLUMNS[rect.left].key === 'code') startIndex += 1;
+    const plan = Grid.planPasteByCode(block, { codes: state.board.rows.map(row => row.code), visibleCols, startIndex });
+    if (!plan) return false;
+    if (!plan.targets.length) { notify('Không có cột nào bên phải ô đang chọn để dán.', true); return true; }
+    if (plan.targets.length > MAX_CELLS) { notify('Tối đa ' + num(MAX_CELLS) + ' ô mỗi lần.', true); return true; }
+    const byCode = new Map(state.board.rows.map(row => [row.code, row]));
+    const extra = [num(plan.codes) + ' mã'];
+    if (plan.missing.length) extra.push(num(plan.missing.length) + ' mã không có trong đợt: ' + plan.missing.slice(0, 5).join(', ') + (plan.missing.length > 5 ? '…' : ''));
+    if (plan.duplicates) extra.push(num(plan.duplicates) + ' dòng trùng mã, lấy dòng dưới cùng');
+    writeTargets(plan.targets.map(t => ({ rowRef: byCode.get(t.code), col: t.col, raw: t.raw })), 'Đã dán theo mã hàng', { extra: 'Khớp ' + extra.join(' · '), warn: plan.missing.length > 0 });
+    return true;
   }
 
   async function undo() {
