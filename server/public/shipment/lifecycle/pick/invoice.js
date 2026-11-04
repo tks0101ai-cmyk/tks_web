@@ -37,9 +37,9 @@ const pageFooter='<p class="invoice-notice" style="text-align: center;"><span><s
 const deliveryTemplate=`<div class="delivery-heading"><strong class="delivery-title">PHIẾU XÁC NHẬN GIAO HÀNG</strong><p>Mã đặt hàng: {Ma_Don_Hang}</p></div>
 <div class="delivery-contacts"><p><strong><u>Người gửi:</u></strong><br>{Nguoi_Gui}</p>
 <p><strong><u>Người nhận:</u></strong><br>Khách hàng: {Khach_Hang}<br>SĐT KH: {So_Dien_Thoai}<br>Địa chỉ: {Dia_Chi_Khach_Hang}<br>NV Bán hàng: {Nhan_Vien_Ban_Hang}<span class="invoice-telegram-slot"></span></p></div>
-<table class="invoice-goods" data-table-controls="off" data-table-sort="off"><colgroup><col style="width:5%"><col style="width:39%"><col style="width:8%"><col style="width:14%"><col style="width:18%"><col style="width:16%"></colgroup>
-<thead><tr><td>TT</td><td>Tên hàng</td><td>SL</td><td>Vị trí</td><td>Thùng</td><td>Thực nhặt</td></tr></thead>
-<tbody><tr><td>{STT}</td><td>{Ten_Hang_Hoa_Don_Gian}</td><td>{So_Luong}</td><td class="invoice-location">{Vi_Tri_Hang_Hoa}</td><td class="invoice-st">{ST}</td><td class="invoice-actual">{Thuc_Te_Nhat}</td></tr></tbody></table>
+<table class="invoice-goods" data-table-controls="off" data-table-sort="off"><colgroup><col style="width:5%"><col style="width:30%"><col style="width:8%"><col style="width:12%"><col style="width:13%"><col style="width:20%"><col style="width:12%"></colgroup>
+<thead><tr><td>TT</td><td>Tên hàng</td><td>SL</td><td>Vị trí</td><td>Thùng</td><td>Ghi chú</td><td>Thực nhặt</td></tr></thead>
+<tbody><tr><td>{STT}</td><td>{Ten_Hang_Hoa_Don_Gian}</td><td>{So_Luong}</td><td class="invoice-location">{Vi_Tri_Hang_Hoa}</td><td class="invoice-st">{ST}</td><td class="invoice-line-note">{Ghi_Chu_Hang_Hoa}</td><td class="invoice-actual">{Thuc_Te_Nhat}</td></tr></tbody></table>
 <table class="invoice-layout-table delivery-note" data-print-table="deliveryNote" data-table-controls="off" data-table-sort="off"><colgroup><col style="width:100%"></colgroup><tbody><tr><td><strong><u>Ghi chú: {Ghi_Chu}</u></strong></td></tr></tbody></table>
 <table class="invoice-layout-table delivery-signatures" data-print-table="deliverySignatures" data-table-controls="off" data-table-sort="off"><colgroup><col style="width:30%"><col style="width:30%"><col style="width:40%"></colgroup><tbody><tr><td><strong>Người nhận hàng</strong></td><td><strong>Nhân viên nhặt hàng</strong></td><td><em>Ngày {Ngay} tháng {Thang} năm {Nam}</em><br><strong>Nhân viên xuất hàng</strong></td></tr></tbody></table>`;
 let currentPrint=null;
@@ -73,7 +73,7 @@ function loadAssets(){
   if(!assetsPromise){
     const finish=startTiming('assets');
     assetsPromise=(async()=>{
-      const [template,css]=await Promise.all([fetchText(BASE+'order-template.tpl?v=20261029-7'),fetchText(BASE+'invoice-a4.css?v=20261102-1')]);
+      const [template,css]=await Promise.all([fetchText(BASE+'order-template.tpl?v=20261029-7'),fetchText(BASE+'invoice-a4.css?v=20261104-1')]);
       let out=template;
       const images=await Promise.all([...new Set([...template.matchAll(CDN)].map(m=>m[1]))].map(async id=>[id,await dataUri(BASE+'invoice-assets/'+id+'.jpg')]));
       for(const [id,uri] of images){
