@@ -27,6 +27,8 @@ function createStocktakeRouter(dependencies = {}) {
   // Pham vi co so theo cookie: 'Ca hai' -> hanoi + saigon.
   const ctxOf = req => ({
     user: req.user,
+    // Ma ngau nhien cua tab trinh duyet (chi de tin hieu SSE biet ai vua ghi), cat ngan cho an toan.
+    clientId: String(req.get('x-stocktake-client') || '').replace(/[^\w-]/g, '').slice(0, 64),
     scope: resolveBranchScope(req.branch).map(label => (label === BRANCHES.HANOI ? 'hanoi' : 'saigon'))
   });
   const idOf = req => Number(req.params.id);
@@ -75,7 +77,7 @@ function createStocktakeRouter(dependencies = {}) {
     write(':ok\n\n');
     const bus = dependencies.events || defaultEvents;
     const onChanged = payload => {
-      if (payload && payload.sessionId === sessionId) write(`event: stocktake-changed\ndata: ${JSON.stringify({ sessionId })}\n\n`);
+      if (payload && payload.sessionId === sessionId) write(`event: stocktake-changed\ndata: ${JSON.stringify({ sessionId, by: payload.by || '' })}\n\n`);
     };
     bus.on(CHANGED, onChanged);
     const heartbeat = setInterval(() => write(':heartbeat\n\n'), 25000);

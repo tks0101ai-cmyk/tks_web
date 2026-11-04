@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261012">
   <link rel="stylesheet" href="/shared/table-controls.css?v=20261016-1">
   <link rel="stylesheet" href="/vt-positions/vt-positions.css?v=20261030-1">
-  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261103-7">
+  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261104-1">
 </head>
 <body>
   <div class="receipt-header">
@@ -64,7 +64,10 @@
           <button class="locations-columns-button vt-btn" id="stImportSgButton" type="button" hidden title="Nạp một lần tab KIỂM SG">Nạp KIỂM SG từ sheet</button>
           <button class="locations-columns-button vt-btn st-danger" id="stCloseButton" type="button" hidden>Đóng đợt</button>
         </div>
-        <div class="st-stats" id="stStats" aria-live="polite"></div>
+        <div class="st-summary">
+          <div class="st-stats" id="stStats" aria-live="polite"></div>
+          <div class="st-status-cards" id="stStatusCards" role="group" aria-label="Tổng giá trị chênh theo trạng thái"></div>
+        </div>
       </section>
 
       <section class="locations-panel" aria-labelledby="stTableTitle">
@@ -91,7 +94,7 @@
         <p id="stNotice" class="locations-status" role="status" aria-live="polite"></p>
         <p class="st-hint"><span id="stCount"></span> · Chọn ô rồi gõ để sửa · Ctrl+V dán, kéo ô vuông ở góc để nhân bản, Ctrl+Z hoàn tác · Nhấp đúp để mở chi tiết</p>
         <div class="locations-scroll st-scroll" tabindex="0" aria-label="Bảng đối chiếu kiểm kê">
-          <table class="users-table locations-table st-table" id="stTable" data-table-key="stocktakeBoard" data-columns-button="stColumnsButton">
+          <table class="users-table locations-table st-table" id="stTable" data-table-key="stocktakeBoard" data-min-column-width="40" data-columns-button="stColumnsButton">
             <thead><tr></tr></thead>
             <tbody id="stRows"></tbody>
           </table>
@@ -156,8 +159,7 @@
         <h4 class="dp-section-title">Kiểm lại</h4>
         <form class="st-grid" id="stNoteForm" novalidate>
           <label class="vt-field"><span>Người kiểm lại</span><input name="recheckName" type="text" maxlength="200" list="stRecheckSuggestions" autocomplete="off" placeholder="Gõ tên hoặc biệt danh, để trống = chưa giao"><datalist id="stRecheckSuggestions"></datalist></label>
-          <label class="vt-field"><span>Trạng thái</span><input name="statusText" type="text" maxlength="200" list="stStatusSuggestions" autocomplete="off"><datalist id="stStatusSuggestions"></datalist></label>
-          <fieldset class="st-color-pick st-wide" id="stStatusColors"><legend>Màu trạng thái</legend></fieldset>
+          <label class="vt-field"><span>Trạng thái</span><select name="statusText" class="st-select"></select></label>
           <label class="vt-field st-wide"><span>Chi tiết lý do</span><input name="reasonText" type="text" maxlength="1000" list="stReasonSuggestions" autocomplete="off"><datalist id="stReasonSuggestions"></datalist></label>
           <label class="vt-field"><span>Trang in</span><input name="printPage" type="text" maxlength="50" autocomplete="off"></label>
           <label class="vt-field"><span>Giờ in</span><input name="printTime" type="text" maxlength="50" autocomplete="off"></label>
@@ -201,14 +203,15 @@
     </div>
   </dialog>
 
-  <script src="/shared/table-controls.js?v=20261030-1"></script>
+  <script src="/shared/table-controls.js?v=20261104-1"></script>
   <script src="/shared/search-clear.js?v=20261009-1"></script>
   <script src="/shared/shared-nav.js?v=20261103-stocktake"></script>
   <script src="/vendor/fuse.min.js?v=7.1.0"></script>
-  <script src="/stocktake/stocktakePaste.js?v=20261103-2"></script>
-  <script src="/stocktake/stocktakeSearch.js?v=20261103-1"></script>
+  <script src="/stocktake/stocktakePaste.js?v=20261103-3"></script>
+  <script src="/stocktake/stocktakeSearch.js?v=20261103-2"></script>
   <script src="/stocktake/stocktakeGrid.js?v=20261103-2"></script>
-  <script src="/stocktake/stocktake.js?v=20261103-7"></script>
+  <script src="/stocktake/stocktakeStatus.js?v=20261103-2"></script>
+  <script src="/stocktake/stocktake.js?v=20261104-1"></script>
   <script>window.addEventListener('DOMContentLoaded', function () { TKSStocktake.init(); });</script>
   <script src="/shared/shooting-star.js?v=20261019"></script>
 </body>

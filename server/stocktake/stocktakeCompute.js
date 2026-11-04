@@ -114,7 +114,7 @@ function applyLineEdits(lines, edits) {
 const editMeta = edit => ({ id: edit.id, version: edit.version, updatedByName: edit.updatedByName || '', updatedAt: edit.updatedAt || null });
 
 /**
- * products: [{ code, name, stock, cost }]; positions: [{ code, location, arrivalDate }] (dong dau tien cua ma = moi nhat);
+ * products: [{ code, name, stock, cost }];
  * tags: [{ code, cluster, isCombo, version }]; notes: [{ code, statusText, reasonText, recheckEmployeeId, version, updatedByName, updatedAt }];
  * previous: [{ code, diffQty }] — ket qua dot da dong gan nhat.
  * counterpart: [{ code, diffQty }] — SL chenh cua dot doi chieu (co so kia).
@@ -135,7 +135,7 @@ function pickDiffs(note, prevAuto, otherAuto) {
   };
 }
 
-function buildBoard({ lines = [], edits = [], products = [], positions = [], tags = [], notes = [], previous = [], counterpart = [] } = {}) {
+function buildBoard({ lines = [], edits = [], products = [], tags = [], notes = [], previous = [], counterpart = [] } = {}) {
   const codes = new Map();
   const entry = code => {
     let row = codes.get(code);
@@ -170,11 +170,6 @@ function buildBoard({ lines = [], edits = [], products = [], positions = [], tag
     noteByCode.set(code, note);
     entry(code);
   }
-  const positionByCode = new Map();
-  for (const position of positions) {
-    const code = codeKey(position.code);
-    if (code && !positionByCode.has(code)) positionByCode.set(code, position);
-  }
   const tagByCode = new Map(tags.map(tag => [codeKey(tag.code), tag]));
   const previousByCode = new Map(previous.map(item => [codeKey(item.code), num(item.diffQty)]));
   const counterpartByCode = new Map(counterpart.map(item => [codeKey(item.code), num(item.diffQty)]));
@@ -182,7 +177,6 @@ function buildBoard({ lines = [], edits = [], products = [], positions = [], tag
   const rows = [...codes.values()].map(row => {
     const product = productByCode.get(row.code);
     const tag = tagByCode.get(row.code);
-    const position = positionByCode.get(row.code);
     const stock = product ? num(product.stock) : 0;
     const cost = product ? num(product.cost) : 0;
     const diffQty = round(row.counted - stock);
@@ -200,7 +194,6 @@ function buildBoard({ lines = [], edits = [], products = [], positions = [], tag
       isCombo: Boolean(tag && tag.isCombo),
       tagVersion: tag ? tag.version : null,
       ...pickDiffs(noteByCode.get(row.code), previousByCode.get(row.code), counterpartByCode.get(row.code)),
-      latestPosition: position ? { location: position.location || '', arrivalDate: position.arrivalDate || '' } : null,
       note: noteByCode.get(row.code) || null,
       lines: row.lines
     };

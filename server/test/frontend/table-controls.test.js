@@ -490,3 +490,18 @@ test('local sorting uses live numeric inputs over stale metadata and restores or
   button.click();assert.deepEqual(ids(),['a','b','c']);
   button.click();assert.deepEqual(ids(),['a','b','c']);
 });
+
+test('data-min-column-width ha muc toi thieu rieng cho bang do (mac dinh van 64px)', t => {
+  const html = fixture.replace('<table id="orders">', '<table id="orders" data-min-column-width="40">').replace('style="width:112px"', 'style="width:44px"');
+  const ctx = setup(t, html);
+  ctx.api.enhance(ctx.table);
+  assert.equal(state(ctx).columns[2].width, 44, 'do rong mac dinh duoi 64px duoc giu');
+  const handle = ctx.table.querySelectorAll('.tks-column-resizer')[2];
+  for (let i = 0; i < 40; i++) handle.dispatchEvent(new ctx.window.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+  assert.equal(state(ctx).columns[2].width, 40, 'keo hep toi muc rieng cua bang');
+  assert.equal(Number(handle.getAttribute('aria-valuemin')), 40);
+
+  const plain = setup(t, fixture.replace('style="width:112px"', 'style="width:44px"'));
+  plain.api.enhance(plain.table);
+  assert.equal(state(plain).columns[2].width, 64, 'bang khong khai bao van toi thieu 64px');
+});
