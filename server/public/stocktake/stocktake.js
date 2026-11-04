@@ -32,7 +32,7 @@
     { key: 'clusterPrevRatio', label: 'Lẫn + KK trước', width: 66, num: true, percent: true },
     { key: 'otherRatio', label: 'Do kiểm SG', width: 76, num: true, percent: true },
     { key: 'forgotten', label: 'Quên KK', width: 54, type: 'flag' },
-    { key: 'combo', label: 'Combo', width: 44, type: 'flag' },
+    { key: 'combo', label: 'Combo', width: 48, type: 'flag' },
     { key: 'cost', label: 'Giá vốn', width: 80, num: true },
     { key: 'updated', label: 'Cập nhật', width: 120, type: 'text' }
   ];
@@ -389,11 +389,9 @@
       fillCounterpartSelect($('stCounterpart'), session.branch, session.counterpartSessionId, board.counterpart);
       $('stCounterpart').disabled = !(state.canEdit && session.status === 'open');
     }
+    // Khung trên chỉ giữ tổng giá trị chênh; số mã / mã lệch / quên KK xem ở bảng và bộ lọc.
     renderStats($('stStats'), board ? [
-      ['mã trong đợt', num(board.totals.codes)],
-      ['mã lệch', num(board.totals.mismatched), board.totals.mismatched ? 'warn' : ''],
-      ['Quên KK', num(board.totals.forgotten), board.totals.forgotten ? 'warn' : ''],
-      ['tổng giá trị chênh', money(board.totals.diffValue), board.totals.diffValue < 0 ? 'bad' : '']
+      ['Tổng chênh', money(board.totals.diffValue), board.totals.diffValue < 0 ? 'bad' : '']
     ] : []);
     const summary = board ? Status.summarize(board.rows) : null;
     renderFilters(summary);
@@ -418,7 +416,6 @@
     const tr = document.createElement('tr');
     tr.dataset.code = row.code;
     tr.dataset.index = String(index);
-    if (row.forgotten) tr.classList.add('st-forgotten');
     COLUMNS.forEach((column, col) => {
       const td = document.createElement('td');
       td.dataset.field = column.key;

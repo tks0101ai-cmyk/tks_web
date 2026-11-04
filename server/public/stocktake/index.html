@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261012">
   <link rel="stylesheet" href="/shared/table-controls.css?v=20261016-1">
   <link rel="stylesheet" href="/vt-positions/vt-positions.css?v=20261030-1">
-  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261104-1">
+  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261104-2">
 </head>
 <body>
   <div class="receipt-header">
@@ -44,30 +44,19 @@
     <div class="backdrop" id="backdrop"></div>
     <div class="sidebar" id="sidebar" data-tks-active-top="stockLocations"></div>
     <main class="content">
-      <header class="vt-page-head">
-        <span class="vt-page-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"></path><rect x="9" y="3" width="6" height="4" rx="1"></rect><path d="m9 14 2 2 4-4"></path></svg>
-        </span>
-        <div class="vt-page-head-text">
-          <h2 class="locations-title">Kiểm kê</h2>
-          <p class="vt-page-sub">Đối chiếu số đếm của các team với tồn KiotViet</p>
-        </div>
-      </header>
-
+      <h2 class="locations-sr-only">Kiểm kê</h2>
       <section class="locations-panel st-sessions" aria-label="Đợt kiểm kê">
-        <div class="locations-toolbar">
-          <label class="st-field st-session-pick"><span>Đợt kiểm kê</span><select id="stSession" aria-label="Chọn đợt kiểm kê"></select></label>
+        <div class="st-bar">
+          <label class="st-field st-session-pick"><span>Đợt</span><select id="stSession" aria-label="Chọn đợt kiểm kê"></select></label>
           <span class="st-session-meta" id="stSessionMeta"></span>
-          <label class="st-field st-counterpart" id="stCounterpartField" hidden><span>Đợt đối chiếu</span><select id="stCounterpart" class="st-select" aria-label="Đợt đối chiếu cơ sở kia"></select></label>
+          <div class="st-stats" id="stStats" aria-live="polite"></div>
+          <label class="st-field st-counterpart" id="stCounterpartField" hidden><span>Đối chiếu</span><select id="stCounterpart" class="st-select" aria-label="Đợt đối chiếu cơ sở kia"></select></label>
           <button class="locations-columns-button vt-btn vt-btn-primary" id="stCreateButton" type="button" hidden>+ Tạo đợt</button>
           <button class="locations-columns-button vt-btn" id="stImportT10Button" type="button" hidden title="Nạp một lần tab KIỂM KÊ HN T10">Nạp T10 HN từ sheet</button>
           <button class="locations-columns-button vt-btn" id="stImportSgButton" type="button" hidden title="Nạp một lần tab KIỂM SG">Nạp KIỂM SG từ sheet</button>
           <button class="locations-columns-button vt-btn st-danger" id="stCloseButton" type="button" hidden>Đóng đợt</button>
         </div>
-        <div class="st-summary">
-          <div class="st-stats" id="stStats" aria-live="polite"></div>
-          <div class="st-status-cards" id="stStatusCards" role="group" aria-label="Tổng giá trị chênh theo trạng thái"></div>
-        </div>
+        <div class="st-status-cards" id="stStatusCards" role="group" aria-label="Tổng giá trị chênh theo trạng thái"></div>
       </section>
 
       <section class="locations-panel" aria-labelledby="stTableTitle">
@@ -211,7 +200,7 @@
   <script src="/stocktake/stocktakeSearch.js?v=20261103-2"></script>
   <script src="/stocktake/stocktakeGrid.js?v=20261103-2"></script>
   <script src="/stocktake/stocktakeStatus.js?v=20261103-2"></script>
-  <script src="/stocktake/stocktake.js?v=20261104-1"></script>
+  <script src="/stocktake/stocktake.js?v=20261104-2"></script>
   <script>window.addEventListener('DOMContentLoaded', function () { TKSStocktake.init(); });</script>
   <script src="/shared/shooting-star.js?v=20261019"></script>
 </body>
