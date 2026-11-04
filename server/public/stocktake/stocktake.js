@@ -513,6 +513,42 @@
       }
     }
     positionFill();
+    renderSelectionSum(rect);
+  }
+  // Số của ô cho thanh tổng: chỉ cột số (bỏ cột tỷ lệ %, cộng tỷ lệ không có nghĩa); ô trống / chữ -> null.
+  function cellNumber(row, column) {
+    if (!column.num || column.percent) return null;
+    const value = sortValue(row, column);
+    return typeof value === 'number' ? value : null;
+  }
+  // Thanh tổng kiểu Excel ở góc dưới phải: Tổng · Trung bình · Đếm của vùng đang chọn (từ 2 ô trở lên, bỏ cột ẩn).
+  function renderSelectionSum(rect) {
+    const bar = $('stSelSum');
+    if (!rect || (rect.bottom === rect.top && rect.right === rect.left)) { bar.hidden = true; return; }
+    const cols = visibleColumnsIn(rect);
+    const cells = [];
+    for (let index = rect.top; index <= rect.bottom; index++) {
+      const row = view.rows[index];
+      if (!row) continue;
+      for (const col of cols) cells.push({ text: cellText(row, COLUMNS[col].key), number: cellNumber(row, COLUMNS[col]) });
+    }
+    if (cells.length < 2) { bar.hidden = true; return; }
+    const total = Grid.summarizeCells(cells);
+    bar.textContent = '';
+    const part = (label, value) => {
+      const item = document.createElement('span');
+      item.append(label + ': ');
+      const b = document.createElement('b');
+      b.textContent = value;
+      item.appendChild(b);
+      bar.appendChild(item);
+    };
+    if (total.numeric) {
+      part('Tổng', num(total.sum));
+      part('Trung bình', num(total.average));
+    }
+    part('Đếm', num(total.count));
+    bar.hidden = false;
   }
   // Cột đang hiện (bỏ cột ẩn bằng "Cột hiển thị") trong vùng chọn.
   function visibleColumnsIn(rect) {
