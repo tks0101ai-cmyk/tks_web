@@ -215,6 +215,43 @@ test('tieu de 2 tang: 26 cot la (khoa on dinh, duy nhat, khop COLUMNS), 4 nhom c
   assert.equal(new Set(H.COLUMNS.map(c => c.pickerLabel)).size, 26);
 });
 
+test('do rong mac dinh (may tinh) = bo cuc nguoi dung da luu 04/11/2026; thead ghi dung so, o nhom = tong 6 cot', () => {
+  const byKey = Object.fromEntries(H.COLUMNS.map(c => [c.key, c.width]));
+  assert.deepEqual([byKey.product_code, byKey.product_name], [86, 188]);
+  assert.deepEqual(['qty', 'revenue', 'avg_price', 'customer_count', 'invoice_count', 'top_customers'].map(m => byKey[m + '_61_90d']), [64, 90, 69, 82, 71, 254]);
+  assert.deepEqual(['qty', 'revenue', 'avg_price', 'customer_count', 'invoice_count', 'top_customers'].map(m => byKey[m + '_31_60d']), [64, 90, 77, 85, 74, 287]);
+  H.COLUMNS.forEach(c => assert.ok(c.width >= 64, c.key + ' khong nho hon MIN_WIDTH 64 cua table-controls'));
+  const thead = pageDoc.getElementById('product90dTable').tHead;
+  leafGrid(thead).forEach(th => assert.equal(th.style.width, byKey[th.dataset.columnKey] + 'px', th.dataset.columnKey));
+  [...thead.querySelectorAll('th.p90-group')].forEach(g => {
+    const sum = H.COLUMNS.filter(c => c.period === g.dataset.period).reduce((s, c) => s + c.width, 0);
+    assert.equal(g.style.width, sum + 'px', g.dataset.period);
+  });
+  assert.notEqual(pageDoc.getElementById('product90dTable').dataset.tableFit, 'fill', 'khong co dan cot theo khung');
+});
+
+test('CSS: moi tieu de 2 tang can giua ca 2 chieu; nhan nam dung giua (bieu tuong ▲▼ dat tuyet doi, dem 2 ben bang nhau)', () => {
+  const css = fs.readFileSync(path.join(publicDir, 'product-90d-report.css'), 'utf8');
+  const rule = selector => {
+    const m = css.match(new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{([^}]*)\\}'));
+    assert.ok(m, 'thieu rule ' + selector);
+    return m[1];
+  };
+  assert.match(rule('.p90-table thead th'), /vertical-align:\s*middle/);
+  assert.match(rule('.p90-table thead th'), /text-align:\s*center\s*!important/);
+  assert.match(rule('.p90-table.tks-controlled-table thead th'), /vertical-align:\s*middle/);
+  assert.doesNotMatch(css, /vertical-align:\s*bottom/);
+  assert.doesNotMatch(css, /th\.p90-group\s*\{[^}]*text-align:\s*left/);
+  const button = rule('.p90-table thead .sort-button');
+  assert.match(button, /justify-content:\s*center/);
+  assert.match(button, /position:\s*relative/);
+  assert.match(button, /padding:\s*0 13px/);
+  const glyph = rule('.p90-table thead .sort-indicator');
+  assert.match(glyph, /position:\s*absolute/);
+  assert.match(glyph, /right:\s*0/);
+  assert.match(glyph, /width:\s*12px/, 'dem 13px moi ben >= cho bieu tuong 12px -> nhan dung tam o');
+});
+
 // ---------- hanh vi bang (DOM toi thieu + table-controls that) ----------
 function sectionHtml() {
   const start = html.indexOf('<section class="section" id="product90dSection"');
