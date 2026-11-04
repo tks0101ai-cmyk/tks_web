@@ -355,7 +355,7 @@ Nút **Xuất kho** trên `/vt-positions/` trừ SL hàng loạt theo file Excel
 
 - **VT: Đơn xuất kho + số lượng âm (02/11/2026, migration `0104` chưa áp DB, chưa commit/deploy):** đơn tạm dùng chung mỗi cơ sở (`stock_out_orders` + `stock_out_order_lines`), chỉ trừ tồn VT khi chốt (`stockPositions/stockOutOrdersService.js`: `buildPlan` thuần trừ tuần tự theo (mã, vị trí), `confirm` một giao dịch dưới `lockBranch`, preview trước/sau ở `getCurrent`); số âm = ghi chú `-kT x size` (`carton.parseSigned`/`subtractNotes`/`negativeNote`, `mergeNotes` tự bù); lịch sử `stock_out` kèm `orderId`/`orderCode` để bấm xem đơn; hộp UI `vt-stockout-order.js`. Hộp Xuất kho Excel cũ giữ nguyên.
 
-## 04/11/2026 — Kiểm kê: chọn đợt KK trước, hủy / khôi phục đợt, nạp lại sheet (migration 0109, chưa áp DB)
+## 04/11/2026 — Kiểm kê: chọn đợt KK trước, hủy / khôi phục đợt, nạp lại sheet (migration 0109, đã áp DB 04/11/2026)
 
 - `stocktakeService.js`: `previousSessionOf` (chọn tay còn hợp lệ, không thì tự động bỏ qua đợt hủy; trả `mode` + `manualInvalid`), `previousOf` (kiểm tra chọn tay), `updateSession` chỉ đổi trường có trong body, `cancelSession` / `restoreSession` / `dependents`, `assertNotCancelled` chặn mọi lệnh ghi; `counterpartResults` bỏ đợt hủy; `closeSession` ghi `previousSessionId` vào lịch sử.
 - `stocktakeSheetImport.js`: tách `writeSnapshot` dùng chung, thêm `reloadSheet` (đọc sheet trước giao dịch, khóa + so `version`, `dryRun`, `compareSnapshot`), tự nối đối chiếu bỏ qua đợt hủy.

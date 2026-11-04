@@ -1,6 +1,6 @@
 # Supabase schema cho đồng bộ KiotViet
 
-## Migration 0109 — Kiểm kê: KK trước chọn tay, hủy đợt, nạp lại sheet (04/11/2026, chưa áp DB)
+## Migration 0109 — Kiểm kê: KK trước chọn tay, hủy đợt, nạp lại sheet (04/11/2026, đã áp DB 04/11/2026)
 
 `0109_stocktake_previous_cancel.sql`: `stocktake_sessions` thêm `previous_session_id` BIGINT FK `stocktake_sessions` ON DELETE SET NULL (đợt KK trước chọn tay; NULL = tự động: đợt `closed` gần nhất cùng `branch`, `cancelled_at IS NULL`, `date_to <= date_from`; CHECK `stocktake_sessions_previous_not_self`), `cancelled_at` TIMESTAMPTZ, `cancelled_by_user_id`, `cancelled_by_name` TEXT, `cancel_reason` TEXT NOT NULL DEFAULT '' (hủy = ẩn + chỉ đọc, `status` giữ nguyên open|closed, khôi phục = xóa `cancelled_at`; không xóa vật lý), `reloaded_at` TIMESTAMPTZ, `reloaded_by_name` TEXT (lần nạp lại gần nhất của đợt `sheet_import`). CHECK `stocktake_history_action_check` thêm `session_cancel`, `session_restore`, `sheet_reload`. Đợt đã hủy không được chọn làm KK trước hay đối chiếu (kể cả tự động). Gỡ tay: `db/rollbacks/0109_stocktake_previous_cancel.down.sql`.
 ## Migration 0107 — Nhật ký thao tác đơn xuất kho (04/11/2026, đã áp DB 04/11/2026)
