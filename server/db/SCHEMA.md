@@ -881,4 +881,12 @@ Cập nhật gần nhất: 03/11/2026.
 - NUMERIC đọc `::text` rồi đổi sang số, NULL giữ NULL (`avg_price_*` NULL khi SL = 0 hiển thị “—”, không thành 0). `top_customers_*` JSONB chuẩn hóa tối đa 3 phần tử `{name, share, revenue, quantity}`; dữ liệu hỏng → `[]`.
 - Không có dòng `product_90d_report_state` → API trả `available:false` (không phải bảng số 0). Kỳ hiển thị suy ra từ `as_of_date` (A): `61_90d` = A−90..A−61, `31_60d` = A−60..A−31, `1_30d` = A−30..A−1, `1_90d` = A−90..A−1; `computed_at` (TIMESTAMPTZ) trả ISO UTC, giao diện đổi sang giờ VN.
 
+## Migration 0107 — Lưu vết đơn xuất kho tạm (04/11/2026, đã áp DB)
+
+`0107_stock_out_order_events.sql` tạo bảng `stock_out_order_events`:
+- `id BIGSERIAL PRIMARY KEY`, `order_id BIGINT NOT NULL REFERENCES stock_out_orders(id) ON DELETE CASCADE`, `line_id BIGINT`, `action TEXT NOT NULL CHECK (action IN ('add', 'update', 'delete', 'import', 'confirm'))`, `user_id TEXT`, `user_name TEXT NOT NULL DEFAULT ''`, `detail JSONB NOT NULL DEFAULT '{}'::jsonb`, `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`.
+- Index: `stock_out_order_events_order_idx` trên `(order_id, id DESC)`.
+- Ghi cùng giao dịch với thao tác thêm/sửa/xóa/nhập/chốt đơn tạm; `detail` lưu ảnh chụp dòng trước/sau (`code`, `name`, `location`, `notes`).
+- RLS / phân quyền: thu hồi ALL từ `reporting_readonly`. Đọc qua `GET /api/stock-positions/orders/:id/events`. Rollback: `0107_stock_out_order_events.down.sql`.
+
 Cập nhật gần nhất: 04/11/2026.
