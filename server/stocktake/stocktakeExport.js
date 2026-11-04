@@ -3,7 +3,7 @@
 // Xuat Excel bang doi chieu kiem ke (dung thu tu cot tab "KIEM KE HN T10").
 const ExcelJS = require('exceljs');
 const { HEADER_FONT, frozenNoGridlinesView, applyFullTableBorder } = require('../excelTableStyle');
-const { STATUS_COLORS } = require('../public/stocktake/stocktakePaste');
+const Status = require('../public/stocktake/stocktakeStatus');
 
 const NUMBER = '#,##0.##';
 const MONEY = '#,##0';
@@ -37,7 +37,6 @@ function columns(employeeName, branch) {
     { header: 'Do kiểm ' + other, width: 12, numFmt: PERCENT, value: row => row.otherRatio },
     { header: 'Quên KK', width: 9, value: row => (row.forgotten ? 'X' : '') },
     { header: 'Combo', width: 8, value: row => (row.isCombo ? 'X' : '') },
-    { header: 'Vị trí kho gần nhất', width: 18, value: row => safeText(row.latestPosition ? row.latestPosition.location : '') },
     { header: 'Giá vốn', width: 12, numFmt: MONEY, value: row => row.cost },
     { header: 'Cập nhật', width: 22, value: row => safeText(row.note && row.note.updatedByName ? row.note.updatedByName : '') }
   ];
@@ -57,9 +56,9 @@ async function createStocktakeWorkbook({ session, rows = [], employees = [] }) {
       const value = col.value(row);
       return value === null || value === undefined ? null : value;
     }));
-    // To o Trang thai theo mau nguoi dung chon tren web.
-    const color = row.note && STATUS_COLORS[row.note.statusColor];
-    if (color) added.getCell(statusColumn).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color.argb } };
+    // To o Trang thai theo loai (stocktakeStatus.js); Chua XL / Khac khong to.
+    const color = Status.colorOf(row.note ? row.note.statusText : '');
+    if (color) added.getCell(statusColumn).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + color.slice(1).toUpperCase() } };
   });
   sheet.views = frozenNoGridlinesView(1);
   const header = sheet.getRow(1);

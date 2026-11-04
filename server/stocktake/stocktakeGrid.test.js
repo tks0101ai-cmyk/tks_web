@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { EDIT_COLUMNS, parseClipboard, planPaste, planFill, moveIndex, matchesFilter } = require('../public/stocktake/stocktakeGrid');
+const { EDIT_COLUMNS, parseClipboard, planPaste, planFill, moveIndex, matchesFilter, summarizeCells } = require('../public/stocktake/stocktakeGrid');
 const { PASTE_COLUMNS } = require('../public/stocktake/stocktakePaste');
 
 test('EDIT_COLUMNS: 9 cot, deu la cot dan hop le', () => {
@@ -63,4 +63,18 @@ test('matchesFilter: 5 bo loc; note null / chi khoang trang = trong; gia tri la 
   assert.deepEqual(pick('neither'), ['none', 'noNote', 'forgot']);
   assert.deepEqual(pick('noted'), pick('all'), 'gia tri cu / la = tat ca');
   assert.equal(matchesFilter({ forgotten: false, note: { statusText: 'x', printPage: null } }, 'statusOnly'), true);
+});
+
+test('summarizeCells: Dem o co gia tri, Tong / TB chi tinh o so (kieu thanh trang thai Excel)', () => {
+  const total = summarizeCells([
+    { text: '-1,200', number: -1200 },
+    { text: '0', number: 0 },
+    { text: '', number: null },
+    { text: 'Mất', number: null },
+    { text: '1.5', number: 1.5 }
+  ]);
+  assert.deepEqual(total, { count: 4, numeric: 3, sum: -1198.5, average: -399.5 });
+  assert.deepEqual(summarizeCells([{ text: 'OK', number: null }, { text: '', number: null }]), { count: 1, numeric: 0, sum: 0, average: null });
+  assert.equal(summarizeCells([{ text: 'x', number: NaN }]).numeric, 0, 'NaN khong tinh vao tong');
+  assert.deepEqual(summarizeCells([]), { count: 0, numeric: 0, sum: 0, average: null });
 });

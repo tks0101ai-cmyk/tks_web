@@ -523,6 +523,7 @@ Cập nhật gần nhất: 28/10/2026 (chỉnh sửa khi xem trước import VT)
 - Quản lý đóng đợt để chốt số liệu; đợt sau tự có cột "KK trước sai".
 - Bảng web có đủ 23 cột như tab T10 (kể cả Trang in, Giờ in, Do KK trước, Kiểm SG/HN) và bấm tiêu đề để sắp xếp; kiểm kê Sài Gòn dùng chung cách làm và đối chiếu chéo với Hà Nội; dán nhanh một cột từ Google Sheets thay cho gõ tay; nạp thêm tab KIỂM SG.
 - Chưa làm: chia team/khu, thưởng/phạt; cân bằng kho trên KiotViet vẫn làm tay.
+- **Trạng thái (03/11/2026):** mỗi mã chọn một trong 7 loại (Mất, KK trước, OK, Nhầm SG/HN, Thừa, Lẫn, Chưa XL), màu tự động theo loại; phía trên bảng có thẻ tổng số mã và giá trị chênh theo từng trạng thái, bấm thẻ để lọc.
 
 **Chỉ định vị trí không sửa đơn KiotViet (02/11/2026, chưa commit/deploy):** dashboard không còn ghi gì lên đơn đặt hàng KiotViet. Nút **Xóa dòng** chỉ bỏ mã hàng khỏi chỉ định và phiếu in của kho (đơn Kiot giữ nguyên; đơn phải còn ít nhất một dòng); mở lại chỉ định thấy dòng “Đã bỏ: MÃ ↺” để đưa mã trở lại. Sửa số lượng cần nhặt chỉ ghi trên phiếu in, không đổi đơn Kiot. Phiếu in theo đúng thứ tự dòng đang thấy trong hộp (đã kéo-thả hoặc đã sort cột; không sort thì theo thứ tự đơn Kiot). Bỏ hai cảnh báo Lệch Kiot và Lệch SL trong đơn; Vòng đời đơn hàng chỉ còn 6 cảnh báo giao hàng.
 
@@ -541,6 +542,8 @@ Server-Timing cho `/api/shipment/pick/*`; browser measures `tokosi.pick.assets/r
 
 Kiểm chứng/triển khai: xem [kế hoạch Redis](../../tasks/redis-performance/plan.md), [benchmark cục bộ](../../tasks/redis-performance/benchmark.md) và [runbook](../../tasks/redis-performance/rollout.md). Giữ worker Singapore hiện có; tạo web Singapore thay thế Oregon sau kiểm chứng. Chưa thay đổi dịch vụ Render/domain hoặc xác nhận p95 production; không migration. Integration Redis thật đang chờ TEST Redis; công cụ browser dừng vì không xác định chắc chắn URL Windows.
 
+Cập nhật gần nhất: 03/11/2026 (Kiểm kê: trạng thái 7 loại và thẻ tổng).
+
 Cập nhật gần nhất: 03/11/2026.
 
 ## 03/11/2026 — Tra cứu lịch sử mua và trả theo hàng hóa
@@ -552,5 +555,7 @@ Cập nhật gần nhất: 03/11/2026.
 ## 04/11/2026 — Hàng hóa 90 ngày
 
 Bổ sung mục 4 trong tab Hàng hóa để so sánh sức bán danh mục gộp hai miền, chỉ mã hàng đang hoạt động (is_active IS NOT FALSE ở ít nhất một cơ sở) qua ba khoảng 30 ngày liên tiếp và tổng 90 ngày. Mỗi khoảng thể hiện số lượng, doanh số, giá trung bình, số khách, lượt mua và ba khách lớn nhất kèm tỷ trọng/DS/SL. Dữ liệu chỉ từ hóa đơn/trả hàng thành công trong DB; trả hàng ảnh hưởng SL/DS theo ngày trả, không giảm số khách/lượt mua. Khách gộp theo tên hiện tại. Dùng báo cáo tính sẵn hằng ngày 02:00 giờ Việt Nam, kết thúc hết hôm qua, để web đọc nhanh và số liệu ổn định trong ngày. Đợt này đã tạo DB/nạp đầu 11.135 mã (06/08–03/11/2026), code lịch sẵn sàng chờ deploy worker. Giao diện mục 4 và API đọc đã làm xong (cùng ngày, chưa deploy): người có quyền xem doanh số hàng hóa (`reports.products` + `reports.products.sales`) tìm theo mã/tên, sắp xếp và phân trang bảng 26 cột, thấy rõ thời điểm dữ liệu cập nhật; web chỉ đọc số liệu tính sẵn, không có nút làm mới. Tài khoản thiếu quyền không thấy mục này. Chưa có số liệu thì báo “chưa nạp báo cáo”, lỗi thì cho thử lại, không bao giờ hiển thị thành số 0.
+
+Cập nhật gần nhất: 04/11/2026.
 
 Cập nhật gần nhất: 04/11/2026.

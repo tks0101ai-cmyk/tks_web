@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261012">
   <link rel="stylesheet" href="/shared/table-controls.css?v=20261016-1">
   <link rel="stylesheet" href="/vt-positions/vt-positions.css?v=20261030-1">
-  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261103-7">
+  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261104-4">
 </head>
 <body>
   <div class="receipt-header">
@@ -44,27 +44,19 @@
     <div class="backdrop" id="backdrop"></div>
     <div class="sidebar" id="sidebar" data-tks-active-top="stockLocations"></div>
     <main class="content">
-      <header class="vt-page-head">
-        <span class="vt-page-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"></path><rect x="9" y="3" width="6" height="4" rx="1"></rect><path d="m9 14 2 2 4-4"></path></svg>
-        </span>
-        <div class="vt-page-head-text">
-          <h2 class="locations-title">Kiểm kê</h2>
-          <p class="vt-page-sub">Đối chiếu số đếm của các team với tồn KiotViet</p>
-        </div>
-      </header>
-
+      <h2 class="locations-sr-only">Kiểm kê</h2>
       <section class="locations-panel st-sessions" aria-label="Đợt kiểm kê">
-        <div class="locations-toolbar">
-          <label class="st-field st-session-pick"><span>Đợt kiểm kê</span><select id="stSession" aria-label="Chọn đợt kiểm kê"></select></label>
+        <div class="st-bar">
+          <label class="st-field st-session-pick"><span>Đợt</span><select id="stSession" aria-label="Chọn đợt kiểm kê"></select></label>
           <span class="st-session-meta" id="stSessionMeta"></span>
-          <label class="st-field st-counterpart" id="stCounterpartField" hidden><span>Đợt đối chiếu</span><select id="stCounterpart" class="st-select" aria-label="Đợt đối chiếu cơ sở kia"></select></label>
+          <div class="st-stats" id="stStats" aria-live="polite"></div>
+          <label class="st-field st-counterpart" id="stCounterpartField" hidden><span>Đối chiếu</span><select id="stCounterpart" class="st-select" aria-label="Đợt đối chiếu cơ sở kia"></select></label>
           <button class="locations-columns-button vt-btn vt-btn-primary" id="stCreateButton" type="button" hidden>+ Tạo đợt</button>
           <button class="locations-columns-button vt-btn" id="stImportT10Button" type="button" hidden title="Nạp một lần tab KIỂM KÊ HN T10">Nạp T10 HN từ sheet</button>
           <button class="locations-columns-button vt-btn" id="stImportSgButton" type="button" hidden title="Nạp một lần tab KIỂM SG">Nạp KIỂM SG từ sheet</button>
           <button class="locations-columns-button vt-btn st-danger" id="stCloseButton" type="button" hidden>Đóng đợt</button>
         </div>
-        <div class="st-stats" id="stStats" aria-live="polite"></div>
+        <div class="st-status-cards" id="stStatusCards" role="group" aria-label="Tổng giá trị chênh theo trạng thái"></div>
       </section>
 
       <section class="locations-panel" aria-labelledby="stTableTitle">
@@ -88,15 +80,20 @@
           <button class="locations-columns-button vt-btn" id="stColumnsButton" type="button" aria-haspopup="dialog" aria-expanded="false">Cột hiển thị</button>
         </div>
         <p id="stStatus" class="locations-status" role="status" aria-live="polite"></p>
-        <p id="stNotice" class="locations-status" role="status" aria-live="polite"></p>
-        <p class="st-hint"><span id="stCount"></span> · Chọn ô rồi gõ để sửa · Ctrl+V dán, kéo ô vuông ở góc để nhân bản, Ctrl+Z hoàn tác · Nhấp đúp để mở chi tiết</p>
+        <div class="st-hint-row">
+          <p class="st-hint"><span id="stCount"></span> · Chọn ô rồi gõ để sửa · Ctrl+V dán, kéo ô vuông ở góc để nhân bản, Ctrl+Z hoàn tác · Nhấp đúp để mở chi tiết</p>
+          <p id="stNotice" class="st-notice" role="status" aria-live="polite"></p>
+        </div>
         <div class="locations-scroll st-scroll" tabindex="0" aria-label="Bảng đối chiếu kiểm kê">
-          <table class="users-table locations-table st-table" id="stTable" data-table-key="stocktakeBoard" data-columns-button="stColumnsButton">
+          <table class="users-table locations-table st-table" id="stTable" data-table-key="stocktakeBoard" data-min-column-width="40" data-columns-button="stColumnsButton">
             <thead><tr></tr></thead>
             <tbody id="stRows"></tbody>
           </table>
         </div>
       </section>
+
+      <!-- Thanh tổng kiểu Excel: hiện khi chọn từ 2 ô trở lên. -->
+      <div class="st-sel-sum" id="stSelSum" role="status" aria-live="polite" hidden></div>
 
       <section class="locations-panel st-recheck" aria-labelledby="stRecheckTitle">
         <div class="locations-toolbar"><h3 id="stRecheckTitle">Số mã giao kiểm lại</h3></div>
@@ -156,8 +153,7 @@
         <h4 class="dp-section-title">Kiểm lại</h4>
         <form class="st-grid" id="stNoteForm" novalidate>
           <label class="vt-field"><span>Người kiểm lại</span><input name="recheckName" type="text" maxlength="200" list="stRecheckSuggestions" autocomplete="off" placeholder="Gõ tên hoặc biệt danh, để trống = chưa giao"><datalist id="stRecheckSuggestions"></datalist></label>
-          <label class="vt-field"><span>Trạng thái</span><input name="statusText" type="text" maxlength="200" list="stStatusSuggestions" autocomplete="off"><datalist id="stStatusSuggestions"></datalist></label>
-          <fieldset class="st-color-pick st-wide" id="stStatusColors"><legend>Màu trạng thái</legend></fieldset>
+          <label class="vt-field"><span>Trạng thái</span><select name="statusText" class="st-select"></select></label>
           <label class="vt-field st-wide"><span>Chi tiết lý do</span><input name="reasonText" type="text" maxlength="1000" list="stReasonSuggestions" autocomplete="off"><datalist id="stReasonSuggestions"></datalist></label>
           <label class="vt-field"><span>Trang in</span><input name="printPage" type="text" maxlength="50" autocomplete="off"></label>
           <label class="vt-field"><span>Giờ in</span><input name="printTime" type="text" maxlength="50" autocomplete="off"></label>
@@ -201,14 +197,15 @@
     </div>
   </dialog>
 
-  <script src="/shared/table-controls.js?v=20261030-1"></script>
+  <script src="/shared/table-controls.js?v=20261104-1"></script>
   <script src="/shared/search-clear.js?v=20261009-1"></script>
   <script src="/shared/shared-nav.js?v=20261103-stocktake"></script>
   <script src="/vendor/fuse.min.js?v=7.1.0"></script>
-  <script src="/stocktake/stocktakePaste.js?v=20261103-2"></script>
-  <script src="/stocktake/stocktakeSearch.js?v=20261103-1"></script>
-  <script src="/stocktake/stocktakeGrid.js?v=20261103-2"></script>
-  <script src="/stocktake/stocktake.js?v=20261103-7"></script>
+  <script src="/stocktake/stocktakePaste.js?v=20261103-3"></script>
+  <script src="/stocktake/stocktakeSearch.js?v=20261103-2"></script>
+  <script src="/stocktake/stocktakeGrid.js?v=20261104-1"></script>
+  <script src="/stocktake/stocktakeStatus.js?v=20261103-2"></script>
+  <script src="/stocktake/stocktake.js?v=20261104-3"></script>
   <script>window.addEventListener('DOMContentLoaded', function () { TKSStocktake.init(); });</script>
   <script src="/shared/shooting-star.js?v=20261019"></script>
 </body>

@@ -59,6 +59,19 @@
     return targets;
   }
 
+  // Thanh tong kieu Excel cho vung chon. cells: [{ text, number }].
+  // Dem = o co gia tri (chu hoac so); Tong / TB chi tinh o co so (number la so huu han), bo o trong va o chu.
+  function summarizeCells(cells) {
+    let count = 0;
+    let numeric = 0;
+    let sum = 0;
+    for (const cell of cells) {
+      if (String(cell.text ?? '') !== '') count++;
+      if (typeof cell.number === 'number' && Number.isFinite(cell.number)) { numeric++; sum += cell.number; }
+    }
+    return { count, numeric, sum, average: numeric ? sum / numeric : null };
+  }
+
   // Keo nut goc tu vung rect toi dong `to`: moi dong moi lay dong nguon theo vong, dem tu mep vung chon ra ngoai.
   function planFill(rect, to, cols) {
     const height = rect.bottom - rect.top + 1;
@@ -99,5 +112,5 @@
     }
   }
 
-  return { EDIT_COLUMNS, parseClipboard, planPaste, planFill, moveIndex, matchesFilter };
+  return { EDIT_COLUMNS, parseClipboard, planPaste, planFill, moveIndex, matchesFilter, summarizeCells };
 });

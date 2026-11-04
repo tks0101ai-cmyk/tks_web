@@ -16,14 +16,16 @@ const MANAGER = { id: 'ql', vaiTro: 'Quản lý' };
 const STOCK_MANAGER = { id: 'hung', vaiTro: 'Nhân viên kho', featurePermissions: { 'stocktake.view': true, 'stocktake.edit': true } };
 const SESSION = { id: 7, branch: 'hanoi', name: 'Đợt 29/10', status: 'open', version: 1 };
 const ROWS = [
-  { code: 'AAA1', name: 'Hàng A', counted: 12, stock: 10, cost: 1000, diffQty: 2, diffValue: 2000, cluster: '', clusterDiff: null, isCombo: false, prevDiff: null, prevRatio: 2.3313, forgotten: false, latestPosition: { location: 'G1' }, note: { recheckEmployeeId: 501, statusText: 'ok', statusColor: 'red', reasonText: '=lẫn' } },
-  { code: 'BBB2', name: 'Hàng B', counted: 0, stock: 5, cost: 200, diffQty: -5, diffValue: -1000, cluster: '', clusterDiff: null, isCombo: true, prevDiff: -1, forgotten: true, latestPosition: null, note: null }
+  { code: 'AAA1', name: 'Hàng A', counted: 12, stock: 10, cost: 1000, diffQty: 2, diffValue: 2000, cluster: '', clusterDiff: null, isCombo: false, prevDiff: null, prevRatio: 2.3313, forgotten: false, note: { recheckEmployeeId: 501, statusText: 'ok', reasonText: '=lẫn' } },
+  { code: 'BBB2', name: 'Hàng B', counted: 0, stock: 5, cost: 200, diffQty: -5, diffValue: -1000, cluster: '', clusterDiff: null, isCombo: true, prevDiff: -1, forgotten: true, note: null }
 ];
 
 async function start(t, { user = MANAGER, scope = 'Cả hai', events, fail } = {}) {
   const calls = [];
+  const contexts = [];
   const record = name => async (ctx, ...args) => {
     calls.push([name, ...args, ctx.scope]);
+    contexts.push(ctx);
     if (fail) throw fail;
     return { ok: name };
   };
@@ -44,7 +46,7 @@ async function start(t, { user = MANAGER, scope = 'Cả hai', events, fail } = {
   }));
   const server = await new Promise(resolve => { const s = app.listen(0, () => resolve(s)); });
   t.after(() => server.close());
-  return { calls, base: `http://127.0.0.1:${server.address().port}/api/stocktake` };
+  return { calls, contexts, base: `http://127.0.0.1:${server.address().port}/api/stocktake` };
 }
 
 const json = body => ({ headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -101,6 +103,14 @@ test('Mac dinh vai tro khac khong xem duoc; Khach duoc ghi de van bi chan; chua 
   assert.equal((await fetch(viewOnly.base + '/sessions/7/lines', { method: 'POST', ...json({}) })).status, 403);
 });
 
+test('ma trinh duyet tu header X-Stocktake-Client vao ctx (loc ky tu la, toi da 64)', async t => {
+  const { base, contexts } = await start(t);
+  await fetch(base + '/sessions/7/cells', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Stocktake-Client': 'tab-1<script>' + 'x'.repeat(80) }, body: '{}' });
+  assert.equal(contexts.at(-1).clientId, ('tab-1script' + 'x'.repeat(80)).slice(0, 64));
+  await fetch(base + '/sessions/7/cells', { method: 'POST', ...json({}) });
+  assert.equal(contexts.at(-1).clientId, '', 'khong gui header -> rong');
+});
+
 test('409 tra kem latest; loi may chu khong lo chi tiet', async t => {
   const latest = { version: 2, updatedByName: 'Hưng' };
   const conflict = Object.assign(new Error('Hưng vừa sửa lúc 10:42. Xem bản mới rồi lưu lại.'), { statusCode: 409, code: 'STOCKTAKE_CONFLICT', latest });
@@ -134,13 +144,15 @@ test('Xuat Excel: ca bang hoac chi ma dang loc; chan cong thuc', async t => {
   assert.equal(boardColumnHeaders('hanoi')[12], 'Kiểm SG');
   assert.equal(boardColumnHeaders('saigon')[12], 'Kiểm HN');
   assert.equal(boardColumnHeaders('saigon')[18], 'Do kiểm HN');
-  assert.equal(boardColumnHeaders('hanoi').length, 24);
+  assert.equal(boardColumnHeaders('hanoi').length, 23);
   assert.equal(rows.getRow(2).getCell(11).value, 'Cảnh');
   assert.equal(rows.getRow(2).getCell(8).value, "'=lẫn");
-  assert.equal(rows.getRow(2).getCell(22).value, 'G1');
+  assert.ok(!boardColumnHeaders('hanoi').includes('Vị trí kho gần nhất'));
+  assert.equal(rows.getRow(2).getCell(22).value, 1000, 'cot 22 nay la Gia von');
+  assert.equal(rows.getRow(2).getCell(7).fill.fgColor.argb, 'FFEEFF41', 'o Trang thai to theo loai (ok -> OK, vang neon)');
+  const plain = rows.getRow(3).getCell(7).fill;
+  assert.ok(!plain || plain.pattern !== 'solid', 'khong co trang thai -> khong to');
   assert.equal(rows.getRow(2).getCell(17).numFmt, '0%');
-  assert.equal(rows.getRow(2).getCell(7).fill.fgColor.argb, 'FFFCA5A5', 'o Trang thai to mau do');
-  assert.notEqual((rows.getRow(3).getCell(7).fill || {}).pattern, 'solid', 'khong mau thi khong to');
   assert.equal((await fetch(base + '/sessions/7/export', { method: 'POST', ...json({}) })).status, 400);
 });
 
@@ -155,9 +167,9 @@ test('SSE: chi bao dot dang xem; dot khong thuoc pham vi 404', async t => {
   const decoder = new TextDecoder();
   let text = decoder.decode((await reader.read()).value);
   events.emit(CHANGED, { sessionId: 8 });
-  events.emit(CHANGED, { sessionId: 7 });
+  events.emit(CHANGED, { sessionId: 7, by: 'tab-1' });
   while (!text.includes('stocktake-changed')) text += decoder.decode((await reader.read()).value);
-  assert.ok(text.includes('data: {"sessionId":7}'));
+  assert.ok(text.includes('data: {"sessionId":7,"by":"tab-1"}'), 'kem ma trinh duyet vua ghi');
   assert.ok(!text.includes('"sessionId":8'));
 
   assert.equal((await fetch(base + '/sessions/99/events')).status, 404);

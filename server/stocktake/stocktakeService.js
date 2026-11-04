@@ -6,7 +6,8 @@
 const { getPool } = require('../db/pool');
 const { stripTelegramId } = require('../dashboard/saleName');
 const { codeKey, buildBoard, toResults, deriveColumns, totalsOf } = require('./stocktakeCompute');
-const { PASTE_COLUMNS, STATUS_COLORS, normalizeValue, parseVnNumber, foldName, columnValue, sameValue } = require('../public/stocktake/stocktakePaste');
+const { PASTE_COLUMNS, normalizeValue, parseVnNumber, foldName, columnValue, sameValue } = require('../public/stocktake/stocktakePaste');
+const Status = require('../public/stocktake/stocktakeStatus');
 const { announceChanged } = require('./stocktakeEvents');
 
 const BRANCHES = Object.freeze(['hanoi', 'saigon']);
@@ -66,6 +67,9 @@ function textOf(body, field, label, max = MAX.text) {
   return value;
 }
 
+// Trang thai moi phai la ten chuan theo co so (stocktakeStatus.js) hoac trong (= Chua XL).
+const statusInvalid = branch => `Trạng thái phải là một trong: ${Status.optionsFor(branch).map(option => option.label).join(', ')}.`;
+
 function dateField(value, field, label) {
   const text = clean(value);
   const valid = /^\d{4}-\d{2}-\d{2}$/u.test(text) && Number.isFinite(Date.parse(text + 'T00:00:00Z'))
@@ -117,12 +121,6 @@ const PRODUCTS_SQL = `
          COALESCE((SELECT ROUND(AVG((inv->>'cost')::numeric)) FROM jsonb_array_elements(COALESCE(p.raw->'inventories', '[]'::jsonb)) inv), 0)::float8 AS cost
   FROM products p
   WHERE p.branch = $1`;
-
-// stock_positions dung ma co so 'HN'/'SG'; dong sua gan nhat truoc = "vi tri kho gan nhat".
-const POSITIONS_SQL = `
-  SELECT code, location, arrival_date FROM stock_positions
-  WHERE branch = $1 ORDER BY updated_at DESC, id DESC`;
-const POSITION_BRANCH = Object.freeze({ hanoi: 'HN', saigon: 'SG' });
 
 const SESSION_COLUMNS = `id, branch, name, date_from, date_to, status, source, version, counterpart_session_id, created_by_name, created_at, closed_by_name, closed_at`;
 const EDIT_COLUMNS = `id, order_id, line_no, product_code, team, zone, spec, quantity::float8 AS quantity, removed, version, updated_by_name, updated_at`;
@@ -212,14 +210,15 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     return value;
   }
 
-  async function withTransaction(work, sessionId) {
+  // by: ma trinh duyet gui lenh (X-Stocktake-Client) — kem trong tin hieu de chinh trinh duyet do khong tai lai bang lan nua.
+  async function withTransaction(work, sessionId, by) {
     const client = await getDb().connect();
     try {
       await client.query('BEGIN');
       const result = await work(client);
       await client.query('COMMIT');
       if (sessionId) {
-        try { announce(sessionId); } catch (error) { console.error('[stocktake] khong phat duoc tin hieu doi:', error.message); }
+        try { announce(sessionId, by); } catch (error) { console.error('[stocktake] khong phat duoc tin hieu doi:', error.message); }
       }
       return result;
     } catch (error) {
@@ -293,7 +292,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       const updated = shapeSession(rows[0]);
       await writeHistory(client, updated, actor, '', 'session_update', { counterpartSessionId: session.counterpartSessionId }, { counterpartSessionId: counterpartId });
       return { session: updated };
-    }, sessionId);
+    }, sessionId, ctx.clientId);
   }
 
   // Dot doi chieu phai thuoc co so kia; null = bo doi chieu.
@@ -320,13 +319,6 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     }
     const board = buildBoard(await loadInputs(db, other, { withCounterpart: false }));
     return { counterpartInfo, counterpart: board.rows.map(r => ({ code: r.code, diffQty: r.diffQty })) };
-  }
-
-  // Vi tri kho cua co so, dong moi sua truoc (cache 60s).
-  function loadPositions(db, branch) {
-    return cached('positions:' + branch, () => db.query(POSITIONS_SQL, [POSITION_BRANCH[branch]]).then(r => r.rows.map(row => ({
-      code: row.code, location: row.location, arrivalDate: row.arrival_date
-    }))));
   }
 
   // Id dot da dong gan nhat truoc dot nay.
@@ -363,12 +355,11 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
 
   // Du lieu dau vao cua bo tinh cho dot dang mo.
   // fresh: bo cache (dong dot phai chup ton dung luc dong).
-  async function loadInputs(db, session, { fresh = false, withCounterpart = true } = {}) {
+  async function loadInputs(db, session, { fresh = false, withCounterpart = true, withPrevious = true } = {}) {
     if (fresh) {
       cache.delete('products:' + session.branch);
-      cache.delete('positions:' + session.branch);
     }
-    const [lines, edits, products, positions, tags, notes, prev, other] = await Promise.all([
+    const [lines, edits, products, tags, notes, prev, other] = await Promise.all([
       db.query(TEAM_LINES_SQL, [session.branch, session.dateFrom, session.dateTo]).then(r => r.rows.map(row => ({
         orderId: Number(row.order_id), lineNo: row.line_no, orderCode: row.order_code, orderStatus: row.order_status,
         team: row.team, zone: row.zone, spec: row.spec, productCode: row.product_code, productName: row.product_name, quantity: Number(row.quantity)
@@ -377,19 +368,18 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       cached('products:' + session.branch, () => db.query(PRODUCTS_SQL, [session.branch]).then(r => r.rows.map(row => ({
         code: row.code, name: row.name, stock: Number(row.stock), cost: Number(row.cost)
       })))),
-      loadPositions(db, session.branch),
       db.query(`SELECT ${TAG_COLUMNS} FROM stocktake_product_tags WHERE branch = $1`, [session.branch]).then(r => r.rows.map(shapeTag)),
       db.query(`SELECT ${NOTE_COLUMNS} FROM stocktake_code_notes WHERE session_id = $1`, [session.id]).then(r => r.rows.map(shapeNote)),
-      previousResults(db, session),
+      withPrevious ? previousResults(db, session) : { previousSessionId: null, previous: [] },
       withCounterpart ? counterpartResults(db, session) : { counterpartInfo: null, counterpart: [] }
     ]);
-    return { lines, edits, products, positions, tags, notes, ...prev, ...other };
+    return { lines, edits, products, tags, notes, ...prev, ...other };
   }
 
   // Dot da dong: doc ban chup, ghi chu va tag van hien (khong co dong dem chi tiet).
   async function closedBoard(db, session) {
     const sheetImport = session.source === 'sheet_import';
-    const [results, tags, notes, prev, other, positions] = await Promise.all([
+    const [results, tags, notes, prev, other] = await Promise.all([
       db.query(`SELECT product_code, name, counted::float8 AS counted, stock::float8 AS stock, cost::float8 AS cost,
                        diff_qty::float8 AS diff_qty, diff_value::float8 AS diff_value,
                        prev_diff::float8 AS prev_diff, other_diff::float8 AS other_diff
@@ -398,18 +388,12 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       db.query(`SELECT ${NOTE_COLUMNS} FROM stocktake_code_notes WHERE session_id = $1`, [session.id]).then(r => r.rows.map(shapeNote)),
       // Chi dot nap tu sheet moi can fallback tinh truc tiep; dot web dung ban chup nguyen trang (NULL giu NULL).
       sheetImport ? previousResults(db, session) : previousSessionIdOf(db, session).then(id => ({ previousSessionId: id, previous: [] })),
-      sheetImport ? counterpartResults(db, session) : counterpartInfoOf(db, session).then(info => ({ counterpartInfo: info, counterpart: [] })),
-      loadPositions(db, session.branch)
+      sheetImport ? counterpartResults(db, session) : counterpartInfoOf(db, session).then(info => ({ counterpartInfo: info, counterpart: [] }))
     ]);
     const tagByCode = new Map(tags.map(tag => [tag.code, tag]));
     const noteByCode = new Map(notes.map(note => [note.code, note]));
     const prevByCode = new Map(prev.previous.map(item => [item.code, item.diffQty]));
     const otherByCode = new Map(other.counterpart.map(item => [item.code, item.diffQty]));
-    const positionByCode = new Map();
-    for (const item of positions) {
-      const key = codeKey(item.code);
-      if (key && !positionByCode.has(key)) positionByCode.set(key, { location: item.location, arrivalDate: item.arrivalDate });
-    }
     const rows = results.map(row => {
       const tag = tagByCode.get(row.product_code);
       const note = noteByCode.get(row.product_code) || null;
@@ -423,7 +407,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
         cluster: (tag && tag.cluster) || '', isCombo: Boolean(tag && tag.isCombo), tagVersion: tag ? tag.version : null,
         prevDiff: prevStored, prevDiffAuto: prevStored, prevDiffManual: Boolean(note && note.prevDiffManual !== null),
         otherDiff: otherStored, otherDiffAuto: otherStored, otherDiffManual: Boolean(note && note.otherDiffManual !== null),
-        latestPosition: positionByCode.get(row.product_code) || null, note, lines: []
+        note, lines: []
       };
     });
     deriveColumns(rows);
@@ -439,16 +423,12 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
         : loadInputs(db, session).then(inputs => ({ ...buildBoard(inputs), previousSessionId: inputs.previousSessionId, counterpart: inputs.counterpartInfo })),
       loadEmployees(db)
     ]);
-    // Goi y Trang thai / Chi tiet ly do: cac gia tri da dung trong dot.
-    const suggestions = { status: new Set(), reason: new Set() };
+    // Goi y Chi tiet ly do: cac gia tri da dung trong dot (Trang thai nay la danh sach co dinh, xem stocktakeStatus.js).
+    const reasons = new Set();
     for (const row of board.rows) {
-      if (row.note && row.note.statusText) suggestions.status.add(row.note.statusText);
-      if (row.note && row.note.reasonText) suggestions.reason.add(row.note.reasonText);
+      if (row.note && row.note.reasonText) reasons.add(row.note.reasonText);
     }
-    return {
-      session, ...board, employees,
-      suggestions: { status: [...suggestions.status].sort(), reason: [...suggestions.reason].sort() }
-    };
+    return { session, ...board, employees, suggestions: { reason: [...reasons].sort() } };
   }
 
   // Sua dong dem goc (orderId + lineNo) hoac dong tay (editId). Gia tri null = giu goc.
@@ -503,7 +483,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
         team: source.team, zone: source.zone, spec: source.spec, quantity: Number(source.quantity), productCode: codeKey(source.product_code)
       } }, after);
       return { edit: after };
-    }, sessionId);
+    }, sessionId, ctx.clientId);
   }
 
   async function addLine(ctx, sessionId, body = {}) {
@@ -523,7 +503,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       const edit = shapeEdit(rows[0]);
       await writeHistory(client, session, actor, productCode, 'line_add', undefined, edit);
       return { edit };
-    }, sessionId);
+    }, sessionId, ctx.clientId);
   }
 
   async function saveNote(ctx, sessionId, code, body = {}) {
@@ -537,8 +517,12 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       checkVersion(current, body.version, shapeNote);
       const before = current ? shapeNote(current) : null;
       const statusText = body.statusText === undefined ? (before ? before.statusText : '') : textOf(body, 'statusText', 'Trạng thái');
-      const statusColor = body.statusColor === undefined ? (before ? before.statusColor : '') : String(body.statusColor ?? '');
-      if (statusColor && !Object.hasOwn(STATUS_COLORS, statusColor)) throw fail(400, 'VALIDATION', 'Màu trạng thái không hợp lệ.', { field: 'statusColor' });
+      // Giu nguyen chu cu (dot nap tu sheet) thi khong kiem; doi thi phai la ten chuan.
+      if (statusText !== (before ? before.statusText : '') && !Status.isValid(statusText, session.branch)) {
+        throw fail(400, 'VALIDATION', statusInvalid(session.branch), { field: 'statusText' });
+      }
+      // Mau hien thi tinh tu chu trang thai (Status.colorOf); cot status_color chi giu gia tri cu, bo qua statusColor gui len.
+      const statusColor = before ? before.statusColor : '';
       const reasonText = body.reasonText === undefined ? (before ? before.reasonText : '') : textOf(body, 'reasonText', 'Chi tiết lý do', MAX.note);
       const printPage = body.printPage === undefined ? (before ? before.printPage : '') : textOf(body, 'printPage', 'Trang in', MAX.print);
       const printTime = body.printTime === undefined ? (before ? before.printTime : '') : textOf(body, 'printTime', 'Giờ in', MAX.print);
@@ -573,7 +557,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       const note = shapeNote(rows[0]);
       await writeHistory(client, session, actor, productCode, 'note', before, note);
       return { note };
-    }, sessionId);
+    }, sessionId, ctx.clientId);
   }
 
   // Cum SP / Combo giu qua cac dot theo co so; sessionId chi de bao tin hieu cho bang dang mo.
@@ -599,7 +583,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       const tag = shapeTag(rows[0]);
       await writeHistory(client, session, actor, productCode, 'tag', before, tag);
       return { tag };
-    }, sessionId);
+    }, sessionId, ctx.clientId);
   }
 
   // Khoa dong cum/combo cua cac ma (cung thu tu ma) va doc lai: saveTag cua phien khac cung co so chi khoa dong nay, doc khong khoa thi ghi de mat.
@@ -631,7 +615,8 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     const actor = actorOf(ctx);
     return withTransaction(async client => {
       const session = await openSessionForWrite(client, ctx, sessionId);
-      const inputs = await loadInputs(client, session, { withCounterpart: false });
+      // Chi can tap ma cua dot (khong can KK truoc / doi chieu): bot 3 truy van moi lan sua.
+      const inputs = await loadInputs(client, session, { withCounterpart: false, withPrevious: false });
       const known = new Set([...buildBoard(inputs).rows.map(r => r.code), ...inputs.products.map(p => codeKey(p.code))]);
       const allEmployees = await loadEmployees(client);
       const employees = allEmployees.filter(e => e.branch === session.branch);
@@ -660,6 +645,8 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
         const valueOf = record => columnValue(cell.column, kind === 'note' ? record : null, kind === 'tag' ? record : null, nameOf);
         const current = valueOf(entry.next);
         if (cell.check && !sameValue(cell.column, current, cell.expected)) { conflicts.push({ code: cell.code, column: cell.column, current }); continue; }
+        // Trang thai: chi ten chuan theo co so hoac trong; gui lai dung chu cu (khong doi) thi de sameRecord tinh unchanged.
+        if (cell.column === 'statusText' && parsed.value !== current && !Status.isValid(parsed.value, session.branch)) { skipped.invalid += 1; continue; }
         const next = nextRecord(cell.column, entry.next, parsed.value, employees);
         if (sameRecord(cell.column, entry.next, next)) { skipped.unchanged += 1; continue; }
         entry.next = next;
@@ -669,16 +656,17 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       }
       const noteChanges = [...byStore.note.values()];
       const tagChanges = [...byStore.tag.values()];
-      if (noteChanges.length) await upsertNotes(client, session.id, noteChanges, actor);
-      if (tagChanges.length) await upsertTags(client, session.branch, tagChanges, actor);
+      // Tra lai ban ghi vua luu (kem version / nguoi sua) de trang cap nhat tai cho, khong phai tai lai ca bang.
+      const savedNotes = noteChanges.length ? await upsertNotes(client, session.id, noteChanges, actor) : [];
+      const savedTags = tagChanges.length ? await upsertTags(client, session.branch, tagChanges, actor) : [];
       await insertPasteHistory(client, session, actor, [...noteChanges, ...tagChanges].flatMap(entry =>
         entry.columns.map(column => ({ code: entry.code, before: entry.before, after: { column, source: 'cells', ...entry.next } }))));
-      return { applied, conflicts, skipped };
-    }, sessionId);
+      return { applied, conflicts, skipped, notes: savedNotes, tags: savedTags };
+    }, sessionId, ctx.clientId);
   }
 
   async function upsertNotes(client, sessionId, changes, actor) {
-    await client.query(
+    const { rows } = await client.query(
       `INSERT INTO stocktake_code_notes (session_id, product_code, status_text, reason_text, print_page, print_time, recheck_employee_id, recheck_name,
                                          prev_diff_manual, other_diff_manual, updated_by_user_id, updated_by_name)
        SELECT $1, r.code, r."statusText", r."reasonText", r."printPage", r."printTime", r."recheckEmployeeId", r."recheckName",
@@ -689,18 +677,22 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
          print_page = EXCLUDED.print_page, print_time = EXCLUDED.print_time, recheck_employee_id = EXCLUDED.recheck_employee_id,
          recheck_name = EXCLUDED.recheck_name, prev_diff_manual = EXCLUDED.prev_diff_manual, other_diff_manual = EXCLUDED.other_diff_manual,
          version = stocktake_code_notes.version + 1, updated_by_user_id = EXCLUDED.updated_by_user_id,
-         updated_by_name = EXCLUDED.updated_by_name, updated_at = now()`,
+         updated_by_name = EXCLUDED.updated_by_name, updated_at = now()
+       RETURNING ${NOTE_COLUMNS}`,
       [sessionId, JSON.stringify(changes.map(c => ({ code: c.code, ...c.next }))), actor.id, actor.name]);
+    return rows.map(shapeNote);
   }
 
   async function upsertTags(client, branch, changes, actor) {
-    await client.query(
+    const { rows } = await client.query(
       `INSERT INTO stocktake_product_tags (branch, product_code, cluster, is_combo, updated_by_user_id, updated_by_name)
        SELECT $1, r.code, r.cluster, r."isCombo", $3, $4 FROM jsonb_to_recordset($2::jsonb) AS r(code text, cluster text, "isCombo" boolean)
        ON CONFLICT (branch, product_code) DO UPDATE SET cluster = EXCLUDED.cluster, is_combo = EXCLUDED.is_combo,
          version = stocktake_product_tags.version + 1, updated_by_user_id = EXCLUDED.updated_by_user_id,
-         updated_by_name = EXCLUDED.updated_by_name, updated_at = now()`,
+         updated_by_name = EXCLUDED.updated_by_name, updated_at = now()
+       RETURNING ${TAG_COLUMNS}`,
       [branch, JSON.stringify(changes.map(c => ({ code: c.code, ...c.next }))), actor.id, actor.name]);
+    return rows.map(shapeTag);
   }
 
   async function codeHistory(ctx, sessionId, code) {
@@ -743,7 +735,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       const closed = shapeSession(rows[0]);
       await writeHistory(client, closed, actor, '', 'session_close', undefined, { codes: results.length, mismatched: results.filter(r => r.diffQty !== 0).length });
       return { session: closed };
-    }, sessionId);
+    }, sessionId, ctx.clientId);
   }
 
   return { listSessions, createSession, updateSession, getBoard, saveLine, addLine, saveNote, saveTag, saveCells, codeHistory, closeSession };
