@@ -23,6 +23,8 @@ const dashboardData = require('./dashboardData');
 const debtScheduleService = require('../debtSchedule/debtScheduleService');
 const dashboardPgReader = require('./dashboardPgReader');
 const productReportRepository = require('./productReportRepository');
+const product90dReportRepository = require('./product90dReportRepository');
+const product90dScreen = require('../public/product-90d-report.js');
 const exportFieldCatalog = require('./exportFieldCatalog');
 const { BRANCHES, BRANCH_BOTH, branchLabelToCode, resolveBranchScope } = require('../branch/branches');
 const { HEADER_FONT, frozenNoGridlinesView, applyFullTableBorder } = require('../excelTableStyle');
@@ -53,6 +55,7 @@ const TABLE_TITLES = Object.freeze({
   'overview.transactions': 'Chi tiết giao dịch',
   'customers.productDetail': 'Bảng chi tiết sản phẩm theo khách',
   'overview.productReport': 'Báo cáo hàng hóa',
+  'products.product90d': 'Hàng hóa 90 ngày',
   'debt.management': 'Quản lý công nợ',
   'debt.penalty': 'Thưởng/phạt sale theo công nợ',
   'debt.aging': 'Tuổi nợ theo hóa đơn',
@@ -372,6 +375,83 @@ const STOCKOUT_30D_COLUMNS = [
   aggregateColumn('currentOnHand', 'Tồn kho hiện tại', 'number', 'Số lượng tồn kho hiện tại của mặt hàng.'),
   aggregateColumn('periods', 'Các đợt đứt hàng', undefined, 'Từng đợt đứt hàng, mỗi đợt một dòng (từ ngày -> đến ngày).', { wrapText: true })
 ];
+
+// Hang hoa 90 ngay (muc 4 tab Hang hoa) — doc thang bang tinh san product_90d_report (02:00), CUNG 26 cot va thu tu voi
+// man hinh (public/product-90d-report.js COLUMNS): Ma, Ten, roi 4 ky T.trc nua | T.trc | T.nay | 90 ngay x 6 chi so.
+// Nhan tinh (hop thoai chon truong) = "T.nay – SL"; file xuat doi sang nhan co ngay that cua ky, vd "T.nay (05/10–03/11) – SL"
+// (xem product90dColumnsWithDates). Khoa cot = ten cot DB (trung whitelist sap xep cua repository).
+const PRODUCT_90D_PERIOD_HINTS = {
+  '61_90d': 'kỳ 30 ngày trước nữa (ngày A−90 … A−61, A = ngày chốt số liệu)',
+  '31_60d': 'kỳ 30 ngày trước (A−60 … A−31)',
+  '1_30d': 'kỳ 30 ngày gần nhất (A−30 … A−1)',
+  '1_90d': 'cả 90 ngày (A−90 … A−1, chồng lên 3 kỳ kia)'
+};
+const PRODUCT_90D_METRICS = [
+  { metric: 'qty', label: 'SL', type: 'number', describe: 'Tổng số lượng bán trừ trả hàng' },
+  { metric: 'revenue', label: 'DS', type: 'number', describe: 'Doanh số bán trừ trả hàng (VNĐ)' },
+  { metric: 'avg_price', label: 'Giá TB', type: 'number', describe: 'Giá bán trung bình = doanh số chia số lượng; trống khi số lượng bằng 0' },
+  { metric: 'customer_count', label: 'SL khách', type: 'number', describe: 'Số khách khác nhau đã mua' },
+  { metric: 'invoice_count', label: 'Lượt mua', type: 'number', describe: 'Số hóa đơn có mã này' },
+  { metric: 'top_customers', label: 'Top 3 khách', type: 'text', describe: 'Tối đa 3 khách mua nhiều nhất, mỗi khách 1 dòng dạng tên|tỷ trọng doanh số|doanh số (không liệt kê khách có số lượng bằng 0)' }
+];
+// Nhan GIU NGUYEN chu viet tat cua man hinh (T.này, SL, DS, Giá TB) theo yeu cau "cung nhan voi man hinh"; mo ta (tooltip
+// hop thoai) thi viet day du.
+const PRODUCT_90D_COLUMNS = [
+  aggregateColumn('product_code', 'Mã hàng', 'text', 'Mã hàng (gộp Hà Nội + Sài Gòn theo mã).'),
+  aggregateColumn('product_name', 'Tên hàng', 'text', 'Tên hàng.'),
+  ...product90dReportRepository.PERIODS.flatMap(period => PRODUCT_90D_METRICS.map(m => ({
+    ...aggregateColumn(`${m.metric}_${period.key}`, `${period.label} – ${m.label}`, m.type,
+      `${m.describe}, ${PRODUCT_90D_PERIOD_HINTS[period.key]}.`, { wrapText: m.metric === 'top_customers' }),
+    // So le (SL 0,5; gia TB 100000,0238) giu du chu so trong Excel/HTML, khong lam tron ve so nguyen.
+    ...(m.type === 'number' ? { fractionDigits: 8 } : {}),
+    period: period.key, metricLabel: m.label
+  })))
+];
+const PRODUCT_90D_COLUMN_KEYS = new Set(PRODUCT_90D_COLUMNS.map(column => column.key));
+
+function product90dDayMonth(day) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(day || '')) ? `${day.slice(8, 10)}/${day.slice(5, 7)}` : '';
+}
+
+function product90dRange(period) {
+  const from = product90dDayMonth(period && period.from), to = product90dDayMonth(period && period.to);
+  return from && to ? `${from}–${to}` : '';
+}
+
+// Bieu do "Xu huong 3 ky" cua bao cao HTML: 3 ky 30 ngay KHONG chong nhau; ky "90 ngay" chi lam KPI tong.
+// Cau hinh chung exportHtmlReport (worksheet.periodTrend) — khong ma hoa rieng bang nay trong renderer.
+function product90dPeriodTrend(periods) {
+  const byKey = new Map((periods || []).map(period => [period.key, period]));
+  const point = period => ({
+    label: period.label,
+    range: product90dRange(byKey.get(period.key)),
+    columns: { qty: `qty_${period.key}`, revenue: `revenue_${period.key}`, invoices: `invoice_count_${period.key}` }
+  });
+  const [p61, p31, p1, p90] = product90dReportRepository.PERIODS;
+  return {
+    title: 'Xu hướng 3 kỳ',
+    subtitle: 'Cộng dồn các mã hàng đang hiển thị (lọc theo ô tìm kiếm); 3 kỳ 30 ngày không chồng nhau.',
+    points: [point(p61), point(p31), point(p1)],
+    total: point(p90),
+    metrics: [
+      { key: 'revenue', label: 'Doanh số', agg: 'sum', column: 'revenue', hint: 'Tổng DS (bán trừ trả hàng)' },
+      { key: 'qty', label: 'Số lượng', agg: 'sum', column: 'qty', hint: 'Tổng SL (bán trừ trả hàng)' },
+      { key: 'avgPrice', label: 'Giá TB', agg: 'ratio', numerator: 'revenue', denominator: 'qty', hint: 'Bình quân gia quyền = tổng DS ÷ tổng SL; trống khi tổng SL = 0' },
+      { key: 'invoices', label: 'Lượt mua (cộng theo mã)', agg: 'sum', column: 'invoices', hint: 'Cộng số hóa đơn của từng mã; 1 hóa đơn nhiều mã được đếm nhiều lần' }
+    ]
+  };
+}
+
+// Nhan co ngay that cua ky de doc file (Excel/HTML) phang van biet cua so: "T.này (05/10–03/11) – SL".
+function product90dColumnsWithDates(columns, periods) {
+  const byKey = new Map((periods || []).map(period => [period.key, period]));
+  return columns.map(column => {
+    if (!column.period) return column;
+    const period = byKey.get(column.period);
+    const range = product90dRange(period);
+    return range ? { ...column, label: `${period.label} (${range}) – ${column.metricLabel}` } : column;
+  });
+}
 
 // ---------- Ghep dong tho theo ma ----------
 
@@ -776,6 +856,18 @@ const TABLE_SPECS = {
     // đứng trước "Số lượng bán 30 ngày" và chiếm KPI thứ ba).
     worksheets: [{ ...reportWorksheet('product_report', 'Báo cáo hàng hóa', PRODUCT_REPORT_COLUMNS), summaryKeys: ['revenue90d', 'topCustomerRevenue90d', 'qtySold30d'] }]
   }),
+  // Hang hoa 90 ngay: dong doc o buildProduct90dDataset (khong qua dashboard). KPI/bieu do HTML: periodTrend (3 ky) +
+  // Top theo DS 90 ngay; o tim trong file HTML chi so ma/ten (searchKeys) nhu o tim tren man hinh; khong co bo loc phan loai.
+  'products.product90d': () => ({
+    worksheets: [{
+      ...reportWorksheet('product_90d', 'Hàng hóa 90 ngày', PRODUCT_90D_COLUMNS),
+      codeKey: 'product_code',
+      summaryKeys: ['revenue_1_90d', 'qty_1_90d'],
+      hints: { labelKey: 'product_name', categoryKey: false },
+      searchKeys: ['product_code', 'product_name'],
+      autoRowHeight: true
+    }]
+  }),
   'stockout.recentScan': () => ({
     worksheets: [reportWorksheet('recent_stockout_result', 'Hàng đứt gần đây', STOCKOUT_RECENT_COLUMNS)]
   }),
@@ -961,6 +1053,83 @@ async function buildProductReportDataset(description, payload, signal) {
   }, payload.tableSearch, payload.tableSort);
 }
 
+// Top 3 khach -> 1 dong / khach "Tên|62.2%|10300000" (bo khach SL = 0). DUNG CHUNG ham voi man hinh
+// (public/product-90d-report.js topCustomerLines) de Excel, HTML va bang tren web luon cung mot chu; rong -> o trong.
+function product90dTopCustomersText(list) {
+  const lines = product90dScreen.topCustomerLines(list);
+  return lines.length ? lines.join('\n') : null;
+}
+
+function formatVnStamp(iso) {
+  const date = iso ? new Date(iso) : null;
+  if (!date || !Number.isFinite(date.getTime())) return '—';
+  const parts = {};
+  new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+  }).formatToParts(date).forEach(part => { parts[part.type] = part.value; });
+  return `${parts.hour}:${parts.minute} ${parts.day}/${parts.month}/${parts.year}`;
+}
+
+// Nhan cot client gui (nhan tinh "T.này – SL" hoac nhan co ngay) -> cot sap xep trong whitelist cua repository.
+function product90dSort(tableSort, columns) {
+  const sort = normalizeTableSort(tableSort);
+  if (!sort) return {};
+  const label = sort.label.replace(/\s*\(\d{2}\/\d{2}–\d{2}\/\d{2}\)/, '');
+  const column = columns.find(item => normalizeSortLabel(item.label) === label);
+  if (!column || !product90dReportRepository.SORT_COLUMNS.includes(column.key)) return {};
+  return { sort: column.key, dir: sort.direction };
+}
+
+function product90dQuery(tableSearch) {
+  return normalizeText(tableSearch && tableSearch.query);
+}
+
+/**
+ * Hang hoa 90 ngay: TOAN BO dong cua bang tinh san (khong gioi han trang), loc + sap xep o SQL bang dung luat cua
+ * man hinh (tu khoa tableSearch.query, cot tableSort theo nhan). Chua co anh chup / khong co dong -> EXPORT_NO_DATA,
+ * khong bao gio tao file rong hay toan so 0.
+ */
+async function buildProduct90dDataset(description, payload, signal) {
+  const worksheet = description.worksheets[0];
+  const q = product90dQuery(payload.tableSearch);
+  const data = await product90dReportRepository.getProduct90dReportForExport({ q, ...product90dSort(payload.tableSort, worksheet.columns) });
+  throwIfAborted(signal);
+  if (!data.available) {
+    throw exportError('Chưa nạp báo cáo Hàng hóa 90 ngày (báo cáo được tính sẵn lúc 02:00 hằng ngày), chưa có dữ liệu để xuất.', 404, 'EXPORT_NO_DATA');
+  }
+  if (!data.rows.length) {
+    throw exportError(q ? `Không có mã hàng nào khớp “${q}” để xuất.` : 'Báo cáo Hàng hóa 90 ngày chưa có mã hàng nào để xuất.', 404, 'EXPORT_NO_DATA');
+  }
+  const columns = product90dColumnsWithDates(worksheet.columns, data.periods);
+  const rows = data.rows.map(row => {
+    const out = {};
+    columns.forEach(column => {
+      out[column.key] = column.key.startsWith('top_customers_') ? product90dTopCustomersText(row[column.key]) : row[column.key];
+    });
+    return out;
+  });
+  const range = period => {
+    const from = formatDayKey(period.from), to = formatDayKey(period.to);
+    return from && to ? `${from} – ${to}` : '—';
+  };
+  const notes = [
+    ['Dữ liệu cập nhật lúc', formatVnStamp(data.state.computedAt)],
+    ['Ngày chốt số liệu', formatDayKey(data.state.asOfDate) || '—'],
+    ...data.periods.map(period => [`Kỳ ${period.label}`, range(period)]),
+    ['Phạm vi', 'Toàn công ty (Hà Nội + Sài Gòn, gộp theo mã hàng)'],
+    ['Số mã hàng trong file', rows.length.toLocaleString('en-US')]
+  ];
+  if (q) notes.push(['Từ khóa tìm', q]);
+  return {
+    tableKey: 'products.product90d', title: TABLE_TITLES['products.product90d'], selectionMode: 'custom',
+    reportNotes: notes,
+    reportNotesTitle: 'Thông tin báo cáo',
+    // Bang gop 2 co so: ten file / nhan co so theo "Cả hai" (TKS_…), khong theo co so dang chon.
+    sourceBranch: BRANCH_BOTH,
+    worksheets: [{ ...worksheet, columns, periodTrend: product90dPeriodTrend(data.periods), rows }]
+  };
+}
+
 function productContainerExportNotes(sync) {
   const available = Boolean(sync && sync.available);
   const timestamp = sync && sync.lastSuccessAt ? new Date(sync.lastSuccessAt) : null;
@@ -1072,6 +1241,15 @@ function describeExport(payload, branch, options = {}) {
     }
   }
 
+  // Hàng hóa 90 ngày lộ doanh số/giá bán: ngoài reports.export (guard /api/export) còn bắt buộc reports.products VÀ
+  // reports.products.sales — route truyền canViewProducts/canViewSales; thiếu cờ (undefined) cũng bị chặn (mặc định an toàn).
+  if (tableKey === 'products.product90d') {
+    if (options.canViewProducts !== true || options.canViewSales !== true) {
+      throw exportError('Bạn không có quyền xuất báo cáo Hàng hóa 90 ngày.', 403, 'EXPORT_TABLE_NOT_ALLOWED');
+    }
+    if (product90dQuery(request.tableSearch).length > 200) throw exportError('Từ khóa tìm kiếm quá dài (tối đa 200 ký tự).');
+  }
+
   const spec = getTableSpec(tableKey, context, branch);
   // Đơn giá và Giá trị có bán HN/SG (PRODUCT_REPORT_PRICE_KEYS) chỉ cho tài khoản có quyền reports.products.price (route truyền options.canViewPrice); thiếu cờ = không có giá,
   // nên cột không xuất hiện trong danh sách trường và yêu cầu tự gõ khóa cột giá bị từ chối EXPORT_FIELD_NOT_ALLOWED.
@@ -1126,6 +1304,9 @@ async function buildExportDataset(payload, branch, options = {}) {
   }
   if (tableKey === 'overview.productReport') {
     return buildProductReportDataset(description, request, signal);
+  }
+  if (tableKey === 'products.product90d') {
+    return buildProduct90dDataset(description, request, signal);
   }
   if (tableKey === 'debt.penalty') {
     const branches = resolveBranchScope(branch || BRANCH_BOTH).map(branchLabelToCode).filter(Boolean);
@@ -1292,6 +1473,36 @@ function styleWorksheet(worksheet, columns, rows) {
     if (column.type === 'date') excelColumn.numFmt = 'dd/mm/yyyy hh:mm:ss';
     excelColumn.alignment = { vertical: 'top', wrapText: column.wrapText === true };
     if (column.signTone) applySignToneFont(worksheet, index + 1, rows, column);
+    if (column.type === 'number' && Number.isInteger(column.fractionDigits)) applyFractionFormat(worksheet, index + 1, rows, column);
+  });
+}
+
+// Cot khai bao fractionDigits: o so le dung dinh dang co dung so chu so thap phan can thiet (toi da fractionDigits),
+// o so nguyen giu '#,##0' — gia tri o van la so that, chi la hien thi khong bi lam tron.
+function excelFractionFormat(value, maxDigits) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || Number.isInteger(value)) return null;
+  const text = String(Number(value.toFixed(maxDigits)));
+  const digits = /e/i.test(text) ? maxDigits : ((text.split('.')[1] || '').length);
+  if (!digits) return null;
+  const decimals = '0'.repeat(Math.min(digits, maxDigits));
+  return `#,##0.${decimals};[Red]-#,##0.${decimals}`;
+}
+
+function applyFractionFormat(worksheet, columnNumber, rows, column) {
+  rows.forEach((row, index) => {
+    const format = excelFractionFormat(toExcelValue(row[column.key], column.type), column.fractionDigits);
+    if (format) worksheet.getRow(index + 2).getCell(columnNumber).numFmt = format;
+  });
+}
+
+// Worksheet khai bao autoRowHeight: dong co o xuong dong (vd Top 3 khach) duoc dat chieu cao du so dong chu,
+// vi Excel khong tu gian chieu cao dong khi mo file.
+function applyAutoRowHeight(worksheet, columns, rows) {
+  const wrapped = columns.filter(column => column.wrapText);
+  if (!wrapped.length) return;
+  rows.forEach((row, index) => {
+    const lines = Math.max(1, ...wrapped.map(column => String(row[column.key] == null ? '' : row[column.key]).split('\n').length));
+    if (lines > 1) worksheet.getRow(index + 2).height = lines * 15 + 3;
   });
 }
 
@@ -1366,6 +1577,9 @@ async function getExportDataset(payload, branch, options = {}) {
     name: sourceWorksheet.name,
     columns: selectedColumnsForWorksheet(dataset.selectionMode, sourceWorksheet, request.columns),
     ...(sourceWorksheet.summaryKeys ? { summaryKeys: sourceWorksheet.summaryKeys } : {}),
+    // Tuy chon trinh bay (chi bang nao khai bao moi co): goi y bieu do, cot tim kiem, xu huong theo ky, tu gian dong Excel.
+    ...['hints', 'searchKeys', 'periodTrend', 'autoRowHeight'].reduce((extra, key) => (
+      sourceWorksheet[key] !== undefined ? { ...extra, [key]: sourceWorksheet[key] } : extra), {}),
     rows: sourceWorksheet.rows
   })).filter(worksheet => worksheet.columns.length > 0);
   if (worksheets.length === 0) {
@@ -1385,6 +1599,7 @@ async function getExportDataset(payload, branch, options = {}) {
       generatedAt: new Date(),
       fileBase: `${branchFilePrefix(fileBranch)}_${fileSlug(dataset.title)}${reward ? `_thang_${reward.month.replace('-', '')}` : ''}${cycleDate ? `_chot_${cycleDate.replace(/-/g, '')}` : ''}_${fileTimestamp()}`,
       ...(dataset.reportNotes ? { reportNotes: dataset.reportNotes } : {}),
+      ...(dataset.reportNotesTitle ? { reportNotesTitle: dataset.reportNotesTitle } : {}),
       ...(reward ? { debtReward: reward, debtRewardNotes: reward.notes } : {})
     },
     worksheets
@@ -1437,11 +1652,13 @@ async function renderExcelWorkbook(dataset) {
       worksheet.addRow(output);
     });
     styleWorksheet(worksheet, columns, sourceWorksheet.rows);
+    if (sourceWorksheet.autoRowHeight) applyAutoRowHeight(worksheet, columns, sourceWorksheet.rows);
   });
 
   const metadataSheets = [
     ['Thông tin thưởng phạt', dataset.meta.debtRewardNotes],
-    ['Thông tin hàng dự kiến', dataset.meta.reportNotes]
+    // reportNotesTitle: bang tu dat ten sheet ghi chu; mac dinh giu ten cu cua Bao cao hang hoa (CONT).
+    [dataset.meta.reportNotesTitle || 'Thông tin hàng dự kiến', dataset.meta.reportNotes]
   ];
   for (const [name, notes] of metadataSheets) {
     if (!notes) continue;
@@ -1526,6 +1743,8 @@ module.exports = {
     TABLE_SPEC_KEYS: Object.keys(TABLE_SPECS),
     inferColumnType,
     toExcelValue,
+    excelFractionFormat,
+    product90dTopCustomersText,
     normalizeFilters,
     limiterState: () => ({ active: activeExportCount, queued: exportWaitQueue.length })
   }

@@ -433,6 +433,8 @@ function payloadFor(tableKey, extra = {}) {
 }
 
 const ALL_STATIC_TABLES = exportService.__test__.TABLE_SPEC_KEYS;
+// Hàng hóa 90 ngày đòi cờ quyền tường minh (reports.products + reports.products.sales) — xem test riêng ở exportProduct90d.test.js.
+const accessFor = tableKey => (tableKey === 'products.product90d' ? { canViewProducts: true, canViewSales: true } : undefined);
 
 function fixedEnv(stubs, branch = 'Hà Nội') {
   return { dashboard: stubs.dashboard, branch };
@@ -567,7 +569,7 @@ test('buoc lay truong KHONG goi getDashboardData/readRowsByCodes voi moi bang co
   try {
     await withStubs({}, async stubs => {
       for (const tableKey of ALL_STATIC_TABLES) {
-        const metadata = await exportService.getExportFields(payloadFor(tableKey), 'Hà Nội');
+        const metadata = await exportService.getExportFields(payloadFor(tableKey), 'Hà Nội', accessFor(tableKey));
         assert.equal(metadata.tableKey, tableKey);
         assert.equal(metadata.selectionMode, 'custom');
         assert.ok(metadata.worksheets.length >= 1, tableKey);
@@ -632,7 +634,8 @@ test('cot o buoc lay truong == cot cua dataset o buoc xuat cho moi bang co dinh'
   });
   try {
     await withRewardService(async () => historicalRewardBoard(), () => withStubs({}, async () => {
-      const payloads = ALL_STATIC_TABLES.map(tableKey => payloadFor(tableKey));
+      // Hàng hóa 90 ngày cố ý đổi nhãn sang nhãn có ngày thật của kỳ trong file (khóa/kiểu giữ nguyên) — test riêng.
+      const payloads = ALL_STATIC_TABLES.filter(tableKey => tableKey !== 'products.product90d').map(tableKey => payloadFor(tableKey));
       for (const payload of payloads) {
         const metadata = await exportService.getExportFields(payload, 'Hà Nội');
         const dataset = await exportService.__test__.buildExportDataset(payload, 'Hà Nội');
@@ -674,7 +677,8 @@ function assertStandardLabels(worksheets, where) {
       assert.ok(label.length > 0 && label.length <= 40, `${spot}: do dai ${label.length}`);
       assert.equal(label, label.normalize('NFC').trim(), spot);
       assert.doesNotMatch(label, /\s{2,}/, spot);
-      assert.match(label, /^\p{Lu}/u, `${spot}: phai viet hoa chu dau`);
+      // Kỳ "90 ngày" của Hàng hóa 90 ngày bắt đầu bằng số đúng như tiêu đề nhóm trên màn hình.
+      assert.match(label, where === 'products.product90d' ? /^[\p{Lu}\p{N}]/u : /^\p{Lu}/u, `${spot}: phai viet hoa chu dau`);
       // The requested Phạt/điểm column uses slash as division, valid in an Excel cell header.
       const debtRatioLabel = where === 'debt.penalty' && field.key === 'ratio' && label === 'Phạt/điểm';
       assert.doesNotMatch(label, debtRatioLabel ? /[\[\]:*?\\]/ : /[\[\]:*?/\\]/, `${spot}: ky tu khong hop le cho header`);
@@ -690,7 +694,9 @@ function assertStandardLabels(worksheets, where) {
             ({ inTransit: 'Vận chuyển SG', availableHanoi: 'Có bán HN', availableSaigon: 'Có bán SG' })[field.key] === label &&
             ['HN', 'SG'].includes(token.toUpperCase());
           const requestedTransferLabel = where === 'overview.productReport' && field.key === 'inTransit' && label === 'Điều chuyển SG' && token.toUpperCase() === 'SG';
-          assert.ok(!FORBIDDEN_ABBREVIATIONS.has(token.toUpperCase()) || inventoryBranchLabel || requestedTransferLabel, `${spot} ${part}: viet tat "${token}"`);
+          // Hàng hóa 90 ngày giữ đúng nhãn cột của màn hình (SL, DS, Giá TB) theo yêu cầu; mô tả vẫn phải viết đầy đủ.
+          const product90dScreenLabel = where === 'products.product90d' && part === 'label' && ['SL', 'DS', 'TB'].includes(token.toUpperCase());
+          assert.ok(!FORBIDDEN_ABBREVIATIONS.has(token.toUpperCase()) || inventoryBranchLabel || requestedTransferLabel || product90dScreenLabel, `${spot} ${part}: viet tat "${token}"`);
         });
       });
       assert.ok(!labels.has(label), `${spot}: nhan trung trong worksheet`);
@@ -704,7 +710,7 @@ function assertStandardLabels(worksheets, where) {
 test('moi nhan cua moi bang co dinh (ca cot derived/aggregate) dat chuan hoa', async () => {
   const payloads = ALL_STATIC_TABLES.map(tableKey => payloadFor(tableKey));
   for (const payload of payloads) {
-    const metadata = await exportService.getExportFields(payload, 'Hà Nội');
+    const metadata = await exportService.getExportFields(payload, 'Hà Nội', accessFor(payload.tableKey));
     assertStandardLabels(metadata.worksheets, payload.tableKey);
   }
 });

@@ -520,7 +520,12 @@ function sendExportError(res, err, fallbackMessage) {
 
 router.post('/api/export/fields', async (req, res) => {
   try {
-    const metadata = await getExportFields(req.body || {}, req.branch, { canViewPrice: hasFeature(req.user, 'reports.products.price'), canViewSales: hasFeature(req.user, 'reports.products.sales') });
+    const metadata = await getExportFields(req.body || {}, req.branch, {
+      canViewPrice: hasFeature(req.user, 'reports.products.price'),
+      canViewSales: hasFeature(req.user, 'reports.products.sales'),
+      // products.product90d (Hàng hóa 90 ngày) đòi thêm quyền tab Hàng hóa — cùng điều kiện với GET /api/product-report/90d.
+      canViewProducts: hasFeature(req.user, 'reports.products')
+    });
     res.status(200).json(metadata);
   } catch (err) {
     sendExportError(res, err, 'Không lấy được danh sách trường xuất Excel.');
@@ -541,7 +546,8 @@ router.post('/api/export', async (req, res) => {
       signal: abortController.signal,
       // Cột Đơn giá HN/SG của Báo cáo hàng hóa chỉ xuất cho tài khoản có quyền xem giá (cùng quyền với GET /api/product-report).
       canViewPrice: hasFeature(req.user, 'reports.products.price'),
-      canViewSales: hasFeature(req.user, 'reports.products.sales')
+      canViewSales: hasFeature(req.user, 'reports.products.sales'),
+      canViewProducts: hasFeature(req.user, 'reports.products')
     });
     if (abortController.signal.aborted) return;
     res.setHeader('Content-Type', file.mimeType);

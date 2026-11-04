@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { PGlite } = require('@electric-sql/pglite');
-const { getProduct90dReport, SORT_COLUMNS, PERIODS } = require('./product90dReportRepository');
+const { getProduct90dReport, getProduct90dReportForExport, SORT_COLUMNS, PERIODS } = require('./product90dReportRepository');
 
 const migration = fs.readFileSync(path.join(__dirname, '../db/migrations/0106_product_90d_report.sql'), 'utf8');
 
@@ -191,6 +191,52 @@ test('tham so khong hop le -> 400 truoc khi cham DB', async () => {
   // Gioi han bien dung duoc chap nhan (khong cham DB: pool gia).
   const pool = { query: async () => ({ rows: [] }) };
   assert.equal((await getProduct90dReport({ pool, q: 'x'.repeat(200), pageSize: '200' })).available, false);
+});
+
+test('xuat file: doc TOAN BO dong (khong gioi han 200/trang), cung luat tim + sap xep voi man hinh', async () => {
+  const db = await setup();
+  try {
+    await seed(db);
+    for (let i = 0; i < 230; i += 1) await put(db, `ZZ${String(i).padStart(3, '0')}`, `Hàng phụ ${i}`, { qty_1_90d: i });
+    const all = await getProduct90dReportForExport({ pool: db });
+    assert.equal(all.available, true);
+    assert.equal(all.totalRows, 236);
+    assert.equal(all.rows.length, 236, 'khong cat theo trang');
+    assert.deepEqual(all.rows.slice(0, 2).map(r => r.product_code), ['SP1', 'SP2']);
+    assert.equal(all.state.asOfDate, '2026-11-04');
+    assert.equal(all.periods.length, 4);
+    assert.equal(Object.keys(all.rows[0]).length, 26);
+    assert.equal(all.rows[0].qty_1_30d, -2);
+    assert.equal(all.rows[1].avg_price_1_90d, null);
+    // Tim + sap xep giong getProduct90dReport (khong dau, do khop, NULL cuoi).
+    const nhua = await getProduct90dReportForExport({ pool: db, q: 'nhua' });
+    assert.equal(nhua.sort, 'relevance');
+    assert.deepEqual(nhua.rows.map(r => r.product_code), (await getProduct90dReport({ pool: db, q: 'nhua' })).rows.map(r => r.product_code));
+    const sorted = await getProduct90dReportForExport({ pool: db, q: 'sp', sort: 'avg_price_1_90d', dir: 'desc' });
+    assert.deepEqual(sorted.rows.map(r => r.product_code), ['SP1', 'SP3', 'SP4', 'SP6', 'SP2', 'SP5']);
+    const none = await getProduct90dReportForExport({ pool: db, q: 'khongtontai' });
+    assert.equal(none.available, true);
+    assert.deepEqual(none.rows, []);
+    // Vuot tran -> loi 413 ro rang, khong cat ngam.
+    await assert.rejects(() => getProduct90dReportForExport({ pool: db, maxRows: 10 }), { statusCode: 413, code: 'EXPORT_TOO_MANY_ROWS' });
+    assert.equal((await getProduct90dReportForExport({ pool: db, q: 'sp', maxRows: 6 })).rows.length, 6);
+    await assert.rejects(() => getProduct90dReportForExport({ pool: db, sort: 'product_key' }), { statusCode: 400 });
+    await assert.rejects(() => getProduct90dReportForExport({ pool: db, q: 'x'.repeat(201) }), { statusCode: 400 });
+  } finally { await db.close(); }
+});
+
+test('xuat file: thieu state -> available:false; SQL chi doc + tham so hoa', async () => {
+  const db = await setup({ withState: false });
+  try {
+    await seed(db);
+    assert.deepEqual(await getProduct90dReportForExport({ pool: db }), { available: false, rows: [], totalRows: 0 });
+  } finally { await db.close(); }
+  const captured = [];
+  const pool = { query: async (sql, values) => { captured.push({ sql, values }); return { rows: [] }; } };
+  await getProduct90dReportForExport({ pool, q: "x'; DROP TABLE t; --", sort: 'qty_1_30d', dir: 'asc' });
+  assert.ok(!captured[0].sql.includes('DROP TABLE'));
+  assert.ok(/^\s*WITH/.test(captured[0].sql) && !/\b(INSERT|UPDATE|DELETE|TRUNCATE|ALTER|DROP)\b/i.test(captured[0].sql));
+  assert.match(captured[0].sql, /ORDER BY f\.qty_1_30d ASC NULLS LAST, f\.product_code ASC, f\.product_key ASC LIMIT \$\d+::int/);
 });
 
 test('SQL tham so hoa: tu khoa/trang/so dong di qua tham so, ten cot sap xep chi lay tu danh sach trang', async () => {

@@ -39,15 +39,14 @@
   padding-top: 7px;
   padding-bottom: 7px;
 }
-/* Nhãn kỳ + khoảng ngày dính ngay sau 2 cột Mã/Tên khi cuộn ngang (màn hẹp không phải cuộn tới giữa nhóm mới thấy kỳ). */
-/* shared.css căn giữa mọi tiêu đề bằng !important; riêng ô nhóm kỳ phải căn trái để nhãn dính được (nhãn giữa ô 700px sẽ khuất). */
-.p90-table th.p90-group { text-align: left !important; }
-.p90-group-inner { position: sticky; left: calc(var(--p90-sticky-w, 0px) + 8px); display: inline-block; max-width: 100%; }
+/* Mọi tiêu đề căn giữa (shared.css, !important), kể cả ô nhóm kỳ trên toàn colspan. Ô nhóm (~840px) có thể rộng hơn phần
+   đang thấy của khung: nhãn kỳ + khoảng ngày là khối dính 2 phía — nằm giữa ô khi thấy được, còn khi tâm ô ra ngoài khung thì
+   bám mép phải khung (hoặc ngay sau 2 cột Mã/Tên khi đã cuộn qua) nên không bao giờ khuất. */
+.p90-group-inner { position: sticky; left: calc(var(--p90-sticky-w, 0px) + 8px); right: 16px; display: inline-block; max-width: 100%; }
 .p90-group-label { display: block; font-weight: 600; }
 .p90-group-range { display: block; color: var(--muted); font-family: var(--font-data); font-size: 11.5px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .p90-group-range:empty { display: none; }
 .p90-table .p90-group-start { border-left: 1px solid var(--border); }
-.p90-table th.col-num .sort-button { text-align: right; }
 
 /* 2 cột Mã / Tên dính trái khi cuộn ngang; left của Tên = độ rộng đang thấy của cột Mã (JS đặt --p90-name-left). */
 .p90-table .p90-sticky { position: sticky; z-index: 2; background: var(--panel); }
@@ -74,13 +73,10 @@
   max-width: 100%;
 }
 
-/* Top 3 khách: mỗi khách 1 dòng, xuống dòng để đọc đủ tên. */
+/* Top 3 khách: mỗi khách đúng 1 dòng "Tên|%DS|DS"; chỉ xuống dòng khi tên quá dài (title có đủ chữ). */
 .p90-table td.p90-top-cell { white-space: normal; vertical-align: top; }
-.p90-top { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
-.p90-top li { overflow-wrap: anywhere; line-height: 1.35; }
-.p90-top-name { color: var(--text); font-weight: 500; }
-.p90-top-meta { display: block; color: var(--muted); font-family: var(--font-data); font-size: 11.5px; font-variant-numeric: tabular-nums; }
-.p90-top-share { color: var(--text); font-weight: 600; }
+.p90-top { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.p90-top li { overflow-wrap: anywhere; line-height: 1.35; color: var(--text); }
 
 .p90-error { color: var(--red); margin-right: 8px; }
 .p90-retry { margin-left: 4px; }

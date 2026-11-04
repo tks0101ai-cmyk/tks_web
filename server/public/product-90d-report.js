@@ -21,7 +21,7 @@
     { metric: 'avg_price', label: 'Giá TB', width: 108, mobile: 100, sortable: true },
     { metric: 'customer_count', label: 'SL khách', width: 96, mobile: 88, sortable: true },
     { metric: 'invoice_count', label: 'Lượt mua', width: 96, mobile: 88, sortable: true },
-    { metric: 'top_customers', label: 'Top 3 khách', width: 300, mobile: 240, sortable: false }
+    { metric: 'top_customers', label: 'Top 3 khách', width: 330, mobile: 260, sortable: false }
   ];
   const COLUMNS = [
     { key: 'product_code', label: 'Mã hàng', pickerLabel: 'Mã hàng', width: 110, mobile: 82, sortable: true, type: 'code' },
@@ -36,7 +36,7 @@
     }));
   }, []));
 
-  const NUMBER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 });
+  const NUMBER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 8 });
   const PERCENT = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
   const DASH = '—';
 
@@ -52,7 +52,7 @@
     return Number.isFinite(n) ? n : null;
   }
 
-  // NULL/không phải số → "—"; 0 → "0"; số âm và số lẻ giữ nguyên (tối đa 4 chữ số thập phân, bỏ số 0 thừa). KHÔNG dùng `||`.
+  // NULL/không phải số → "—"; 0 → "0"; số âm và số lẻ giữ nguyên (tối đa 8 chữ số thập phân, bỏ số 0 thừa). KHÔNG dùng `||`.
   function formatValue(value) {
     const n = toNumber(value);
     if (n === null) return DASH;
@@ -94,15 +94,31 @@
     return parts.hour + ':' + parts.minute + ' ' + parts.day + '/' + parts.month + '/' + parts.year;
   }
 
-  // Top 3 khách: mỗi khách 1 dòng "Tên · % DS · DS · SL"; rỗng/không phải mảng → "—".
+  // Top 3 khách — hàm DÙNG CHUNG màn hình + file xuất (exportService require file này):
+  // bỏ khách có SL = 0 (không góp gì; giữ SL âm = trả hàng thật), mỗi khách còn lại 1 dòng "Tên|%DS|DS", vd
+  // "HN C Vương Ninh HN|10%|45000000": nối bằng "|" KHÔNG khoảng trắng, % = tỷ lệ × 100 (tối đa 1 chữ số lẻ, bỏ 0 thừa),
+  // DS là số thô KHÔNG phân cách hàng nghìn (giữ số lẻ/số âm). Không ghi SL. Không còn ai → mảng rỗng (hiển thị "—").
+  const PLAIN = new Intl.NumberFormat('en-US', { maximumFractionDigits: 8, useGrouping: false });
+  const PLAIN_SHARE = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1, useGrouping: false });
+  function plainNumber(value, format) {
+    const n = toNumber(value);
+    return n === null ? DASH : format.format(n === 0 ? 0 : n).replace(/^-0$/, '0');
+  }
+  function topCustomerLines(list) {
+    if (!Array.isArray(list)) return [];
+    return list.slice(0, 3).filter(function (item) {
+      return item && typeof item === 'object' && toNumber(item.quantity) !== 0;
+    }).map(function (c) {
+      const name = c.name == null || String(c.name).trim() === '' ? 'Khách lẻ' : String(c.name).trim();
+      const share = toNumber(c.share);
+      return name + '|' + (share === null ? DASH : plainNumber(share * 100, PLAIN_SHARE) + '%') + '|' + plainNumber(c.revenue, PLAIN);
+    });
+  }
   function topCustomersHtml(list) {
-    if (!Array.isArray(list) || !list.length) return '<span class="muted">' + DASH + '</span>';
-    return '<ol class="p90-top">' + list.slice(0, 3).map(function (item) {
-      const c = item || {};
-      const name = c.name == null || String(c.name).trim() === '' ? 'Khách lẻ' : String(c.name);
-      return '<li><span class="p90-top-name">' + escapeHtml(name) + '</span>' +
-        '<span class="p90-top-meta"><span class="p90-top-share">' + escapeHtml(formatShare(c.share)) + '</span>' +
-        ' · DS ' + escapeHtml(formatValue(c.revenue)) + ' · SL ' + escapeHtml(formatValue(c.quantity)) + '</span></li>';
+    const lines = topCustomerLines(list);
+    if (!lines.length) return '<span class="muted">' + DASH + '</span>';
+    return '<ol class="p90-top">' + lines.map(function (line) {
+      return '<li title="' + escapeHtml(line) + '">' + escapeHtml(line) + '</li>';
     }).join('') + '</ol>';
   }
 
@@ -146,10 +162,25 @@
     return { sort: '', dir: '' };
   }
 
+  // Chữ của nút sắp xếp báo hành động KẾ TIẾP khi bấm (như table-controls): chưa sắp → tăng dần → giảm dần → bỏ sắp xếp.
+  function sortAction(mode) {
+    return mode === 'ascending' ? 'Sắp xếp giảm dần' : mode === 'descending' ? 'Bỏ sắp xếp' : 'Sắp xếp tăng dần';
+  }
+
+  // Ngữ cảnh gửi hộp thoại "Xuất file" (POST /api/export, tableKey products.product90d): đúng từ khóa ĐANG áp dụng
+  // (state.q) và cột sắp xếp theo NHÃN cột xuất (pickerLabel, vd "T.này – SL") — máy chủ đổi nhãn → cột whitelist.
+  function exportContext(current) {
+    const s = current || {};
+    const out = { tableSearch: { mode: 'normal', query: typeof s.q === 'string' ? s.q.trim().slice(0, 200) : '' } };
+    const column = s.sort ? COLUMNS.find(function (c) { return c.key === s.sort && c.sortable; }) : null;
+    if (column && (s.dir === 'asc' || s.dir === 'desc')) out.tableSort = { label: column.pickerLabel, direction: s.dir };
+    return out;
+  }
+
   const helpers = {
     PERIODS: PERIODS, METRICS: METRICS, COLUMNS: COLUMNS, escapeHtml: escapeHtml, formatValue: formatValue, formatShare: formatShare,
-    formatPeriodRange: formatPeriodRange, formatStamp: formatStamp, topCustomersHtml: topCustomersHtml, rowHtml: rowHtml,
-    buildQuery: buildQuery, nextSort: nextSort
+    formatPeriodRange: formatPeriodRange, formatStamp: formatStamp, topCustomersHtml: topCustomersHtml, topCustomerLines: topCustomerLines,
+    rowHtml: rowHtml, buildQuery: buildQuery, nextSort: nextSort, sortAction: sortAction, exportContext: exportContext
   };
   if (typeof module === 'object' && module && module.exports) module.exports = helpers;
   if (typeof window === 'undefined' || !window.document) return;
@@ -249,6 +280,14 @@
       th.classList.toggle('sort-active', active);
       const mark = th.querySelector('.sort-indicator');
       if (mark && mark.textContent !== SORT_GLYPH[mode]) mark.textContent = SORT_GLYPH[mode];
+      const button = th.querySelector('.sort-button');
+      const column = COLUMNS.find(function (c) { return c.key === th.dataset.sort; });
+      if (button && column) {
+        const title = sortAction(mode) + ' theo ' + column.pickerLabel;
+        const aria = sortAction(mode) + ' theo cột ' + column.pickerLabel;
+        if (button.title !== title) button.title = title;
+        if (button.getAttribute('aria-label') !== aria) button.setAttribute('aria-label', aria);
+      }
     });
   }
 
@@ -291,7 +330,21 @@
     $('product90dNextPage').disabled = $('product90dLastPage').disabled = state.page >= pages;
     const clear = $('product90dSearchClear');
     if (clear) clear.hidden = !$('product90dSearch').value;
+    // Nút Xuất file: ẩn khi tài khoản không có quyền xuất; khóa khi chưa có ảnh chụp / lỗi / đang tải / tìm không ra.
+    const exportButton = $('product90dExportButton');
+    if (exportButton) {
+      exportButton.hidden = !can('reports.export');
+      const ready = ok && total > 0 && !state.loading;
+      exportButton.disabled = !ready;
+      exportButton.title = ready ? 'Xuất Excel hoặc HTML đúng từ khóa và cột đang sắp xếp' : 'Chưa có dữ liệu để xuất';
+    }
   }
+
+  // Mở hộp thoại "Xuất file" dùng chung (index.html openExportDialog → buildExportPayload đọc exportState()).
+  function openExport() {
+    if (typeof window.openExportDialog === 'function') window.openExportDialog('products.product90d');
+  }
+  function exportState() { return exportContext({ q: state.q, sort: state.sort, dir: state.dir }); }
 
   function render() {
     if (!$('product90dRows')) return;
@@ -368,8 +421,10 @@
   }
 
   function onSortClick(event) {
+    // Bấm nút hoặc phần đệm của ô tiêu đề (ngoài nút) đều sắp xếp — quy ước chung (table-controls.js); tay kéo độ rộng thì không.
     const button = event.target.closest('.sort-button');
-    const th = button && button.closest('th.sortable[data-sort]');
+    const th = button ? button.closest('th.sortable[data-sort]')
+      : (event.target.matches && event.target.matches('th.sortable[data-sort]') ? event.target : null);
     if (!th) return;
     event.preventDefault();
     const next = nextSort({ sort: state.sort, dir: state.dir }, th.dataset.sort);
@@ -449,6 +504,6 @@
     render();
   }
 
-  window.TKSProduct90d = { load: load, reset: reset, helpers: helpers };
+  window.TKSProduct90d = { load: load, reset: reset, helpers: helpers, exportState: exportState, openExport: openExport };
   if ($('product90dTable')) setupTable();
 })();

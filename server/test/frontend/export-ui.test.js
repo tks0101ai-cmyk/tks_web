@@ -13,15 +13,34 @@ function readDashboardHtml() {
   return fs.readFileSync(htmlPath, 'utf8');
 }
 
-test('giao dien gan dung 6 nut xuat Excel cho 6 bang co dinh (khong con Dat hang / Tra hang / Khach hang cu / cac muc cu cua Hang hoa)', () => {
+test('giao dien gan dung 7 nut xuat Excel cho 7 bang co dinh (khong con Dat hang / Tra hang / Khach hang cu / cac muc cu cua Hang hoa)', () => {
   const html = readDashboardHtml();
   const matches = [...html.matchAll(/openExportDialog\('([^']+)'\)/g)].map(match => match[1]);
-  assert.equal(matches.length, 6);
-  assert.equal(new Set(matches).size, 6);
+  assert.equal(matches.length, 7);
+  assert.equal(new Set(matches).size, 7);
   assert.deepEqual(matches.sort(), [
     'customers.productDetail', 'debt.aging', 'debt.management', 'debt.penalty',
-    'overview.productReport', 'overview.transactions'
+    'overview.productReport', 'overview.transactions', 'products.product90d'
   ].sort());
+});
+
+test('Hang hoa 90 ngay: nut Xuat file gui dung tu khoa dang ap dung + nhan cot sap xep (lay tu TKSProduct90d.exportState)', async () => {
+  const h = createExportDashboard();
+  // Chua nap product-90d-report.js (jsdom chi chay script inline): payload van hop le, tu khoa rong.
+  h.win.openExportDialog('products.product90d');
+  let call = h.fieldsCalls().pop();
+  assert.deepEqual(call.body.tableSearch, { mode: 'normal', query: '' });
+  assert.equal(call.body.tableSort, undefined);
+  h.win.TKSProduct90d = { exportState: () => ({ tableSearch: { mode: 'normal', query: 'binh' }, tableSort: { label: 'T.này – DS', direction: 'desc' } }) };
+  h.win.openExportDialog('products.product90d');
+  call = h.fieldsCalls().pop();
+  assert.equal(call.body.tableKey, 'products.product90d');
+  assert.deepEqual(call.body.tableSearch, { mode: 'normal', query: 'binh' });
+  assert.deepEqual(call.body.tableSort, { label: 'T.này – DS', direction: 'desc' });
+  const button = h.document.getElementById('product90dExportButton');
+  assert.ok(button.closest('#product90dSection .panel-head-actions'));
+  assert.ok(button.classList.contains('export-button'));
+  assert.equal(button.disabled, true, 'khoa cho toi khi co du lieu');
 });
 
 test('modal co du dieu khien chon truong va script inline bien dich hop le', () => {

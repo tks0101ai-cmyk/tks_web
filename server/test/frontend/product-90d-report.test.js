@@ -32,7 +32,10 @@ test('formatValue: NULL -> "—", 0 -> "0", so am va so le giu nguyen theo en-US
   assert.equal(H.formatValue(2.5), '2.5');
   assert.equal(H.formatValue(0.125), '0.125');
   assert.equal(H.formatValue(1234567.5), '1,234,567.5');
-  assert.equal(H.formatValue('12.3456789'), '12.3457');
+  assert.equal(H.formatValue('12.3456789'), '12.3456789', 'giu toi 8 chu so le, khong lam tron mat');
+  assert.equal(H.formatValue(100000.0238), '100,000.0238');
+  assert.equal(H.formatValue(1.123456789), '1.12345679');
+  assert.equal(H.formatValue(2.50000000), '2.5', 'bo so 0 thua');
   assert.equal(H.formatValue(1500000), '1,500,000');
 });
 
@@ -52,26 +55,54 @@ test('formatPeriodRange + formatStamp (gio Viet Nam)', () => {
   assert.equal(H.formatStamp(null), '');
 });
 
-test('topCustomersHtml: moi khach 1 dong (ten · % DS · DS · SL), rong -> "—", ten duoc escape', () => {
+test('topCustomerLines: moi khach 1 dong "Ten|%DS|DS" (khong SL, khong phan cach nghin), bo khach SL = 0', () => {
+  assert.deepEqual(H.topCustomerLines([
+    { name: 'HN C Vương Ninh HN', share: 0.1, revenue: 45000000, quantity: 3 },
+    { name: 'Khách B', share: 0.622, revenue: 10300000, quantity: 1 },
+    { name: 'Khách C', share: 0.125, revenue: 300000.5, quantity: 1.5 }
+  ]), ['HN C Vương Ninh HN|10%|45000000', 'Khách B|62.2%|10300000', 'Khách C|12.5%|300000.5']);
+  // SL 0 (ke ca dong toan so 0) bi bo; SL am (tra hang) giu; ten rong -> "Khách lẻ"; share NULL -> "—"; doanh so am giu.
+  assert.deepEqual(H.topCustomerLines([
+    { name: 'Không mua', share: 0, revenue: 0, quantity: 0 },
+    { name: '', share: null, revenue: -1250.5, quantity: -2 },
+    { name: 'Chỉ SL 0', share: 0.3, revenue: 500, quantity: '0' }
+  ]), ['Khách lẻ|—|-1250.5']);
+  assert.deepEqual(H.topCustomerLines([{ name: 'A', share: 0, revenue: 0, quantity: 0 }]), [], 'loc het -> rong');
+  assert.deepEqual(H.topCustomerLines(null), []);
+  // Chi lay toi da 3 khach dau (du lieu da xep san).
+  assert.equal(H.topCustomerLines([1, 2, 3, 4].map(i => ({ name: 'K' + i, share: 0.1, revenue: i, quantity: 1 }))).length, 3);
+});
+
+test('topCustomersHtml: 1 dong / khach + title cung chu, rong hoac loc het -> "—", ten co | va ky tu HTML duoc escape', () => {
   assert.match(H.topCustomersHtml([]), /—/);
   assert.doesNotMatch(H.topCustomersHtml([]), /<ol/);
   assert.match(H.topCustomersHtml(null), /—/);
+  assert.match(H.topCustomersHtml([{ name: 'X', share: 0, revenue: 0, quantity: 0 }]), /—/, 'chi co khach SL 0 -> "—"');
   const dom = new JSDOM('<div id="x"></div>');
   const box = dom.window.document.getElementById('x');
   box.innerHTML = H.topCustomersHtml([
-    { name: 'Đặng <An>', share: 0.5, revenue: 1200000, quantity: 12 },
-    { name: '', share: null, revenue: 0, quantity: -2 },
-    { name: 'Khách C', share: 0.125, revenue: 300000.5, quantity: 1.5 },
-    { name: 'Thứ tư bị bỏ', share: 0.1, revenue: 1, quantity: 1 }
+    { name: 'Đặng <An> | "Cty"', share: 0.5, revenue: 1200000, quantity: 12 },
+    { name: 'Bỏ vì SL 0', share: 0, revenue: 0, quantity: 0 },
+    { name: 'Khách C', share: 0.125, revenue: 300000.5, quantity: 1.5 }
   ]);
   const items = [...box.querySelectorAll('li')];
-  assert.equal(items.length, 3);
-  assert.equal(items[0].querySelector('.p90-top-name').textContent, 'Đặng <An>');
+  assert.equal(items.length, 2);
+  assert.equal(items[0].textContent, 'Đặng <An> | "Cty"|50%|1200000');
+  assert.equal(items[0].title, items[0].textContent);
   assert.equal(box.querySelector('an'), null);
-  assert.equal(items[0].querySelector('.p90-top-meta').textContent, '50% · DS 1,200,000 · SL 12');
-  assert.equal(items[1].querySelector('.p90-top-name').textContent, 'Khách lẻ');
-  assert.equal(items[1].querySelector('.p90-top-meta').textContent, '— · DS 0 · SL -2');
-  assert.equal(items[2].querySelector('.p90-top-meta').textContent, '12.5% · DS 300,000.5 · SL 1.5');
+  assert.equal(items[1].textContent, 'Khách C|12.5%|300000.5');
+});
+
+test('exportContext + sortAction: payload Xuat file theo tu khoa da ap dung va nhan cot; nut sap xep bao hanh dong ke tiep', () => {
+  assert.deepEqual(H.exportContext({ q: '  binh  ', sort: 'revenue_1_30d', dir: 'desc' }),
+    { tableSearch: { mode: 'normal', query: 'binh' }, tableSort: { label: 'T.này – DS', direction: 'desc' } });
+  assert.deepEqual(H.exportContext({ q: '', sort: '', dir: '' }), { tableSearch: { mode: 'normal', query: '' } });
+  assert.deepEqual(H.exportContext({ q: 'x', sort: 'product_name', dir: 'asc' }).tableSort, { label: 'Tên hàng', direction: 'asc' });
+  assert.equal(H.exportContext({ sort: 'top_customers_1_30d', dir: 'asc' }).tableSort, undefined, 'cot khong sap duoc');
+  assert.equal(H.exportContext({ q: 'y'.repeat(250) }).tableSearch.query.length, 200);
+  assert.equal(H.sortAction('none'), 'Sắp xếp tăng dần');
+  assert.equal(H.sortAction('ascending'), 'Sắp xếp giảm dần');
+  assert.equal(H.sortAction('descending'), 'Bỏ sắp xếp');
 });
 
 test('rowHtml: 26 o theo thu tu cot, NULL avg_price -> "—", 0 -> 0, am/le giu nguyen', () => {
@@ -282,6 +313,54 @@ test('sap xep o may chu: ▲▼ -> ▼ tang -> ▲ giam -> bo; Top 3 khong sap x
     const before = p.calls.length;
     p.w.document.querySelector('th[data-column-key="top_customers_1_90d"]').click();
     assert.equal(p.calls.length, before);
+  } finally { p.dom.window.close(); }
+});
+
+test('nut sap xep bao hanh dong ke tiep; bam phan dem o tieu de cung sap xep; nut Xuat file khoa/mo theo du lieu va mang dung ngu canh', async () => {
+  let canExport = true;
+  const p = createWidget({ can: key => key !== 'reports.export' || canExport });
+  try {
+    const exportButton = p.$('product90dExportButton');
+    assert.equal(exportButton.disabled, true, 'chua co du lieu -> khoa');
+    p.w.TKSProduct90d.load(true);
+    assert.equal(exportButton.disabled, true, 'dang tai -> khoa');
+    p.answer(0, report([sampleRow('SP1')]));
+    await settle();
+    assert.equal(exportButton.disabled, false);
+    assert.equal(exportButton.hidden, false);
+    const th = p.w.document.querySelector('th[data-column-key="revenue_1_30d"]');
+    const button = th.querySelector('.sort-button');
+    assert.equal(button.title, 'Sắp xếp tăng dần theo T.này – DS');
+    assert.equal(button.getAttribute('aria-label'), 'Sắp xếp tăng dần theo cột T.này – DS');
+    th.dispatchEvent(new p.w.MouseEvent('click', { bubbles: true })); // bam phan dem cua o (target = th)
+    assert.equal(p.params(1).get('sort'), 'revenue_1_30d');
+    assert.equal(button.title, 'Sắp xếp giảm dần theo T.này – DS');
+    p.answer(1, report([sampleRow('SP1')]));
+    await settle();
+    button.click();
+    assert.equal(button.title, 'Bỏ sắp xếp theo T.này – DS');
+    p.answer(2, report([sampleRow('SP1')]));
+    await settle();
+    // Ngu canh xuat file = tu khoa dang ap dung + nhan cot dang sap xep.
+    assert.deepEqual(JSON.parse(JSON.stringify(p.w.TKSProduct90d.exportState())), { tableSearch: { mode: 'normal', query: '' }, tableSort: { label: 'T.này – DS', direction: 'desc' } });
+    const opened = [];
+    p.w.openExportDialog = key => opened.push(key);
+    p.w.TKSProduct90d.openExport();
+    assert.deepEqual(opened, ['products.product90d']);
+    // Loi / chua nap / tim khong ra -> khoa; khong co quyen xuat -> an.
+    p.w.TKSProduct90d.load(true);
+    p.answer(3, { error: 'x' }, 500);
+    await settle();
+    assert.equal(exportButton.disabled, true);
+    p.$('product90dRows').querySelector('[data-action="retry"]').click();
+    p.answer(4, { available: false, rows: [], totalRows: 0 });
+    await settle();
+    assert.equal(exportButton.disabled, true);
+    canExport = false;
+    p.$('product90dPageSize').dispatchEvent(new p.w.Event('change'));
+    p.answer(5, report([sampleRow('SP1')]));
+    await settle();
+    assert.equal(exportButton.hidden, true);
   } finally { p.dom.window.close(); }
 });
 
