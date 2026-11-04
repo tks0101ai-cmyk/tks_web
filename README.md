@@ -1,3 +1,5 @@
+04/11/2026 — **Kiểm kê: dán theo mã hàng:** copy từ Google Sheets cột Mã hàng + cột giá trị (ví dụ KK trước sai), chọn ô ở cột cần dán rồi Ctrl+V: web ghi đúng từng mã, không phụ thuộc thứ tự dòng; báo mã không có trong đợt.
+
 04/11/2026 — **VT: lưu vết thao tác đơn xuất kho tạm (migration `0107` đã áp DB 04/11/2026, chưa commit/deploy):** đơn tạm dùng chung mỗi cơ sở nên xóa dòng không để lại dấu vết (sự cố 04/11: dòng tạo 03/11 biến mất, không biết ai xóa). Bảng `stock_out_order_events` ghi mỗi thêm/sửa/xóa dòng, import Excel, chốt đơn (người làm, giờ, ảnh chụp dòng trước/sau) trong CÙNG giao dịch; `GET /api/stock-positions/stock-out-orders/:id/events`; hộp Đơn xuất kho có mục **Nhật ký thao tác** dưới bảng đơn tạm. Bản code mới cần 0107 đã áp (nếu thiếu, thêm/sửa/xóa dòng báo lỗi) — môi trường khác phải migrate trước khi deploy.
 
 04/11/2026 — **Kiểm kê: thanh tổng vùng chọn kiểu Excel:** chọn nhiều ô hiện Tổng / Trung bình / Đếm ở góc dưới phải; thông báo hành động ("Đã xóa 1 ô") dồn sang phải hàng gợi ý.
