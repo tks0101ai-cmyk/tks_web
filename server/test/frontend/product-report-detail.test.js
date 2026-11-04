@@ -38,7 +38,7 @@ function customersPayload(code, count = 3) {
   return { code, totalRevenue: total, customerCount: count, rows };
 }
 
-function createPage({ customers = code => customersPayload(code), meta, report, reportVersion, can = () => true } = {}) {
+function createPage({ customers = code => customersPayload(code), history, meta, report, reportVersion, can = () => true } = {}) {
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://tokosi.example/#products' });
   dom.window.HTMLCanvasElement.prototype.getContext = () => ({});
   const charts = [];
@@ -59,6 +59,10 @@ function createPage({ customers = code => customersPayload(code), meta, report, 
   dom.window.fetch = (url) => {
     const href = String(url);
     urls.push(href);
+    if (href.startsWith('/api/product-report/history?') && history) {
+      const payload = history(new URL(href, 'https://tokosi.example').searchParams);
+      return Promise.resolve(payload).then(body => ({ ok: !(body instanceof Error), status: body instanceof Error ? 500 : 200, json: async () => body }));
+    }
     if (href === '/api/product-report') {
       return Promise.resolve({ ok: true, status: 200, json: async () => report ? report() : ({ rows: PRODUCTS, computedAt: '2026-09-29T00:15:00.000Z' }) });
     }
@@ -75,6 +79,7 @@ function createPage({ customers = code => customersPayload(code), meta, report, 
   ['pagination.js', 'table-explorer.js'].forEach(file => {
     dom.window.eval(fs.readFileSync(path.join(publicDir, 'js', file), 'utf8'));
   });
+  if (history) dom.window.eval(fs.readFileSync(path.join(publicDir, 'js/product-history.js'), 'utf8'));
   const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(match => match[1]).filter(script => script.trim());
   const mainIndex = scripts.reduce((best, script, index) => (script.length > scripts[best].length ? index : best), 0);
   scripts.forEach((script, index) => dom.window.eval(script + (index === mainIndex ? '\nwindow.__reportTestState = state; window.__reportTestInternals = { docDetail, hiddenByProfile: PRODUCT_REPORT_HIDDEN_BY_PROFILE, widthsByProfile: PRODUCT_REPORT_WIDTHS_BY_PROFILE };' : '')));
@@ -244,7 +249,7 @@ test('Ti trong khach lon nhat la nut chi khi co so > 0; Chua boc / Da boc la chu
   assert.deepEqual([...page.$('productReportRows').querySelectorAll('button')].map(button => button.closest('td').cellIndex), [idx('ti-trong-khach-lon-nhat')]);
 });
 
-test('hop chi tiet chi con muc Doanh so theo khach (kem bang Khach hang va bieu do), khong goi API CONT', async () => {
+test('hop chi tiet giu Doanh so theo khach va them muc lich su, khong goi API CONT', async () => {
   const page = createPage();
   await settle();
   rowOf(page, 'SP-1').click();
@@ -252,12 +257,28 @@ test('hop chi tiet chi con muc Doanh so theo khach (kem bang Khach hang va bieu 
   const customers = page.$('productCustomerSection');
   assert.ok(customers);
   assert.equal(page.$('productContainerSection'), null);
-  assert.equal([...page.$('docModalBody').querySelectorAll(':scope > section')].map(section => section.id).join(','), 'productCustomerSection');
+  assert.equal([...page.$('docModalBody').querySelectorAll(':scope > section')].map(section => section.id).join(','), 'productCustomerSection,productHistorySection');
   assert.match(customers.querySelector('.dp-section-title').textContent, /Doanh số theo khách/);
   assert.doesNotMatch(page.$('docModalBody').textContent, /Hàng dự kiến/);
   assert.ok(customers.querySelector('#productDetailChart'), 'bieu do ty trong nam trong Doanh so theo khach');
   assert.match(customers.textContent, /Khách hàng/);
   assert.equal(page.urls.some(url => url.startsWith('/api/product-report/containers?')), false);
+});
+
+test('history loads independently of failed customer section and stale product requests cannot overwrite new product', async () => {
+  let answerFirst;
+  const data = name => ({from:'2026-08-06',to:'2026-11-03',page:1,pageSize:25,totalRows:1,canViewCost:true,
+    summary:{purchaseQuantity:2,returnQuantity:0,purchaseCount:1,returnCount:0},
+    rows:[{time:'2026-11-03T10:00:00',customerName:name,type:'invoice',branch:'hanoi',documentCode:'HD1',quantity:2,unitCost:null}]});
+  const page = createPage({ customers: () => new Error('fail'), history: query => query.get('code') === 'SP-1'
+    ? new Promise(resolve => {answerFirst = resolve;}) : data('Khách mới') });
+  await settle(); rowOf(page,'SP-1').click(); await settle();
+  rowOf(page,'SP-2').click(); await settle();
+  assert.match(page.$('productCustomerContent').textContent,/Không tải được/);
+  assert.match(page.$('productHistorySection').textContent,/Khách mới/);
+  answerFirst(data('Khách cũ')); await settle();
+  assert.doesNotMatch(page.$('productHistorySection').textContent,/Khách cũ/);
+  assert.equal(page.$('productHistorySection').querySelector('[data-stat="purchaseCount"]').textContent,'1');
 });
 
 test('bam so Ti trong khach lon nhat: mo hop va cuon toi Doanh so theo khach SAU khi da tai xong', async () => {

@@ -2032,6 +2032,12 @@
     });
 
     var accountingItems = accountingNavItems(currentPath, currentHash);
+    // Sổ quỹ nằm trong nhóm Kế toán (chỉ ở sidebar, không thêm vào thanh tab 3 trang VAT).
+    accountingItems.push({
+      feature: 'cashbook.view', href: '/cashbook/', label: 'Sổ quỹ',
+      active: currentPath === '/cashbook', dataAttr: 'data-tks-nav-key="cashbook"',
+      icon: '<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"></path><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"></path><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"></path>'
+    });
 
     var groups = [
       {
@@ -2049,11 +2055,6 @@
       {
         key: 'hr', label: 'Quản lý nhân sự', active: activeTop === 'hr', items: hrItems,
         icon: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>'
-      },
-      {
-        key: 'cashbook', feature: 'cashbook.view', href: '/cashbook/', label: 'Sổ quỹ',
-        active: currentPath === '/cashbook', dataAttr: 'data-tks-nav-key="cashbook"',
-        icon: '<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"></path><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"></path><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"></path>'
       },
       {
         key: 'accounting', label: 'Kế toán', active: activeTop === 'accounting', items: accountingItems,

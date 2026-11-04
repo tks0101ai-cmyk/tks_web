@@ -851,3 +851,11 @@ Cập nhật gần nhất: 02/11/2026 (Kiểm kê: đủ cột T10, Sài Gòn + 
 Redis chỉ là cache nguồn Sheets/SĐT sale, không có bảng/cột hoặc schema PostgreSQL mới. `stock_positions`, `order_pick_assignments`, `order_pick_lines`, `order_pick_history` giữ nguyên hợp đồng và khóa/rollback. Bulk INSERT dùng jsonb_to_recordset với NUMERIC và thứ tự dòng gốc, vẫn trong một giao dịch; form chung tiếp tục PostgreSQL/version/409. Snapshot lịch sử không bị ghi lại. Chưa deploy/chuyển region; xem `tasks/redis-performance/rollout.md` tại gốc repo.
 
 Cập nhật gần nhất: 03/11/2026 (Kiểm kê: ghi chú `status_color` là cột cũ, trạng thái 7 loại tính từ `status_text`, không migration).
+
+Cập nhật gần nhất: 03/11/2026.
+
+## 03/11/2026 — Lịch sử giao dịch của hàng hóa (không migration)
+
+Không thay schema. GET /api/product-report/history đọc invoices + invoice_details và returns + return_details, join products/customers theo branch + ID; cửa sổ 90 ngày gồm hôm nay theo VN. purchase_date/return_date dùng giờ tường VN mang nhãn UTC nên đọc AT TIME ZONE UTC, không chuyển thêm UTC+7. quantity vẫn NUMERIC; gộp theo chứng từ/mã hàng, tách cơ sở và loại. Chỉ hóa đơn Hoàn thành / phiếu trả Đã trả. Giá vốn lịch sử không có trường đã xác minh trong dữ liệu nguồn, API trả unitCost NULL (hoặc loại trường theo quyền); không suy ra từ giá bán hay giá vốn tồn hiện tại. Không backfill hoặc ghi lại dữ liệu nguồn.
+
+Cập nhật gần nhất: 04/11/2026.

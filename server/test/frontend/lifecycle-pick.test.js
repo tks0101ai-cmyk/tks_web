@@ -440,21 +440,21 @@ test('Xác nhận & In: POST đúng phân bổ, đóng popup, mở phiếu in c�
   assert.equal(rowsOf(page.document)[0].querySelector('[data-col="pickStatus"] .lc-pick-state').dataset.pickStatus, 'picking');
   // đơn đã có chỉ định (đang nhặt): bảng hàng hóa có thêm cột ST = 2
   const heads = [...page.document.querySelectorAll('#lcDetailKiot table.lc-lines thead th')].map(th => th.textContent);
-  assert.equal(heads.length, 10);
-  assert.match(heads[3], /^ST/, 'cột ST ngay sau SL đặt');
+  assert.equal(heads.length, 11);
+  assert.match(heads[4], /^ST/, 'cột ST ngay sau SL đặt');
   assert.equal(page.document.querySelector('#lcDetailKiot td.lc-st').dataset.st, '2');
   page.dom.window.close();
 });
 
-test('bảng hàng hóa mặc định giữ 9 cột (không ST) khi đơn chưa có chỉ định hoặc đã Hủy nhặt', async () => {
+test('bảng hàng hóa mặc định giữ 10 cột (không ST) khi đơn chưa có chỉ định hoặc đã Hủy nhặt', async () => {
   const page = await renderPage();
   await openDetail(page);
-  assert.equal(page.document.querySelectorAll('#lcDetailKiot table.lc-lines thead th').length, 9);
+  assert.equal(page.document.querySelectorAll('#lcDetailKiot table.lc-lines thead th').length, 10);
   assert.equal(page.document.querySelector('#lcDetailKiot td.lc-st'), null);
 
   const cancelled = await renderPage({ orders: [orderRow('DH1', { pickStatus: 'cancelled' })], store: newStore({ assignment: makeAssignment('cancelled') }) });
   await openDetail(cancelled);
-  assert.equal(cancelled.document.querySelectorAll('#lcDetailKiot table.lc-lines thead th').length, 9);
+  assert.equal(cancelled.document.querySelectorAll('#lcDetailKiot table.lc-lines thead th').length, 10);
   [page, cancelled].forEach(p => p.dom.window.close());
 });
 
@@ -526,7 +526,7 @@ test('Xác nhận nhặt gọi đúng API kèm version và là trạng thái cu�
   assert.deepEqual(cancelStore.statusCalls, [{ id: '7', action: 'cancel', body: { version: 1 } }]);
   assert.equal(text(cancelPage, 'pickingOrderStatus'), 'Hủy nhặt');
   assert.equal(rowsOf(cancelPage.document)[0].querySelector('[data-col="pickStatus"] .lc-pick-state').dataset.pickStatus, 'cancelled');
-  assert.equal(cancelPage.document.querySelectorAll('#lcDetailKiot table.lc-lines thead th').length, 9, 'Hủy nhặt: bỏ cột ST');
+  assert.equal(cancelPage.document.querySelectorAll('#lcDetailKiot table.lc-lines thead th').length, 10, 'Hủy nhặt: bỏ cột ST');
   [page, cancelPage].forEach(p => p.dom.window.close());
 });
 
@@ -1177,4 +1177,147 @@ test('Đã bốc: phân bổ lưu thiếu so với cần nhặt vẫn báo đỏ
   } finally {
     page.dom.window.close();
   }
+});
+
+test('tải trước candidates: mở hộp trong 30 giây dùng lại kết quả (1 request); quá 30 giây, đã quên hoặc mở lại thì tải mới', async () => {
+  const page = await renderPage();
+  try {
+    let now = 1_000_000;
+    page.window.Date.now = () => now;
+    await openDetail(page);
+    const base = page.store.candidateCalls; // 0 trước Task 8, 1 sau Task 8 (mở chi tiết tự tải trước)
+    page.window.TKSPick.prefetch({ branch: 'HN', orderCode: 'DH1' });
+    await settle();
+    assert.equal(page.store.candidateCalls, base + 1, 'prefetch gọi 1 lần');
+    await click(page, 'openPickingBtn');
+    assert.equal(page.store.candidateCalls, base + 1, 'mở hộp dùng lại kết quả tải trước');
+    assert.equal(page.document.querySelectorAll('#pickingRows tr').length, 1);
+    await click(page, 'pickingClose');
+    await click(page, 'openPickingBtn');
+    assert.equal(page.store.candidateCalls, base + 2, 'mở lại: tải mới');
+    await click(page, 'pickingClose');
+
+    page.window.TKSPick.prefetch({ branch: 'HN', orderCode: 'DH1' });
+    await settle();
+    now += 30_001;
+    await click(page, 'openPickingBtn');
+    assert.equal(page.store.candidateCalls, base + 4, 'quá 30 giây: tải mới');
+    await click(page, 'pickingClose');
+
+    page.window.TKSPick.prefetch({ branch: 'HN', orderCode: 'DH1' });
+    await settle();
+    page.window.TKSPick.forgetPrefetch();
+    await click(page, 'openPickingBtn');
+    assert.equal(page.store.candidateCalls, base + 6, 'đã quên: tải mới');
+  } finally { page.dom.window.close(); }
+});
+
+test('tải trước lỗi thì mở hộp tải lại bình thường', async () => {
+  let fail = true;
+  const page = await renderPage({ fetchImpl: href => (fail && href.startsWith('/api/shipment/pick/candidates') ? { ok: false, status: 500, json: async () => ({ error: 'x' }) } : null) });
+  try {
+    await openDetail(page);
+    page.window.TKSPick.prefetch({ branch: 'HN', orderCode: 'DH1' });
+    await settle();
+    fail = false;
+    await click(page, 'openPickingBtn');
+    assert.equal(page.document.querySelectorAll('#pickingRows tr').length, 1, 'đã tải lại và vẽ bảng');
+  } finally { page.dom.window.close(); }
+});
+
+test('Hủy nhặt: không tải lại candidates, về Hủy nhặt với gợi ý mới và sửa được ngay', async () => {
+  const store = newStore({ assignment: makeAssignment('picking') });
+  const page = await renderPage({ orders: [orderRow('DH1', { pickStatus: 'picking' })], store });
+  try {
+    await openPopup(page);
+    const before = store.candidateCalls;
+    await click(page, 'pickingCancelPick');
+    assert.equal(store.candidateCalls, before, 'không gọi lại /candidates');
+    assert.equal(text(page, 'pickingOrderStatus'), 'Hủy nhặt');
+    assert.equal(text(page, 'pickingConfirm'), 'Xác nhận & In phiếu nhặt');
+    assert.equal(page.document.getElementById('pickingConfirm').disabled, false);
+    assert.equal(page.document.querySelector('[data-qty][data-qloc="11"]').disabled, false, 'sửa được ngay');
+    assert.equal(page.document.querySelectorAll('.picking-loc.selected').length, 1, 'có gợi ý mới (A07 x 100)');
+  } finally { page.dom.window.close(); }
+});
+
+test('mở chi tiết đơn: nút hiện ngay, tải trước candidates và tải chỉ định song song với chi tiết Kiot', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const store = newStore({ assignment: makeAssignment('picking') });
+  const page = await renderPage({
+    orders: [orderRow('DH1', { pickStatus: 'picking' })], store,
+    fetchImpl: href => (href.startsWith('/api/shipment/lifecycle/order-detail') ? gate.then(() => json({ detail: kiotDetail('DH1') })) : null)
+  });
+  try {
+    await openDetail(page);
+    assert.equal(text(page, 'openPickingBtn'), 'Thay đổi chỉ định', 'nút có trước khi bảng hàng về');
+    assert.ok(page.calls.some(c => c.url === '/api/shipment/pick?branch=HN&order=DH1'), 'tải chỉ định song song');
+    assert.equal(store.candidateCalls, 1, 'đã tải trước candidates');
+    release();
+    await settle();
+    assert.ok(page.document.querySelector('#lcDetailKiot table.lc-lines'), 'bảng hàng vẽ sau khi về');
+    assert.equal(text(page, 'openPickingBtn'), 'Thay đổi chỉ định');
+    await click(page, 'openPickingBtn');
+    assert.equal(store.candidateCalls, 1, 'mở hộp không gọi thêm');
+  } finally { page.dom.window.close(); }
+});
+
+test('mở chi tiết: không có quyền thì không nút, không tải trước; đơn không có trên Kiot (404) thì bỏ nút', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const noPick = await renderPage({ permissions: ['shipment.lifecycle'] });
+  const missing = await renderPage({ fetchImpl: href => (href.startsWith('/api/shipment/lifecycle/order-detail') ? gate.then(() => json({ error: 'x' }, 404)) : null) });
+  try {
+    await openDetail(noPick);
+    assert.equal(noPick.document.getElementById('openPickingBtn'), null);
+    assert.equal(noPick.store.candidateCalls, 0);
+    await openDetail(missing);
+    assert.ok(missing.document.getElementById('openPickingBtn'), 'nút hiện ngay trước khi chi tiết Kiot về');
+    release();
+    await settle();
+    assert.equal(missing.document.getElementById('openPickingBtn'), null, '404: như trước, không có nút');
+  } finally { [noPick, missing].forEach(page => page.dom.window.close()); }
+});
+
+test('bấm nút sớm rồi Hủy nhặt trước khi chi tiết Kiot về: chỉ định tải lúc mở hộp (cũ) không ghi đè chip / cột ST', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const store = newStore({ assignment: makeAssignment('picking') });
+  const page = await renderPage({
+    orders: [orderRow('DH1', { pickStatus: 'picking' })], store,
+    fetchImpl: href => (href.startsWith('/api/shipment/lifecycle/order-detail') ? gate.then(() => json({ detail: kiotDetail('DH1') })) : null)
+  });
+  try {
+    await openDetail(page);
+    await click(page, 'openPickingBtn');
+    await click(page, 'pickingCancelPick');
+    assert.deepEqual(store.statusCalls, [{ id: '7', action: 'cancel', body: { version: 1 } }]);
+    release();
+    await settle();
+    assert.ok(page.document.querySelector('#lcDetailKiot table.lc-lines'), 'bảng hàng vẽ sau khi về');
+    assert.match(page.document.querySelector('#lcDetailKiot .picking-confirmed').textContent, /Hủy nhặt/);
+    assert.doesNotMatch(page.document.querySelector('#lcDetailKiot .picking-confirmed').textContent, /Đang nhặt/);
+    assert.equal(page.document.querySelectorAll('#lcDetailKiot table.lc-lines thead th').length, 10, 'Hủy nhặt: bỏ cột ST');
+  } finally { page.dom.window.close(); }
+});
+
+test('bấm nút mở hộp sớm (chi tiết Kiot chưa về) rồi lưu: dòng danh sách vẫn cập nhật Đang nhặt, không dính chỉ định đơn khác', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const page = await renderPage({
+    fetchImpl: href => (href.startsWith('/api/shipment/lifecycle/order-detail') ? gate.then(() => json({ detail: kiotDetail('DH1') })) : null)
+  });
+  try {
+    const status = () => rowsOf(page.document)[0].querySelector('[data-col="pickStatus"] .lc-pick-state').dataset.pickStatus;
+    await openDetail(page);
+    await click(page, 'openPickingBtn');
+    assert.equal(status(), 'none');
+    await click(page, 'pickingConfirm');
+    assert.equal(page.store.posted.length, 1);
+    assert.equal(status(), 'picking', 'onChange của đơn đang xem đã được gắn từ khi bấm nút sớm');
+    release();
+    await settle();
+    assert.ok(page.document.querySelector('#lcDetailKiot table.lc-lines'), 'bảng hàng vẽ sau khi về');
+  } finally { page.dom.window.close(); }
 });

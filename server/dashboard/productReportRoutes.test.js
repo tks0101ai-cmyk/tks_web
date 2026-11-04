@@ -10,6 +10,13 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
 const repositoryPath = require.resolve('./productReportRepository');
 const realRepository = require(repositoryPath);
 const calls = [];
+const historyPath = require.resolve('./productHistoryRepository');
+const realHistory = require(historyPath);
+require.cache[historyPath].exports = { getProductHistory: async args => {
+  calls.push(args);
+  if (!args.code) throw Object.assign(new Error('Thiếu mã hàng.'), { statusCode: 400 });
+  return { rows: [{ customerName: 'KH A', unitCost: null }], totalRows: 1, summary: { purchaseCount: 1 } };
+} };
 require.cache[repositoryPath].exports = {
   ...realRepository,
   getProductReport: async () => ({
@@ -31,6 +38,7 @@ require.cache[repositoryPath].exports = {
 };
 
 const router = require('../routes');
+require.cache[historyPath].exports = realHistory;
 
 function routeLayer(method, routePath) {
   const layer = router.stack.find(item => item.route && item.route.path === routePath && item.route.methods[method]);
@@ -46,6 +54,29 @@ function fakeRes() {
     json(body) { this.body = body; return this; }
   };
 }
+
+test('history API inherits report guards, sales permission and strips cost for unauthorized users', async () => {
+  const layer = routeLayer('get', '/api/product-report/history');
+  assert.equal(layer.route.stack.length, 2);
+  const guard = router.stack.findIndex(x => !x.route && x.regexp && x.regexp.test('/api/product-report/history'));
+  assert.ok(guard >= 0 && guard < router.stack.indexOf(layer));
+  for (const [user,status] of [[undefined,401],[{vaiTro:'Nhân viên marketing'},403],[{vaiTro:'Quản lý',featurePermissions:{'reports.products.sales':false}},403]]) {
+    const denied = fakeRes();
+    await layer.route.stack[0].handle({user},denied,()=>assert.fail('must reject'));
+    assert.equal(denied.statusCode,status);
+  }
+  for (const [vaiTro, allowed] of [['Quản lý', true], ['Nhân viên sale', false]]) {
+    const res = fakeRes();
+    await layer.route.stack.at(-1).handle({ user: { vaiTro }, query: {code:'SP1',q:'kh',type:'invoice',page:'2',pageSize:'25'} }, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.canViewCost, allowed);
+    assert.equal('unitCost' in res.body.rows[0], allowed);
+    assert.deepEqual(calls.at(-1), {code:'SP1',q:'kh',type:'invoice',page:'2',pageSize:'25'});
+  }
+  const res = fakeRes();
+  await layer.route.stack.at(-1).handle({user:{vaiTro:'Quản lý'},query:{}}, res);
+  assert.equal(res.statusCode, 400);
+});
 
 test('GET /api/product-report/customers tra doanh so khach theo ma hang (?code=)', async () => {
   const res = fakeRes();

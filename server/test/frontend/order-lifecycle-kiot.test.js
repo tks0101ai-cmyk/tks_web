@@ -670,7 +670,7 @@ function kiotDetail(overrides = {}) {
     lines: [
       // SL dat 500, ton 40 -> co ban 40 (cong thuc moi min(SL dat, ton kho)); hang dieu chuyen SG 160 chi de tham khao.
       { productCode: 'A', productName: 'Hàng A', quantity: 500, price: 1000, discount: 0, amount: 500000, isService: false, onHand: 40, inTransit: 160, sellableQty: 40, sellableAmount: 40000, measure: { status: 'ok', m3: 1.5, kg: 20, cartons: 5 } },
-      { productCode: 'B', productName: 'Hàng B', quantity: 70, price: 5000, discount: 0, amount: 350000, isService: false, onHand: 800, inTransit: 0, sellableQty: 70, sellableAmount: 350000, measure: { status: 'ok', m3: 0.25, kg: 3, cartons: 1 } },
+      { productCode: 'B', productName: 'Hàng B', note: 'Dán tem 3 màu', quantity: 70, price: 5000, discount: 0, amount: 350000, isService: false, onHand: 800, inTransit: 0, sellableQty: 70, sellableAmount: 350000, measure: { status: 'ok', m3: 0.25, kg: 3, cartons: 1 } },
       { productCode: 'VATDA44', productName: 'VAT', quantity: 1, price: 5000, discount: 0, amount: 5000, isService: true, onHand: null, inTransit: null, sellableQty: null, sellableAmount: null, measure: { status: 'service', m3: null, kg: null, cartons: null } }
     ],
     freight: {
@@ -703,12 +703,12 @@ test('bấm dòng: mở hộp chi tiết, gọi order-detail đúng mã/cơ sở
   assert.ok(document.querySelector('.lc-detail-dialog').classList.contains('is-wide'));
 
   const headers = [...document.querySelectorAll('.lc-lines thead th')].map(th => th.querySelector('.sort-label').textContent);
-  assert.deepEqual(headers, ['Mã hàng', 'Tên hàng', 'SL đặt', 'Đơn giá', 'Thành tiền', 'Tồn HN', 'Điều chuyển SG', 'Có bán', 'Thành tiền có bán']);
+  assert.deepEqual(headers, ['Mã hàng', 'Tên hàng', 'Ghi chú', 'SL đặt', 'Đơn giá', 'Thành tiền', 'Tồn HN', 'Điều chuyển SG', 'Có bán', 'Thành tiền có bán']);
   assert.ok(!headers.includes('Đang vận chuyển'), 'cot da doi ten');
   const rows = [...document.querySelectorAll('.lc-lines tbody tr')].map(tr => [...tr.cells].map(td => td.textContent));
-  assert.deepEqual(rows[0], ['A', 'Hàng A', '500', '1,000', '500,000', '40', '160', '40', '40,000']);
-  assert.deepEqual(rows[1], ['B', 'Hàng B', '70', '5,000', '350,000', '800', '0', '70', '350,000']);
-  assert.deepEqual(rows[2].slice(5), ['—', '—', '—', '—'], 'dong thue VAT khong co ton/co ban');
+  assert.deepEqual(rows[0], ['A', 'Hàng A', '', '500', '1,000', '500,000', '40', '160', '40', '40,000']);
+  assert.deepEqual(rows[1], ['B', 'Hàng B', 'Dán tem 3 màu', '70', '5,000', '350,000', '800', '0', '70', '350,000']);
+  assert.deepEqual(rows[2].slice(6), ['—', '—', '—', '—'], 'dong thue VAT khong co ton/co ban');
   assert.ok(document.querySelectorAll('.lc-lines tbody tr')[2].classList.contains('is-service'));
   const text = document.getElementById('lcDetailBody').textContent;
   assert.match(text, /Giá trị đơn \(Kiot\)855,000₫/);
@@ -731,7 +731,7 @@ test('đơn không còn Phiếu tạm: bảng hàng hóa không có tồn/có b�
   rowsOf(page.document)[0].click();
   await settle();
   const cells = [...page.document.querySelectorAll('.lc-lines tbody tr')[0].cells].map(td => td.textContent);
-  assert.deepEqual(cells.slice(5), ['—', '—', '—', '—']);
+  assert.deepEqual(cells.slice(6), ['—', '—', '—', '—']);
   const text = page.document.getElementById('lcDetailBody').textContent;
   assert.match(text, /không còn ở trạng thái Phiếu tạm/);
   assert.doesNotMatch(text, /Giá trị có bán/);
@@ -1126,7 +1126,7 @@ test('hộp chi tiết CÓ sort, thanh kéo độ rộng cột và nút "Cột h
   assert.equal(buttons.length, 2);
   assert.ok(buttons[0].parentElement.classList.contains('dp-section-head'));
   assert.equal(overlay.querySelectorAll('.tks-table-tools').length, 0);
-  assert.equal(linesTable.querySelectorAll('.tks-column-resizer').length, 9);
+  assert.equal(linesTable.querySelectorAll(".tks-column-resizer").length, 10);
 
   // sort: bam "Thanh tien" -> tang dan (VAT 5.000 < B 350.000 < A 500.000), bam lai -> giam dan, bam lan 3 -> thu tu goc
   const codes = () => [...linesTable.tBodies[0].rows].map(row => row.cells[0].textContent);

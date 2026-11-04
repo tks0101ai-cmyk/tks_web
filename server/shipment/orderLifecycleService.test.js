@@ -1007,3 +1007,22 @@ test('listHistory: dòng lịch sử cũ chưa có cột trạng thái cũ -> tr
   }
 });
 
+
+test('findMergedOrder: allowStale chuyen xuong readAll + readOverrideHistory; mac dinh false', async () => {
+  const ctx = freshService([]);
+  const repoExports = require.cache[require.resolve('./orderLifecycleRepository')].exports;
+  const seen = [];
+  repoExports.readAll = async opts => { seen.push(['all', opts]); return []; };
+  repoExports.readOverrideHistory = async opts => { seen.push(['history', opts]); return []; };
+  try {
+    const kiot = fakeKiot({ ok: true, orders: [kiotOrder({ code: 'DH000001', branch: 'HN' })] });
+    await ctx.service.findMergedOrder('HN', 'DH000001', { kiot, allowStale: true });
+    await ctx.service.findMergedOrder('HN', 'DH000001', { kiot });
+    assert.deepEqual(seen, [
+      ['all', { allowStale: true }], ['history', { allowStale: true }],
+      ['all', { allowStale: false }], ['history', { allowStale: false }]
+    ]);
+  } finally {
+    ctx.restore();
+  }
+});

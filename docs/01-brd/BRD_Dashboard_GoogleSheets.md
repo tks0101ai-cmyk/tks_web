@@ -543,3 +543,11 @@ Server-Timing cho `/api/shipment/pick/*`; browser measures `tokosi.pick.assets/r
 Kiểm chứng/triển khai: xem [kế hoạch Redis](../../tasks/redis-performance/plan.md), [benchmark cục bộ](../../tasks/redis-performance/benchmark.md) và [runbook](../../tasks/redis-performance/rollout.md). Giữ worker Singapore hiện có; tạo web Singapore thay thế Oregon sau kiểm chứng. Chưa thay đổi dịch vụ Render/domain hoặc xác nhận p95 production; không migration. Integration Redis thật đang chờ TEST Redis; công cụ browser dừng vì không xác định chắc chắn URL Windows.
 
 Cập nhật gần nhất: 03/11/2026 (Kiểm kê: trạng thái 7 loại và thẻ tổng).
+
+Cập nhật gần nhất: 03/11/2026.
+
+## 03/11/2026 — Tra cứu lịch sử mua và trả theo hàng hóa
+
+Người xem Báo cáo chung mở một hàng hóa để tra cứu thêm hóa đơn hoàn thành và trả hàng thành công trong 90 ngày gồm hôm nay, giữ phần doanh số/khách và biểu đồ cũ. Tìm khách và chọn loại giao dịch làm bốn tổng mua/trả (số lượng và lượt chứng từ) thay đổi đồng thời, giúp đối chiếu hành vi mua/trả của khách; phân trang không làm thay đổi tổng. Giá vốn lịch sử chỉ hiển thị cho người có quyền xem giá; dữ liệu nguồn chưa xác minh được thì hiện “—”, không thay bằng giá bán hoặc giá vốn hiện tại. Không thay quy trình tạo hóa đơn/trả hàng, không ghi KiotViet. Cục bộ trên main, chưa deploy.
+
+Cập nhật gần nhất: 04/11/2026.

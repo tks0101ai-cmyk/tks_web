@@ -397,6 +397,7 @@
   .lc-lines{ min-width:860px; }
   .lc-lines tr.is-service td{ color:var(--muted); }
   .lc-lines td.is-short{ color:var(--amber); font-weight:700; }
+  .lc-lines td.lc-line-note{ min-width:140px; font-size:12px; line-height:1.4; white-space:pre-line; overflow-wrap:anywhere; }
   .lc-lines-note{ margin:8px 0 0; color:var(--muted); font-size:12px; line-height:1.5; }
   .lc-lines-note-strong{ margin:8px 0 0; color:var(--text); font-size:14px; font-weight:800; line-height:1.5; }
   .lc-lines-note-warn{ margin:8px 0 0; color:var(--red); font-size:14px; font-weight:800; line-height:1.5; }
@@ -881,6 +882,7 @@
     let detailOrder = null;  // don dang xem (dong bang hoac ket qua tra cuu)
     let detailKiot = null;   // ket qua order-detail cua Kiot (null = chua nap / khong co)
     let detailPick = null;   // chi dinh vi tri moi nhat cua don dang xem (null = chua co / khong tai)
+    let pickChangeSeq = 0;   // tang moi lan chi dinh doi (luu/xac nhan/huy nhat): ban chi dinh tai luc mo hop den muon khong duoc de len
     // { HN, SG } ten mien gian hang Kiot, do GET /api/shipment/lifecycle tra ve (server/shipment/kiotOrderLink.js).
     // Tra cuu cho Khach khong nhan truong nay nen khong bao gio hien nut "Mo don tren Kiot".
     let kiotOrderHosts = {};
@@ -1076,8 +1078,8 @@
         return jobs.length && jobs.every(function(job){ return typeof job.stCartons === 'number'; })
           ? jobs.reduce(function(sum, job){ return sum + job.stCartons; }, 0) : null;
       };
-      let html = head + '<div class="dp-table-wrap is-flow"><table class="dp-table lc-lines" data-table-key="shipment-lifecycle-table-3' + (pick ? '-st' : '') + '"><thead><tr>' +
-        '<th>Mã hàng</th><th>Tên hàng</th><th class="num">SL đặt</th>' +
+      let html = head + '<div class="dp-table-wrap is-flow"><table class="dp-table lc-lines" data-table-key="shipment-lifecycle-table-4' + (pick ? '-st' : '') + '"><thead><tr>' +
+        '<th>Mã hàng</th><th>Tên hàng</th><th title="Ghi chú của hàng hóa trong đơn Kiot (cũng in ở phiếu)">Ghi chú</th><th class="num">SL đặt</th>' +
         (pick ? '<th class="num" title="Số thùng thực nhặt theo chỉ định vị trí (SL nhặt / SL mỗi thùng). Trống khi dòng chưa có chỉ định.">ST</th>' : '') +
         '<th class="num" title="Đơn giá sau chiết khấu của dòng">Đơn giá</th><th class="num">Thành tiền</th>' +
         '<th class="num" title="Tồn thực tế của Kiot tại cơ sở của đơn">Tồn ' + escapeHtml(detailOrder && detailOrder.branch === 'SG' ? 'SG' : 'HN') + '</th>' +
@@ -1091,6 +1093,7 @@
         html += '<tr' + (line.isService ? ' class="is-service"' : ' class="lc-product-open" tabindex="0" data-line-index="' + index + '" aria-label="Xem CONT của ' + escapeHtml(line.productCode || '') + '"') + '>' +
           '<td class="dp-code">' + escapeHtml(line.productCode || '—') + '</td>' +
           '<td class="dp-cell-main">' + escapeHtml(line.productName || '—') + '</td>' +
+          '<td class="lc-line-note">' + escapeHtml(line.note || '') + '</td>' +
           '<td class="num">' + escapeHtml(formatQty(line.quantity)) + '</td>' +
           (pick ? (function(){
             const st = line.isService ? null : stOf(line);
@@ -1218,12 +1221,29 @@
       const requestId = detailRequestId;
       deliverToChanh = false; // moi don chon lai
       const holder = document.getElementById('lcDetailKiot');
+      const pickActions = document.getElementById('lcDetailPickActions');
       holder.innerHTML = '<p class="lc-lines-status">Đang tải chi tiết hàng hóa từ Kiot…</p>';
-      readDetailJSON('/api/shipment/lifecycle/order-detail?code=' + encodeURIComponent(order.orderCode) +
-        '&branch=' + encodeURIComponent(order.branch))
-        .then(function(result){
+      // Nguoi co quyen: nut Chi dinh vi tri hien NGAY (theo pickStatus cua dong) + tai truoc hop chi dinh (bam la mo ngay).
+      if(window.TKSPick && canPick){
+        window.TKSPick.attachButton({
+          order: order, buttonHost: pickActions, canPick: canPick, status: order.pickStatus || null,
+          onChange: function(assignment){ onPickChanged(order, assignment); } // bam nut som van cap nhat dung don dang xem
+        });
+        window.TKSPick.prefetch(order);
+      }
+      // Chi tiet Kiot va chi dinh (de ve cot ST) tai SONG SONG; loadAssignment khong bao gio loi (tra null).
+      const pickSeq = pickChangeSeq; // nguoi dung co the luu/huy bang nut som truoc khi tai xong -> ban tai luc nay thanh cu
+      const pickLoad = window.TKSPick && canPick && order.pickStatus ?window.TKSPick.loadAssignment(order) : Promise.resolve(undefined);
+      Promise.all([
+        readDetailJSON('/api/shipment/lifecycle/order-detail?code=' + encodeURIComponent(order.orderCode) +
+          '&branch=' + encodeURIComponent(order.branch)),
+        pickLoad
+      ])
+        .then(function(results){
+          const result = results[0];
           if(requestId !== detailRequestId) return; // hop da dong / doi don
           if(!result.ok){
+            pickActions.replaceChildren(); // nhu truoc: khong co bang hang thi khong co nut
             // 404: don chua/khong con tren Kiot (vd dong chi co trong Sheet) -> khong hien muc nay.
             holder.innerHTML = result.status === 404
               ? ''
@@ -1231,18 +1251,13 @@
             return;
           }
           detailKiot = result.body.detail || {};
-          // Don da co chi dinh vi tri (danh sach bao pickStatus) + nguoi co quyen: nap chi dinh de ve cot ST truoc khi ve bang.
-          if(window.TKSPick && canPick && order.pickStatus){
-            return window.TKSPick.loadAssignment(order).then(function(assignment){
-              if(requestId !== detailRequestId) return;
-              detailPick = assignment;
-              renderKiotHolder(order);
-            });
-          }
+          if(results[1] !== undefined && pickSeq === pickChangeSeq) detailPick = results[1];
           renderKiotHolder(order);
         })
         .catch(function(){
-          if(requestId === detailRequestId) holder.innerHTML = '<p class="lc-lines-status">Lỗi kết nối khi tải chi tiết hàng hóa.</p>';
+          if(requestId !== detailRequestId) return;
+          pickActions.replaceChildren();
+          holder.innerHTML = '<p class="lc-lines-status">Lỗi kết nối khi tải chi tiết hàng hóa.</p>';
         });
     }
     // Ve lai khoi "Hang hoa trong don" + gan nut/chip Chi dinh vi tri (pick/pick-assign.js).
@@ -1273,12 +1288,14 @@
     function onPickChanged(order, assignment){
       const status = assignment ? assignment.status : null;
       detailPick = assignment || null;
+      pickChangeSeq++;
       applyPickStatus(order, status);
       if(detailOrder === order) renderKiotHolder(order);
       loadBulkOrders(true); // bo loc / so dem "Trang thai boc" do may chu tinh lai theo chi dinh moi
     }
     // Ghi trang thai bốc moi len dong (va dong dang hien tren bang): ve lai o "Trang thai boc".
     function applyPickStatus(order, status){
+      if(window.TKSPick && window.TKSPick.forgetPrefetch) window.TKSPick.forgetPrefetch(); // trang thai doi: ban tai truoc da cu
       const targets = [order];
       const entry = bulkRowNodes.get(rowKey(order));
       if(entry && entry.tr && entry.tr._order && entry.tr._order !== order) targets.push(entry.tr._order);
@@ -1321,7 +1338,7 @@
         const order = tr && tr._order;
         const assignment = body.assignment || null;
         if(order){
-          if(detailOrder === order) detailPick = assignment;
+          if(detailOrder === order){ detailPick = assignment; pickChangeSeq++; }
           applyPickStatus(order, assignment ? assignment.status : null);
           if(detailOrder === order) renderKiotHolder(order);
         }

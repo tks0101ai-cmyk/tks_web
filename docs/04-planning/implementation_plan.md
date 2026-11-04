@@ -356,8 +356,6 @@ Nút **Xuất kho** trên `/vt-positions/` trừ SL hàng loạt theo file Excel
 - **VT: Đơn xuất kho + số lượng âm (02/11/2026, migration `0104` chưa áp DB, chưa commit/deploy):** đơn tạm dùng chung mỗi cơ sở (`stock_out_orders` + `stock_out_order_lines`), chỉ trừ tồn VT khi chốt (`stockPositions/stockOutOrdersService.js`: `buildPlan` thuần trừ tuần tự theo (mã, vị trí), `confirm` một giao dịch dưới `lockBranch`, preview trước/sau ở `getCurrent`); số âm = ghi chú `-kT x size` (`carton.parseSigned`/`subtractNotes`/`negativeNote`, `mergeNotes` tự bù); lịch sử `stock_out` kèm `orderId`/`orderCode` để bấm xem đơn; hộp UI `vt-stockout-order.js`. Hộp Xuất kho Excel cũ giữ nguyên.
 
 Cập nhật gần nhất: 03/11/2026 (Kiểm kê: trạng thái 7 loại + thẻ tổng, bỏ Vị trí kho, tìm kiếm chặt; trước đó 03/11/2026: Kiểm kê: bộ lọc 5 lựa chọn, tiêu đề bảng gọn, bỏ Dán cột; trước đó 02/11/2026: Kiểm kê đối chiếu Hà Nội + Sài Gòn, đủ 23 cột T10, dán cột, nạp tab KIỂM SG, migration 0105; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; VT Đơn xuất kho + số lượng âm, migration 0104; Chỉ định vị trí không ghi lên KiotViet; gỡ 2 cảnh báo Lệch Kiot / Lệch SL trong đơn) — trước đó 31/10/2026 (sửa vị trí VT ngay trong hộp Chỉ định vị trí; trước đó: bỏ dòng chỉ định của mã đã xóa khỏi đơn Kiot).
-
-
 ## 03/11/2026 — Tăng tốc chỉ định và in phiếu (cục bộ, chưa deploy)
 
 Đường chỉ định tra đúng mã đơn HN/SG và dùng lại quy tắc gộp Vòng đời/Accounting, không tải toàn bộ đơn hoặc tính cước/điều chuyển. Ghi dòng chỉ định theo lô trong cùng giao dịch/khóa PostgreSQL; bản in tiếp tục dùng snapshot sau commit. Tải trước tài nguyên phiếu và QR song song; chỉ cho in khi form chung đọc mới thành công và không còn lượt lưu form đang chạy.
@@ -368,4 +366,12 @@ Server-Timing cho `/api/shipment/pick/*`; browser measures `tokosi.pick.assets/r
 
 Kiểm chứng/triển khai: xem [kế hoạch Redis](../../tasks/redis-performance/plan.md), [benchmark cục bộ](../../tasks/redis-performance/benchmark.md) và [runbook](../../tasks/redis-performance/rollout.md). Giữ worker Singapore hiện có; tạo web Singapore thay thế Oregon sau kiểm chứng. Chưa thay đổi dịch vụ Render/domain hoặc xác nhận p95 production; không migration. Integration Redis thật đang chờ TEST Redis; công cụ browser dừng vì không xác định chắc chắn URL Windows.
 
-Cập nhật gần nhất: 03/11/2026.
+Sau khi gộp PR in phiếu nhặt nhanh: Redis là tầng L2 dưới cache L1 trong tiến trình của `sheets/sheetValuesCache.js` (trả bản cũ + làm mới nền); `appendRow` xóa L2 rồi L1. SĐT sale giữ bản Redis (`pickKiotData.createSellerPhoneLookup`: last-good 30 phút, worker làm mới 4 phút) thay cho cache trong RAM của PR; `shapeAssignment` bỏ bổ sung SĐT khi đang trong giao dịch.
+
+Cập nhật gần nhất: 03/11/2026 (Kiểm kê: bộ lọc 5 lựa chọn, tiêu đề bảng gọn, bỏ Dán cột; trước đó 02/11/2026: Kiểm kê đối chiếu Hà Nội + Sài Gòn, đủ 23 cột T10, dán cột, nạp tab KIỂM SG, migration 0105; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; VT Đơn xuất kho + số lượng âm, migration 0104; Chỉ định vị trí không ghi lên KiotViet; gỡ 2 cảnh báo Lệch Kiot / Lệch SL trong đơn) — trước đó 31/10/2026 (sửa vị trí VT ngay trong hộp Chỉ định vị trí; trước đó: bỏ dòng chỉ định của mã đã xóa khỏi đơn Kiot).
+
+## 03/11/2026 — Chi tiết hàng hóa: lịch sử 90 ngày
+
+Đã bổ sung repository SQL độc lập productHistoryRepository và GET /api/product-report/history; frontend product-history.js được nạp bởi index.html, mount mục mới dưới phần doanh số theo khách. Hai phần tải độc lập và dùng requestId/generation để bỏ phản hồi cũ. Truy vấn UNION hóa đơn Hoàn thành + phiếu trả Đã trả, gộp chứng từ, fuzzy tên khách, tính tổng trước LIMIT/OFFSET trong một SQL snapshot. Mặc định 25 dòng, mới nhất trước; table-controls quản lý cột, phân trang máy chủ riêng; Light/Dark, điện thoại cuộn ngang. Quyền sales cho lịch sử, price cho giá vốn; chưa có giá vốn lịch sử xác minh được nên unitCost null, không lấy giá hiện tại thay. Không migration/dependency/env mới; chưa deploy.
+
+Cập nhật gần nhất: 04/11/2026.

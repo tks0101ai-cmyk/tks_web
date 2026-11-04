@@ -13,6 +13,7 @@ const {
   getProductReport, getProductReportCustomers, getProductReportVersion, PRODUCT_REPORT_PRICE_KEYS, PRODUCT_REPORT_SALES_KEYS
 } = require('./dashboard/productReportRepository');
 const containerRepository = require('./productContainers/repository');
+const { getProductHistory } = require('./dashboard/productHistoryRepository');
 const { getInventoryValueHistory } = require('./dashboard/inventoryValueHistory');
 const { getInvoiceDetail } = require('./dashboard/documentDetailRepository');
 const authRoutes = require('./auth/authRoutes');
@@ -139,9 +140,10 @@ router.use('/api/internal/kiotviet-sync/status', requireAuth, requireFeature('sy
 router.use(kiotvietSyncStatusRoutes);
 
 // Tra cuu & quan ly vong doi don hang — Khach (xem don cua minh) + vai tro noi bo.
-router.use('/api/shipment/lifecycle', requireAuth, orderLifecycleRoutes);
+router.use('/api/shipment/lifecycle', startTiming, requireAuth, orderLifecycleRoutes);
 // Chi dinh vi tri hang cho don (giu cho / in phieu nhat / xac nhan, huy nhat): quyen shipment.pick (mac dinh chi Quan ly).
-router.use('/api/shipment/pick', pickAssignmentsRoutes);
+// startTiming: request >= REQUEST_TIMING_SLOW_MS (500ms) ghi 1 dong [timing] tren log Render de do toc do in phieu.
+router.use('/api/shipment/pick', startTiming, pickAssignmentsRoutes);
 
 // Toan bo API "Bao cao tong hop" ben duoi day duoc gac bang QUYEN TINH NANG
 // (server/auth/featureRegistry.js), khong con bang mang vai tro. Mac dinh chi
@@ -391,8 +393,25 @@ router.get('/api/product-report/containers', async (req, res) => {
   }
 });
 
-// Khung "Chi tiet" cua bang "Bao cao hang hoa": doanh so 90 ngay tung khach theo 1 ma hang.
+// Chi tiet Bao cao hang hoa: lich su giao dich va doanh so tung khach theo ma hang.
 // Nam duoi /api/product-report nen ke thua guard `reports.products` o tren.
+router.get('/api/product-report/history', requireFeature('reports.products.sales'), async (req, res) => {
+  try {
+    const { code, q, type, page, pageSize } = req.query;
+    const data = await getProductHistory({ code, q, type, page, pageSize });
+    const canViewCost = hasFeature(req.user, 'reports.products.price');
+    const rows = data.rows.map(row => {
+      const copy = { ...row };
+      if (!canViewCost) delete copy.unitCost;
+      return copy;
+    });
+    res.status(200).json({ ...data, rows, canViewCost });
+  } catch (err) {
+    if (!err.statusCode || err.statusCode >= 500) console.error('product-report/history:', err.message);
+    res.status(err.statusCode || 500).json({ error: err.statusCode === 400 ? err.message : 'Không lấy được lịch sử giao dịch.' });
+  }
+});
+
 router.get('/api/product-report/customers', requireFeature('reports.products.sales'), async (req, res) => {
   try {
     const data = await getProductReportCustomers({ code: req.query.code });

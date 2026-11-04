@@ -7,7 +7,7 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const {google}=require('googleapis');
 
-test('read-only and history clients share the same tab cache and append invalidates it',async t=>{
+test('append invalidates the history tab cache (L1 + shared L2)',async t=>{
   let reads=0,rows=[['header'],['old']];
   t.mock.method(google.auth,'GoogleAuth',function(){this.getClient=async()=>({});});
   t.mock.method(google,'sheets',()=>({spreadsheets:{values:{
@@ -15,11 +15,12 @@ test('read-only and history clients share the same tab cache and append invalida
     append:async()=>{rows.push(['new']);return {};}
   }}}));
   const reader=require('./orderLifecycleSheetsClient'), history=require('./orderLifecycleHistoryClient');
+  // Reader va history giu L1 rieng (tab khac nhau trong thuc te); chung nhau tang L2 sharedCache nen lan doc thu hai khong goi Google.
   assert.deepEqual(await reader.getValues('cache-test-history'),[['header'],['old']]);
   assert.deepEqual(await history.getValues('cache-test-history'),[['header'],['old']]);
   assert.equal(reads,1);
   await history.appendRow('cache-test-history',['new']);
-  assert.deepEqual(await reader.getValues('cache-test-history'),[['header'],['old'],['new']]);
+  assert.deepEqual(await history.getValues('cache-test-history'),[['header'],['old'],['new']]);
   assert.equal(reads,2);
 });
 
