@@ -295,4 +295,12 @@ Tab Hàng hóa có thêm **mục 4 "Hàng hóa 90 ngày"** (`#product90dSection`
 - Kiểm thử: `server/dashboard/product90dReportRepository.test.js`, `product90dReportRoutes.test.js`, `server/test/frontend/product-90d-report.test.js` (cùng chỉnh nhẹ `business-report`, `dashboard-section-layout`, `expected-arrivals` test cho mục mới). Không migration/dependency/biến môi trường mới.
 - **Trạng thái:** worker có lịch 02:00 và mã web CHƯA deploy. Sau deploy: kiểm tra `product_90d_report_state` tự sang kỳ mới sau lượt 02:00 đầu và mở mục 4 bằng tài khoản có `reports.products.sales`.
 
+## 04/11/2026 — Hàng hóa 90 ngày: xuất Excel + HTML (biểu đồ xu hướng 3 kỳ), Top 3 gọn (chưa deploy)
+
+- Nút **Xuất file** ở mục 4 mở hộp thoại xuất chung (`openExportDialog('products.product90d')`, `POST /api/export/fields` + `POST /api/export`). Gửi đúng từ khóa đang áp dụng và cột đang sắp xếp (nhãn cột); máy chủ đọc **toàn bộ** dòng khớp (không giới hạn 200/trang, trần 50.000 mã) qua `getProduct90dReportForExport` cùng luật tìm/sắp xếp với màn hình. Quyền: `reports.export` + `reports.products` + `reports.products.sales` (thiếu → 403 `EXPORT_TABLE_NOT_ALLOWED`); chưa có snapshot / tìm không ra → 404 `EXPORT_NO_DATA`, không bao giờ ra file rỗng.
+- Excel: 1 sheet 26 cột, tiêu đề phẳng có ngày thật của kỳ (vd `T.này (05/10–03/11) – SL`); ô số là số thật (số lẻ giữ đủ chữ số, NULL = ô trống); sheet "Thông tin báo cáo" ghi "Dữ liệu cập nhật lúc", ngày chốt, 4 kỳ, từ khóa.
+- HTML: biểu đồ đường **Xu hướng 3 kỳ** (T.trc nữa → T.trc → T.này; chọn Doanh số / Số lượng / Giá TB bình quân gia quyền / Lượt mua cộng theo mã) + KPI tổng 90 ngày, tính lại ngay khi gõ từ khóa (chỉ tìm mã/tên, không dấu được), báo rõ khi không khớp. Là tùy chọn chung `worksheet.periodTrend` / `searchKeys` / `fractionDigits` của `exportHtmlReport.js`, không đổi báo cáo HTML của bảng khác.
+- Top 3 khách (màn hình + Excel + HTML dùng chung `topCustomerLines` trong `public/product-90d-report.js`): mỗi khách 1 dòng `Tên|%DS|DS` (vd `HN C Vương Ninh HN|10%|45000000`), không ghi SL, bỏ khách có SL = 0. Tiêu đề nhóm kỳ căn giữa (nhãn dính 2 phía khi cuộn ngang), cột Top 3 rộng 330px; số hiển thị giữ tới 8 chữ số lẻ; nút sắp xếp báo hành động kế tiếp, bấm phần đệm ô tiêu đề cũng sắp xếp.
+- Kiểm thử: `server/dashboard/exportProduct90d.test.js` (PGlite thật, đọc lại xlsx, mở HTML trong JSDOM), `product90dReportRepository.test.js`, `test/frontend/product-90d-report.test.js`, `test/frontend/export-ui.test.js`. Không migration/biến môi trường mới.
+
 Cập nhật gần nhất: 04/11/2026.

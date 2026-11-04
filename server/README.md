@@ -1020,4 +1020,15 @@ Cập nhật gần nhất: 04/11/2026.
 
 Kiểm thử: `dashboard/product90dReportRepository.test.js`, `dashboard/product90dReportRoutes.test.js`, `test/frontend/product-90d-report.test.js`. Không migration/biến môi trường mới. Trạng thái: worker lịch 02:00 và web chưa deploy.
 
+## 04/11/2026 — Xuất Excel/HTML Hàng hóa 90 ngày (`tableKey: products.product90d`)
+
+| Endpoint | Quyền | Ghi chú |
+|---|---|---|
+| `POST /api/export/fields` + `POST /api/export` với `tableKey: 'products.product90d'` | `reports.export` (guard `/api/export`) **+** `reports.products` **+** `reports.products.sales` | Route truyền `canViewProducts`/`canViewSales`; `describeExport` chặn khi thiếu cờ (kể cả cờ không truyền) → 403 `EXPORT_TABLE_NOT_ALLOWED`. Body nhận `tableSearch.query` (≤ 200 ký tự) và `tableSort {label, direction}` (nhãn tĩnh `T.này – DS` hoặc nhãn có ngày đều được; cột Top 3 bỏ qua). |
+
+- Dữ liệu: `getProduct90dReportForExport({q, sort, dir})` trong `dashboard/product90dReportRepository.js` — cùng kiểm tra/WHERE/ORDER BY với `getProduct90dReport` nhưng không phân trang (trần `EXPORT_MAX_ROWS` 50.000 mã, vượt → 413 `EXPORT_TOO_MANY_ROWS`). Không có state → 404 `EXPORT_NO_DATA`; có state nhưng 0 dòng khớp → 404 `EXPORT_NO_DATA` (không ra file rỗng/0).
+- `dashboard/exportService.js`: `PRODUCT_90D_COLUMNS` (26 cột, khóa = tên cột DB), `buildProduct90dDataset` đổi nhãn sang ngày thật của kỳ (`T.trc nữa (06/08–04/09) – SL`), Top 3 → văn bản `Tên|%DS|DS` mỗi khách 1 dòng (hàm chung `topCustomerLines` của `public/product-90d-report.js`, bỏ khách SL = 0), `reportNotes` + `reportNotesTitle` ("Thông tin báo cáo"), `sourceBranch` = Cả hai (tên file `TKS_Hang_hoa_90_ngay_…`). Tiêu đề Excel phẳng 1 hàng (không gộp ô 2 tầng). Tùy chọn chung mới: cột `fractionDigits` (định dạng ô số lẻ theo từng ô), worksheet `autoRowHeight`, `hints/searchKeys/periodTrend` được chuyển qua `getExportDataset`.
+- `dashboard/exportHtmlReport.js`: tùy chọn chung `worksheet.periodTrend = {title, subtitle, points:[{label, range, columns}], total, metrics:[{key,label,agg:'sum'|'ratio',…}]}` → thẻ biểu đồ đường + bảng số chính xác + bộ chọn chỉ số, KPI theo kỳ tổng; tính lại trong đường lọc → tổng hợp sẵn có (gõ từ khóa là nhảy). `worksheet.searchKeys` giới hạn ô tìm vào các cột đó; `hints.categoryKey:false` tắt cột phân loại tự đoán. Bảng không khai báo các tùy chọn này cho ra file như cũ.
+- Kiểm thử: `dashboard/exportProduct90d.test.js` (quyền service + route, dataset, xlsx đọc lại, HTML JSDOM), `dashboard/product90dReportRepository.test.js`, `dashboard/exportService.test.js` (ngoại lệ nhãn viết tắt theo màn hình cho bảng này), `test/frontend/export-ui.test.js` (7 nút xuất), `test/frontend/product-90d-report.test.js`.
+
 Cập nhật gần nhất: 04/11/2026.
