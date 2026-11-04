@@ -32,6 +32,7 @@ async function fixture({ positions = [], pickTables = false } = {}) {
     await db.exec(migration('0101_stock_position_stock_out_action.sql'));
   }
   await db.exec(migration('0104_stock_out_orders.sql'));
+  await db.exec(migration('0107_stock_out_order_events.sql'));
   await db.query(`INSERT INTO products (branch, id, code, name, raw) VALUES
     ('hanoi', 1, 'AAA1', 'Kem chống nắng', '{"inventories":[{"onHand":30}]}'),
     ('hanoi', 2, 'BBB2', 'Sữa rửa mặt', '{"inventories":[{"onHand":5}]}'),
@@ -88,6 +89,26 @@ test('dòng đơn tạm: không gộp, không đụng tồn VT, sửa/xóa theo 
     const removed = await orders.removeLine(ctx(), b.line.id, b.line.version);
     assert.equal(removed.deleted, true);
     assert.equal((await orders.getCurrent(ctx(), 'HN')).order.lines.length, 1);
+  } finally { await db.close(); }
+});
+
+test('lưu vết: thêm/sửa/xóa dòng ghi ai làm gì, dòng đã xóa còn ảnh chụp, mới nhất trước', async () => {
+  const { db, orders } = await fixture();
+  try {
+    const { order } = await orders.getCurrent(ctx(), 'HN', { create: true });
+    const a = await orders.addLine(ctx(), order.id, { code: 'AAA1', location: 'A1', notes: '1T x 100' });
+    await orders.updateLine(ctx(), a.line.id, { notes: '3T x 100', version: a.line.version });
+    await orders.removeLine(ctx(), a.line.id, a.line.version + 1);
+    const { events } = await orders.events(ctx(), order.id);
+    assert.deepEqual(events.map(event => event.action), ['delete', 'update', 'add']);
+    assert.equal(events[0].userName, 'Quản Lý A');
+    assert.equal(events[0].lineId, a.line.id);
+    assert.deepEqual(events[0].detail.before, { code: 'AAA1', name: 'Kem chống nắng', location: 'A1', notes: '3T x 100' });
+    assert.equal(events[1].detail.before.notes, '1T x 100');
+    assert.equal(events[1].detail.after.notes, '3T x 100');
+    assert.equal((await orders.getCurrent(ctx(), 'HN')).order.lines.length, 0, 'dòng đã xóa thật, vết vẫn còn');
+    await assert.rejects(orders.events(ctx(['SG']), order.id), { statusCode: 403 });
+    await assert.rejects(orders.events(ctx(), 999999), { statusCode: 404 });
   } finally { await db.close(); }
 });
 

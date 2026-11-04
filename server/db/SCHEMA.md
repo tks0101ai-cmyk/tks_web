@@ -1,5 +1,9 @@
 # Supabase schema cho đồng bộ KiotViet
 
+## Migration 0107 — Nhật ký thao tác đơn xuất kho (04/11/2026, CHƯA áp DB)
+
+`0107_stock_out_order_events.sql`: `stock_out_order_events` (`id`, `order_id` → `stock_out_orders` ON DELETE CASCADE, `line_id` BIGINT không khóa ngoại để dòng đã xóa vẫn còn vết, `action` CHECK add|update|delete|import|confirm, `user_id`, `user_name`, `detail` JSONB `{before, after}` là ảnh chụp `{code, name, location, notes}`, `created_at`). Ghi trong cùng giao dịch với thao tác; index `(order_id, id DESC)`; REVOKE cho `reporting_readonly` (có tên người dùng).
+
 ## Migration 0105 — Kiểm kê (02/11/2026, đã áp DB 03/11/2026)
 
 `0105_stocktake.sql`: `stocktake_sessions` (đợt: `branch` hanoi|saigon, `name`, `date_from`/`date_to` DATE, `status` open|closed, `source` web|sheet_import, `source_ref` UNIQUE khi có, `version`, người tạo/đóng, `counterpart_session_id` FK chính bảng ON DELETE SET NULL: đợt đối chiếu cho cột Kiểm SG/HN, nối hai chiều); `stocktake_line_edits` (sửa dòng đếm gốc `(order_id, line_no)` UNIQUE theo đợt, hoặc dòng thêm tay khi `order_id` NULL; cột NULL = giữ gốc; `quantity NUMERIC`, `removed`, `version`); `stocktake_code_notes` (PK `(session_id, product_code)`: `status_text`, `status_color` (khóa màu trạng thái: red|orange|yellow|green|cyan|blue|purple|gray, '' = không màu, CHECK), `reason_text`, `recheck_employee_id` FK `hr_employees` ON DELETE SET NULL, `recheck_name` chữ từ sheet, `print_page` TEXT, `print_time` TEXT (Trang in / Giờ in), `prev_diff_manual`, `other_diff_manual` NUMERIC (Do KK trước / Do kiểm SG|HN nhập tay hoặc dán, NULL = chưa nhập), `version`); `stocktake_product_tags` (PK `(branch, product_code)`, giữ qua các đợt: `cluster`, `is_combo`, `version`); `stocktake_session_results` (bản chụp lúc đóng: `counted`, `stock`, `cost`, `diff_qty`, `diff_value`, `prev_diff` (KK trước sai), `other_diff` (kiểm cơ sở kia) NUMERIC); `stocktake_history` (chỉ thêm, trigger chặn UPDATE/DELETE, action `session_create|session_update|session_close|sheet_import|line_edit|line_add|note|tag|paste`, `before`/`after` JSONB). Mã hàng lưu dạng chuẩn (viết hoa, bỏ khoảng trắng). Thu hồi `reporting_readonly` trên `stocktake_history`, `stocktake_code_notes`. Số đếm KHÔNG lưu: đọc từ `orders`/`order_details` (khách tên bắt đầu `TEAM`, ngày đặt giờ VN trong khoảng của đợt, kể cả đơn hủy).
@@ -876,5 +880,13 @@ Cập nhật gần nhất: 03/11/2026.
 - Một câu SQL tham số hóa đọc `product_90d_report_state` (id=1) + `product_90d_report` cùng một ảnh chụp: tổng dòng sau lọc, trang đã kẹp về trang cuối, sắp xếp/tìm trên toàn bộ kết quả trước `LIMIT/OFFSET`. Tìm `product_code || ' ' || product_name` bằng `shared/fuzzySql.js`; cột sắp xếp chỉ là whitelist tên cột (`product_code`, `product_name`, `qty|revenue|avg_price|customer_count|invoice_count` × 4 hậu tố); NULL xếp cuối, hòa bằng `product_code` rồi `product_key`.
 - NUMERIC đọc `::text` rồi đổi sang số, NULL giữ NULL (`avg_price_*` NULL khi SL = 0 hiển thị “—”, không thành 0). `top_customers_*` JSONB chuẩn hóa tối đa 3 phần tử `{name, share, revenue, quantity}`; dữ liệu hỏng → `[]`.
 - Không có dòng `product_90d_report_state` → API trả `available:false` (không phải bảng số 0). Kỳ hiển thị suy ra từ `as_of_date` (A): `61_90d` = A−90..A−61, `31_60d` = A−60..A−31, `1_30d` = A−30..A−1, `1_90d` = A−90..A−1; `computed_at` (TIMESTAMPTZ) trả ISO UTC, giao diện đổi sang giờ VN.
+
+## Migration 0107 — Lưu vết đơn xuất kho tạm (04/11/2026, đã áp DB)
+
+`0107_stock_out_order_events.sql` tạo bảng `stock_out_order_events`:
+- `id BIGSERIAL PRIMARY KEY`, `order_id BIGINT NOT NULL REFERENCES stock_out_orders(id) ON DELETE CASCADE`, `line_id BIGINT`, `action TEXT NOT NULL CHECK (action IN ('add', 'update', 'delete', 'import', 'confirm'))`, `user_id TEXT`, `user_name TEXT NOT NULL DEFAULT ''`, `detail JSONB NOT NULL DEFAULT '{}'::jsonb`, `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`.
+- Index: `stock_out_order_events_order_idx` trên `(order_id, id DESC)`.
+- Ghi cùng giao dịch với thao tác thêm/sửa/xóa/nhập/chốt đơn tạm; `detail` lưu ảnh chụp dòng trước/sau (`code`, `name`, `location`, `notes`).
+- RLS / phân quyền: thu hồi ALL từ `reporting_readonly`. Đọc qua `GET /api/stock-positions/orders/:id/events`. Rollback: `0107_stock_out_order_events.down.sql`.
 
 Cập nhật gần nhất: 04/11/2026.

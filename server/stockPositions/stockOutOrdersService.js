@@ -196,6 +196,12 @@ function createStockOutOrdersService({ getDb = getPool, now = () => Date.now() }
     return order;
   }
 
+  const snapshotOf = line => ({ code: line.code, name: clean(line.name), location: line.location, notes: line.notes });
+
+  // Luu vet thao tac (migration 0107) trong CUNG giao dich voi thao tac; dong bi xoa van con anh chup trong detail.
+  const logEvent = (client, orderId, lineId, action, actor, detail = {}) => client.query(
+    'INSERT INTO stock_out_order_events (order_id, line_id, action, user_id, user_name, detail) VALUES ($1, $2, $3, $4, $5, $6::jsonb)',
+    [orderId, lineId, action, actor.id, actor.name, JSON.stringify(detail)]);
   const touchOrder = (client, orderId) => client.query('UPDATE stock_out_orders SET version = version + 1, updated_at = now() WHERE id = $1', [orderId]);
 
   async function addLine(ctx, orderId, body = {}) {
@@ -215,6 +221,7 @@ function createStockOutOrdersService({ getDb = getPool, now = () => Date.now() }
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING ${LINE_COLUMNS}`,
         [order.id, next, product ? product.code : code, product ? product.name : clean(body.name), location, notes, source, actor.id, actor.name]);
       await touchOrder(client, order.id);
+      await logEvent(client, order.id, rows[0].id, 'add', actor, { after: snapshotOf(rows[0]), source });
       return { line: lineOut(rows[0]), orderVersion: order.version + 1 };
     });
   }
@@ -245,6 +252,7 @@ function createStockOutOrdersService({ getDb = getPool, now = () => Date.now() }
         `UPDATE stock_out_order_lines SET code = $2, name = $3, location = $4, notes = $5, version = version + 1, updated_at = now()
          WHERE id = $1 RETURNING ${LINE_COLUMNS}`, [lineId, code, name, location, notes]);
       await touchOrder(client, order.id);
+      await logEvent(client, order.id, row.id, 'update', actorOf(ctx), { before: snapshotOf(row), after: snapshotOf(rows[0]) });
       return { line: lineOut(rows[0]), orderVersion: order.version + 1 };
     });
   }
@@ -261,6 +269,7 @@ function createStockOutOrdersService({ getDb = getPool, now = () => Date.now() }
       }
       await client.query('DELETE FROM stock_out_order_lines WHERE id = $1', [lineId]);
       await touchOrder(client, order.id);
+      await logEvent(client, order.id, row.id, 'delete', actorOf(ctx), { before: snapshotOf(row) });
       return { deleted: true, id: Number(lineId), orderVersion: order.version + 1 };
     });
   }
@@ -295,6 +304,7 @@ function createStockOutOrdersService({ getDb = getPool, now = () => Date.now() }
           [order.id, start, actor.id, actor.name, col((_, index) => index + 1), col(item => (products.get(lower(item.code)) || { code: item.code }).code),
             col(item => (products.get(lower(item.code)) || { name: '' }).name), col(item => item.location), col(item => item.notes)]);
         await touchOrder(client, order.id);
+        await logEvent(client, order.id, null, 'import', actor, { fileName, added: valid.length, skipped: errors.length, lines: valid.map(item => ({ code: item.code, location: item.location, notes: item.notes })) });
       }
       return {
         fileName, orderVersion: valid.length ? order.version + 1 : order.version,
@@ -370,6 +380,7 @@ function createStockOutOrdersService({ getDb = getPool, now = () => Date.now() }
       const confirmed = (await client.query(
         `UPDATE stock_out_orders SET status = 'confirmed', version = version + 1, updated_at = now(), confirmed_by_user_id = $2, confirmed_by_name = $3, confirmed_at = now(), summary = $4::jsonb
          WHERE id = $1 RETURNING ${ORDER_COLUMNS}`, [order.id, actor.id, actor.name, JSON.stringify(stats)])).rows[0];
+      await logEvent(client, order.id, null, 'confirm', actor, { lines: lines.length });
       return { order: orderOut(confirmed, await loadLines(client, order.id)), stats };
     });
   }
@@ -396,7 +407,19 @@ function createStockOutOrdersService({ getDb = getPool, now = () => Date.now() }
     return { order: orderOut(order, lines, plan ? plan.perLine : null) };
   }
 
-  return { getCurrent, addLine, updateLine, removeLine, importLines, confirm, list, get };
+  // Luu vet thao tac cua 1 don (moi nhat truoc); before = anh chup dong truoc khi sua/xoa.
+  async function events(ctx, orderId, { limit } = {}) {
+    const db = getDb();
+    const order = (await db.query('SELECT branch FROM stock_out_orders WHERE id = $1', [orderId])).rows[0];
+    if (!order) throw fail(404, 'NOT_FOUND', 'Không tìm thấy đơn xuất kho.');
+    assertScope(ctx, order.branch);
+    const size = Math.min(Math.max(Number(limit) || 200, 1), 500);
+    const { rows } = await db.query(
+      'SELECT id, line_id, action, user_name, detail, created_at FROM stock_out_order_events WHERE order_id = $1 ORDER BY id DESC LIMIT $2', [orderId, size]);
+    return { orderId: Number(orderId), events: rows.map(row => ({ id: Number(row.id), lineId: row.line_id === null ? null : Number(row.line_id), action: row.action, userName: row.user_name, detail: row.detail || {}, createdAt: isoOf(row.created_at) })) };
+  }
+
+  return { getCurrent, addLine, updateLine, removeLine, importLines, confirm, list, get, events };
 }
 
 module.exports = { createStockOutOrdersService, buildPlan, ...createStockOutOrdersService() };

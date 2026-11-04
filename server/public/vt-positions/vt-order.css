@@ -47,3 +47,11 @@ input.vt-order-inline,.vt-order-addrow input{box-sizing:border-box;width:100%;mi
 }
 /* Hộp xác nhận chốt đơn liệt kê nhiều dòng (mỗi ý một dòng). */
 #vtConfirmMessage{white-space:pre-line}
+/* Nhật ký thao tác của đơn tạm (mới nhất trước); thao tác xóa tô màu cảnh báo. */
+.vt-order-audit{margin-top:12px;font-size:13px}
+.vt-order-audit summary{cursor:pointer;color:var(--muted)}
+.vt-order-audit-list{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:4px;max-height:220px;overflow:auto}
+.vt-order-audit-item{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline}
+.vt-order-audit-time{color:var(--muted);font-variant-numeric:tabular-nums}
+.vt-order-audit-item.is-delete .vt-order-audit-act{color:var(--red)}
+.vt-order-audit-detail{color:var(--text)}
