@@ -60,8 +60,8 @@ async function teardown(db) {
   await db.close();
 }
 
-const ALL_KEYS = ['product_code', 'product_name', ...repository.PERIODS.flatMap(p =>
-  ['qty', 'revenue', 'avg_price', 'customer_count', 'invoice_count', 'top_customers'].map(m => `${m}_${p.key}`))];
+const ALL_KEYS = ['product_code', 'product_name', ...require('../public/product-90d-report').PERIODS.flatMap(p =>
+  ['qty', 'revenue', 'customer_count', 'invoice_count', 'top_customers'].map(m => `${m}_${p.key}`))];
 
 function payload(extra = {}) {
   return { tableKey: 'products.product90d', columns: { product_90d: ALL_KEYS }, ...extra };
@@ -82,10 +82,10 @@ test('quyen: can CA reports.products va reports.products.sales (thieu co = chan)
   }
   const fields = await exportService.getExportFields(payload(), 'Hà Nội', ALLOWED);
   assert.equal(fields.title, 'Hàng hóa 90 ngày');
-  assert.deepEqual(fields.worksheets[0].fields.map(f => f.key), ALL_KEYS, '26 cot dung thu tu man hinh');
-  assert.equal(fields.worksheets[0].fields[2].label, 'T.trc nữa – SL');
-  assert.equal(fields.worksheets[0].fields[25].label, '90 ngày – Top 3 khách');
-  assert.equal(new Set(fields.worksheets[0].fields.map(f => f.label)).size, 26, 'nhan duy nhat');
+  assert.deepEqual(fields.worksheets[0].fields.map(f => f.key), ALL_KEYS, '22 cot dung thu tu man hinh');
+  assert.equal(fields.worksheets[0].fields[2].label, 'T.này – SL');
+  assert.equal(fields.worksheets[0].fields[21].label, '90 ngày – Top 3 khách');
+  assert.equal(new Set(fields.worksheets[0].fields.map(f => f.label)).size, 22, 'nhan duy nhat');
   await assert.rejects(exportService.getExportFields(payload({ tableSearch: { query: 'x'.repeat(201) } }), 'Hà Nội', ALLOWED), { statusCode: 400 });
 });
 
@@ -108,7 +108,7 @@ test('quyen o route that: /api/export/fields + /api/export tra 403 khi thieu rep
     const ok = fakeRes();
     await layer('/api/export/fields').route.stack.at(-1).handle({ user: { vaiTro: 'Quản lý' }, body: payload(), branch: 'Hà Nội' }, ok);
     assert.equal(ok.statusCode, 200);
-    assert.equal(ok.body.worksheets[0].fields.length, 26);
+    assert.equal(ok.body.worksheets[0].fields.length, 22);
   } finally { console.error = errors; }
   // Guard chung /api/export (reports.export) van nam truoc handler.
   assert.ok(router.stack.some(item => !item.route && item.regexp && item.regexp.test('/api/export')));
@@ -123,16 +123,14 @@ test('dataset: TOAN BO dong (> 200), nhan co ngay that cua ky, NULL/0/am/le giu 
     const sheet = data.worksheets[0];
     assert.equal(sheet.rows.length, 208, 'khong bi cat 200 dong/trang');
     assert.deepEqual(sheet.columns.map(c => c.key), ALL_KEYS);
-    assert.deepEqual(sheet.columns.slice(0, 4).map(c => c.label), ['Mã hàng', 'Tên hàng', 'T.trc nữa (06/08–04/09) – SL', 'T.trc nữa (06/08–04/09) – DS']);
+    assert.deepEqual(sheet.columns.slice(0, 4).map(c => c.label), ['Mã hàng', 'Tên hàng', 'T.này (05/10–03/11) – SL', 'T.này (05/10–03/11) – DS']);
     assert.equal(sheet.columns.find(c => c.key === 'qty_1_30d').label, 'T.này (05/10–03/11) – SL');
     assert.equal(sheet.columns.find(c => c.key === 'top_customers_1_90d').label, '90 ngày (06/08–03/11) – Top 3 khách');
-    assert.equal(new Set(sheet.columns.map(c => c.label)).size, 26);
+    assert.equal(new Set(sheet.columns.map(c => c.label)).size, 22);
     const [sp1, sp2, sp3] = sheet.rows;
     assert.equal(sp1.product_code, 'SP1');
     assert.equal(sp1.qty_1_30d, -2);
-    assert.equal(sp1.avg_price_1_90d, 107.69230769);
     assert.equal(sp2.qty_61_90d, 0.5);
-    assert.equal(sp2.avg_price_1_90d, null, 'NULL khong thanh 0');
     assert.equal(sp3.qty_1_90d, 0, '0 giu 0');
     assert.equal(sp1.top_customers_1_90d, 'Khách A|<b>|62.2%|871\nKhách lẻ|10%|140', 'DS lam tron so nguyen, khong phan cach nghin');
     assert.equal(sp2.top_customers_1_90d, null, 'chi con khach SL 0 -> o trong');
@@ -175,7 +173,7 @@ test('dataset: tim kiem (khong dau) + sap xep theo nhan cot ap tren toan bo dong
 
 // ---------- Excel ----------
 
-test('xlsx doc lai: 1 sheet du lieu 26 cot, o so la so that (le/am giu nguyen), NULL = o trong, Top 3 xuong dong, sheet ghi chu', async () => {
+test('xlsx doc lai: 1 sheet du lieu 22 cot, o so la so that (le/am giu nguyen), NULL = o trong, Top 3 xuong dong, sheet ghi chu', async () => {
   const db = await setup();
   try {
     const file = await exportService.createExport(payload({ tableSearch: { query: 'sp' } }), 'Hà Nội', ALLOWED);
@@ -185,22 +183,17 @@ test('xlsx doc lai: 1 sheet du lieu 26 cot, o so la so that (le/am giu nguyen), 
     assert.deepEqual(workbook.worksheets.map(w => w.name), ['Hàng hóa 90 ngày', 'Thông tin báo cáo']);
     const sheet = workbook.worksheets[0];
     const header = sheet.getRow(1).values.slice(1);
-    assert.equal(header.length, 26);
+    assert.equal(header.length, 22);
     assert.equal(header[0], 'Mã hàng');
-    assert.equal(header[20], '90 ngày (06/08–03/11) – SL');
+    assert.equal(header[17], '90 ngày (06/08–03/11) – SL');
     const col = key => ALL_KEYS.indexOf(key) + 1;
     const sp1 = sheet.getRow(2), sp2 = sheet.getRow(3), sp3 = sheet.getRow(4);
     assert.equal(sp1.getCell(1).value, 'SP1');
     assert.equal(sp1.getCell(col('qty_1_30d')).value, -2);
     assert.equal(typeof sp1.getCell(col('revenue_1_90d')).value, 'number');
-    assert.equal(sp1.getCell(col('avg_price_1_90d')).value, 107.69230769);
-    assert.equal(sp1.getCell(col('avg_price_1_90d')).numFmt, '#,##0;[Red]-#,##0', 'gia tri goc, hien so nguyen');
     assert.equal(sp2.getCell(col('qty_61_90d')).value, 0.5);
     assert.equal(sp2.getCell(col('qty_61_90d')).numFmt, '#,##0;[Red]-#,##0');
-    assert.equal(sp3.getCell(col('avg_price_1_30d')).value, -0.2);
-    assert.equal(sp3.getCell(col('avg_price_1_30d')).numFmt, '#,##0;#,##0', 'am lam tron ve 0 -> khong hien "-0"');
     assert.equal(sp2.getCell(col('revenue_1_30d')).numFmt, '#,##0;[Red]-#,##0', 'so nguyen giu dinh dang cot');
-    assert.equal(sp2.getCell(col('avg_price_1_90d')).value, null, 'NULL -> o trong');
     assert.equal(sp3.getCell(col('qty_1_90d')).value, 0);
     const top = sp1.getCell(col('top_customers_1_90d'));
     assert.equal(top.value, 'Khách A|<b>|62.2%|871\nKhách lẻ|10%|140');
@@ -300,7 +293,7 @@ test('HTML: bieu do "Xu huong 3 ky" + KPI 90 ngay tinh lai theo tu khoa (co dau 
     await search(win, doc, 'sp1');
     const cells = [...doc.querySelectorAll('#tbody tr')[0].cells].map(td => td.textContent);
     assert.equal(cells[ALL_KEYS.indexOf('top_customers_1_90d')], 'Khách A|<b>|62.2%|871\nKhách lẻ|10%|140');
-    assert.equal(cells[ALL_KEYS.indexOf('avg_price_1_90d')], '108');
+    assert.ok(!ALL_KEYS.some(key => key.startsWith('avg_price_')));
     assert.equal(doc.querySelectorAll('#tbody b').length, 0);
     assert.equal(doc.getElementById('category').hidden, true, 'khong co bo loc phan loai');
   } finally { await teardown(db); }

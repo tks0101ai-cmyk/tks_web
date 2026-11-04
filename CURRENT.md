@@ -1,3 +1,5 @@
+> 04/11/2026 — **Hàng hóa 90 ngày: đổi thứ tự kỳ và bỏ cột Giá TB (chưa deploy):** bảng màn hình và cột xuất Excel/HTML theo thứ tự **T.này → T.trc → T.trc nữa → 90 ngày**, mỗi kỳ 5 cột SL / DS / SL khách / Lượt mua / Top 3 khách, tổng 22 cột. Cập nhật tiêu đề nhóm, độ rộng, dòng trạng thái và cache script; giữ khóa cột để cấu hình ẩn/hiện, độ rộng đã lưu đi theo đúng chỉ số. Không đổi API/DB/job; biểu đồ xu hướng HTML vẫn theo thời gian từ cũ đến mới. Kiểm thử liên quan đạt **225/225, 0 lỗi/0 bỏ qua** (frontend, table-controls, repository/route và xuất Excel/HTML); kiểm tra cú pháp và git diff --check đạt. `graphify update .` hoàn tất: 14.757 nodes / 32.697 edges / 627 communities. Log: `.codex_tmp/product90d-layout-tests-final.log`, `.codex_tmp/product90d-layout-graphify.log`. Chưa kiểm tra trực quan trên trình duyệt thật trong phiên này.
+
 > 04/11/2026 — **Kết hợp Hàng hóa 90 ngày với main tks_web:** giữ đủ 13 commit đến `e9000c0c` và cập nhật Kiểm kê đến `d9e0cee5`. Mã ứng dụng gộp tự động, tài liệu giữ nội dung hai phía, Graphify đã tạo lại (14.757 nodes, 32.697 edges, 627 communities). **402/402 kiểm thử trọng tâm đạt, 0 lỗi/0 bỏ qua** (356 ca báo cáo/xuất file/lịch worker/đơn xuất kho/Kiểm kê/điều khiển bảng + 46 ca chi tiết hàng hóa/giao diện đơn xuất kho); build và kiểm tra dấu xung đột đạt. Log: `.codex_tmp/merge-final-tests.log`, `.codex_tmp/merge-extra-tests.log`, `.codex_tmp/merge-graphify.log`. Ba lỗi `business-report.test.js` đã tái hiện trên bản trước gộp (31 đạt/3 lỗi), không phải lỗi mới của bản gộp; không tuyên bố toàn suite xanh. Đối chiếu mã: Kiểm kê/điều khiển bảng khớp remote main, báo cáo 90 ngày/nhật ký xuất kho khớp nhánh tính năng. Không chạy migration hoặc job ghi dữ liệu production trong phiên này; trạng thái deploy chưa được kiểm chứng.
 
 04/11/2026 — **VT: lưu vết thao tác đơn xuất kho tạm (migration `0107` đã áp DB 04/11/2026, chưa commit/deploy):** đơn tạm dùng chung mỗi cơ sở nên xóa dòng không để lại dấu vết (sự cố 04/11: dòng tạo 03/11 biến mất, không biết ai xóa). Bảng `stock_out_order_events` ghi mỗi thêm/sửa/xóa dòng, import Excel, chốt đơn (người làm, giờ, ảnh chụp dòng trước/sau) trong CÙNG giao dịch; `GET /api/stock-positions/stock-out-orders/:id/events`; hộp Đơn xuất kho có mục **Nhật ký thao tác** dưới bảng đơn tạm. Bản code mới cần 0107 đã áp (nếu thiếu, thêm/sửa/xóa dòng báo lỗi) — môi trường khác phải migrate trước khi deploy.
@@ -963,6 +965,8 @@ Lịch sử hàng hóa — graphify update . đã đạt (14.563 nodes / 32.281 
 
 Cập nhật gần nhất: 03/11/2026.
 
+
+Cập nhật gần nhất: 04/11/2026.
 
 Cập nhật gần nhất: 04/11/2026.
 

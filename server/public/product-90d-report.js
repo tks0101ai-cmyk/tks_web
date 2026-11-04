@@ -1,6 +1,6 @@
 /* Tab Hàng hóa — mục 4 "Hàng hóa 90 ngày" (API chỉ đọc /api/product-report/90d, quyền reports.products + reports.products.sales).
-   Bảng tính sẵn lúc 02:00 (product_90d_report), web KHÔNG tính lại. 26 cột: Mã, Tên rồi 4 kỳ T.trc nữa | T.trc | T.này | 90 ngày,
-   mỗi kỳ 6 cột SL | DS | Giá TB | SL khách | Lượt mua | Top 3 khách. thead tĩnh trong index.html (2 tầng, khớp COLUMNS bên dưới —
+   Bảng tính sẵn lúc 02:00 (product_90d_report), web KHÔNG tính lại. 22 cột: Mã, Tên rồi 4 kỳ T.này | T.trc | T.trc nữa | 90 ngày,
+   mỗi kỳ 5 cột SL | DS | SL khách | Lượt mua | Top 3 khách. thead tĩnh trong index.html (2 tầng, khớp COLUMNS bên dưới —
    test/frontend/product-90d-report.test.js khóa khớp). Tìm kiếm, sắp xếp, phân trang đều ở máy chủ trên TOÀN BỘ kết quả.
    Ẩn/hiện cột + kéo độ rộng: shared/table-controls.js (data-table-sort="off": trang tự sắp xếp qua API).
    Phần đầu file là hàm thuần (không đụng DOM) — Node require() được để test. */
@@ -9,16 +9,15 @@
 
   // ---------- hàm thuần ----------
   const PERIODS = [
-    { key: '61_90d', label: 'T.trc nữa' },
-    { key: '31_60d', label: 'T.trc' },
     { key: '1_30d', label: 'T.này' },
+    { key: '31_60d', label: 'T.trc' },
+    { key: '61_90d', label: 'T.trc nữa' },
     { key: '1_90d', label: '90 ngày' }
   ];
   // width = máy tính, mobile = màn hẹp (≤ 600px, cùng mốc screenMode của table-controls).
   const METRICS = [
     { metric: 'qty', label: 'SL', width: 90, mobile: 80, sortable: true },
     { metric: 'revenue', label: 'DS', width: 124, mobile: 112, sortable: true },
-    { metric: 'avg_price', label: 'Giá TB', width: 108, mobile: 100, sortable: true },
     { metric: 'customer_count', label: 'SL khách', width: 96, mobile: 88, sortable: true },
     { metric: 'invoice_count', label: 'Lượt mua', width: 96, mobile: 88, sortable: true },
     { metric: 'top_customers', label: 'Top 3 khách', width: 330, mobile: 260, sortable: false }
@@ -28,10 +27,10 @@
   // thead trong index.html phải ghi đúng các số này (test khóa khớp).
   const DESKTOP_WIDTHS = {
     product_code: 86, product_name: 188,
-    qty_61_90d: 64, revenue_61_90d: 90, avg_price_61_90d: 69, customer_count_61_90d: 82, invoice_count_61_90d: 71, top_customers_61_90d: 254,
-    qty_31_60d: 64, revenue_31_60d: 90, avg_price_31_60d: 77, customer_count_31_60d: 85, invoice_count_31_60d: 74, top_customers_31_60d: 287,
-    qty_1_30d: 66, revenue_1_30d: 96, avg_price_1_30d: 72, customer_count_1_30d: 85, invoice_count_1_30d: 74, top_customers_1_30d: 297,
-    qty_1_90d: 64, revenue_1_90d: 92, avg_price_1_90d: 72, customer_count_1_90d: 87, invoice_count_1_90d: 85, top_customers_1_90d: 280
+    qty_61_90d: 64, revenue_61_90d: 90, customer_count_61_90d: 82, invoice_count_61_90d: 71, top_customers_61_90d: 254,
+    qty_31_60d: 64, revenue_31_60d: 90, customer_count_31_60d: 85, invoice_count_31_60d: 74, top_customers_31_60d: 287,
+    qty_1_30d: 66, revenue_1_30d: 96, customer_count_1_30d: 85, invoice_count_1_30d: 74, top_customers_1_30d: 297,
+    qty_1_90d: 64, revenue_1_90d: 92, customer_count_1_90d: 87, invoice_count_1_90d: 85, top_customers_1_90d: 280
   };
   const COLUMNS = [
     { key: 'product_code', label: 'Mã hàng', pickerLabel: 'Mã hàng', width: DESKTOP_WIDTHS.product_code, mobile: 82, sortable: true, type: 'code' },

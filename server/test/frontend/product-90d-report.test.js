@@ -109,7 +109,7 @@ test('exportContext + sortAction: payload Xuat file theo tu khoa da ap dung va n
   assert.equal(H.sortAction('descending'), 'Bỏ sắp xếp');
 });
 
-test('rowHtml: 26 o theo thu tu cot, NULL avg_price -> "—", 0 -> 0, am/le giu nguyen', () => {
+test('rowHtml: 22 o theo thu tu cot, 0 -> 0, am/le giu nguyen', () => {
   const row = { product_code: 'SP01', product_name: 'Tên rất dài <b>' };
   H.PERIODS.forEach(p => {
     Object.assign(row, { ['qty_' + p.key]: 0, ['revenue_' + p.key]: 0, ['avg_price_' + p.key]: null,
@@ -120,17 +120,15 @@ test('rowHtml: 26 o theo thu tu cot, NULL avg_price -> "—", 0 -> 0, am/le giu 
   const body = dom.window.document.getElementById('b');
   body.innerHTML = H.rowHtml(row);
   const cells = [...body.rows[0].cells].map(td => td.textContent.trim());
-  assert.equal(cells.length, 26);
+  assert.equal(cells.length, 22);
   const at = key => cells[H.COLUMNS.findIndex(c => c.key === key)];
   assert.equal(at('product_code'), 'SP01');
   assert.equal(at('product_name'), 'Tên rất dài <b>');
   assert.equal(at('qty_61_90d'), '0');
-  assert.equal(at('avg_price_61_90d'), '—');
   assert.equal(at('top_customers_61_90d'), '—');
   assert.equal(at('qty_1_30d'), '-4');
   assert.equal(at('revenue_1_30d'), '-800,000');
   assert.equal(at('qty_1_90d'), '3');
-  assert.equal(at('avg_price_1_90d'), '1,235');
 });
 
 test('buildQuery bo tham so rong; dir chi di kem sort; relevance khong gui', () => {
@@ -182,22 +180,22 @@ function leafGrid(thead) {
   return leaves;
 }
 
-test('tieu de 2 tang: 26 cot la (khoa on dinh, duy nhat, khop COLUMNS), 4 nhom colspan 6 dung thu tu ky', () => {
+test('tieu de 2 tang: 22 cot la (khoa on dinh, duy nhat, khop COLUMNS), 4 nhom colspan 5 dung thu tu ky', () => {
   const table = pageDoc.getElementById('product90dTable');
   assert.equal(table.dataset.tableSort, 'off');
   assert.ok(table.classList.contains('fixed-table'));
   const thead = table.tHead;
   assert.equal(thead.rows.length, 2);
   const groups = [...thead.rows[0].querySelectorAll('th.p90-group')];
-  assert.deepEqual(groups.map(g => g.dataset.period), ['61_90d', '31_60d', '1_30d', '1_90d']);
-  assert.deepEqual(groups.map(g => g.colSpan), [6, 6, 6, 6]);
-  assert.deepEqual(groups.map(g => g.querySelector('.p90-group-label').textContent), ['T.trc nữa', 'T.trc', 'T.này', '90 ngày']);
+  assert.deepEqual(groups.map(g => g.dataset.period), ['1_30d', '31_60d', '61_90d', '1_90d']);
+  assert.deepEqual(groups.map(g => g.colSpan), [5, 5, 5, 5]);
+  assert.deepEqual(groups.map(g => g.querySelector('.p90-group-label').textContent), ['T.này', 'T.trc', 'T.trc nữa', '90 ngày']);
   const leaves = leafGrid(thead);
-  assert.equal(leaves.length, 26);
+  assert.equal(leaves.length, 22);
   const keys = leaves.map(th => th.dataset.columnKey);
-  assert.equal(new Set(keys).size, 26, 'khoa cot phai duy nhat');
+  assert.equal(new Set(keys).size, 22, 'khoa cot phai duy nhat');
   assert.deepEqual(keys, H.COLUMNS.map(c => c.key));
-  assert.deepEqual(leaves.slice(2, 8).map(th => th.textContent.replace(/[▲▼]/g, '').trim()), ['SL', 'DS', 'Giá TB', 'SL khách', 'Lượt mua', 'Top 3 khách']);
+  assert.deepEqual(leaves.slice(2, 7).map(th => th.textContent.replace(/[▲▼]/g, '').trim()), ['SL', 'DS', 'SL khách', 'Lượt mua', 'Top 3 khách']);
   // Moi th co data-no-sort (trang khong tu sap xep tai cho); cot so co nut sap xep cua module, Top 3 thi khong.
   [...thead.querySelectorAll('th')].forEach(th => assert.ok(th.hasAttribute('data-no-sort'), th.outerHTML.slice(0, 80)));
   leaves.forEach(th => {
@@ -212,14 +210,14 @@ test('tieu de 2 tang: 26 cot la (khoa on dinh, duy nhat, khop COLUMNS), 4 nhom c
   });
   // Nhan trong hop Cot hien thi phan biet duoc ky.
   assert.equal(H.COLUMNS.find(c => c.key === 'qty_1_30d').pickerLabel, 'T.này – SL');
-  assert.equal(new Set(H.COLUMNS.map(c => c.pickerLabel)).size, 26);
+  assert.equal(new Set(H.COLUMNS.map(c => c.pickerLabel)).size, 22);
 });
 
-test('do rong mac dinh (may tinh) = bo cuc nguoi dung da luu 04/11/2026; thead ghi dung so, o nhom = tong 6 cot', () => {
+test('do rong mac dinh (may tinh) = bo cuc nguoi dung da luu 04/11/2026; thead ghi dung so, o nhom = tong 5 cot', () => {
   const byKey = Object.fromEntries(H.COLUMNS.map(c => [c.key, c.width]));
   assert.deepEqual([byKey.product_code, byKey.product_name], [86, 188]);
-  assert.deepEqual(['qty', 'revenue', 'avg_price', 'customer_count', 'invoice_count', 'top_customers'].map(m => byKey[m + '_61_90d']), [64, 90, 69, 82, 71, 254]);
-  assert.deepEqual(['qty', 'revenue', 'avg_price', 'customer_count', 'invoice_count', 'top_customers'].map(m => byKey[m + '_31_60d']), [64, 90, 77, 85, 74, 287]);
+  assert.deepEqual(['qty', 'revenue', 'customer_count', 'invoice_count', 'top_customers'].map(m => byKey[m + '_61_90d']), [64, 90, 82, 71, 254]);
+  assert.deepEqual(['qty', 'revenue', 'customer_count', 'invoice_count', 'top_customers'].map(m => byKey[m + '_31_60d']), [64, 90, 85, 74, 287]);
   H.COLUMNS.forEach(c => assert.ok(c.width >= 64, c.key + ' khong nho hon MIN_WIDTH 64 cua table-controls'));
   const thead = pageDoc.getElementById('product90dTable').tHead;
   leafGrid(thead).forEach(th => assert.equal(th.style.width, byKey[th.dataset.columnKey] + 'px', th.dataset.columnKey));
@@ -312,13 +310,13 @@ test('tai lan dau: goi API mac dinh, ve dong, khoang ngay tren tieu de, "Dữ li
     const row = p.texts()[0];
     const at = key => row[H.COLUMNS.findIndex(c => c.key === key)];
     assert.equal(at('product_code'), 'SP1');
-    assert.equal(at('avg_price_1_30d'), '—');
+    assert.ok(!H.COLUMNS.some(c => c.key.startsWith('avg_price_')));
     assert.equal(at('qty_1_30d'), '0');
     assert.equal(at('qty_31_60d'), '-2');
     assert.equal(at('qty_1_90d'), '1');
     assert.equal(at('top_customers_1_30d'), '—');
     assert.deepEqual([...p.w.document.querySelectorAll('th.p90-group .p90-group-range')].map(s => s.textContent),
-      ['06/08–04/09/2026', '05/09–04/10/2026', '05/10–03/11/2026', '06/08–03/11/2026']);
+      ['05/10–03/11/2026', '05/09–04/10/2026', '06/08–04/09/2026', '06/08–03/11/2026']);
     assert.equal(p.$('product90dUpdatedAt').textContent, 'Dữ liệu cập nhật lúc 02:05 04/11/2026');
     assert.equal(p.$('tagProduct90dRows').textContent, '1 mã');
     // Du lieu con moi: mo lai tab khong goi lai API.
@@ -508,7 +506,7 @@ test('thieu reports.products.sales: an muc, khong goi API', async () => {
   } finally { p.dom.window.close(); }
 });
 
-test('table-controls: an cot -> colspan nhom co lai; an het 6 cot -> nhom bien mat; nhan Cot hien thi co ten ky', async () => {
+test('table-controls: an cot -> colspan nhom co lai; an het 5 cot -> nhom bien mat; nhan Cot hien thi co ten ky', async () => {
   const p = createWidget();
   try {
     p.w.TKSProduct90d.load(true);
@@ -517,7 +515,7 @@ test('table-controls: an cot -> colspan nhom co lai; an het 6 cot -> nhom bien m
     const table = p.$('product90dTable');
     p.w.TKSTables.refreshAll();
     const stateOf = () => p.w.TKSTables.getState(table);
-    assert.equal(stateOf().columns.length, 26);
+    assert.equal(stateOf().columns.length, 22);
     assert.equal(stateOf().columns.find(c => c.key === 'qty_1_30d').label, 'T.này – SL');
     p.w.document.querySelector('.tks-columns-button').click();
     const toggle = key => {
@@ -527,11 +525,11 @@ test('table-controls: an cot -> colspan nhom co lai; an het 6 cot -> nhom bien m
     };
     const group = table.querySelector('th.p90-group[data-period="1_30d"]');
     toggle('qty_1_30d');
-    assert.equal(group.colSpan, 5);
+    assert.equal(group.colSpan, 4);
     assert.ok(table.querySelector('th[data-column-key="qty_1_30d"]').classList.contains('tks-column-hidden'));
-    ['revenue_1_30d', 'avg_price_1_30d', 'customer_count_1_30d', 'invoice_count_1_30d', 'top_customers_1_30d'].forEach(toggle);
+    ['revenue_1_30d', 'customer_count_1_30d', 'invoice_count_1_30d', 'top_customers_1_30d'].forEach(toggle);
     assert.ok(group.classList.contains('tks-column-hidden'));
-    assert.equal(table.querySelector('th.p90-group[data-period="1_90d"]').colSpan, 6);
+    assert.equal(table.querySelector('th.p90-group[data-period="1_90d"]').colSpan, 5);
     // Dong du lieu: o cua cot an cung an.
     const index = H.COLUMNS.findIndex(c => c.key === 'qty_1_30d');
     assert.ok(p.$('product90dRows').rows[0].cells[index].classList.contains('tks-column-hidden'));

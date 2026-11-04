@@ -376,8 +376,8 @@ const STOCKOUT_30D_COLUMNS = [
   aggregateColumn('periods', 'Các đợt đứt hàng', undefined, 'Từng đợt đứt hàng, mỗi đợt một dòng (từ ngày -> đến ngày).', { wrapText: true })
 ];
 
-// Hang hoa 90 ngay (muc 4 tab Hang hoa) — doc thang bang tinh san product_90d_report (02:00), CUNG 26 cot va thu tu voi
-// man hinh (public/product-90d-report.js COLUMNS): Ma, Ten, roi 4 ky T.trc nua | T.trc | T.nay | 90 ngay x 6 chi so.
+// Hang hoa 90 ngay (muc 4 tab Hang hoa) — doc thang bang tinh san product_90d_report (02:00), CUNG 22 cot va thu tu voi
+// man hinh (public/product-90d-report.js COLUMNS): Ma, Ten, roi 4 ky T.nay | T.trc | T.trc nua | 90 ngay x 5 chi so.
 // Nhan tinh (hop thoai chon truong) = "T.nay – SL"; file xuat doi sang nhan co ngay that cua ky, vd "T.nay (05/10–03/11) – SL"
 // (xem product90dColumnsWithDates). Khoa cot = ten cot DB (trung whitelist sap xep cua repository).
 const PRODUCT_90D_PERIOD_HINTS = {
@@ -389,7 +389,6 @@ const PRODUCT_90D_PERIOD_HINTS = {
 const PRODUCT_90D_METRICS = [
   { metric: 'qty', label: 'SL', type: 'number', describe: 'Tổng số lượng bán trừ trả hàng' },
   { metric: 'revenue', label: 'DS', type: 'number', describe: 'Doanh số bán trừ trả hàng (VNĐ)' },
-  { metric: 'avg_price', label: 'Giá TB', type: 'number', describe: 'Giá bán trung bình = doanh số chia số lượng; trống khi số lượng bằng 0' },
   { metric: 'customer_count', label: 'SL khách', type: 'number', describe: 'Số khách khác nhau đã mua' },
   { metric: 'invoice_count', label: 'Lượt mua', type: 'number', describe: 'Số hóa đơn có mã này' },
   { metric: 'top_customers', label: 'Top 3 khách', type: 'text', describe: 'Tối đa 3 khách mua nhiều nhất, mỗi khách 1 dòng dạng tên|tỷ trọng doanh số|doanh số (không liệt kê khách có số lượng bằng 0)' }
@@ -399,7 +398,7 @@ const PRODUCT_90D_METRICS = [
 const PRODUCT_90D_COLUMNS = [
   aggregateColumn('product_code', 'Mã hàng', 'text', 'Mã hàng (gộp Hà Nội + Sài Gòn theo mã).'),
   aggregateColumn('product_name', 'Tên hàng', 'text', 'Tên hàng.'),
-  ...product90dReportRepository.PERIODS.flatMap(period => PRODUCT_90D_METRICS.map(m => ({
+  ...product90dScreen.PERIODS.flatMap(period => PRODUCT_90D_METRICS.map(m => ({
     ...aggregateColumn(`${m.metric}_${period.key}`, `${period.label} – ${m.label}`, m.type,
       `${m.describe}, ${PRODUCT_90D_PERIOD_HINTS[period.key]}.`, { wrapText: m.metric === 'top_customers' }),
     // Moi so cua bao cao HIEN THI la so nguyen (Excel dinh dang #,##0, HTML lam tron nua ra xa 0); gia tri o/du lieu

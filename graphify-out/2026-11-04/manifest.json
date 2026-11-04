@@ -222,9 +222,9 @@
     "semantic_hash": ""
   },
   "server/dashboard/exportService.js": {
-    "mtime": 1793776399.540509,
-    "seen": 1793777757.1820421,
-    "ast_hash": "44ffda8fae09183b05ba4e7e7eb2f373",
+    "mtime": 1793782167.2522912,
+    "seen": 1793782263.5553727,
+    "ast_hash": "d02cc15dc607565cdead93b18da8976b",
     "semantic_hash": ""
   },
   "server/dashboard/exportService.test.js": {
@@ -654,9 +654,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1793777717.0220628,
-    "seen": 1793777757.1820421,
-    "ast_hash": "323993701360769a88bb0cc2386cf3fa",
+    "mtime": 1793779444.597561,
+    "seen": 1793779464.7975297,
+    "ast_hash": "264870e2ed032c457d3c1e47788159c8",
     "semantic_hash": ""
   },
   "design-system/tks-dashboard/MASTER.md": {
@@ -666,15 +666,15 @@
     "semantic_hash": ""
   },
   "docs/01-brd/BRD_Dashboard_GoogleSheets.md": {
-    "mtime": 1793777264.923476,
-    "seen": 1793777757.1820421,
-    "ast_hash": "b748ab0fab51dc954f198adb71c45f2c",
+    "mtime": 1793779444.5995545,
+    "seen": 1793779464.7975297,
+    "ast_hash": "61c27565ae3ecb23b4f5ae754c45505f",
     "semantic_hash": ""
   },
   "docs/02-srs/SRS_Dashboard_GoogleSheets.md": {
-    "mtime": 1793777655.7233326,
-    "seen": 1793777757.1820421,
-    "ast_hash": "2c55343b85de56ca648477fcaadd5692",
+    "mtime": 1793779444.6033754,
+    "seen": 1793779464.7975297,
+    "ast_hash": "aec253fd215a53a4f171869066ef13e8",
     "semantic_hash": ""
   },
   "docs/03-process/BPMN_Dashboard_GoogleSheets.md": {
@@ -684,9 +684,9 @@
     "semantic_hash": ""
   },
   "docs/04-planning/implementation_plan.md": {
-    "mtime": 1793777663.8204372,
-    "seen": 1793777757.1820421,
-    "ast_hash": "b4865ec00c304dfd2809ee1bdee6db20",
+    "mtime": 1793779444.6066735,
+    "seen": 1793779464.7975297,
+    "ast_hash": "0c299367f70652ff87d6d434d2c061ac",
     "semantic_hash": ""
   },
   "docs/superpowers/plans/2026-08-13-dashboard-result-cache.md": {
@@ -786,9 +786,9 @@
     "semantic_hash": "58e700daf0c14819a97499bd94f6f2e1"
   },
   "server/README.md": {
-    "mtime": 1793777717.0115876,
-    "seen": 1793777757.1820421,
-    "ast_hash": "7c37115d400bb62d15c6cb061f3987e9",
+    "mtime": 1793779444.6121638,
+    "seen": 1793779464.7975297,
+    "ast_hash": "404366aecd357d88965bb9739786a3b3",
     "semantic_hash": ""
   },
   "server/kiotviet/API_ENDPOINTS.md": {
@@ -816,9 +816,9 @@
     "semantic_hash": ""
   },
   "server/public/index.html": {
-    "mtime": 1793777469.8385854,
-    "seen": 1793777757.1820421,
-    "ast_hash": "c754be4042421b11b081bf965d5bcc3d",
+    "mtime": 1793782167.249796,
+    "seen": 1793782263.5571187,
+    "ast_hash": "8a87fc39f48e70e0986b0d791f18c41f",
     "semantic_hash": ""
   },
   "server/public/login/index.html": {
@@ -1386,9 +1386,9 @@
     "semantic_hash": ""
   },
   "server/db/SCHEMA.md": {
-    "mtime": 1793777717.0190723,
-    "seen": 1793777757.1820421,
-    "ast_hash": "cb5b6907a1a0268a23cd6c799b8a3181",
+    "mtime": 1793779444.614174,
+    "seen": 1793779464.7975297,
+    "ast_hash": "373b31ec85ee25bd78f8b90cf50d88f5",
     "semantic_hash": ""
   },
   "server/auth/appUsersRepository.js": {
@@ -1860,9 +1860,9 @@
     "semantic_hash": ""
   },
   "server/dashboard/exportHtmlReport.js": {
-    "mtime": 1793777210.257295,
-    "seen": 1793777757.1820421,
-    "ast_hash": "ba1d13e2ba127368ddf5c163e315a6b9",
+    "mtime": 1793778215.8994932,
+    "seen": 1793779464.795012,
+    "ast_hash": "9926389b3e593294e0beb7be4905215e",
     "semantic_hash": ""
   },
   "server/dashboard/productReportRepository.js": {
@@ -2766,9 +2766,9 @@
     "semantic_hash": ""
   },
   "server/public/shared/table-controls.js": {
-    "mtime": 1793345076.88365,
-    "seen": 1793695644.2759902,
-    "ast_hash": "cd936b87276d725a7611b17de4094ddb",
+    "mtime": 1793779343.831887,
+    "seen": 1793779464.796028,
+    "ast_hash": "c47434338683dcd56d145ebc6c7f43f4",
     "semantic_hash": ""
   },
   "server/public/telegram/leave-reject.js": {
@@ -3072,9 +3072,9 @@
     "semantic_hash": ""
   },
   "server/test/frontend/table-controls.test.js": {
-    "mtime": 1793008797.0760975,
-    "seen": 1793695644.2759902,
-    "ast_hash": "24960b89a11b5612f4a3353886ba1a82",
+    "mtime": 1793779344.723284,
+    "seen": 1793779464.7975297,
+    "ast_hash": "f8c8149fa5cf509848d331a8cf4d044b",
     "semantic_hash": ""
   },
   "server/test/frontend/table-time-sort.test.js": {
@@ -3306,9 +3306,9 @@
     "semantic_hash": ""
   },
   "CURRENT.md": {
-    "mtime": 1793777717.0286112,
-    "seen": 1793777757.1820421,
-    "ast_hash": "695c92bcd2be1979643d9ac88506821f",
+    "mtime": 1793779695.486613,
+    "seen": 1793782263.5571187,
+    "ast_hash": "773dbcba8a98c0cecd059230150ad944",
     "semantic_hash": ""
   },
   "MEMORY.md": {
@@ -6414,69 +6414,69 @@
     "semantic_hash": ""
   },
   "server/public/stocktake/stocktake.js": {
-    "mtime": 1793697998.5662186,
-    "seen": 1793702232.4190974,
-    "ast_hash": "768e0f73e555da63ac6940fd219f8f3e",
+    "mtime": 1793779343.991694,
+    "seen": 1793779464.796028,
+    "ast_hash": "038b3d2d875ea9c74672aa73665177c0",
     "semantic_hash": ""
   },
   "server/public/stocktake/stocktakePaste.js": {
-    "mtime": 1793697998.8027794,
-    "seen": 1793702232.4190974,
-    "ast_hash": "2ef4e6897a44a6c88e84a84286feafef",
+    "mtime": 1793779344.1163702,
+    "seen": 1793779464.796028,
+    "ast_hash": "e435bbb6963c2afa3aada45251d30bc3",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeCompute.js": {
-    "mtime": 1793676755.2903836,
-    "seen": 1793695644.2759902,
-    "ast_hash": "4253605cee2222a19c569456bc20e5c2",
+    "mtime": 1793779344.2867203,
+    "seen": 1793779464.796028,
+    "ast_hash": "3cd79f8bf30230a04ec872e4ed04fa28",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeCompute.test.js": {
-    "mtime": 1793676755.3205717,
-    "seen": 1793695644.2759902,
-    "ast_hash": "6f9e9ca1ba030bfec6c51081626fd92d",
+    "mtime": 1793779344.3265615,
+    "seen": 1793779464.796028,
+    "ast_hash": "ebcfeff6a33b737075d8b5ccb0e23d42",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeEvents.js": {
-    "mtime": 1793676755.348531,
-    "seen": 1793695644.2759902,
-    "ast_hash": "c8b3794e5ff6bb166d8671da46adee39",
+    "mtime": 1793779344.364166,
+    "seen": 1793779464.796028,
+    "ast_hash": "299596ac20152c27d8912f13ac594dfd",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeExport.js": {
-    "mtime": 1793676755.3789852,
-    "seen": 1793695644.2759902,
-    "ast_hash": "243537d5a6100e1bf5e16c843dc496de",
+    "mtime": 1793779344.400473,
+    "seen": 1793779464.796028,
+    "ast_hash": "44cd1bd8bf50228744bd12342ba2f9cf",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakePaste.test.js": {
-    "mtime": 1793698000.0862358,
-    "seen": 1793702232.420096,
-    "ast_hash": "9c34c727bb391999271c5984fbc10358",
+    "mtime": 1793779344.4718935,
+    "seen": 1793779464.796028,
+    "ast_hash": "102dedd02c44a17d7b33b31c78419a8d",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeRoutes.js": {
-    "mtime": 1793698000.211003,
-    "seen": 1793702232.420096,
-    "ast_hash": "db5a03338aceb21d7d9bdb4be193ef34",
+    "mtime": 1793779344.5074427,
+    "seen": 1793779464.796028,
+    "ast_hash": "ec2faa5c12bf8edf297acda1dfe22826",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeRoutes.test.js": {
-    "mtime": 1793698000.333167,
-    "seen": 1793702232.420096,
-    "ast_hash": "f34ef7ad98c0c23fbdcc02339058b59e",
+    "mtime": 1793779344.5431454,
+    "seen": 1793779464.796028,
+    "ast_hash": "5e4975e59318b72df3c3a6c7abc589f4",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeService.js": {
-    "mtime": 1793698000.4429271,
-    "seen": 1793702232.420096,
-    "ast_hash": "e9841e970e282a78bd8dacda91de620a",
+    "mtime": 1793779344.614405,
+    "seen": 1793779464.796028,
+    "ast_hash": "58efaa67b726be607ce7202c4c14104f",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeService.test.js": {
-    "mtime": 1793698000.5519211,
-    "seen": 1793702232.420096,
-    "ast_hash": "34e7db52f1b682b76882ad1f4285b65b",
+    "mtime": 1793779344.6497815,
+    "seen": 1793779464.796028,
+    "ast_hash": "1ca8ba7014e9ed36e4d39ebd0d517489",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeSheetImport.js": {
@@ -6516,21 +6516,21 @@
     "semantic_hash": ""
   },
   "server/public/stocktake/index.html": {
-    "mtime": 1793697998.3503692,
-    "seen": 1793702232.4229505,
-    "ast_hash": "e1b37ff21ec48880f3d7d1be1c9426f1",
+    "mtime": 1793779343.8839698,
+    "seen": 1793779464.7975297,
+    "ast_hash": "a5dec2af972b92486e821d4206ab4271",
     "semantic_hash": ""
   },
   "server/public/stocktake/stocktakeGrid.js": {
-    "mtime": 1793697998.6936104,
-    "seen": 1793702232.4190974,
-    "ast_hash": "276f8663c3cacf5ec439c3af5eb7dfb9",
+    "mtime": 1793779344.056898,
+    "seen": 1793779464.796028,
+    "ast_hash": "af1c7cd7480a971d06da7c0a99c6617f",
     "semantic_hash": ""
   },
   "server/public/stocktake/stocktakeSearch.js": {
-    "mtime": 1793676755.0722954,
-    "seen": 1793695644.2759902,
-    "ast_hash": "a42323fc0a9fe2d05f0fedcedf55a631",
+    "mtime": 1793779344.176409,
+    "seen": 1793779464.796028,
+    "ast_hash": "e5faab502344103f56d420711d832f3d",
     "semantic_hash": ""
   },
   "server/public/vendor/fuse.min.js": {
@@ -6540,15 +6540,15 @@
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeGrid.test.js": {
-    "mtime": 1793697999.9773452,
-    "seen": 1793702232.420096,
-    "ast_hash": "f16ae99292764076994c2542b184660d",
+    "mtime": 1793779344.4347696,
+    "seen": 1793779464.796028,
+    "ast_hash": "efa78fdc84b406cb61044e986f510f15",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeSearch.test.js": {
-    "mtime": 1793676755.526438,
-    "seen": 1793695644.2759902,
-    "ast_hash": "a2eb086aabcea691dc1455efa672a2f6",
+    "mtime": 1793779344.5786831,
+    "seen": 1793779464.796028,
+    "ast_hash": "8c80cb5e697befbb678ba57ad002ee05",
     "semantic_hash": ""
   },
   "docs/superpowers/plans/2026-11-03-stocktake-inline-edit-search.md": {
@@ -6768,21 +6768,21 @@
     "semantic_hash": ""
   },
   "server/public/product-90d-report.js": {
-    "mtime": 1793776399.1322255,
-    "seen": 1793777757.1820421,
-    "ast_hash": "945834b85543be0088c48921c8477164",
+    "mtime": 1793782167.2454534,
+    "seen": 1793782263.5553727,
+    "ast_hash": "0df0500511ff4dccc37a6db541ec088d",
     "semantic_hash": ""
   },
   "server/test/frontend/product-90d-report.test.js": {
-    "mtime": 1793776852.497568,
-    "seen": 1793777757.1820421,
-    "ast_hash": "6e85b1d10a7dacf4528b207fe79bc880",
+    "mtime": 1793782199.2077813,
+    "seen": 1793782263.5571187,
+    "ast_hash": "22eadd9a270dccaf23c9c3015396d349",
     "semantic_hash": ""
   },
   "server/dashboard/exportProduct90d.test.js": {
-    "mtime": 1793777220.4738169,
-    "seen": 1793777757.1820421,
-    "ast_hash": "49739971216b8717dfd75acf166a2ff4",
+    "mtime": 1793782241.3138356,
+    "seen": 1793782263.5553727,
+    "ast_hash": "9e756f096ef9fcf9813570cc8fcee005",
     "semantic_hash": ""
   },
   "server/db/migrations/0107_stock_out_order_events.sql": {
@@ -6795,6 +6795,30 @@
     "mtime": 1793777572.0162392,
     "seen": 1793777757.1820421,
     "ast_hash": "facd1e1b697519a5056e634eba6d90f1",
+    "semantic_hash": ""
+  },
+  "server/public/stocktake/stocktakeStatus.js": {
+    "mtime": 1793779344.2337458,
+    "seen": 1793779464.796028,
+    "ast_hash": "fcbb2186a70f1c843c1d2935fd0a89a8",
+    "semantic_hash": ""
+  },
+  "server/stocktake/stocktakeStatus.test.js": {
+    "mtime": 1793779344.6856413,
+    "seen": 1793779464.796028,
+    "ast_hash": "9a384063432c7b8a982c0ff7c7ae0745",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-11-03-stocktake-status-dropdown-search.md": {
+    "mtime": 1793779343.5986414,
+    "seen": 1793779464.7975297,
+    "ast_hash": "1876fd99a65a0a4a9da2dab9f914be49",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-11-03-stocktake-status-dropdown-search-design.md": {
+    "mtime": 1793779343.658359,
+    "seen": 1793779464.7975297,
+    "ast_hash": "5c4f62ac72995153611661af69810186",
     "semantic_hash": ""
   }
 }
