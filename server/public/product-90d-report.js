@@ -23,14 +23,25 @@
     { metric: 'invoice_count', label: 'Lượt mua', width: 96, mobile: 88, sortable: true },
     { metric: 'top_customers', label: 'Top 3 khách', width: 330, mobile: 260, sortable: false }
   ];
+  // Độ rộng mặc định trên máy tính (tài khoản chưa lưu cấu hình) = bố cục người dùng đã chỉnh và lưu ngày 04/11/2026
+  // (user_table_prefs, bảng dashboard-table-product-90d); cột chưa từng chỉnh lấy theo cùng mẫu của các kỳ khác.
+  // thead trong index.html phải ghi đúng các số này (test khóa khớp).
+  const DESKTOP_WIDTHS = {
+    product_code: 86, product_name: 188,
+    qty_61_90d: 64, revenue_61_90d: 90, avg_price_61_90d: 69, customer_count_61_90d: 82, invoice_count_61_90d: 71, top_customers_61_90d: 254,
+    qty_31_60d: 64, revenue_31_60d: 90, avg_price_31_60d: 77, customer_count_31_60d: 85, invoice_count_31_60d: 74, top_customers_31_60d: 287,
+    qty_1_30d: 66, revenue_1_30d: 96, avg_price_1_30d: 72, customer_count_1_30d: 85, invoice_count_1_30d: 74, top_customers_1_30d: 297,
+    qty_1_90d: 64, revenue_1_90d: 92, avg_price_1_90d: 72, customer_count_1_90d: 87, invoice_count_1_90d: 85, top_customers_1_90d: 280
+  };
   const COLUMNS = [
-    { key: 'product_code', label: 'Mã hàng', pickerLabel: 'Mã hàng', width: 110, mobile: 82, sortable: true, type: 'code' },
-    { key: 'product_name', label: 'Tên hàng', pickerLabel: 'Tên hàng', width: 240, mobile: 130, sortable: true, type: 'name' }
+    { key: 'product_code', label: 'Mã hàng', pickerLabel: 'Mã hàng', width: DESKTOP_WIDTHS.product_code, mobile: 82, sortable: true, type: 'code' },
+    { key: 'product_name', label: 'Tên hàng', pickerLabel: 'Tên hàng', width: DESKTOP_WIDTHS.product_name, mobile: 130, sortable: true, type: 'name' }
   ].concat(PERIODS.reduce(function (list, period) {
     return list.concat(METRICS.map(function (m, index) {
+      const key = m.metric + '_' + period.key;
       return {
-        key: m.metric + '_' + period.key, label: m.label, pickerLabel: period.label + ' – ' + m.label,
-        width: m.width, mobile: m.mobile, sortable: m.sortable, period: period.key, first: index === 0,
+        key: key, label: m.label, pickerLabel: period.label + ' – ' + m.label,
+        width: DESKTOP_WIDTHS[key] || m.width, mobile: m.mobile, sortable: m.sortable, period: period.key, first: index === 0,
         type: m.metric === 'top_customers' ? 'top' : 'number'
       };
     }));
