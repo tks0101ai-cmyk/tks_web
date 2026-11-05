@@ -159,6 +159,8 @@
   color:var(--amber);background:color-mix(in srgb,var(--amber) 12%,transparent);border:1px solid color-mix(in srgb,var(--amber) 40%,var(--border))}
 .st-cancel-banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;margin:0 14px 10px;padding:8px 12px;
   border-radius:8px;font-size:13px;color:var(--red);background:color-mix(in srgb,var(--red) 10%,transparent);border:1px solid color-mix(in srgb,var(--red) 40%,var(--border))}
+.st-orders-note{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px}
+.st-orders-note .locations-columns-button{min-height:28px;padding-top:2px;padding-bottom:2px}
 .st-cancel-banner[hidden],.st-previous-note[hidden]{display:none}
 .st-dependents{font-size:13px;color:var(--muted);margin-bottom:10px}
 .st-dependents ul{margin:4px 0 0;padding-left:18px}
