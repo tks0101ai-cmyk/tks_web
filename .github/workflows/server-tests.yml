@@ -2,70 +2,86 @@ name: Server tests
 
 on:
   push:
-    branches:
-      - main
-      - feat/**
+    branches: [main]
   pull_request:
+  schedule:
+    # Full regression daily at 02:00 Vietnam time.
+    - cron: '0 19 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
-# config.js bắt buộc có hai biến này khi nạp module; test không gọi Google/JWT thật.
+concurrency:
+  group: server-tests-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
 env:
   GOOGLE_SERVICE_ACCOUNT_JSON: '{}'
   JWT_SECRET: ci-test-secret
 
 jobs:
-  hr-account-decoupling:
-    name: HR account decoupling
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: server
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-
-      - name: Use Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: server/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run HR account and leave tests
-        run: >-
-          node --test
-          auth/appUsersRepository.test.js
-          auth/effectiveUserResolver.test.js
-          db/accountHrDecouplingMigration.test.js
-          db/accountLeaveSchedulesMigration.test.js
-          db/accountLeaveTriggerMigration.test.js
-          auth/employeeRegistrationService.test.js
-          auth/adminTelegram.test.js
-          auth/profileTelegram.test.js
-          hr/hrLeaveRoutes.test.js
-          hr/hrLeaveDeadlineRoutes.test.js
-          hr/hrLeaveDeadlineMigration.test.js
-          test/frontend/hr-leave-deadlines.test.js
-          hr/hrEmployeeAdminService.test.js
-          hr/hrLeaveSelfService.test.js
-          hr/hrLeaveWorkSchedulesRepository.test.js
-
   full-server-suite:
+    # Retain the check name used by branch protection; summary reports actual scope.
     name: Full server suite
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: server
+    timeout-minutes: 30
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select affected tests
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const { execFileSync } = require('node:child_process');
+          function selectScope(files) {
+            const scopes = new Set();
+            for (const file of files) {
+              if (/^(docs\/|graphify-out\/)|\.md$/i.test(file)) continue;
+              if (/^server\/(purchaseOrders\/|public\/thu-mua\/|public\/shared\/purchase-[^/]+\.(?:js|css)$)/.test(file)) {
+                scopes.add('purchase');
+              } else if (/^server\/(shipment\/|public\/shipment\/|test\/frontend\/(?:order-lifecycle|lifecycle-pick)[^/]*\.test\.js$)/.test(file)) {
+                scopes.add('lifecycle');
+              } else {
+                return 'full'; // Shared code, migrations, infrastructure and unmapped modules.
+              }
+            }
+            return [...scopes].sort().join(',') || 'none';
+          }
+          const { EVENT_NAME, BASE_SHA, HEAD_SHA } = process.env;
+          let scope = 'full';
+          if (['pull_request', 'push'].includes(EVENT_NAME) && BASE_SHA && !/^0+$/.test(BASE_SHA)) {
+            try {
+              const range = EVENT_NAME === 'pull_request' ? `${BASE_SHA}...${HEAD_SHA}` : `${BASE_SHA}..${HEAD_SHA}`;
+              const files = execFileSync('git', ['diff', '--name-only', '-z', range], { encoding: 'utf8' }).split('\0').filter(Boolean);
+              scope = selectScope(files);
+            } catch (error) {
+              console.warn(`Cannot determine diff; running full suite: ${error.message}`);
+            }
+          }
+          const tracked = execFileSync('git', ['ls-files', '-z', 'server'], { encoding: 'utf8' }).split('\0');
+          const tests = tracked.filter(file => /\.test\.(?:js|cjs|mjs)$/.test(file) && (
+            (scope.includes('purchase') && /^server\/(purchaseOrders\/|productContainers\/|db\/ensurePurchaseSchema\.test\.js$|public\/shared\/purchase-|test\/frontend\/expected-arrivals\.test\.js$)/.test(file)) ||
+            (scope.includes('lifecycle') && /^server\/(shipment\/|test\/frontend\/(?:order-lifecycle|lifecycle-pick))/.test(file))
+          )).map(file => file.slice('server/'.length));
+          if (scope !== 'none' && scope !== 'full' && !tests.length) throw new Error('Selected module has no tests');
+          fs.writeFileSync('server/.ci-selected-tests.json', JSON.stringify(tests));
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `scope=${scope}\n`);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Test scope: ${scope}\n\n${scope === 'full' ? 'Full regression suite.' : `${tests.length} selected test files. Shared or unknown paths always run full regression.`}\n`);
+          console.log(`Test scope: ${scope}; selected files: ${tests.length}`);
+          NODE
 
       - name: Use Node.js 22
+        if: steps.scope.outputs.scope != 'none'
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -73,7 +89,21 @@ jobs:
           cache-dependency-path: server/package-lock.json
 
       - name: Install dependencies
+        if: steps.scope.outputs.scope != 'none'
+        working-directory: server
         run: npm ci
 
-      - name: Run all server tests
-        run: npm test
+      - name: Run selected tests
+        if: steps.scope.outputs.scope != 'none'
+        working-directory: server
+        env:
+          TEST_SCOPE: ${{ steps.scope.outputs.scope }}
+        run: |
+          node <<'NODE'
+          const { spawnSync } = require('node:child_process');
+          const tests = require('./.ci-selected-tests.json');
+          const args = ['--max-old-space-size=4096', '--test', ...(process.env.TEST_SCOPE === 'full' ? [] : tests)];
+          const result = spawnSync(process.execPath, args, { stdio: 'inherit' });
+          if (result.error) throw result.error;
+          process.exit(result.status ?? 1);
+          NODE
