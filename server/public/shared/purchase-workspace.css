@@ -1,7 +1,7 @@
 /* Purchase workspace: compact operational UI, shared by prototype and live page. */
 :root{--purchase-blue:#75b5ff;--purchase-teal:#63d7c7;--purchase-violet:#c1adff;--purchase-amber:#f2c46d;--purchase-red:#ffa1a8;--purchase-line:#334155;--purchase-tint:rgba(117,181,255,.07)}
 :root[data-theme="light"]{--purchase-blue:#215fbb;--purchase-teal:#087b70;--purchase-violet:#7147b6;--purchase-amber:#945d09;--purchase-red:#bf3546;--purchase-line:#dce3eb;--purchase-tint:rgba(33,95,187,.045)}
-body{font-family:"Segoe UI",Arial,sans-serif;line-height:1.4}
+body{font-family:var(--font-body,"Segoe UI",Arial,sans-serif);line-height:1.4}
 .panel,details:has(#containerTable){border:1px solid var(--border,var(--purchase-line));border-radius:7px;background:var(--panel);box-shadow:none}
 .panel-head,.toolbar{gap:6px;align-items:center}.panel-head{padding:10px 12px;border-bottom:1px solid var(--border,var(--purchase-line));min-height:44px}.panel-head h2,.toolbar h2{font-size:13px;font-weight:650;letter-spacing:.1px}.panel-head-actions{gap:5px;align-items:center}
 button.btn-primary,button.btn-sec,button.ghost,.toolbar>button,.panel-head button{font-size:11px;line-height:1.3;min-height:28px;padding:5px 9px;border-radius:4px;box-shadow:none;white-space:nowrap;align-self:center}

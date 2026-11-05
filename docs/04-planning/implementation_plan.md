@@ -42,7 +42,7 @@
 ## Bổ sung 15/10/2026 — Hàng dự kiến trong Báo cáo hàng hóa
 
 - Kế hoạch chi tiết và prompt triển khai: [plan-product-report-containers.md](../../tasks/plan-product-report-containers.md).
-- Làm mới tăng dần báo cáo hàng hóa (16/10/2026, cùng cờ, migration 0055): `productReportIncremental.js` ghi khác biệt `product_report` + `product_report_customers` sau rollup nóng, phần nặng chỉ chạy khi có chứng từ mới; `productReportRepository.createProductReportReader` cache theo `product_report_state.version`; `/api/product-report/containers/meta` trả `reportVersion`.
+- Làm mới tăng dần báo cáo hàng hóa (16/10/2026, cùng cờ, migration 0055): `productReportIncremental.js` ghi khác biệt `product_report` + `product_report_customers` sau rollup nóng, phần nặng chỉ chạy khi có chứng từ mới; `productReportRepository.createProductReportReader` cache theo `product_report_state.version`; `/api/product-report/containers/meta` trả `reportVersion`. Từ 05/11/2026, nhiều người đọc cùng lúc dùng chung một lượt tải từ DB, còn `compose` vẫn chạy riêng cho từng người để không lẫn việc ẩn cột theo quyền.
 - Làm mới tăng dần doanh thu theo khách (16/10/2026, nhánh `feat/realtime-reports`, cờ `REPORTS_INCREMENTAL_ENABLED`, migration 0054): `customerInvoiceLinesRefresh.refreshCustomerInvoiceLinesIncremental` nối vào `scheduler.runFastGroupAndRollup` trước rollup/SSE; kế hoạch và rủi ro ở `docs/superpowers/specs/2026-10-16-realtime-customer-product-reports-design.md`.
 - Module `server/productContainers/` tách parser, repository, đồng bộ chỉ đọc 7 sheet TKS2 ĐẶT CONT; snapshot 10 phút độc lập KiotViet/doanh số đêm, ghi khác biệt (version chỉ đổi khi nội dung đổi, chốt an toàn khi số dòng giảm >30%), khóa PostgreSQL chống chạy chồng và công bố đủ 7 sheet trong transaction. Lỗi giữ snapshot trước; trạng thái 4/5 vẫn lưu và được tra cứu bởi mọi tài khoản có quyền báo cáo.
 - API tổng hợp thêm hai số lượng và `containerSync`; thêm `/api/product-report/containers?code=` và `/api/product-report/containers/meta`. Quyền riêng `reports.overview.containers.full` phụ thuộc Tổng quan, mặc định Quản lý, override từng tài khoản; giới hạn dòng/cột tại backend.
@@ -431,6 +431,20 @@ Triển khai: migrate 0108 → backend/worker mới → tính lại tăng dần 
 
 - `public/stocktake/stocktakeGrid.js`: `waitForConfirm` trả lời theo sự kiện `close` của `<dialog>`, có test. `stocktake.js` dùng hàm này cho mọi hộp xác nhận.
 - `public/stocktake/index.html`: menu `#stActionsMenu` chứa Đóng đợt / Hủy đợt. `.st-sessions` đặt `overflow:visible` để menu không bị cắt.
+
+## 05/11/2026 — Kiểm kê: gọn hộp chi tiết, đủ sản phẩm, xuất thống kê
+
+- `stocktakeCompute.buildBoard`: thêm hàng `active === true`. `stocktakeStatus.isIdle`: mã 0/0 chưa có trạng thái không tính vào Chưa XL.
+- `stocktakeExport`: `checkSpec`, `createStatsWorkbook`. `stocktakeService.getLineExport`, route `export-lines`.
+- `public/stocktake/`: bỏ form trong hộp chi tiết, `lineInput` lưu khi rời ô, `saveLine` xếp hàng và nhớ `version`, `Grid.sortLines`, giữ ô đang gõ khi dựng lại bảng.
+- Thiết kế: `docs/superpowers/specs/2026-11-05-stocktake-detail-products-stats-design.md`, kế hoạch: `docs/superpowers/plans/2026-11-05-stocktake-detail-products-stats.md`.
+
+## 05/11/2026 — Kiểm kê: đóng đợt vẫn sửa được, tăng tốc
+
+- Migration `0114`: `lines_frozen_at`, `stocktake_session_lines`. `stocktakeService`: `loadFrozenInputs`, `syncResults`, `openSessionForWrite(..., { allowFrozen })`.
+- `stocktakeExport`: `numberFormat`, cột Đơn. `TEAM_NAME_MATCH_SQL`, `isTeamOrder` theo từ `team`.
+- Tốc độ: `batchDetails` cho `orders`, sắp dòng ngoài giao dịch ở nút cập nhật, cache `counterpart:<id>` 60 giây, `Grid.trailingThrottle`, `startTiming` cho `/api/stocktake`.
+- Thiết kế: `docs/superpowers/specs/2026-11-05-stocktake-close-editable-speed-design.md`, kế hoạch: `docs/superpowers/plans/2026-11-05-stocktake-close-editable-speed.md`.
 
 Cập nhật gần nhất: 05/11/2026.
 

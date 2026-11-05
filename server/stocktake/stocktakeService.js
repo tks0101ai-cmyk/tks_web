@@ -101,10 +101,10 @@ function quantityOf(value, field = 'quantity') {
 
 const versionOf = value => (value === undefined || value === null || value === '' ? null : Number(value));
 
-// Khach dem kiem ke ten "TEAM <so> ..." (khong gom "Team Loi", "KH Team Hang Loi").
-const TEAM_NAME_MATCH_SQL = `btrim(COALESCE(NULLIF(c.name, ''), o.raw->>'customerName', '')) ~* '^TEAM[[:space:]]*[0-9]'`;
+// Khach dem kiem ke: trong ten co tu "team" (TEAM 1, TEAM1, KH Team Hang Loi), khong tinh chu nam trong tu khac (Steam).
+const TEAM_NAME_MATCH_SQL = `btrim(COALESCE(NULLIF(c.name, ''), o.raw->>'customerName', '')) ~* '(^|[^[:alpha:]])team([^[:alpha:]]|$)'`;
 
-// Don dat hang cua khach TEAM + so, ngay dat trong [date_from, date_to].
+// Don dat hang cua khach co tu team, ngay dat trong [date_from, date_to].
 // orders.order_date luu gio VN nhung gan nhan UTC nen doi bang 'UTC'; dieu kien khoang dung duoc chi muc (branch, order_date).
 // So luong lay tu raw (co the le) truoc cot INTEGER.
 const TEAM_LINES_SQL = `
@@ -143,14 +143,27 @@ const ORDER_STATUS_SQL = `
   ) t`;
 
 const PRODUCTS_SQL = `
-  SELECT p.code, p.name,
+  SELECT p.code, p.name, p.is_active IS NOT FALSE AS active,
          COALESCE((SELECT SUM((inv->>'onHand')::numeric) FROM jsonb_array_elements(COALESCE(p.raw->'inventories', '[]'::jsonb)) inv), 0)::float8 AS stock,
          COALESCE((SELECT AVG((inv->>'cost')::numeric) FROM jsonb_array_elements(COALESCE(p.raw->'inventories', '[]'::jsonb)) inv), 0)::float8 AS cost
   FROM products p
-  WHERE p.branch = $1`;
+  WHERE p.branch = $1 AND p.code NOT LIKE '%#%'`;
+
+// Ket qua cua dot khac de lay cot KK truoc / Kiem SG-HN. Ma 0/0 cua dot web (hien du hang tu 05/11/2026) coi nhu khong co
+// trong dot do, de cot van de trong thay vi hien 0; dot nap tu sheet giu nguyen so tren sheet.
+const COMPARE_RESULTS_SQL = `
+  SELECT r.product_code, r.diff_qty::float8 AS diff_qty
+  FROM stocktake_session_results r
+  JOIN stocktake_sessions s ON s.id = r.session_id
+  WHERE r.session_id = $1 AND (s.source <> 'web' OR r.counted <> 0 OR r.stock <> 0)`;
+
+// Dong don da chot luc dong dot (cung ten cot voi TEAM_LINES_SQL).
+const FROZEN_LINES_SQL = `
+  SELECT order_id, line_no, order_code, order_status, team, zone, spec, product_code, product_name, quantity::float8 AS quantity
+  FROM stocktake_session_lines WHERE session_id = $1 ORDER BY order_id, line_no`;
 
 const SESSION_COLUMNS = `id, branch, name, date_from, date_to, status, source, version, counterpart_session_id, created_by_name, created_at, closed_by_name, closed_at,
-  previous_session_id, cancelled_at, cancelled_by_name, cancel_reason, reloaded_at, reloaded_by_name`;
+  previous_session_id, cancelled_at, cancelled_by_name, cancel_reason, reloaded_at, reloaded_by_name, lines_frozen_at`;
 const MAX_CANCEL_REASON = 500;
 const EDIT_COLUMNS = `id, order_id, line_no, product_code, team, zone, spec, quantity::float8 AS quantity, removed, version, updated_by_name, updated_at`;
 const NOTE_COLUMNS = `product_code, status_text, status_color, reason_text, recheck_employee_id, recheck_name, print_page, print_time,
@@ -178,7 +191,14 @@ const shapeSession = row => ({
   cancelledByName: row.cancelled_by_name || '',
   cancelReason: row.cancel_reason || '',
   reloadedAt: isoOf(row.reloaded_at),
-  reloadedByName: row.reloaded_by_name || ''
+  reloadedByName: row.reloaded_by_name || '',
+  // Da chot dong don khi dong dot: khong doc KiotViet nua, van sua duoc so dem / ghi chu. Dot nap tu sheet khong co.
+  linesFrozenAt: isoOf(row.lines_frozen_at),
+  frozen: row.status === 'closed' && row.source === 'web' && Boolean(row.lines_frozen_at) && !row.cancelled_at
+});
+const shapeLine = row => ({
+  orderId: Number(row.order_id), lineNo: row.line_no, orderCode: row.order_code, orderStatus: row.order_status,
+  team: row.team, zone: row.zone, spec: row.spec, productCode: row.product_code, productName: row.product_name, quantity: Number(row.quantity)
 });
 const shapeEdit = row => ({
   id: Number(row.id),
@@ -255,6 +275,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       const result = await work(client);
       await client.query('COMMIT');
       if (sessionId) {
+        cache.delete('counterpart:' + sessionId);
         try { announce(sessionId, by); } catch (error) { console.error('[stocktake] khong phat duoc tin hieu doi:', error.message); }
       }
       return result;
@@ -283,9 +304,11 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
   }
 
   // Khoa dot (chan dong dot giua chung) va bao loi neu dot da dong.
-  async function openSessionForWrite(client, ctx, id) {
+  // allowFrozen: lenh sua so dem / ghi chu con dung duoc tren dot da chot.
+  async function openSessionForWrite(client, ctx, id, { allowFrozen = false } = {}) {
     const session = await readSession(client, ctx, id, { lock: true });
     assertNotCancelled(session);
+    if (allowFrozen && session.frozen) return session;
     if (session.status !== 'open') throw fail(409, 'STOCKTAKE_CLOSED', 'Đợt kiểm kê đã đóng, không sửa được nữa.');
     return session;
   }
@@ -392,11 +415,15 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     const counterpartInfo = { id: other.id, name: other.name, branch: other.branch, status: other.status, cancelled: other.cancelled };
     if (other.cancelled) return { counterpartInfo, counterpart: [] };
     if (other.status === 'closed') {
-      const { rows } = await db.query(`SELECT product_code, diff_qty::float8 AS diff_qty FROM stocktake_session_results WHERE session_id = $1`, [other.id]);
+      const { rows } = await db.query(COMPARE_RESULTS_SQL, [other.id]);
       return { counterpartInfo, counterpart: rows.map(r => ({ code: r.product_code, diffQty: Number(r.diff_qty) })) };
     }
-    const board = buildBoard(await loadInputs(db, other, { withCounterpart: false }));
-    return { counterpartInfo, counterpart: board.rows.map(r => ({ code: r.code, diffQty: r.diffQty })) };
+    // Dung lai bang cua dot kia ton nhieu truy van nen nho 60 giay; ghi vao dot do thi xoa ngay (withTransaction).
+    const counterpart = await cached('counterpart:' + other.id, async () => {
+      const board = buildBoard(await loadInputs(db, other, { withCounterpart: false }));
+      return board.rows.filter(r => r.counted !== 0 || r.stock !== 0).map(r => ({ code: r.code, diffQty: r.diffQty }));
+    });
+    return { counterpartInfo, counterpart };
   }
 
   // Dot KK truoc cua dot nay: chon tay (con dung duoc) hoac tu dong = dot da dong gan nhat cung co so, chua huy,
@@ -427,7 +454,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
   async function previousResults(db, session) {
     const info = await previousSessionOf(db, session);
     if (info.id === null) return { previousSessionId: null, previousInfo: info, previous: [] };
-    const { rows } = await db.query(`SELECT product_code, diff_qty::float8 AS diff_qty FROM stocktake_session_results WHERE session_id = $1`, [info.id]);
+    const { rows } = await db.query(COMPARE_RESULTS_SQL, [info.id]);
     return { previousSessionId: info.id, previousInfo: info, previous: rows.map(row => ({ code: row.product_code, diffQty: Number(row.diff_qty) })) };
   }
 
@@ -442,17 +469,15 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
   // Du lieu dau vao cua bo tinh cho dot dang mo.
   // fresh: bo cache (dong dot phai chup ton dung luc dong).
   async function loadInputs(db, session, { fresh = false, withCounterpart = true, withPrevious = true } = {}) {
+    if (session.linesFrozenAt) return loadFrozenInputs(db, session);
     if (fresh) {
       cache.delete('products:' + session.branch);
     }
     const [lines, edits, products, tags, notes, prev, other] = await Promise.all([
-      db.query(TEAM_LINES_SQL, [session.branch, session.dateFrom, session.dateTo]).then(r => r.rows.map(row => ({
-        orderId: Number(row.order_id), lineNo: row.line_no, orderCode: row.order_code, orderStatus: row.order_status,
-        team: row.team, zone: row.zone, spec: row.spec, productCode: row.product_code, productName: row.product_name, quantity: Number(row.quantity)
-      }))),
+      db.query(TEAM_LINES_SQL, [session.branch, session.dateFrom, session.dateTo]).then(r => r.rows.map(shapeLine)),
       db.query(`SELECT ${EDIT_COLUMNS} FROM stocktake_line_edits WHERE session_id = $1`, [session.id]).then(r => r.rows.map(shapeEdit)),
       cached('products:' + session.branch, () => db.query(PRODUCTS_SQL, [session.branch]).then(r => r.rows.map(row => ({
-        code: row.code, name: row.name, stock: Number(row.stock), cost: Number(row.cost)
+        code: row.code, name: row.name, stock: Number(row.stock), cost: Number(row.cost), active: row.active
       })))),
       db.query(`SELECT ${TAG_COLUMNS} FROM stocktake_product_tags WHERE branch = $1`, [session.branch]).then(r => r.rows.map(shapeTag)),
       db.query(`SELECT ${NOTE_COLUMNS} FROM stocktake_code_notes WHERE session_id = $1`, [session.id]).then(r => r.rows.map(shapeNote)),
@@ -462,7 +487,54 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     return { lines, edits, products, tags, notes, ...prev, ...other };
   }
 
-  // Dot da dong: doc ban chup, ghi chu va tag van hien (khong co dong dem chi tiet).
+  // Dot da chot: dong don, ton, gia von, KK truoc, doi chieu lay tu ban chup; phan sua, ghi chu, cum van song.
+  async function loadFrozenInputs(db, session) {
+    const [lines, edits, results, tags, notes, previousInfo, counterpartInfo] = await Promise.all([
+      db.query(FROZEN_LINES_SQL, [session.id]).then(r => r.rows.map(shapeLine)),
+      db.query(`SELECT ${EDIT_COLUMNS} FROM stocktake_line_edits WHERE session_id = $1`, [session.id]).then(r => r.rows.map(shapeEdit)),
+      db.query(`SELECT product_code, name, stock::float8 AS stock, cost::float8 AS cost, prev_diff::float8 AS prev_diff, other_diff::float8 AS other_diff
+                FROM stocktake_session_results WHERE session_id = $1`, [session.id]).then(r => r.rows),
+      db.query(`SELECT ${TAG_COLUMNS} FROM stocktake_product_tags WHERE branch = $1`, [session.branch]).then(r => r.rows.map(shapeTag)),
+      db.query(`SELECT ${NOTE_COLUMNS} FROM stocktake_code_notes WHERE session_id = $1`, [session.id]).then(r => r.rows.map(shapeNote)),
+      previousSessionOf(db, session),
+      counterpartInfoOf(db, session)
+    ]);
+    const stored = field => results.filter(row => row[field] !== null).map(row => ({ code: row.product_code, diffQty: Number(row[field]) }));
+    return {
+      lines, edits, tags, notes,
+      // Ma them tay sau khi dong, khong co tren KiotViet: dong ket qua khong co ten, de bang van ghi "khong co tren KiotViet".
+      products: results.filter(row => row.name).map(row => ({ code: row.product_code, name: row.name, stock: Number(row.stock), cost: Number(row.cost), active: true })),
+      previousSessionId: previousInfo.id, previousInfo, previous: stored('prev_diff'),
+      counterpartInfo, counterpart: stored('other_diff')
+    };
+  }
+
+  // Dot da chot: sua dong dem xong thi tinh lai dung cac ma bi dung va ghi vao ket qua, de dot sau lay KK truoc thay so moi.
+  async function syncResults(client, session, codes) {
+    const wanted = [...new Set(codes.map(codeKey).filter(Boolean))];
+    if (!wanted.length) return;
+    const lines = (await client.query(
+      `SELECT l.order_id, l.line_no, l.order_code, l.order_status, l.team, l.zone, l.spec, l.product_code, l.product_name, l.quantity::float8 AS quantity
+       FROM stocktake_session_lines l
+       WHERE l.session_id = $1 AND (regexp_replace(upper(l.product_code), '[[:space:]]', '', 'g') = ANY($2::text[])
+         OR EXISTS (SELECT 1 FROM stocktake_line_edits e WHERE e.session_id = l.session_id AND e.order_id = l.order_id AND e.line_no = l.line_no AND e.product_code = ANY($2::text[])))`,
+      [session.id, wanted])).rows.map(shapeLine);
+    const edits = (await client.query(`SELECT ${EDIT_COLUMNS} FROM stocktake_line_edits WHERE session_id = $1`, [session.id])).rows.map(shapeEdit);
+    const results = (await client.query(
+      `SELECT product_code, name, stock::float8 AS stock, cost::float8 AS cost FROM stocktake_session_results WHERE session_id = $1 AND product_code = ANY($2::text[])`,
+      [session.id, wanted])).rows;
+    const products = results.map(row => ({ code: row.product_code, name: row.name, stock: Number(row.stock), cost: Number(row.cost), active: true }));
+    const rows = buildBoard({ lines, edits, products }).rows.filter(row => wanted.includes(row.code));
+    if (!rows.length) return;
+    await client.query(
+      `INSERT INTO stocktake_session_results (session_id, product_code, name, counted, stock, cost, diff_qty, diff_value)
+       SELECT $1, r.code, r.name, r.counted, r.stock, r.cost, r.diff_qty, r.diff_value
+       FROM jsonb_to_recordset($2::jsonb) AS r(code text, name text, counted numeric, stock numeric, cost numeric, diff_qty numeric, diff_value numeric)
+       ON CONFLICT (session_id, product_code) DO UPDATE SET name = EXCLUDED.name, counted = EXCLUDED.counted, diff_qty = EXCLUDED.diff_qty, diff_value = EXCLUDED.diff_value`,
+      [session.id, JSON.stringify(rows.map(row => ({ code: row.code, name: row.name || '', counted: row.counted, stock: row.stock, cost: row.cost, diff_qty: row.diffQty, diff_value: row.diffValue })))]);
+  }
+
+  // Dot da dong khong co dong da chot (nap tu sheet, dong truoc 0114): doc ban chup, ghi chu va tag van hien.
   async function closedBoard(db, session) {
     const sheetImport = session.source === 'sheet_import';
     const [results, tags, notes, prev, other] = await Promise.all([
@@ -504,7 +576,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     const db = getDb();
     const session = await readSession(db, ctx, id);
     const [board, employees] = await Promise.all([
-      session.status === 'closed'
+      session.status === 'closed' && !session.linesFrozenAt
         ? closedBoard(db, session)
         : loadInputs(db, session).then(inputs => ({
           ...buildBoard(inputs), previousSessionId: inputs.previousSessionId, previousSession: inputs.previousInfo, counterpart: inputs.counterpartInfo
@@ -517,6 +589,15 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       if (row.note && row.note.reasonText) reasons.add(row.note.reasonText);
     }
     return { session, ...board, employees, suggestions: { reason: [...reasons].sort() } };
+  }
+
+  // Du lieu file thong ke: dong dem sau khi ap phan sua. Dot da chot doc dong da chup.
+  async function getLineExport(ctx, sessionId) {
+    const db = getDb();
+    const session = await readSession(db, ctx, sessionId);
+    if (session.source === 'sheet_import') throw fail(409, 'STOCKTAKE_NO_LINES', 'Đợt nạp từ sheet không có dòng đơn nên không xuất được thống kê.');
+    const { rows } = buildBoard(await loadInputs(db, session, { withCounterpart: false, withPrevious: false }));
+    return { session, rows };
   }
 
   // So don TEAM trong / ngoai khoang ngay. Trang hoi dinh ky: revision doi thi tai lai bang.
@@ -538,6 +619,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     if (session.status !== 'open') throw fail(409, 'STOCKTAKE_CLOSED', 'Đợt kiểm kê đã đóng, số liệu không đổi nữa.');
     const result = await refreshTeamOrders(session.branch);
     if (result.teamOrders > 0 && !result.cached) {
+      cache.delete('counterpart:' + sessionId);
       try { announce(sessionId, ctx.clientId); } catch (error) { console.error('[stocktake] khong phat duoc tin hieu doi:', error.message); }
     }
     return result;
@@ -547,7 +629,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
   async function saveLine(ctx, sessionId, body = {}) {
     const actor = actorOf(ctx);
     return withTransaction(async client => {
-      const session = await openSessionForWrite(client, ctx, sessionId);
+      const session = await openSessionForWrite(client, ctx, sessionId, { allowFrozen: true });
       const editId = body.editId === undefined || body.editId === null ? null : Number(body.editId);
       let current;
       let source = null;
@@ -558,8 +640,10 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
         const orderId = Number(body.orderId);
         const lineNo = Number(body.lineNo);
         if (!Number.isInteger(orderId) || !Number.isInteger(lineNo)) throw fail(400, 'VALIDATION', 'Thiếu dòng đếm cần sửa.');
-        source = (await client.query(`SELECT * FROM (${TEAM_LINES_SQL}) t WHERE order_id = $4 AND line_no = $5`,
-          [session.branch, session.dateFrom, session.dateTo, orderId, lineNo])).rows[0];
+        source = session.frozen
+          ? (await client.query(`SELECT * FROM (${FROZEN_LINES_SQL}) t WHERE order_id = $2 AND line_no = $3`, [session.id, orderId, lineNo])).rows[0]
+          : (await client.query(`SELECT * FROM (${TEAM_LINES_SQL}) t WHERE order_id = $4 AND line_no = $5`,
+            [session.branch, session.dateFrom, session.dateTo, orderId, lineNo])).rows[0];
         if (!source) throw fail(404, 'NOT_FOUND', 'Dòng đếm không thuộc đơn TEAM của đợt này.');
         current = (await client.query(`SELECT ${EDIT_COLUMNS} FROM stocktake_line_edits WHERE session_id = $1 AND order_id = $2 AND line_no = $3 FOR UPDATE`,
           [session.id, orderId, lineNo])).rows[0];
@@ -594,6 +678,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       await writeHistory(client, session, actor, code, 'line_edit', before || { original: source && {
         team: source.team, zone: source.zone, spec: source.spec, quantity: Number(source.quantity), productCode: codeKey(source.product_code)
       } }, after);
+      if (session.frozen) await syncResults(client, session, [after.productCode, before && before.productCode, source && source.product_code]);
       return { edit: after };
     }, sessionId, ctx.clientId);
   }
@@ -607,13 +692,14 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     const zone = textOf(body, 'zone', 'Khu');
     const spec = textOf(body, 'spec', 'Quy cách');
     return withTransaction(async client => {
-      const session = await openSessionForWrite(client, ctx, sessionId);
+      const session = await openSessionForWrite(client, ctx, sessionId, { allowFrozen: true });
       const { rows } = await client.query(
         `INSERT INTO stocktake_line_edits (session_id, product_code, team, zone, spec, quantity, updated_by_user_id, updated_by_name)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING ${EDIT_COLUMNS}`,
         [session.id, productCode, team, zone, spec, quantity, actor.id, actor.name]);
       const edit = shapeEdit(rows[0]);
       await writeHistory(client, session, actor, productCode, 'line_add', undefined, edit);
+      if (session.frozen) await syncResults(client, session, [productCode]);
       return { edit };
     }, sessionId, ctx.clientId);
   }
@@ -623,7 +709,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     const productCode = codeKey(code);
     if (!productCode) throw fail(400, 'VALIDATION', 'Thiếu mã hàng.');
     return withTransaction(async client => {
-      const session = await openSessionForWrite(client, ctx, sessionId);
+      const session = await openSessionForWrite(client, ctx, sessionId, { allowFrozen: true });
       const current = (await client.query(`SELECT ${NOTE_COLUMNS} FROM stocktake_code_notes WHERE session_id = $1 AND product_code = $2 FOR UPDATE`,
         [session.id, productCode])).rows[0];
       checkVersion(current, body.version, shapeNote);
@@ -727,7 +813,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     }
     const actor = actorOf(ctx);
     return withTransaction(async client => {
-      const session = await openSessionForWrite(client, ctx, sessionId);
+      const session = await openSessionForWrite(client, ctx, sessionId, { allowFrozen: true });
       // Chi can tap ma cua dot (khong can KK truoc / doi chieu): bot 3 truy van moi lan sua.
       const inputs = await loadInputs(client, session, { withCounterpart: false, withPrevious: false });
       const known = new Set([...buildBoard(inputs).rows.map(r => r.code), ...inputs.products.map(p => codeKey(p.code))]);
@@ -832,6 +918,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     return withTransaction(async client => {
       const session = await openSessionForWrite(client, ctx, sessionId);
       if (versionOf(body.version) !== session.version) throw fail(409, 'STOCKTAKE_CONFLICT', 'Đợt kiểm kê vừa được cập nhật. Tải lại rồi thử lại.', { latest: session });
+      if (session.counterpartSessionId) cache.delete('counterpart:' + session.counterpartSessionId);
       const inputs = await loadInputs(client, session, { fresh: true });
       const results = toResults(buildBoard(inputs));
       if (results.length) {
@@ -840,10 +927,20 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
            SELECT $1, r.code, r.name, r.counted, r.stock, r.cost, r.diff_qty, r.diff_value, r.prev_diff, r.other_diff
            FROM jsonb_to_recordset($2::jsonb) AS r(code text, name text, counted numeric, stock numeric, cost numeric, diff_qty numeric, diff_value numeric, prev_diff numeric, other_diff numeric)`,
           [session.id, JSON.stringify(results.map(r => ({ code: r.code, name: r.name || '', counted: r.counted, stock: r.stock, cost: r.cost,
-            diff_qty: r.diffQty, diff_value: r.diffValue, prev_diff: r.prevDiff, other_diff: r.otherDiff })))]);
+            // Luu so tu lay; so nhap tay nam o ghi chu nen sua / xoa sau khi dong van dung.
+            diff_qty: r.diffQty, diff_value: r.diffValue, prev_diff: r.prevDiffAuto, other_diff: r.otherDiffAuto })))]);
+      }
+      // Chot dong don goc: sau nay xoa khach TEAM, sua hay xoa don tren KiotViet khong anh huong dot nay.
+      if (inputs.lines.length) {
+        await client.query(
+          `INSERT INTO stocktake_session_lines (session_id, order_id, line_no, order_code, order_status, team, zone, spec, product_code, product_name, quantity)
+           SELECT $1, r."orderId", r."lineNo", r."orderCode", r."orderStatus", r.team, r.zone, r.spec, r."productCode", r."productName", r.quantity
+           FROM jsonb_to_recordset($2::jsonb) AS r("orderId" bigint, "lineNo" integer, "orderCode" text, "orderStatus" text, team text, zone text, spec text,
+             "productCode" text, "productName" text, quantity numeric)`,
+          [session.id, JSON.stringify(inputs.lines)]);
       }
       const { rows } = await client.query(
-        `UPDATE stocktake_sessions SET status = 'closed', version = version + 1, closed_by_user_id = $2, closed_by_name = $3, closed_at = now()
+        `UPDATE stocktake_sessions SET status = 'closed', version = version + 1, closed_by_user_id = $2, closed_by_name = $3, closed_at = now(), lines_frozen_at = now()
          WHERE id = $1 RETURNING ${SESSION_COLUMNS}`, [session.id, actor.id, actor.name]);
       const closed = shapeSession(rows[0]);
       // Ghi dot KK truoc da dung luc dong: nguon "dot da dong phu thuoc" khi huy dot do.
@@ -915,7 +1012,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
   }
 
   return {
-    listSessions, createSession, updateSession, getBoard, getOrderStatus, refreshOrders, saveLine, addLine, saveNote, saveTag, saveCells, codeHistory, closeSession,
+    listSessions, createSession, updateSession, getBoard, getOrderStatus, getLineExport, refreshOrders, saveLine, addLine, saveNote, saveTag, saveCells, codeHistory, closeSession,
     cancelSession, restoreSession, dependents
   };
 }

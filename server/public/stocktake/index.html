@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261012">
   <link rel="stylesheet" href="/shared/table-controls.css?v=20261016-1">
   <link rel="stylesheet" href="/vt-positions/vt-positions.css?v=20261030-1">
-  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261105-3">
+  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261105-4">
 </head>
 <body>
   <div class="receipt-header">
@@ -97,6 +97,7 @@
           <select id="stRecheckFilter" class="st-select" aria-label="Lọc theo người kiểm lại"><option value="">Mọi người kiểm lại</option></select>
           <select id="stStatusFilter" class="st-select" aria-label="Lọc theo trạng thái"><option value="">Mọi trạng thái</option></select>
           <button class="locations-columns-button vt-btn" id="stExportButton" type="button">Xuất Excel</button>
+          <button class="locations-columns-button vt-btn" id="stExportStatsButton" type="button" title="File giống tab THỐNG KÊ: mỗi dòng đếm một dòng, có cột Kiểm quy cách">Xuất thống kê</button>
           <button class="locations-columns-button vt-btn" id="stColumnsButton" type="button" aria-haspopup="dialog" aria-expanded="false">Cột hiển thị</button>
         </div>
         <p id="stStatus" class="locations-status" role="status" aria-live="polite"></p>
@@ -126,7 +127,7 @@
   <dialog class="vt-dialog" id="stCreateDialog" aria-labelledby="stCreateTitle">
     <form id="stCreateForm" novalidate>
       <div class="dp-head">
-        <div class="dp-head-text"><h3 class="dp-title" id="stCreateTitle">Tạo đợt kiểm kê</h3><p class="dp-subtitle">Web gom các đơn đặt hàng của khách tên "TEAM + số" (vd TEAM 1 : …) trong khoảng ngày, kể cả đơn đã hủy.</p></div>
+        <div class="dp-head-text"><h3 class="dp-title" id="stCreateTitle">Tạo đợt kiểm kê</h3><p class="dp-subtitle">Web gom các đơn đặt hàng của khách có từ "team" trong tên (vd TEAM 1, Team Lỗi) trong khoảng ngày, kể cả đơn đã hủy.</p></div>
         <button type="button" class="dp-close" data-st-close aria-label="Đóng">×</button>
       </div>
       <div class="dp-body">
@@ -225,42 +226,17 @@
       <button type="button" class="dp-close" data-st-close aria-label="Đóng">×</button>
     </div>
     <div class="dp-body">
-      <div class="st-stats" id="stDetailStats"></div>
       <p class="vt-form-error" id="stDetailError" role="alert"></p>
       <div class="st-conflict" id="stConflict" hidden>
         <span id="stConflictText"></span>
         <button type="button" class="locations-columns-button" id="stConflictReload">Xem bản mới</button>
       </div>
 
-      <section class="dp-section">
-        <h4 class="dp-section-title">Kiểm lại</h4>
-        <form class="st-grid" id="stNoteForm" novalidate>
-          <label class="vt-field"><span>Người kiểm lại</span><input name="recheckName" type="text" maxlength="200" list="stRecheckSuggestions" autocomplete="off" placeholder="Gõ tên hoặc biệt danh, để trống = chưa giao"><datalist id="stRecheckSuggestions"></datalist></label>
-          <label class="vt-field"><span>Trạng thái</span><select name="statusText" class="st-select"></select></label>
-          <label class="vt-field st-wide"><span>Chi tiết lý do</span><input name="reasonText" type="text" maxlength="1000" list="stReasonSuggestions" autocomplete="off"><datalist id="stReasonSuggestions"></datalist></label>
-          <label class="vt-field"><span>Trang in</span><input name="printPage" type="text" maxlength="50" autocomplete="off"></label>
-          <label class="vt-field"><span>Giờ in</span><input name="printTime" type="text" maxlength="50" autocomplete="off"></label>
-          <label class="vt-field"><span id="stPrevManualLabel">KK trước sai — nhập tay</span><input name="prevDiffManual" type="text" inputmode="decimal" autocomplete="off" placeholder="Trống = tự lấy"></label>
-          <label class="vt-field"><span id="stOtherManualLabel">Kiểm SG — nhập tay</span><input name="otherDiffManual" type="text" inputmode="decimal" autocomplete="off" placeholder="Trống = tự lấy"></label>
-          <p class="st-meta st-wide" id="stNoteMeta"></p>
-          <div class="vt-dialog-actions st-wide"><button type="submit" class="locations-columns-button vt-primary">Lưu kiểm lại</button></div>
-        </form>
-      </section>
-
-      <section class="dp-section">
-        <h4 class="dp-section-title">Cụm SP / Combo <small>(giữ qua các đợt)</small></h4>
-        <form class="st-grid" id="stTagForm" novalidate>
-          <label class="vt-field"><span>Cụm SP</span><input name="cluster" type="text" maxlength="200" autocomplete="off" placeholder="Mã bị lẫn gom chung một cụm"></label>
-          <label class="st-check"><input name="isCombo" type="checkbox"> Combo (hàng nhiều phần, nhiều thùng)</label>
-          <div class="vt-dialog-actions st-wide"><button type="submit" class="locations-columns-button vt-primary">Lưu cụm / combo</button></div>
-        </form>
-      </section>
-
       <section class="dp-section" id="stLinesSection">
         <h4 class="dp-section-title">Dòng đếm theo team / khu</h4>
         <div class="dp-table-wrap">
           <table class="dp-table st-lines" data-table-sort="off" data-table-controls="off">
-            <thead><tr><th>Team</th><th>Khu</th><th>Quy cách</th><th class="num">SL</th><th>Đơn</th><th>Sửa bởi</th><th></th></tr></thead>
+            <thead id="stLinesHead"><tr><th aria-sort="none"><button type="button" class="st-line-sort" data-line-sort="team">Team</button></th><th aria-sort="none"><button type="button" class="st-line-sort" data-line-sort="zone">Khu</button></th><th aria-sort="none"><button type="button" class="st-line-sort" data-line-sort="spec">Quy cách</button></th><th class="num" aria-sort="none"><button type="button" class="st-line-sort" data-line-sort="quantity">SL</button></th><th aria-sort="none"><button type="button" class="st-line-sort" data-line-sort="order">Đơn</button></th><th aria-sort="none"><button type="button" class="st-line-sort" data-line-sort="updated">Sửa bởi</button></th><th></th></tr></thead>
             <tbody id="stLineRows"></tbody>
           </table>
         </div>
@@ -286,9 +262,9 @@
   <script src="/vendor/fuse.min.js?v=7.1.0"></script>
   <script src="/stocktake/stocktakePaste.js?v=20261103-3"></script>
   <script src="/stocktake/stocktakeSearch.js?v=20261103-2"></script>
-  <script src="/stocktake/stocktakeGrid.js?v=20261105-3"></script>
-  <script src="/stocktake/stocktakeStatus.js?v=20261103-2"></script>
-  <script src="/stocktake/stocktake.js?v=20261105-3"></script>
+  <script src="/stocktake/stocktakeGrid.js?v=20261105-6"></script>
+  <script src="/stocktake/stocktakeStatus.js?v=20261105-4"></script>
+  <script src="/stocktake/stocktake.js?v=20261105-6"></script>
   <script>window.addEventListener('DOMContentLoaded', function () { TKSStocktake.init(); });</script>
   <script src="/shared/shooting-star.js?v=20261019"></script>
 </body>

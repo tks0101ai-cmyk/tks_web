@@ -154,24 +154,68 @@
     }
   }
 
+  // Sort bang dong dem trong hop chi tiet. O trong luon nam cuoi; dir null = giu thu tu goc.
+  const LINE_SORT = Object.freeze({
+    team: line => line.team,
+    zone: line => line.zone,
+    spec: line => line.spec,
+    quantity: line => line.quantity,
+    order: line => (line.manual ? 'Thêm tay' : line.orderCode),
+    updated: line => (line.edit ? line.edit.updatedByName : '')
+  });
+  function sortLines(lines, key, dir) {
+    const read = LINE_SORT[key];
+    if (!read || !dir) return [...lines];
+    const factor = dir === 'desc' ? -1 : 1;
+    const blank = value => value === null || value === undefined || value === '';
+    return [...lines].sort((a, b) => {
+      const x = read(a);
+      const y = read(b);
+      if (blank(x) || blank(y)) return blank(x) === blank(y) ? 0 : blank(x) ? 1 : -1;
+      const diff = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'vi', { numeric: true });
+      return diff * factor;
+    });
+  }
+
+  // Goi run nhieu nhat 1 lan moi gapMs, co lan cuoi de khong bo sot; goi lien tuc chi ton 1 lan chay.
+  function trailingThrottle(run, gapMs, { now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, minDelayMs = 400 } = {}) {
+    let last = -Infinity;
+    let timer = null;
+    return {
+      trigger() {
+        if (timer !== null) return;
+        timer = setTimer(() => {
+          timer = null;
+          last = now();
+          run();
+        }, Math.max(minDelayMs, gapMs - (now() - last)));
+      },
+      cancel() {
+        if (timer !== null) clearTimer(timer);
+        timer = null;
+      }
+    };
+  }
+
   // Cho tra loi cua hop xac nhan. Moi cach dong (Dong y, Huy, Esc) deu phat su kien 'close' cua <dialog>, nen don
   // lang nghe tai day: neu Esc de lai lang nghe cu, lan Dong y cua hop sau se chay ca lenh truoc do (vd Dong dot).
   function waitForConfirm(dialog, okButton, cancelButton) {
     return new Promise(resolve => {
       let accepted = false;
-      const accept = () => { accepted = true; dialog.close(); };
-      const decline = () => dialog.close();
       const finish = () => {
         okButton.removeEventListener('click', accept);
         cancelButton.removeEventListener('click', decline);
         dialog.removeEventListener('close', finish);
         resolve(accepted);
       };
+      // Tra loi ngay khi bam nut: trinh duyet chi phat 'close' o khung hinh ke tiep, tab bi an thi cho rat lau.
+      const accept = () => { accepted = true; finish(); dialog.close(); };
+      const decline = () => { finish(); dialog.close(); };
       okButton.addEventListener('click', accept);
       cancelButton.addEventListener('click', decline);
       dialog.addEventListener('close', finish);
     });
   }
 
-  return { EDIT_COLUMNS, parseClipboard, planPaste, planPasteByCode, planFill, moveIndex, matchesFilter, summarizeCells, waitForConfirm };
+  return { EDIT_COLUMNS, parseClipboard, planPaste, planPasteByCode, planFill, moveIndex, matchesFilter, summarizeCells, waitForConfirm, sortLines, trailingThrottle };
 });

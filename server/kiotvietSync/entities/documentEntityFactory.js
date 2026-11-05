@@ -21,8 +21,10 @@ function createDocumentEntity(options) {
   return {
     entity, endpoint, listQuery, incrementalParam: 'lastModifiedFrom', hasUpperBound,
     ...(backfillRangeParam ? { backfillRangeParam } : {}),
-    async upsertPage(pgClient, branch, items) {
-      if (prepareItems) items = await prepareItems(branch, items);
+    // Noi goi muon sap ngoai giao dich (de khong giu khoa don trong luc goi API) thi goi prepareItems roi truyen { prepared: true }.
+    ...(prepareItems ? { prepareItems } : {}),
+    async upsertPage(pgClient, branch, items, { prepared = false } = {}) {
+      if (prepareItems && !prepared) items = await prepareItems(branch, items);
       // Upsert "staff" (bang dung chung giua invoices/orders/returns/purchases)
       // MOT LAN cho ca trang, theo thu tu id tang dan, TRUOC khi ghi cac bang
       // rieng cua entity - phat hien deadlock that khi backfill production

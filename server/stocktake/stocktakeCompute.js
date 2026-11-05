@@ -161,7 +161,8 @@ function buildBoard({ lines = [], edits = [], products = [], tags = [], notes = 
     const code = codeKey(product.code);
     if (!code) continue;
     productByCode.set(code, product);
-    if (num(product.stock) !== 0) entry(code);
+    // Hang dang hoat dong luon vao bang (ton 0, chua ai dem van hien de nguoi kiem thay); hang ngung chi hien khi con ton.
+    if (num(product.stock) !== 0 || product.active === true) entry(code);
   }
   const noteByCode = new Map();
   for (const note of notes) {
@@ -207,7 +208,7 @@ function buildBoard({ lines = [], edits = [], products = [], tags = [], notes = 
 // Ban chup luc dong dot (stocktake_session_results).
 const toResults = board => board.rows.map(row => ({
   code: row.code, name: row.name, counted: row.counted, stock: row.stock, cost: row.cost, diffQty: row.diffQty, diffValue: row.diffValue,
-  prevDiff: row.prevDiff, otherDiff: row.otherDiff
+  prevDiff: row.prevDiff, otherDiff: row.otherDiff, prevDiffAuto: row.prevDiffAuto, otherDiffAuto: row.otherDiffAuto
 }));
 
 module.exports = { codeKey, applyLineEdits, buildBoard, toResults, deriveColumns, totalsOf, pickDiffs, ratio };

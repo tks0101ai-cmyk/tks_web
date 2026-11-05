@@ -8,9 +8,26 @@ const {EventEmitter}=require('node:events');
 const {attachRealtime}=require('./purchaseOrdersRealtime');
 const dir=path.join(__dirname,'../public/thu-mua/dat-hang');
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
+test('purchase uses the shared application shell and brand instead of a private grid',()=>{
+ const dom=new JSDOM(fs.readFileSync(path.join(dir,'index.html'),'utf8'));
+ const reference=new JSDOM(fs.readFileSync(path.join(dir,'../../stocktake/index.html'),'utf8'));
+ try{
+  const doc=dom.window.document,standard=reference.window.document;
+  assert.equal(doc.querySelector('.receipt-header .brand').innerHTML,standard.querySelector('.receipt-header .brand').innerHTML);
+  assert.ok(doc.querySelector('.shell > .sidebar#sidebar'));
+  assert.ok(doc.querySelector('.shell > main.content'));
+  assert.equal(doc.querySelector('.layout'),null);
+  // The shared navigation inserts this sibling; it must stay in the shared flex shell.
+  const handle=doc.createElement('div');handle.className='sidebar-resize-handle';
+  doc.getElementById('sidebar').after(handle);
+  assert.equal(handle.parentElement,doc.querySelector('main').parentElement);
+  assert.ok(doc.querySelector('.receipt-header .status-line #accountChip'));
+ }finally{dom.window.close();reference.window.close()}
+});
 async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees=[]}={}){
  const dom=new JSDOM(fs.readFileSync(path.join(dir,'index.html'),'utf8'),{url:'https://example.test/thu-mua/dat-hang/',runScripts:'outside-only'}),w=dom.window;
  t.after(()=>w.close());
+ w.HTMLCanvasElement.prototype.getContext=()=>null;
  let current={sourceMode,permissions:{edit:true,import:true,export:true,depart:true,arrive:true},rows:[{id:'1',rowKey:'D00001',version:1,contId:null,productCode:'AC305',productName:'Băng dính',cartonCount:10,qtyPerCarton:100,supplier:'A'}],containers:[{id:'2',name:'CONT 11-1V',status:2,version:1}]};
  current.rows.push(...extraRows.map(r=>({productName:r.productCode,...r})));const calls=[],listeners={};
  w.PurchaseCalculations=require('../public/shared/purchase-calculations');w.PurchaseFreight=require('../public/shared/purchase-freight');w.PurchaseColumns=require('../public/shared/purchase-columns');w.PurchaseTasks=require('../public/shared/purchase-tasks');w.TKSNav={authGuard:async()=>({id:'buyer'})};
@@ -143,7 +160,7 @@ test('container freight formula tracks unsaved order volume immediately',async t
 
 test('pinned freight input uses the same container update endpoint',async t=>{const p=await page(t),doc=p.w.document;doc.querySelector('[data-container-filter="2"]').click();const fetch=p.w.fetch;p.w.fetch=async(url,options)=>{if(url.endsWith('/containers/2')&&options.method==='PATCH'){const body=JSON.parse(options.body);Object.assign(p.current.containers[0],body.changes);p.calls.push({url,options});return {ok:true,json:async()=>p.current.containers[0]}}return fetch(url,options)};p.change('#watchedContainer [data-cont-freight="2"]','12,000,000');await tick();await tick();const call=p.calls.find(c=>c.url.endsWith('/containers/2')&&c.options.method==='PATCH');assert.ok(call);assert.equal(JSON.parse(call.options.body).changes.freight,12000000);assert.equal(doc.querySelector('#watchedContainer [data-cont-freight="2"]').value,'12,000,000');p.change('#watchedContainer [data-cont-freight="2"]','');await tick();await tick();const reset=JSON.parse(p.calls.filter(c=>c.url.endsWith('/containers/2')&&c.options.method==='PATCH').at(-1).options.body).changes;assert.equal(reset.freight,null);assert.equal(reset.freightMode,'formula');assert.equal(reset.freightBase,202000000);assert.equal(reset.freightCapacity,170)});
 
-test('live measurement differences use supplier minus warehouse over warehouse and preserve input precision',async t=>{const p=await page(t),doc=p.w.document;Object.assign(p.current.rows[0],{m3PerCarton:.073,kgPerCarton:13.8,qtyPerCarton:300,literWarehouse:.25,gramWarehouse:40,unitPriceCny:1.23456,freightPrepaid:0,freightPostpaid:0,fxRate:3920});p.listeners.changed();await tick();await tick();assert.equal(doc.querySelector('[data-field="literDiff"]').textContent,'-3%');assert.equal(doc.querySelector('[data-field="gramDiff"]').textContent,'+15%');const input=doc.querySelector('[data-edit="unitPriceCny"]');input.focus();assert.equal(input.value,'1.23456');p.change('[data-edit="cartonCount"]','1,00');assert.equal(doc.querySelector('[data-field="totalQty"]').textContent,'');assert.equal(doc.querySelector('[data-field="netPrice"]').textContent,'')});
+test('live measurement differences use supplier minus warehouse over warehouse and preserve input precision',async t=>{const p=await page(t),doc=p.w.document;doc.getElementById('columns').click();doc.getElementById('showSourceColumns').click();doc.getElementById('modalClose').click();Object.assign(p.current.rows[0],{m3PerCarton:.073,kgPerCarton:13.8,qtyPerCarton:300,literWarehouse:.25,gramWarehouse:40,unitPriceCny:1.23456,freightPrepaid:0,freightPostpaid:0,fxRate:3920});p.listeners.changed();await tick();await tick();assert.equal(doc.querySelector('[data-field="literDiff"]').textContent,'-3%');assert.equal(doc.querySelector('[data-field="gramDiff"]').textContent,'+15%');const input=doc.querySelector('[data-edit="unitPriceCny"]');input.focus();assert.equal(input.value,'1.23456');p.change('[data-edit="cartonCount"]','1,00');assert.equal(doc.querySelector('[data-field="totalQty"]').textContent,'');assert.equal(doc.querySelector('[data-field="netPrice"]').textContent,'')});
 
 test('production workspace filters compose privately and retain their values on refresh',async t=>{const p=await page(t,{extraRows:[{id:'3',rowKey:'D00003',version:1,productCode:'TARGET',contId:'2',supplier:'X',vatNote:'VAT X',buyer:'An',buyerEmployeeId:'5',listedAt:'2026-11-05T14:30',cartonCount:2,qtyPerCarton:10,kgPerCarton:100,m3PerCarton:.5,unitPriceCny:2,freightPrepaid:0,freightPostpaid:0,fxRate:3920},{id:'4',rowKey:'D00004',version:1,productCode:'OTHER',contId:'2',supplier:'Y',buyer:'Dung',listedAt:'2026-10-01',cartonCount:5,qtyPerCarton:10}]});const doc=p.w.document;p.change('#orderStatus','2');p.change('#orderBuyer','id:5');p.change('#orderSupplier','X');p.change('#orderVat','VAT X');p.change('#orderFrom','2026-11-05');p.change('#orderTo','2026-11-05');assert.equal(doc.querySelectorAll('#orderTable tr[data-id]').length,1);assert.equal(doc.querySelector('#orderTable tr[data-id]').dataset.id,'3');assert.match(doc.getElementById('purchaseOverview').textContent,/40.000/);p.listeners.changed();await tick();await tick();assert.equal(doc.getElementById('orderBuyer').value,'id:5');const saved=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.equal(saved.orderFilters.orderSupplier,'X');assert.equal(p.calls.filter(c=>c.options.method).length,0);doc.getElementById('clearOrderFilters').click();assert.equal(doc.querySelectorAll('#orderTable tr[data-id]').length,3)});
 test('container filters do not filter orders and readonly mode disables new container creation',async t=>{const p=await page(t,{sourceMode:'sheets'}),doc=p.w.document;assert.equal(doc.getElementById('newCont').disabled,true);assert.equal(doc.getElementById('sourceBanner').hidden,false);doc.getElementById('contSearch').value='11-1V';doc.getElementById('contSearch').dispatchEvent(new p.w.Event('input'));assert.equal(doc.querySelectorAll('#containerTable [data-container-filter]').length,1);assert.equal(doc.querySelectorAll('#orderTable tr[data-id]').length,1);doc.getElementById('clearContFilters').click();assert.equal(doc.querySelectorAll('#containerTable [data-container-filter]').length,2);assert.equal(p.calls.filter(c=>c.options.method).length,0)});
@@ -151,3 +168,26 @@ test('saved filter reload, accent-insensitive search and export use the same sel
 test('add dialog prefills the chosen container and resets actual dates from older orders',async t=>{const p=await page(t),doc=p.w.document;doc.querySelector('[data-container-filter="2"]').click();doc.getElementById('add').click();const form=doc.getElementById('addForm');assert.equal(form.elements.contId.value,'2');assert.equal(form.querySelector('.additional-fields').open,false);const prior=p.w.fetch;p.w.fetch=async(url,options)=>url.includes('/latest?')?{ok:true,json:async()=>({row:{rowKey:'D00003',listedAt:'2026-10-01',productName:'Old product',qtyPerCarton:10,cartonCount:4,shippedNote:'2026-10-02',arrivedNote:'2026-10-03'}})}:prior(url,options);form.elements.productCode.value='OLD';form.elements.productCode.dispatchEvent(new p.w.Event('change'));await tick();await tick();assert.equal(form.elements.shippedNote.value,'');assert.equal(form.elements.arrivedNote.value,'');assert.equal(form.elements.productName.value,'Old product')});
 
 test('remote changes never silently remove a personal filter even when its last matching value disappears',async t=>{const p=await page(t),doc=p.w.document;p.change('#orderSupplier','A');p.current.rows[0].supplier='B';p.listeners.changed();await tick();await tick();assert.equal(doc.getElementById('orderSupplier').value,'A');assert.equal(doc.querySelectorAll('#orderTable tr[data-id]').length,0);assert.match(doc.getElementById('orderTable').textContent,/Không có dòng/);assert.equal(p.calls.filter(c=>c.options.method).length,0)});
+test('narrow-screen navigation opens and closes the sidebar drawer',async t=>{
+ const p=await page(t),doc=p.w.document,menu=doc.getElementById('menuBtn'),side=doc.getElementById('sidebar'),back=doc.getElementById('backdrop');
+ assert.equal(menu.getAttribute('aria-controls'),'sidebar');
+ assert.equal(side.classList.contains('open'),false);assert.equal(back.classList.contains('show'),false);assert.equal(menu.getAttribute('aria-expanded'),'false');
+ menu.click();assert.equal(side.classList.contains('open'),true);assert.equal(back.classList.contains('show'),true);assert.equal(menu.getAttribute('aria-expanded'),'true');
+ back.click();assert.equal(side.classList.contains('open'),false);assert.equal(back.classList.contains('show'),false);assert.equal(menu.getAttribute('aria-expanded'),'false');
+ menu.click();doc.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.equal(side.classList.contains('open'),false,'Esc dong drawer');
+ menu.click();side.innerHTML='<a href="/thu-mua/dat-hang/">Thu mua</a>';side.querySelector('a').click();
+ assert.equal(side.classList.contains('open'),false,'chon mot muc dieu huong thi drawer tu dong');
+ assert.equal(back.classList.contains('show'),false);
+});
+
+test('compact columns declare stable keys, small numeric widths and keep row keys visible',async t=>{
+ const p=await page(t),doc=p.w.document,table=doc.querySelector('#orderTable table');
+ assert.equal(table.dataset.tableFit,'off');assert.equal(table.dataset.minColumnWidth,'24');
+ assert.ok(table.querySelector('th[data-column-key="rowKey"]'));
+ assert.ok(Number(table.querySelector('th[data-column-key="cartonCount"]').dataset.defaultWidth)<64);
+ assert.equal(table.querySelector('.resize'),null);
+ doc.getElementById('columns').click();doc.getElementById('showSourceColumns').click();
+ const names=[...doc.querySelectorAll('#orderTable th')].filter(th=>th.textContent==='Tên SP');
+ assert.equal(names.length,2);assert.notEqual(names[0].dataset.columnKey,names[1].dataset.columnKey);
+ assert.ok([...doc.querySelectorAll('#containerTable th')].every(th=>Number(th.dataset.defaultWidth)>0));
+});

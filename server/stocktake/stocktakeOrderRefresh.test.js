@@ -49,9 +49,9 @@ function harness({ checkpoint = '2026-11-05T02:29:00.000Z', pages = [[]], fetchE
   return { refresh, state };
 }
 
-test('nhan dien don TEAM + so giong dieu kien gom don cua dot', () => {
-  for (const name of ['TEAM 1: Quân test', 'team5 kho', '  TEAM 12 : A + B']) assert.equal(isTeamOrder({ customerName: name }), true, name);
-  for (const name of ['Team Lỗi', 'KH Team Hàng Lỗi', 'Khách thường', '', null]) assert.equal(isTeamOrder({ customerName: name }), false, String(name));
+test('nhan dien don co tu team giong dieu kien gom don cua dot', () => {
+  for (const name of ['TEAM 1: Quân test', 'team5 kho', '  TEAM 12 : A + B', 'Team Lỗi', 'KH Team Hàng Lỗi', 'team-5']) assert.equal(isTeamOrder({ customerName: name }), true, name);
+  for (const name of ['Khách thường', 'Steam Việt', 'Teamwork', '', null]) assert.equal(isTeamOrder({ customerName: name }), false, String(name));
 });
 
 test('lay don tu 5 phut truoc checkpoint, chi ghi don TEAM, khong dong vao checkpoint', async () => {
@@ -138,4 +138,23 @@ test('co so chua cau hinh KiotViet: bao ro, khong goi API', async () => {
   const { refresh, state } = harness({ branches: [] });
   await assert.rejects(refresh('hanoi'), { statusCode: 424, code: 'KIOT_NOT_CONFIGURED' });
   assert.equal(state.fetchCalls.length, 0);
+});
+
+test('sap dong hang truoc khi mo giao dich, khong giu khoa don trong luc goi API noi bo', async () => {
+  const events = [];
+  const client = { query: async sql => { events.push(sql); return { rows: [] }; }, release() {} };
+  const refresh = createOrderRefresher({
+    getDb: () => ({ query: async () => ({ rows: [] }), connect: async () => client }),
+    getBranches: () => BRANCHES,
+    createClient: () => ({ fetchAllPages: async (endpoint, query, onPage) => onPage([{ id: 1, customerName: 'TEAM 1' }], {}) }),
+    ordersEntity: {
+      endpoint: 'orders', listQuery: {},
+      prepareItems: async (branch, items) => { events.push('SORT'); return items; },
+      upsertPage: async (pg, branch, items, options) => { events.push('WRITE:' + Boolean(options && options.prepared)); }
+    },
+    now: () => NOW,
+    logger: { error() {} }
+  });
+  await refresh('hanoi');
+  assert.deepEqual(events, ['SORT', 'BEGIN', 'WRITE:true', 'COMMIT']);
 });
