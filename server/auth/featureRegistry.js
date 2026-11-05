@@ -202,6 +202,9 @@ const PAGE_FEATURES = Object.freeze([
   { path: '/humanresources', href: '/humanresources/', anyOf: ['hr.rules', 'hr.employees', 'hr.leave', 'hr.leave.submit'] },
   {path:'/thu-mua/dat-hang',href:'/thu-mua/dat-hang/',anyOf:['purchase.view']},
   { path: '/vt-positions', href: '/vt-positions/', anyOf: ['stockLocationsV2.view'] },
+  // Sơ đồ kho HN / SG: cùng quyền xem với VT (mọi vai trò kể cả Khách), trang tĩnh không có API.
+  { path: '/kho-hn', href: '/kho-hn/', anyOf: ['stockLocationsV2.view'] },
+  { path: '/kho-sg', href: '/kho-sg/', anyOf: ['stockLocationsV2.view'] },
   { path: '/stocktake', href: '/stocktake/', anyOf: ['stocktake.view'] },
   { path: '/cashbook', href: '/cashbook/', anyOf: ['cashbook.view'] },
   { path: '/vat-draft', href: '/vat-draft/', anyOf: ['accounting.vatDraft', 'accounting.qr'] },

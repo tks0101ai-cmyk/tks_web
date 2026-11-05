@@ -70,3 +70,35 @@ test('phone/address only fill empty values and never overwrite hand-entered ones
     assert.deepEqual([p['chị a'].phone, p['chị a'].address, p['anh b'].phone, p['anh b'].address], ['0999', 'Hà Nội', '0902', 'SG']);
   } finally { await db.close(); }
 });
+
+test('doc file xuat theo TEN cot: uu tien Sheet chuan, o loi roi ve Level gia, o Khach moi trong giu nhan cu', async () => {
+  const ExcelJS = require('exceljs');
+  const { readExcelUpload, plan } = require('./customerLevelExcelImport');
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Theo khách hàng');
+  ws.addRow(['Tên khách', 'Sale', 'Level giá', 'Sheet chuẩn', 'Cần đổi', 'Khách mới', 'Điện thoại', 'Địa chỉ']);
+  ws.addRow(['Chị A', 'X', 'Mới', 'Vừa', true, 'T10/26', '0901', 'HN']);
+  ws.addRow(['Anh B', 'X', 'Lớn', { error: '#N/A' }, false, '', '', '']);
+  ws.addRow(['Cô C', 'X', 'Vip', { formula: 'x', result: 'VIP' }, true, '', '', '']);
+  const { rows, legacy } = await readExcelUpload(Buffer.from(await wb.xlsx.writeBuffer()));
+  assert.equal(legacy, false);
+  assert.deepEqual(rows.map(r => [r.name, String(r.levelLabel), r.newCustomer == null ? "" : String(r.newCustomer)]), [['Chị A', 'Vừa', 'T10/26'], ['Anh B', 'Lớn', ''], ['Cô C', 'VIP', '']]);
+  const { entries } = consolidate(rows);
+  const existing = new Map(entries.map(e => [e.key, { level: 'new', version: 3, newCustomer: 'Cũ' }]));
+  assert.equal(plan(entries, existing).changes.find(c => c.name === 'Chị A').newCustomer, 'T10/26');
+  assert.equal(plan(entries, existing).changes.find(c => c.name === 'Anh B').newCustomer, '');
+  const kept = plan(entries, existing, { blankKeepsTag: true }).changes.find(c => c.name === 'Anh B');
+  assert.deepEqual([kept.newCustomer, kept.fromLevel], ['Cũ', 'new']);
+});
+
+test('file mau cu (khong co tieu de Ten khach) van doc theo vi tri cot', async () => {
+  const ExcelJS = require('exceljs');
+  const { readExcelUpload } = require('./customerLevelExcelImport');
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('DS');
+  ws.addRow(['KH', 'Level', 'Nhãn', 'SĐT', 'Địa chỉ']);
+  ws.addRow(['Chị A', 'VIP', 'T10/26', '0901', 'HN']);
+  const { rows, legacy } = await readExcelUpload(Buffer.from(await wb.xlsx.writeBuffer()));
+  assert.equal(legacy, true);
+  assert.equal(rows[0].levelLabel, 'VIP');
+});

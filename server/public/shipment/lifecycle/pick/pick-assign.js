@@ -33,7 +33,7 @@
   const DIALOGS_HTML='<dialog id="pickingDialog" aria-labelledby="pickingTitle"><div class="dp-head"><div class="dp-head-text"><h2 class="dp-title" id="pickingTitle"></h2><p class="dp-subtitle">Chọn vị trí và điều chỉnh số lượng nhặt. Nhấn giữ dòng (hoặc ba chấm đầu dòng) rồi kéo lên/xuống hoặc bấm tiêu đề cột để đổi thứ tự (phiếu in theo đúng thứ tự đang hiển thị); "Xóa dòng" và số lượng cần nhặt sửa tay chỉ lưu trong chỉ định và phiếu in, không sửa đơn KiotViet. Dòng bôi đỏ là tổng chọn chưa khớp số lượng cần nhặt; vị trí được giữ chỗ cho đơn này sau khi xác nhận. Nút ✎ / 🗑 / + Thêm vị trí sửa thẳng VT Hà Nội / VT Sài Gòn (cần quyền sửa VT), gợi ý của mã đó tự cập nhật theo tồn mới.</p></div><button id="pickingClose" type="button" class="dp-close" aria-label="Đóng chỉ định vị trí">×</button></div>'
     +'<div class="picking-body"><div class="picking-status-bar"><span id="pickingOrderStatus" class="picking-order-status" data-status="">Chưa chỉ định</span><button id="pickingConfirmPick" type="button" class="btn-primary" hidden>Xác nhận nhặt</button><button id="pickingCancelPick" type="button" hidden>Hủy nhặt</button><button id="pickingReopen" type="button" hidden>Chỉ định lại</button><button id="pickingReprint" type="button" hidden>In đơn</button></div>'
     +'<p id="pickingSource" class="picking-source"></p><div class="picking-table-wrap"><table class="dp-table picking-table" data-table-key="picking-table" data-table-sort="off"><thead><tr><th data-column-key="code" data-default-width="150" data-min-width="130">Mã hàng</th><th data-column-key="name" data-default-width="210">Tên hàng</th><th data-column-key="note" data-default-width="170" title="Ghi chú của dòng hàng trong đơn Kiot">Ghi chú</th><th data-column-key="need" data-default-width="190" data-min-width="180">Cần nhặt</th><th data-column-key="st" data-default-width="150" title="Số thùng thực nhặt theo chỉ định (SL nhặt / SL mỗi thùng). Trống khi dòng chưa chỉ định đủ SL; lẻ hiện đỏ.">ST</th><th data-column-key="stock" data-default-width="115" title="Tổng khả dụng cùng mã tại cơ sở sau giữ chỗ của các đơn khác">Có thể bốc</th><th data-column-key="locations" data-default-width="760" data-min-width="320">Vị trí kho</th></tr></thead><tbody id="pickingRows"></tbody></table></div><p id="pickingRemoved" class="picking-removed" hidden></p><p id="pickingStatus" role="status"></p></div>'
-    +'<div class="picking-footer"><span id="pickingProgress"></span><div><button id="pickingReload" type="button" hidden>Tải lại</button><button id="pickingSuggest" type="button">Gợi ý lại</button><button id="pickingConfirm" type="button" class="btn-primary">Xác nhận &amp; In phiếu nhặt</button></div></div></dialog>'
+    +'<div class="picking-footer"><span id="pickingProgress"></span><div><button id="pickingReload" type="button" hidden>Tải lại</button><button id="pickingExport" type="button" title="Xuất Excel chỉ định đang hiển thị: mã hàng có nhiều vị trí được tách thành nhiều dòng">Xuất Excel</button><button id="pickingSuggest" type="button">Gợi ý lại</button><button id="pickingConfirm" type="button" class="btn-primary">Xác nhận &amp; In phiếu nhặt</button></div></div></dialog>'
     +'<dialog id="pickingPrintDialog" aria-labelledby="pickingPrintTitle"><div class="dp-head"><div><p class="dp-kicker">PHIẾU NHẶT HÀNG</p><h2 class="dp-title" id="pickingPrintTitle">Xem trước phiếu nhặt</h2></div><div><button id="pickingPrintBtn" type="button" class="btn-primary">In phiếu</button><button id="pickingPrintClose" type="button" class="dp-close" aria-label="Đóng bản in">×</button></div></div><div class="print-preview-stage"><div id="pickingPrintSheet"></div></div></dialog>';
 
   // ---------- Gọi API ----------
@@ -459,6 +459,7 @@
     $('pickingReload').hidden=!state.needsSync;
     $('pickingReload').disabled=state.busy;
     $('pickingSuggest').disabled=!!a||!editable()||busy;
+    $('pickingExport').disabled=!order||busy||exporting;
     const isDirty=dirty();
     $('pickingConfirm').disabled=!!a||!editable()||busy||!!errors.length;
     $('pickingConfirm').textContent=a?'Đã xác nhận vị trí':state.reopened?'Chỉ định lại & In phiếu':picking?'Cập nhật chỉ định & In phiếu':'Xác nhận & In phiếu nhặt';
@@ -640,6 +641,37 @@
     if(!window.confirm('Chỉ định lại đơn ĐÃ BỐC?'+String.fromCharCode(10)+'Khi lưu, số thùng đã trừ khỏi các vị trí sẽ được hoàn lại, rồi đơn được chỉ định mới (Đang bốc).'))return;
     state.reopened=true;state.assignment=null;state.reassignOf=a;allocationsFromAssignment(a);
     render();
+  }
+  /* Xuất Excel: chỉ định đang hiển thị trong hộp (kể cả chưa lưu), thứ tự dòng theo hộp (kéo-thả/sort). Mỗi (mã hàng, vị trí có SL > 0) 1 dòng;
+     mã chưa có vị trí nào vẫn có 1 dòng với Vị trí/SL nhặt trống. Số thùng/quy cách ST tính riêng theo từng vị trí. */
+  function exportRows(){
+    const out=[];
+    displayLines().forEach(({l,i})=>{
+      const rows=rowsFor(l),picks=(state.allocations[i]||[]).filter(p=>p.quantity>0);
+      const base={productCode:l.productCode,productName:l.productName||'',need:l.quantity};
+      if(!picks.length){out.push({...base,location:'',quantity:null,cartons:null,stText:''});return;}
+      picks.forEach(p=>{
+        const row=rows.find(r=>r.id===p.id),st=row&&row.spec&&C?C.stFor(row.spec,p.quantity):null;
+        out.push({...base,location:row?row.location:'',quantity:p.quantity,cartons:st?round6(st.cartons):null,stText:st?st.text:''});
+      });
+    });
+    return out;
+  }
+  let exporting=false;
+  async function exportExcel(){
+    if(!state.order||state.busy||state.needsSync||exporting)return;
+    exporting=true;render();
+    try{
+      const res=await fetch(API+'/export',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({branch:state.order.branch,orderCode:state.order.orderCode,rows:exportRows()})});
+      if(!res.ok){const data=await res.json().catch(()=>({}));setStatus(data.error||'Không xuất được file Excel.',true);return;}
+      const blob=await res.blob(),url=window.URL.createObjectURL(blob),link=document.createElement('a');
+      const plain=/filename\s*=\s*"?([^";]+)"?/i.exec((res.headers&&res.headers.get&&res.headers.get('Content-Disposition'))||'');
+      link.href=url;link.download=plain?plain[1].trim():'chi-dinh-vi-tri.xlsx';
+      document.body.appendChild(link);link.click();link.remove();
+      setTimeout(()=>window.URL.revokeObjectURL(url),1000);
+    }catch(error){setStatus('Không xuất được file Excel.',true);}
+    finally{exporting=false;render();}
   }
   // Thứ tự mã trên phiếu in = thứ tự đang hiển thị trong hộp khi có kéo-thả hoặc sort cột; không có thì null (giữ thứ tự đơn Kiot).
   const printOrderKeys=()=>state.manual||state.sort?displayLines().map(e=>key(e.l.productCode)):null;
@@ -869,6 +901,7 @@
     $('pickingDialog').addEventListener('cancel',event=>{if(state.posEdit||posEscGuard)event.preventDefault();});
     $('pickingSuggest').addEventListener('click',()=>{if(!editable())return;suggest();render();});
     $('pickingConfirm').addEventListener('click',submitAssign);
+    $('pickingExport').addEventListener('click',exportExcel);
     $('pickingConfirmPick').addEventListener('click',()=>changeStatus('confirm'));
     $('pickingCancelPick').addEventListener('click',()=>changeStatus('cancel'));
     $('pickingReopen').addEventListener('click',reopenConfirmed);

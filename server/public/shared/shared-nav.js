@@ -2016,6 +2016,8 @@
     var locationItems = [];
     // Nhom Vi tri hang (/vt-positions/): tab VT Ha Noi / VT Sai Gon, tuan theo co so nguoi dung.
     var vtActiveTab = currentPath === '/vt-positions' && locationTabs.indexOf(currentHash) !== -1 ? currentHash : locationTabs[0];
+    // Thứ tự: VT HN → Kho HN → VT SG → Kho SG (Kho = sơ đồ kho tĩnh /kho-hn/, /kho-sg/, cùng quyền xem với VT).
+    var khoIcon = '<path d="M3 21V9l9-6 9 6v12"></path><path d="M9 21v-6h6v6"></path><path d="M3 21h18"></path>';
     locationTabs.forEach(function(tab){
       locationItems.push({
         feature: 'stockLocationsV2.view', href: '/vt-positions/#' + tab,
@@ -2023,6 +2025,13 @@
         active: currentPath === '/vt-positions' && vtActiveTab === tab,
         dataAttr: 'data-vt-position-tab="' + tab + '"',
         icon: locationIcon
+      });
+      locationItems.push({
+        feature: 'stockLocationsV2.view', href: '/kho-' + tab + '/',
+        label: tab === 'hn' ? 'Kho Hà Nội' : 'Kho Sài Gòn',
+        active: currentPath === '/kho-' + tab,
+        dataAttr: 'data-kho-tab="' + tab + '"',
+        icon: khoIcon
       });
     });
     locationItems.push({

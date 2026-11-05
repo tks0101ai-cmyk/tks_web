@@ -463,6 +463,7 @@ Cập nhật gần nhất: 23/10/2026.
 
 Quản lý lọc khách theo kênh bán/quy mô đánh giá và xuất thông tin Chi tiết không kèm Note. Level giá được quản lý độc lập với email KiotViet sau bước sao lưu ban đầu, dùng chung các mã cùng tên HN/SG; Quản lý hoặc người được gán sửa được thay trực tiếp trên bảng. Thay đổi chỉ ảnh hưởng các hóa đơn kiểm tra được chụp sau đó; bản chụp cũ giữ nguyên để đối soát. Mã đang kiểm chứng cục bộ, chưa chuyển dữ liệu vận hành hoặc deploy (migration 0087).
 
+Khi cần đổi level giá hàng loạt (hàng trăm khách), người có quyền tải file Excel lên, xem trước thay đổi rồi mới áp dụng, thay cho sửa tay từng khách.
 Người có quyền sửa level điền thêm nhãn "Khách mới"; SĐT và địa chỉ khách xem/sửa trong Chi tiết; có script nhập từ file Excel DS khách.
 
 24/10/2026: Dự kiến hàng về bổ sung khung tổng hợp theo CONT (Tên CONT, Trạng thái, Dự kiến) kèm 3 chỉ số xếp dọc và bộ lọc Trạng thái; dùng lại dữ liệu và quyền sẵn có.

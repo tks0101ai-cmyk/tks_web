@@ -127,6 +127,25 @@ test('VT Hà Nội / VT Sài Gòn page: cần đăng nhập, mọi vai trò kể
   }
 });
 
+test('Kho Hà Nội / Kho Sài Gòn page: cùng quyền stockLocationsV2.view với VT — cần đăng nhập, mọi vai trò vào được, tắt quyền xem thì bị chặn', async () => {
+  assert.deepEqual(pageRuleFor('/kho-hn/').anyOf, ['stockLocationsV2.view']);
+  assert.deepEqual(pageRuleFor('/kho-sg').anyOf, ['stockLocationsV2.view']);
+  for (const url of ['/kho-hn', '/kho-hn/', '/kho-hn/index.html', '/kho-sg', '/kho-sg/', '/kho-sg/index.html']) {
+    const anonymous = await run(guardFor({ vaiTro: ROLES.QUAN_LY }), fakeReq(url));
+    assert.equal(anonymous.nextCalled, false);
+    assert.match(anonymous.res.redirectedTo, /^\/login\//);
+    for (const role of Object.values(ROLES)) {
+      const allowed = await run(guardFor({ vaiTro: role }), fakeReq(url, { token: 'ok' }));
+      assert.equal(allowed.nextCalled, true, role + ' ' + url);
+      const revoked = await run(guardFor({ vaiTro: role, featurePermissions: { 'stockLocationsV2.view': false } }), fakeReq(url, { token: 'ok' }));
+      assert.equal(revoked.nextCalled, false, role + ' ' + url);
+      assert.match(revoked.res.redirectedTo, /^\/(reports|humanresources|shipment|account)\//);
+    }
+  }
+  // Ảnh trong thư mục trang là tài nguyên tĩnh, không bị pageGuard gác.
+  assert.equal(isPageRequest(fakeReq('/kho-hn/img/00-tong-the.jpg')), false);
+});
+
 test('token hong: chuyen ve /login/', async () => {
   const guard = guardFor({ vaiTro: ROLES.QUAN_LY }, {
     verifyToken: () => { throw new Error('bad token'); }

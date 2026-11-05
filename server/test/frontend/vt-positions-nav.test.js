@@ -35,9 +35,9 @@ test('Module Vị trí hàng cũ đã gỡ: không còn mục /stock-locations/ 
     assert.equal(doc.querySelectorAll('[data-stock-location-tab]').length, 0);
     assert.equal([...doc.querySelectorAll('a')].filter(link => /stock-locations/.test(link.getAttribute('href') || '')).length, 0);
     assert.doesNotMatch(doc.getElementById('sidebar').textContent, /Vị trí HN|Vị trí SG/);
-    // Nhóm "Vị trí hàng": 2 mục VT + Kiểm kê (02/11/2026, Quản lý có stocktake.view mặc định).
+    // Nhóm "Vị trí hàng": VT HN → Kho HN → VT SG → Kho SG → Kiểm kê (05/11/2026, Quản lý có stocktake.view mặc định).
     const groupLinks = [...doc.querySelectorAll('#tksStockLocationsGroupList a')];
-    assert.deepEqual(groupLinks.map(link => link.textContent.trim()), ['VT Hà Nội', 'VT Sài Gòn', 'Kiểm kê']);
+    assert.deepEqual(groupLinks.map(link => link.textContent.trim()), ['VT Hà Nội', 'Kho Hà Nội', 'VT Sài Gòn', 'Kho Sài Gòn', 'Kiểm kê']);
     dom.window.close();
   }
 });
