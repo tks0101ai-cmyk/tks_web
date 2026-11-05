@@ -151,3 +151,14 @@ test('saved filter reload, accent-insensitive search and export use the same sel
 test('add dialog prefills the chosen container and resets actual dates from older orders',async t=>{const p=await page(t),doc=p.w.document;doc.querySelector('[data-container-filter="2"]').click();doc.getElementById('add').click();const form=doc.getElementById('addForm');assert.equal(form.elements.contId.value,'2');assert.equal(form.querySelector('.additional-fields').open,false);const prior=p.w.fetch;p.w.fetch=async(url,options)=>url.includes('/latest?')?{ok:true,json:async()=>({row:{rowKey:'D00003',listedAt:'2026-10-01',productName:'Old product',qtyPerCarton:10,cartonCount:4,shippedNote:'2026-10-02',arrivedNote:'2026-10-03'}})}:prior(url,options);form.elements.productCode.value='OLD';form.elements.productCode.dispatchEvent(new p.w.Event('change'));await tick();await tick();assert.equal(form.elements.shippedNote.value,'');assert.equal(form.elements.arrivedNote.value,'');assert.equal(form.elements.productName.value,'Old product')});
 
 test('remote changes never silently remove a personal filter even when its last matching value disappears',async t=>{const p=await page(t),doc=p.w.document;p.change('#orderSupplier','A');p.current.rows[0].supplier='B';p.listeners.changed();await tick();await tick();assert.equal(doc.getElementById('orderSupplier').value,'A');assert.equal(doc.querySelectorAll('#orderTable tr[data-id]').length,0);assert.match(doc.getElementById('orderTable').textContent,/Không có dòng/);assert.equal(p.calls.filter(c=>c.options.method).length,0)});
+test('narrow-screen navigation opens and closes the sidebar drawer',async t=>{
+ const p=await page(t),doc=p.w.document,menu=doc.getElementById('menuBtn'),side=doc.getElementById('sidebar'),back=doc.getElementById('backdrop');
+ assert.equal(menu.getAttribute('aria-controls'),'sidebar');
+ assert.equal(side.classList.contains('open'),false);assert.equal(back.classList.contains('show'),false);assert.equal(menu.getAttribute('aria-expanded'),'false');
+ menu.click();assert.equal(side.classList.contains('open'),true);assert.equal(back.classList.contains('show'),true);assert.equal(menu.getAttribute('aria-expanded'),'true');
+ back.click();assert.equal(side.classList.contains('open'),false);assert.equal(back.classList.contains('show'),false);assert.equal(menu.getAttribute('aria-expanded'),'false');
+ menu.click();doc.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.equal(side.classList.contains('open'),false,'Esc dong drawer');
+ menu.click();side.innerHTML='<a href="/thu-mua/dat-hang/">Thu mua</a>';side.querySelector('a').click();
+ assert.equal(side.classList.contains('open'),false,'chon mot muc dieu huong thi drawer tu dong');
+ assert.equal(back.classList.contains('show'),false);
+});
