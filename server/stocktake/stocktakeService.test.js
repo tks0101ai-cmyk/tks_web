@@ -23,7 +23,7 @@ async function fixture() {
   const db = new PGlite();
   for (const file of ['0001_core_master_data.sql', '0003_orders.sql', '0009_app_users_hr_employees.sql', '0041_hr_employee_status.sql',
     '0064_sheet_snapshots.sql', '0095_stock_positions.sql', '0099_stock_position_ack_and_history_purge.sql',
-    '0101_stock_position_stock_out_action.sql', '0105_stocktake.sql', '0109_stocktake_previous_cancel.sql']) {
+    '0101_stock_position_stock_out_action.sql', '0105_stocktake.sql', '0109_stocktake_previous_cancel.sql', '0114_stocktake_frozen_lines.sql']) {
     await db.exec(migration(file));
   }
   await db.exec(`
@@ -133,7 +133,7 @@ test('ghi chu ma + nguoi kiem lai, goi y trang thai; tag Cum SP giu qua dot', as
   assert.deepEqual(history.map(h => h.action), ['tag', 'note']);
 });
 
-test('dong dot: chup ket qua, dot dong chi doc, dot sau co KK truoc', async () => {
+test('dong dot: chup ket qua, dot sau co KK truoc; dot dong khong co dong da chot thi chi doc', async () => {
   const { db, service, session } = await fixture();
   await assert.rejects(service.closeSession(ctx(), session.id, { version: 99 }), { statusCode: 409 });
   const { session: closed } = await service.closeSession(ctx(), session.id, { version: session.version });
@@ -147,8 +147,10 @@ test('dong dot: chup ket qua, dot dong chi doc, dot sau co KK truoc', async () =
   assert.equal(rowOf(board, 'AAA1').diffQty, 2);
   assert.equal(rowOf(board, 'BBB2').forgotten, true, 'Quen KK suy tu ban chup');
   assert.equal(board.totals.forgotten, 1);
+  await db.query(`UPDATE stocktake_sessions SET lines_frozen_at = NULL WHERE id = $1`, [session.id]);
   await assert.rejects(service.saveNote(ctx(), session.id, 'AAA1', { statusText: 'x' }), { statusCode: 409, code: 'STOCKTAKE_CLOSED' });
   await assert.rejects(service.addLine(ctx(), session.id, { productCode: 'A', quantity: 1 }), { code: 'STOCKTAKE_CLOSED' });
+  assert.equal(rowOf(await service.getBoard(ctx(), session.id), 'AAA1').stock, 10, 'dot khong co dong da chot doc ban chup');
 
   const { session: next } = await service.createSession(ctx(), { branch: 'hanoi', name: 'Đợt sau', dateFrom: '2026-10-30', dateTo: '2026-10-30' });
   const nextBoard = await service.getBoard(ctx(), next.id);
@@ -230,7 +232,7 @@ test('ghi chu: trang in, gio in, so dan tay L/M; dong dot luu prev_diff / other_
   const fresh = await service.getBoard(ctx(), session.id);
   await service.closeSession(ctx(), session.id, { version: fresh.session.version });
   const stored = (await db.query(`SELECT prev_diff::float8 AS p, other_diff::float8 AS o FROM stocktake_session_results WHERE product_code = 'AAA1'`)).rows[0];
-  assert.deepEqual([stored.p, stored.o], [-326, -1.5]);
+  assert.deepEqual([stored.p, stored.o], [null, null], 'chi luu so tu lay; so nhap tay nam o ghi chu');
   board = await service.getBoard(ctx(), session.id);
   assert.deepEqual([rowOf(board, 'AAA1').prevDiff, rowOf(board, 'AAA1').otherDiff], [-326, -1.5]);
   assert.equal(rowOf(board, 'AAA1').prevRatio, ratioOf(2 + -326, -326));
@@ -392,7 +394,7 @@ test('sua tren bang: expected lech -> conflict khong ghi, o khac van ghi; hoan t
 });
 
 test('sua tren bang: kiem tra dau vao, dot da dong', async () => {
-  const { service, session } = await fixture();
+  const { db, service, session } = await fixture();
   const send = body => service.saveCells(ctx(), session.id, body);
   await assert.rejects(send({ cells: [] }), { statusCode: 400 });
   await assert.rejects(send({}), { statusCode: 400 });
@@ -401,6 +403,8 @@ test('sua tren bang: kiem tra dau vao, dot da dong', async () => {
   await assert.rejects(send({ cells: [{ code: 'AAA1', column: 'constructor', value: 'x' }] }), { statusCode: 400 });
   const fresh = await service.getBoard(ctx(), session.id);
   await service.closeSession(ctx(), session.id, { version: fresh.session.version });
+  assert.equal((await send({ cells: [{ code: 'AAA1', column: 'printPage', value: '7' }] })).applied.length, 1, 'dot da chot van sua duoc');
+  await db.query(`UPDATE stocktake_sessions SET lines_frozen_at = NULL WHERE id = $1`, [session.id]);
   await assert.rejects(send({ cells: [{ code: 'AAA1', column: 'statusText', value: 'x' }] }), { statusCode: 409, code: 'STOCKTAKE_CLOSED' });
 });
 
@@ -721,4 +725,104 @@ test('dot doi chieu dang mo: nho so 60 giay, ghi vao dot do thi tinh lai ngay', 
   clock += 61 * 1000;
   await service.getBoard(ctx(), session.id);
   assert.equal(teamReads, 3, 'het 60 giay thi tinh lai');
+});
+
+async function closedFixture() {
+  const context = await fixture();
+  const { session: closed } = await context.service.closeSession(ctx(), context.session.id, { version: context.session.version });
+  return { ...context, closed };
+}
+
+test('dong dot chot dong don: xoa khach, sua, huy, xoa don, doi ton tren Kiot khong con anh huong', async () => {
+  const { db, service, session, closed } = await closedFixture();
+  assert.equal(closed.frozen, true);
+  assert.ok(closed.linesFrozenAt);
+  const before = await service.getBoard(ctx(), session.id);
+  assert.equal(rowOf(before, 'AAA1').lines.length, 2);
+  await db.exec(`
+    DELETE FROM customers WHERE id = 11;
+    UPDATE orders SET raw = '{"customerName":"Khách khác"}', customer_id = NULL WHERE id = 101;
+    DELETE FROM order_details WHERE order_id = 102;
+    DELETE FROM orders WHERE id = 102;
+    INSERT INTO customers (branch, id, code, name, raw) VALUES ('hanoi', 19, 'KH9', 'TEAM 9', '{}');
+    INSERT INTO orders (branch, id, code, order_date, customer_id, raw) VALUES ('hanoi', 190, 'DH190', '2026-10-29 09:00+00', 19, '{}');
+    INSERT INTO order_details (branch, order_id, line_no, product_id, quantity, raw) VALUES ('hanoi', 190, 1, 1, 500, '{"productCode":"AAA1","quantity":500}');
+    UPDATE products SET raw = '{"inventories":[{"onHand":999,"cost":77}]}' WHERE branch = 'hanoi' AND id = 1;
+  `);
+  const after = await service.getBoard(ctx(), session.id);
+  const row = rowOf(after, 'AAA1');
+  assert.deepEqual([row.counted, row.stock, row.cost, row.diffQty, row.diffValue], [12, 10, 1000, 2, 2000]);
+  assert.deepEqual(row.lines.map(line => line.orderCode).sort(), ['DH101', 'DH102']);
+  assert.equal(row.lines.find(line => line.orderId === 101).team, 'TEAM 1 : HIỂU KHO');
+  const { rows } = await service.getLineExport(ctx(), session.id);
+  assert.equal(rows.find(item => item.code === 'AAA1').lines.length, 2, 'file thong ke doc ban da chot');
+});
+
+test('sau khi dong van sua duoc: SL, khu, quy cach, bo dong, them dong tay; ket qua luu theo', async () => {
+  const { db, service, session } = await closedFixture();
+  const stored = async code => (await db.query(`SELECT counted::float8 c, stock::float8 s, diff_qty::float8 d, diff_value::float8 v FROM stocktake_session_results WHERE session_id = $1 AND product_code = $2`, [session.id, code])).rows[0];
+  const { edit } = await service.saveLine(ctx(HUNG), session.id, { orderId: 101, lineNo: 1, quantity: 20, zone: 'K1', spec: '2t*10', version: null });
+  assert.equal(edit.zone, 'K1');
+  let board = await service.getBoard(ctx(), session.id);
+  assert.deepEqual([rowOf(board, 'AAA1').counted, rowOf(board, 'AAA1').diffQty, rowOf(board, 'AAA1').diffValue], [24, 14, 14000]);
+  assert.deepEqual(await stored('AAA1'), { c: 24, s: 10, d: 14, v: 14000 });
+
+  await service.saveLine(ctx(), session.id, { orderId: 102, lineNo: 1, removed: true, version: null });
+  assert.equal((await stored('AAA1')).c, 20);
+
+  await service.addLine(ctx(), session.id, { productCode: 'BBB2', quantity: 3, team: 'Kho Hưng', zone: 'K2', spec: '1t*3' });
+  board = await service.getBoard(ctx(), session.id);
+  assert.equal(rowOf(board, 'BBB2').counted, 3);
+  assert.equal(rowOf(board, 'BBB2').forgotten, false);
+  assert.deepEqual(await stored('BBB2'), { c: 3, s: 5, d: -2, v: -400 });
+
+  await service.addLine(ctx(), session.id, { productCode: 'moi 1', quantity: 4, team: 'Kho' });
+  board = await service.getBoard(ctx(), session.id);
+  assert.equal(rowOf(board, 'MOI1').inKiot, false);
+  assert.deepEqual(await stored('MOI1'), { c: 4, s: 0, d: 4, v: 0 });
+
+  await service.saveNote(ctx(), session.id, 'AAA1', { statusText: 'OK' });
+  await service.saveCells(ctx(), session.id, { cells: [{ code: 'AAA1', column: 'printPage', value: '12' }] });
+  board = await service.getBoard(ctx(), session.id);
+  assert.equal(rowOf(board, 'AAA1').note.printPage, '12');
+
+  await assert.rejects(service.saveLine(ctx(), session.id, { orderId: 103, lineNo: 1, quantity: 1 }), { statusCode: 404 });
+  await assert.rejects(service.refreshOrders(ctx(), session.id), { code: 'STOCKTAKE_CLOSED' });
+  await assert.rejects(service.updateSession(ctx(), session.id, { dateTo: '2026-10-30', version: 2 }), { code: 'STOCKTAKE_CLOSED' });
+  await assert.rejects(service.closeSession(ctx(), session.id, { version: 2 }), { code: 'STOCKTAKE_CLOSED' });
+});
+
+test('dot dang mo dung dot da chot lam KK truoc thay so moi; dot da huy khong sua duoc', async () => {
+  const { service, session } = await closedFixture();
+  const { session: next } = await service.createSession(ctx(), { branch: 'hanoi', name: 'Đợt sau', dateFrom: '2026-10-30', dateTo: '2026-10-30' });
+  assert.equal(rowOf(await service.getBoard(ctx(), next.id), 'AAA1').prevDiff, 2);
+  await service.saveLine(ctx(), session.id, { orderId: 101, lineNo: 1, quantity: 20, version: null });
+  assert.equal(rowOf(await service.getBoard(ctx(), next.id), 'AAA1').prevDiff, 14);
+
+  const current = (await service.getBoard(ctx(), session.id)).session;
+  await service.cancelSession(ctx(), session.id, { version: current.version, reason: 'thử' });
+  await assert.rejects(service.addLine(ctx(), session.id, { productCode: 'AAA1', quantity: 1 }), { code: 'STOCKTAKE_CANCELLED' });
+});
+
+test('so nhap tay KK truoc / Kiem SG sua va xoa sau khi dong deu dung, so tu lay giu nguyen luc dong', async () => {
+  const { service, session } = await fixture();
+  const { session: first } = await service.createSession(ctx(), { branch: 'hanoi', name: 'Đợt trước', dateFrom: '2026-10-01', dateTo: '2026-10-01' });
+  await service.closeSession(ctx(), first.id, { version: first.version });
+  await service.saveNote(ctx(), session.id, 'AAA1', { prevDiffManual: -326 });
+  await service.closeSession(ctx(), session.id, { version: session.version });
+  let row = rowOf(await service.getBoard(ctx(), session.id), 'AAA1');
+  assert.deepEqual([row.prevDiff, row.prevDiffManual, row.prevDiffAuto], [-326, true, -10]);
+  const note = row.note;
+  await service.saveNote(ctx(), session.id, 'AAA1', { prevDiffManual: null, version: note.version });
+  row = rowOf(await service.getBoard(ctx(), session.id), 'AAA1');
+  assert.deepEqual([row.prevDiff, row.prevDiffManual], [-10, false]);
+});
+
+test('dot nap tu sheet van chi doc', async () => {
+  const { db, service, session } = await fixture();
+  await db.query(`UPDATE stocktake_sessions SET status = 'closed', source = 'sheet_import', source_ref = 'x' WHERE id = $1`, [session.id]);
+  const board = await service.getBoard(ctx(), session.id);
+  assert.equal(board.session.frozen, false);
+  await assert.rejects(service.saveNote(ctx(), session.id, 'AAA1', { statusText: 'OK' }), { code: 'STOCKTAKE_CLOSED' });
+  await assert.rejects(service.addLine(ctx(), session.id, { productCode: 'AAA1', quantity: 1 }), { code: 'STOCKTAKE_CLOSED' });
 });
