@@ -154,13 +154,13 @@ function createCustomerProfileRepository({ pool = null, now = () => new Date(), 
     const p = rules.normalizeProfileInput(input);
     return guardWrite(async () => {
       const { rows } = await query(`
-        INSERT INTO customer_profiles (customer_key, customer_name, warehouse_location, warehouse_count, area, competitor, sales_channels, updated_by_id, updated_by_name, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7::text[], $8, $9, $10::timestamptz)
+        INSERT INTO customer_profiles (customer_key, customer_name, warehouse_location, warehouse_count, area, phone, address, competitor, sales_channels, updated_by_id, updated_by_name, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::text[], $10, $11, $12::timestamptz)
         ON CONFLICT (customer_key) DO UPDATE SET customer_name = EXCLUDED.customer_name, warehouse_location = EXCLUDED.warehouse_location,
           warehouse_count = EXCLUDED.warehouse_count, area = EXCLUDED.area, phone = EXCLUDED.phone, address = EXCLUDED.address, competitor = EXCLUDED.competitor,
           sales_channels = EXCLUDED.sales_channels, updated_by_id = EXCLUDED.updated_by_id, updated_by_name = EXCLUDED.updated_by_name, updated_at = EXCLUDED.updated_at
         RETURNING *`,
-      [key, String(customerName || ''), p.warehouseLocation, p.warehouseCount, p.area, p.competitor, p.salesChannels, actorId(actor), actorName(actor), now().toISOString()]);
+      [key, String(customerName || ''), p.warehouseLocation, p.warehouseCount, p.area, p.phone, p.address, p.competitor, p.salesChannels, actorId(actor), actorName(actor), now().toISOString()]);
       return profileOut(rows[0]);
     });
   }

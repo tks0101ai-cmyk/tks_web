@@ -108,9 +108,9 @@ test('saveProfile upsert + getProfile: mac dinh rong, luu va doc lai dung hinh d
     const empty = await repo.getProfile('chị a');
     assert.deepEqual(empty, { profile: { warehouseLocation: '', area: '', phone: '', address: '', warehouseCount: null, warehouseScale: 'none', competitor: '', salesChannels: [] }, images: [], notes: [], visitDays: [], lastVisit: null, editors: [] });
     const saved = await repo.saveProfile('chị a', 'Chị A', {
-      warehouseLocation: ' 12 Lê Lợi ', warehouseCount: '3', warehouseScale: 'medium', competitor: 'Tem X', salesChannels: ['kho_buon', 'san']
+      warehouseLocation: ' 12 Lê Lợi ', phone: ' 0901234567 ', address: ' 5 Nguyễn Huệ ', warehouseCount: '3', warehouseScale: 'medium', competitor: 'Tem X', salesChannels: ['kho_buon', 'san']
     }, ACTOR);
-    assert.deepEqual(saved, { warehouseLocation: '12 Lê Lợi', area: '', phone: '', address: '', warehouseCount: 3, warehouseScale: 'none', competitor: 'Tem X', salesChannels: ['san', 'kho_buon'] });
+    assert.deepEqual(saved, { warehouseLocation: '12 Lê Lợi', area: '', phone: '0901234567', address: '5 Nguyễn Huệ', warehouseCount: 3, warehouseScale: 'none', competitor: 'Tem X', salesChannels: ['san', 'kho_buon'] });
     await repo.saveProfile('chị a', 'Chị A', { warehouseCount: null, warehouseScale: 'none', salesChannels: [] }, { id: 'u-2', name: 'Sale Hai' });
     const again = await repo.getProfile('chị a');
     assert.deepEqual(again.profile, { warehouseLocation: '', area: '', phone: '', address: '', warehouseCount: null, warehouseScale: 'none', competitor: '', salesChannels: [] });
