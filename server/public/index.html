@@ -5273,6 +5273,10 @@
                     <select class="stockout-branch-select" id="businessCustomersScale" aria-label="Lọc theo quy mô khách" hidden><option value="">Tất cả quy mô khách</option></select>
                     <label class="business-inactive-toggle"><input type="checkbox" id="businessCustomersInactive"> Hiện cả khách không hoạt động</label>
                   </div>
+                  <div class="panel-head-actions">
+                    <button class="export-button" type="button" id="businessCustomerImportBtn" data-not-export hidden
+                      onclick="openCustomerImport()" title="Tải file Excel để cập nhật level giá / khách mới hàng loạt">Tải lên cập nhật</button>
+                  </div>
                   <div class="panel-head-actions business-export" data-kind="customers">
                     <button class="export-button" type="button"
                       onclick="openBusinessExportDialog('customers')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Xuất file</button>
@@ -5352,6 +5356,31 @@
             title="Báo cáo xem nhanh (số liệu tổng quan, biểu đồ, bảng có tìm kiếm) — mở được khi không có mạng">Xuất HTML</button>
           <button class="export-confirm" id="exportConfirmButton" type="button" onclick="confirmExport()" hidden>Xuất
             Excel</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Hộp "Tải lên cập nhật khách hàng": chọn file Excel → xem trước thay đổi → áp dụng (tab Khách hàng, quyền customerManage). -->
+  <div class="export-modal-backdrop" id="customerImportBackdrop" hidden onclick="if (event.target === this) closeCustomerImport()">
+    <section class="export-modal" role="dialog" aria-modal="true" aria-labelledby="customerImportTitle">
+      <div class="export-modal-head">
+        <div>
+          <h2 class="export-modal-title" id="customerImportTitle">Tải lên cập nhật khách hàng</h2>
+          <p class="export-modal-subtitle">Dùng file Excel xuất từ bảng "Doanh số theo khách" (hoặc file DS khách cũ). Cập nhật Level giá, Khách mới; điện thoại/địa chỉ chỉ điền vào ô đang trống.</p>
+        </div>
+        <button class="export-modal-close" type="button" onclick="closeCustomerImport()" aria-label="Đóng">×</button>
+      </div>
+      <div class="export-fields" id="customerImportBody">
+        <p class="table-note">Mức mới lấy từ cột <b>Sheet chuẩn</b> (hoặc <b>Level mới</b>) nếu có và hợp lệ, không thì lấy cột <b>Level giá</b>. Khách không có trong hệ thống sẽ bị bỏ qua, không tạo mới.</p>
+        <input type="file" id="customerImportFile" accept=".xlsx" onchange="previewCustomerImport()">
+        <div id="customerImportResult" aria-live="polite"></div>
+      </div>
+      <div class="export-modal-foot">
+        <div class="export-status" id="customerImportStatus" aria-live="polite"></div>
+        <div class="export-foot-actions">
+          <button class="export-cancel" type="button" onclick="closeCustomerImport()">Đóng</button>
+          <button class="export-confirm" id="customerImportApply" type="button" onclick="applyCustomerImport()" disabled>Áp dụng</button>
         </div>
       </div>
     </section>
@@ -9241,6 +9270,7 @@
       }
       const can = k => typeof TKSNav !== 'undefined' && typeof TKSNav.can === 'function' && !!TKSNav.can(k);
       document.getElementById('businessRefreezeBtn').hidden = !can('reports.business.refreeze');
+      document.getElementById('businessCustomerImportBtn').hidden = !(can('reports.business.customerNotes') && can('reports.business.customerManage'));
       document.querySelectorAll('.business-export').forEach(el => { el.hidden = !can('reports.export'); });
     }
 
@@ -9344,6 +9374,93 @@
     function openBusinessExportDialog(kind) {
       if (typeof TKSNav === 'undefined' || typeof TKSNav.can !== 'function' || !TKSNav.can('reports.export')) return;
       return startExportDialog({ kind: kind, query: businessExportQuery(kind) }, BUSINESS_EXPORT_SOURCE);
+    }
+
+    // ===== Tải lên cập nhật khách hàng (Excel): xem trước rồi mới áp dụng =====
+    const customerImportState = { file: null, busy: false };
+
+    function openCustomerImport() {
+      customerImportState.file = null;
+      document.getElementById('customerImportFile').value = '';
+      document.getElementById('customerImportResult').innerHTML = '';
+      document.getElementById('customerImportStatus').textContent = '';
+      document.getElementById('customerImportApply').disabled = true;
+      document.getElementById('customerImportBackdrop').hidden = false;
+    }
+
+    function closeCustomerImport() {
+      if (customerImportState.busy) return;
+      document.getElementById('customerImportBackdrop').hidden = true;
+    }
+
+    function customerImportSend(apply) {
+      const form = new FormData();
+      form.append('file', customerImportState.file);
+      return fetch('/api/business-report/customer-import' + (apply ? '?apply=1' : ''), { method: 'POST', body: form })
+        .then(function (res) {
+          return res.json().catch(function () { return {}; }).then(function (body) {
+            if (!res.ok) throw new Error((body && body.error) || ('HTTP ' + res.status));
+            return body;
+          });
+        });
+    }
+
+    function customerImportRender(s, applied) {
+      const rows = (s.changesSample || []).map(function (c) {
+        const tag = c.fromTag !== c.toTag ? ' · nhãn "' + escapeHtml(c.fromTag || '—') + '" → "' + escapeHtml(c.toTag || '—') + '"' : '';
+        return '<li>' + escapeHtml(c.name) + ': <b>' + escapeHtml(c.from || '') + '</b> → <b>' + escapeHtml(c.to || '') + '</b>' + tag + '</li>';
+      }).join('');
+      const unmatched = (s.unmatchedSample || []).length ? '<p class="table-note">Không có trong hệ thống (bỏ qua): ' + (s.unmatchedSample || []).map(escapeHtml).join(', ') + (s.unmatched > s.unmatchedSample.length ? '…' : '') + '</p>' : '';
+      const held = (s.heldBack || []).length ? '<p class="table-note">Tên trùng nhưng khác level, không ghi: ' + s.heldBack.map(escapeHtml).join(', ') + '</p>' : '';
+      const head = applied
+        ? '<p><b>Đã cập nhật ' + (s.changed || 0) + ' khách</b>' + (s.versionConflicts ? ' · ' + s.versionConflicts + ' khách bị sửa tay trong lúc import (bỏ qua)' : '') + (s.profilesFilled ? ' · điền SĐT/địa chỉ cho ' + s.profilesFilled + ' khách' : '') + '.</p>'
+        : '<p>Đọc <b>' + s.rows + '</b> dòng · <b>' + s.matched + '</b> khách khớp hệ thống · sẽ đổi <b>' + s.wouldChange + '</b> khách.</p>';
+      document.getElementById('customerImportResult').innerHTML = head +
+        (s.invalidRows ? '<p class="table-note">' + s.invalidRows + ' dòng thiếu tên hoặc level không hợp lệ (bỏ qua).</p>' : '') +
+        (s.unmatched ? '<p class="table-note">' + s.unmatched + ' khách không có trong hệ thống (bỏ qua).</p>' : '') +
+        (rows && !applied ? '<ul class="table-note" style="padding-left:18px;">' + rows + (s.wouldChange > s.changesSample.length ? '<li>… và ' + (s.wouldChange - s.changesSample.length) + ' khách khác</li>' : '') + '</ul>' : '') +
+        (applied ? '' : unmatched) + held;
+    }
+
+    function previewCustomerImport() {
+      const input = document.getElementById('customerImportFile');
+      customerImportState.file = input.files && input.files[0] || null;
+      const status = document.getElementById('customerImportStatus');
+      const apply = document.getElementById('customerImportApply');
+      apply.disabled = true;
+      if (!customerImportState.file) return;
+      status.classList.remove('error');
+      status.textContent = 'Đang đọc file…';
+      customerImportState.busy = true;
+      customerImportSend(false).then(function (s) {
+        customerImportRender(s, false);
+        status.textContent = s.wouldChange ? '' : 'Không có thay đổi nào cần áp dụng.';
+        apply.disabled = !s.wouldChange;
+      }).catch(function (err) {
+        document.getElementById('customerImportResult').innerHTML = '';
+        status.classList.add('error');
+        status.textContent = err.message;
+      }).then(function () { customerImportState.busy = false; });
+    }
+
+    function applyCustomerImport() {
+      if (!customerImportState.file || customerImportState.busy) return;
+      const status = document.getElementById('customerImportStatus');
+      const apply = document.getElementById('customerImportApply');
+      apply.disabled = true;
+      status.classList.remove('error');
+      status.textContent = 'Đang cập nhật…';
+      customerImportState.busy = true;
+      customerImportSend(true).then(function (s) {
+        customerImportRender(s, true);
+        status.textContent = '';
+        showToast('Đã cập nhật ' + (s.changed || 0) + ' khách từ file Excel.', 'success');
+        loadBusinessReport(true);
+      }).catch(function (err) {
+        status.classList.add('error');
+        status.textContent = err.message;
+        apply.disabled = false;
+      }).then(function () { customerImportState.busy = false; });
     }
 
     function refreezeBusinessMonth() {

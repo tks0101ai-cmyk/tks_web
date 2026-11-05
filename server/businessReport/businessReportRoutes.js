@@ -19,10 +19,13 @@ const BUILDERS = { sales: svc.buildSaleReport, customers: svc.buildCustomerRepor
 const CUSTOMER_NOTES = 'reports.business.customerNotes';
 const CUSTOMER_MANAGE = 'reports.business.customerManage';
 const MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024;
+const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 
 // customerProfiles: ghi chu / thong tin theo khach (migration 0080); now: gio hien tai (test dong bang ngay VN).
+// customerImport / importPool: import Excel level gia (test tiem ban gia lap / pool PGlite).
 function createBusinessReportRouter({ repository = createRepository(), customerProfiles = createCustomerProfileRepository(),
-  customerPriceLevels = createCustomerPriceLevelRepository(), now = () => new Date() } = {}) {
+  customerPriceLevels = createCustomerPriceLevelRepository(), now = () => new Date(),
+  customerImport = require('./customerLevelExcelImport'), importPool = () => require('../db/pool').getPool() } = {}) {
   const router = express.Router();
   router.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   const view = [requireAuth, requireFeature('reports.business')];
@@ -163,6 +166,31 @@ function createBusinessReportRouter({ repository = createRepository(), customerP
       ? await customerPriceLevels.saveLevel(customer.key,body.level,body.version,actorOf(req.user),body.newCustomer)
       : await customerPriceLevels.saveLevel(customer.key,body.level,body.version,actorOf(req.user));
     res.json({ priceLevel:PRICE_LEVEL_LABELS[saved.level],priceLevelVersion:saved.version,newCustomer:saved.newCustomer || '' });
+  }));
+
+  // Upload file Excel (mau xuat bang "Doanh so theo khach" hoac DS khach cu) de cap nhat hang loat level gia / Khach moi /
+  // SDT, dia chi (chi dien o trong). ?apply=1 moi ghi; mac dinh chi xem truoc. Khach khong co trong he thong khong bao gio duoc tao.
+  const importUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_IMPORT_BYTES, files: 1, fields: 4 } });
+  const readImportFile = (req, res, next) => importUpload.single('file')(req, res, err => {
+    if (!err) return next();
+    if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'File quá lớn, tối đa 10 MB.', code: 'IMPORT_TOO_LARGE' });
+    return res.status(400).json({ error: 'Không đọc được file tải lên.', code: 'IMPORT_UPLOAD_FAILED' });
+  });
+  router.post('/customer-import', ...customerManage, readImportFile, handle(async (req, res) => {
+    if (!req.file) throw fail(400, 'IMPORT_MISSING', 'Thiếu file Excel.');
+    if (!/\.xlsx$/i.test(String(req.file.originalname || ''))) throw fail(400, 'IMPORT_BAD_TYPE', 'Chỉ nhận file .xlsx.');
+    let parsed;
+    try { parsed = await customerImport.readExcelUpload(req.file.buffer); }
+    catch (e) { throw fail(400, 'IMPORT_UNREADABLE', 'Không đọc được file Excel (file hỏng hoặc không phải .xlsx).'); }
+    if (!parsed.rows.length) throw fail(400, 'IMPORT_EMPTY', 'File không có dòng khách hàng nào.');
+    const apply = req.query.apply === '1';
+    try {
+      const summary = await customerImport.runImport({ rows: parsed.rows, pool: importPool(), repo: customerPriceLevels, apply, blankKeepsTag: true, actor: actorOf(req.user) });
+      res.json({ ...summary, layout: parsed.legacy ? 'legacy' : 'export' });
+    } catch (e) {
+      if (/initialized_at/.test(String(e.message))) throw fail(503, 'MIGRATION_PENDING', 'Level giá nội bộ chưa sẵn sàng. Cần khởi tạo level giá trước.');
+      throw e;
+    }
   }));
 
   router.get('/customer-meta', ...customerView, handle(async (req, res) => {
