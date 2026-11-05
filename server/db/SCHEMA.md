@@ -1,6 +1,6 @@
 # Supabase schema cho đồng bộ KiotViet
 
-## Migration 0114 — Kiểm kê: chốt dòng đơn khi đóng đợt (05/11/2026, chưa áp DB)
+## Migration 0114 — Kiểm kê: chốt dòng đơn khi đóng đợt (05/11/2026, đã áp DB 05/11/2026)
 
 `0114_stocktake_frozen_lines.sql`: `stocktake_sessions` thêm `lines_frozen_at` TIMESTAMPTZ (NULL = chưa đóng, nạp từ sheet hoặc đóng trước migration này, chỉ đọc). Bảng `stocktake_session_lines` (`session_id` FK ON DELETE CASCADE, `order_id`, `line_no`, `order_code`, `order_status`, `team`, `zone`, `spec`, `product_code`, `product_name`, `quantity` NUMERIC, PK `(session_id, order_id, line_no)`): dòng đơn gốc lúc đóng đợt, phần sửa vẫn ở `stocktake_line_edits`. Từ migration này `stocktake_session_results.prev_diff`, `other_diff` của đợt web lưu số tự lấy; số nhập tay ở `stocktake_code_notes`. Gỡ: `db/rollbacks/0114_stocktake_frozen_lines.down.sql` (chạy tay, sau khi deploy lại bản web không đọc `lines_frozen_at`).
 
