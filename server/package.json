@@ -15,6 +15,8 @@
     "test": "node --max-old-space-size=4096 --test",
     "db:migrate": "node db/migrate.js",
     "products:90d:refresh": "node kiotvietSync/product90dReport.js",
+    "purchase:sample:seed": "node purchaseOrders/seedSampleData.js",
+    "purchase:sample:remove": "node purchaseOrders/seedSampleData.js --remove",
     "telegram-manager:set-webhook": "node telegram/setManagerLeaveWebhook.js",
     "kiotviet-sync:preflight": "node kiotvietSync/preflightCheck.js",
     "kiotviet-sync:backfill": "node kiotvietSync/backfill.js",
