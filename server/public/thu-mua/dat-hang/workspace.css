@@ -78,3 +78,17 @@
 
 /* The orders toolbar already provides column selection; omit generated duplicate toolbars. */
 .purchase-page #containerPanel>.tks-table-tools,.purchase-page #orders>.tks-table-tools{display:none}
+
+/* Compact table policy agreed in the prototype: widths follow content, not viewport fill. */
+.purchase-page #orderTable table,.purchase-page #containerTable table{min-width:0!important}
+.purchase-page #orderTable th,.purchase-page #containerTable th{font-size:9px;white-space:normal;overflow-wrap:normal;word-break:normal;line-height:1.2}
+.purchase-page #orderTable td[data-field="productName"],.purchase-page #orderTable td[data-field="productNameCn"],.purchase-page #orderTable td[data-field$="Note"]{white-space:normal;overflow-wrap:anywhere;line-height:1.4}
+.purchase-page #orderTable td.num,.purchase-page #containerTable td.num{white-space:nowrap;font-variant-numeric:tabular-nums}
+
+/* Shared table wrapping must never break a number or a row identifier across lines. */
+.purchase-page #orderTable td.num,.purchase-page #containerTable td.num,.purchase-page #watchedContainer td.num,.purchase-page #orderTable td[data-field="rowKey"],.purchase-page #orderTable td[data-field="productCode"],.purchase-page #containerTable td:first-child{white-space:nowrap!important;overflow-wrap:normal!important}
+.purchase-page #orderTable th,.purchase-page #containerTable th{overflow-wrap:normal!important;word-break:normal!important}
+.purchase-page #containerTable button,.purchase-page #containerTable input,.purchase-page #containerTable select{font-size:11px;white-space:nowrap}
+
+.purchase-page #containerTable input[data-cont-freight]{padding:3px 4px}
+.purchase-page #watchedContainer table{min-width:0}

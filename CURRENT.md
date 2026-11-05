@@ -1189,3 +1189,10 @@ Bộ lọc đặt hàng có trạng thái, HR ID/tên legacy, NCC, VAT, ngày l�
 107 ca kiểm thử module đạt, trong đó 32 ca trang thật; kiểm thêm ID HTML không trùng và asset tồn tại. Đây là jsdom/PGlite, chưa nghiệm thu CSS/ảnh thực tế trên trình duyệt. Không có SUPABASE_TEST_DB_URL trong môi trường local hiện tại (chỉ kiểm cờ, không in secret); chưa chạy app kết nối DB thật, migration/seed/deploy/cutover. Cần môi trường thử nghiệm/DB độc lập để mở link trang thật và nghiệm thu bước 3–4. Câu hỏi môi trường thử nghiệm đã gửi người dùng.
 
 > 05/11/2026 — Thu mua: ẩn đúng hai thanh Cột hiển thị tự sinh ở Chỉ số cont/Đặt hàng; giữ Chọn cột trong bộ lọc và cơ chế kéo cột dùng chung. Đã đo trên trình duyệt cục bộ: cả hai thanh display:none/height=0; Chọn cột còn hiện, 57 tay nắm cột và 25 dòng mẫu còn render. Tăng phiên bản workspace.css để tránh cache cũ.
+
+## Thu mua — đối chiếu mockup với production (05/11/2026)
+
+- Yêu cầu bảng đã chốt: gọn theo nội dung; ô số vừa chữ số, không bẻ số; tiêu đề nhỏ và ngắt theo từ; kéo cột được và giữ sau sắp xếp; đủ trường TKS2 trong Chọn cột; bộ mặc định có khóa dòng; tên/ghi chú xuống dòng; bảng ghim không che tiêu đề. Bản sửa compact-v3 dùng duy nhất TKSTables, khai báo khóa/độ rộng cho từng cột và bỏ cơ chế kéo riêng. Không ghi đè bộ cột người dùng đã chọn; bổ sung khóa dòng một lần cho cấu hình cũ, không xóa bản nháp.
+- Kiểm chứng cục bộ: 37/37 test liên quan; trình duyệt thật đo Số thùng 24px, Tổng SL 40px, Tổng tệ 65px với dữ liệu thử; ArrowRight đổi 24→34px, sắp xếp lại vẫn 34px; cont ghim đáy 451px, tiêu đề bảng top 462px (không chồng).
+- Đã có code/test nhưng cần nghiệm thu ghi trên production: dropdown cont/NV/trạng thái; tổng cont theo bản nháp; tách .01/.02 với số thùng con trống; lưu hàng loạt có xác nhận; hoàn tác/khôi phục; bộ lọc riêng; nhập Excel nguyên lô. Không xem việc có nút là đã nghiệm thu.
+- Còn thiếu rõ ràng: dữ liệu người dùng gửi ngày 05/11 chưa thay bộ mẫu 12 dòng/3 cont; source_mode=sheets nên production chỉ xem. Chưa nghiệm thu đầy đủ các luồng ghi trên DB thử nghiệm. Không tự chuyển nguồn hoặc nạp dữ liệu thật.
