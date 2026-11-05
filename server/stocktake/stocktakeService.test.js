@@ -596,3 +596,41 @@ test('order-status: dem trong khoang, ngoai khoang bo don huy va qua 14 ngay, re
   assert.notEqual((await service.getOrderStatus(ctx(), session.id)).revision, status.revision);
   await assert.rejects(service.getOrderStatus(ctx(QL, ['saigon']), session.id), { code: 'BRANCH_OUT_OF_SCOPE' });
 });
+
+test('cap nhat don Kiot: don them hang ghi vao DB, Tong kiem doi ngay, bao tab khac; dot da dong bi chan', async () => {
+  const { db, session } = await fixture();
+  const { createOrderRefresher } = require('./stocktakeOrderRefresh');
+  const pool = poolFor(db);
+  const edited = { id: 101, code: 'DH101', modifiedDate: '2026-11-05T09:21:44.9930000', orderDate: '2026-01-10T09:00:00', customerId: 11, customerName: 'TEAM 1 : HIỂU KHO', statusValue: 'Phiếu tạm', description: 'G1-15',
+    orderDetails: [{ productId: 1, productCode: 'AAA1', quantity: 8, note: '1t*8' }, { productId: 2, productCode: 'BBB2', quantity: 40 }] };
+  const stranger = { id: 900, code: 'DH900', orderDate: '2026-10-29T09:00:00', customerId: 12, customerName: 'Khách thường', orderDetails: [{ productId: 2, productCode: 'BBB2', quantity: 7 }] };
+  const refreshTeamOrders = createOrderRefresher({
+    getDb: () => pool,
+    getBranches: () => [{ branch: 'hanoi', clientId: 'a', clientSecret: 'b', retailer: 'c' }],
+    createClient: () => ({ fetchAllPages: async (endpoint, query, onPage) => onPage([edited, stranger], {}) })
+  });
+  const announced = [];
+  const service = createStockTakeService({ getDb: () => pool, announce: (id, by) => announced.push([id, by]), refreshTeamOrders });
+  const before = await service.getBoard(ctx(), session.id);
+  assert.equal(rowOf(before, 'BBB2').counted, 0);
+
+  const result = await service.refreshOrders({ ...ctx(), clientId: 'tab-1' }, session.id);
+  assert.deepEqual([result.fetched, result.teamOrders, result.cached], [2, 1, false]);
+  assert.deepEqual(announced, [[session.id, 'tab-1']]);
+  const { rows } = await db.query(`SELECT count(*)::int AS n FROM orders WHERE id = 900`);
+  assert.equal(rows[0].n, 0, 'don khong phai TEAM de luot nen ghi');
+
+  // Don 101 doi ngay dat sang 10/01 nen dot phai sua ngay moi tinh; dong tu DB van dung so moi.
+  const { session: wide } = await service.updateSession(ctx(), session.id, { dateFrom: '2026-01-10', version: session.version });
+  const after = await service.getBoard(ctx(), session.id);
+  assert.equal(rowOf(after, 'BBB2').counted, 40);
+
+  const announcedBefore = announced.length;
+  const second = await service.refreshOrders(ctx(), session.id);
+  assert.equal(second.cached, true);
+  assert.equal(announced.length, announcedBefore, 'ket qua cu khong bao lai');
+
+  await service.closeSession(ctx(), session.id, { version: wide.version });
+  await assert.rejects(service.refreshOrders(ctx(), session.id), { code: 'STOCKTAKE_CLOSED' });
+  await assert.rejects(service.refreshOrders(ctx(QL, ['saigon']), session.id), { code: 'BRANCH_OUT_OF_SCOPE' });
+});

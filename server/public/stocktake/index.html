@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261012">
   <link rel="stylesheet" href="/shared/table-controls.css?v=20261016-1">
   <link rel="stylesheet" href="/vt-positions/vt-positions.css?v=20261030-1">
-  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261105-1">
+  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261105-2">
 </head>
 <body>
   <div class="receipt-header">
@@ -50,6 +50,7 @@
           <label class="st-field st-session-pick"><span>Đợt</span><select id="stSession" aria-label="Chọn đợt kiểm kê"></select></label>
           <span class="st-session-meta" id="stSessionMeta"></span>
           <button class="locations-columns-button vt-btn" id="stEditDatesButton" type="button" hidden>Sửa ngày</button>
+          <button class="locations-columns-button vt-btn vt-btn-primary" id="stRefreshOrdersButton" type="button" hidden title="Lấy ngay đơn TEAM vừa thêm hoặc sửa trên KiotViet. Web vẫn tự cập nhật sau khoảng 1–2 phút nếu không bấm.">Cập nhật đơn Kiot</button>
           <div class="st-stats" id="stStats" aria-live="polite"></div>
           <label class="st-field st-counterpart" id="stCounterpartField" hidden><span>Đối chiếu</span><select id="stCounterpart" class="st-select" aria-label="Đợt đối chiếu cơ sở kia"></select></label>
           <label class="st-field st-previous" id="stPreviousField" hidden title="Đợt lấy số &quot;KK trước sai&quot;. Tự động = đợt đã đóng gần nhất cùng cơ sở."><span>KK trước</span><select id="stPrevious" class="st-select" aria-label="Đợt KK trước"></select></label>
@@ -282,7 +283,7 @@
   <script src="/stocktake/stocktakeSearch.js?v=20261103-2"></script>
   <script src="/stocktake/stocktakeGrid.js?v=20261104-2"></script>
   <script src="/stocktake/stocktakeStatus.js?v=20261103-2"></script>
-  <script src="/stocktake/stocktake.js?v=20261105-1"></script>
+  <script src="/stocktake/stocktake.js?v=20261105-2"></script>
   <script>window.addEventListener('DOMContentLoaded', function () { TKSStocktake.init(); });</script>
   <script src="/shared/shooting-star.js?v=20261019"></script>
 </body>
