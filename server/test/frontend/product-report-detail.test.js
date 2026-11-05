@@ -789,3 +789,30 @@ test('chua co che do tang dan (reportVersion = null) thi khong tai lai chi vi re
   await page.run('refreshProductContainerMeta()'); await settle();
   assert.equal(calls(), initialCalls);
 });
+
+// Tô màu bảng: cột tồn / có bán theo cơ sở (HN xanh dương, SG tím) và rule màu Ngày cần đặt sao Conditional Formatting Excel.
+test('Ngay can dat to mau theo rule Excel (<10,5 xanh la, 10,5-20 vang, 20-30 cam, >30 do); o trong khong to; cot ton HN/SG co lop to mau', async () => {
+  const page = createPage();
+  await settle();
+
+  const classOf = value => page.run('productReportDaysToOrderClass(' + value + ')');
+  assert.equal(classOf(-5), 'pr-days-low', 'so am (het hang) thuoc nhom < 10,5');
+  assert.equal(classOf(0), 'pr-days-low');
+  assert.equal(classOf(10.4), 'pr-days-low');
+  assert.equal(classOf(10.5), 'pr-days-mid');
+  assert.equal(classOf(19.9), 'pr-days-mid');
+  assert.equal(classOf(20), 'pr-days-high', 'Excel: 20 thuoc rule between 20 and 30 (uu tien cao hon)');
+  assert.equal(classOf(30), 'pr-days-high');
+  assert.equal(classOf(30.1), 'pr-days-over');
+
+  const cell = key => cellOf(rowOf(page, 'SP-1'), key);
+  assert.ok(cell('ngay-can-dat').classList.contains('pr-days-mid'), 'SP-1: 12,5 ngay => vang');
+  const empty = cellOf(rowOf(page, 'SP-2'), 'ngay-can-dat');
+  assert.equal(empty.textContent, '—');
+  assert.ok(![...empty.classList].some(name => name.startsWith('pr-days-')), 'o "—" khong to mau');
+
+  ['ton-thuc-hn', 'co-ban-hn'].forEach(key => assert.ok(cell(key).classList.contains('pr-hn'), key + ' to mau Ha Noi'));
+  ['ton-thuc-sg', 'co-ban-sg'].forEach(key => assert.ok(cell(key).classList.contains('pr-sg'), key + ' to mau Sai Gon'));
+  assert.ok(cellOf(rowOf(page, 'SP-2'), 'co-ban-hn').classList.contains('pr-hn'), 'o Co ban "—" van to mau de cot lien mach');
+  assert.equal(reportTable(page).id, 'productReportTable');
+});

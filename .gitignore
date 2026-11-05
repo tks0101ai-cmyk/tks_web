@@ -59,3 +59,6 @@ server/data/users.json
 # Graphify obsolete nested output & backups
 graphify-out/graphify-out/
 *.bak
+
+# Anh huong dan sinh tu mock (khong commit)
+docs/huong-dan/
