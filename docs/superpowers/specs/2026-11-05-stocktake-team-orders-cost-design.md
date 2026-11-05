@@ -30,7 +30,7 @@ Cả 33 mã đều có giá trong DB khác `/products/code/{code}`, trong khi `m
 - `/productOnHands` chỉ trả `onHand`/`reserved`, nên `mergeInventories` giữ `cost` cũ.
 - Đối soát 24 giờ (`UPDATE_CHANGED_SQL`) cố ý giữ nguyên `raw->'inventories'` để không ghi đè tồn kho.
 
-Danh sách `/products?includeInventory=true&orderBy=id` trả đúng giá mới (32/32 mã tra được khớp; mã còn lại có mã khác định dạng nên không tra được). Quét toàn bộ Hà Nội mất 46 giây (112 trang, 11.122 mã).
+Danh sách `/products?includeInventory=true&orderBy=id` trả đúng giá mới (32/32 mã tra được đều khớp; mã thứ 33 không tìm thấy khi so nguyên văn theo mã nên chưa so được ở bước này). Quét toàn bộ Hà Nội mất 46 giây (112 trang, 11.122 mã).
 
 ## Thiết kế
 
