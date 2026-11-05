@@ -1,5 +1,8 @@
 # Supabase schema cho đồng bộ KiotViet
 
+## Migration 0109 — Kiểm kê: KK trước chọn tay, hủy đợt, nạp lại sheet (04/11/2026, đã áp DB 04/11/2026)
+
+`0109_stocktake_previous_cancel.sql`: `stocktake_sessions` thêm `previous_session_id` BIGINT FK `stocktake_sessions` ON DELETE SET NULL (đợt KK trước chọn tay; NULL = tự động: đợt `closed` gần nhất cùng `branch`, `cancelled_at IS NULL`, `date_to <= date_from`; CHECK `stocktake_sessions_previous_not_self`), `cancelled_at` TIMESTAMPTZ, `cancelled_by_user_id`, `cancelled_by_name` TEXT, `cancel_reason` TEXT NOT NULL DEFAULT '' (hủy = ẩn + chỉ đọc, `status` giữ nguyên open|closed, khôi phục = xóa `cancelled_at`; không xóa vật lý), `reloaded_at` TIMESTAMPTZ, `reloaded_by_name` TEXT (lần nạp lại gần nhất của đợt `sheet_import`). CHECK `stocktake_history_action_check` thêm `session_cancel`, `session_restore`, `sheet_reload`. Đợt đã hủy không được chọn làm KK trước hay đối chiếu (kể cả tự động). Gỡ tay: `db/rollbacks/0109_stocktake_previous_cancel.down.sql`.
 ## Migration 0107 — Nhật ký thao tác đơn xuất kho (04/11/2026, đã áp DB 04/11/2026)
 
 `0107_stock_out_order_events.sql`: `stock_out_order_events` (`id`, `order_id` → `stock_out_orders` ON DELETE CASCADE, `line_id` BIGINT không khóa ngoại để dòng đã xóa vẫn còn vết, `action` CHECK add|update|delete|import|confirm, `user_id`, `user_name`, `detail` JSONB `{before, after}` là ảnh chụp `{code, name, location, notes}`, `created_at`). Ghi trong cùng giao dịch với thao tác; index `(order_id, id DESC)`; REVOKE cho `reporting_readonly` (có tên người dùng).
@@ -847,7 +850,7 @@ Cập nhật gần nhất: 30/10/2026 (gỡ module Vị trí hàng cũ: `stock_l
 - Không thêm cột/bảng/trigger; dòng vị trí vẫn dùng `version`, `updated_by_*` như mọi thao tác ghi. Chưa áp migration thì `stockOutFile` lỗi 500 và rollback toàn bộ lượt (CHECK từ chối `stock_out`) — phải `npm run db:migrate` trước deploy.
 
 
-Cập nhật gần nhất: 02/11/2026 (Kiểm kê: đủ cột T10, Sài Gòn + đợt đối chiếu, dán cột, nạp tab KIỂM SG; migration `0105` đã áp DB 03/11/2026; ghi chú tài liệu: `order_kiot_edit_log` (0102) không còn được ghi; `prune` chỉ còn `kiot_line_missing`; snapshot có thể thiếu mã đã Xóa dòng nội bộ; không migration mới) — trước đó 31/10/2026 (ghi chú tài liệu: `stock_position_history.summary` có thể chứa `{source: 'pick', orderCode}` khi sửa VT từ hộp Chỉ định vị trí; không migration mới).
+Cập nhật gần nhất: 04/11/2026 (Kiểm kê: migration `0109` KK trước chọn tay, hủy đợt, nạp lại sheet; trước đó 02/11/2026: Kiểm kê: đủ cột T10, Sài Gòn + đợt đối chiếu, dán cột, nạp tab KIỂM SG; migration `0105` đã áp DB 03/11/2026; ghi chú tài liệu: `order_kiot_edit_log` (0102) không còn được ghi; `prune` chỉ còn `kiot_line_missing`; snapshot có thể thiếu mã đã Xóa dòng nội bộ; không migration mới) — trước đó 31/10/2026 (ghi chú tài liệu: `stock_position_history.summary` có thể chứa `{source: 'pick', orderCode}` khi sửa VT từ hộp Chỉ định vị trí; không migration mới).
 
 
 ## 03/11/2026 — Redis performance (không migration)

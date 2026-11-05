@@ -49,8 +49,10 @@ function createStocktakeRouter(dependencies = {}) {
   };
   const can = req => ({ canEdit: hasFeature(req.user, 'stocktake.edit'), canClose: hasFeature(req.user, 'stocktake.close') });
 
+  // ?includeCancelled=1 chi co tac dung voi nguoi co quyen dong dot (Quan ly) — xem lai / khoi phuc dot da huy.
   router.get('/api/stocktake/sessions', handle(async (req, res) => {
-    res.json({ ...(await svc().listSessions(ctxOf(req))), ...can(req) });
+    const includeCancelled = req.query.includeCancelled === '1' && hasFeature(req.user, 'stocktake.close');
+    res.json({ ...(await svc().listSessions(ctxOf(req), { includeCancelled })), ...can(req) });
   }));
   router.post('/api/stocktake/sessions', edit, handle(async (req, res) => {
     res.status(201).json(await svc().createSession(ctxOf(req), req.body || {}));
@@ -115,6 +117,20 @@ function createStocktakeRouter(dependencies = {}) {
   }));
   router.post('/api/stocktake/sessions/:id/close', close, handle(async (req, res) => {
     res.json(await svc().closeSession(ctxOf(req), idOf(req), req.body || {}));
+  }));
+  // Huy / khoi phuc dot (khong xoa vat ly); dot phu thuoc de canh bao truoc khi huy / nap lai.
+  router.post('/api/stocktake/sessions/:id/cancel', close, handle(async (req, res) => {
+    res.json(await svc().cancelSession(ctxOf(req), idOf(req), req.body || {}));
+  }));
+  router.post('/api/stocktake/sessions/:id/restore', close, handle(async (req, res) => {
+    res.json(await svc().restoreSession(ctxOf(req), idOf(req), req.body || {}));
+  }));
+  router.get('/api/stocktake/sessions/:id/dependents', close, handle(async (req, res) => {
+    res.json(await svc().dependents(ctxOf(req), idOf(req)));
+  }));
+  // Nap lai dot nap tu sheet: body { version, name?, date?, dryRun? } (dryRun = chi xem truoc).
+  router.post('/api/stocktake/sessions/:id/reload-sheet', close, handle(async (req, res) => {
+    res.json(await (dependencies.sheetImport || sheetImport).reloadSheet(ctxOf(req), idOf(req), req.body || {}));
   }));
   // Nap 1 lan dot T10 HN hoac KIEM SG tu sheet kiem ke (body.source = 't10' | 'sg').
   router.post('/api/stocktake/import-sheet', close, handle(async (req, res) => {

@@ -62,7 +62,7 @@
     : column.key === 'otherRatio' ? 'Do kiểm ' + otherLabel(branch) : column.label);
 
   const state = {
-    sessions: [], sessionId: null, board: null, canEdit: false, canClose: false,
+    sessions: [], sessionId: null, board: null, canEdit: false, canClose: false, showCancelled: false, importedBranches: new Set(),
     query: '', filter: 'all', recheck: '', status: '', sortKey: null, sortDir: null, headBranch: null, loadVersion: 0
   };
   // view.rows: các dòng đã lọc + sort; view.drawn: số dòng đã vẽ.
@@ -109,21 +109,25 @@
 
   // ---------- Đợt kiểm kê ----------
   async function loadSessions(selectId) {
-    const { response, payload } = await request(API + '/sessions');
+    const { response, payload } = await request(API + '/sessions' + (state.showCancelled ? '?includeCancelled=1' : ''));
     if (!response.ok) throw new Error(payload.error || 'Không tải được danh sách đợt kiểm kê.');
     state.sessions = payload.sessions || [];
     state.canEdit = !!payload.canEdit;
     state.canClose = !!payload.canClose;
+    state.importedBranches = new Set(payload.importedBranches || []);
     const select = $('stSession');
     select.textContent = '';
     for (const session of state.sessions) {
       const option = document.createElement('option');
       option.value = String(session.id);
-      option.textContent = session.name + ' · ' + (session.branch === 'hanoi' ? 'HN' : 'SG') + ' · ' + (session.status === 'closed' ? 'Đã đóng' : 'Đang mở');
+      option.textContent = session.name + ' · ' + (session.branch === 'hanoi' ? 'HN' : 'SG') + ' · '
+        + (session.cancelled ? 'Đã hủy' : session.status === 'closed' ? 'Đã đóng' : 'Đang mở');
       select.appendChild(option);
     }
     $('stCreateButton').hidden = !state.canEdit;
-    const imported = branch => state.sessions.some(s => s.source === 'sheet_import' && s.branch === branch);
+    $('stShowCancelledField').hidden = !state.canClose;
+    // Nap 1 lan theo tab: dot da huy van chiem tab (khoi phuc / nap lai dot do thay vi nap moi).
+    const imported = branch => state.sessions.some(s => s.source === 'sheet_import' && s.branch === branch) || state.importedBranches.has(branch);
     $('stImportT10Button').hidden = !state.canClose || imported('hanoi');
     $('stImportSgButton').hidden = !state.canClose || imported('saigon');
     const wanted = selectId || Number(new URLSearchParams(window.location.hash.slice(1)).get('dot')) || (state.sessions[0] && state.sessions[0].id);
@@ -380,15 +384,21 @@
     $('stSessionMeta').textContent = session
       ? dateVn(session.dateFrom) + (session.dateTo !== session.dateFrom ? ' – ' + dateVn(session.dateTo) : '')
         + (session.status === 'closed' ? ' · Đóng bởi ' + (session.closedByName || '—') + ' ' + time(session.closedAt) : ' · Tồn theo KiotViet hiện tại')
+        + (session.reloadedAt ? ' · Nạp lại bởi ' + (session.reloadedByName || '—') + ' ' + time(session.reloadedAt) : '')
       : '';
-    $('stCloseButton').hidden = !(session && session.status === 'open' && state.canClose);
+    const active = Boolean(session && !session.cancelled);
+    $('stCloseButton').hidden = !(active && session.status === 'open' && state.canClose);
+    $('stCancelButton').hidden = !(active && state.canClose);
+    $('stReloadButton').hidden = !(active && session.source === 'sheet_import' && state.canClose);
     $('stCreateButton').hidden = !state.canEdit;
+    renderCancelBanner(session);
     const counterpartField = $('stCounterpartField');
     counterpartField.hidden = !session;
     if (session) {
       fillCounterpartSelect($('stCounterpart'), session.branch, session.counterpartSessionId, board.counterpart);
-      $('stCounterpart').disabled = !(state.canEdit && session.status === 'open');
+      $('stCounterpart').disabled = !(state.canEdit && active && session.status === 'open');
     }
+    renderPrevious(board);
     // Khung trên chỉ giữ tổng giá trị chênh; số mã / mã lệch / quên KK xem ở bảng và bộ lọc.
     renderStats($('stStats'), board ? [
       ['Tổng chênh', money(board.totals.diffValue), board.totals.diffValue < 0 ? 'bad' : '']
@@ -666,8 +676,9 @@
   }
   function canWrite() {
     if (editable()) return true;
-    const closed = state.board && state.board.session.status === 'closed';
-    notify(closed ? 'Đợt đã đóng, không sửa được.' : 'Bạn không có quyền sửa đợt này.', true);
+    const session = state.board && state.board.session;
+    notify(session && session.cancelled ? 'Đợt đã bị hủy, không sửa được.'
+      : session && session.status === 'closed' ? 'Đợt đã đóng, không sửa được.' : 'Bạn không có quyền sửa đợt này.', true);
     return false;
   }
   function selectRect(top, left, bottom, right) {
@@ -1080,6 +1091,84 @@
     fillSelect(select, '— Không —', options, selected ? String(selected) : '');
   }
 
+  // Đợt KK trước: "Tự động — <đợt>" hoặc chọn tay một đợt cùng cơ sở đã đóng, chưa hủy (mới nhất trước).
+  function previousCandidates(branch, excludeId) {
+    return state.sessions.filter(s => s.branch === branch && s.status === 'closed' && !s.cancelled && s.id !== excludeId)
+      .map(s => [String(s.id), s.name + ' · ' + dateVn(s.dateTo) + ' · ' + (s.source === 'sheet_import' ? 'Sheet' : 'Web')]);
+  }
+  // Đợt đóng gần nhất có ngày cuối <= ngày bắt đầu (giống máy chủ) — để hộp Tạo đợt ghi tên đợt tự động.
+  function autoPrevious(branch, dateFrom, excludeId) {
+    return state.sessions.filter(s => s.branch === branch && s.status === 'closed' && !s.cancelled && s.id !== excludeId && s.dateTo <= dateFrom)
+      .sort((a, b) => (b.dateTo.localeCompare(a.dateTo)) || b.id - a.id)[0] || null;
+  }
+  function fillPreviousSelect(select, branch, selected, autoName, excludeId, linked) {
+    const options = previousCandidates(branch, excludeId);
+    if (linked && linked.id && !options.some(([id]) => id === String(linked.id))) options.push([String(linked.id), linked.name]);
+    fillSelect(select, 'Tự động — ' + (autoName || 'chưa có'), options, selected ? String(selected) : '');
+  }
+  function renderPrevious(board) {
+    const session = board && board.session;
+    const field = $('stPreviousField');
+    field.hidden = !session;
+    const note = $('stPreviousNote');
+    note.hidden = true;
+    note.textContent = '';
+    if (!session) return;
+    const info = board.previousSession || null;
+    const select = $('stPrevious');
+    const open = session.status === 'open' && !session.cancelled;
+    if (!open) {
+      // Đợt đã đóng / đã hủy: chỉ hiện đợt đã dùng, không đổi được.
+      fillSelect(select, info && info.id ? info.name : '— Không có —', [], '');
+      select.disabled = true;
+    } else {
+      const auto = info && info.mode === 'auto' ? info.name : (autoPrevious(session.branch, session.dateFrom, session.id) || {}).name;
+      fillPreviousSelect(select, session.branch, info && info.mode === 'manual' ? info.id : null, auto, session.id, info && info.mode === 'manual' ? info : null);
+      select.disabled = !state.canEdit;
+    }
+    const messages = [];
+    if (info && info.manualInvalid) messages.push('Đợt KK trước đã chọn bị hủy hoặc không còn hợp lệ, đang dùng tự động.');
+    if (open && info && info.mode === 'manual') {
+      const picked = state.sessions.find(s => s.id === info.id);
+      if (picked && picked.dateTo > session.dateFrom) messages.push('Đợt KK trước kết thúc sau ngày bắt đầu đợt này.');
+    }
+    if (board.counterpart && board.counterpart.cancelled) messages.push('Đợt đối chiếu đã bị hủy, cột Kiểm ' + otherLabel(session.branch) + ' để trống.');
+    if (messages.length) { note.textContent = messages.join(' '); note.hidden = false; }
+  }
+  function renderCancelBanner(session) {
+    const banner = $('stCancelBanner');
+    banner.hidden = !(session && session.cancelled);
+    if (banner.hidden) return;
+    $('stCancelText').textContent = 'Đợt đã hủy bởi ' + (session.cancelledByName || '—') + ' lúc ' + time(session.cancelledAt)
+      + (session.cancelReason ? ' — ' + session.cancelReason : '') + '. Đợt chỉ xem được và không dùng làm KK trước / đối chiếu.';
+    $('stRestoreButton').hidden = !state.canClose;
+  }
+  // Danh sách đợt đang dùng đợt này (cho hộp Hủy / Nạp lại).
+  function renderDependents(box, deps, verb) {
+    box.textContent = '';
+    const items = [];
+    for (const d of deps.previousOf || []) {
+      items.push([d.name + ' (' + (d.branch === 'hanoi' ? 'HN' : 'SG') + ')', d.changes
+        ? 'đang mở, dùng làm KK trước' + (d.mode === 'manual' ? ' (chọn tay)' : '') + ' — số KK trước sẽ ' + verb
+        : 'đã đóng, đã chụp cứng KK trước — không đổi']);
+    }
+    for (const d of deps.counterpartOf || []) {
+      items.push([d.name + ' (' + (d.branch === 'hanoi' ? 'HN' : 'SG') + ')', d.changes
+        ? 'đang mở, dùng làm đối chiếu — cột Kiểm ' + otherLabel(d.branch) + ' sẽ ' + verb
+        : 'đã đóng, dùng làm đối chiếu — đã chụp cứng']);
+    }
+    if (!items.length) { box.textContent = 'Không có đợt nào đang dùng đợt này.'; return; }
+    const list = document.createElement('ul');
+    for (const [name, text] of items) {
+      const li = document.createElement('li');
+      const b = document.createElement('b');
+      b.textContent = name;
+      li.append(b, ': ' + text);
+      list.appendChild(li);
+    }
+    box.appendChild(list);
+  }
+
   // Đếm số mã theo người kiểm lại: key -> { label, count }.
   function recheckCounts() {
     const counts = new Map();
@@ -1134,7 +1223,7 @@
 
   // ---------- Chi tiết mã ----------
   const rowOf = code => state.board && state.board.rows.find(row => row.code === code);
-  const editable = () => state.canEdit && state.board && state.board.session.status === 'open';
+  const editable = () => state.canEdit && state.board && state.board.session.status === 'open' && !state.board.session.cancelled;
 
   function openDetail(code) {
     detail.code = code;
@@ -1209,7 +1298,10 @@
     const autoText = value => (value === null || value === undefined ? 'trống' : num(value));
     $('stPrevManualLabel').textContent = 'KK trước sai — nhập tay';
     $('stOtherManualLabel').textContent = 'Kiểm ' + other + ' — nhập tay';
-    noteForm.elements.prevDiffManual.placeholder = 'Để trống = tự lấy từ đợt trước: ' + autoText(row.prevDiffAuto);
+    const prevSession = state.board.previousSession;
+    noteForm.elements.prevDiffManual.placeholder = prevSession && prevSession.id
+      ? 'Để trống = tự lấy từ đợt ' + prevSession.name + ': ' + autoText(row.prevDiffAuto)
+      : 'Chưa có đợt KK trước — chỉ có số nhập tay';
     noteForm.elements.otherDiffManual.placeholder = state.board.counterpart
       ? 'Để trống = tự lấy từ đợt ' + other + ': ' + autoText(row.otherDiffAuto)
       : 'Chưa chọn đợt đối chiếu ' + other + ' — chỉ có số nhập tay';
@@ -1398,6 +1490,133 @@
     });
   }
 
+  // ---------- Hủy / khôi phục đợt ----------
+  async function loadDependents(sessionId, box, verb) {
+    box.textContent = 'Đang kiểm tra các đợt đang dùng đợt này…';
+    const { response, payload } = await request(API + '/sessions/' + sessionId + '/dependents');
+    if (!response.ok) { box.textContent = payload.error || 'Không kiểm tra được các đợt phụ thuộc.'; return; }
+    renderDependents(box, payload, verb);
+  }
+  function bindCancel() {
+    const dialog = $('stCancelDialog');
+    const form = $('stCancelForm');
+    $('stCancelButton').addEventListener('click', () => {
+      const session = state.board && state.board.session;
+      if (!session) return;
+      form.reset();
+      $('stCancelTitle').textContent = 'Hủy đợt ' + session.name + '?';
+      $('stCancelError').textContent = '';
+      dialog.showModal();
+      loadDependents(session.id, $('stCancelDependents'), 'đổi theo (bỏ qua đợt này)');
+    });
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const session = state.board && state.board.session;
+      if (!session) return;
+      const reason = form.elements.reason.value.trim();
+      if (!reason) { $('stCancelError').textContent = 'Cần nhập lý do hủy đợt.'; return; }
+      const { response, payload } = await request(API + '/sessions/' + session.id + '/cancel', jsonOptions('POST', { version: session.version, reason }));
+      if (!response.ok) { $('stCancelError').textContent = payload.error || 'Không hủy được đợt.'; return; }
+      dialog.close();
+      notify('Đã hủy đợt ' + session.name + '.' + (state.showCancelled ? '' : ' Bật "Hiện đợt đã hủy" để xem lại hoặc khôi phục.'));
+      await loadSessions(state.showCancelled ? session.id : null);
+    });
+    $('stRestoreButton').addEventListener('click', async () => {
+      const session = state.board && state.board.session;
+      if (!session) return;
+      const ok = await confirmAction('Khôi phục đợt ' + session.name + '?',
+        'Đợt trở lại như trước khi hủy (' + (session.status === 'closed' ? 'đã đóng' : 'đang mở') + ') và lại được dùng làm KK trước / đối chiếu.', 'Khôi phục');
+      if (!ok) return;
+      const { response, payload } = await request(API + '/sessions/' + session.id + '/restore', jsonOptions('POST', { version: session.version }));
+      if (!response.ok) { notify(payload.error || 'Không khôi phục được đợt.', true); return; }
+      notify('Đã khôi phục đợt ' + session.name + '.');
+      await loadSessions(session.id);
+    });
+  }
+
+  // ---------- Nạp lại đợt nạp từ sheet ----------
+  function bindReload() {
+    const dialog = $('stReloadDialog');
+    const form = $('stReloadForm');
+    const preview = $('stReloadPreview');
+    let previewed = null; // khóa (tên|ngày) đã xem trước: đổi tên / ngày thì phải xem lại
+    const keyOf = () => form.elements.name.value.trim() + '|' + form.elements.date.value;
+    const submitButton = () => form.querySelector('[type="submit"]');
+    const invalidate = () => { previewed = null; submitButton().disabled = true; };
+    $('stReloadButton').addEventListener('click', () => {
+      const session = state.board && state.board.session;
+      if (!session) return;
+      form.reset();
+      form.elements.name.value = session.name;
+      form.elements.date.value = session.dateFrom;
+      preview.textContent = '';
+      $('stReloadError').textContent = '';
+      invalidate();
+      dialog.showModal();
+      loadDependents(session.id, $('stReloadDependents'), 'đổi theo số mới');
+    });
+    form.elements.name.addEventListener('input', invalidate);
+    form.elements.date.addEventListener('change', invalidate);
+    const send = dryRun => {
+      const session = state.board.session;
+      return request(API + '/sessions/' + session.id + '/reload-sheet', jsonOptions('POST', {
+        version: session.version, name: form.elements.name.value, date: form.elements.date.value, dryRun
+      }));
+    };
+    $('stReloadPreviewButton').addEventListener('click', async () => {
+      if (!state.board) return;
+      $('stReloadError').textContent = '';
+      preview.textContent = 'Đang đọc sheet…';
+      const { response, payload } = await send(true);
+      if (!response.ok) { preview.textContent = ''; $('stReloadError').textContent = payload.error || 'Không đọc được sheet.'; return; }
+      renderReloadPreview(preview, payload);
+      previewed = keyOf();
+      submitButton().disabled = false;
+    });
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!state.board || previewed !== keyOf()) { $('stReloadError').textContent = 'Bấm "Xem trước" trước khi nạp lại.'; return; }
+      const session = state.board.session;
+      submitButton().disabled = true;
+      $('stReloadError').textContent = '';
+      const { response, payload } = await send(false);
+      if (!response.ok) { $('stReloadError').textContent = payload.error || 'Không nạp lại được.'; submitButton().disabled = false; return; }
+      dialog.close();
+      notify('Đã nạp lại ' + num(payload.codes) + ' mã (' + num(payload.changed) + ' mã đổi SL chênh, ' + num(payload.added) + ' mã mới, ' + num(payload.removed) + ' mã bỏ).');
+      await loadSessions(session.id);
+    });
+  }
+  function renderReloadPreview(box, data) {
+    box.textContent = '';
+    const summary = document.createElement('p');
+    summary.textContent = 'Hiện có ' + num(data.before.codes) + ' mã (' + num(data.before.mismatched) + ' lệch) → sau khi nạp: ' + num(data.codes)
+      + ' mã (' + num(data.mismatched) + ' lệch). Đổi SL chênh: ' + num(data.changed) + ' · Mã mới: ' + num(data.added) + ' · Mã bỏ: ' + num(data.removed) + '.';
+    box.appendChild(summary);
+    if (!data.sample.length) return;
+    const table = document.createElement('table');
+    table.className = 'st-reload-table';
+    const head = document.createElement('tr');
+    for (const label of ['Mã', 'SL chênh cũ', 'SL chênh mới']) {
+      const th = document.createElement('th');
+      th.textContent = label;
+      head.appendChild(th);
+    }
+    table.appendChild(head);
+    for (const item of data.sample) {
+      const tr = document.createElement('tr');
+      for (const value of [item.code, item.before === null ? 'mới' : num(item.before), item.after === null ? 'bỏ' : num(item.after)]) {
+        const td = document.createElement('td');
+        td.textContent = value;
+        tr.appendChild(td);
+      }
+      table.appendChild(tr);
+    }
+    const caption = document.createElement('p');
+    caption.className = 'st-muted';
+    caption.textContent = 'Các mã đổi nhiều nhất (tối đa 10):';
+    box.append(caption, table);
+  }
+
   // ---------- Hộp thoại ----------
   function confirmAction(title, message, okLabel) {
     const dialog = $('stConfirmDialog');
@@ -1426,8 +1645,12 @@
     });
     const createForm = $('stCreateForm');
     const refill = () => {
-      const s = suggestCounterpart(createForm.elements.branch.value, createForm.elements.dateFrom.value, createForm.elements.dateTo.value);
-      fillCounterpartSelect(createForm.elements.counterpartSessionId, createForm.elements.branch.value, s && s.id);
+      const branch = createForm.elements.branch.value;
+      const s = suggestCounterpart(branch, createForm.elements.dateFrom.value, createForm.elements.dateTo.value);
+      fillCounterpartSelect(createForm.elements.counterpartSessionId, branch, s && s.id);
+      const keep = createForm.elements.previousSessionId.value;
+      const auto = autoPrevious(branch, createForm.elements.dateFrom.value, null);
+      fillPreviousSelect(createForm.elements.previousSessionId, branch, keep, auto && auto.name, null, null);
     };
     ['branch', 'dateFrom', 'dateTo'].forEach(name => createForm.elements[name].addEventListener('change', refill));
     $('stCreateButton').addEventListener('click', () => {
@@ -1438,6 +1661,7 @@
       form.elements.dateTo.value = today;
       form.elements.branch.value = user && user.branch === 'Sài Gòn' ? 'saigon' : 'hanoi';
       $('stCreateError').textContent = '';
+      createForm.elements.previousSessionId.value = '';
       refill();
       $('stCreateDialog').showModal();
     });
@@ -1446,7 +1670,8 @@
       const form = event.target;
       const { response, payload } = await request(API + '/sessions', jsonOptions('POST', {
         name: form.elements.name.value, branch: form.elements.branch.value, dateFrom: form.elements.dateFrom.value, dateTo: form.elements.dateTo.value,
-        counterpartSessionId: form.elements.counterpartSessionId.value ? Number(form.elements.counterpartSessionId.value) : null
+        counterpartSessionId: form.elements.counterpartSessionId.value ? Number(form.elements.counterpartSessionId.value) : null,
+        previousSessionId: form.elements.previousSessionId.value ? Number(form.elements.previousSessionId.value) : null
       }));
       if (!response.ok) { $('stCreateError').textContent = payload.error || 'Không tạo được đợt.'; return; }
       $('stCreateDialog').close();
@@ -1472,6 +1697,22 @@
       if (!response.ok) { notify(payload.error || 'Không đổi được đợt đối chiếu.', true); }
       await loadSessions(session.id);
     });
+    $('stPrevious').addEventListener('change', async event => {
+      const session = state.board && state.board.session;
+      if (!session) return;
+      const { response, payload } = await request(API + '/sessions/' + session.id, jsonOptions('PATCH', {
+        previousSessionId: event.target.value ? Number(event.target.value) : null, version: session.version
+      }));
+      if (!response.ok) notify(payload.error || 'Không đổi được đợt KK trước.', true);
+      else notify('Đã đổi đợt KK trước.');
+      await loadSessions(session.id);
+    });
+    $('stShowCancelled').addEventListener('change', async event => {
+      state.showCancelled = event.target.checked;
+      await loadSessions(state.sessionId);
+    });
+    bindCancel();
+    bindReload();
     const importSheet = (source, title, message) => async () => {
       if (!(await confirmAction(title, message, 'Nạp'))) return;
       notify('Đang đọc sheet…');
