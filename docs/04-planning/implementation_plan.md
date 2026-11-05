@@ -620,6 +620,8 @@ Bộ lọc đặt hàng có trạng thái, HR ID/tên legacy, NCC, VAT, ngày l�
 
 ## Thu mua — dùng thử dữ liệu mẫu (05/11/2026)
 
+05/11/2026 — Thu mua: khóa dòng cấp ngay khi tạo. `POST /api/purchase-orders/next-key` (quyền `purchase.edit`) trả khóa kế tiếp từ `purchase_order_key_seq`; popup Thêm mã gọi endpoint này nên dòng mới hiện khóa thật thay cho "MỚI". Khi lưu, server nhận lại đúng khóa đó qua `claimKey`: chỉ chấp nhận khóa đúng dạng `D` + 5 chữ số, đã thực sự phát ra từ sequence (`<= last_value`) và chưa có trong `purchase_orders` lẫn `purchase_key_history`; khóa lạ, khóa trùng hoặc khóa đã nghỉ đều báo `ROW_KEY_UNKNOWN` chứ không tự cấp khóa khác. Không gửi khóa thì vẫn tự sinh như cũ nên đường import không đổi. `nextval` không quay lui khi rollback, nên mở popup rồi hủy sẽ bỏ trống một số — đúng quy tắc không tái sử dụng khóa. Không migration.
+
 05/11/2026 — Thu mua (giao diện): bảng Đặt hàng và Chỉ số cont phủ kín bề ngang với mọi số cột, cuộn ngang khi vượt khung; cột số không còn cắt chữ (đệm đủ, tính cả bề rộng tiêu đề). Ô Mã SP: một nhấn mở hộp xác nhận chọn cont rồi mới tách, hai nhấn xem lịch sử, bút chì hoặc F2 mới sửa mã; bỏ nút "Tách dòng". Cột ngày hiển thị ngày/tháng, bấm vào mở ô ngày đầy đủ. Bảng Chỉ số cont bỏ cột rỗng chứa nút "Sửa", còn 14 cột, nút đồng cỡ chữ. Form Thêm mã có gợi ý mã kèm tên và NCC, chọn xong tự điền. Sidebar Thu mua có mục con Đặt hàng / Lịch sử. Không migration, không đổi API.
 
 Mở `/thu-mua/dat-hang/?trial=1` hoặc chọn **Dùng thử dữ liệu mẫu** trên trang Thu mua. API riêng `/api/purchase-trial` giữ nguyên các quyền `purchase.*`. Trang chính và `source_mode` chính không thay đổi.
