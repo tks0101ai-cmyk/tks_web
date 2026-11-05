@@ -161,6 +161,13 @@
   $('containerActions').append($('newCont'));$('openOrdersPacking').remove();
   const taskMount=document.createElement('div');taskMount.hidden=true;$('orderTable').before(taskMount);taskBar=PurchaseTasks.mountBar(document,taskMount,{onTarget:c=>{taskTarget=c.id;persist();refreshTasks()},onDirty:on=>{onlyDirty=on;page=1;persist();render()},onFind:()=>{onlyDirty=true;page=1;render();$('orderTable').querySelector('tbody tr')?.scrollIntoView?.({block:'center',behavior:'smooth'})},onReview:()=>$('save').click()});
   $('modalClose').onclick=()=>$('modal').close();
+  // Drawer dieu huong cho man hep (duoi 850px sidebar khong con nam trong bo cuc).
+  // Cung co che .open/.show nhu cac trang khac, them dong bang Esc.
+  const toggleSidebar=open=>{const on=open??!$('sidebar').classList.contains('open');$('sidebar').classList.toggle('open',on);$('backdrop').classList.toggle('show',on);$('menuBtn').setAttribute('aria-expanded',String(on))};
+  $('menuBtn').onclick=()=>toggleSidebar();
+  $('backdrop').onclick=()=>toggleSidebar(false);
+  $('sidebar').addEventListener('click',e=>{if(e.target.closest('a'))toggleSidebar(false)});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('sidebar').classList.contains('open'))toggleSidebar(false)});
   // Nut doi giao dien dung .theme-toggle chung: icon tu doi bang CSS theo data-theme,
   // chi nhan phai dat bang JS. Nhan mo ta hanh dong ke tiep, giong cac trang khac.
   const themeLabel=()=>{$('themeLabel').textContent=document.documentElement.dataset.theme==='light'?'Dark mode':'Light mode'};

@@ -63,3 +63,16 @@
 @media(max-width:850px){.purchase-page .layout{grid-template-columns:1fr}.purchase-page main{padding:0 10px 16px}.purchase-page .receipt-header{padding:0 12px}.header-status #presence{display:none}.purchase-module{display:none}#purchaseOverview .kpi-value{font-size:16px}.order-actions h2{flex-basis:100%}}
 
 #addForm{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}#modalBody #addForm>label,#modalBody .add-extra-grid>label{width:auto;min-width:0;margin:0;display:grid;gap:5px}#addForm input,#addForm select{width:100%;min-height:30px}#addForm>p,#addForm>.additional-fields{grid-column:1/-1}.additional-fields{border-top:1px solid var(--border);padding-top:10px}.additional-fields>summary{cursor:pointer;font-size:11px;color:var(--muted);padding:5px 0}.add-extra-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding-top:10px}@media(max-width:650px){#addForm,.add-extra-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Điều hướng trên màn hẹp. Trang này đổi bố cục ở 850px, còn .menu-btn của
+   shared.css hiện từ 900px — nên khóa nút lại theo đúng mốc của trang, không
+   thì khoảng 851–900px sẽ có nút hamburger mà sidebar vẫn đang hiện.
+   Sidebar thành drawer thay vì display:none như trước: dưới 850px trang từng
+   không còn cách điều hướng nào. */
+@media(min-width:851px){.purchase-page .menu-btn{display:none}}
+@media(max-width:850px){
+  .purchase-page .backdrop{z-index:65}
+  .purchase-page #sidebar{position:fixed;top:0;left:0;bottom:0;height:100dvh;width:min(280px,82vw);z-index:70;transform:translateX(-100%);transition:transform .2s ease;box-shadow:none}
+  .purchase-page #sidebar.open{transform:translateX(0);box-shadow:12px 0 32px rgba(0,0,0,.35)}
+}
+@media(prefers-reduced-motion:reduce){.purchase-page #sidebar{transition:none}}

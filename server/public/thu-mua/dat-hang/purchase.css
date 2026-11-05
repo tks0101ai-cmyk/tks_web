@@ -55,8 +55,8 @@ dialog::backdrop{background:#0009}
 .error{color:var(--amber)}
 .resize{position:absolute;right:0;top:0;width:6px;height:100%;cursor:col-resize}
 
+/* Sidebar không ẩn nữa — workspace.css biến nó thành drawer mở bằng #menuBtn. */
 @media(max-width:850px){
   .layout{grid-template-columns:1fr}
-  .layout aside{display:none}
   .panes{grid-template-columns:1fr}
 }
