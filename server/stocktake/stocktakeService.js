@@ -100,7 +100,11 @@ function quantityOf(value, field = 'quantity') {
 
 const versionOf = value => (value === undefined || value === null || value === '' ? null : Number(value));
 
-// Don dat hang cua khach "TEAM..." (ten tren KiotViet), ngay dat theo gio VN trong [date_from, date_to].
+// Khach dem kiem ke ten "TEAM <so> ..." (khong gom "Team Loi", "KH Team Hang Loi").
+const TEAM_NAME_MATCH_SQL = `btrim(COALESCE(NULLIF(c.name, ''), o.raw->>'customerName', '')) ~* '^TEAM[[:space:]]*[0-9]'`;
+
+// Don dat hang cua khach TEAM + so, ngay dat trong [date_from, date_to].
+// orders.order_date luu gio VN nhung gan nhan UTC nen doi bang 'UTC'; dieu kien khoang dung duoc chi muc (branch, order_date).
 // So luong lay tu raw (co the le) truoc cot INTEGER.
 const TEAM_LINES_SQL = `
   SELECT o.id AS order_id, d.line_no, o.code AS order_code, COALESCE(o.raw->>'statusValue', '') AS order_status,
@@ -115,14 +119,15 @@ const TEAM_LINES_SQL = `
   JOIN order_details d ON d.branch = o.branch AND d.order_id = o.id
   LEFT JOIN products p ON p.branch = d.branch AND p.id = d.product_id
   WHERE o.branch = $1
-    AND (o.order_date AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN $2::date AND $3::date
-    AND upper(btrim(COALESCE(NULLIF(c.name, ''), o.raw->>'customerName', ''))) LIKE 'TEAM%'
+    AND o.order_date >= ($2::date)::timestamp AT TIME ZONE 'UTC'
+    AND o.order_date < ($3::date + 1)::timestamp AT TIME ZONE 'UTC'
+    AND ${TEAM_NAME_MATCH_SQL}
   ORDER BY o.id, d.line_no`;
 
 const PRODUCTS_SQL = `
   SELECT p.code, p.name,
          COALESCE((SELECT SUM((inv->>'onHand')::numeric) FROM jsonb_array_elements(COALESCE(p.raw->'inventories', '[]'::jsonb)) inv), 0)::float8 AS stock,
-         COALESCE((SELECT ROUND(AVG((inv->>'cost')::numeric)) FROM jsonb_array_elements(COALESCE(p.raw->'inventories', '[]'::jsonb)) inv), 0)::float8 AS cost
+         COALESCE((SELECT AVG((inv->>'cost')::numeric) FROM jsonb_array_elements(COALESCE(p.raw->'inventories', '[]'::jsonb)) inv), 0)::float8 AS cost
   FROM products p
   WHERE p.branch = $1`;
 

@@ -36,10 +36,10 @@ async function fixture() {
       ('hanoi', 11, 'KH1', 'TEAM 1 : HIỂU KHO', '{}'),
       ('hanoi', 12, 'KH2', 'Khách thường', '{}');
     INSERT INTO orders (branch, id, code, order_date, customer_id, raw) VALUES
-      ('hanoi', 101, 'DH101', '2026-10-29 09:00+07', 11, '{"statusValue":"Phiếu tạm","description":"G1-15"}'),
-      ('hanoi', 102, 'DH102', '2026-10-29 23:30+07', 11, '{"statusValue":"Đã hủy","description":"G2"}'),
-      ('hanoi', 103, 'DH103', '2026-10-29 10:00+07', 12, '{"statusValue":"Phiếu tạm"}'),
-      ('hanoi', 104, 'DH104', '2026-10-30 00:30+07', 11, '{"statusValue":"Phiếu tạm"}');
+      ('hanoi', 101, 'DH101', '2026-10-29 09:00+00', 11, '{"statusValue":"Phiếu tạm","description":"G1-15"}'),
+      ('hanoi', 102, 'DH102', '2026-10-29 23:30+00', 11, '{"statusValue":"Đã hủy","description":"G2"}'),
+      ('hanoi', 103, 'DH103', '2026-10-29 10:00+00', 12, '{"statusValue":"Phiếu tạm"}'),
+      ('hanoi', 104, 'DH104', '2026-10-30 00:30+00', 11, '{"statusValue":"Phiếu tạm"}');
     INSERT INTO order_details (branch, order_id, line_no, product_id, quantity, raw) VALUES
       ('hanoi', 101, 1, 1, 8, '{"productCode":"AAA1","note":"1t*8","quantity":8}'),
       ('hanoi', 101, 2, 3, 1, '{"productCode":"CCC3","quantity":1.5}'),
@@ -47,7 +47,7 @@ async function fixture() {
       ('hanoi', 103, 1, 2, 99, '{"productCode":"BBB2","quantity":99}'),
       ('hanoi', 104, 1, 2, 99, '{"productCode":"BBB2","quantity":99}');
     INSERT INTO customers (branch, id, code, name, raw) VALUES ('saigon', 21, 'KS1', 'TEAM 2 : SG', '{}');
-    INSERT INTO orders (branch, id, code, order_date, customer_id, raw) VALUES ('saigon', 201, 'DS201', '2026-10-29 09:00+07', 21, '{}');
+    INSERT INTO orders (branch, id, code, order_date, customer_id, raw) VALUES ('saigon', 201, 'DS201', '2026-10-29 09:00+00', 21, '{}');
     INSERT INTO order_details (branch, order_id, line_no, product_id, quantity, raw) VALUES ('saigon', 201, 1, 1, 4, '{"productCode":"AAA1","quantity":4}');
     INSERT INTO hr_employees (id, branch, ho_ten) VALUES (501, 'hanoi', 'Cảnh');
     INSERT INTO stock_positions (branch, code, location, arrival_date) VALUES ('HN', 'AAA1', 'G1-15', 'KK 4.10');
@@ -544,4 +544,22 @@ test('huy dot doi chieu: bang khong con Kiem SG, khong dat lam doi chieu duoc; d
   const prevDeps = await service.dependents(ctx(), hn.id);
   assert.deepEqual(prevDeps.previousOf.map(d => [d.id, d.mode, d.changes]), [[hn2.id, 'snapshot', false]]);
   await assert.rejects(service.dependents(ctx(QL, ['saigon']), hn.id), { statusCode: 403 });
+});
+
+test('gom don: don 23:30 van thuoc ngay do, chi tinh khach TEAM + so, gia von giu so le', async () => {
+  const { db, service, session } = await fixture();
+  await db.exec(`
+    INSERT INTO products (branch, id, code, name, raw) VALUES ('hanoi', 4, 'LE1', 'Hàng lẻ', '{"inventories":[{"onHand":1000,"cost":511.41}]}');
+    INSERT INTO customers (branch, id, code, name, raw) VALUES
+      ('hanoi', 13, 'KH3', 'KH Team Hàng Lỗi', '{}'), ('hanoi', 14, 'KH4', 'Team Lỗi', '{}'), ('hanoi', 15, 'KH5', 'team5 kho', '{}');
+    INSERT INTO orders (branch, id, code, order_date, customer_id, raw) VALUES
+      ('hanoi', 105, 'DH105', '2026-10-29 10:00+00', 13, '{}'), ('hanoi', 106, 'DH106', '2026-10-29 10:00+00', 14, '{}'), ('hanoi', 107, 'DH107', '2026-10-29 10:00+00', 15, '{}');
+    INSERT INTO order_details (branch, order_id, line_no, product_id, quantity, raw) VALUES
+      ('hanoi', 105, 1, 3, 7, '{"productCode":"CCC3","quantity":7}'), ('hanoi', 106, 1, 3, 7, '{"productCode":"CCC3","quantity":7}'), ('hanoi', 107, 1, 3, 2, '{"productCode":"CCC3","quantity":2}');
+  `);
+  const board = await service.getBoard(ctx(), session.id);
+  assert.equal(rowOf(board, 'AAA1').lines.some(l => l.orderId === 102), true, 'don 23:30 thuoc ngay 29/10');
+  assert.equal(rowOf(board, 'CCC3').counted, 3.5, 'chi 1.5 + team5 2, bo 2 khach team loi');
+  assert.equal(rowOf(board, 'LE1').cost, 511.41);
+  assert.equal(rowOf(board, 'LE1').diffValue, -511410);
 });
