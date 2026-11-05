@@ -149,6 +149,14 @@ const PRODUCTS_SQL = `
   FROM products p
   WHERE p.branch = $1 AND p.code NOT LIKE '%#%'`;
 
+// Ket qua cua dot khac de lay cot KK truoc / Kiem SG-HN. Ma 0/0 cua dot web (hien du hang tu 05/11/2026) coi nhu khong co
+// trong dot do, de cot van de trong thay vi hien 0; dot nap tu sheet giu nguyen so tren sheet.
+const COMPARE_RESULTS_SQL = `
+  SELECT r.product_code, r.diff_qty::float8 AS diff_qty
+  FROM stocktake_session_results r
+  JOIN stocktake_sessions s ON s.id = r.session_id
+  WHERE r.session_id = $1 AND (s.source <> 'web' OR r.counted <> 0 OR r.stock <> 0)`;
+
 const SESSION_COLUMNS = `id, branch, name, date_from, date_to, status, source, version, counterpart_session_id, created_by_name, created_at, closed_by_name, closed_at,
   previous_session_id, cancelled_at, cancelled_by_name, cancel_reason, reloaded_at, reloaded_by_name`;
 const MAX_CANCEL_REASON = 500;
@@ -392,11 +400,12 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     const counterpartInfo = { id: other.id, name: other.name, branch: other.branch, status: other.status, cancelled: other.cancelled };
     if (other.cancelled) return { counterpartInfo, counterpart: [] };
     if (other.status === 'closed') {
-      const { rows } = await db.query(`SELECT product_code, diff_qty::float8 AS diff_qty FROM stocktake_session_results WHERE session_id = $1`, [other.id]);
+      const { rows } = await db.query(COMPARE_RESULTS_SQL, [other.id]);
       return { counterpartInfo, counterpart: rows.map(r => ({ code: r.product_code, diffQty: Number(r.diff_qty) })) };
     }
     const board = buildBoard(await loadInputs(db, other, { withCounterpart: false }));
-    return { counterpartInfo, counterpart: board.rows.map(r => ({ code: r.code, diffQty: r.diffQty })) };
+    const compared = board.rows.filter(r => r.counted !== 0 || r.stock !== 0);
+    return { counterpartInfo, counterpart: compared.map(r => ({ code: r.code, diffQty: r.diffQty })) };
   }
 
   // Dot KK truoc cua dot nay: chon tay (con dung duoc) hoac tu dong = dot da dong gan nhat cung co so, chua huy,
@@ -427,7 +436,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
   async function previousResults(db, session) {
     const info = await previousSessionOf(db, session);
     if (info.id === null) return { previousSessionId: null, previousInfo: info, previous: [] };
-    const { rows } = await db.query(`SELECT product_code, diff_qty::float8 AS diff_qty FROM stocktake_session_results WHERE session_id = $1`, [info.id]);
+    const { rows } = await db.query(COMPARE_RESULTS_SQL, [info.id]);
     return { previousSessionId: info.id, previousInfo: info, previous: rows.map(row => ({ code: row.product_code, diffQty: Number(row.diff_qty) })) };
   }
 
@@ -517,6 +526,15 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       if (row.note && row.note.reasonText) reasons.add(row.note.reasonText);
     }
     return { session, ...board, employees, suggestions: { reason: [...reasons].sort() } };
+  }
+
+  // Du lieu file thong ke: dong dem sau khi ap phan sua. Dot da dong doc lai don + phan sua (ban chup khong giu dong dem).
+  async function getLineExport(ctx, sessionId) {
+    const db = getDb();
+    const session = await readSession(db, ctx, sessionId);
+    if (session.source === 'sheet_import') throw fail(409, 'STOCKTAKE_NO_LINES', 'Đợt nạp từ sheet không có dòng đơn nên không xuất được thống kê.');
+    const { rows } = buildBoard(await loadInputs(db, session, { withCounterpart: false, withPrevious: false }));
+    return { session, rows };
   }
 
   // So don TEAM trong / ngoai khoang ngay. Trang hoi dinh ky: revision doi thi tai lai bang.
@@ -915,7 +933,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
   }
 
   return {
-    listSessions, createSession, updateSession, getBoard, getOrderStatus, refreshOrders, saveLine, addLine, saveNote, saveTag, saveCells, codeHistory, closeSession,
+    listSessions, createSession, updateSession, getBoard, getOrderStatus, getLineExport, refreshOrders, saveLine, addLine, saveNote, saveTag, saveCells, codeHistory, closeSession,
     cancelSession, restoreSession, dependents
   };
 }

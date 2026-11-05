@@ -37,7 +37,12 @@ async function start(t, { user = MANAGER, scope = 'Cả hai', events, fail } = {
     getBoard: async (ctx, id) => { calls.push(['getBoard', id, ctx.scope]); return { session: SESSION, rows: ROWS, employees: [{ id: 501, name: 'Cảnh' }] }; },
     createSession: record('createSession'), saveLine: record('saveLine'), addLine: record('addLine'), saveNote: record('saveNote'),
     saveTag: record('saveTag'), updateSession: record('updateSession'), saveCells: record('saveCells'), codeHistory: record('codeHistory'), closeSession: record('closeSession'),
-    cancelSession: record('cancelSession'), restoreSession: record('restoreSession'), dependents: record('dependents'), getOrderStatus: record('getOrderStatus'), refreshOrders: record('refreshOrders')
+    cancelSession: record('cancelSession'), restoreSession: record('restoreSession'), dependents: record('dependents'), getOrderStatus: record('getOrderStatus'), refreshOrders: record('refreshOrders'),
+    getLineExport: async (ctx, id) => {
+      calls.push(['getLineExport', id, ctx.scope]);
+      if (fail) throw fail;
+      return { session: SESSION, rows: [{ code: 'AAA1', name: 'Hàng A', note: null, lines: [{ team: 'TEAM 1', zone: 'G1', spec: '1t*5', quantity: 5 }] }] };
+    }
   };
   const app = express();
   app.use((req, res, next) => { if (user) req.user = user; next(); });
@@ -224,4 +229,26 @@ test('cap nhat don Kiot: loi KiotViet tra dung ma cho giao dien', async t => {
   const response = await fetch(base + '/sessions/7/refresh-orders', { method: 'POST' });
   assert.equal(response.status, 424);
   assert.equal((await response.json()).code, 'KIOT_READ_FAILED');
+});
+
+test('xuat thong ke: nguoi chi co quyen xem tai duoc file dung ten, dung cot', async t => {
+  const viewer = { id: 'v', vaiTro: 'Nhân viên kho', featurePermissions: { 'stocktake.view': true } };
+  const { base, calls } = await start(t, { user: viewer, scope: 'Hà Nội' });
+  const response = await fetch(base + '/sessions/7/export-lines');
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-disposition'), /kiem-ke-thong-ke-/u);
+  assert.deepEqual(calls.at(-1), ['getLineExport', 7, ['hanoi']]);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(Buffer.from(await response.arrayBuffer()));
+  assert.equal(workbook.getWorksheet('THỐNG KÊ').getRow(2).getCell(6).value, 5);
+  const outsider = await start(t, { user: { id: 's', vaiTro: 'Nhân viên sale' } });
+  assert.equal((await fetch(outsider.base + '/sessions/7/export-lines')).status, 403);
+});
+
+test('xuat thong ke: dot nap sheet tra loi ro', async t => {
+  const fail = Object.assign(new Error('Đợt nạp từ sheet không có dòng đơn.'), { statusCode: 409, code: 'STOCKTAKE_NO_LINES' });
+  const { base } = await start(t, { fail });
+  const response = await fetch(base + '/sessions/7/export-lines');
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).code, 'STOCKTAKE_NO_LINES');
 });

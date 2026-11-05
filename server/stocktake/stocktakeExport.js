@@ -4,6 +4,7 @@
 const ExcelJS = require('exceljs');
 const { HEADER_FONT, frozenNoGridlinesView, applyFullTableBorder } = require('../excelTableStyle');
 const Status = require('../public/stocktake/stocktakeStatus');
+const { parseSpec } = require('../public/shared/carton');
 
 const NUMBER = '#,##0.##';
 const MONEY = '#,##0';
@@ -43,6 +44,59 @@ function columns(employeeName, branch) {
 }
 const boardColumnHeaders = branch => columns(() => '', branch).map(col => col.header);
 
+const MIME_XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const fileNameOf = (prefix, session) => {
+  const safeName = String(session.name || '').normalize('NFD').replace(/[\u0300-\u036f]/gu, '').replace(/đ/gu, 'd').replace(/Đ/gu, 'D').replace(/[^\w.-]+/gu, '-').replace(/^-+|-+$/gu, '');
+  return `${prefix}-${safeName || session.id}.xlsx`;
+};
+
+// So quy cach voi so luong. Chi dung trinh doc nghiem parseSpec (khong doan quy cach kem chu) de dong nghi ngo duoc xem lai.
+function checkSpec(spec, quantity) {
+  if (!String(spec ?? '').trim()) return { status: 'blank', text: 'Thiếu quy cách' };
+  const parsed = parseSpec(spec);
+  if (!parsed) return { status: 'unreadable', text: 'Không nhân được quy cách' };
+  const qty = Number(quantity) || 0;
+  if (Math.abs(parsed.quantity - qty) < 0.000001) return { status: 'ok', computed: parsed.quantity, text: '' };
+  return { status: 'diff', computed: parsed.quantity, text: `Lệch: quy cách ${parsed.quantity}, SL ${qty}` };
+}
+
+const CHECK_FILL = Object.freeze({ diff: 'FFFECACA', unreadable: 'FFFEF3C7', blank: 'FFFEF3C7' });
+const STATS_COLUMNS = Object.freeze([
+  { header: 'Tên khách hàng', width: 38 }, { header: 'Ghi chú', width: 14 }, { header: 'Mã hàng', width: 16 }, { header: 'Tên hàng', width: 40 },
+  { header: 'Ghi chú hàng hóa', width: 24 }, { header: 'Số lượng', width: 12, numFmt: NUMBER }, { header: 'Kiểm quy cách', width: 30 }, { header: 'Trang in', width: 10 }
+]);
+const CHECK_COLUMN = STATS_COLUMNS.findIndex(col => col.header === 'Kiểm quy cách') + 1;
+const statsHeaders = () => STATS_COLUMNS.map(col => col.header);
+const compareVi = (a, b) => String(a ?? '').localeCompare(String(b ?? ''), 'vi', { numeric: true });
+
+// File giong tab THONG KE cua sheet kiem ke: moi dong dem la 1 dong, cong theo ma = Tong kiem.
+async function createStatsWorkbook({ session, rows = [] }) {
+  const lines = [];
+  for (const row of rows) {
+    for (const line of row.lines || []) if (!line.removed) lines.push({ row, line });
+  }
+  lines.sort((a, b) => compareVi(a.row.name, b.row.name) || compareVi(a.line.team, b.line.team) || compareVi(a.line.zone, b.line.zone));
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'TOKOSI Dashboard';
+  const sheet = workbook.addWorksheet('THỐNG KÊ');
+  sheet.columns = STATS_COLUMNS.map(col => ({ header: col.header, width: col.width, ...(col.numFmt ? { style: { numFmt: col.numFmt } } : {}) }));
+  for (const { row, line } of lines) {
+    const check = checkSpec(line.spec, line.quantity);
+    const added = sheet.addRow([safeText(line.team), safeText(line.zone), safeText(row.code), safeText(row.name), safeText(line.spec), line.quantity, check.text,
+      safeText(row.note ? row.note.printPage : '')]);
+    const fill = CHECK_FILL[check.status];
+    if (fill) added.getCell(CHECK_COLUMN).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } };
+  }
+  sheet.views = frozenNoGridlinesView(1);
+  const header = sheet.getRow(1);
+  header.font = HEADER_FONT;
+  header.height = 28;
+  header.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+  sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(1, lines.length + 1), column: STATS_COLUMNS.length } };
+  applyFullTableBorder(sheet, STATS_COLUMNS.length, lines.length + 1);
+  return { buffer: Buffer.from(await workbook.xlsx.writeBuffer()), fileName: fileNameOf('kiem-ke-thong-ke', session), mimeType: MIME_XLSX };
+}
+
 async function createStocktakeWorkbook({ session, rows = [], employees = [] }) {
   const names = new Map(employees.map(e => [e.id, e.name]));
   const cols = columns(id => (id === null || id === undefined ? '' : names.get(id) || ''), session.branch);
@@ -67,12 +121,11 @@ async function createStocktakeWorkbook({ session, rows = [], employees = [] }) {
   header.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
   sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(1, rows.length + 1), column: cols.length } };
   applyFullTableBorder(sheet, cols.length, rows.length + 1);
-  const safeName = String(session.name || 'kiem-ke').normalize('NFD').replace(/[̀-ͯ]/gu, '').replace(/đ/gu, 'd').replace(/Đ/gu, 'D').replace(/[^\w.-]+/gu, '-').replace(/^-+|-+$/gu, '');
   return {
     buffer: Buffer.from(await workbook.xlsx.writeBuffer()),
-    fileName: `kiem-ke-${safeName || session.id}.xlsx`,
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    fileName: fileNameOf('kiem-ke', session),
+    mimeType: MIME_XLSX
   };
 }
 
-module.exports = { createStocktakeWorkbook, boardColumnHeaders };
+module.exports = { createStocktakeWorkbook, createStatsWorkbook, checkSpec, statsHeaders, boardColumnHeaders };

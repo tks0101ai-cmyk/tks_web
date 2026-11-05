@@ -9,7 +9,7 @@ const { resolveBranch } = require('../branch/branchMiddleware');
 const { BRANCHES, resolveBranchScope } = require('../branch/branches');
 const service = require('./stocktakeService');
 const { events: defaultEvents, CHANGED } = require('./stocktakeEvents');
-const { createStocktakeWorkbook } = require('./stocktakeExport');
+const { createStocktakeWorkbook, createStatsWorkbook } = require('./stocktakeExport');
 const sheetImport = require('./stocktakeSheetImport');
 
 function createStocktakeRouter(dependencies = {}) {
@@ -162,6 +162,14 @@ function createStocktakeRouter(dependencies = {}) {
   });
   router.get('/api/stocktake/sessions/:id/export', exportBoard);
   router.post('/api/stocktake/sessions/:id/export', exportBoard);
+  // File thong ke giong tab THONG KE cua sheet: moi dong dem 1 dong, kem cot Kiem quy cach.
+  router.get('/api/stocktake/sessions/:id/export-lines', handle(async (req, res) => {
+    const { session, rows } = await svc().getLineExport(ctxOf(req), idOf(req));
+    const file = await createStatsWorkbook({ session, rows });
+    res.set('Content-Type', file.mimeType);
+    res.set('Content-Disposition', `attachment; filename="${file.fileName}"`);
+    res.send(file.buffer);
+  }));
 
   return router;
 }
