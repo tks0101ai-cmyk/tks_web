@@ -9,7 +9,7 @@ const workbook = require('../public/shared/purchase-workbook');
 const columns = require('../public/shared/purchase-columns');
 function createPurchaseOrdersRouter(dependencies={}) {
   const router=express.Router(),service=dependencies.service||createPurchaseOrdersService();
-  const root='/api/purchase-orders';
+  const root=dependencies.root||'/api/purchase-orders';
   const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:10*1024*1024,files:1,fields:1}});
   router.use(root,(req,res,next)=>{res.set('Cache-Control','no-store');next()},dependencies.requireAuth||requireAuth,requireFeature('purchase.view'));
   require('./purchaseOrdersRealtime').attachRealtime(router,root,dependencies.events,dependencies.presenceStore);
@@ -20,6 +20,7 @@ function createPurchaseOrdersRouter(dependencies={}) {
   router.get(root+'/operations',handle(async(req,res)=>res.json({rows:await service.operations(req.user)})));
   for(const [path,method] of [['delete','remove'],['restore','restore'],['undo','undo']])router.post(root+'/'+path,requireFeature('purchase.edit'),handle(async(req,res)=>res.json(await service[method](req.user,req.body))));
   router.get(root+'/latest',handle(async(req,res)=>res.json({row:await service.latest(req.user,req.query.code)})));
+  router.post(root+'/next-key',requireFeature('purchase.edit'),handle(async(req,res)=>res.json(await service.reserveKey(req.user))));
   router.get(root+'/history',handle(async(req,res)=>res.json({rows:await service.history(req.user,req.query.rowKey)})));
   router.post(root+'/export',requireFeature('purchase.export'),handle(async(req,res)=>{
     const allowed=new Set(columns.map(c=>c.k)),fields=req.body.fields,ids=req.body.ids;
@@ -59,3 +60,6 @@ function createPurchaseOrdersRouter(dependencies={}) {
 }
 module.exports=createPurchaseOrdersRouter();
 module.exports.createPurchaseOrdersRouter=createPurchaseOrdersRouter;
+
+// Both APIs belong to Purchase; the trial router has its own auth, pool and events.
+module.exports.use(require('./purchaseOrdersTrial').createPurchaseTrial({routerFactory:createPurchaseOrdersRouter}).router);
