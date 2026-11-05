@@ -72,7 +72,8 @@
   let searchFuzzy = false;
   // Vùng chọn kiểu sheet: chỉ số dòng trong view.rows và chỉ số cột trong COLUMNS.
   const selection = { anchor: null, focus: null, dragging: false, painted: [] };
-  const live = { source: null, timer: null };
+  const RELOAD_GAP_MS = 3000;
+  const live = { source: null, reload: null, dirty: false };
   const ORDER_POLL_MS = 30000;
   const orders = { sessionId: null, data: null, checking: false, refreshed: null };
   const detail = { code: null };
@@ -177,6 +178,7 @@
   function startLive(sessionId) {
     if (live.source && live.source.sessionId === sessionId) return;
     stopLive();
+    if (!live.reload) live.reload = Grid.trailingThrottle(() => loadBoard({ background: true }), RELOAD_GAP_MS);
     if (typeof window.EventSource !== 'function') return;
     const source = new window.EventSource(API + '/sessions/' + sessionId + '/events');
     source.sessionId = sessionId;
@@ -185,14 +187,16 @@
       let by = '';
       try { by = JSON.parse(event.data).by || ''; } catch (error) { /* tin hieu cu khong co ma */ }
       if (by && by === CLIENT_ID) return; // chinh tab nay vua ghi: da cap nhat tai cho
-      clearTimeout(live.timer);
-      live.timer = setTimeout(() => loadBoard({ background: true }), 400);
+      // Moi lan tai lai ca bang nang 1-2 MB: dong nguoi sua cung luc thi gop lai, tab dang an doi den khi quay lai.
+      if (document.hidden) { live.dirty = true; return; }
+      live.reload.trigger();
     });
   }
   function stopLive() {
     if (live.source) live.source.close();
     live.source = null;
-    clearTimeout(live.timer);
+    live.dirty = false;
+    if (live.reload) live.reload.cancel();
   }
 
   // ---------- Đơn TEAM mới ----------
@@ -436,6 +440,7 @@
     $('stSessionMeta').textContent = session
       ? dateVn(session.dateFrom) + (session.dateTo !== session.dateFrom ? ' – ' + dateVn(session.dateTo) : '')
         + (session.status === 'closed' ? ' · Đóng bởi ' + (session.closedByName || '—') + ' ' + time(session.closedAt) : ' · Tồn theo KiotViet hiện tại')
+        + (session.frozen ? ' · Đã chốt dữ liệu Kiot lúc ' + time(session.linesFrozenAt) + ', vẫn sửa được' : '')
         + (orderStatus ? ' · Đã gom ' + num(orderStatus.inRange) + ' đơn TEAM' : '')
         + (orders.refreshed && orders.refreshed.sessionId === session.id ? ' · Đơn Kiot cập nhật lúc ' + time(orders.refreshed.at).slice(0, 5) : '')
         + (session.reloadedAt ? ' · Nạp lại bởi ' + (session.reloadedByName || '—') + ' ' + time(session.reloadedAt) : '')
@@ -1283,7 +1288,7 @@
 
   // ---------- Chi tiết mã ----------
   const rowOf = code => state.board && state.board.rows.find(row => row.code === code);
-  const editable = () => state.canEdit && state.board && state.board.session.status === 'open' && !state.board.session.cancelled;
+  const editable = () => state.canEdit && state.board && (state.board.session.status === 'open' || state.board.session.frozen) && !state.board.session.cancelled;
 
   function openDetail(code) {
     detail.code = code;
@@ -1374,7 +1379,7 @@
 
   function renderLines(row) {
     const canEdit = editable();
-    $('stLinesSection').hidden = state.board.session.status === 'closed';
+    $('stLinesSection').hidden = state.board.session.status === 'closed' && !state.board.session.linesFrozenAt;
     $('stAddLineForm').hidden = !canEdit;
     syncLineSortHeader();
     const focused = focusedLineInput();
@@ -1620,6 +1625,7 @@
       ? 'Đã cập nhật ' + num(result.teamOrders) + ' đơn TEAM từ KiotViet lúc ' + at + '.'
       : 'Đã kiểm tra KiotViet lúc ' + at + ', không có đơn TEAM nào mới.';
   }
+  const REFRESH_TIMEOUT_MS = 60000;
   function bindRefreshOrders() {
     const button = $('stRefreshOrdersButton');
     const label = button.textContent;
@@ -1628,17 +1634,23 @@
       if (!sessionId || button.disabled) return;
       button.disabled = true;
       button.textContent = 'Đang lấy đơn…';
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS);
+      let refreshed = false;
       try {
-        const { response, payload } = await request(API + '/sessions/' + sessionId + '/refresh-orders', jsonOptions('POST', {}));
+        const { response, payload } = await request(API + '/sessions/' + sessionId + '/refresh-orders', Object.assign(jsonOptions('POST', {}), { signal: controller.signal }));
         if (!response.ok) { notify(payload.error || 'Không cập nhật được đơn từ KiotViet.', true); return; }
         orders.refreshed = { sessionId, at: payload.refreshedAt };
-        await loadBoard({ background: true });
         notify(refreshOrdersMessage(payload));
+        refreshed = true;
       } catch (error) {
-        notify('Không cập nhật được đơn từ KiotViet. Kiểm tra mạng rồi thử lại.', true);
+        notify(error.name === 'AbortError' ? 'KiotViet phản hồi quá lâu (trên 1 phút). Thử lại sau ít phút.' : 'Không cập nhật được đơn từ KiotViet. Kiểm tra mạng rồi thử lại.', true);
       } finally {
+        clearTimeout(timeout);
         button.disabled = false;
         button.textContent = label;
+        // Nhả nút ngay khi lấy đơn xong; bảng tải lại nền, không bắt người dùng chờ thêm.
+        if (refreshed) loadBoard({ background: true });
       }
     });
   }
@@ -1796,7 +1808,7 @@
       const session = state.board && state.board.session;
       if (!session) return;
       const ok = await confirmAction('Đóng đợt ' + session.name + '?',
-        'Web sẽ chụp lại tồn và chênh lệch của mọi mã ngay lúc này. Sau khi đóng, đợt chỉ xem được, không sửa được nữa, và là số "KK trước" cho đợt sau và số "Kiểm ' + otherLabel(session.branch) + '" của đợt đối chiếu.', 'Đóng đợt');
+        'Web sẽ chốt đơn TEAM, tồn và giá vốn ngay lúc này, không cập nhật từ KiotViet nữa. Sau khi đóng vẫn sửa được số đếm, khu, quy cách, trạng thái và thêm dòng kiểm lại, nhưng không mở lại được. Hãy đóng đợt trước khi xóa khách TEAM trên KiotViet.', 'Đóng đợt');
       if (!ok) return;
       const { response, payload } = await request(API + '/sessions/' + session.id + '/close', jsonOptions('POST', { version: session.version }));
       if (!response.ok) { notify(payload.error || 'Không đóng được đợt.', true); return; }
@@ -1939,7 +1951,12 @@
     bindSelection();
     window.addEventListener('pagehide', stopLive);
     setInterval(pollOrderStatus, ORDER_POLL_MS);
-    document.addEventListener('visibilitychange', pollOrderStatus);
+    document.addEventListener('visibilitychange', () => {
+      pollOrderStatus();
+      if (document.hidden || !live.dirty || !live.reload) return;
+      live.dirty = false;
+      live.reload.trigger();
+    });
     try {
       await loadSessions();
     } catch (error) {

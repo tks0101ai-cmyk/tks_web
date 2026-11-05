@@ -177,24 +177,45 @@
     });
   }
 
+  // Goi run nhieu nhat 1 lan moi gapMs, co lan cuoi de khong bo sot; goi lien tuc chi ton 1 lan chay.
+  function trailingThrottle(run, gapMs, { now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, minDelayMs = 400 } = {}) {
+    let last = -Infinity;
+    let timer = null;
+    return {
+      trigger() {
+        if (timer !== null) return;
+        timer = setTimer(() => {
+          timer = null;
+          last = now();
+          run();
+        }, Math.max(minDelayMs, gapMs - (now() - last)));
+      },
+      cancel() {
+        if (timer !== null) clearTimer(timer);
+        timer = null;
+      }
+    };
+  }
+
   // Cho tra loi cua hop xac nhan. Moi cach dong (Dong y, Huy, Esc) deu phat su kien 'close' cua <dialog>, nen don
   // lang nghe tai day: neu Esc de lai lang nghe cu, lan Dong y cua hop sau se chay ca lenh truoc do (vd Dong dot).
   function waitForConfirm(dialog, okButton, cancelButton) {
     return new Promise(resolve => {
       let accepted = false;
-      const accept = () => { accepted = true; dialog.close(); };
-      const decline = () => dialog.close();
       const finish = () => {
         okButton.removeEventListener('click', accept);
         cancelButton.removeEventListener('click', decline);
         dialog.removeEventListener('close', finish);
         resolve(accepted);
       };
+      // Tra loi ngay khi bam nut: trinh duyet chi phat 'close' o khung hinh ke tiep, tab bi an thi cho rat lau.
+      const accept = () => { accepted = true; finish(); dialog.close(); };
+      const decline = () => { finish(); dialog.close(); };
       okButton.addEventListener('click', accept);
       cancelButton.addEventListener('click', decline);
       dialog.addEventListener('close', finish);
     });
   }
 
-  return { EDIT_COLUMNS, parseClipboard, planPaste, planPasteByCode, planFill, moveIndex, matchesFilter, summarizeCells, waitForConfirm, sortLines };
+  return { EDIT_COLUMNS, parseClipboard, planPaste, planPasteByCode, planFill, moveIndex, matchesFilter, summarizeCells, waitForConfirm, sortLines, trailingThrottle };
 });

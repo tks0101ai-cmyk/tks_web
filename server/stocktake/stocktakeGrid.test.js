@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { sortLines, waitForConfirm, EDIT_COLUMNS, parseClipboard, planPaste, planPasteByCode, planFill, moveIndex, matchesFilter, summarizeCells } = require('../public/stocktake/stocktakeGrid');
+const { trailingThrottle, sortLines, waitForConfirm, EDIT_COLUMNS, parseClipboard, planPaste, planPasteByCode, planFill, moveIndex, matchesFilter, summarizeCells } = require('../public/stocktake/stocktakeGrid');
 const { PASTE_COLUMNS } = require('../public/stocktake/stocktakePaste');
 
 test('EDIT_COLUMNS: 9 cot, deu la cot dan hop le', () => {
@@ -175,4 +175,32 @@ test('sortLines: so tu nhien, tang giam, bo sort giu thu tu goc, o trong cuoi', 
   assert.deepEqual(teams(sortLines([a, b, c], 'updated', 'asc')), ['TEAM 1', 'TEAM 10', 'TEAM 2']);
   assert.deepEqual(teams(sortLines([a, b, c], 'team', null)), ['TEAM 10', 'TEAM 2', 'TEAM 1']);
   assert.deepEqual(teams([a, b, c]), ['TEAM 10', 'TEAM 2', 'TEAM 1'], 'khong doi mang goc');
+});
+
+test('trailingThrottle: goi lien tuc chi chay 1 lan moi khoang, co lan cuoi, huy duoc', () => {
+  let clock = 0;
+  let pending = null;
+  let runs = 0;
+  const gate = trailingThrottle(() => { runs += 1; }, 3000, {
+    now: () => clock,
+    setTimer: (fn, wait) => { pending = { fn, at: clock + wait }; return pending; },
+    clearTimer: () => { pending = null; }
+  });
+  const advance = () => { clock = pending.at; const { fn } = pending; pending = null; fn(); };
+  gate.trigger();
+  assert.equal(pending.at, 400, 'lan dau chi cho ngan');
+  gate.trigger();
+  gate.trigger();
+  advance();
+  assert.equal(runs, 1);
+  clock = 1000;
+  gate.trigger();
+  assert.equal(pending.at, 3400, 'chua du 3 giay tu lan chay truoc');
+  gate.trigger();
+  advance();
+  assert.equal(runs, 2);
+  gate.trigger();
+  gate.cancel();
+  assert.equal(pending, null);
+  assert.equal(runs, 2);
 });
