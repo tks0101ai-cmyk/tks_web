@@ -412,4 +412,11 @@ Migration 0108 bổ sung 3 NUMERIC nullable + ngày kết thúc kỳ. Cả refre
 
 Triển khai: migrate 0108 → backend/worker mới → tính lại tăng dần → đối chiếu tổng kỳ/ngày; xem lệnh và hợp đồng API ở server/README.md. Chưa áp DB thật, chưa commit/deploy.
 
-Cập nhật gần nhất: 04/11/2026.
+## 05/11/2026 — Kiểm kê: gom đơn TEAM đúng ngày, đồng bộ giá vốn
+
+- `stocktake/stocktakeService.js`: lọc ngày theo `AT TIME ZONE 'UTC'` (dùng được chỉ mục `orders(branch, order_date)`), tên khách `TEAM` + số, `updateSession` nhận `dateFrom`/`dateTo`, thêm `getOrderStatus`.
+- `kiotvietSync/entities/productCosts.js`: entity `product_costs` trong nhóm slow, một câu `UPDATE` so sánh trong Postgres, chỉ đổi `cost`.
+- `public/stocktake/`: nút Sửa ngày, cảnh báo đơn ngoài khoảng, hỏi `order-status` mỗi 30 giây, cột Giá vốn 88px có số lẻ, khóa cấu hình bảng `stocktake-board-v7`.
+- Thiết kế: `docs/superpowers/specs/2026-11-05-stocktake-team-orders-cost-design.md`, kế hoạch: `docs/superpowers/plans/2026-11-05-stocktake-team-orders-cost.md`. Không migration.
+
+Cập nhật gần nhất: 05/11/2026.
