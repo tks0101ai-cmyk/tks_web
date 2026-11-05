@@ -2069,7 +2069,18 @@
         key: 'accounting', label: 'Kế toán', active: activeTop === 'accounting', items: accountingItems,
         icon: '<rect x="4" y="2" width="16" height="20" rx="2"></rect><path d="M8 6h8"></path><path d="M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h4"></path>'
       },
-      {key:'purchase',feature:'purchase.view',href:'/thu-mua/dat-hang/',label:'Thu mua',active:activeTop==='purchase',icon:'<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18M9 9v11"></path>'},
+      {
+        key:'purchase',label:'Thu mua',active:activeTop==='purchase',
+        icon:'<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18M9 9v11"></path>',
+        items:[
+          {feature:'purchase.view',href:'/thu-mua/dat-hang/',label:'Đặt hàng',
+           active:activeTop==='purchase'&&currentHash!=='#history',dataAttr:'data-tks-nav-key="purchase-orders"',
+           icon:'<path d="M3 6h18"></path><path d="M3 12h18"></path><path d="M3 18h12"></path>'},
+          {feature:'purchase.view',href:'/thu-mua/dat-hang/#history',label:'Lịch sử',
+           active:activeTop==='purchase'&&currentHash==='#history',dataAttr:'data-tks-nav-key="purchase-history"',
+           icon:'<circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>'}
+        ]
+      },
       {
         key: 'account', label: 'Quản lý tài khoản', active: activeTop === 'account', items: accountItems,
         icon: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.8 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path>'

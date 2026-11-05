@@ -28,7 +28,7 @@ td input{width:100%;box-sizing:border-box;padding:3px}
 
 /* Bảng Đặt hàng dày hơn phần còn lại: 42 cột phải vừa một màn hình.
    Lề ngang 5px cho cột chữ, 3px cho cột số — gộp từ ba luật từng đè nhau. */
-#orderTable table{min-width:0;width:max-content}
+#orderTable table{min-width:100%;width:max-content}
 #orderTable th,#orderTable td{padding:4px 5px;font-size:11px;height:25px;box-sizing:border-box}
 #orderTable th{font-size:9px;line-height:1.15;white-space:normal;overflow-wrap:anywhere;vertical-align:middle}
 #orderTable th.num,#orderTable td.num{padding-left:3px;padding-right:3px}
