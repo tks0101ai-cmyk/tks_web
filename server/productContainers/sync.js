@@ -58,6 +58,9 @@ async function refreshContainers({
     const lock = await connection.query('SELECT pg_try_advisory_lock($1) AS locked', [LOCK_KEY]);
     locked = Boolean(lock.rows[0]?.locked);
     if (!locked) return { status: 'busy' };
+    const purchaseTable = await connection.query("SELECT to_regclass('purchase_settings') AS name");
+    if(purchaseTable.rows[0]?.name){const mode=await connection.query('SELECT source_mode FROM purchase_settings WHERE id=1');if(mode.rows[0]?.source_mode==='web')return {status:'web-source'};}
+
     const { rows } = await connection.query('SELECT last_attempt_at,last_success_at FROM product_container_sync WHERE singleton = true');
     const attemptAt = now();
     // Also gate on attempts, so restarts after a failed first run cannot hammer

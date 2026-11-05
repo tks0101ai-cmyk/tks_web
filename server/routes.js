@@ -96,6 +96,7 @@ router.use(adminUserRoutes);
 router.use(branchRoutes);
 // VT Hà Nội / VT Sài Gòn (module Vị trí hàng duy nhất, sửa trực tiếp + import): quyền stockLocationsV2.*.
 router.use(stockPositionsRoutes);
+router.use(require('./purchaseOrders/purchaseOrdersRoutes'));
 router.use(stocktakeRoutes);
 // Sổ quỹ toàn công ty: không áp cookie hoặc middleware chọn cơ sở.
 router.use('/api/cashbook', cashbookRoutes);

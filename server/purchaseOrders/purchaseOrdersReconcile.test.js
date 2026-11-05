@@ -1,0 +1,4 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),{reconcile}=require('./purchaseOrdersReconcile');
+const row={rowKey:'D00001',productCode:'A',cartonCount:10,qtyPerCarton:2,unitPriceCny:3,freightPrepaid:0,kgPerCarton:100,m3PerCarton:1};
+test('reconciliation compares keys, quantities and per-container totals without writing',()=>{const a={rows:[row]},b=structuredClone(a);assert.equal(reconcile(a,b).match,true);b.rows[0].cartonCount=12;const result=reconcile(a,b);assert.equal(result.match,false);assert.ok(result.differences.some(x=>x.field==='ton'));assert.equal(a.rows[0].cartonCount,10)});
+test('reconciliation refuses duplicates, missing keys and incomplete measurements',()=>{assert.equal(reconcile({rows:[row,row]},{rows:[row]}).match,false);assert.equal(reconcile({rows:[{...row,rowKey:''}]},{rows:[row]}).match,false);const a={rows:[{...row,m3PerCarton:null}]};assert.ok(reconcile(a,a).problems.some(x=>x.code==='INCOMPLETE_TOTALS'))});
