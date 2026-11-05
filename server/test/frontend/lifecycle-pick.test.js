@@ -1321,3 +1321,32 @@ test('bấm nút mở hộp sớm (chi tiết Kiot chưa về) rồi lưu: dòng
     assert.ok(page.document.querySelector('#lcDetailKiot table.lc-lines'), 'bảng hàng vẽ sau khi về');
   } finally { page.dom.window.close(); }
 });
+
+
+test('Xuất Excel chỉ định: mã nhiều vị trí gửi nhiều dòng (vị trí + SL + số thùng riêng), kể cả chưa lưu', async () => {
+  let exported = null;
+  const page = await renderPage({ fetchImpl: async (url, options, window) => {
+    if (url === '/api/shipment/pick/export' && options.method === 'POST') {
+      exported = JSON.parse(options.body);
+      return { ok: true, status: 200, headers: { get: () => 'attachment; filename="chi-dinh-vi-tri_DH1.xlsx"' }, blob: async () => new window.Blob(['x']) };
+    }
+  } });
+  try {
+    await openPopup(page);
+    const { document, window } = page;
+    const input = document.querySelector('[data-qty][data-qloc="11"]');
+    input.value = '50';
+    input.dispatchEvent(new window.Event('change', { bubbles: true }));
+    const second = document.querySelector('[data-qty][data-qloc="12"]');
+    second.value = '50';
+    second.dispatchEvent(new window.Event('change', { bubbles: true }));
+    await settle();
+    assert.equal(document.getElementById('pickingExport').disabled, false);
+    await click(page, 'pickingExport');
+    assert.ok(exported, 'đã gọi API xuất Excel');
+    assert.equal(exported.orderCode, 'DH1');
+    assert.equal(exported.branch, 'HN');
+    assert.deepEqual(exported.rows.map(r => [r.productCode, r.location, r.quantity, r.cartons, r.need]), [['A', 'A07', 50, 1, 100], ['A', 'B02', 50, 2, 100]]);
+    assert.equal(page.store.posted.length, 0, 'xuất Excel không lưu chỉ định');
+  } finally { page.dom.window.close(); }
+});

@@ -50,6 +50,17 @@ function createPickAssignmentsRouter(dependencies = {}) {
   const canEditPositions = user => hasFeature(user, 'stockLocationsV2.view') && hasFeature(user, 'stockLocationsV2.edit');
   const vtEdit = [requireFeature('stockLocationsV2.view'), requireFeature('stockLocationsV2.edit')];
 
+  // Xuat Excel chi dinh dang hien tren hop (ke ca chua luu): body { branch, orderCode, rows: [{ productCode, productName, need, location, quantity, cartons, stText }] }.
+  // Moi vi tri 1 dong. Dat TRUOC '/:id/...'.
+  const exporter = dependencies.exporter || require('./pickAssignmentsExport');
+  router.post('/export', handle(async (req, res) => {
+    const { branch, orderCode, rows } = req.body || {};
+    if (!Array.isArray(rows)) return res.status(400).json({ error: 'Danh sách dòng xuất không hợp lệ.', code: 'PICK_EXPORT_INVALID' });
+    const file = await exporter.createPickAssignmentsWorkbook({ branch, orderCode, rows });
+    res.set('Content-Type', file.mimeType);
+    res.set('Content-Disposition', `attachment; filename="${file.fileName}"`);
+    res.send(file.buffer);
+  }));
   router.get('/candidates', handle(async (req, res) => {
     res.json({ ...await svc().candidates(ctxOf(req), query(req)), canEditPositions: canEditPositions(req.user) });
   }));
