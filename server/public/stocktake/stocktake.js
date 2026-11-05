@@ -446,6 +446,8 @@
     renderOrdersNote(session);
     $('stCloseButton').hidden = !(active && session.status === 'open' && state.canClose);
     $('stCancelButton').hidden = !(active && state.canClose);
+    $('stActionsMenu').hidden = $('stCloseButton').hidden && $('stCancelButton').hidden;
+    if ($('stActionsMenu').hidden) $('stActionsMenu').open = false;
     $('stReloadButton').hidden = !(active && session.source === 'sheet_import' && state.canClose);
     $('stCreateButton').hidden = !state.canEdit;
     renderCancelBanner(session);
@@ -1740,13 +1742,19 @@
     $('stConfirmMessage').textContent = message;
     $('stConfirmOk').textContent = okLabel || 'Đồng ý';
     dialog.showModal();
-    return new Promise(resolve => {
-      const done = value => () => { dialog.close(); cleanup(); resolve(value); };
-      const ok = done(true);
-      const cancel = done(false);
-      const cleanup = () => { $('stConfirmOk').removeEventListener('click', ok); $('stConfirmCancel').removeEventListener('click', cancel); };
-      $('stConfirmOk').addEventListener('click', ok);
-      $('stConfirmCancel').addEventListener('click', cancel);
+    return Grid.waitForConfirm(dialog, $('stConfirmOk'), $('stConfirmCancel'));
+  }
+
+  // Menu "Thao tác đợt" (Đóng đợt, Hủy đợt): tách khỏi các nút thường dùng để khó nhấn nhầm.
+  function bindActionsMenu() {
+    const menu = $('stActionsMenu');
+    const close = () => { menu.open = false; };
+    menu.querySelector('.st-actions-list').addEventListener('click', close);
+    document.addEventListener('click', event => { if (menu.open && !menu.contains(event.target)) close(); });
+    menu.addEventListener('keydown', event => {
+      if (event.key !== 'Escape' || !menu.open) return;
+      close();
+      menu.querySelector('summary').focus();
     });
   }
 
@@ -1827,6 +1835,7 @@
       state.showCancelled = event.target.checked;
       await loadSessions(state.sessionId);
     });
+    bindActionsMenu();
     bindCancel();
     bindDates();
     bindRefreshOrders();

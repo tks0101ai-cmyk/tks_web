@@ -534,7 +534,9 @@ Cập nhật gần nhất: 28/10/2026 (chỉnh sửa khi xem trước import VT)
 
 - Kiểm kê (05/11/2026): sau khi thêm hàng vào đơn TEAM trên KiotViet, người kiểm bấm **Cập nhật đơn Kiot** để thấy Tổng kiểm mới ngay, không phải ngồi chờ.
 
-Cập nhật gần nhất: 05/11/2026 (Kiểm kê: nút Cập nhật đơn Kiot; gom đơn TEAM + số, sửa ngày đợt, giá vốn khớp KiotViet; trước đó 04/11/2026: Kiểm kê: KK trước chọn tay, hủy đợt, nạp lại sheet; trước đó 02/11/2026: Kiểm kê trên web: đủ cột T10, Sài Gòn, dán cột; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; trước đó: gỡ module Vị trí hàng cũ; VT Đơn xuất kho + số lượng âm, migration 0104; Chỉ định vị trí không sửa đơn KiotViet: Xóa dòng/SL cần nhặt chỉ nội bộ, phiếu in theo thứ tự trong hộp, gỡ cảnh báo Lệch Kiot / Lệch SL trong đơn) — trước đó 31/10/2026 (Chỉ định vị trí: thêm/sửa/xóa vị trí VT ngay trong hộp, bảo vệ giữ chỗ đơn Đang bốc khác; trước đó 30/10: kéo-thả, xóa dòng, ghi ngược Kiot; gỡ module Vị trí hàng cũ).
+- Kiểm kê (05/11/2026): thao tác không mở lại được như Đóng đợt được tách khỏi các nút thường dùng để tránh nhấn nhầm.
+
+Cập nhật gần nhất: 05/11/2026 (Kiểm kê: chống đóng đợt nhầm; nút Cập nhật đơn Kiot; gom đơn TEAM + số, sửa ngày đợt, giá vốn khớp KiotViet; trước đó 04/11/2026: Kiểm kê: KK trước chọn tay, hủy đợt, nạp lại sheet; trước đó 02/11/2026: Kiểm kê trên web: đủ cột T10, Sài Gòn, dán cột; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; trước đó: gỡ module Vị trí hàng cũ; VT Đơn xuất kho + số lượng âm, migration 0104; Chỉ định vị trí không sửa đơn KiotViet: Xóa dòng/SL cần nhặt chỉ nội bộ, phiếu in theo thứ tự trong hộp, gỡ cảnh báo Lệch Kiot / Lệch SL trong đơn) — trước đó 31/10/2026 (Chỉ định vị trí: thêm/sửa/xóa vị trí VT ngay trong hộp, bảo vệ giữ chỗ đơn Đang bốc khác; trước đó 30/10: kéo-thả, xóa dòng, ghi ngược Kiot; gỡ module Vị trí hàng cũ).
 
 
 ## 03/11/2026 — Tăng tốc chỉ định và in phiếu (cục bộ, chưa deploy)
