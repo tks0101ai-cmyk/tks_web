@@ -388,7 +388,7 @@
 
 ## Bảng Báo cáo hàng hóa: tiêu đề cyan + tô màu cột (05/11/2026)
 
-**Đã làm (chỉ giao diện `server/public/index.html`, không migration, chưa commit/deploy):** bảng `#productReportTable` (tab Hàng hóa) dùng thanh tiêu đề cyan `#0e7490` chữ trắng cỡ 11px giống bảng Kiểm kê (`#stTable`). Cột Tồn thực HN + Có bán HN tô xanh dương, Tồn thực SG + Có bán SG tô tím (Có bán đậm; ô "—" vẫn tô để cột liền mạch). Cột Ngày cần đặt tô theo đúng Conditional Formatting Excel: < 10,5 xanh lá · 10,5 đến < 20 vàng · 20 đến 30 cam · > 30 đỏ nhạt (20 và 30 thuộc nhóm cam; số âm thuộc nhóm xanh lá; ô "—" không tô). Có sẵn token màu cho sáng/tối (`--pr-*`). Test mới ở `server/test/frontend/product-report-detail.test.js`; file Excel xuất ra chưa tô màu.
+**Đã làm (chỉ giao diện `server/public/index.html`, không migration, chưa commit/deploy):** bảng `#productReportTable` (tab Hàng hóa) dùng thanh tiêu đề cyan `#0e7490` chữ trắng cỡ 11px giống bảng Kiểm kê (`#stTable`). Tô màu theo loại cột, không theo cơ sở: Tồn thực HN + Tồn thực SG cùng màu xanh dương, Có bán HN + Có bán SG cùng màu tím (Có bán đậm; ô "—" vẫn tô để cột liền mạch). Cột Ngày cần đặt tô theo đúng Conditional Formatting Excel: < 10,5 xanh lá · 10,5 đến < 20 vàng · 20 đến 30 cam · > 30 đỏ nhạt (20 và 30 thuộc nhóm cam; số âm thuộc nhóm xanh lá; ô "—" không tô). Có sẵn token màu cho sáng/tối (`--pr-*`). Test mới ở `server/test/frontend/product-report-detail.test.js`; file Excel xuất ra chưa tô màu.
 
 ---
 
