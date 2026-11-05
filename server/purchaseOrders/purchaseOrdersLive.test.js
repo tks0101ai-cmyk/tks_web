@@ -8,6 +8,22 @@ const {EventEmitter}=require('node:events');
 const {attachRealtime}=require('./purchaseOrdersRealtime');
 const dir=path.join(__dirname,'../public/thu-mua/dat-hang');
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
+test('purchase uses the shared application shell and brand instead of a private grid',()=>{
+ const dom=new JSDOM(fs.readFileSync(path.join(dir,'index.html'),'utf8'));
+ const reference=new JSDOM(fs.readFileSync(path.join(dir,'../../stocktake/index.html'),'utf8'));
+ try{
+  const doc=dom.window.document,standard=reference.window.document;
+  assert.equal(doc.querySelector('.receipt-header .brand').innerHTML,standard.querySelector('.receipt-header .brand').innerHTML);
+  assert.ok(doc.querySelector('.shell > .sidebar#sidebar'));
+  assert.ok(doc.querySelector('.shell > main.content'));
+  assert.equal(doc.querySelector('.layout'),null);
+  // The shared navigation inserts this sibling; it must stay in the shared flex shell.
+  const handle=doc.createElement('div');handle.className='sidebar-resize-handle';
+  doc.getElementById('sidebar').after(handle);
+  assert.equal(handle.parentElement,doc.querySelector('main').parentElement);
+  assert.ok(doc.querySelector('.receipt-header .status-line #accountChip'));
+ }finally{dom.window.close();reference.window.close()}
+});
 async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees=[]}={}){
  const dom=new JSDOM(fs.readFileSync(path.join(dir,'index.html'),'utf8'),{url:'https://example.test/thu-mua/dat-hang/',runScripts:'outside-only'}),w=dom.window;
  t.after(()=>w.close());

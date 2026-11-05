@@ -1,15 +1,8 @@
 /* Production purchase page: uses TOKOSI tokens and existing shared navigation. */
-.purchase-page{--purchase-header-height:52px;background:var(--bg);color:var(--text);font-size:12px}
+.purchase-page{background:var(--bg);color:var(--text)}
 .purchase-page *{box-sizing:border-box}
 .purchase-page [hidden]{display:none!important}
-.purchase-page .receipt-header{position:sticky;top:0;z-index:60;height:var(--purchase-header-height);padding:0 20px;gap:16px;background:var(--panel);border-bottom:1px solid var(--border)}
-.purchase-brand{font-size:21px;font-weight:750;letter-spacing:.4px;text-decoration:none;color:var(--text)}
-.purchase-module{padding-left:16px;border-left:1px solid var(--border);font-weight:600}
-.header-status{display:flex;align-items:center;gap:12px;margin-left:auto;font-size:10px;color:var(--muted)}
 #presence:empty{display:none}
-.purchase-page .layout{grid-template-columns:192px minmax(0,1fr);align-items:start}
-.purchase-page #sidebar{position:sticky;top:var(--purchase-header-height);height:calc(100dvh - var(--purchase-header-height));overflow-y:auto;padding:16px 10px;border-right:1px solid var(--border);background:var(--panel)}
-.purchase-page main{padding:0 20px 24px;min-width:0}
 .purchase-tabs{margin:0 0 12px;padding:0;gap:18px;border-bottom:1px solid var(--border);min-height:43px}
 .purchase-tabs button{align-self:stretch;background:transparent;border:0;border-bottom:2px solid transparent;border-radius:0;font-size:11px;padding:10px 4px;color:var(--muted)}
 .purchase-tabs button.active{border-bottom-color:var(--primary);color:var(--text);font-weight:650}
@@ -24,7 +17,7 @@
 #containerPanel>summary{min-height:44px;padding-right:110px;list-style:none}
 #containerCount{margin-left:6px;color:var(--purchase-blue)}
 #containerActions{position:absolute;right:10px;top:7px;display:flex;gap:6px}
-.purchase-filters{display:flex;align-items:end;gap:9px;flex-wrap:wrap;padding:11px 12px;background:var(--purchase-tint);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.purchase-filters{display:flex;align-items:end;gap:9px;flex-wrap:wrap;padding:11px 12px;background:var(--panel-2);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
 .purchase-filters label{display:grid;gap:4px;font-size:10px;color:var(--muted);min-width:104px;flex:1 1 108px}
 .purchase-filters .wide{flex:2.4 1 240px}
 .purchase-filters input,.purchase-filters select{height:29px;width:100%;min-height:0;font-size:11px;border-radius:4px;background:var(--panel-2);color:var(--text);border:1px solid var(--border);padding:4px 7px}
@@ -59,20 +52,26 @@
 #watchedContainer input{max-width:110px;min-width:0}
 .purchase-page dialog label{font-size:11px;color:var(--muted)}
 .purchase-page #modalBody h2{margin-bottom:12px;font-size:16px}
-@media(max-width:1150px){#purchaseOverview{grid-template-columns:repeat(3,minmax(0,1fr))}#purchaseOverview .kpi:nth-child(3){border-right:0}#purchaseOverview .kpi:nth-child(-n+3){border-bottom:1px solid var(--border)}.header-status{gap:8px}#presence{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
-@media(max-width:850px){.purchase-page .layout{grid-template-columns:1fr}.purchase-page main{padding:0 10px 16px}.purchase-page .receipt-header{padding:0 12px}.header-status #presence{display:none}.purchase-module{display:none}#purchaseOverview .kpi-value{font-size:16px}.order-actions h2{flex-basis:100%}}
+@media(max-width:1150px){#purchaseOverview{grid-template-columns:repeat(3,minmax(0,1fr))}#purchaseOverview .kpi:nth-child(3){border-right:0}#purchaseOverview .kpi:nth-child(-n+3){border-bottom:1px solid var(--border)}}
+@media(max-width:850px){#purchaseOverview .kpi-value{font-size:16px}.order-actions h2{flex-basis:100%}}
 
 #addForm{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}#modalBody #addForm>label,#modalBody .add-extra-grid>label{width:auto;min-width:0;margin:0;display:grid;gap:5px}#addForm input,#addForm select{width:100%;min-height:30px}#addForm>p,#addForm>.additional-fields{grid-column:1/-1}.additional-fields{border-top:1px solid var(--border);padding-top:10px}.additional-fields>summary{cursor:pointer;font-size:11px;color:var(--muted);padding:5px 0}.add-extra-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding-top:10px}@media(max-width:650px){#addForm,.add-extra-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
-/* Điều hướng trên màn hẹp. Trang này đổi bố cục ở 850px, còn .menu-btn của
-   shared.css hiện từ 900px — nên khóa nút lại theo đúng mốc của trang, không
-   thì khoảng 851–900px sẽ có nút hamburger mà sidebar vẫn đang hiện.
-   Sidebar thành drawer thay vì display:none như trước: dưới 850px trang từng
-   không còn cách điều hướng nào. */
-@media(min-width:851px){.purchase-page .menu-btn{display:none}}
-@media(max-width:850px){
-  .purchase-page .backdrop{z-index:65}
-  .purchase-page #sidebar{position:fixed;top:0;left:0;bottom:0;height:100dvh;width:min(280px,82vw);z-index:70;transform:translateX(-100%);transition:transform .2s ease;box-shadow:none}
-  .purchase-page #sidebar.open{transform:translateX(0);box-shadow:12px 0 32px rgba(0,0,0,.35)}
-}
-@media(prefers-reduced-motion:reduce){.purchase-page #sidebar{transition:none}}
+
+/* Navigation, brand, sidebar resizing and mobile drawer use shared.css. */
+.purchase-connection,.purchase-presence{font:12px var(--font-body);color:var(--muted)}
+.purchase-presence:empty{display:none}
+.purchase-page h2{font-family:var(--font-display)}
+.purchase-page .num{font-family:var(--font-data);font-variant-numeric:tabular-nums}
+.purchase-page .content>.view-title{margin-bottom:12px}
+@media(max-width:900px){.purchase-connection,.purchase-presence{display:none}}
+/* Page controls follow the common TOKOSI scale; dense data cells stay compact. */
+.purchase-page .purchase-tabs{gap:6px;margin-bottom:20px}
+.purchase-page .purchase-tabs button{font:600 13px var(--font-body);padding:10px 16px;background:transparent;border:0;border-bottom:2px solid transparent;border-radius:0;color:var(--muted)}
+.purchase-page .purchase-tabs button.active{border-bottom-color:var(--blue);color:var(--text)}
+.purchase-page .toolbar>h2,.purchase-page #containerPanel>summary{font-family:var(--font-display);font-size:15px;font-weight:600}
+.purchase-page .toolbar>button{min-height:32px;font:500 12px var(--font-body);padding:6px 10px;border-radius:var(--radius-sm)}
+.purchase-page .purchase-filters label{font-size:12px}
+.purchase-page .purchase-filters input,.purchase-page .purchase-filters select{height:32px;font-size:12px;border-radius:var(--radius-sm)}
+.purchase-page #containerPanel,.purchase-page #sourceBanner{border-radius:var(--radius-xl)}
+.purchase-page button:focus-visible,.purchase-page input:focus-visible,.purchase-page select:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
