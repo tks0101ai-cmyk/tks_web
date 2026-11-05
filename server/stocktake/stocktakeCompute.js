@@ -161,7 +161,8 @@ function buildBoard({ lines = [], edits = [], products = [], tags = [], notes = 
     const code = codeKey(product.code);
     if (!code) continue;
     productByCode.set(code, product);
-    if (num(product.stock) !== 0) entry(code);
+    // Hang dang hoat dong luon vao bang (ton 0, chua ai dem van hien de nguoi kiem thay); hang ngung chi hien khi con ton.
+    if (num(product.stock) !== 0 || product.active === true) entry(code);
   }
   const noteByCode = new Map();
   for (const note of notes) {

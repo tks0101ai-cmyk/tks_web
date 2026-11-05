@@ -298,6 +298,7 @@
       if (!Grid.matchesFilter(row, state.filter)) return false;
       if (state.recheck && recheckKey(row.note) !== state.recheck) return false;
       if (state.status && Status.classify(row.note ? row.note.statusText : '') !== state.status) return false;
+      if (state.status === 'pending' && Status.isIdle(row)) return false;
       return true;
     });
     searchFuzzy = false;

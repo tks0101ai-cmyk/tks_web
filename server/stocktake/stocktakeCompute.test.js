@@ -138,3 +138,19 @@ test('buildBoard: so dan tay uu tien hon so tu lay cho L va M', () => {
   assert.deepEqual(results.find(r => r.code === 'B').prevDiff, -7);
   assert.deepEqual(results.find(r => r.code === 'B').otherDiff, 5);
 });
+
+test('hang dang hoat dong 0/0 co trong bang, khong la Quen KK; hang ngung 0/0 khong co', () => {
+  const board = buildBoard({
+    lines: [{ orderId: 1, lineNo: 0, productCode: 'DEM', quantity: 5 }],
+    products: [
+      { code: 'RONG', stock: 0, cost: 1, active: true }, { code: 'NGUNG', stock: 0, cost: 1, active: false },
+      { code: 'NGUNGTON', stock: 3, cost: 1, active: false }, { code: 'DEM', stock: 0, cost: 2, active: false }
+    ]
+  });
+  assert.deepEqual(board.rows.map(row => row.code).sort(), ['DEM', 'NGUNGTON', 'RONG']);
+  const row = code => board.rows.find(item => item.code === code);
+  assert.equal(row('RONG').forgotten, false);
+  assert.equal(row('RONG').diffQty, 0);
+  assert.equal(row('DEM').diffQty, 5);
+  assert.equal(board.totals.mismatched, 2);
+});

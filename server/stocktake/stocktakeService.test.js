@@ -634,3 +634,25 @@ test('cap nhat don Kiot: don them hang ghi vao DB, Tong kiem doi ngay, bao tab k
   await assert.rejects(service.refreshOrders(ctx(), session.id), { code: 'STOCKTAKE_CLOSED' });
   await assert.rejects(service.refreshOrders(ctx(QL, ['saigon']), session.id), { code: 'BRANCH_OUT_OF_SCOPE' });
 });
+
+test('bang doi chieu: hien hang dang hoat dong 0/0, bo hang ngung 0/0 va ma da nhuong; dong dot chup du', async () => {
+  const { db, service, session } = await fixture();
+  await db.exec(`
+    INSERT INTO products (branch, id, code, name, is_active, raw) VALUES
+      ('hanoi', 5, 'DDD4', 'Hàng D', true, '{"inventories":[{"onHand":0,"cost":9}]}'),
+      ('hanoi', 6, 'EEE5', 'Hàng E', false, '{"inventories":[{"onHand":0,"cost":9}]}'),
+      ('hanoi', 7, 'FFF6', 'Hàng F', NULL, '{"inventories":[{"onHand":0,"cost":9}]}'),
+      ('hanoi', 8, 'GGG7#8', 'Mã nhường', true, '{"inventories":[{"onHand":0,"cost":9}]}'),
+      ('hanoi', 9, 'HHH8', 'Ngừng còn tồn', false, '{"inventories":[{"onHand":4,"cost":9}]}');
+  `);
+  const board = await service.getBoard(ctx(), session.id);
+  assert.equal(rowOf(board, 'DDD4').counted, 0);
+  assert.equal(rowOf(board, 'DDD4').forgotten, false);
+  assert.ok(rowOf(board, 'FFF6'), 'is_active NULL van la dang hoat dong');
+  assert.equal(rowOf(board, 'EEE5'), undefined);
+  assert.equal(rowOf(board, 'GGG7#8'), undefined);
+  assert.equal(rowOf(board, 'HHH8').stock, 4);
+  await service.closeSession(ctx(), session.id, { version: session.version });
+  const closed = await service.getBoard(ctx(), session.id);
+  assert.ok(rowOf(closed, 'DDD4'), 'dong dot chup ca ma 0/0');
+});

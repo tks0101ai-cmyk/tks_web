@@ -143,11 +143,11 @@ const ORDER_STATUS_SQL = `
   ) t`;
 
 const PRODUCTS_SQL = `
-  SELECT p.code, p.name,
+  SELECT p.code, p.name, p.is_active IS NOT FALSE AS active,
          COALESCE((SELECT SUM((inv->>'onHand')::numeric) FROM jsonb_array_elements(COALESCE(p.raw->'inventories', '[]'::jsonb)) inv), 0)::float8 AS stock,
          COALESCE((SELECT AVG((inv->>'cost')::numeric) FROM jsonb_array_elements(COALESCE(p.raw->'inventories', '[]'::jsonb)) inv), 0)::float8 AS cost
   FROM products p
-  WHERE p.branch = $1`;
+  WHERE p.branch = $1 AND p.code NOT LIKE '%#%'`;
 
 const SESSION_COLUMNS = `id, branch, name, date_from, date_to, status, source, version, counterpart_session_id, created_by_name, created_at, closed_by_name, closed_at,
   previous_session_id, cancelled_at, cancelled_by_name, cancel_reason, reloaded_at, reloaded_by_name`;
@@ -452,7 +452,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       }))),
       db.query(`SELECT ${EDIT_COLUMNS} FROM stocktake_line_edits WHERE session_id = $1`, [session.id]).then(r => r.rows.map(shapeEdit)),
       cached('products:' + session.branch, () => db.query(PRODUCTS_SQL, [session.branch]).then(r => r.rows.map(row => ({
-        code: row.code, name: row.name, stock: Number(row.stock), cost: Number(row.cost)
+        code: row.code, name: row.name, stock: Number(row.stock), cost: Number(row.cost), active: row.active
       })))),
       db.query(`SELECT ${TAG_COLUMNS} FROM stocktake_product_tags WHERE branch = $1`, [session.branch]).then(r => r.rows.map(shapeTag)),
       db.query(`SELECT ${NOTE_COLUMNS} FROM stocktake_code_notes WHERE session_id = $1`, [session.id]).then(r => r.rows.map(shapeNote)),
