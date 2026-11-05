@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { EDIT_COLUMNS, parseClipboard, planPaste, planPasteByCode, planFill, moveIndex, matchesFilter, summarizeCells } = require('../public/stocktake/stocktakeGrid');
+const { waitForConfirm, EDIT_COLUMNS, parseClipboard, planPaste, planPasteByCode, planFill, moveIndex, matchesFilter, summarizeCells } = require('../public/stocktake/stocktakeGrid');
 const { PASTE_COLUMNS } = require('../public/stocktake/stocktakePaste');
 
 test('EDIT_COLUMNS: 9 cot, deu la cot dan hop le', () => {
@@ -110,4 +110,53 @@ test('planPasteByCode: khong phai khoi theo ma -> null (dan theo vi tri nhu cu)'
   assert.equal(planPasteByCode([['A', '1'], ['Q', '2'], ['R', '3']], opts), null, 'duoi nua la ma');
   assert.equal(planPasteByCode([], opts), null);
   assert.notEqual(planPasteByCode([['A', '1'], ['Q', '2']], opts), null, 'dung nua van tinh');
+});
+
+// Hop thoai gia: close() phat su kien 'close' giong <dialog>; Esc cung chi phat 'close'.
+function confirmHarness() {
+  const dialog = new EventTarget();
+  dialog.close = () => dialog.dispatchEvent(new Event('close'));
+  const ok = new EventTarget();
+  const cancel = new EventTarget();
+  const click = target => target.dispatchEvent(new Event('click'));
+  return { dialog, ok, cancel, click };
+}
+
+test('waitForConfirm: Dong y = true, Huy = false', async () => {
+  const { dialog, ok, cancel, click } = confirmHarness();
+  const accepted = waitForConfirm(dialog, ok, cancel);
+  click(ok);
+  assert.equal(await accepted, true);
+  const declined = waitForConfirm(dialog, ok, cancel);
+  click(cancel);
+  assert.equal(await declined, false);
+});
+
+test('waitForConfirm: Esc = khong dong y, lenh cu khong chay theo lan xac nhan sau', async () => {
+  const { dialog, ok, cancel, click } = confirmHarness();
+  const closeSession = waitForConfirm(dialog, ok, cancel);
+  dialog.close(); // nguoi dung nhan Esc
+  assert.equal(await closeSession, false);
+  const importSheet = waitForConfirm(dialog, ok, cancel);
+  let oldAnswer = 'chua tra loi lai';
+  closeSession.then(value => { oldAnswer = value; });
+  click(ok);
+  assert.equal(await importSheet, true);
+  assert.equal(oldAnswer, false);
+});
+
+test('waitForConfirm: moi lan chi tra loi 1 lan, khong con lang nghe sau khi xong', async () => {
+  const { dialog, ok, cancel, click } = confirmHarness();
+  const added = { dialog: 0, ok: 0, cancel: 0 };
+  for (const [name, target] of Object.entries({ dialog, ok, cancel })) {
+    const add = target.addEventListener.bind(target);
+    const remove = target.removeEventListener.bind(target);
+    target.addEventListener = (...args) => { added[name] += 1; add(...args); };
+    target.removeEventListener = (...args) => { added[name] -= 1; remove(...args); };
+  }
+  const answer = waitForConfirm(dialog, ok, cancel);
+  click(ok);
+  click(cancel);
+  assert.equal(await answer, true);
+  assert.deepEqual(added, { dialog: 0, ok: 0, cancel: 0 });
 });

@@ -9,6 +9,7 @@ const { codeKey, buildBoard, toResults, deriveColumns, totalsOf } = require('./s
 const { PASTE_COLUMNS, normalizeValue, parseVnNumber, foldName, columnValue, sameValue } = require('../public/stocktake/stocktakePaste');
 const Status = require('../public/stocktake/stocktakeStatus');
 const { announceChanged } = require('./stocktakeEvents');
+const { refreshTeamOrders: defaultRefreshTeamOrders } = require('./stocktakeOrderRefresh');
 
 const BRANCHES = Object.freeze(['hanoi', 'saigon']);
 const CACHE_TTL_MS = 60 * 1000; // ton KiotViet dong bo moi 10 phut, 1 phut cache khong lam cham them
@@ -100,7 +101,11 @@ function quantityOf(value, field = 'quantity') {
 
 const versionOf = value => (value === undefined || value === null || value === '' ? null : Number(value));
 
-// Don dat hang cua khach "TEAM..." (ten tren KiotViet), ngay dat theo gio VN trong [date_from, date_to].
+// Khach dem kiem ke ten "TEAM <so> ..." (khong gom "Team Loi", "KH Team Hang Loi").
+const TEAM_NAME_MATCH_SQL = `btrim(COALESCE(NULLIF(c.name, ''), o.raw->>'customerName', '')) ~* '^TEAM[[:space:]]*[0-9]'`;
+
+// Don dat hang cua khach TEAM + so, ngay dat trong [date_from, date_to].
+// orders.order_date luu gio VN nhung gan nhan UTC nen doi bang 'UTC'; dieu kien khoang dung duoc chi muc (branch, order_date).
 // So luong lay tu raw (co the le) truoc cot INTEGER.
 const TEAM_LINES_SQL = `
   SELECT o.id AS order_id, d.line_no, o.code AS order_code, COALESCE(o.raw->>'statusValue', '') AS order_status,
@@ -115,14 +120,32 @@ const TEAM_LINES_SQL = `
   JOIN order_details d ON d.branch = o.branch AND d.order_id = o.id
   LEFT JOIN products p ON p.branch = d.branch AND p.id = d.product_id
   WHERE o.branch = $1
-    AND (o.order_date AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN $2::date AND $3::date
-    AND upper(btrim(COALESCE(NULLIF(c.name, ''), o.raw->>'customerName', ''))) LIKE 'TEAM%'
+    AND o.order_date >= ($2::date)::timestamp AT TIME ZONE 'UTC'
+    AND o.order_date < ($3::date + 1)::timestamp AT TIME ZONE 'UTC'
+    AND ${TEAM_NAME_MATCH_SQL}
   ORDER BY o.id, d.line_no`;
+
+// Don TEAM trong khoang ngay + don TEAM chua huy cach khoang khong qua 14 ngay (bao cho nguoi dung biet chua tinh).
+const ORDER_STATUS_SQL = `
+  SELECT count(*) FILTER (WHERE in_range)::int AS in_range, max(synced_at) FILTER (WHERE in_range) AS max_synced,
+         count(*) FILTER (WHERE NOT in_range AND status <> 'Đã hủy')::int AS out_count,
+         (min(day) FILTER (WHERE NOT in_range AND status <> 'Đã hủy'))::text AS out_from,
+         (max(day) FILTER (WHERE NOT in_range AND status <> 'Đã hủy'))::text AS out_to
+  FROM (
+    SELECT o.synced_at, COALESCE(o.raw->>'statusValue', '') AS status, (o.order_date AT TIME ZONE 'UTC')::date AS day,
+           o.order_date >= ($2::date)::timestamp AT TIME ZONE 'UTC' AND o.order_date < ($3::date + 1)::timestamp AT TIME ZONE 'UTC' AS in_range
+    FROM orders o
+    LEFT JOIN customers c ON c.branch = o.branch AND c.id = o.customer_id
+    WHERE o.branch = $1
+      AND o.order_date >= ($2::date - 14)::timestamp AT TIME ZONE 'UTC'
+      AND o.order_date < ($3::date + 15)::timestamp AT TIME ZONE 'UTC'
+      AND ${TEAM_NAME_MATCH_SQL}
+  ) t`;
 
 const PRODUCTS_SQL = `
   SELECT p.code, p.name,
          COALESCE((SELECT SUM((inv->>'onHand')::numeric) FROM jsonb_array_elements(COALESCE(p.raw->'inventories', '[]'::jsonb)) inv), 0)::float8 AS stock,
-         COALESCE((SELECT ROUND(AVG((inv->>'cost')::numeric)) FROM jsonb_array_elements(COALESCE(p.raw->'inventories', '[]'::jsonb)) inv), 0)::float8 AS cost
+         COALESCE((SELECT AVG((inv->>'cost')::numeric) FROM jsonb_array_elements(COALESCE(p.raw->'inventories', '[]'::jsonb)) inv), 0)::float8 AS cost
   FROM products p
   WHERE p.branch = $1`;
 
@@ -213,7 +236,7 @@ function checkVersion(current, expected, shape) {
   if (want === null || want !== current.version) throw conflict(shape(current));
 }
 
-function createStockTakeService({ getDb = getPool, now = () => Date.now(), announce = announceChanged } = {}) {
+function createStockTakeService({ getDb = getPool, now = () => Date.now(), announce = announceChanged, refreshTeamOrders = defaultRefreshTeamOrders } = {}) {
   const cache = new Map(); // key -> { at, value }
 
   async function cached(key, load) {
@@ -308,17 +331,27 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       if (versionOf(body.version) !== session.version) throw fail(409, 'STOCKTAKE_CONFLICT', 'Đợt kiểm kê vừa được cập nhật. Tải lại rồi thử lại.', { latest: session });
       // Chi doi truong co trong body: doi doi chieu khong xoa KK truoc va nguoc lai.
       const has = field => Object.hasOwn(body, field);
-      if (!has('counterpartSessionId') && !has('previousSessionId')) throw fail(400, 'VALIDATION', 'Không có gì để cập nhật.');
+      const changesDates = has('dateFrom') || has('dateTo');
+      if (!has('counterpartSessionId') && !has('previousSessionId') && !changesDates) throw fail(400, 'VALIDATION', 'Không có gì để cập nhật.');
+      const dateFrom = has('dateFrom') ? dateField(body.dateFrom, 'dateFrom', 'Từ ngày') : session.dateFrom;
+      const dateTo = has('dateTo') ? dateField(body.dateTo, 'dateTo', 'Đến ngày') : session.dateTo;
+      if (dateTo < dateFrom) throw fail(400, 'VALIDATION', 'Đến ngày phải sau hoặc bằng Từ ngày.', { field: 'dateTo' });
       const counterpartId = has('counterpartSessionId') ? await counterpartOf(client, ctx, session.branch, body.counterpartSessionId) : session.counterpartSessionId;
       const previousId = has('previousSessionId') ? await previousOf(client, ctx, session, body.previousSessionId) : session.previousSessionId;
       const { rows } = await client.query(
-        `UPDATE stocktake_sessions SET counterpart_session_id = $2, previous_session_id = $3, version = version + 1 WHERE id = $1 RETURNING ${SESSION_COLUMNS}`,
-        [session.id, counterpartId, previousId]);
+        `UPDATE stocktake_sessions SET counterpart_session_id = $2, previous_session_id = $3, date_from = $4, date_to = $5, version = version + 1 WHERE id = $1 RETURNING ${SESSION_COLUMNS}`,
+        [session.id, counterpartId, previousId, dateFrom, dateTo]);
       const updated = shapeSession(rows[0]);
       const before = {};
       const after = {};
       if (has('counterpartSessionId')) { before.counterpartSessionId = session.counterpartSessionId; after.counterpartSessionId = counterpartId; }
       if (has('previousSessionId')) { before.previousSessionId = session.previousSessionId; after.previousSessionId = previousId; }
+      if (changesDates) {
+        before.dateFrom = session.dateFrom;
+        before.dateTo = session.dateTo;
+        after.dateFrom = dateFrom;
+        after.dateTo = dateTo;
+      }
       await writeHistory(client, updated, actor, '', 'session_update', before, after);
       return { session: updated };
     }, sessionId, ctx.clientId);
@@ -484,6 +517,30 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       if (row.note && row.note.reasonText) reasons.add(row.note.reasonText);
     }
     return { session, ...board, employees, suggestions: { reason: [...reasons].sort() } };
+  }
+
+  // So don TEAM trong / ngoai khoang ngay. Trang hoi dinh ky: revision doi thi tai lai bang.
+  async function getOrderStatus(ctx, sessionId) {
+    const db = getDb();
+    const session = await readSession(db, ctx, sessionId);
+    const row = (await db.query(ORDER_STATUS_SQL, [session.branch, session.dateFrom, session.dateTo])).rows[0];
+    return {
+      revision: `${row.in_range}:${isoOf(row.max_synced) || ''}`,
+      inRange: row.in_range,
+      outOfRange: { count: row.out_count, from: row.out_from, to: row.out_to }
+    };
+  }
+
+  // Nut "Cap nhat don Kiot": lay ngay don TEAM vua sua tren KiotViet cho co so cua dot, khong cho luot nen.
+  async function refreshOrders(ctx, sessionId) {
+    const session = await readSession(getDb(), ctx, sessionId);
+    assertNotCancelled(session);
+    if (session.status !== 'open') throw fail(409, 'STOCKTAKE_CLOSED', 'Đợt kiểm kê đã đóng, số liệu không đổi nữa.');
+    const result = await refreshTeamOrders(session.branch);
+    if (result.teamOrders > 0 && !result.cached) {
+      try { announce(sessionId, ctx.clientId); } catch (error) { console.error('[stocktake] khong phat duoc tin hieu doi:', error.message); }
+    }
+    return result;
   }
 
   // Sua dong dem goc (orderId + lineNo) hoac dong tay (editId). Gia tri null = giu goc.
@@ -858,7 +915,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
   }
 
   return {
-    listSessions, createSession, updateSession, getBoard, saveLine, addLine, saveNote, saveTag, saveCells, codeHistory, closeSession,
+    listSessions, createSession, updateSession, getBoard, getOrderStatus, refreshOrders, saveLine, addLine, saveNote, saveTag, saveCells, codeHistory, closeSession,
     cancelSession, restoreSession, dependents
   };
 }

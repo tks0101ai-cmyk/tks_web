@@ -37,7 +37,7 @@ async function start(t, { user = MANAGER, scope = 'Cả hai', events, fail } = {
     getBoard: async (ctx, id) => { calls.push(['getBoard', id, ctx.scope]); return { session: SESSION, rows: ROWS, employees: [{ id: 501, name: 'Cảnh' }] }; },
     createSession: record('createSession'), saveLine: record('saveLine'), addLine: record('addLine'), saveNote: record('saveNote'),
     saveTag: record('saveTag'), updateSession: record('updateSession'), saveCells: record('saveCells'), codeHistory: record('codeHistory'), closeSession: record('closeSession'),
-    cancelSession: record('cancelSession'), restoreSession: record('restoreSession'), dependents: record('dependents')
+    cancelSession: record('cancelSession'), restoreSession: record('restoreSession'), dependents: record('dependents'), getOrderStatus: record('getOrderStatus'), refreshOrders: record('refreshOrders')
   };
   const app = express();
   app.use((req, res, next) => { if (user) req.user = user; next(); });
@@ -198,4 +198,30 @@ test('Huy / khoi phuc / dot phu thuoc / nap lai sheet: chi Quan ly; xem dot da h
   }
   await fetch(stock.base + '/sessions?includeCancelled=1');
   assert.deepEqual(stock.calls, [['listSessions', ['hanoi', 'saigon']]], 'khong phai Quan ly: bo qua includeCancelled');
+});
+
+test('order-status: nguoi chi co quyen xem goi duoc', async t => {
+  const viewer = { id: 'v', vaiTro: 'Nhân viên kho', featurePermissions: { 'stocktake.view': true } };
+  const { base, calls } = await start(t, { user: viewer });
+  assert.equal((await fetch(base + '/sessions/7/order-status')).status, 200);
+  assert.deepEqual(calls.at(-1).slice(0, 2), ['getOrderStatus', 7]);
+});
+
+test('cap nhat don Kiot: nguoi chi co quyen xem bam duoc, nguoi khong co quyen thi khong', async t => {
+  const viewer = { id: 'v', vaiTro: 'Nhân viên kho', featurePermissions: { 'stocktake.view': true } };
+  const { base, calls, contexts } = await start(t, { user: viewer });
+  const response = await fetch(base + '/sessions/7/refresh-orders', { method: 'POST', headers: { 'X-Stocktake-Client': 'tab-1' } });
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls.at(-1).slice(0, 2), ['refreshOrders', 7]);
+  assert.equal(contexts.at(-1).clientId, 'tab-1');
+  const outsider = await start(t, { user: { id: 's', vaiTro: 'Nhân viên sale' } });
+  assert.equal((await fetch(outsider.base + '/sessions/7/refresh-orders', { method: 'POST' })).status, 403);
+});
+
+test('cap nhat don Kiot: loi KiotViet tra dung ma cho giao dien', async t => {
+  const fail = Object.assign(new Error('Không cập nhật được đơn từ KiotViet.'), { statusCode: 424, code: 'KIOT_READ_FAILED' });
+  const { base } = await start(t, { fail });
+  const response = await fetch(base + '/sessions/7/refresh-orders', { method: 'POST' });
+  assert.equal(response.status, 424);
+  assert.equal((await response.json()).code, 'KIOT_READ_FAILED');
 });

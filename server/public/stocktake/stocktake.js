@@ -33,7 +33,7 @@
     { key: 'otherRatio', label: 'Do kiểm SG', width: 76, num: true, percent: true },
     { key: 'forgotten', label: 'Quên KK', width: 54, type: 'flag' },
     { key: 'combo', label: 'Combo', width: 48, type: 'flag' },
-    { key: 'cost', label: 'Giá vốn', width: 80, num: true },
+    { key: 'cost', label: 'Giá vốn', width: 88, num: true },
     { key: 'updated', label: 'Cập nhật', width: 120, type: 'text' }
   ];
   const Search = window.TKSStocktakeSearch;
@@ -73,13 +73,15 @@
   // Vùng chọn kiểu sheet: chỉ số dòng trong view.rows và chỉ số cột trong COLUMNS.
   const selection = { anchor: null, focus: null, dragging: false, painted: [] };
   const live = { source: null, timer: null };
+  const ORDER_POLL_MS = 30000;
+  const orders = { sessionId: null, data: null, checking: false, refreshed: null };
   const detail = { code: null };
   let user = null;
 
   // Số kiểu sheet kiểm kê: phẩy ngăn hàng nghìn, chấm thập phân (163,200 · 1.5).
   const fmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
   const num = value => (value === null || value === undefined ? '' : fmt.format(value));
-  // Tiền (giá vốn, giá trị chênh): làm tròn đồng — số lẻ thập phân từ công thức sheet chỉ làm cột rộng ra.
+  // Tiền (giá trị chênh, tổng): làm tròn đồng — số lẻ thập phân từ công thức sheet chỉ làm cột rộng ra.
   const fmtMoney = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
   const money = value => (value === null || value === undefined ? '' : fmtMoney.format(Math.round(value)));
   // "HH:mm dd/MM" theo giờ VN (cố định +7, không phụ thuộc múi giờ máy).
@@ -151,10 +153,14 @@
     const sessionId = state.sessionId;
     if (!background) { $('stStatus').textContent = 'Đang tải bảng đối chiếu…'; $('stStatus').dataset.error = 'false'; }
     try {
+      // Hỏi số đơn TEAM trước khi tải bảng: đơn về giữa hai lần gọi thì lượt hỏi sau vẫn phát hiện được.
+      const statusLoad = sessionIsLive(sessionId) ? fetchOrderStatus(sessionId) : Promise.resolve(null);
       const { response, payload } = await request(API + '/sessions/' + sessionId + '/board');
+      const orderStatus = await statusLoad;
       if (version !== state.loadVersion) return;
       if (!response.ok) throw new Error(payload.error || 'Không tải được bảng đối chiếu.');
       state.board = payload;
+      applyOrderStatus(sessionId, orderStatus);
       state.canEdit = !!payload.canEdit;
       state.canClose = !!payload.canClose;
       $('stStatus').textContent = '';
@@ -188,6 +194,51 @@
     if (live.source) live.source.close();
     live.source = null;
     clearTimeout(live.timer);
+  }
+
+  // ---------- Đơn TEAM mới ----------
+  // Đồng bộ đơn không phát tín hiệu tới trang: đợt đang mở + tab đang hiện thì hỏi định kỳ, revision đổi thì tải lại nền.
+  const sessionIsLive = id => {
+    const session = state.sessions.find(item => item.id === id);
+    return Boolean(session && session.status === 'open' && !session.cancelled);
+  };
+  async function fetchOrderStatus(sessionId) {
+    try {
+      const { response, payload } = await request(API + '/sessions/' + sessionId + '/order-status');
+      return response.ok ? payload : null;
+    } catch (error) {
+      return null;
+    }
+  }
+  function applyOrderStatus(sessionId, status) {
+    orders.sessionId = sessionId;
+    orders.data = status;
+  }
+  const currentOrderStatus = session => (session && orders.sessionId === session.id ? orders.data : null);
+  function renderOrdersNote(session) {
+    const note = $('stOrdersNote');
+    const status = currentOrderStatus(session);
+    const out = status && status.outOfRange;
+    note.hidden = !(out && out.count > 0);
+    if (note.hidden) return;
+    const range = out.from === out.to ? dateVn(out.from) : dateVn(out.from) + ' – ' + dateVn(out.to);
+    $('stOrdersNoteText').textContent = 'Có ' + num(out.count) + ' đơn TEAM chưa tính vì nằm ngoài khoảng ngày (' + range + ').';
+    $('stOrdersNoteButton').hidden = !state.canEdit;
+  }
+  async function pollOrderStatus() {
+    const sessionId = state.sessionId;
+    if (!sessionId || document.hidden || orders.checking || !sessionIsLive(sessionId)) return;
+    orders.checking = true;
+    const status = await fetchOrderStatus(sessionId);
+    orders.checking = false;
+    if (!status || sessionId !== state.sessionId) return;
+    const before = orders.sessionId === sessionId ? orders.data : null;
+    if (before && before.revision !== status.revision) {
+      loadBoard({ background: true });
+      return;
+    }
+    applyOrderStatus(sessionId, status);
+    if (state.board && JSON.stringify(before && before.outOfRange) !== JSON.stringify(status.outOfRange)) renderOrdersNote(state.board.session);
   }
 
   // ---------- Bảng ----------
@@ -271,7 +322,7 @@
       case 'clusterPrevRatio': return pct(row.clusterPrevRatio);
       case 'otherRatio': return pct(row.otherRatio);
       case 'forgotten': return row.forgotten ? 'Quên' : '';
-      case 'cost': return money(row.cost);
+      case 'cost': return num(row.cost); // giu so le de khop voi Gia tri chenh va KiotViet
       case 'counted': return num(row.counted);
       case 'stock': return num(row.stock);
       case 'diffQty': return num(row.diffQty);
@@ -313,7 +364,7 @@
     syncSortHeader();
     if (window.TKSTables) {
       window.TKSTables.enhance($('stTable'), {
-        key: 'stocktake-board-v6', button: $('stColumnsButton'), sort: false,
+        key: 'stocktake-board-v7', button: $('stColumnsButton'), sort: false,
         columns: COLUMNS.map(c => ({ key: c.key, label: labelOf(c, state.headBranch), width: c.width, locked: !!c.locked, hidden: c.key === 'updated' }))
       });
     }
@@ -381,14 +432,22 @@
     const board = state.board;
     const session = board && board.session;
     if (session && session.branch !== state.headBranch) renderHead(session.branch);
+    const orderStatus = currentOrderStatus(session);
     $('stSessionMeta').textContent = session
       ? dateVn(session.dateFrom) + (session.dateTo !== session.dateFrom ? ' – ' + dateVn(session.dateTo) : '')
         + (session.status === 'closed' ? ' · Đóng bởi ' + (session.closedByName || '—') + ' ' + time(session.closedAt) : ' · Tồn theo KiotViet hiện tại')
+        + (orderStatus ? ' · Đã gom ' + num(orderStatus.inRange) + ' đơn TEAM' : '')
+        + (orders.refreshed && orders.refreshed.sessionId === session.id ? ' · Đơn Kiot cập nhật lúc ' + time(orders.refreshed.at).slice(0, 5) : '')
         + (session.reloadedAt ? ' · Nạp lại bởi ' + (session.reloadedByName || '—') + ' ' + time(session.reloadedAt) : '')
       : '';
     const active = Boolean(session && !session.cancelled);
+    $('stEditDatesButton').hidden = !(active && session.status === 'open' && state.canEdit);
+    $('stRefreshOrdersButton').hidden = !(active && session.status === 'open');
+    renderOrdersNote(session);
     $('stCloseButton').hidden = !(active && session.status === 'open' && state.canClose);
     $('stCancelButton').hidden = !(active && state.canClose);
+    $('stActionsMenu').hidden = $('stCloseButton').hidden && $('stCancelButton').hidden;
+    if ($('stActionsMenu').hidden) $('stActionsMenu').open = false;
     $('stReloadButton').hidden = !(active && session.source === 'sheet_import' && state.canClose);
     $('stCreateButton').hidden = !state.canEdit;
     renderCancelBanner(session);
@@ -1534,6 +1593,65 @@
     });
   }
 
+  // ---------- Sửa ngày của đợt đang mở ----------
+  function bindDates() {
+    const dialog = $('stDatesDialog');
+    const form = $('stDatesForm');
+    const open = () => {
+      const session = state.board && state.board.session;
+      if (!session) return;
+      form.elements.dateFrom.value = session.dateFrom;
+      form.elements.dateTo.value = session.dateTo;
+      $('stDatesError').textContent = '';
+      dialog.showModal();
+    };
+    $('stEditDatesButton').addEventListener('click', open);
+    $('stOrdersNoteButton').addEventListener('click', open);
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const session = state.board && state.board.session;
+      if (!session) return;
+      const { response, payload } = await request(API + '/sessions/' + session.id, jsonOptions('PATCH', {
+        dateFrom: form.elements.dateFrom.value, dateTo: form.elements.dateTo.value, version: session.version
+      }));
+      if (!response.ok) { $('stDatesError').textContent = payload.error || 'Không đổi được ngày của đợt.'; return; }
+      dialog.close();
+      notify('Đã đổi ngày của đợt ' + session.name + '.');
+      await loadSessions(session.id);
+    });
+  }
+
+  // ---------- Lấy ngay đơn TEAM mới từ KiotViet ----------
+  function refreshOrdersMessage(result) {
+    const at = time(result.refreshedAt).slice(0, 5);
+    if (result.cached) return 'Vừa cập nhật đơn từ KiotViet lúc ' + at + ', bảng đã là số mới nhất.';
+    return result.teamOrders
+      ? 'Đã cập nhật ' + num(result.teamOrders) + ' đơn TEAM từ KiotViet lúc ' + at + '.'
+      : 'Đã kiểm tra KiotViet lúc ' + at + ', không có đơn TEAM nào mới.';
+  }
+  function bindRefreshOrders() {
+    const button = $('stRefreshOrdersButton');
+    const label = button.textContent;
+    button.addEventListener('click', async () => {
+      const sessionId = state.sessionId;
+      if (!sessionId || button.disabled) return;
+      button.disabled = true;
+      button.textContent = 'Đang lấy đơn…';
+      try {
+        const { response, payload } = await request(API + '/sessions/' + sessionId + '/refresh-orders', jsonOptions('POST', {}));
+        if (!response.ok) { notify(payload.error || 'Không cập nhật được đơn từ KiotViet.', true); return; }
+        orders.refreshed = { sessionId, at: payload.refreshedAt };
+        await loadBoard({ background: true });
+        notify(refreshOrdersMessage(payload));
+      } catch (error) {
+        notify('Không cập nhật được đơn từ KiotViet. Kiểm tra mạng rồi thử lại.', true);
+      } finally {
+        button.disabled = false;
+        button.textContent = label;
+      }
+    });
+  }
+
   // ---------- Nạp lại đợt nạp từ sheet ----------
   function bindReload() {
     const dialog = $('stReloadDialog');
@@ -1624,13 +1742,19 @@
     $('stConfirmMessage').textContent = message;
     $('stConfirmOk').textContent = okLabel || 'Đồng ý';
     dialog.showModal();
-    return new Promise(resolve => {
-      const done = value => () => { dialog.close(); cleanup(); resolve(value); };
-      const ok = done(true);
-      const cancel = done(false);
-      const cleanup = () => { $('stConfirmOk').removeEventListener('click', ok); $('stConfirmCancel').removeEventListener('click', cancel); };
-      $('stConfirmOk').addEventListener('click', ok);
-      $('stConfirmCancel').addEventListener('click', cancel);
+    return Grid.waitForConfirm(dialog, $('stConfirmOk'), $('stConfirmCancel'));
+  }
+
+  // Menu "Thao tác đợt" (Đóng đợt, Hủy đợt): tách khỏi các nút thường dùng để khó nhấn nhầm.
+  function bindActionsMenu() {
+    const menu = $('stActionsMenu');
+    const close = () => { menu.open = false; };
+    menu.querySelector('.st-actions-list').addEventListener('click', close);
+    document.addEventListener('click', event => { if (menu.open && !menu.contains(event.target)) close(); });
+    menu.addEventListener('keydown', event => {
+      if (event.key !== 'Escape' || !menu.open) return;
+      close();
+      menu.querySelector('summary').focus();
     });
   }
 
@@ -1711,7 +1835,10 @@
       state.showCancelled = event.target.checked;
       await loadSessions(state.sessionId);
     });
+    bindActionsMenu();
     bindCancel();
+    bindDates();
+    bindRefreshOrders();
     bindReload();
     const importSheet = (source, title, message) => async () => {
       if (!(await confirmAction(title, message, 'Nạp'))) return;
@@ -1806,6 +1933,8 @@
     bindDetail();
     bindSelection();
     window.addEventListener('pagehide', stopLive);
+    setInterval(pollOrderStatus, ORDER_POLL_MS);
+    document.addEventListener('visibilitychange', pollOrderStatus);
     try {
       await loadSessions();
     } catch (error) {

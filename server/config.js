@@ -203,7 +203,7 @@ const CONFIG = {
   XKIRO_API_KEY: process.env.XKIRO_API_KEY || '',
   XKIRO_BASE_URL: process.env.XKIRO_BASE_URL || 'https://api.xkiro.com/v1',
   INVOICE_VISION_MODEL: process.env.INVOICE_VISION_MODEL || 'qwen/qwen3.8-max:free',
-  INVOICE_VISION_FALLBACK_MODEL: process.env.INVOICE_VISION_FALLBACK_MODEL ?? 'qwen/qwen3-vl-plus:free',
+  INVOICE_VISION_FALLBACK_MODEL: process.env.INVOICE_VISION_FALLBACK_MODEL ?? 'qwen/qwen3-vl-plus:free,google/gemini-3-flash',
 
   // Cot "Tồn VAT" cua Yeu cau xuat VAT = TỒN ĐẦU NGÀY tab Gộp VAT (file VAT TKS, doc bang service
   // account). *_SHEET_ID = ID file, *_GID = sheetId cua tab. Bo trong = tab Gộp VAT + Khớp mã cua

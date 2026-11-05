@@ -11,6 +11,15 @@ function fakeConnection({locked=true,lastAttempt=null,lastSuccess=null}={}) {
     return {rows:[],rowCount:1};}};
 }
 const fixed=new Date('2026-10-15T02:00:00Z');
+
+test('web source stops Sheet reads and snapshot writes even when forced',async()=>{
+  const conn=fakeConnection(),original=conn.query;let reads=0;
+  conn.query=async function(sql,params){if(sql.includes('to_regclass'))return {rows:[{name:'purchase_settings'}]};if(sql.includes('SELECT source_mode'))return {rows:[{source_mode:'web'}]};return original.call(this,sql,params)};
+  const result=await refreshContainers({pool:{connect:async()=>conn},spreadsheetId:'fixture',force:true,client:{listSheetTitles:async()=>{reads++;return []}}});
+  assert.equal(result.status,'web-source');assert.equal(reads,0);
+  assert.equal(conn.calls.some(call=>call.sql?.startsWith('DELETE')),false);
+  assert(conn.calls.some(call=>call.sql?.includes('pg_advisory_unlock')));
+});
 test('one source failure keeps prior snapshot, records safe error and releases shared lock',async()=>{
   const conn=fakeConnection();
   const reads=[];

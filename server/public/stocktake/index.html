@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261012">
   <link rel="stylesheet" href="/shared/table-controls.css?v=20261016-1">
   <link rel="stylesheet" href="/vt-positions/vt-positions.css?v=20261030-1">
-  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261104-5">
+  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261105-3">
 </head>
 <body>
   <div class="receipt-header">
@@ -49,6 +49,8 @@
         <div class="st-bar">
           <label class="st-field st-session-pick"><span>Đợt</span><select id="stSession" aria-label="Chọn đợt kiểm kê"></select></label>
           <span class="st-session-meta" id="stSessionMeta"></span>
+          <button class="locations-columns-button vt-btn" id="stEditDatesButton" type="button" hidden>Sửa ngày</button>
+          <button class="locations-columns-button vt-btn vt-btn-primary" id="stRefreshOrdersButton" type="button" hidden title="Lấy ngay đơn TEAM vừa thêm hoặc sửa trên KiotViet. Web vẫn tự cập nhật sau khoảng 1–2 phút nếu không bấm.">Cập nhật đơn Kiot</button>
           <div class="st-stats" id="stStats" aria-live="polite"></div>
           <label class="st-field st-counterpart" id="stCounterpartField" hidden><span>Đối chiếu</span><select id="stCounterpart" class="st-select" aria-label="Đợt đối chiếu cơ sở kia"></select></label>
           <label class="st-field st-previous" id="stPreviousField" hidden title="Đợt lấy số &quot;KK trước sai&quot;. Tự động = đợt đã đóng gần nhất cùng cơ sở."><span>KK trước</span><select id="stPrevious" class="st-select" aria-label="Đợt KK trước"></select></label>
@@ -56,9 +58,18 @@
           <button class="locations-columns-button vt-btn" id="stImportT10Button" type="button" hidden title="Nạp một lần tab KIỂM KÊ HN T10">Nạp T10 HN từ sheet</button>
           <button class="locations-columns-button vt-btn" id="stImportSgButton" type="button" hidden title="Nạp một lần tab KIỂM SG">Nạp KIỂM SG từ sheet</button>
           <button class="locations-columns-button vt-btn" id="stReloadButton" type="button" hidden title="Đọc lại tab sheet và thay số liệu của đợt này">Nạp lại từ sheet</button>
-          <button class="locations-columns-button vt-btn st-danger" id="stCloseButton" type="button" hidden>Đóng đợt</button>
-          <button class="locations-columns-button vt-btn st-danger" id="stCancelButton" type="button" hidden title="Ẩn đợt, không xóa dữ liệu; khôi phục được">Hủy đợt</button>
           <label class="st-check" id="stShowCancelledField" hidden><input type="checkbox" id="stShowCancelled"> Hiện đợt đã hủy</label>
+          <details class="st-actions" id="stActionsMenu" hidden>
+            <summary class="locations-columns-button vt-btn">Thao tác đợt</summary>
+            <div class="st-actions-list">
+              <button class="locations-columns-button vt-btn st-danger" id="stCloseButton" type="button" hidden title="Chụp lại số liệu và khóa đợt, không mở lại được">Đóng đợt</button>
+              <button class="locations-columns-button vt-btn st-danger" id="stCancelButton" type="button" hidden title="Ẩn đợt, không xóa dữ liệu; khôi phục được">Hủy đợt</button>
+            </div>
+          </details>
+        </div>
+        <div class="st-previous-note st-orders-note" id="stOrdersNote" role="status" hidden>
+          <span id="stOrdersNoteText"></span>
+          <button class="locations-columns-button vt-btn" id="stOrdersNoteButton" type="button" hidden>Sửa ngày</button>
         </div>
         <p class="st-previous-note" id="stPreviousNote" role="status" hidden></p>
         <div class="st-cancel-banner" id="stCancelBanner" role="status" hidden>
@@ -115,7 +126,7 @@
   <dialog class="vt-dialog" id="stCreateDialog" aria-labelledby="stCreateTitle">
     <form id="stCreateForm" novalidate>
       <div class="dp-head">
-        <div class="dp-head-text"><h3 class="dp-title" id="stCreateTitle">Tạo đợt kiểm kê</h3><p class="dp-subtitle">Web gom các đơn đặt hàng của khách "TEAM…" trong khoảng ngày, kể cả đơn đã hủy.</p></div>
+        <div class="dp-head-text"><h3 class="dp-title" id="stCreateTitle">Tạo đợt kiểm kê</h3><p class="dp-subtitle">Web gom các đơn đặt hàng của khách tên "TEAM + số" (vd TEAM 1 : …) trong khoảng ngày, kể cả đơn đã hủy.</p></div>
         <button type="button" class="dp-close" data-st-close aria-label="Đóng">×</button>
       </div>
       <div class="dp-body">
@@ -129,6 +140,25 @@
         <div class="vt-dialog-actions">
           <button type="button" class="locations-columns-button" data-st-close>Hủy</button>
           <button type="submit" class="locations-columns-button vt-primary">Tạo đợt</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Sửa ngày đợt -->
+  <dialog class="vt-dialog" id="stDatesDialog" aria-labelledby="stDatesTitle">
+    <form id="stDatesForm" novalidate>
+      <div class="dp-head">
+        <div class="dp-head-text"><h3 class="dp-title" id="stDatesTitle">Sửa ngày của đợt</h3><p class="dp-subtitle">Tổng kiểm chỉ tính đơn TEAM đặt trong khoảng ngày này. Phần đã sửa trên web vẫn được giữ.</p></div>
+        <button type="button" class="dp-close" data-st-close aria-label="Đóng">×</button>
+      </div>
+      <div class="dp-body">
+        <label class="vt-field"><span>Từ ngày</span><input name="dateFrom" type="date" required></label>
+        <label class="vt-field"><span>Đến ngày</span><input name="dateTo" type="date" required></label>
+        <p class="vt-form-error" id="stDatesError" role="alert"></p>
+        <div class="vt-dialog-actions">
+          <button type="button" class="locations-columns-button" data-st-close>Thôi</button>
+          <button type="submit" class="locations-columns-button vt-primary">Lưu</button>
         </div>
       </div>
     </form>
@@ -256,9 +286,9 @@
   <script src="/vendor/fuse.min.js?v=7.1.0"></script>
   <script src="/stocktake/stocktakePaste.js?v=20261103-3"></script>
   <script src="/stocktake/stocktakeSearch.js?v=20261103-2"></script>
-  <script src="/stocktake/stocktakeGrid.js?v=20261104-2"></script>
+  <script src="/stocktake/stocktakeGrid.js?v=20261105-3"></script>
   <script src="/stocktake/stocktakeStatus.js?v=20261103-2"></script>
-  <script src="/stocktake/stocktake.js?v=20261104-5"></script>
+  <script src="/stocktake/stocktake.js?v=20261105-3"></script>
   <script>window.addEventListener('DOMContentLoaded', function () { TKSStocktake.init(); });</script>
   <script src="/shared/shooting-star.js?v=20261019"></script>
 </body>
