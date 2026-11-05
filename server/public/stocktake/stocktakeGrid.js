@@ -154,5 +154,24 @@
     }
   }
 
-  return { EDIT_COLUMNS, parseClipboard, planPaste, planPasteByCode, planFill, moveIndex, matchesFilter, summarizeCells };
+  // Cho tra loi cua hop xac nhan. Moi cach dong (Dong y, Huy, Esc) deu phat su kien 'close' cua <dialog>, nen don
+  // lang nghe tai day: neu Esc de lai lang nghe cu, lan Dong y cua hop sau se chay ca lenh truoc do (vd Dong dot).
+  function waitForConfirm(dialog, okButton, cancelButton) {
+    return new Promise(resolve => {
+      let accepted = false;
+      const accept = () => { accepted = true; dialog.close(); };
+      const decline = () => dialog.close();
+      const finish = () => {
+        okButton.removeEventListener('click', accept);
+        cancelButton.removeEventListener('click', decline);
+        dialog.removeEventListener('close', finish);
+        resolve(accepted);
+      };
+      okButton.addEventListener('click', accept);
+      cancelButton.addEventListener('click', decline);
+      dialog.addEventListener('close', finish);
+    });
+  }
+
+  return { EDIT_COLUMNS, parseClipboard, planPaste, planPasteByCode, planFill, moveIndex, matchesFilter, summarizeCells, waitForConfirm };
 });

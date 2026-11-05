@@ -425,4 +425,9 @@ Triển khai: migrate 0108 → backend/worker mới → tính lại tăng dần 
 - `stocktakeService.refreshOrders`, route `POST /api/stocktake/sessions/:id/refresh-orders`, nút `#stRefreshOrdersButton` trên `/stocktake/`.
 - Đo thật 05/11/2026: đơn sửa trên KiotViet vào DB sau khoảng 50 giây; cửa sổ 6 phút trên API mất khoảng 1 giây.
 
+## 05/11/2026 — Kiểm kê: chống đóng đợt nhầm
+
+- `public/stocktake/stocktakeGrid.js`: `waitForConfirm` trả lời theo sự kiện `close` của `<dialog>`, có test. `stocktake.js` dùng hàm này cho mọi hộp xác nhận.
+- `public/stocktake/index.html`: menu `#stActionsMenu` chứa Đóng đợt / Hủy đợt. `.st-sessions` đặt `overflow:visible` để menu không bị cắt.
+
 Cập nhật gần nhất: 05/11/2026.
