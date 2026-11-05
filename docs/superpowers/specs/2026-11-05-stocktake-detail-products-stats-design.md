@@ -57,6 +57,7 @@ Giữ nguyên API `PUT .../note`, `PUT .../tag` và dữ liệu đã nhập. Kh�
 - Sắp mặc định vẫn là giá trị chênh lớn trước, nên mã 0/0 nằm cuối.
 - `Status.summarize` không đếm mã có `counted = 0`, `stock = 0` và chưa có trạng thái (thẻ Chưa XL). Mã 0/0 đã có trạng thái vẫn được đếm theo trạng thái đó.
 - `closeSession` chụp đủ danh sách mới. Đợt đã đóng giữ nguyên bản chụp.
+- Mã 0/0 của đợt web coi như không có khi lấy cột KK trước / Kiểm SG-HN từ đợt khác, nên các cột này vẫn để trống thay vì hiện 0. Đợt nạp từ sheet giữ nguyên số trên sheet.
 - Tốc độ: 4.131 dòng tương đương đợt T10 3.975 dòng đang chạy; bảng vẫn vẽ dần 200 dòng khi cuộn.
 
 ### 4. Xuất file thống kê

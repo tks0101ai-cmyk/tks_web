@@ -430,4 +430,11 @@ Triển khai: migrate 0108 → backend/worker mới → tính lại tăng dần 
 - `public/stocktake/stocktakeGrid.js`: `waitForConfirm` trả lời theo sự kiện `close` của `<dialog>`, có test. `stocktake.js` dùng hàm này cho mọi hộp xác nhận.
 - `public/stocktake/index.html`: menu `#stActionsMenu` chứa Đóng đợt / Hủy đợt. `.st-sessions` đặt `overflow:visible` để menu không bị cắt.
 
+## 05/11/2026 — Kiểm kê: gọn hộp chi tiết, đủ sản phẩm, xuất thống kê
+
+- `stocktakeCompute.buildBoard`: thêm hàng `active === true`. `stocktakeStatus.isIdle`: mã 0/0 chưa có trạng thái không tính vào Chưa XL.
+- `stocktakeExport`: `checkSpec`, `createStatsWorkbook`. `stocktakeService.getLineExport`, route `export-lines`.
+- `public/stocktake/`: bỏ form trong hộp chi tiết, `lineInput` lưu khi rời ô, `saveLine` xếp hàng và nhớ `version`, `Grid.sortLines`, giữ ô đang gõ khi dựng lại bảng.
+- Thiết kế: `docs/superpowers/specs/2026-11-05-stocktake-detail-products-stats-design.md`, kế hoạch: `docs/superpowers/plans/2026-11-05-stocktake-detail-products-stats.md`.
+
 Cập nhật gần nhất: 05/11/2026.
