@@ -698,3 +698,27 @@ test('du lieu xuat thong ke: bo dong da bo, co dong tay, cong theo ma bang Tong 
   await db.exec(`UPDATE stocktake_sessions SET source = 'sheet_import', source_ref = 'x' WHERE id = ${session.id}`);
   await assert.rejects(service.getLineExport(ctx(), session.id), { statusCode: 409, code: 'STOCKTAKE_NO_LINES' });
 });
+
+test('dot doi chieu dang mo: nho so 60 giay, ghi vao dot do thi tinh lai ngay', async () => {
+  const { db, session } = await fixture();
+  let teamReads = 0;
+  const query = (sql, params) => {
+    if (/JOIN order_details d/.test(sql) && params && params[0] === 'saigon') teamReads += 1;
+    return db.query(sql, params);
+  };
+  const pool = { query, connect: async () => ({ query, release() {} }) };
+  let clock = 1000;
+  const service = createStockTakeService({ getDb: () => pool, announce: () => {}, now: () => clock });
+  const { session: sg } = await service.createSession(ctx(), { branch: 'saigon', name: 'SG', dateFrom: '2026-10-29', dateTo: '2026-10-29' });
+  await service.updateSession(ctx(), session.id, { counterpartSessionId: sg.id, version: session.version });
+  await service.getBoard(ctx(), session.id);
+  await service.getBoard(ctx(), session.id);
+  assert.equal(teamReads, 1, 'lan 2 dung so da nho');
+  await service.addLine(ctx(), sg.id, { productCode: 'AAA1', quantity: 5, zone: 'G1' });
+  const board = await service.getBoard(ctx(), session.id);
+  assert.equal(teamReads, 2, 'ghi vao dot doi chieu thi tinh lai');
+  assert.equal(rowOf(board, 'AAA1').otherDiff, 2);
+  clock += 61 * 1000;
+  await service.getBoard(ctx(), session.id);
+  assert.equal(teamReads, 3, 'het 60 giay thi tinh lai');
+});

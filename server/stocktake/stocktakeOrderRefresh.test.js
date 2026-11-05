@@ -139,3 +139,22 @@ test('co so chua cau hinh KiotViet: bao ro, khong goi API', async () => {
   await assert.rejects(refresh('hanoi'), { statusCode: 424, code: 'KIOT_NOT_CONFIGURED' });
   assert.equal(state.fetchCalls.length, 0);
 });
+
+test('sap dong hang truoc khi mo giao dich, khong giu khoa don trong luc goi API noi bo', async () => {
+  const events = [];
+  const client = { query: async sql => { events.push(sql); return { rows: [] }; }, release() {} };
+  const refresh = createOrderRefresher({
+    getDb: () => ({ query: async () => ({ rows: [] }), connect: async () => client }),
+    getBranches: () => BRANCHES,
+    createClient: () => ({ fetchAllPages: async (endpoint, query, onPage) => onPage([{ id: 1, customerName: 'TEAM 1' }], {}) }),
+    ordersEntity: {
+      endpoint: 'orders', listQuery: {},
+      prepareItems: async (branch, items) => { events.push('SORT'); return items; },
+      upsertPage: async (pg, branch, items, options) => { events.push('WRITE:' + Boolean(options && options.prepared)); }
+    },
+    now: () => NOW,
+    logger: { error() {} }
+  });
+  await refresh('hanoi');
+  assert.deepEqual(events, ['SORT', 'BEGIN', 'WRITE:true', 'COMMIT']);
+});

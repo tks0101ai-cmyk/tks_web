@@ -263,6 +263,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       const result = await work(client);
       await client.query('COMMIT');
       if (sessionId) {
+        cache.delete('counterpart:' + sessionId);
         try { announce(sessionId, by); } catch (error) { console.error('[stocktake] khong phat duoc tin hieu doi:', error.message); }
       }
       return result;
@@ -403,9 +404,12 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       const { rows } = await db.query(COMPARE_RESULTS_SQL, [other.id]);
       return { counterpartInfo, counterpart: rows.map(r => ({ code: r.product_code, diffQty: Number(r.diff_qty) })) };
     }
-    const board = buildBoard(await loadInputs(db, other, { withCounterpart: false }));
-    const compared = board.rows.filter(r => r.counted !== 0 || r.stock !== 0);
-    return { counterpartInfo, counterpart: compared.map(r => ({ code: r.code, diffQty: r.diffQty })) };
+    // Dung lai bang cua dot kia ton nhieu truy van nen nho 60 giay; ghi vao dot do thi xoa ngay (withTransaction).
+    const counterpart = await cached('counterpart:' + other.id, async () => {
+      const board = buildBoard(await loadInputs(db, other, { withCounterpart: false }));
+      return board.rows.filter(r => r.counted !== 0 || r.stock !== 0).map(r => ({ code: r.code, diffQty: r.diffQty }));
+    });
+    return { counterpartInfo, counterpart };
   }
 
   // Dot KK truoc cua dot nay: chon tay (con dung duoc) hoac tu dong = dot da dong gan nhat cung co so, chua huy,
@@ -556,6 +560,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     if (session.status !== 'open') throw fail(409, 'STOCKTAKE_CLOSED', 'Đợt kiểm kê đã đóng, số liệu không đổi nữa.');
     const result = await refreshTeamOrders(session.branch);
     if (result.teamOrders > 0 && !result.cached) {
+      cache.delete('counterpart:' + sessionId);
       try { announce(sessionId, ctx.clientId); } catch (error) { console.error('[stocktake] khong phat duoc tin hieu doi:', error.message); }
     }
     return result;
@@ -850,6 +855,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     return withTransaction(async client => {
       const session = await openSessionForWrite(client, ctx, sessionId);
       if (versionOf(body.version) !== session.version) throw fail(409, 'STOCKTAKE_CONFLICT', 'Đợt kiểm kê vừa được cập nhật. Tải lại rồi thử lại.', { latest: session });
+      if (session.counterpartSessionId) cache.delete('counterpart:' + session.counterpartSessionId);
       const inputs = await loadInputs(client, session, { fresh: true });
       const results = toResults(buildBoard(inputs));
       if (results.length) {

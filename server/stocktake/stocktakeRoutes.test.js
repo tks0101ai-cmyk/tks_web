@@ -252,3 +252,13 @@ test('xuat thong ke: dot nap sheet tra loi ro', async t => {
   assert.equal(response.status, 409);
   assert.equal((await response.json()).code, 'STOCKTAKE_NO_LINES');
 });
+
+test('do thoi gian: API co Server-Timing, ket noi SSE thi khong', async t => {
+  const { base } = await start(t, { events: new EventEmitter() });
+  const board = await fetch(base + '/sessions/7/board');
+  assert.match(board.headers.get('server-timing') || '', /total;dur=/u);
+  const controller = new AbortController();
+  const live = await fetch(base + '/sessions/7/events', { signal: controller.signal });
+  assert.equal(live.headers.get('server-timing'), null);
+  controller.abort();
+});
