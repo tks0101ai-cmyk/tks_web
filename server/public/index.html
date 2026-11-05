@@ -2941,10 +2941,10 @@
       color: #a5f3fc;
     }
 
-    /* Tô màu cột tồn: Hà Nội xanh dương, Sài Gòn tím (tránh xanh lá / vàng / cam / đỏ dành cho rule Ngày cần đặt). */
+    /* Tô màu theo loại cột (không theo cơ sở): Tồn thực (HN + SG) xanh dương, Có bán (HN + SG) tím; tránh xanh lá / vàng / cam / đỏ dành cho rule Ngày cần đặt. */
     :root {
-      --pr-hn-bg: rgba(59, 130, 246, .18);
-      --pr-sg-bg: rgba(167, 139, 250, .2);
+      --pr-stock-bg: rgba(59, 130, 246, .18);
+      --pr-avail-bg: rgba(167, 139, 250, .22);
       --pr-days-low-bg: rgba(16, 185, 129, .25);
       --pr-days-low-text: #6EE7B7;
       --pr-days-mid-bg: rgba(250, 204, 21, .22);
@@ -2956,8 +2956,8 @@
     }
 
     :root[data-theme="light"] {
-      --pr-hn-bg: #DBEAFE;
-      --pr-sg-bg: #EDE9FE;
+      --pr-stock-bg: #DBEAFE;
+      --pr-avail-bg: #E4DAFE;
       --pr-days-low-bg: #C6EFCE;
       --pr-days-low-text: #006100;
       --pr-days-mid-bg: #FFEB9C;
@@ -2968,9 +2968,8 @@
       --pr-days-over-text: #9C0006;
     }
 
-    #productReportTable td.pr-hn { background: var(--pr-hn-bg); }
-    #productReportTable td.pr-sg { background: var(--pr-sg-bg); }
-    #productReportTable td.pr-avail { font-weight: 700; }
+    #productReportTable td.pr-stock { background: var(--pr-stock-bg); }
+    #productReportTable td.pr-avail { background: var(--pr-avail-bg); font-weight: 700; }
 
     /* Rule màu Ngày cần đặt, sao đúng Conditional Formatting của file Excel:
        < 10,5 xanh lá · 10,5 đến dưới 20 vàng · 20 đến 30 cam · > 30 đỏ nhạt (ô trống "—" không tô). */
@@ -8382,10 +8381,9 @@
       return '<td class="mono' + (cls ? ' ' + cls : '') + '" data-sort-value="' + Number(value) + '">' + format(value) + '</td>';
     }
 
-    // Ô tồn / có bán tô theo cơ sở: 'pr-hn' (Hà Nội) hoặc 'pr-sg' (Sài Gòn); Có bán thêm 'pr-avail' (đậm).
-    function productReportStockCell(value, region, bold) {
-      const cls = region + (bold ? ' pr-avail' : '');
-      return productReportNullableCell(value, fmtNumber, cls, cls);
+    // Ô Có bán HN / SG tô cùng một màu 'pr-avail' (đậm); ô "—" vẫn tô để cột liền mạch. (Tồn thực HN / SG dùng 'pr-stock'.)
+    function productReportAvailableCell(value) {
+      return productReportNullableCell(value, fmtNumber, 'pr-avail', 'pr-avail');
     }
 
     // Rule màu Ngày cần đặt (sao Conditional Formatting Excel, thứ tự ưu tiên 20–30 → >30 → 10,5–20 → <10,5):
@@ -8444,12 +8442,12 @@
         productContainerQuantityCell(p.unloadedQty) + productContainerQuantityCell(p.loadedQty) +
         productReportNullableCell(p.availableValueHanoi, fmtTableMoney) +
         productReportNullableCell(p.qtySold30dHanoi, fmtNumber) +
-        '<td class="mono pr-hn" data-sort-value="' + p.stockHanoi + '">' + fmtNumber(p.stockHanoi) + '</td>' +
-        productReportStockCell(p.availableHanoi, 'pr-hn', true) +
+        '<td class="mono pr-stock" data-sort-value="' + p.stockHanoi + '">' + fmtNumber(p.stockHanoi) + '</td>' +
+        productReportAvailableCell(p.availableHanoi) +
         '<td class="mono" data-sort-value="' + (p.transferRequest || 0) + '">' + fmtNumber(p.transferRequest || 0) + '</td>' +
         '<td class="mono" data-sort-value="' + (p.inTransit || 0) + '">' + fmtNumber(p.inTransit) + '</td>' +
-        '<td class="mono pr-sg" data-sort-value="' + p.stockSaigon + '">' + fmtNumber(p.stockSaigon) + '</td>' +
-        productReportStockCell(p.availableSaigon, 'pr-sg', true) +
+        '<td class="mono pr-stock" data-sort-value="' + p.stockSaigon + '">' + fmtNumber(p.stockSaigon) + '</td>' +
+        productReportAvailableCell(p.availableSaigon) +
         productReportNullableCell(p.qtySold30dSaigon, fmtNumber) +
         productReportNullableCell(p.availableValueSaigon, fmtTableMoney) +
         productReportNullableCell(p.totalStock, fmtNumber) +

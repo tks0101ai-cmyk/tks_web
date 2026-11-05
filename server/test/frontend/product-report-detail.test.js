@@ -811,8 +811,9 @@ test('Ngay can dat to mau theo rule Excel (<10,5 xanh la, 10,5-20 vang, 20-30 ca
   assert.equal(empty.textContent, '—');
   assert.ok(![...empty.classList].some(name => name.startsWith('pr-days-')), 'o "—" khong to mau');
 
-  ['ton-thuc-hn', 'co-ban-hn'].forEach(key => assert.ok(cell(key).classList.contains('pr-hn'), key + ' to mau Ha Noi'));
-  ['ton-thuc-sg', 'co-ban-sg'].forEach(key => assert.ok(cell(key).classList.contains('pr-sg'), key + ' to mau Sai Gon'));
-  assert.ok(cellOf(rowOf(page, 'SP-2'), 'co-ban-hn').classList.contains('pr-hn'), 'o Co ban "—" van to mau de cot lien mach');
+  // Mau theo LOAI cot, khong theo co so: Ton thuc (HN + SG) cung mau, Co ban (HN + SG) cung mau khac.
+  ['ton-thuc-hn', 'ton-thuc-sg'].forEach(key => assert.ok(cell(key).classList.contains('pr-stock') && !cell(key).classList.contains('pr-avail'), key + ' to mau Ton thuc'));
+  ['co-ban-hn', 'co-ban-sg'].forEach(key => assert.ok(cell(key).classList.contains('pr-avail') && !cell(key).classList.contains('pr-stock'), key + ' to mau Co ban'));
+  ['co-ban-hn', 'co-ban-sg'].forEach(key => assert.ok(cellOf(rowOf(page, 'SP-2'), key).classList.contains('pr-avail'), 'o Co ban "—" van to mau de cot lien mach'));
   assert.equal(reportTable(page).id, 'productReportTable');
 });
