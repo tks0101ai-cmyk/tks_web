@@ -45,7 +45,7 @@ const DEFAULT_TTL_MS = 2 * 60 * 1000;
 const DEFAULT_STALE_MS = 15 * 60 * 1000;
 // Sau 1 lan lam moi nen that bai, doi it nhat chung nay moi thu lai (tranh moi request deu goi DB dang loi).
 const RETRY_BACKOFF_MS = 15 * 1000;
-// Lam moi TANG DAN (2026-10-19): chi doc don co modified_date >= watermark - DELTA_OVERLAP_MS (chong lech dong
+// Lam moi TANG DAN (2026-10-19): chi doc don co synced_at >= watermark - DELTA_OVERLAP_MS (chong lech dong
 // ho / commit muon); moi FULL_RECONCILE_MS lai doc DAY DU 1 lan de bat don bi xoa, doi ten nhan vien, don roi
 // khoi pham vi (vd Phieu tam cu chuyen sang Da huy).
 const FULL_RECONCILE_MS = 30 * 60 * 1000;
@@ -123,7 +123,7 @@ const ALL_ORDERS_SQL = `
     ${saleTelegramIdSql(`COALESCE(NULLIF(o.raw->>'soldByName', ''), s.name, '')`)} AS sale_telegram_id,
     COALESCE(o.raw->>'statusValue', '') AS kiot_status,
     COALESCE(o.raw->>'description', '') AS note,
-    o.modified_date
+    o.synced_at
   FROM orders o
   LEFT JOIN staff s ON s.branch = o.branch AND s.id = o.sold_by_id
   LEFT JOIN customers c ON c.branch = o.branch AND c.id = o.customer_id
@@ -131,10 +131,10 @@ const ALL_ORDERS_SQL = `
      OR o.order_date IS NULL
      OR (o.order_date AT TIME ZONE 'UTC') >= TIMESTAMP '${LIFECYCLE_ORDER_FROM} 00:00:00')`;
 
-// Ban tang dan: them dieu kien modified_date ($1 = watermark - chong lan). Dong modified_date NULL luon lay lai
-// (khong co dau hieu doi). Dung index idx_orders_modified (branch, modified_date).
-const DELTA_ORDERS_SQL = `${ALL_ORDERS_SQL}
-    AND (o.modified_date >= $1::timestamptz OR o.modified_date IS NULL)`;
+// Ban tang dan: them dieu kien synced_at ($1 = watermark - chong lan). Dong synced_at NULL luon lay lai
+// (khong co dau hieu doi). Khong loc pham vi o SQL delta: can nhan ca don vua roi pham vi de xoa khoi map.
+const DELTA_ORDERS_SQL = `${ALL_ORDERS_SQL.split('\n  WHERE (')[0]}
+  WHERE (o.synced_at >= $1::timestamptz OR o.synced_at IS NULL)`;
 
 // Dong hang cua CAC DON PHIEU TAM (de tinh gia tri co ban). Bieu thuc loc statusValue GIU NGUYEN (khong
 // COALESCE) de trung dieu kien index mot phan 0028. Thanh tien dong = (price - discount) x quantity vi
@@ -194,7 +194,7 @@ function createKiotOrdersRepository({
 
   // Trang thai tang dan. ordersByKey: `${db branch}|${order_id}` -> { order (chua co sellableValue), dateKey, pending }.
   let ordersByKey = null;
-  let watermark = null; // ms: max modified_date da thay
+  let watermark = null; // ms: max synced_at da thay
   let lastFullAt = 0;
   let forceFull = true;
 
@@ -240,11 +240,11 @@ function createKiotOrdersRepository({
       };
       // Ban day du da loc pham vi bang SQL; ban tang dan loai them don nao khong con trong pham vi.
       if (full || inScope(entry)) nextMap.set(key, entry); else nextMap.delete(key);
-      const ms = toMs(row.modified_date);
+      const ms = toMs(row.synced_at);
       if (ms !== null && (nextWatermark === null || ms > nextWatermark)) nextWatermark = ms;
     }
 
-    // Gia tri co ban cua don Phieu tam: ton thuc theo (co so, ma). Phu thuoc TON KHO (khong theo modified_date)
+    // Gia tri co ban cua don Phieu tam: ton thuc theo (co so, ma). Phu thuoc TON KHO (khong theo synced_at)
     // nen moi lan lam moi (ca tang dan) doc lai dong hang + ton va tinh lai cho MOI don Phieu tam trong map.
     const lineRows = (linesResult && linesResult.rows) || [];
     const codesByBranch = new Map();

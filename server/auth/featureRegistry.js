@@ -37,6 +37,7 @@ const FEATURE_GROUPS = Object.freeze([
   { key: 'hr', label: 'Quản lý nhân sự' },
   { key: 'cashbook', label: 'Sổ quỹ' },
   { key: 'accounting', label: 'Kế toán' },
+  { key: 'purchase', label: 'Thu mua' },
   { key: 'account', label: 'Quản lý tài khoản' },
   { key: 'system', label: 'Hệ thống' }
 ]);
@@ -47,6 +48,12 @@ const FEATURE_GROUPS = Object.freeze([
  * khong ai tat duoc (tranh khoa chet nguoi dung ra khoi he thong).
  */
 const FEATURES = Object.freeze([
+  {key:'purchase.view',groupKey:'purchase',label:'Xem Thu mua',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH]},
+  {key:'purchase.edit',groupKey:'purchase',label:'Sửa Thu mua',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH],requires:'purchase.view'},
+  {key:'purchase.import',groupKey:'purchase',label:'Import Thu mua',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH],requires:'purchase.view'},
+  {key:'purchase.export',groupKey:'purchase',label:'Xuất Excel Thu mua',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH],requires:'purchase.view'},
+  {key:'purchase.depart',groupKey:'purchase',label:'Xác nhận bốc cont',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH],requires:'purchase.view'},
+  {key:'purchase.arrive',groupKey:'purchase',label:'Xác nhận cont về',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH],requires:'purchase.view'},
   { key: 'reports.products.expected.otherNote', groupKey: 'reports', label: 'Dự kiến hàng về: Xem Ghi chú khác', roles: MANAGER_ONLY, requires: 'reports.products.expected' },
   // --- Bao cao tong hop ---
   { key: 'reports.overview', groupKey: 'reports', label: 'Tổng quan', roles: REPORT_VIEW_ROLES },
@@ -193,6 +200,7 @@ const PAGE_FEATURES = Object.freeze([
   { path: '/reports', href: '/reports/', anyOf: ANY_REPORTS_FEATURES, landingAnyOf: ANY_REPORTS_FEATURES.filter(k => k !== 'reports.products.expected') },
   { path: '/shipment/lifecycle', href: '/shipment/lifecycle/', anyOf: ['shipment.lifecycle'] },
   { path: '/humanresources', href: '/humanresources/', anyOf: ['hr.rules', 'hr.employees', 'hr.leave', 'hr.leave.submit'] },
+  {path:'/thu-mua/dat-hang',href:'/thu-mua/dat-hang/',anyOf:['purchase.view']},
   { path: '/vt-positions', href: '/vt-positions/', anyOf: ['stockLocationsV2.view'] },
   { path: '/stocktake', href: '/stocktake/', anyOf: ['stocktake.view'] },
   { path: '/cashbook', href: '/cashbook/', anyOf: ['cashbook.view'] },

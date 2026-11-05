@@ -18,6 +18,7 @@ const { startSpecialDayNotifySchedule } = require('./notifications/specialDayNot
 const { startLeaveBellSchedule } = require('./hr/hrLeaveBellNotifier');
 const { startSaleNotifySchedule } = require('./vatRequests/saleNotifier');
 const { ensureHrInsuranceSchema } = require('./db/ensureHrInsuranceSchema');
+const { ensurePurchaseSchema } = require('./db/ensurePurchaseSchema');
 
 process.on('uncaughtException', (err) => {
   console.error('[Process] Uncaught exception:', err);
@@ -142,6 +143,10 @@ async function startServer() {
   // The HR write path requires insurance_number. Apply only this additive
   // migration before accepting requests; do not run other pending migrations.
   if (CONFIG.SUPABASE_DB_URL) await ensureHrInsuranceSchema();
+  // Additive purchase tables only. Schema failures must not take down other modules.
+  if (CONFIG.SUPABASE_DB_URL) await ensurePurchaseSchema().catch(error => {
+    console.error('[Purchase] Schema initialization unavailable:', error.code || 'INITIALIZATION_FAILED');
+  });
   localUserStore.initStore();
   await localUserStore.hydrateFromSheets().catch((err) => {
     console.error('[Users] Lỗi không mong đợi khi khởi tạo tài khoản Admin mặc định:', err.message);
