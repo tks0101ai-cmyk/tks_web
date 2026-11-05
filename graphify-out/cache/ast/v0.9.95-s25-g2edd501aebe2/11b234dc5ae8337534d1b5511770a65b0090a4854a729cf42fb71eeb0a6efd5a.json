@@ -1,1 +1,0 @@
-{"nodes": [{"id": "$graphify-root$_server_db_migrations_0049_hr_rule_document_hold_goods_sql", "label": "0049_hr_rule_document_hold_goods.sql", "file_type": "code", "source_file": "server/db/migrations/0049_hr_rule_document_hold_goods.sql", "source_location": null}], "edges": []}
