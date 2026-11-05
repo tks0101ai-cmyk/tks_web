@@ -113,8 +113,17 @@ test('SSE cleans up subscriptions and presence on disconnect; change carries no 
  req.emit('close');assert.equal(events.listenerCount('purchase-orders-changed'),0);
 });
 
+// Tach bat dau bang mot nhan vao Ma SP roi xac nhan cont dich trong hop thoai; khong con nut Tach tren dong.
+async function splitRow(p,id,destination){
+ const doc=p.w.document,label=doc.querySelector('tr[data-id="'+id+'"] [data-field="productCode"] .code-label');
+ label.dispatchEvent(new p.w.MouseEvent('click',{bubbles:true}));
+ await new Promise(resolve=>setTimeout(resolve,300));
+ if(destination!==undefined)doc.getElementById('splitTo').value=destination;
+ doc.getElementById('splitConfirm').click();await tick();
+}
+
 test('manual split starts blank, blocks save and sends employee quantities in one plan',async t=>{
- const p=await page(t),doc=p.w.document;doc.querySelector('[data-row-transfer="1"]').click();const child=doc.querySelector('[data-child-qty="1"]');assert.ok(child);assert.equal(child.value,'');assert.equal(doc.querySelector('tr[data-id="1"] [data-edit="cartonCount"]').value,'10');doc.getElementById('save').click();assert.equal(doc.getElementById('modal').open,false);child.value='4';child.dispatchEvent(new p.w.Event('change',{bubbles:true}));p.change('tr[data-id="1"] [data-edit="cartonCount"]','7');doc.getElementById('save').click();doc.getElementById('commit').click();await tick();await tick();const plan=JSON.parse(p.calls.find(c=>c.url.endsWith('/plan')).options.body);assert.equal(plan.splits[0].quantity,4);assert.equal(plan.splits[0].sourceQty,7);assert.equal(plan.splits[0].manual,true);
+ const p=await page(t),doc=p.w.document;await splitRow(p,'1');const child=doc.querySelector('[data-child-qty="1"]');assert.ok(child);assert.equal(child.value,'');assert.equal(doc.querySelector('tr[data-id="1"] [data-edit="cartonCount"]').value,'10');doc.getElementById('save').click();assert.equal(doc.getElementById('modal').open,false);child.value='4';child.dispatchEvent(new p.w.Event('change',{bubbles:true}));p.change('tr[data-id="1"] [data-edit="cartonCount"]','7');doc.getElementById('save').click();doc.getElementById('commit').click();await tick();await tick();const plan=JSON.parse(p.calls.find(c=>c.url.endsWith('/plan')).options.body);assert.equal(plan.splits[0].quantity,4);assert.equal(plan.splits[0].sourceQty,7);assert.equal(plan.splits[0].manual,true);
 });
 
 test('paste is validated before any stage and is undoable as one operation',async t=>{
@@ -146,8 +155,53 @@ test('large list renders one page and does not build hidden packing tables',asyn
 test('an uncertain write is recoverable after reloading the page',async t=>{
  const first=await page(t);first.change('tr[data-id="1"] [data-edit="supplier"]','Reload');first.w.fetch=async()=>{throw Error('connection reset')};first.w.document.getElementById('save').click();first.w.document.getElementById('commit').click();await tick();await tick();const saved=JSON.parse(first.w.sessionStorage.getItem('purchase:buyer:v1')),savedOutbox=JSON.parse(first.w.sessionStorage.getItem('purchase:buyer:v1:outbox'));const next=await page(t,{saved,savedOutbox});assert.equal(next.w.document.getElementById('retryWrite').hidden,false);next.w.document.getElementById('retryWrite').click();await tick();await tick();const call=next.calls.find(c=>c.options.method==='PATCH');assert.equal(call.options.headers['Idempotency-Key'],savedOutbox.key);assert.equal(next.current.rows[0].supplier,'Reload');
 });
-test('only product-code double click opens row history on the live page',async t=>{
- const p=await page(t),doc=p.w.document,fetch=p.w.fetch;p.w.fetch=async(url,options)=>url.includes('/history?')?{ok:true,json:async()=>({rows:[]})}:fetch(url,options);doc.querySelector('[data-field="supplier"]').dispatchEvent(new p.w.MouseEvent('dblclick',{bubbles:true}));await tick();assert.equal(doc.getElementById('modal').open,false);doc.querySelector('[data-field="productCode"] input').dispatchEvent(new p.w.MouseEvent('dblclick',{bubbles:true}));await tick();assert.equal(doc.getElementById('modal').open,true);assert.match(doc.getElementById('modal').textContent,/D00001/);
+test('product code cell splits on one click, opens history on two and edits only on F2',async t=>{
+ const p=await page(t),doc=p.w.document,fetch=p.w.fetch;
+ p.w.fetch=async(url,options)=>url.includes('/history?')?{ok:true,json:async()=>({rows:[]})}:fetch(url,options);
+ const settle=()=>new Promise(resolve=>setTimeout(resolve,300));
+ const cell=()=>doc.querySelector('[data-field="productCode"]');
+ const bodyRows=()=>doc.querySelectorAll('#orderTable tbody tr[data-id]').length;
+ const click=t=>cell().querySelector(t).dispatchEvent(new p.w.MouseEvent('click',{bubbles:true}));
+ // Ma SP khong con la o nhap thuong truc: cho mot nhan va hai nhan dung vao cho khac nhau.
+ assert.ok(cell().querySelector('.code-label'));
+ assert.equal(cell().querySelector('input'),null);
+ const before=bodyRows();
+ doc.querySelector('[data-field="supplier"]').dispatchEvent(new p.w.MouseEvent('dblclick',{bubbles:true}));
+ await tick();assert.equal(doc.getElementById('modal').open,false);
+ // Trinh duyet ban click truoc dblclick: lich su phai mo ma khong duoc de lai dong tach nao.
+ click('.code-label');cell().querySelector('.code-label').dispatchEvent(new p.w.MouseEvent('dblclick',{bubbles:true}));
+ await tick();
+ assert.equal(doc.getElementById('modal').open,true);
+ assert.match(doc.getElementById('modal').textContent,/D00001/);
+ await settle();
+ assert.equal(bodyRows(),before,'hai nhan khong duoc tach dong');
+ doc.getElementById('modalClose').click();
+ // Nut but chi va F2 moi mo o sua, va khong duoc tach dong.
+ click('[data-code-edit]');await tick();
+ assert.equal(cell().querySelector('input[data-edit="productCode"]').value,'AC305');
+ cell().querySelector('input').dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+ await tick();assert.equal(cell().querySelector('input'),null);
+ cell().querySelector('.code-label').dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'F2',bubbles:true}));
+ await tick();assert.equal(cell().querySelector('input[data-edit="productCode"]').value,'AC305');
+ cell().querySelector('input').dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+ await tick();
+ assert.equal(bodyRows(),before,'mo o sua khong duoc tach dong');
+ // Mot nhan don chi MO hop xac nhan; chua duoc tach gi truoc khi nguoi dung dong y.
+ assert.equal(doc.querySelector('[data-row-transfer]'),null,'khong con nut Tach tren dong');
+ click('.code-label');await settle();
+ assert.equal(doc.getElementById('modal').open,true);
+ assert.ok(doc.getElementById('splitTo'),'hop thoai phai cho chon cont dich');
+ assert.equal(bodyRows(),before,'mo hop thoai chua duoc tach');
+ // Huy thi khong tach.
+ doc.getElementById('splitCancel').click();await tick();
+ assert.equal(bodyRows(),before);
+ // Xac nhan moi tach, va mac con di theo cont da chon.
+ click('.code-label');await settle();
+ doc.getElementById('splitTo').value='2';
+ doc.getElementById('splitConfirm').click();await tick();
+ assert.equal(bodyRows(),before+1);
+ assert.equal(doc.querySelector('#orderTable input[data-child-qty]').value,'');
+ assert.equal(doc.querySelector('#orderTable select[data-child-cont]').value,'2');
 });
 
 test('live order headers stay below the watched row and release the offset on unpin',async t=>{
@@ -165,6 +219,27 @@ test('live measurement differences use supplier minus warehouse over warehouse a
 test('production workspace filters compose privately and retain their values on refresh',async t=>{const p=await page(t,{extraRows:[{id:'3',rowKey:'D00003',version:1,productCode:'TARGET',contId:'2',supplier:'X',vatNote:'VAT X',buyer:'An',buyerEmployeeId:'5',listedAt:'2026-11-05T14:30',cartonCount:2,qtyPerCarton:10,kgPerCarton:100,m3PerCarton:.5,unitPriceCny:2,freightPrepaid:0,freightPostpaid:0,fxRate:3920},{id:'4',rowKey:'D00004',version:1,productCode:'OTHER',contId:'2',supplier:'Y',buyer:'Dung',listedAt:'2026-10-01',cartonCount:5,qtyPerCarton:10}]});const doc=p.w.document;p.change('#orderStatus','2');p.change('#orderBuyer','id:5');p.change('#orderSupplier','X');p.change('#orderVat','VAT X');p.change('#orderFrom','2026-11-05');p.change('#orderTo','2026-11-05');assert.equal(doc.querySelectorAll('#orderTable tr[data-id]').length,1);assert.equal(doc.querySelector('#orderTable tr[data-id]').dataset.id,'3');assert.match(doc.getElementById('purchaseOverview').textContent,/40.000/);p.listeners.changed();await tick();await tick();assert.equal(doc.getElementById('orderBuyer').value,'id:5');const saved=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.equal(saved.orderFilters.orderSupplier,'X');assert.equal(p.calls.filter(c=>c.options.method).length,0);doc.getElementById('clearOrderFilters').click();assert.equal(doc.querySelectorAll('#orderTable tr[data-id]').length,3)});
 test('container filters do not filter orders and readonly mode disables new container creation',async t=>{const p=await page(t,{sourceMode:'sheets'}),doc=p.w.document;assert.equal(doc.getElementById('newCont').disabled,true);assert.equal(doc.getElementById('sourceBanner').hidden,false);doc.getElementById('contSearch').value='11-1V';doc.getElementById('contSearch').dispatchEvent(new p.w.Event('input'));assert.equal(doc.querySelectorAll('#containerTable [data-container-filter]').length,1);assert.equal(doc.querySelectorAll('#orderTable tr[data-id]').length,1);doc.getElementById('clearContFilters').click();assert.equal(doc.querySelectorAll('#containerTable [data-container-filter]').length,2);assert.equal(p.calls.filter(c=>c.options.method).length,0)});
 test('saved filter reload, accent-insensitive search and export use the same selected rows',async t=>{const p=await page(t,{saved:{filter:'all',orderFilters:{orderSupplier:'A'}},extraRows:[{id:'4',rowKey:'D00004',productCode:'B',supplier:'B',version:1,qtyPerCarton:10,cartonCount:2}]});const doc=p.w.document;assert.equal(doc.getElementById('orderSupplier').value,'A');doc.getElementById('search').value='bang dinh';doc.getElementById('search').dispatchEvent(new p.w.Event('input'));assert.equal(doc.querySelectorAll('#orderTable tr[data-id]').length,1);p.w.URL.createObjectURL=()=>'/test.xlsx';p.w.URL.revokeObjectURL=()=>{};p.w.HTMLAnchorElement.prototype.click=function(){};const prior=p.w.fetch;let exported;p.w.fetch=async(url,options)=>{if(url.endsWith('/export')){exported=JSON.parse(options.body);return {ok:true,blob:async()=>new p.w.Blob(['test'])}}return prior(url,options)};doc.getElementById('export').click();await tick();await tick();assert.deepEqual(exported.ids,['1'])});
+test('add dialog lists each known code once and fills the rest as soon as one is picked',async t=>{
+ const p=await page(t,{extraRows:[
+  {id:'3',rowKey:'D00003',version:1,contId:null,productCode:'AC305',productName:'Băng dính bản mới',supplier:'NCC A',listedAt:'2026-10-01'},
+  {id:'4',rowKey:'D00004',version:1,contId:null,productCode:'TH810',productName:'Thùng nhựa',supplier:'NCC B'}]});
+ const doc=p.w.document;doc.getElementById('add').click();
+ const form=doc.getElementById('addForm');
+ assert.equal(form.elements.productCode.getAttribute('list'),'codeSuggest');
+ const options=[...doc.querySelectorAll('#codeSuggest option')];
+ // AC305 co hai dong nhung chi duoc goi y mot lan, va lay ban Len list gan nhat.
+ assert.deepEqual(options.map(o=>o.value),['AC305','TH810']);
+ assert.match(options[0].getAttribute('label'),/Băng dính bản mới · NCC A/);
+ const prior=p.w.fetch;
+ p.w.fetch=async(url,o)=>url.includes('/latest?')?{ok:true,json:async()=>({row:{rowKey:'D00004',productName:'Thùng nhựa',supplier:'NCC B',qtyPerCarton:6,unitPriceCny:12}})}:prior(url,o);
+ // Chon mot goi y chi ban su kien input; khong duoc bat nguoi dung roi o moi tu dien.
+ form.elements.productCode.value='TH810';
+ form.elements.productCode.dispatchEvent(new p.w.Event('input',{bubbles:true}));
+ await tick();await tick();
+ assert.equal(form.elements.productName.value,'Thùng nhựa');
+ assert.equal(form.elements.qtyPerCarton.value,'6');
+});
+
 test('add dialog prefills the chosen container and resets actual dates from older orders',async t=>{const p=await page(t),doc=p.w.document;doc.querySelector('[data-container-filter="2"]').click();doc.getElementById('add').click();const form=doc.getElementById('addForm');assert.equal(form.elements.contId.value,'2');assert.equal(form.querySelector('.additional-fields').open,false);const prior=p.w.fetch;p.w.fetch=async(url,options)=>url.includes('/latest?')?{ok:true,json:async()=>({row:{rowKey:'D00003',listedAt:'2026-10-01',productName:'Old product',qtyPerCarton:10,cartonCount:4,shippedNote:'2026-10-02',arrivedNote:'2026-10-03'}})}:prior(url,options);form.elements.productCode.value='OLD';form.elements.productCode.dispatchEvent(new p.w.Event('change'));await tick();await tick();assert.equal(form.elements.shippedNote.value,'');assert.equal(form.elements.arrivedNote.value,'');assert.equal(form.elements.productName.value,'Old product')});
 
 test('remote changes never silently remove a personal filter even when its last matching value disappears',async t=>{const p=await page(t),doc=p.w.document;p.change('#orderSupplier','A');p.current.rows[0].supplier='B';p.listeners.changed();await tick();await tick();assert.equal(doc.getElementById('orderSupplier').value,'A');assert.equal(doc.querySelectorAll('#orderTable tr[data-id]').length,0);assert.match(doc.getElementById('orderTable').textContent,/Không có dòng/);assert.equal(p.calls.filter(c=>c.options.method).length,0)});

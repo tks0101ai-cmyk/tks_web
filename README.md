@@ -430,6 +430,8 @@ Bản thử ở server/public/prototypes/thu-mua/index.html, kiểm luồng bằ
 
 ## Thu mua — dùng thử dữ liệu mẫu (05/11/2026)
 
+05/11/2026 — Thu mua (giao diện): bảng Đặt hàng và Chỉ số cont phủ kín bề ngang với mọi số cột, cuộn ngang khi vượt khung; cột số không còn cắt chữ (đệm đủ, tính cả bề rộng tiêu đề). Ô Mã SP: một nhấn mở hộp xác nhận chọn cont rồi mới tách, hai nhấn xem lịch sử, bút chì hoặc F2 mới sửa mã; bỏ nút "Tách dòng". Cột ngày hiển thị ngày/tháng, bấm vào mở ô ngày đầy đủ. Bảng Chỉ số cont bỏ cột rỗng chứa nút "Sửa", còn 14 cột, nút đồng cỡ chữ. Form Thêm mã có gợi ý mã kèm tên và NCC, chọn xong tự điền. Sidebar Thu mua có mục con Đặt hàng / Lịch sử. Không migration, không đổi API.
+
 Mở `/thu-mua/dat-hang/?trial=1` hoặc chọn **Dùng thử dữ liệu mẫu** trên trang Thu mua. API riêng `/api/purchase-trial` giữ nguyên các quyền `purchase.*`. Trang chính và `source_mode` chính không thay đổi.
 
 `purchaseOrders/purchaseOrdersTrial.js` khởi tạo lười schema `purchase_trial` trong PostgreSQL khi người có quyền mở trang thử lần đầu. Mọi kết nối thử chỉ tra `purchase_trial, pg_catalog, pg_temp` (không có `public`), reset search_path trước khi trả kết nối; lỗi reset làm loại kết nối khỏi pool. Dùng lại service, validation, import, audit và undo thật; tắt projection/cache invalidation/sự kiện production. Mẫu 12 dòng/3 cont và nhân viên mẫu chỉ seed một lần trong schema thử. Không có route reset/xóa toàn bộ. Bộ lọc và bản nháp trình duyệt tách khóa với trang chính; file xuất tên `Thu-mua-dung-thu.xlsx`.
