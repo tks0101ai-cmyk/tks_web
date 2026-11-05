@@ -73,7 +73,21 @@ Giữ nguyên API `PUT .../note`, `PUT .../tag` và dữ liệu đã nhập. Kh�
 | Tên hàng | `row.name` |
 | Ghi chú hàng hóa | `line.spec` |
 | Số lượng | `line.quantity` |
+| Kiểm quy cách | Kết quả so quy cách với số lượng, xem bên dưới |
 | Trang in | `row.note.printPage` |
+
+**Cột Kiểm quy cách:** hàm thuần `checkSpec(spec, quantity)` dùng `parseSpec` có sẵn trong `public/shared/carton.js` (đọc `3Tx40+1Tx17`, `1T x 40c`, `9*12`, `1th x 60c`, phần lẻ `3T x 100 - 20`), lấy số lượng tính được so với SL, sai số dưới 0,000001 coi là khớp.
+
+| Trường hợp | Nội dung ô | Màu ô |
+|---|---|---|
+| Khớp | Để trống | Không tô |
+| Lệch | `Lệch: quy cách 240, SL 210` | Đỏ nhạt |
+| Không đọc được quy cách | `Không nhân được quy cách` | Vàng nhạt |
+| Quy cách trống | `Thiếu quy cách` | Vàng nhạt |
+
+Chỉ dùng trình đọc nghiêm có sẵn, không đoán: quy cách kèm chữ như `12tx30 chưa thay vỏ`, `LẤY PIN 1t*60`, `1t` thuộc nhóm không nhân được, để người kiểm xem lại. Cột có bộ lọc Excel để lọc nhanh các dòng cần xem.
+
+Chạy thử trình đọc này trên 3.598 dòng của tab THỐNG KÊ thật: 3.265 dòng khớp, 25 dòng lệch (ví dụ `CLNSH8` `8t*30` = 240, SL 210), 216 dòng không nhân được, 92 dòng quy cách trống.
 
 **Quy tắc:**
 
@@ -105,6 +119,7 @@ Giữ nguyên API `PUT .../note`, `PUT .../tag` và dữ liệu đã nhập. Kh�
 - `stocktakeService.test.js` (PGlite): `getBoard` có mã 0/0; bỏ mã chứa `#`; đóng đợt chụp đủ; sửa `zone`, `spec` có lịch sử; dữ liệu xuất thống kê bỏ dòng `removed`, có dòng tay, cộng theo mã bằng `counted`; đợt nạp từ sheet báo `STOCKTAKE_NO_LINES`.
 - `stocktakeStatus.test.js`: `summarize` không đếm mã 0/0 chưa có trạng thái, vẫn đếm mã 0/0 có trạng thái.
 - `stocktakeGrid.test.js`: `sortLines` tăng, giảm, bỏ sort, số tự nhiên, ô trống cuối.
+- `stocktakeExport.test.js`: `checkSpec` khớp, lệch, không nhân được, trống, nhiều số hạng, phần lẻ, số lẻ thập phân ở SL; chữ và màu ô trong file.
 - `stocktakeRoutes.test.js`: route mới, quyền, tên và kiểu file, đọc lại đúng cột bằng ExcelJS.
 - Xem trên trình duyệt với server PGlite: hộp gọn, sửa Khu và Quy cách, Tab sang ô sau, sort, không mất chữ khi tải nền, mã 0/0 hiện cuối bảng, thẻ Chưa XL, tải file, sáng/tối, 375px, tài khoản chỉ xem.
 - Đối chiếu chỉ đọc với DB thật: Hà Nội ra khoảng 4.131 mã trở lên, đợt thật cộng theo mã bằng Tổng kiểm.
