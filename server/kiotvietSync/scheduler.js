@@ -49,7 +49,7 @@ dashboardRollupEvents.on('debtScheduleChanged', (info) => {
 const fastEntities = [require('./entities/invoices'), require('./entities/orders'), require('./entities/productOnHands'),
   require('./entities/productOnHandsSnapshot'), require('./entities/orderSuppliers')];
 const slowEntities = [require('./entities/categories'), require('./entities/products'), require('./entities/customers'),
-  require('./entities/returns'), require('./entities/purchases')];
+  require('./entities/returns'), require('./entities/purchases'), require('./entities/productCosts')];
 
 const customersEntity = slowEntities.find(entity => entity.entity === 'customers');
 // Poll tang dan khong thay khach bi chuyen sang "ngung hoat dong" (KiotViet khong bump modifiedDate),

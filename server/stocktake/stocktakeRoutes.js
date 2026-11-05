@@ -64,6 +64,10 @@ function createStocktakeRouter(dependencies = {}) {
     res.json({ ...(await svc().getBoard(ctxOf(req), idOf(req))), ...can(req) });
   }));
 
+  router.get('/api/stocktake/sessions/:id/order-status', handle(async (req, res) => {
+    res.json(await svc().getOrderStatus(ctxOf(req), idOf(req)));
+  }));
+
   // SSE: bao "dot X vua doi" (khong kem du lieu); client tai lai bang bang GET board voi quyen cua chinh phien do.
   router.get('/api/stocktake/sessions/:id/events', handle(async (req, res) => {
     const sessionId = idOf(req);

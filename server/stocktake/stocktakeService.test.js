@@ -36,10 +36,10 @@ async function fixture() {
       ('hanoi', 11, 'KH1', 'TEAM 1 : HIỂU KHO', '{}'),
       ('hanoi', 12, 'KH2', 'Khách thường', '{}');
     INSERT INTO orders (branch, id, code, order_date, customer_id, raw) VALUES
-      ('hanoi', 101, 'DH101', '2026-10-29 09:00+07', 11, '{"statusValue":"Phiếu tạm","description":"G1-15"}'),
-      ('hanoi', 102, 'DH102', '2026-10-29 23:30+07', 11, '{"statusValue":"Đã hủy","description":"G2"}'),
-      ('hanoi', 103, 'DH103', '2026-10-29 10:00+07', 12, '{"statusValue":"Phiếu tạm"}'),
-      ('hanoi', 104, 'DH104', '2026-10-30 00:30+07', 11, '{"statusValue":"Phiếu tạm"}');
+      ('hanoi', 101, 'DH101', '2026-10-29 09:00+00', 11, '{"statusValue":"Phiếu tạm","description":"G1-15"}'),
+      ('hanoi', 102, 'DH102', '2026-10-29 23:30+00', 11, '{"statusValue":"Đã hủy","description":"G2"}'),
+      ('hanoi', 103, 'DH103', '2026-10-29 10:00+00', 12, '{"statusValue":"Phiếu tạm"}'),
+      ('hanoi', 104, 'DH104', '2026-10-30 00:30+00', 11, '{"statusValue":"Phiếu tạm"}');
     INSERT INTO order_details (branch, order_id, line_no, product_id, quantity, raw) VALUES
       ('hanoi', 101, 1, 1, 8, '{"productCode":"AAA1","note":"1t*8","quantity":8}'),
       ('hanoi', 101, 2, 3, 1, '{"productCode":"CCC3","quantity":1.5}'),
@@ -47,7 +47,7 @@ async function fixture() {
       ('hanoi', 103, 1, 2, 99, '{"productCode":"BBB2","quantity":99}'),
       ('hanoi', 104, 1, 2, 99, '{"productCode":"BBB2","quantity":99}');
     INSERT INTO customers (branch, id, code, name, raw) VALUES ('saigon', 21, 'KS1', 'TEAM 2 : SG', '{}');
-    INSERT INTO orders (branch, id, code, order_date, customer_id, raw) VALUES ('saigon', 201, 'DS201', '2026-10-29 09:00+07', 21, '{}');
+    INSERT INTO orders (branch, id, code, order_date, customer_id, raw) VALUES ('saigon', 201, 'DS201', '2026-10-29 09:00+00', 21, '{}');
     INSERT INTO order_details (branch, order_id, line_no, product_id, quantity, raw) VALUES ('saigon', 201, 1, 1, 4, '{"productCode":"AAA1","quantity":4}');
     INSERT INTO hr_employees (id, branch, ho_ten) VALUES (501, 'hanoi', 'Cảnh');
     INSERT INTO stock_positions (branch, code, location, arrival_date) VALUES ('HN', 'AAA1', 'G1-15', 'KK 4.10');
@@ -544,4 +544,55 @@ test('huy dot doi chieu: bang khong con Kiem SG, khong dat lam doi chieu duoc; d
   const prevDeps = await service.dependents(ctx(), hn.id);
   assert.deepEqual(prevDeps.previousOf.map(d => [d.id, d.mode, d.changes]), [[hn2.id, 'snapshot', false]]);
   await assert.rejects(service.dependents(ctx(QL, ['saigon']), hn.id), { statusCode: 403 });
+});
+
+test('gom don: don 23:30 van thuoc ngay do, chi tinh khach TEAM + so, gia von giu so le', async () => {
+  const { db, service, session } = await fixture();
+  await db.exec(`
+    INSERT INTO products (branch, id, code, name, raw) VALUES ('hanoi', 4, 'LE1', 'Hàng lẻ', '{"inventories":[{"onHand":1000,"cost":511.41}]}');
+    INSERT INTO customers (branch, id, code, name, raw) VALUES
+      ('hanoi', 13, 'KH3', 'KH Team Hàng Lỗi', '{}'), ('hanoi', 14, 'KH4', 'Team Lỗi', '{}'), ('hanoi', 15, 'KH5', 'team5 kho', '{}');
+    INSERT INTO orders (branch, id, code, order_date, customer_id, raw) VALUES
+      ('hanoi', 105, 'DH105', '2026-10-29 10:00+00', 13, '{}'), ('hanoi', 106, 'DH106', '2026-10-29 10:00+00', 14, '{}'), ('hanoi', 107, 'DH107', '2026-10-29 10:00+00', 15, '{}');
+    INSERT INTO order_details (branch, order_id, line_no, product_id, quantity, raw) VALUES
+      ('hanoi', 105, 1, 3, 7, '{"productCode":"CCC3","quantity":7}'), ('hanoi', 106, 1, 3, 7, '{"productCode":"CCC3","quantity":7}'), ('hanoi', 107, 1, 3, 2, '{"productCode":"CCC3","quantity":2}');
+  `);
+  const board = await service.getBoard(ctx(), session.id);
+  assert.equal(rowOf(board, 'AAA1').lines.some(l => l.orderId === 102), true, 'don 23:30 thuoc ngay 29/10');
+  assert.equal(rowOf(board, 'CCC3').counted, 3.5, 'chi 1.5 + team5 2, bo 2 khach team loi');
+  assert.equal(rowOf(board, 'LE1').cost, 511.41);
+  assert.equal(rowOf(board, 'LE1').diffValue, -511410);
+});
+
+test('sua ngay dot dang mo: ghi lich su, kiem tra ngay + version, dot da dong bi chan', async () => {
+  const { db, service, session } = await fixture();
+  const { session: updated } = await service.updateSession(ctx(), session.id, { dateFrom: '2026-10-29', dateTo: '2026-10-30', version: session.version });
+  assert.deepEqual([updated.dateFrom, updated.dateTo], ['2026-10-29', '2026-10-30']);
+  const board = await service.getBoard(ctx(), session.id);
+  assert.equal(rowOf(board, 'BBB2').counted, 99, 'don 30/10 nay duoc tinh');
+  const { rows } = await db.query(`SELECT before, after FROM stocktake_history WHERE action = 'session_update'`);
+  assert.equal(rows[0].before.dateTo, '2026-10-29');
+  assert.equal(rows[0].after.dateTo, '2026-10-30');
+  await assert.rejects(service.updateSession(ctx(), session.id, { dateFrom: '2026-10-31', version: updated.version }), { statusCode: 400 });
+  await assert.rejects(service.updateSession(ctx(), session.id, { dateTo: 'x', version: updated.version }), { statusCode: 400 });
+  await assert.rejects(service.updateSession(ctx(), session.id, { dateTo: '2026-10-29', version: 99 }), { code: 'STOCKTAKE_CONFLICT' });
+  await service.closeSession(ctx(), session.id, { version: updated.version });
+  await assert.rejects(service.updateSession(ctx(), session.id, { dateTo: '2026-10-29', version: updated.version + 1 }), { code: 'STOCKTAKE_CLOSED' });
+});
+
+test('order-status: dem trong khoang, ngoai khoang bo don huy va qua 14 ngay, revision theo synced_at', async () => {
+  const { db, service, session } = await fixture();
+  await db.exec(`
+    INSERT INTO orders (branch, id, code, order_date, customer_id, raw) VALUES
+      ('hanoi', 108, 'DH108', '2026-11-05 08:15+00', 11, '{"statusValue":"Phiếu tạm"}'),
+      ('hanoi', 109, 'DH109', '2026-11-06 08:15+00', 11, '{"statusValue":"Đã hủy"}'),
+      ('hanoi', 110, 'DH110', '2026-12-30 08:15+00', 11, '{"statusValue":"Phiếu tạm"}');
+  `);
+  const status = await service.getOrderStatus(ctx(), session.id);
+  assert.equal(status.inRange, 2, 'DH101 + DH102 da huy');
+  // DH104 ngay 30/10 + DH108 ngay 05/11; DH109 da huy, DH110 qua 14 ngay.
+  assert.deepEqual(status.outOfRange, { count: 2, from: '2026-10-30', to: '2026-11-05' });
+  await db.exec(`UPDATE orders SET synced_at = now() + interval '1 hour' WHERE id = 101`);
+  assert.notEqual((await service.getOrderStatus(ctx(), session.id)).revision, status.revision);
+  await assert.rejects(service.getOrderStatus(ctx(QL, ['saigon']), session.id), { code: 'BRANCH_OUT_OF_SCOPE' });
 });
