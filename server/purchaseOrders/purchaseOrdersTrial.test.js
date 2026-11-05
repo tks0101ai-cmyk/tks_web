@@ -89,3 +89,32 @@ test('a failed first seed rolls back trial changes and releases the connection s
  assert.match((await source.query('SHOW search_path')).rows[0].search_path,/public/);
  assert.equal((await source.query('SELECT count(*)::int n FROM public.purchase_orders')).rows[0].n,0);
 });
+
+test('a reserved row key survives the save while unknown, reused or malformed keys are refused',async()=>{
+ // Dat cho truoc o popup roi dung lai dung khoa do khi luu.
+ const reserved=(await state.service.reserveKey()).rowKey;
+ assert.match(reserved,/^D\d{5}$/);
+ const created=await state.service.create(manager,{...input('KEY-KEEP'),rowKey:reserved});
+ assert.equal(created.rowKey,reserved,'khoa dat cho phai duoc giu nguyen, khong sinh so khac');
+
+ // Dung lai chinh khoa vua ghi: phai tu choi chu khong am tham cap khoa moi.
+ await assert.rejects(()=>state.service.create(manager,{...input('KEY-REUSE'),rowKey:reserved}),/lạ hoặc đã dùng/);
+ // Khoa chua tung phat ra tu sequence.
+ await assert.rejects(()=>state.service.create(manager,{...input('KEY-AHEAD'),rowKey:'D99999'}),/lạ hoặc đã dùng/);
+ // Khoa sai dang.
+ for(const bad of ['XYZ','D1','D000001','d00001','D0000A'])
+   await assert.rejects(()=>state.service.create(manager,{...input('KEY-BAD'),rowKey:bad}),/Khóa dòng/);
+ // Chuoi rong = khong gui khoa, phai tu sinh chu khong bao loi.
+ for(const blank of ['','   ',null])
+   assert.match((await state.service.create(manager,{...input('KEY-BLANK'),rowKey:blank})).rowKey,/^D\d{5}$/);
+
+ // Khoa da nghi (nam trong purchase_key_history sau khi tach) khong duoc dung lai.
+ const retired=(await state.service.reserveKey()).rowKey;
+ await source.query('INSERT INTO purchase_trial.purchase_key_history(row_key,order_id,root_key) VALUES($1,$2,$1)',[retired,created.id]);
+ await assert.rejects(()=>state.service.create(manager,{...input('KEY-RETIRED'),rowKey:retired}),/lạ hoặc đã dùng/);
+
+ // Khong gui khoa thi van tu sinh nhu truoc, giu nguyen duong import.
+ const auto=await state.service.create(manager,input('KEY-AUTO'));
+ assert.match(auto.rowKey,/^D\d{5}$/);
+ assert.notEqual(auto.rowKey,reserved);
+});

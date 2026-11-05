@@ -53,9 +53,15 @@ test('order-row status dropdown updates the parent container and every other row
 test('direct status dropdown sends one authorized status request with no wizard',async t=>{
  const p=await page(t);p.change('[data-status="2"]','4');await tick();await tick();const calls=p.calls.filter(c=>c.url.endsWith('/status'));assert.equal(calls.length,1);assert.equal(JSON.parse(calls[0].options.body).status,4);assert.equal(p.w.document.getElementById('modal').open,false);assert.equal(p.w.document.getElementById('ordersPackingSection').hidden,true);assert.equal(p.w.document.getElementById('openOrdersPacking'),null);
 });
-test('adding an arbitrary product stages it in the chosen container without a write',async t=>{
- const p=await page(t);p.w.document.getElementById('add').click();const form=p.w.document.getElementById('addForm');Object.entries({productCode:'ANY',productName:'Hàng thử',qtyPerCarton:'5',cartonCount:'4',kgPerCarton:'100',m3PerCarton:'0.2',contId:'2'}).forEach(([k,v])=>form.elements[k].value=v);form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
- const state=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.equal(Object.keys(state.newRows).length,1);assert.equal(p.calls.filter(c=>c.options.method).length,0);const target=p.w.document.querySelector('[data-container-filter="2"]').closest('tr');assert.equal(target.cells[3].textContent,'0.40');assert.equal(target.cells[4].textContent,'0.80');
+test('adding an arbitrary product reserves a real row key and stages it without writing the row',async t=>{
+ const p=await page(t);
+ const prior=p.w.fetch;p.w.fetch=async(url,options)=>url.endsWith('/next-key')?{ok:true,json:async()=>({rowKey:'D00042'})}:prior(url,options);
+ p.w.document.getElementById('add').click();const form=p.w.document.getElementById('addForm');Object.entries({productCode:'ANY',productName:'Hàng thử',qtyPerCarton:'5',cartonCount:'4',kgPerCarton:'100',m3PerCarton:'0.2',contId:'2'}).forEach(([k,v])=>form.elements[k].value=v);form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+ const state=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.equal(Object.keys(state.newRows).length,1);
+ // Khoa cap ngay luc them, khong con cho giu cho 'MOI', va van chua ghi dong nao len may chu.
+ assert.equal(Object.values(state.newRows)[0].rowKey,'D00042');
+ assert.match(p.w.document.querySelector('#orderTable tbody tr[data-id^="new"] [data-field="rowKey"]').textContent,/D00042/);
+ assert.equal(p.calls.filter(c=>c.options.method).length,0);const target=p.w.document.querySelector('[data-container-filter="2"]').closest('tr');assert.equal(target.cells[3].textContent,'0.40');assert.equal(target.cells[4].textContent,'0.80');
 });
 test('numeric cells display comma thousands and accept the same notation without changing magnitude',async t=>{
  const p=await page(t,{extraRows:[{id:'4',rowKey:'D00004',version:1,cartonCount:1234,qtyPerCarton:2000,productCode:'LARGE',contId:null}]});

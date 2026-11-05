@@ -20,6 +20,7 @@ function createPurchaseOrdersRouter(dependencies={}) {
   router.get(root+'/operations',handle(async(req,res)=>res.json({rows:await service.operations(req.user)})));
   for(const [path,method] of [['delete','remove'],['restore','restore'],['undo','undo']])router.post(root+'/'+path,requireFeature('purchase.edit'),handle(async(req,res)=>res.json(await service[method](req.user,req.body))));
   router.get(root+'/latest',handle(async(req,res)=>res.json({row:await service.latest(req.user,req.query.code)})));
+  router.post(root+'/next-key',requireFeature('purchase.edit'),handle(async(req,res)=>res.json(await service.reserveKey(req.user))));
   router.get(root+'/history',handle(async(req,res)=>res.json({rows:await service.history(req.user,req.query.rowKey)})));
   router.post(root+'/export',requireFeature('purchase.export'),handle(async(req,res)=>{
     const allowed=new Set(columns.map(c=>c.k)),fields=req.body.fields,ids=req.body.ids;
