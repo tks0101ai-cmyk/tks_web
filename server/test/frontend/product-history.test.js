@@ -69,7 +69,7 @@ test('history separates draft totals and document column; sorts on server and ex
   assert.equal(p.root.querySelector('tbody tr').cells[2].textContent,'DH1 · SG');
   assert.match(p.root.querySelector('tbody tr').cells[1].textContent,/Phiếu tạm/);
   assert.equal(p.root.querySelector('[data-stat="orderQuantity"]').textContent,'7,5');
-  assert.equal(p.root.querySelector('[data-stat="orderCount"]').textContent,'3');
+  assert.equal(p.root.querySelectorAll('[data-stat]').length,4);
   assert.equal(p.root.querySelector('[data-column-key="unitCost"]').dataset.columnDefaultHidden,'true');
   p.root.querySelector('[data-sort="quantity"] button').click();
   const query=new URL(p.calls[1].url,'https://x').searchParams;

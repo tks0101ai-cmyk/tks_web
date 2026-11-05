@@ -31,8 +31,8 @@
         ...(column ? { tableSort: { label: column[1], direction: dir } } : {}), columns: { product_history: visible } };
     };
     function render(data) {
-      const stats = [['purchaseQuantity','Số lượng mua'],['purchaseCount','Số lượt mua'],['returnQuantity','Số lượng trả hàng'],
-        ['returnCount','Số lượt trả hàng'],['orderQuantity','Số lượng đặt'],['orderCount','Số đơn Phiếu tạm']];
+      const stats = [['purchaseQuantity','Số lượng mua'],['purchaseCount','Số lượt mua'],['returnQuantity','Số lượng trả'],
+        ['orderQuantity','Số lượng đặt']];
       const cost = data.canViewCost === true;
       const heading = columns.map(([key,label,width]) => {
         const mode = sort === key ? dir : key === 'time' && !sort ? 'desc' : '';
@@ -41,7 +41,7 @@
           '><button class="sort-button" type="button" aria-label="Sắp xếp theo ' + label + '">' + label +
           '<span class="sort-indicator" aria-hidden="true">' + (mode === 'asc' ? '▼' : mode === 'desc' ? '▲' : '▲▼') + '</span></button></th>';
       }).join('');
-      results.innerHTML = '<div class="dp-stats">' + stats.map(([key,label]) => '<div class="dp-stat"><div class="dp-stat-label">' + label +
+      results.innerHTML = '<div class="dp-stats">' + stats.map(([key,label]) => '<div class="dp-stat is-' + key + '"><div class="dp-stat-label">' + label +
         '</div><div class="dp-stat-value" data-stat="' + key + '">' + number.format(data.summary[key] || 0) + '</div></div>').join('') + '</div>' +
         '<p class="dp-note">' + escape(day(data.from)) + ' – ' + escape(day(data.to)) + ' · ' + number.format(data.totalRows) + ' giao dịch' +
         (cost ? ' · Giá vốn một đơn vị lúc giao dịch; “—” khi nguồn chưa có dữ liệu.' : '') + '</p>' +

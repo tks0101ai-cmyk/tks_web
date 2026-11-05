@@ -989,3 +989,10 @@ Kiểm chứng: bộ liên quan theo graphify 300/300 xanh (`.codex_tmp/product-
 **Việc tiếp theo khi triển khai:** áp migration0108 trước backend/worker mới, chạy lại tổng hợp tăng dần (hoặc chờ worker) và xác nhận ba kỳ/ngày snapshot; lệnh ở server/README.md. **Chưa áp migration trên DB thật, chưa commit/deploy**. Trong phiên xuất hiện thay đổi đồng thời ở test quản trị tài khoản/VT từ tác vụ khác; giữ nguyên, không gộp vào phạm vi này.
 
 Cập nhật gần nhất: 04/11/2026.
+## 05/11/2026 — Thống kê nghỉ phép từ hôm nay
+
+- Theo yêu cầu đã xác nhận: bốn ô trạng thái và thống kê bộ phận chỉ đếm đơn còn buổi nghỉ từ hôm nay theo `Asia/Ho_Chi_Minh`, giao với bộ lọc ngày/cơ sở/bộ phận/tìm kiếm hiện có. Đơn cách quãng xét `leave_sessions`; đơn cũ xét khoảng `start_date`–`end_date`. Mỗi đơn đếm một lần, kể cả đang nghỉ kéo dài qua hôm nay.
+- Nhãn bộ phận hiển thị “Từ hôm nay” và khoảng hiệu lực. Bảng lịch sử, lịch tháng, API và schema giữ nguyên. Không migration; chưa commit/push/deploy.
+- Kiểm thử liên quan bộ lọc, lịch, tải danh sách, duyệt đơn và SSE: 48/48 đạt; có kiểm thử mốc 00:05 VN khi UTC vẫn là hôm trước và khoảng nghỉ cách quãng. `graphify update .` thành công (14.773 nodes / 32.736 edges); `git diff --check` cho mã và ghi chú đạt. Chưa kiểm tra trên trình duyệt thật.
+
+Cập nhật gần nhất: 05/11/2026.
