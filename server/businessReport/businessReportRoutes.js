@@ -25,7 +25,8 @@ const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 // customerImport / importPool: import Excel level gia (test tiem ban gia lap / pool PGlite).
 function createBusinessReportRouter({ repository = createRepository(), customerProfiles = createCustomerProfileRepository(),
   customerPriceLevels = createCustomerPriceLevelRepository(), now = () => new Date(),
-  customerImport = require('./customerLevelExcelImport'), importPool = () => require('../db/pool').getPool() } = {}) {
+  customerImport = require('./customerLevelExcelImport'), profileImport = require('./customerProfileExcelImport'),
+  importPool = () => require('../db/pool').getPool() } = {}) {
   const router = express.Router();
   router.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   const view = [requireAuth, requireFeature('reports.business')];
@@ -191,6 +192,26 @@ function createBusinessReportRouter({ repository = createRepository(), customerP
       if (/initialized_at/.test(String(e.message))) throw fail(503, 'MIGRATION_PENDING', 'Level giá nội bộ chưa sẵn sàng. Cần khởi tạo level giá trước.');
       throw e;
     }
+  }));
+
+  // Upload file Excel THONG TIN khach (SDT, dia chi, dinh vi kho, so luong kho, dien tich, doi thu, hinh thuc ban hang, quy mo).
+  // ?apply=1 moi ghi (mac dinh xem truoc); ?mode=fill (mac dinh: chi dien o trong) | overwrite (ghi de bang o khac trong file).
+  // O trong trong file khong bao gio xoa du lieu. Khach phai co trong bang bao cao, khong tao khach moi.
+  router.post('/customer-profile-import', ...customerManage, readImportFile, handle(async (req, res) => {
+    if (!req.file) throw fail(400, 'IMPORT_MISSING', 'Thiếu file Excel.');
+    if (!/\.xlsx$/i.test(String(req.file.originalname || ''))) throw fail(400, 'IMPORT_BAD_TYPE', 'Chỉ nhận file .xlsx.');
+    let parsed;
+    try { parsed = await profileImport.readExcelUpload(req.file.buffer); }
+    catch (e) {
+      if (e.statusCode) throw e;
+      throw fail(400, 'IMPORT_UNREADABLE', 'Không đọc được file Excel (file hỏng hoặc không phải .xlsx).');
+    }
+    if (!parsed.rows.length) throw fail(400, 'IMPORT_EMPTY', 'File không có dòng khách hàng nào.');
+    const validKeys = new Set(svc.buildCustomerReport(await repository.snapshot()).rows.map(r => r.key));
+    res.json(await profileImport.runProfileImport({
+      rows: parsed.rows, columns: parsed.columns, validKeys, pool: importPool(), apply: req.query.apply === '1',
+      mode: req.query.mode === 'overwrite' ? 'overwrite' : 'fill', actor: actorOf(req.user)
+    }));
   }));
 
   router.get('/customer-meta', ...customerView, handle(async (req, res) => {

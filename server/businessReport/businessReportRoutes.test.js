@@ -237,3 +237,34 @@ test('POST /customer-import: can customerManage, chi .xlsx, mac dinh xem truoc, 
   const done = await upload('?apply=1', { permissions: manage });
   assert.deepEqual([done.data.mode, calls[1].apply, calls[1].actor.id, calls[1].actor.name], ['applied', true, 7, 'Tester']);
 });
+
+test('POST /customer-profile-import: can customerManage, chi .xlsx, xem truoc mac dinh, apply/mode truyen xuong, validKeys tu bang bao cao', async () => {
+  const calls = [];
+  const profileImport = {
+    readExcelUpload: async () => ({ rows: [{ rowNumber: 2, name: 'Chị A', phone: '0901' }], columns: ['phone'] }),
+    runProfileImport: async args => { calls.push(args); return { mode: args.apply ? 'applied' : 'preview', wouldChange: 1 }; }
+  };
+  async function upload(query, { permissions, filename = 'a.xlsx', file = true } = {}) {
+    const app = express();
+    app.use((req, res, next) => { req.user = { id: 7, username: 'tester', hoTen: 'Tester', vaiTro: 'Quản lý', permissions }; req.effectiveUserResolved = true; next(); });
+    app.use('/api/business-report', createBusinessReportRouter({ profileImport, importPool: () => ({ fake: true }), repository: { snapshot: async () => serviceSnapshot() }, customerPriceLevels: {} }));
+    const server = app.listen(0);
+    try {
+      const form = new FormData();
+      if (file) form.append('file', new Blob([Buffer.from('xlsx')]), filename);
+      const res = await fetch(`http://127.0.0.1:${server.address().port}/api/business-report/customer-profile-import${query}`, { method: 'POST', body: form });
+      return { status: res.status, data: await res.json() };
+    } finally { await new Promise(resolve => server.close(resolve)); }
+  }
+  const manage = ['reports.business', 'reports.business.customerNotes', 'reports.business.customerManage'];
+  assert.equal((await upload('', { permissions: ['reports.business', 'reports.business.customerNotes'] })).status, 403);
+  assert.equal((await upload('', { permissions: manage, filename: 'a.csv' })).data.code, 'IMPORT_BAD_TYPE');
+  assert.equal((await upload('', { permissions: manage, file: false })).data.code, 'IMPORT_MISSING');
+  const prev = await upload('', { permissions: manage });
+  assert.deepEqual([prev.status, prev.data.mode, calls[0].apply, calls[0].mode], [200, 'preview', false, 'fill']);
+  assert.ok(calls[0].validKeys instanceof Set && calls[0].validKeys.size > 0);
+  const done = await upload('?apply=1&mode=overwrite', { permissions: manage });
+  assert.deepEqual([done.data.mode, calls[1].apply, calls[1].mode, calls[1].actor.id, calls[1].actor.name], ['applied', true, 'overwrite', 7, 'Tester']);
+  assert.equal((await upload('?mode=bat-ky', { permissions: manage })).status, 200);
+  assert.equal(calls[2].mode, 'fill');
+});

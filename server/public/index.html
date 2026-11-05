@@ -5372,7 +5372,20 @@
         <button class="export-modal-close" type="button" onclick="closeCustomerImport()" aria-label="Đóng">×</button>
       </div>
       <div class="export-fields" id="customerImportBody">
-        <p class="table-note">Mức mới lấy từ cột <b>Sheet chuẩn</b> (hoặc <b>Level mới</b>) nếu có và hợp lệ, không thì lấy cột <b>Level giá</b>. Khách không có trong hệ thống sẽ bị bỏ qua, không tạo mới.</p>
+        <label class="table-note" for="customerImportKind">Loại cập nhật</label>
+        <select class="stockout-branch-select" id="customerImportKind" onchange="customerImportKindChanged()">
+          <option value="level">Level giá / Khách mới</option>
+          <option value="profile">Thông tin khách (SĐT, địa chỉ, kho, đối thủ…)</option>
+        </select>
+        <p class="table-note" id="customerImportHintLevel">Mức mới lấy từ cột <b>Sheet chuẩn</b> (hoặc <b>Level mới</b>) nếu có và hợp lệ, không thì lấy cột <b>Level giá</b>. Khách không có trong hệ thống sẽ bị bỏ qua, không tạo mới.</p>
+        <div id="customerImportProfileOptions" hidden>
+          <p class="table-note">Đọc các cột: <b>Điện thoại, Địa chỉ, Định vị kho, Số lượng kho, Diện tích, Đối thủ, Hình thức bán hàng, Quy mô khách</b> (file xuất từ bảng "Doanh số theo khách"). Ô trống trong file không bao giờ xóa dữ liệu đang có. Khách không có trong bảng sẽ bị bỏ qua.</p>
+          <label class="table-note" for="customerImportMode">Cách ghi</label>
+          <select class="stockout-branch-select" id="customerImportMode" onchange="customerImportKindChanged()">
+            <option value="fill">Chỉ điền vào ô đang trống (an toàn)</option>
+            <option value="overwrite">Ghi đè bằng giá trị khác trong file</option>
+          </select>
+        </div>
         <input type="file" id="customerImportFile" accept=".xlsx" onchange="previewCustomerImport()">
         <div id="customerImportResult" aria-live="polite"></div>
       </div>
@@ -9379,8 +9392,28 @@
     // ===== Tải lên cập nhật khách hàng (Excel): xem trước rồi mới áp dụng =====
     const customerImportState = { file: null, busy: false };
 
+    function customerImportIsProfile() {
+      return document.getElementById('customerImportKind').value === 'profile';
+    }
+
+    // Đổi loại / cách ghi: ẩn-hiện tùy chọn rồi xem trước lại (nếu đã chọn file) vì kết quả đổi theo lựa chọn.
+    function customerImportKindChanged() {
+      const profile = customerImportIsProfile();
+      document.getElementById('customerImportProfileOptions').hidden = !profile;
+      document.getElementById('customerImportHintLevel').hidden = profile;
+      if (customerImportState.busy) return;
+      document.getElementById('customerImportResult').innerHTML = '';
+      document.getElementById('customerImportStatus').textContent = '';
+      document.getElementById('customerImportApply').disabled = true;
+      if (document.getElementById('customerImportFile').files.length) previewCustomerImport();
+    }
+
     function openCustomerImport() {
       customerImportState.file = null;
+      document.getElementById('customerImportKind').value = 'level';
+      document.getElementById('customerImportMode').value = 'fill';
+      document.getElementById('customerImportProfileOptions').hidden = true;
+      document.getElementById('customerImportHintLevel').hidden = false;
       document.getElementById('customerImportFile').value = '';
       document.getElementById('customerImportResult').innerHTML = '';
       document.getElementById('customerImportStatus').textContent = '';
@@ -9396,7 +9429,15 @@
     function customerImportSend(apply) {
       const form = new FormData();
       form.append('file', customerImportState.file);
-      return fetch('/api/business-report/customer-import' + (apply ? '?apply=1' : ''), { method: 'POST', body: form })
+      const params = new URLSearchParams();
+      if (apply) params.set('apply', '1');
+      let endpoint = '/api/business-report/customer-import';
+      if (customerImportIsProfile()) {
+        endpoint = '/api/business-report/customer-profile-import';
+        params.set('mode', document.getElementById('customerImportMode').value);
+      }
+      const query = params.toString();
+      return fetch(endpoint + (query ? '?' + query : ''), { method: 'POST', body: form })
         .then(function (res) {
           return res.json().catch(function () { return {}; }).then(function (body) {
             if (!res.ok) throw new Error((body && body.error) || ('HTTP ' + res.status));
@@ -9405,7 +9446,27 @@
         });
     }
 
+    // Kết quả của luồng "Thông tin khách": mỗi khách liệt kê các trường sẽ đổi (từ → thành).
+    function customerProfileImportRender(s, applied) {
+      const items = (s.changesSample || []).map(function (c) {
+        return '<li>' + escapeHtml(c.name) + ': ' + c.fields.map(function (f) {
+          return escapeHtml(f.label) + ' <b>' + escapeHtml(f.from || '—') + '</b> → <b>' + escapeHtml(f.to) + '</b>';
+        }).join(' · ') + '</li>';
+      }).join('');
+      const counts = Object.keys(s.fieldCounts || {}).map(function (k) { return escapeHtml(k) + ': ' + s.fieldCounts[k]; }).join(' · ');
+      const head = applied
+        ? '<p><b>Đã cập nhật thông tin ' + (s.changed || 0) + ' khách</b>.</p>'
+        : '<p>Đọc <b>' + s.rows + '</b> dòng · <b>' + s.matched + '</b> khách khớp bảng · sẽ đổi <b>' + s.wouldChange + '</b> khách' + (s.unchanged ? ' · ' + s.unchanged + ' khách không có gì mới' : '') + '.</p>';
+      const invalid = (s.invalidSample || []).map(function (r) { return '<li>Dòng ' + r.row + ' (' + escapeHtml(r.name) + '): ' + escapeHtml(r.reason) + '</li>'; }).join('');
+      document.getElementById('customerImportResult').innerHTML = head +
+        (counts && !applied ? '<p class="table-note">Số khách đổi theo cột — ' + counts + '</p>' : '') +
+        (s.unmatched ? '<p class="table-note">' + s.unmatched + ' khách không có trong bảng (bỏ qua): ' + (s.unmatchedSample || []).map(escapeHtml).slice(0, 10).join(', ') + (s.unmatched > 10 ? '…' : '') + '</p>' : '') +
+        (s.invalidRows ? '<p class="table-note">' + s.invalidRows + ' dòng có giá trị không hợp lệ (bỏ qua):</p><ul class="table-note" style="padding-left:18px;">' + invalid + '</ul>' : '') +
+        (items && !applied ? '<ul class="table-note" style="padding-left:18px;">' + items + (s.wouldChange > s.changesSample.length ? '<li>… và ' + (s.wouldChange - s.changesSample.length) + ' khách khác</li>' : '') + '</ul>' : '');
+    }
+
     function customerImportRender(s, applied) {
+      if (customerImportIsProfile()) return customerProfileImportRender(s, applied);
       const rows = (s.changesSample || []).map(function (c) {
         const tag = c.fromTag !== c.toTag ? ' · nhãn "' + escapeHtml(c.fromTag || '—') + '" → "' + escapeHtml(c.toTag || '—') + '"' : '';
         return '<li>' + escapeHtml(c.name) + ': <b>' + escapeHtml(c.from || '') + '</b> → <b>' + escapeHtml(c.to || '') + '</b>' + tag + '</li>';

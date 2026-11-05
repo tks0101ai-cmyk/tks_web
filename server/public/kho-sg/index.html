@@ -15,7 +15,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="/shared/shared.css?v=20261028-leave-btn">
   <script src="/shared/motion.js?v=20261024-1" defer></script>
-  <link rel="stylesheet" href="/kho/kho.css?v=20261105">
+  <link rel="stylesheet" href="/kho/kho.css?v=20261105-3">
 </head>
 <body>
   <div class="receipt-header">
@@ -43,13 +43,16 @@
       <p class="kho-sub">Sơ đồ kho Sài Gòn.</p>
       <div class="kho-empty" id="khoEmpty">Chưa có sơ đồ kho</div>
       <div class="kho-zoom" id="khoZoom" role="dialog" aria-modal="true" aria-label="Ảnh phóng to" hidden>
-        <button class="kho-zoom-close" type="button" aria-label="Đóng">×</button>
+        <button class="kho-zoom-close" type="button" data-kho-close aria-label="Đóng">×</button>
+        <button class="kho-zoom-nav kho-zoom-prev" type="button" data-kho-prev aria-label="Ảnh trước">‹</button>
         <img alt="">
+        <button class="kho-zoom-nav kho-zoom-next" type="button" data-kho-next aria-label="Ảnh sau">›</button>
+        <div class="kho-zoom-caption" id="khoZoomCaption" aria-live="polite"></div>
       </div>
     </main>
   </div>
   <script src="/shared/shared-nav.js?v=20261105-kho"></script>
-  <script src="/kho/kho.js?v=20261105"></script>
+  <script src="/kho/kho.js?v=20261105-3"></script>
   <script>window.addEventListener('DOMContentLoaded', function () { TKSKho.init(); });</script>
   <script src="/shared/shooting-star.js?v=20261019"></script>
 </body>
