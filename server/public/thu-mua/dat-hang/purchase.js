@@ -27,7 +27,9 @@
     let derived=calculationCache.get(r);if(!derived){derived=PurchaseCalculations.row(r,PurchaseFreight.rowAmount(r,freightRates));calculationCache.set(r,derived)}
     const result=Object.hasOwn(derived,k)?derived[k]:r[k];return result??'';
   }
-  function modal(html){$('modalBody').onchange=null;$('modalBody').oninput=null;$('modalBody').innerHTML=html;if(!$('modal').open)$('modal').showModal();resizeTables($('modalBody'))}
+  // Hop chi tiet theo khuon .dp-* dung chung (shared/detail-panel.css): tieu de vao
+  // .dp-title, phan con lai vao .dp-body. Cho goi van truyen '<h2>Tieu de</h2>'+noi dung.
+  function modal(html){const body=$('modalBody'),head=/^\s*<h2>([\s\S]*?)<\/h2>/.exec(html);body.onchange=null;body.oninput=null;$('modalTitle').innerHTML=head?head[1]:'Thu mua';body.innerHTML=head?html.slice(head[0].length):html;if(!$('modal').open)$('modal').showModal();resizeTables(body)}
   function resizeTables(root){root.querySelectorAll('table').forEach(table=>{
     const headers=[...table.querySelectorAll('tr:first-child th')];headers.forEach((th,index)=>{
       if(th.querySelector('.resize'))return;const handle=document.createElement('span');handle.className='resize';th.append(handle);
@@ -158,7 +160,12 @@
   const packingSection=document.createElement('details');packingSection.id='ordersPackingSection';packingSection.hidden=true;const summary=document.createElement('summary');summary.textContent='Xếp cont · Chọn hàng và so sánh cont';packingSection.append(summary,$('packing'));$('orderTable').before(packingSection);packingSection.ontoggle=()=>{if(!window.document)return;$('packing').hidden=!packingSection.open;if(packingSection.open)renderPacking()};$('openOrdersPacking').onclick=()=>{packingSection.open=true;$('packing').hidden=false;renderPacking();packingSection.scrollIntoView?.({block:'start',behavior:'smooth'})};
   $('containerActions').append($('newCont'));$('openOrdersPacking').remove();
   const taskMount=document.createElement('div');taskMount.hidden=true;$('orderTable').before(taskMount);taskBar=PurchaseTasks.mountBar(document,taskMount,{onTarget:c=>{taskTarget=c.id;persist();refreshTasks()},onDirty:on=>{onlyDirty=on;page=1;persist();render()},onFind:()=>{onlyDirty=true;page=1;render();$('orderTable').querySelector('tbody tr')?.scrollIntoView?.({block:'center',behavior:'smooth'})},onReview:()=>$('save').click()});
-  $('theme').onclick=()=>{const theme=document.documentElement.dataset.theme==='light'?'dark':'light';document.documentElement.dataset.theme=theme;try{localStorage.setItem('tks-dashboard-theme',theme)}catch{}};
+  $('modalClose').onclick=()=>$('modal').close();
+  // Nut doi giao dien dung .theme-toggle chung: icon tu doi bang CSS theo data-theme,
+  // chi nhan phai dat bang JS. Nhan mo ta hanh dong ke tiep, giong cac trang khac.
+  const themeLabel=()=>{$('themeLabel').textContent=document.documentElement.dataset.theme==='light'?'Dark mode':'Light mode'};
+  themeLabel();
+  $('themeToggle').onclick=()=>{const theme=document.documentElement.dataset.theme==='light'?'dark':'light';document.documentElement.dataset.theme=theme;try{localStorage.setItem('tks-dashboard-theme',theme)}catch{}themeLabel()};
 
   const watched=document.createElement('section');watched.id='watchedContainer';watched.hidden=true;watched.setAttribute('aria-label','Chỉ số cont đang theo dõi');$('orderTable').before(watched);let watchedRow=null;watched.addEventListener('change',e=>$('containerTable').onchange(e));watched.addEventListener('click',e=>$('containerTable').onclick(e));
   function positionWatched(){const top=Math.max(0,document.querySelector('.receipt-header')?.getBoundingClientRect().bottom||0)+4;watched.style.top=top+'px';watched.hidden=!taskTarget||!watchedRow||watchedRow.getBoundingClientRect().top>=top;const viewport=$('orderTable'),bounds=viewport.getBoundingClientRect(),edge=watched.hidden?top:Math.max(top,watched.getBoundingClientRect().bottom);viewport.style.setProperty('--purchase-header-offset',(bounds.bottom>edge?Math.max(0,edge-bounds.top):0)+'px')}

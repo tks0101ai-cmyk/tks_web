@@ -76,7 +76,7 @@ test('bulk selection includes shipped containers, applies inline edits and sends
 test('resolving same-cell conflict requires explicit choice and another confirmation',async t=>{
  const p=await page(t);p.change('[data-edit="supplier"]','B');p.current.rows[0].supplier='C';p.current.rows[0].version=2;p.listeners.changed();await tick();await tick();
  p.w.document.getElementById('save').click();p.w.document.getElementById('commit').click();await tick();await tick();
- assert.match(p.w.document.getElementById('modalBody').textContent,/Đối chiếu/);p.change('[data-resolve]','mine');p.w.document.getElementById('resolve').click();assert.equal(p.current.rows[0].supplier,'C');
+ assert.match(p.w.document.getElementById('modal').textContent,/Đối chiếu/);p.change('[data-resolve]','mine');p.w.document.getElementById('resolve').click();assert.equal(p.current.rows[0].supplier,'C');
  p.w.document.getElementById('save').click();p.w.document.getElementById('commit').click();await tick();await tick();assert.equal(p.current.rows[0].supplier,'B');
 });
 test('remote refresh while a cell is focused does not silently replace its comparison baseline',async t=>{
@@ -130,7 +130,7 @@ test('an uncertain write is recoverable after reloading the page',async t=>{
  const first=await page(t);first.change('tr[data-id="1"] [data-edit="supplier"]','Reload');first.w.fetch=async()=>{throw Error('connection reset')};first.w.document.getElementById('save').click();first.w.document.getElementById('commit').click();await tick();await tick();const saved=JSON.parse(first.w.sessionStorage.getItem('purchase:buyer:v1')),savedOutbox=JSON.parse(first.w.sessionStorage.getItem('purchase:buyer:v1:outbox'));const next=await page(t,{saved,savedOutbox});assert.equal(next.w.document.getElementById('retryWrite').hidden,false);next.w.document.getElementById('retryWrite').click();await tick();await tick();const call=next.calls.find(c=>c.options.method==='PATCH');assert.equal(call.options.headers['Idempotency-Key'],savedOutbox.key);assert.equal(next.current.rows[0].supplier,'Reload');
 });
 test('only product-code double click opens row history on the live page',async t=>{
- const p=await page(t),doc=p.w.document,fetch=p.w.fetch;p.w.fetch=async(url,options)=>url.includes('/history?')?{ok:true,json:async()=>({rows:[]})}:fetch(url,options);doc.querySelector('[data-field="supplier"]').dispatchEvent(new p.w.MouseEvent('dblclick',{bubbles:true}));await tick();assert.equal(doc.getElementById('modal').open,false);doc.querySelector('[data-field="productCode"] input').dispatchEvent(new p.w.MouseEvent('dblclick',{bubbles:true}));await tick();assert.equal(doc.getElementById('modal').open,true);assert.match(doc.getElementById('modalBody').textContent,/D00001/);
+ const p=await page(t),doc=p.w.document,fetch=p.w.fetch;p.w.fetch=async(url,options)=>url.includes('/history?')?{ok:true,json:async()=>({rows:[]})}:fetch(url,options);doc.querySelector('[data-field="supplier"]').dispatchEvent(new p.w.MouseEvent('dblclick',{bubbles:true}));await tick();assert.equal(doc.getElementById('modal').open,false);doc.querySelector('[data-field="productCode"] input').dispatchEvent(new p.w.MouseEvent('dblclick',{bubbles:true}));await tick();assert.equal(doc.getElementById('modal').open,true);assert.match(doc.getElementById('modal').textContent,/D00001/);
 });
 
 test('live order headers stay below the watched row and release the offset on unpin',async t=>{

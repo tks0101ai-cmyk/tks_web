@@ -44,10 +44,10 @@ td input{width:100%;box-sizing:border-box;padding:3px}
 .panes .scroll{height:53vh}
 #metrics{padding:12px 0}
 
-dialog{background:var(--bg);color:inherit;border:1px solid var(--border);border-radius:6px;width:min(1100px,92vw);max-height:86vh;padding:20px}
+/* Hộp chi tiết theo khuôn .dp-* của shared/detail-panel.css: .dp-head và .dp-body
+   tự lo đệm trong, nên dialog để padding:0 cho khỏi đệm đôi. */
+dialog{background:var(--bg);color:inherit;border:1px solid var(--border);border-radius:6px;width:min(1100px,92vw);max-height:86vh;padding:0}
 dialog::backdrop{background:#0009}
-.close{float:right}
-#modalBody{clear:both}
 #modalBody label{display:inline-grid;gap:4px;margin:7px;width:210px}
 #modalBody .scroll{max-height:56vh}
 
