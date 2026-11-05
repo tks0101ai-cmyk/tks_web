@@ -4,15 +4,15 @@
    Màu luôn đi qua token để sáng/tối tự theo; cỡ chữ bảng giữ 11px/9px theo
    quyết định mật độ 03/11/2026 (ngoại lệ có chủ ý so với MASTER.md §4.2). */
 
-body{font-size:13px}
 
-.layout{display:grid;grid-template-columns:210px minmax(0,1fr)}
-main{min-width:0;padding:16px}
-nav,.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
-h2{font-size:15px;margin:0 auto 0 0}
+
+
+
+.purchase-tabs,.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+main h2,#modal h2{font-size:15px;margin:0 auto 0 0}
 small,.toolbar span{font-size:11px;opacity:.7}
 
-button,input,select{font:inherit;color:inherit;background:var(--panel-2);border:1px solid var(--border);border-radius:4px;padding:6px 9px}
+.purchase-page main button,.purchase-page main input,.purchase-page main select,.purchase-page dialog button,.purchase-page dialog input,.purchase-page dialog select{font:inherit;color:inherit;background:var(--panel-2);border:1px solid var(--border);border-radius:4px;padding:6px 9px}
 button{cursor:pointer;min-height:30px}
 button:disabled{opacity:.4;cursor:default}
 input{min-width:0}
@@ -55,7 +55,7 @@ dialog::backdrop{background:#0009}
 .error{color:var(--amber)}
 .resize{position:absolute;right:0;top:0;width:6px;height:100%;cursor:col-resize}
 
-/* Sidebar không ẩn nữa — workspace.css biến nó thành drawer mở bằng #menuBtn. */
+/* Drawer điều hướng dùng chung ở shared.css; chỉ xếp lại hai bảng bên dưới. */
 @media(max-width:850px){
   .layout{grid-template-columns:1fr}
   .panes{grid-template-columns:1fr}
