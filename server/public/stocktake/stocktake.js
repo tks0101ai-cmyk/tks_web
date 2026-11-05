@@ -145,9 +145,8 @@
     await loadBoard();
   }
 
-  // forms: ghi đè ô nhập của hộp chi tiết bằng dữ liệu mới (sau khi chính mình lưu). Tải nền do SSE thì không,
-  // để không xóa phần người dùng đang gõ; thay vào đó báo người khác vừa sửa.
-  async function loadBoard({ background = false, forms = !background } = {}) {
+  // Tải nền (SSE, sau khi lưu) giữ thứ tự dòng; ô đang gõ trong hộp chi tiết được giữ lại ở renderLines.
+  async function loadBoard({ background = false } = {}) {
     if (!state.sessionId) return;
     const version = ++state.loadVersion;
     const sessionId = state.sessionId;
@@ -167,7 +166,7 @@
       window.history.replaceState(null, '', '#dot=' + sessionId);
       startLive(sessionId);
       render({ keepOrder: background });
-      if (detail.code) renderDetail({ forms });
+      if (detail.code) renderDetail();
     } catch (error) {
       if (version !== state.loadVersion) return;
       $('stStatus').textContent = error.message;
@@ -444,6 +443,7 @@
     const active = Boolean(session && !session.cancelled);
     $('stEditDatesButton').hidden = !(active && session.status === 'open' && state.canEdit);
     $('stRefreshOrdersButton').hidden = !(active && session.status === 'open');
+    $('stExportStatsButton').hidden = !session || session.source === 'sheet_import';
     renderOrdersNote(session);
     $('stCloseButton').hidden = !(active && session.status === 'open' && state.canClose);
     $('stCancelButton').hidden = !(active && state.canClose);
@@ -826,10 +826,10 @@
       undoStack.push({ sessionId, cells: payload.applied });
       if (undoStack.length > UNDO_LIMIT) undoStack.shift();
     }
-    if (payload.conflicts.length || payload.applied.some(item => DERIVED_COLUMNS.has(item.column))) await loadBoard({ background: true, forms: true });
+    if (payload.conflicts.length || payload.applied.some(item => DERIVED_COLUMNS.has(item.column))) await loadBoard({ background: true });
     else if (state.sessionId === sessionId) {
       render({ keepOrder: true });
-      if (detail.code) renderDetail({ forms: true });
+      if (detail.code) renderDetail();
     }
     return payload;
   }
@@ -1289,7 +1289,9 @@
     detail.code = code;
     setDetailError('');
     $('stConflict').hidden = true;
-    renderDetail({ forms: true });
+    lineSort.key = null;
+    lineSort.dir = null;
+    renderDetail();
     loadHistory();
     const dialog = $('stDetailDialog');
     if (!dialog.open) dialog.showModal();
@@ -1297,130 +1299,113 @@
 
   function setDetailError(text) { $('stDetailError').textContent = text || ''; }
 
-  // Người khác vừa đổi ghi chú / cụm của mã đang mở: báo thay vì ghi đè ô đang gõ.
-  function checkStale(row) {
-    const note = row.note || {};
-    const noteChanged = String(note.version || '') !== $('stNoteForm').dataset.version;
-    const tagChanged = String(row.tagVersion || '') !== $('stTagForm').dataset.version;
-    if (!noteChanged && !tagChanged) return;
-    const who = noteChanged ? note.updatedByName : '';
-    $('stConflictText').textContent = (who ? who + ' vừa sửa' + (note.updatedAt ? ' lúc ' + time(note.updatedAt) : '') : 'Có người vừa sửa mã này') + '. Xem bản mới rồi lưu lại.';
-    $('stConflict').hidden = false;
-  }
-
-  // Hop chi tiet: 7 loai theo co so ("Chưa XL" = trong); chu cu (khong phai ten chuan) them 1 lua chon dau de luu lai khong doi.
-  function fillStatusSelect(select, current) {
-    const branch = state.board.session.branch;
-    const entries = Status.optionsFor(branch).map(option => [option.key === 'pending' ? '' : option.label, option.label]);
-    if (current && !Status.isValid(current, branch)) entries.unshift([current, '‹' + current + '›']);
-    select.textContent = '';
-    for (const [value, label] of entries) {
-      const option = document.createElement('option');
-      option.value = value;
-      option.textContent = label;
-      select.appendChild(option);
-    }
-    select.value = current;
-  }
-
-  function renderDetail({ forms = true } = {}) {
+  function renderDetail() {
     const row = rowOf(detail.code);
     if (!row) return;
-    if (!forms) {
-      checkStale(row);
-      renderLines(row);
-      return;
-    }
     $('stDetailTitle').textContent = row.code;
     $('stDetailSubtitle').textContent = row.name || '';
-    const canEditNote = editable();
-    const noteForm = $('stNoteForm');
-    const note = row.note || {};
-    // Người kiểm lại gõ tay; gợi ý = nhân sự cùng cơ sở + các tên đã dùng trong đợt (biệt danh như "THÁI KHO").
-    noteForm.elements.recheckName.value = recheckLabel(row.note);
-    const names = new Set(state.board.employees.filter(e => e.branch === state.board.session.branch).map(e => e.name));
-    for (const entry of recheckCounts().values()) names.add(entry.label);
-    const list = $('stRecheckSuggestions');
-    list.textContent = '';
-    for (const name of [...names].filter(Boolean).sort((a, b) => a.localeCompare(b, 'vi'))) {
-      const option = document.createElement('option');
-      option.value = name;
-      list.appendChild(option);
-    }
-    fillStatusSelect(noteForm.elements.statusText, note.statusText || '');
-    noteForm.elements.reasonText.value = note.reasonText || '';
-    noteForm.elements.printPage.value = note.printPage || '';
-    noteForm.elements.printTime.value = note.printTime || '';
-    noteForm.elements.prevDiffManual.value = note.prevDiffManual === null || note.prevDiffManual === undefined ? '' : String(note.prevDiffManual);
-    noteForm.elements.otherDiffManual.value = note.otherDiffManual === null || note.otherDiffManual === undefined ? '' : String(note.otherDiffManual);
-    // Hai ô này chỉ để GHI ĐÈ số web tự lấy; để trống thì cột trên bảng vẫn tự lấy (gợi ý ghi rõ số đang tự lấy).
-    const other = otherLabel(state.board.session.branch);
-    const autoText = value => (value === null || value === undefined ? 'trống' : num(value));
-    $('stPrevManualLabel').textContent = 'KK trước sai — nhập tay';
-    $('stOtherManualLabel').textContent = 'Kiểm ' + other + ' — nhập tay';
-    const prevSession = state.board.previousSession;
-    noteForm.elements.prevDiffManual.placeholder = prevSession && prevSession.id
-      ? 'Để trống = tự lấy từ đợt ' + prevSession.name + ': ' + autoText(row.prevDiffAuto)
-      : 'Chưa có đợt KK trước — chỉ có số nhập tay';
-    noteForm.elements.otherDiffManual.placeholder = state.board.counterpart
-      ? 'Để trống = tự lấy từ đợt ' + other + ': ' + autoText(row.otherDiffAuto)
-      : 'Chưa chọn đợt đối chiếu ' + other + ' — chỉ có số nhập tay';
-    noteForm.dataset.version = note.version ? String(note.version) : '';
-    $('stNoteMeta').textContent = note.updatedByName ? 'Sửa cuối: ' + note.updatedByName + ' · ' + time(note.updatedAt) : '';
-    const reasons = $('stReasonSuggestions');
-    reasons.textContent = '';
-    for (const value of state.board.suggestions.reason) { const option = document.createElement('option'); option.value = value; reasons.appendChild(option); }
-    noteForm.querySelectorAll('input, select, button').forEach(el => { el.disabled = !canEditNote; });
-
-    const tagForm = $('stTagForm');
-    tagForm.elements.cluster.value = row.cluster || '';
-    tagForm.elements.isCombo.checked = !!row.isCombo;
-    tagForm.dataset.version = row.tagVersion ? String(row.tagVersion) : '';
-    tagForm.querySelectorAll('input, button').forEach(el => { el.disabled = !state.canEdit; });
     renderLines(row);
   }
 
+  // ---------- Dòng đếm theo team / khu ----------
+  const lineSort = { key: null, dir: null };
+  const lineSaves = { queue: Promise.resolve(), versions: new Map(), timer: null };
+  let drawingLines = false; // đang dựng lại bảng: ô cũ bị gỡ phát sinh blur, không được coi là người dùng rời ô
+  const lineKey = line => (line.manual ? 'e' + line.edit.id : line.orderId + ':' + line.lineNo);
+
+  // Ô đang gõ khi bảng dựng lại (tải nền mỗi 30 giây, tín hiệu SSE, lưu xong ô trước): giữ nguyên chữ và con trỏ.
+  function focusedLineInput() {
+    const input = document.activeElement;
+    if (!input || !input.dataset || !input.dataset.lineField || !input.closest('#stLineRows')) return null;
+    const isText = input.type === 'text';
+    return { key: input.closest('tr').dataset.lineKey, field: input.dataset.lineField, value: input.value,
+      start: isText ? input.selectionStart : null, end: isText ? input.selectionEnd : null };
+  }
+  function restoreLineInput(saved) {
+    if (!saved) return;
+    const tr = [...$('stLineRows').children].find(item => item.dataset.lineKey === saved.key);
+    const input = tr && tr.querySelector('[data-line-field="' + saved.field + '"]');
+    if (!input || input.disabled) return;
+    input.value = saved.value;
+    input.focus();
+    if (saved.start !== null) input.setSelectionRange(saved.start, saved.end);
+  }
+
+  // Ô sửa trong bảng: rời ô hoặc Enter thì lưu nếu khác giá trị đã lưu, Esc trả lại. So với dataset.saved chứ không dùng
+  // sự kiện change, vì ô được dựng lại sẽ không phát change cho phần chữ đã gõ trước đó.
+  function lineInput(line, field, { type = 'text', value, label, disabled, toPatch }) {
+    const input = document.createElement('input');
+    input.type = type;
+    if (type === 'number') { input.min = '0'; input.step = 'any'; } else input.maxLength = 200;
+    input.value = value;
+    input.dataset.saved = value;
+    input.dataset.lineField = field;
+    input.disabled = disabled;
+    input.setAttribute('aria-label', label);
+    const commit = () => {
+      if (drawingLines || input.value === input.dataset.saved) return;
+      input.dataset.saved = input.value;
+      saveLine(line, toPatch(input.value));
+    };
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', event => {
+      if (event.key === 'Enter') { event.preventDefault(); commit(); }
+      else if (event.key === 'Escape' && input.value !== input.dataset.saved) {
+        event.preventDefault();
+        event.stopPropagation();
+        input.value = input.dataset.saved;
+      }
+    });
+    return input;
+  }
+  function originalNote(td, original, current, format = value => value || '(trống)') {
+    if (original === current) return;
+    const small = document.createElement('small');
+    small.textContent = 'gốc ' + format(original);
+    td.appendChild(small);
+  }
+
+  function syncLineSortHeader() {
+    document.querySelectorAll('#stLinesHead [data-line-sort]').forEach(button => {
+      const on = button.dataset.lineSort === lineSort.key && lineSort.dir;
+      button.closest('th').setAttribute('aria-sort', on ? (lineSort.dir === 'asc' ? 'ascending' : 'descending') : 'none');
+    });
+  }
+
   function renderLines(row) {
-    const canEditNote = editable();
-    renderStats($('stDetailStats'), [
-      ['Tổng kiểm', num(row.counted)], ['Tồn KIOT', num(row.stock)],
-      ['SL chênh', num(row.diffQty), row.diffQty ? 'warn' : ''], ['Giá trị chênh', money(row.diffValue), row.diffValue < 0 ? 'bad' : ''],
-      ['KK trước sai', row.prevDiff === null ? '—' : num(row.prevDiff)],
-      ['Kiểm ' + otherLabel(state.board.session.branch), row.otherDiff === null ? '—' : num(row.otherDiff)]
-    ]);
-    const closed = state.board.session.status === 'closed';
-    $('stLinesSection').hidden = closed;
-    $('stAddLineForm').hidden = !canEditNote;
+    const canEdit = editable();
+    $('stLinesSection').hidden = state.board.session.status === 'closed';
+    $('stAddLineForm').hidden = !canEdit;
+    syncLineSortHeader();
+    const focused = focusedLineInput();
     const tbody = $('stLineRows');
+    drawingLines = true;
     tbody.textContent = '';
-    for (const line of row.lines) {
+    drawingLines = false;
+    for (const line of Grid.sortLines(row.lines, lineSort.key, lineSort.dir)) {
       const tr = document.createElement('tr');
       if (line.removed) tr.classList.add('st-removed');
-      const cells = [line.team, line.zone, line.spec, null, line.manual ? 'Thêm tay' : line.orderCode + (line.orderStatus ? ' · ' + line.orderStatus : ''),
-        line.edit ? line.edit.updatedByName + ' · ' + time(line.edit.updatedAt) : ''];
-      cells.forEach((value, index) => {
-        const td = document.createElement('td');
-        if (index === 3) {
-          td.className = 'num';
-          const input = document.createElement('input');
-          input.type = 'number';
-          input.min = '0';
-          input.step = 'any';
-          input.value = String(line.quantity);
-          input.disabled = !canEditNote || line.removed;
-          input.setAttribute('aria-label', 'Số lượng');
-          input.addEventListener('change', () => saveLine(line, { quantity: input.value === '' ? null : Number(input.value) }));
-          td.appendChild(input);
-          if (line.original && line.original.quantity !== line.quantity) {
-            const small = document.createElement('small');
-            small.textContent = 'gốc ' + num(line.original.quantity);
-            td.appendChild(small);
-          }
-        } else td.textContent = value || '';
-        tr.appendChild(td);
-      });
+      if (line.edit || !line.manual) tr.dataset.lineKey = lineKey(line);
+      const locked = !canEdit || line.removed;
+      const team = document.createElement('td');
+      team.textContent = line.team || '';
+      const zone = document.createElement('td');
+      zone.appendChild(lineInput(line, 'zone', { value: line.zone || '', label: 'Khu', disabled: locked, toPatch: value => ({ zone: value }) }));
+      if (line.original) originalNote(zone, line.original.zone || '', line.zone || '');
+      const spec = document.createElement('td');
+      spec.appendChild(lineInput(line, 'spec', { value: line.spec || '', label: 'Quy cách', disabled: locked, toPatch: value => ({ spec: value }) }));
+      if (line.original) originalNote(spec, line.original.spec || '', line.spec || '');
+      const quantity = document.createElement('td');
+      quantity.className = 'num';
+      quantity.appendChild(lineInput(line, 'quantity', { type: 'number', value: String(line.quantity), label: 'Số lượng', disabled: locked,
+        toPatch: value => ({ quantity: value === '' ? null : Number(value) }) }));
+      if (line.original) originalNote(quantity, line.original.quantity, line.quantity, num);
+      const order = document.createElement('td');
+      order.textContent = line.manual ? 'Thêm tay' : line.orderCode + (line.orderStatus ? ' · ' + line.orderStatus : '');
+      const updated = document.createElement('td');
+      updated.textContent = line.edit ? line.edit.updatedByName + ' · ' + time(line.edit.updatedAt) : '';
       const actions = document.createElement('td');
-      if (canEditNote) {
+      if (canEdit) {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'vt-row-button';
@@ -1428,7 +1413,7 @@
         button.addEventListener('click', () => saveLine(line, { removed: !line.removed }));
         actions.appendChild(button);
       }
-      tr.appendChild(actions);
+      tr.append(team, zone, spec, quantity, order, updated, actions);
       tbody.appendChild(tr);
     }
     if (!row.lines.length) {
@@ -1439,6 +1424,7 @@
       tr.appendChild(td);
       tbody.appendChild(tr);
     }
+    restoreLineInput(focused);
   }
 
   const ACTION_LABELS = { line_edit: 'Sửa dòng đếm', line_add: 'Thêm dòng', note: 'Kiểm lại', tag: 'Cụm / Combo', session_close: 'Đóng đợt', sheet_import: 'Nạp từ sheet', paste: 'Dán cột', session_update: 'Đổi đối chiếu' };
@@ -1493,14 +1479,31 @@
     const { response, payload } = await request(path, jsonOptions(method, body));
     if (!response.ok) { handleWriteError(payload); return false; }
     $('stConflict').hidden = true;
-    await loadBoard({ background: true, forms: true });
+    await loadBoard({ background: true });
     loadHistory();
     return true;
   }
 
+  // Lưu nối tiếp và nhớ version từ phản hồi: Tab nhanh sang ô khác của cùng dòng khi bảng chưa kịp tải lại không báo xung đột giả.
   function saveLine(line, patch) {
+    lineSaves.queue = lineSaves.queue.then(() => sendLine(line, patch));
+    return lineSaves.queue;
+  }
+  async function sendLine(line, patch) {
+    const key = lineKey(line);
+    const version = Math.max(lineSaves.versions.get(key) || 0, line.edit ? line.edit.version : 0) || null;
     const base = line.manual ? { editId: line.edit.id } : { orderId: line.orderId, lineNo: line.lineNo };
-    return write(API + '/sessions/' + state.sessionId + '/lines', 'PATCH', Object.assign(base, patch, { version: line.edit ? line.edit.version : null }));
+    setDetailError('');
+    try {
+      const { response, payload } = await request(API + '/sessions/' + state.sessionId + '/lines', jsonOptions('PATCH', Object.assign(base, patch, { version })));
+      if (!response.ok) { handleWriteError(payload); return; }
+      lineSaves.versions.set(key, payload.edit.version);
+      $('stConflict').hidden = true;
+      clearTimeout(lineSaves.timer);
+      lineSaves.timer = setTimeout(async () => { await loadBoard({ background: true }); if (detail.code) loadHistory(); }, 300);
+    } catch (error) {
+      setDetailError('Không lưu được dòng đếm. Kiểm tra mạng rồi thử lại.');
+    }
   }
 
   function bindDetail() {
@@ -1512,31 +1515,18 @@
     $('stDetailDialog').addEventListener('close', () => { detail.code = null; });
     $('stConflictReload').addEventListener('click', async () => {
       $('stConflict').hidden = true;
-      await loadBoard({ background: true, forms: true });
+      await loadBoard({ background: true });
       loadHistory();
     });
-    $('stNoteForm').addEventListener('submit', event => {
-      event.preventDefault();
-      const form = event.target;
-      write(API + '/sessions/' + state.sessionId + '/codes/' + encodeURIComponent(detail.code) + '/note', 'PUT', {
-        recheckName: form.elements.recheckName.value,
-        statusText: form.elements.statusText.value,
-        reasonText: form.elements.reasonText.value,
-        printPage: form.elements.printPage.value,
-        printTime: form.elements.printTime.value,
-        prevDiffManual: form.elements.prevDiffManual.value.trim() === '' ? null : form.elements.prevDiffManual.value,
-        otherDiffManual: form.elements.otherDiffManual.value.trim() === '' ? null : form.elements.otherDiffManual.value,
-        version: form.dataset.version ? Number(form.dataset.version) : null
-      });
-    });
-    $('stTagForm').addEventListener('submit', event => {
-      event.preventDefault();
-      const form = event.target;
-      write(API + '/sessions/' + state.sessionId + '/codes/' + encodeURIComponent(detail.code) + '/tag', 'PUT', {
-        cluster: form.elements.cluster.value,
-        isCombo: form.elements.isCombo.checked,
-        version: form.dataset.version ? Number(form.dataset.version) : null
-      });
+    $('stLinesHead').addEventListener('click', event => {
+      const button = event.target.closest('[data-line-sort]');
+      if (!button) return;
+      const key = button.dataset.lineSort;
+      const next = lineSort.key !== key ? 'asc' : lineSort.dir === 'asc' ? 'desc' : null;
+      lineSort.key = next ? key : null;
+      lineSort.dir = next;
+      const row = rowOf(detail.code);
+      if (row) renderLines(row);
     });
     $('stAddLineForm').addEventListener('submit', async event => {
       event.preventDefault();
@@ -1858,16 +1848,30 @@
       const codes = visibleRows().map(row => row.code);
       const response = await fetch(API + '/sessions/' + state.sessionId + '/export', Object.assign({ credentials: 'same-origin' }, jsonOptions('POST', { codes })));
       if (!response.ok) { notify('Không xuất được Excel.', true); return; }
-      const blob = await response.blob();
-      const match = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') || '');
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = match ? match[1] : 'kiem-ke.xlsx';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      await saveDownload(response, 'kiem-ke.xlsx');
     });
+    $('stExportStatsButton').addEventListener('click', async () => {
+      if (!state.board) return;
+      const response = await fetch(API + '/sessions/' + state.sessionId + '/export-lines', { credentials: 'same-origin' });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        notify(payload.error || 'Không xuất được file thống kê.', true);
+        return;
+      }
+      await saveDownload(response, 'kiem-ke-thong-ke.xlsx');
+    });
+  }
+
+  async function saveDownload(response, fallbackName) {
+    const blob = await response.blob();
+    const match = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') || '');
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = match ? match[1] : fallbackName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   }
 
   function bindTable() {

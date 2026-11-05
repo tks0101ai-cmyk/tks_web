@@ -154,6 +154,29 @@
     }
   }
 
+  // Sort bang dong dem trong hop chi tiet. O trong luon nam cuoi; dir null = giu thu tu goc.
+  const LINE_SORT = Object.freeze({
+    team: line => line.team,
+    zone: line => line.zone,
+    spec: line => line.spec,
+    quantity: line => line.quantity,
+    order: line => (line.manual ? 'Thêm tay' : line.orderCode),
+    updated: line => (line.edit ? line.edit.updatedByName : '')
+  });
+  function sortLines(lines, key, dir) {
+    const read = LINE_SORT[key];
+    if (!read || !dir) return [...lines];
+    const factor = dir === 'desc' ? -1 : 1;
+    const blank = value => value === null || value === undefined || value === '';
+    return [...lines].sort((a, b) => {
+      const x = read(a);
+      const y = read(b);
+      if (blank(x) || blank(y)) return blank(x) === blank(y) ? 0 : blank(x) ? 1 : -1;
+      const diff = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'vi', { numeric: true });
+      return diff * factor;
+    });
+  }
+
   // Cho tra loi cua hop xac nhan. Moi cach dong (Dong y, Huy, Esc) deu phat su kien 'close' cua <dialog>, nen don
   // lang nghe tai day: neu Esc de lai lang nghe cu, lan Dong y cua hop sau se chay ca lenh truoc do (vd Dong dot).
   function waitForConfirm(dialog, okButton, cancelButton) {
@@ -173,5 +196,5 @@
     });
   }
 
-  return { EDIT_COLUMNS, parseClipboard, planPaste, planPasteByCode, planFill, moveIndex, matchesFilter, summarizeCells, waitForConfirm };
+  return { EDIT_COLUMNS, parseClipboard, planPaste, planPasteByCode, planFill, moveIndex, matchesFilter, summarizeCells, waitForConfirm, sortLines };
 });
