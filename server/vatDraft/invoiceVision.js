@@ -80,7 +80,9 @@ function createInvoiceVisionClient({
   /** Buffer anh -> { sellerName, totalPayment, totalBeforeVat, vatAmount } (gia tri tho tu model). */
   async function extractInvoice(buffer, mimeType) {
     const dataUrl = `data:${mimeType};base64,${Buffer.from(buffer).toString('base64')}`;
-    const models = [model, fallbackModel].filter((m, i, list) => m && list.indexOf(m) === i);
+    // fallbackModel: 1 ten hoac nhieu ten cach nhau dau phay, thu lan luot khi model truoc 429/503/het gio.
+    const fallbacks = Array.isArray(fallbackModel) ? fallbackModel : String(fallbackModel || '').split(',');
+    const models = [model, ...fallbacks].map(m => String(m || '').trim()).filter((m, i, list) => m && list.indexOf(m) === i);
     for (const modelId of models) {
       const result = await callModel(modelId, dataUrl);
       if (result.parsed) return result.parsed;
