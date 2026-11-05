@@ -144,6 +144,12 @@
 
 *Quy tắc ngặt nghèo: Không dùng cỡ chữ dưới 12px trên toàn bộ hệ thống để đảm bảo tính dễ đọc.*
 
+> ⚠️ **Ngoại lệ có chủ ý — bảng Đặt hàng của Thu mua (`/thu-mua/dat-hang/`, chốt 03/11/2026):**
+> ô dữ liệu `11px`, tiêu đề cột `9px`, lề ô `4px × 5px`. Lý do: bảng có 42 cột A→AP theo sheet
+> nguồn và phải vừa một màn hình 1920px, không cuộn ngang. Đây là đánh đổi mật độ ↔ dễ đọc đã
+> được người dùng xác nhận lại 05/11/2026, **không phải lỗi** — đừng "sửa" về 12px khi rà soát.
+> Giới hạn trong `#orderTable`; phần còn lại của trang vẫn theo thang chuẩn ở trên.
+
 ---
 
 ### 4.3 Spacing Variables (Hệ Thống Khoảng Cách — 8pt/4pt Grid)
