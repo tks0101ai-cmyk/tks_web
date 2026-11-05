@@ -6,7 +6,7 @@
 // dung cho ca route GET va luong xuat Excel (exportService.js) de khong viet
 // trung logic map cot o 2 noi.
 const { getPool } = require('../db/pool');
-const { timedQuery } = require('../lib/requestTiming');
+const { timedQuery, timedOperation } = require('../lib/requestTiming');
 const { readContainerSummary, getContainerMeta } = require('../productContainers/repository');
 const { normalizeCode } = require('../productContainers/parser');
 const { readInTransitByCode } = require('./inTransitSource');
@@ -100,12 +100,18 @@ const STATE_PROBE_SQL = 'SELECT version::text AS version, computed_at FROM produ
  * that su doi), tong CONT chi doc lai khi version CONT doi, hang van chuyen cache toi da 60 giay; nhieu nguoi
  * xem/xuat file dung chung. Chua co state => luong cu (loc is_active luc doc, khong cache).
  * Cache nam trong bo bo doc, nen moi lan goi voi pool truyen vao (test) la bo doc moi, khong dung chung.
+ *
+ * Nguoi doc den khi dang co luot tai thi dung chung luot do, khong tu keo them: moi lan cache trong (vua deploy, doi
+ * version) ca 10,9K dong qua duong Oregon - Singapore se giu ket noi rat lau, nhieu nguoi cung keo la het pool 5 ket
+ * noi va ca app xep hang (do that 2026-11-05: 101 truy van cho). Chi dung chung phan TAI; compose chay rieng cho tung
+ * nguoi vi ben goi duoc sua ket qua (routes.js gan de data.rows de an cot theo quyen).
  */
 function createProductReportReader({ pool, now = Date.now } = {}) {
   let rowsCache = null; // { version, rows }  - dong da map, KHONG bi sua
   let containerCache = null; // { version, totals }
   let transitCache = null; // { at, byCode }
   let transferRequestCache = null; // { at, byCode }
+  let inFlight = null; // luot tai dang chay, xoa khi xong ke ca khi loi de lan sau thu lai
 
   async function probeState() {
     try {
@@ -134,7 +140,7 @@ function createProductReportReader({ pool, now = Date.now } = {}) {
 
   async function readVersioned(state) {
     if (!rowsCache || rowsCache.version !== state.version) {
-      const { rows } = await queryReportRows(pool, VERSIONED_ROWS_SQL);
+      const { rows } = await timedOperation('reportRows', () => queryReportRows(pool, VERSIONED_ROWS_SQL));
       rowsCache = { version: state.version, rows: rows.map(mapRow) };
     }
     const { containerSync } = await getContainerMeta({ pool });
@@ -151,13 +157,16 @@ function createProductReportReader({ pool, now = Date.now } = {}) {
     return { base: rowsCache.rows, computedAt: state.computed_at, containerSync, totals, inTransitByCode, transferRequestByCode };
   }
 
-  async function read() {
+  async function load() {
     const state = await probeState();
-    if (state) {
-      const part = await readVersioned(state);
-      return { ...compose(part), reportVersion: state.version };
-    }
-    return { ...(await readLegacy(pool)), reportVersion: null };
+    if (state) return { part: await readVersioned(state), reportVersion: state.version };
+    return { part: await readLegacyParts(pool), reportVersion: null };
+  }
+
+  async function read() {
+    if (!inFlight) inFlight = load().finally(() => { inFlight = null; });
+    const { part, reportVersion } = await inFlight;
+    return { ...compose(part), reportVersion };
   }
 
   return { read, probeState };
@@ -243,7 +252,7 @@ async function getProductReportVersion({ pool } = {}) {
   }
 }
 
-async function readLegacy(pool) {
+async function readLegacyParts(pool) {
   const { rows } = await queryReportRows(pool, LEGACY_ROWS_SQL);
   const items = rows.map(mapRow);
   const computedAt = items.length ? items.reduce((latest, item) => (
@@ -252,7 +261,7 @@ async function readLegacy(pool) {
   const { containerSync, totals } = await readContainerSummary(pool);
   const inTransitByCode = await readInTransitByCode(pool);
   const transferRequestByCode = await readTransferRequestByCode(pool);
-  return compose({ base: items, computedAt, containerSync, totals, inTransitByCode, transferRequestByCode });
+  return { base: items, computedAt, containerSync, totals, inTransitByCode, transferRequestByCode };
 }
 
 // Khung "Chi tiet" duoi bang: doanh so 90 ngay cua tung khach da mua ma hang nay
