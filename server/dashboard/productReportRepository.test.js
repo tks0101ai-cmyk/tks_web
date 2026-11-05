@@ -397,6 +397,84 @@ test('bo doc theo phien ban: hang van chuyen cache theo TTL 60 giay, ban dau chu
   } finally { await db.close(); }
 });
 
+test('nhieu nguoi doc cung luc luc cache trong: chi keo bang bao cao 1 lan, moi nguoi van nhan ban rieng', async () => {
+  const { createProductReportReader } = require('./productReportRepository');
+  const { db, pool, calls } = await versionedFixture();
+  try {
+    const reader = createProductReportReader({ pool, now: () => 1000 });
+    const results = await Promise.all([reader.read(), reader.read(), reader.read(), reader.read(), reader.read()]);
+
+    assert.equal(reads(calls, /FROM product_report pr\b/), 1, '5 nguoi cung luc => chi 1 lan keo bang bao cao');
+    assert.equal(reads(calls, /product_report_state WHERE id = 1/), 1, 'chi 1 lan doc phien ban');
+    assert.equal(reads(calls, /jsonb_object_agg/), 1, 'chi 1 lan doc tong CONT');
+    assert.equal(reads(calls, /order_suppliers/) <= 2, true, 'hang van chuyen khong bi doc lai theo so nguoi');
+    results.forEach((result) => {
+      assert.equal(result.reportVersion, '3');
+      assert.deepEqual(result.rows.map(r => r.code), ['A', 'B']);
+    });
+
+    // routes.js gan de data.rows de an cot gia theo quyen: nguoi nay sua khong duoc anh huong nguoi khac.
+    assert.notEqual(results[0], results[1]);
+    assert.notEqual(results[0].rows, results[1].rows);
+    assert.notEqual(results[0].rows[0], results[1].rows[0]);
+    results[0].rows[0].name = 'DA SUA';
+    results[0].rows = [];
+    assert.equal(results[1].rows.length, 2);
+    assert.equal(results[1].rows[0].name, 'Sp A');
+
+    // Xong luot gop thi lan doc sau phai thay du lieu moi, khong ket o ket qua cu.
+    await db.exec("UPDATE product_report SET stock_hanoi = 77 WHERE product_code='A'; UPDATE product_report_state SET version = 4");
+    const next = await reader.read();
+    assert.equal(next.reportVersion, '4');
+    assert.equal(next.rows[0].stockHanoi, 77);
+    assert.equal(reads(calls, /FROM product_report pr\b/), 2);
+  } finally { await db.close(); }
+});
+
+test('luot doc gop bi loi: moi nguoi cung luc nhan loi, lan doc sau thu lai duoc', async () => {
+  const { createProductReportReader } = require('./productReportRepository');
+  const { db, pool, calls } = await versionedFixture();
+  try {
+    let failNext = true;
+    const flaky = {
+      query: (sql, args) => {
+        if (failNext && /FROM product_report pr\b/.test(sql)) {
+          failNext = false;
+          return Promise.reject(new Error('DB tam loi'));
+        }
+        return pool.query(sql, args);
+      }
+    };
+    const reader = createProductReportReader({ pool: flaky, now: () => 1000 });
+    const settled = await Promise.allSettled([reader.read(), reader.read(), reader.read()]);
+    settled.forEach((item) => {
+      assert.equal(item.status, 'rejected');
+      assert.equal(item.reason.message, 'DB tam loi');
+    });
+
+    const retried = await reader.read();
+    assert.deepEqual(retried.rows.map(r => r.code), ['A', 'B']);
+    assert.equal(reads(calls, /FROM product_report pr\b/), 1, 'lan loi khong toi DB, lan thu lai toi DB dung 1 lan');
+  } finally { await db.close(); }
+});
+
+test('chua co product_report_state: luong cu cung gop luot doc va tra ban rieng cho tung nguoi', async () => {
+  const { createProductReportReader } = require('./productReportRepository');
+  const { db, pool, calls } = await versionedFixture();
+  try {
+    await db.exec(`DROP TABLE product_report_state;
+      CREATE TABLE products (code text, branch text, is_active boolean);
+      INSERT INTO products VALUES ('A','hanoi',true),('B','hanoi',true);`);
+    const reader = createProductReportReader({ pool, now: () => 1000 });
+    const [first, second] = await Promise.all([reader.read(), reader.read()]);
+    assert.equal(reads(calls, /FROM product_report pr\b/), 1, '2 nguoi cung luc => chi 1 lan keo bang bao cao');
+    assert.equal(first.reportVersion, null);
+    assert.deepEqual(first.rows.map(r => r.code), ['A', 'B']);
+    assert.notEqual(first.rows, second.rows);
+    assert.notEqual(first.rows[0], second.rows[0]);
+  } finally { await db.close(); }
+});
+
 test('getProductReportVersion tra phien ban hoac null (chua migrate/loi), khong nem loi', async () => {
   const { getProductReportVersion } = require('./productReportRepository');
   const { db, pool } = await versionedFixture();
