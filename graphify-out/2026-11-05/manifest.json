@@ -654,9 +654,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1793785937.8556738,
-    "seen": 1793840094.5540729,
-    "ast_hash": "d7deeb6f2bd8fcce20b9bf99cbeb54f0",
+    "mtime": 1793841872.5382304,
+    "seen": 1793857497.2255094,
+    "ast_hash": "1dad0bbe31eee64ccec64fdf9261b22f",
     "semantic_hash": ""
   },
   "design-system/tks-dashboard/MASTER.md": {
@@ -666,15 +666,15 @@
     "semantic_hash": ""
   },
   "docs/01-brd/BRD_Dashboard_GoogleSheets.md": {
-    "mtime": 1793784598.201452,
-    "seen": 1793784852.7291787,
-    "ast_hash": "c77d98195fd2e8b3053851fa6d3d7919",
+    "mtime": 1793841872.683476,
+    "seen": 1793857497.2255094,
+    "ast_hash": "d6e63a5e12a0795eed92299b57bfaa17",
     "semantic_hash": ""
   },
   "docs/02-srs/SRS_Dashboard_GoogleSheets.md": {
-    "mtime": 1793784598.2004545,
-    "seen": 1793784852.7291787,
-    "ast_hash": "fd0e6775a061d025bb0803606017b796",
+    "mtime": 1793841872.8036118,
+    "seen": 1793857497.2255094,
+    "ast_hash": "cdbc3a482c52f59e0949cf0650e5442a",
     "semantic_hash": ""
   },
   "docs/03-process/BPMN_Dashboard_GoogleSheets.md": {
@@ -684,9 +684,9 @@
     "semantic_hash": ""
   },
   "docs/04-planning/implementation_plan.md": {
-    "mtime": 1793784598.1994584,
-    "seen": 1793784852.7291787,
-    "ast_hash": "de11ebfff01b68a1e4b91ee4914140bd",
+    "mtime": 1793841872.9433596,
+    "seen": 1793857497.2255094,
+    "ast_hash": "2f061b294000bd5e4327ea793d1b82e8",
     "semantic_hash": ""
   },
   "docs/superpowers/plans/2026-08-13-dashboard-result-cache.md": {
@@ -786,9 +786,9 @@
     "semantic_hash": "58e700daf0c14819a97499bd94f6f2e1"
   },
   "server/README.md": {
-    "mtime": 1793785937.9777193,
-    "seen": 1793840094.5540729,
-    "ast_hash": "ab3d0c4a7a6a786e7b1ba9e8ad1c5fdc",
+    "mtime": 1793841873.2232728,
+    "seen": 1793857497.2255094,
+    "ast_hash": "d80e863e3a8f747364dfd7a50422f9f7",
     "semantic_hash": ""
   },
   "server/kiotviet/API_ENDPOINTS.md": {
@@ -816,9 +816,9 @@
     "semantic_hash": ""
   },
   "server/public/index.html": {
-    "mtime": 1793784156.330408,
-    "seen": 1793784852.7291787,
-    "ast_hash": "2b253680953d0c0624df481a6c4b220e",
+    "mtime": 1793840423.3782742,
+    "seen": 1793840735.802501,
+    "ast_hash": "ab0c05dfee4bd4a86fc1402c63a0817f",
     "semantic_hash": ""
   },
   "server/public/login/index.html": {
@@ -1386,9 +1386,9 @@
     "semantic_hash": ""
   },
   "server/db/SCHEMA.md": {
-    "mtime": 1793785938.070731,
-    "seen": 1793840094.5540729,
-    "ast_hash": "89a9a13d404c3786e0f411b78e1c4889",
+    "mtime": 1793841873.3434443,
+    "seen": 1793857497.2255094,
+    "ast_hash": "8ca80cf3111d0ebee4dc41421440a243",
     "semantic_hash": ""
   },
   "server/auth/appUsersRepository.js": {
@@ -3300,15 +3300,15 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1793676747.625078,
-    "seen": 1793695644.2759902,
-    "ast_hash": "279ea9868f58031464c84befdc2b4c1b",
+    "mtime": 1793841872.2534804,
+    "seen": 1793857497.2255094,
+    "ast_hash": "1e7ac6973b12310b28b2e994bcbabd2e",
     "semantic_hash": ""
   },
   "CURRENT.md": {
-    "mtime": 1793840085.064177,
-    "seen": 1793840094.5540729,
-    "ast_hash": "ef8709f87ae086c0cf572132a890dfcd",
+    "mtime": 1793857950.0479298,
+    "seen": 1793857983.81684,
+    "ast_hash": "6218895dae352a74476ecca82ea828a3",
     "semantic_hash": ""
   },
   "MEMORY.md": {
@@ -5754,9 +5754,9 @@
     "semantic_hash": ""
   },
   "server/public/prototypes/order-picking/index.html": {
-    "mtime": 1793785439.6652832,
-    "seen": 1793840094.5540729,
-    "ast_hash": "bc7dbc4d0daddeb978ae22efe1083741",
+    "mtime": 1793841888.6582317,
+    "seen": 1793857497.2255094,
+    "ast_hash": "4e24057589ef4cae0321e79f7f868334",
     "semantic_hash": ""
   },
   "server/public/prototypes/order-picking/invoice-template.html": {
@@ -6408,15 +6408,15 @@
     "semantic_hash": ""
   },
   "server/db/rollbacks/stocktakeRollback.test.js": {
-    "mtime": 1793676754.6052306,
-    "seen": 1793695644.2749858,
-    "ast_hash": "a874c095a15e0cb15bee4a70a01d04f6",
+    "mtime": 1793841873.7796693,
+    "seen": 1793857497.2255094,
+    "ast_hash": "91a15700655ef22353be9a3f7c82811e",
     "semantic_hash": ""
   },
   "server/public/stocktake/stocktake.js": {
-    "mtime": 1793783409.0404708,
-    "seen": 1793784852.7251925,
-    "ast_hash": "7b4ab212f5e831a46e62889f472a367d",
+    "mtime": 1793841874.3432848,
+    "seen": 1793857497.2255094,
+    "ast_hash": "643b01e5475cb62aa0e114a9049f39d4",
     "semantic_hash": ""
   },
   "server/public/stocktake/stocktakePaste.js": {
@@ -6456,39 +6456,39 @@
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeRoutes.js": {
-    "mtime": 1793779344.5074427,
-    "seen": 1793779464.796028,
-    "ast_hash": "ec2faa5c12bf8edf297acda1dfe22826",
+    "mtime": 1793841874.4733021,
+    "seen": 1793857497.2255094,
+    "ast_hash": "2fbe63e3b928d27a896b7d3330b76f06",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeRoutes.test.js": {
-    "mtime": 1793779344.5431454,
-    "seen": 1793779464.796028,
-    "ast_hash": "5e4975e59318b72df3c3a6c7abc589f4",
+    "mtime": 1793841874.6233459,
+    "seen": 1793857497.2255094,
+    "ast_hash": "7fcb7e3f5c5ff46ef531e224b4527740",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeService.js": {
-    "mtime": 1793779344.614405,
-    "seen": 1793779464.796028,
-    "ast_hash": "58efaa67b726be607ce7202c4c14104f",
+    "mtime": 1793841874.764245,
+    "seen": 1793857497.2255094,
+    "ast_hash": "881c41eb52d82abce93543a4f1f09f76",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeService.test.js": {
-    "mtime": 1793779344.6497815,
-    "seen": 1793779464.796028,
-    "ast_hash": "1ca8ba7014e9ed36e4d39ebd0d517489",
+    "mtime": 1793841874.8950627,
+    "seen": 1793857497.2255094,
+    "ast_hash": "9059bf4c24be27aac26010fa8c7ba92d",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeSheetImport.js": {
-    "mtime": 1793676755.6221128,
-    "seen": 1793695644.2759902,
-    "ast_hash": "22b6b87b311843dcb36e90f6a21cf6c9",
+    "mtime": 1793841875.043266,
+    "seen": 1793857497.2255094,
+    "ast_hash": "d2d9bc80b9c36624389d81c7355199c5",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeSheetImport.test.js": {
-    "mtime": 1793676755.6508486,
-    "seen": 1793695644.2759902,
-    "ast_hash": "fa343898963d2a64faada40c076d6ea9",
+    "mtime": 1793841875.1833134,
+    "seen": 1793857497.2255094,
+    "ast_hash": "259bb00798dd3ad8f0a9cf352257ccea",
     "semantic_hash": ""
   },
   "docs/superpowers/plans/2026-10-31-stocktake.md": {
@@ -6516,9 +6516,9 @@
     "semantic_hash": ""
   },
   "server/public/stocktake/index.html": {
-    "mtime": 1793783409.0102055,
-    "seen": 1793784852.7291787,
-    "ast_hash": "60a25d198b4a7972021bd4443d598c0d",
+    "mtime": 1793841874.0570922,
+    "seen": 1793857497.2255094,
+    "ast_hash": "cc48f8becaa27620d7c9f74fd1953f4c",
     "semantic_hash": ""
   },
   "server/public/stocktake/stocktakeGrid.js": {
@@ -6714,15 +6714,15 @@
     "semantic_hash": ""
   },
   "server/public/js/product-history.js": {
-    "mtime": 1793784728.095941,
-    "seen": 1793784852.7241921,
-    "ast_hash": "94617f33a8f17ae9192939a4dab327b8",
+    "mtime": 1793840414.838993,
+    "seen": 1793840735.8014982,
+    "ast_hash": "9bdfd56b64a3e6df7d61a572653b2374",
     "semantic_hash": ""
   },
   "server/test/frontend/product-history.test.js": {
-    "mtime": 1793783877.0819683,
-    "seen": 1793784852.7281804,
-    "ast_hash": "c83bc1984f2be7d2997160e07519c9ee",
+    "mtime": 1793840415.110255,
+    "seen": 1793840735.802501,
+    "ast_hash": "4f4830f22d58f13a4f9f69fe7d341cc7",
     "semantic_hash": ""
   },
   "server/db/migrations/0106_product_90d_report.sql": {
@@ -6837,6 +6837,24 @@
     "mtime": 1793783862.2465503,
     "seen": 1793784852.7102008,
     "ast_hash": "a02c1f34ecf64cd00591513fd10b3724",
+    "semantic_hash": ""
+  },
+  "server/db/migrations/0109_stocktake_previous_cancel.sql": {
+    "mtime": 1793841873.493354,
+    "seen": 1793857497.2255094,
+    "ast_hash": "bdda776e04b73321b1b59bea1d66f5a6",
+    "semantic_hash": ""
+  },
+  "server/db/rollbacks/0109_stocktake_previous_cancel.down.sql": {
+    "mtime": 1793841873.639176,
+    "seen": 1793857497.2255094,
+    "ast_hash": "ac6208e5839812ec961d1a2a3bf0b735",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-11-04-stocktake-previous-cancel-reload-design.md": {
+    "mtime": 1793841873.085194,
+    "seen": 1793857497.2255094,
+    "ast_hash": "71c21610e5ab67a6062e512b451c7193",
     "semantic_hash": ""
   }
 }

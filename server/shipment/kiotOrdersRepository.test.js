@@ -324,7 +324,7 @@ test('truy van dau don: lay moi trang thai + ghi chu, ngay doc bang AT TIME ZONE
   assert.match(sql, /COALESCE\(o\.raw->>'description', ''\) AS note/);
   // Chi bo don truoc 10/10/2026 TRU Phieu tam (khong loc theo trang thai khac).
   assert.match(sql, /WHERE \(o\.raw->>'statusValue' = 'Phiếu tạm'\s+OR o\.order_date IS NULL\s+OR \(o\.order_date AT TIME ZONE 'UTC'\) >= TIMESTAMP '2026-10-10 00:00:00'\)/);
-  assert.match(sql, /o\.modified_date/);
+  assert.match(sql, /o\.synced_at/);
   assert.equal(__test__.LIFECYCLE_ORDER_FROM, '2026-10-10');
   assert.match(sql, /o\.order_date AT TIME ZONE 'UTC'/);
   assert.match(sql, /regexp_replace\(COALESCE\(NULLIF\(o\.raw->>'soldByName', ''\), s\.name, ''\)/);
@@ -332,10 +332,10 @@ test('truy van dau don: lay moi trang thai + ghi chu, ngay doc bang AT TIME ZONE
 });
 
 // ---------------------------------------------------------------------------
-// Lam moi TANG DAN theo modified_date
+// Lam moi TANG DAN theo synced_at
 // ---------------------------------------------------------------------------
 
-/** Pool gia co "bang orders" co the sua: ban DELTA chi tra dong modified_date >= $1 hoac NULL (nhu SQL that). */
+/** Pool gia co "bang orders" co the sua: ban DELTA chi tra dong synced_at >= $1 hoac NULL (nhu SQL that). */
 function createDeltaPool({ orders, lines = [], onHand = {} }) {
   const state = { orders, lines, onHand, fail: false, deltaParams: [], fullCalls: 0, deltaCalls: 0 };
   return {
@@ -348,7 +348,7 @@ function createDeltaPool({ orders, lines = [], onHand = {} }) {
         state.deltaCalls++;
         state.deltaParams.push(params[0]);
         const since = new Date(params[0]).getTime();
-        return { rows: state.orders.filter(r => r.modified_date == null || new Date(r.modified_date).getTime() >= since) };
+        return { rows: state.orders.filter(r => r.synced_at == null || new Date(r.synced_at).getTime() >= since) };
       }
       if (sql.includes('FROM orders o') && sql.includes('JOIN order_details d')) return { rows: state.lines };
       if (sql.includes('FROM products p') && sql.includes('jsonb_array_elements')) {
@@ -367,8 +367,8 @@ const ttl = 121_000;
 test('tang dan: lan dau doc DAY DU; lan sau doc DELTA voi $1 = watermark - 2 phut; ket qua delta == ket qua full', async () => {
   const pool = createDeltaPool({
     orders: [
-      HR({ order_id: '1', code: 'DH1', order_date_key: '2026-10-14T08:00:00', modified_date: T0 }),
-      HR({ order_id: '2', code: 'DH2', kiot_status: 'Hoàn thành', order_date_key: '2026-10-12T08:00:00', order_date_text: '12/10/2026 08:00', modified_date: minutesAfter(T0, -60) })
+      HR({ order_id: '1', code: 'DH1', order_date_key: '2026-10-14T08:00:00', synced_at: T0 }),
+      HR({ order_id: '2', code: 'DH2', kiot_status: 'Hoàn thành', order_date_key: '2026-10-12T08:00:00', order_date_text: '12/10/2026 08:00', synced_at: minutesAfter(T0, -60) })
     ],
     lines: [LR({ order_id: '1', product_code: 'A', quantity: 10, amount: 10000 })],
     onHand: { hanoi: { A: 4 } }
@@ -380,7 +380,7 @@ test('tang dan: lan dau doc DAY DU; lan sau doc DELTA voi $1 = watermark - 2 phu
 
   // Don moi (modified sau watermark) xuat hien o lan delta.
   pool.state.orders = [...pool.state.orders,
-    HR({ order_id: '3', code: 'DH3', kiot_status: 'Đã xác nhận', order_date_key: '2026-10-15T08:00:00', order_date_text: '15/10/2026 08:00', modified_date: minutesAfter(T0, 5) })];
+    HR({ order_id: '3', code: 'DH3', kiot_status: 'Đã xác nhận', order_date_key: '2026-10-15T08:00:00', order_date_text: '15/10/2026 08:00', synced_at: minutesAfter(T0, 5) })];
   advance(ttl);
   repo.readOrders(); await flush();
   const delta = await repo.readOrders();
@@ -399,8 +399,8 @@ test('tang dan: lan dau doc DAY DU; lan sau doc DELTA voi $1 = watermark - 2 phu
 test('tang dan: Phieu tam -> Hoan thanh thi sellableValue ve null; ton thay doi thi gia tri co ban cua don Phieu tam khong doi modified van duoc tinh lai', async () => {
   const pool = createDeltaPool({
     orders: [
-      HR({ order_id: '1', code: 'DH1', order_date_key: '2026-10-14T08:00:00', modified_date: T0 }),
-      HR({ order_id: '2', code: 'DH2', order_date_key: '2026-09-29T08:00:00', modified_date: minutesAfter(T0, -600) })
+      HR({ order_id: '1', code: 'DH1', order_date_key: '2026-10-14T08:00:00', synced_at: T0 }),
+      HR({ order_id: '2', code: 'DH2', order_date_key: '2026-09-29T08:00:00', synced_at: minutesAfter(T0, -600) })
     ],
     lines: [
       LR({ order_id: '1', product_code: 'A', quantity: 10, amount: 10000 }),
@@ -412,11 +412,11 @@ test('tang dan: Phieu tam -> Hoan thanh thi sellableValue ve null; ton thay doi 
   const first = await repo.readOrders();
   assert.deepEqual(first.orders.map(o => [o.code, o.sellableValue]), [['DH1', 5000], ['DH2', 10000]]);
 
-  // Chi ton doi (DH2 khong doi modified_date, khong nam trong delta) -> van tinh lai.
+  // Chi ton doi (DH2 khong doi synced_at, khong nam trong delta) -> van tinh lai.
   pool.state.onHand = { hanoi: { A: 10 } };
   // DH1 chuyen Hoan thanh va hang het Phieu tam.
   pool.state.orders = [
-    HR({ order_id: '1', code: 'DH1', kiot_status: 'Hoàn thành', order_date_key: '2026-10-14T08:00:00', modified_date: minutesAfter(T0, 3) }),
+    HR({ order_id: '1', code: 'DH1', kiot_status: 'Hoàn thành', order_date_key: '2026-10-14T08:00:00', synced_at: minutesAfter(T0, 3) }),
     pool.state.orders[1]
   ];
   pool.state.lines = [LR({ order_id: '2', product_code: 'A', quantity: 10, amount: 20000 })];
@@ -429,18 +429,18 @@ test('tang dan: Phieu tam -> Hoan thanh thi sellableValue ve null; ton thay doi 
   ]);
 });
 
-test('tang dan: dong modified_date NULL khong bao gio mat; don truoc 10/10 khong con Phieu tam bi bo khoi map', async () => {
+test('tang dan: dong synced_at NULL khong bao gio mat; don truoc 10/10 khong con Phieu tam bi bo khoi map', async () => {
   const pool = createDeltaPool({
     orders: [
-      HR({ order_id: '1', code: 'DH1', kiot_status: 'Hoàn thành', order_date_key: '2026-10-14T08:00:00', modified_date: null }),
-      HR({ order_id: '2', code: 'DH2', order_date_key: '2026-09-20T08:00:00', modified_date: T0 })
+      HR({ order_id: '1', code: 'DH1', kiot_status: 'Hoàn thành', order_date_key: '2026-10-14T08:00:00', synced_at: null }),
+      HR({ order_id: '2', code: 'DH2', order_date_key: '2026-09-20T08:00:00', synced_at: T0 })
     ]
   });
   const { repo, advance } = repoFor(pool);
   assert.equal((await repo.readOrders()).orders.length, 2);
 
   // DH2 doi sang Da huy; ngay dat truoc 10/10 nen roi khoi pham vi (neu SQL van tra ve thi bi loai).
-  pool.state.orders = [pool.state.orders[0], HR({ order_id: '2', code: 'DH2', kiot_status: 'Đã hủy', order_date_key: '2026-09-20T08:00:00', modified_date: minutesAfter(T0, 1) })];
+  pool.state.orders = [pool.state.orders[0], HR({ order_id: '2', code: 'DH2', kiot_status: 'Đã hủy', order_date_key: '2026-09-20T08:00:00', synced_at: minutesAfter(T0, 1) })];
   advance(ttl);
   await repo.readOrders(); await flush();
   const next = await repo.readOrders();
@@ -449,7 +449,7 @@ test('tang dan: dong modified_date NULL khong bao gio mat; don truoc 10/10 khong
 });
 
 test('tang dan: quá 30 phút kể từ lần full thì đọc FULL lại (bắt đơn bị xóa); invalidate cũng buộc full', async () => {
-  const pool = createDeltaPool({ orders: [HR({ order_id: '1', code: 'DH1', order_date_key: '2026-10-14T08:00:00', modified_date: T0 }), HR({ order_id: '2', code: 'DH2', modified_date: T0 })] });
+  const pool = createDeltaPool({ orders: [HR({ order_id: '1', code: 'DH1', order_date_key: '2026-10-14T08:00:00', synced_at: T0 }), HR({ order_id: '2', code: 'DH2', synced_at: T0 })] });
   const { repo, advance } = repoFor(pool);
   await repo.readOrders();
 
@@ -472,7 +472,7 @@ test('tang dan: delta loi -> tra ban cu stale, khong sua trang thai; lan thu lai
   const originalWarn = console.warn;
   console.warn = () => {};
   try {
-    const pool = createDeltaPool({ orders: [HR({ order_id: '1', code: 'DH1', order_date_key: '2026-10-14T08:00:00', modified_date: T0 })] });
+    const pool = createDeltaPool({ orders: [HR({ order_id: '1', code: 'DH1', order_date_key: '2026-10-14T08:00:00', synced_at: T0 })] });
     const { repo, advance } = repoFor(pool);
     const first = await repo.readOrders();
 
@@ -485,7 +485,7 @@ test('tang dan: delta loi -> tra ban cu stale, khong sua trang thai; lan thu lai
     assert.equal(stale.orders.length, 1);
 
     pool.state.fail = false;
-    pool.state.orders = [...pool.state.orders, HR({ order_id: '2', code: 'DH2', modified_date: minutesAfter(T0, 1) })];
+    pool.state.orders = [...pool.state.orders, HR({ order_id: '2', code: 'DH2', synced_at: minutesAfter(T0, 1) })];
     advance(16_000);
     await repo.readOrders(); await flush();
     assert.equal(pool.state.fullCalls, 2, 'sau loi phai doc FULL');
@@ -497,10 +497,11 @@ test('tang dan: delta loi -> tra ban cu stale, khong sua trang thai; lan thu lai
   }
 });
 
-test('truy van tang dan: giu nguyen dau don + them dieu kien modified_date trong ngoac, tham so $1', () => {
+test('truy van tang dan: giu nguyen dau don + them dieu kien synced_at trong ngoac, tham so $1', () => {
   const sql = __test__.DELTA_ORDERS_SQL;
-  assert.ok(sql.startsWith(__test__.ALL_ORDERS_SQL));
-  assert.match(sql, /\)\s+AND \(o\.modified_date >= \$1::timestamptz OR o\.modified_date IS NULL\)$/);
+  assert.ok(sql.includes('LEFT JOIN staff s'));
+  assert.doesNotMatch(sql, /TIMESTAMP '2026-10-10/);
+  assert.match(sql, /WHERE \(o\.synced_at >= \$1::timestamptz OR o\.synced_at IS NULL\)$/);
 });
 
 test('truy van dong hang: chi don Phieu tam, loc statusValue NGUYEN VAN (trung index mot phan 0028), khong tham so hoa', () => {
@@ -669,4 +670,19 @@ test('SQL vong doi don: ten khach uu tien customers.name (join theo khoa chinh),
   const src = require('fs').readFileSync(require('path').join(__dirname, 'kiotOrdersRepository.js'), 'utf8');
   assert.match(src, /LEFT JOIN customers c ON c\.branch = o\.branch AND c\.id = o\.customer_id/);
   assert.match(src, /NULLIF\(c\.name, ''\), NULLIF\(o\.raw->>'customerName', ''\)/);
+});
+
+
+test('backfilled cancellation with old source date evicts pre-cutoff pending order on next delta', async () => {
+  const pool = createDeltaPool({ orders: [
+    HR({order_id:'1',code:'DH041166',order_date_key:'2026-10-01T13:00:00',synced_at:T0,modified_date:'2026-10-01T13:02:25Z'}),
+    HR({order_id:'2',code:'DHNEW',order_date_key:'2026-10-19T08:00:00',synced_at:T0})
+  ] });
+  const {repo,advance}=repoFor(pool);
+  assert.ok((await repo.readOrders()).orders.some(o=>o.code==='DH041166'));
+  pool.state.orders[0]={...pool.state.orders[0],kiot_status:'Đã hủy',synced_at:minutesAfter(T0,3),modified_date:'2026-10-13T13:33:22Z'};
+  advance(ttl);
+  await repo.readOrders();
+  await flush();
+  assert.ok(!(await repo.readOrders()).orders.some(o=>o.code==='DH041166'));
 });
