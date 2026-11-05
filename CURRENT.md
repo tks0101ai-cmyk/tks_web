@@ -1008,3 +1008,160 @@ Cập nhật gần nhất: 05/11/2026.
 Thêm /thu-mua/dat-hang/ và /api/purchase-orders với quyền purchase.view/edit/import/export/depart/arrive; mặc định chỉ Quản lý, quyền mở rộng qua cơ chế cấp quyền hiện có. Module có bảng Chỉ số cont và Đặt hàng sửa trực tiếp, lọc riêng theo tài khoản, dropdown NV/cont/trạng thái, tách .01/.02 đệ quy, sửa hàng loạt, undo/xóa mềm/khôi phục, import toàn bộ hợp lệ mới ghi, audit/realtime và bộ công thức dùng chung. Source gate ngăn job Sheet và web ghi đè nhau.
 
 Migrations Thu mua được đổi sang 0110–0113 vì main đã dùng 0101–0109. db/ensurePurchaseSchema.js áp đúng bốn migration này khi web startup, transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
+
+
+
+> 03/11/2026 — Thu mua (mockup, chưa deploy): rà các quyết định đã chốt; VC dòng nhập tay độc lập cước cont, tách nhánh .01/.02 và nhập lại chi phí, lưu ảnh chụp thực xuất, trạng thái 4 chỉ ngày/kho/người xác nhận, import không khóa tạo mới/ô trống giữ nguyên/khóa đã tách báo lỗi, chặn phiên bản import cũ. Thêm public/prototypes/thu-mua/workflows.test.cjs; 12 ca kiểm luồng DOM. Kế hoạch chuyển snapshot Sheet sang nguồn nghiệp vụ chung và các câu hỏi còn treo nằm ở docs/04-planning/implementation_plan.md, mục Thu mua 03/11/2026. Chưa migration/API/SSE thực.
+
+> 03/11/2026 — Thu mua: chốt import toàn bộ hoặc không ghi. Giữ mọi dòng lỗi trong preview, sửa trực tiếp và kiểm tra lại; không bỏ qua lỗi, không ghi phần hợp lệ khi có xung đột. Mockup có rollback nếu lỗi giữa đợt. Chưa tích hợp đọc file thật/API/DB.
+
+
+03/11/2026 — Thu mua: mockup đọc .xlsx thật, sửa lỗi ở preview, chọn sheet, tải mẫu và xuất Excel theo bộ lọc. Khóa dòng luôn ở cột đầu, Mã SP được giữ để nhập lại; cột công thức/tra cứu/cont không ghi đè. File có lỗi/xung đột không ghi một phần. Vẫn chỉ lưu trong bộ nhớ, chưa API/DB hay kiểm nhiều tài khoản.
+
+
+03/11/2026 — Thu mua: thêm purchaseOrders/purchaseOrdersImport.js phía server để lập kế hoạch import toàn bộ hoặc không ghi. Dùng chung public/shared/purchase-columns.js và public/shared/purchase-workbook.js với mockup; module Excel cũ chuyển khỏi thư mục prototype. Kiểm khóa nhánh/khóa đã tách, trùng khóa, trường chỉ đọc, ô trống, số/ngày và phiên bản; trả diff và kiểm lại preview trước giao dịch. Chưa có route/API ghi, repository, migration hay thay đổi dữ liệu thật.
+
+
+03/11/2026 — Thu mua: chuẩn bị migration 0101_purchase_orders.sql, API /api/purchase-orders, giao dịch ghi và projection chung sang product_container_lines/product_container_expected. Cont chuẩn là product_containers; ID dòng bất biến khác khóa nhánh .01/.02. Import giữ preview ở DB, gắn người tải, kiểm phiên bản, ghi cả đợt và chống xác nhận lặp. Phân quyền purchase.view/edit/import/export/depart/arrive mặc định chỉ Quản lý, có thể cấp riêng; Khách bị chặn. Nguồn mặc định vẫn sheets; chưa chạy migration, chưa seed/chuyển nguồn hay deploy, chưa nối giao diện production.
+
+> 03/11/2026 — Kiểm tra Thu mua backend + mockup + quyền + sync/expected: 121 ca, 120 đạt, 0 lỗi, 1 bỏ qua vì chưa cấu hình SUPABASE_TEST_DB_URL. Migration 0101 được kiểm DDL/giao dịch trên PGlite, chưa chạy trên DB chính. Chưa kiểm tranh chấp nhiều kết nối PostgreSQL thật. CLI graphify không có trong môi trường nên chưa cập nhật đồ thị.
+
+
+### 03/11/2026 — Giao diện Thu mua thật và làm việc đồng thời (chưa deploy)
+- Trang production: server/public/thu-mua/dat-hang/{index.html,purchase.js,purchase.css}, URL /thu-mua/dat-hang/. Dùng shared-nav/quyền purchase.view và danh mục cột chung; mockup giữ riêng để thử dữ liệu.
+- UI gọi API thật cho đặt lại từ lần lên list gần nhất, thêm mã mới vào hàng chờ, sửa ô, xác nhận thay thế, sửa hàng loạt (gom các thay đổi giống nhau thành batch audit), tạo/sửa cont, đặt lịch, chuyển/tách .01/.02, thực xuất, trạng thái 4, lịch sử và Excel. Import sửa toàn bộ preview hoặc tải lại, chỉ ghi khi toàn bộ hợp lệ; export POST chọn ID theo bộ lọc riêng và cột hiện tại, lấy giá trị đã lưu từ server.
+- Bộ lọc/tìm/sắp xếp, trang, cột, độ rộng, lựa chọn và bản nháp không phát sang người khác. Bản nháp/filter/cột/độ rộng lưu sessionStorage theo ID tài khoản, sống qua reload trong cùng tab. Không tự gửi lại thao tác ghi sau mất mạng; import confirm có token chống lặp.
+- SSE /api/purchase-orders/events yêu cầu auth + view, báo hiện diện và thay đổi sau commit. purchaseOrdersRealtime.js dùng lease DB 45 giây, gia hạn/đối chiếu history mỗi 10 giây để hỗ trợ nhiều tiến trình; ngắt kết nối xóa lease, chết tiến trình tự hết hạn. Event không chứa dòng hàng, bộ lọc hay bản nháp. Browser có đọc dự phòng mỗi 30 giây, giữ ô đang nhập, lấy lại dữ liệu khi SSE nối lại.
+- Ô trùng thay đổi được đánh dấu, popup đối chiếu trước/hệ thống/bản nháp, chọn giữ bản nháp hoặc dùng hệ thống rồi xác nhận lưu lại. Sửa trường khác vẫn kiểm before/version phía server. Mọi cont được chọn sửa; không khóa theo trạng thái.
+- Migration 0101 chưa áp dụng, bổ sung purchase_presence (connection_id UUID, actor_id/name, expires_at, index expiry), không bật source_mode. Bảng mới cũng không cấp quyền reporting_readonly.
+- Kiểm tra tuần tự (--test-concurrency=1): 155 ca, 154 đạt, 0 lỗi, 1 PostgreSQL thật bỏ qua do chưa cấu hình SUPABASE_TEST_DB_URL; gồm DOM/API/quyền/page guard/nav và DDL/giao dịch/lease trên PGlite. Chưa kiểm nhiều kết nối PostgreSQL thật hoặc giao diện bằng trình duyệt production. Lượt song song từng thiếu bộ nhớ V8 ở expectedRefresh; chạy riêng và chạy toàn bộ tuần tự đều đạt. Kiểm thêm ô đang focus giữ đúng baseline cũ khi SSE tới, và chuẩn hóa DATE PostgreSQL theo ngày địa phương.
+- Còn vận hành: chọn nguồn Sheet chuẩn, seed/đối chiếu, kiểm staging PostgreSQL và nhiều tài khoản, cấp quyền, duyệt migration/cutover/deploy. Trang hiện không ghi khi nguồn còn sheets. Graphify CLI vẫn chưa có trong môi trường.
+
+
+03/11/2026 — Thu mua: thêm nút Tiếng Việt / 中文 cho tiêu đề cột trên mockup và trang API thật. public/shared/purchase-headers.js dùng catalog theo khóa cột và từ điển tiêu đề phụ, chỉ đổi nhãn (không dịch dữ liệu/không đổi khóa import-export); localStorage giữ lựa chọn riêng trên trình duyệt. Giữ input chọn dòng và tay kéo độ rộng khi đổi ngôn ngữ, tự áp lại khi bảng render. 27 ca DOM/luồng liên quan đạt.
+
+03/11/2026 — Thu mua: quy chuẩn hiển thị số dùng dấu phẩy hàng nghìn, dấu chấm thập phân (1,234,567.89), độc lập ngôn ngữ tiêu đề. Áp dụng bảng/KPI/tỉ lệ/xếp cont ở mockup và trang thật; ô sửa số hiển thị nhóm, bỏ nhóm khi focus và giữ đúng giá trị khi nhập lại. Giá trị API/DB/Excel vẫn là số. 29 ca kiểm tra liên quan đạt.
+
+03/11/2026 — Tổng tệ hiển thị cố định 3 chữ số thập phân (1,668.800; 12.34567 → 12.346), thống nhất mockup, trang thật, KPI và định dạng Excel. Metadata decimals=3 chỉ áp dụng totalCny; giữ nguyên giá trị tính toán/API/DB và độ chính xác các cột khác. Kiểm thử định dạng và luồng mockup đạt 27 ca.
+
+03/11/2026 — Xếp cont: bỏ chọn/lọc cont nguồn, bảng trái gom dòng Cont chờ xếp và các cont chưa xuất, ghi tên cont nguồn từng dòng. Dòng đang ở cont đích vẫn hiện nhưng không được chọn chuyển lại. Tìm mã/tên vẫn dùng được. Mockup và trang thật đồng nhất; tách từ bảng phải mặc định về hàng chờ vì bên trái không còn một cont nguồn duy nhất. Kiểm luồng DOM/API liên quan đạt.
+
+03/11/2026 — Trạng thái cont trong bảng Chỉ số cont trở thành nút bấm chỉnh, không kích hoạt bộ lọc dòng khi bấm. Mở lại luồng xác nhận chuyển bước hiện có; Đã xuất dùng manifest thực xuất, Đã về yêu cầu ngày/kho; không ghi trực tiếp bỏ qua kiểm tra phiên bản/quyền/audit. Áp dụng mockup và UI thật.
+
+03/11/2026 — Luồng Xếp cont tích hợp vào trang Đặt hàng dưới dạng khung mở/thu gọn hai bảng nguồn–đích, nút Xếp cont tại thanh tác vụ Đặt hàng. Bỏ tab/menu Xếp cont độc lập khỏi giao diện; trigger mockup cũ chỉ giữ ẩn để các shortcut thực xuất mở đúng khung mới. Giữ bộ lọc/bản nháp của Đặt hàng, không ghi khi chỉ mở tác vụ. Áp dụng mockup và trang thật, giữ toàn bộ bước tách/chuyển/kiểm thực xuất/xác nhận hiện có. Kiểm thử DOM/luồng liên quan đạt.
+
+03/11/2026 — Đối chiếu bản export CHUYỂN TKS2 lên WEB (VK-DUNG / THÊM DÒNG MỚI): catalog đã đủ 42 cột A:AP đúng thứ tự, cộng Khóa dòng. Nguyên nhân nhìn thiếu là mặc định chỉ bật 19 cột. Bật đủ mặc định ở mockup/trang thật mới, Chọn cột có Đủ 42 cột TKS2 / Xem gọn, sửa bộ đếm không tính Khóa dòng vào 42. Trang thật giữ lựa chọn riêng đã lưu, có thể bật lại preset đủ. Không bổ sung trường thanh toán của tab tên TKS2 vì tab đó là bảng khác. Kiểm luồng DOM liên quan đạt.
+
+03/11/2026 — Chuẩn hóa cột ngày Thu mua: Lên list / Đặt / Phát / DK đến / Đến / Ngày đo dùng metadata datetime; form và ô sửa dùng datetime-local, nhãn ngày hiển thị dd/MM/yyyy HH:mm khi có giờ. Ngày cũ không có giờ vẫn giữ ngày, không suy diễn giờ hay ngày từ ghi chú. Mockup chuyển nội dung tự do cũ của Đặt/Phát/DK đến/Đến nguyên văn sang Ghi chú 2; không chỉnh nguồn Sheet. Import server/preview kiểm ngày-giờ hợp lệ, Excel xuất kiểu số ngày với định dạng ngày/giờ và đọc lại giữ giờ-phút. listed_at ở migration 0101 chưa áp DB đổi từ DATE thành TIMESTAMP WITHOUT TIME ZONE để lưu giờ địa phương UTC+7; bốn trường *_note cũ giữ tên khóa API/TEXT nhưng giá trị phải ISO ngày hoặc ngày-giờ. Chưa seed/migrate/deploy. Kiểm tra DOM+Excel 33 đạt, service 19 đạt, import/live UI liên quan đạt.
+
+
+### 03/11/2026 — Chốt lại thao tác phương án cont ngay trong Đặt hàng
+- Yêu cầu mới thay thế khung Xếp cont hai bảng: ẩn hoàn toàn khung/nút chọn–so sánh cont, giữ các helper nghiệp vụ cũ để tương thích lịch sử; production đưa + Tạo cont về thanh tác vụ Đặt hàng.
+- Mockup thêm public/prototypes/thu-mua/planning.js: sửa ô số lượng, mã, cont trên bảng tạo bản nháp; Chỉ số cont/KPI phản ánh ngay cả cont nguồn và đích, không lấy bộ lọc bảng dưới làm tập dữ liệu tính cont. Hiển thị tấn/m³ so giới hạn xe, phần còn/vượt và cảnh báo thiếu số đo. Thiếu số đo không được coi là phù hợp; cảnh báo tham chiếu không khẳng định chắc chắn xếp vừa thực tế.
+- Thêm mã bất kỳ qua form lấy lại dữ liệu lần đặt gần nhất; chọn cont để thử, chưa cấp khóa chính thức đến khi xác nhận. Có Hủy bản nháp, kiểm trước/phiên bản khi lưu, không đưa dòng mới chưa lưu vào export. Production lưu draft/newRows riêng theo user trong sessionStorage; bản nháp không phát SSE.
+- API tạo dòng nhận contId tùy chọn; PATCH dòng nhận contId cùng số lượng trong một giao dịch, kiểm khóa lạc quan của cùng trường. Không còn bắt buộc mã mới phải đi qua hàng chờ nếu người dùng đã chọn cont trong form.
+- Trạng thái cont là dropdown 1–4 trực tiếp, cho sửa lại, không mở wizard bốc/xác nhận về. POST /api/purchase-orders/status vẫn yêu cầu view + edit; đích 3 cần depart, đích 4 cần arrive; kiểm version, audit status_edit, projection nguyên tử. Không tự cộng tồn, không tự ghi nhận đã nhận đủ, không bịa ngày/kho hoặc ảnh chụp thực xuất. Luồng depart/arrive có manifest cũ vẫn tồn tại ở API, không phải điều kiện dropdown mới.
+- Nút Việt/中文 chỉ áp dụng #mainHead / #orderTable th (43 nhãn gồm khóa dòng); không đổi bảng Chỉ số cont, bộ lọc, tác vụ, popup hay dữ liệu.
+- Chưa migrate/seed/chuyển nguồn/deploy; source_mode=sheets vẫn chặn ghi. Kiểm DOM/mockup/Excel/API/service/quyền/scoped headers bằng bộ kiểm tra liên quan; PostgreSQL thật/nhiều tài khoản thực vẫn là bước staging.
+
+Kiểm tra cuối phương án cont 03/11/2026: 83 ca đạt, 0 lỗi (DOM mockup/live, Excel, import, service/PGlite, routes và phạm vi ngôn ngữ). Chưa kiểm trình duyệt production / PostgreSQL đa kết nối thật.
+
+03/11/2026 — Thu mua: giảm padding ô xuống 4px × 5px, font dữ liệu 11px, tiêu đề 9px và cho xuống dòng. Cột số khởi tạo theo giá trị đã định dạng thay vì chiều dài nhãn, cột ngày theo chuỗi ngày/giờ, không ép bảng ít cột giãn đủ khung; giá NET chưa đủ chi phí hiển thị — với tooltip để tránh bẻ thành nhiều dòng. Giữ tay kéo cột và độ rộng tùy chỉnh. Áp dụng mockup và trang thật; kiểm tra luồng DOM liên quan đạt.
+
+03/11/2026 — Cột Trạng thái cont ở từng dòng Đặt hàng là dropdown dùng chung trạng thái của cont, đồng bộ ngay bảng Chỉ số cont và mọi dòng cùng cont; không tạo trạng thái riêng cho mã hàng. Bản nháp đổi tên cont dùng trạng thái của cont đích đang xem thử. Dòng Cont chờ xếp chưa có cont thực nên cần chọn cont trước. UI thật dùng chung handler/API /status với bảng trên, giữ kiểm quyền/phiên bản/audit và không mở wizard. Kiểm 13 ca live UI và 2 ca mockup tương tác trọng điểm đạt.
+
+- 2026-11-03: Bảng thu mua mặc định ẩn Khóa dòng, cho bật/tắt trong Chọn cột; hiển thị ngày dd/MM (giữ nguyên ngày giờ gốc). Mockup cho tiêu đề xuống dòng và giới hạn kéo cột theo nội dung dữ liệu, không theo độ dài tiêu đề. Kiểm tra 3 ca ngày/cột/mức rộng tối thiểu đạt.
+
+- Thu mua: độ rộng mặc định mọi cột đặt bằng mức tối thiểu theo dữ liệu; tiêu đề xuống dòng, vẫn kéo giãn được. Đổi khóa bố cục mockup để độ rộng cũ không che mặc định mới. 3 kiểm tra cột đạt.
+
+- Thu mua: thu sát ô số theo ảnh mẫu (đệm ngang 3px). Sửa mức sàn 64px của shared table-controls đang ngăn mặc định tối thiểu: hỗ trợ data-table-min-width riêng cho bảng, giữ mặc định bảng khác. Hai kiểm tra độ rộng đạt.
+
+- Điều chỉnh theo xác nhận: chỉ cột số thu sát mức tối thiểu; cột chữ/ngày/ghi chú trở về độ rộng dễ đọc. Tiêu đề vẫn xuống dòng và cột vẫn kéo giãn được. Hai kiểm tra liên quan đạt.
+
+
+03/11/2026 — Thu mua: hoàn thiện 5 thao tác trên bảng đặt hàng. Tách / Chuyển ở từng mã cho nhập số thùng và tìm cont đích; chuyển toàn bộ giữ khóa, tách một phần xem trước .01/.02, chi phí hai nhánh cần nhập lại. Thanh ghim theo cont hiển thị tải trọng/thể tích theo bản nháp, cảnh báo vượt/thiếu số đo. Có đếm, tìm và xem riêng dòng chưa lưu, giữ bộ lọc cá nhân, lưu nháp theo phiên và nhắc khi đóng trang. Bộ chọn cont có tìm kiếm/trạng thái/tấn/m³. Xác nhận nhóm theo cont với chênh lệch tải/khối và chi tiết thu gọn. Phương án có tách gửi một giao dịch /api/purchase-orders/plan gồm sửa/tách/thêm; phiên bản cũ hủy cả giao dịch. Dùng chung public/shared/purchase-tasks.{js,css}; mockup tích hợp qua public/prototypes/thu-mua/tasks.js, giao diện thật qua purchase.js. Chưa migration/seed/deploy.
+
+
+04/11/2026 — Tên cont ở bảng Đặt hàng dùng dropdown trực tiếp tại ô, bỏ popup chọn cont. Chọn cont vẫn tạo bản nháp và cập nhật chỉ số cont nguồn/đích, chỉ ghi sau xác nhận. Áp dụng mockup và giao diện thật; kiểm tra dropdown mockup và 14 ca live UI đạt.
+
+
+04/11/2026 — Quy tắc tách mã mới thay luồng tự chia thùng: bấm Tách dòng tạo nhánh .01/.02 trong bản nháp, cha giữ số thùng, con để trống và cùng cont ban đầu. Nhân viên sửa số thùng hai nhánh độc lập và chọn cont bằng dropdown. Con chưa nhập số nguyên dương thì chặn xác nhận/lưu; ô trống chưa cộng vào tải/khối. Không ràng buộc tổng mới bằng số thùng trước tách theo yêu cầu nhập tay. API plan manual lưu số lượng cha/con đã nhập trong một giao dịch; vẫn giữ kiểm phiên bản, khóa lịch sử và xóa chi phí cần nhập lại. Chưa migration/deploy.
+
+
+04/11/2026 — Đơn giản hóa thao tác Thu mua theo xác nhận: nút dòng là Tách dòng; loại luồng popup tách số lượng cũ khỏi shared helper. Thanh ghim chỉ chọn tên cont bằng dropdown và hiển thị tấn/m³/cảnh báo. Nút Lưu thay đổi và Xem các dòng đã sửa đặt ở thanh công cụ bảng, toggle chuyển sang Xem tất cả dòng khi bật. Không còn nút Áp dụng vào bản nháp/Lưu phương án/Tìm dòng chưa lưu. 17 kiểm tra UI liên quan đạt, chưa deploy.
+
+
+04/11/2026 — Làm mới giao diện toàn module Thu mua bằng public/shared/purchase-workspace.css, dùng chung mockup và trang thật. Đồng bộ panel/bộ lọc/thanh công cụ/dialog, KPI gọn và số tabular; giữ độ rộng cột và kéo giãn. Màu số liệu theo ý nghĩa: số lượng xanh dương, tấn/m³ xanh ngọc, thành tiền tím, cảnh báo vàng; trạng thái vẫn có nhãn chữ, bản nháp/xung đột có dấu riêng. Có palette sáng/tối và bố cục màn hình hẹp. 17 kiểm tra hành vi liên quan đạt; chưa xác minh hình ảnh trên trình duyệt, chưa deploy.
+
+
+04/11/2026 — Theo phản hồi UI: bỏ balanceBar và thanh chỉ số phụ trong mockup. balance.js chỉ quản lý cont theo dõi: chọn từ bảng Chỉ số cont, bộ lọc đặt hàng giữ độc lập; sao chép nguyên dòng chỉ số + tiêu đề vào vùng sticky khi dòng nguồn cuộn khuất phía trên. Dòng ghim cập nhật từ renderConts theo bản nháp, có Bỏ ghim; không nhân bản control chỉnh sửa. Cuộn trở lại dòng gốc thì ẩn vùng ghim. Kiểm tra 3 ca chọn/ghim/cập nhật và sửa/tách đạt trong DOM; chưa kiểm trực quan trình duyệt.
+
+
+04/11/2026 — Mockup chỉ mở lịch sử dòng khi nháy đúp ô Mã SP; các ô khác và nút trong ô mã không mở popup. Cập nhật hướng dẫn và kiểm tra DOM đạt.
+
+
+04/11/2026 — Mockup: bấm một lần ô nhập tay để sửa ngay, tự focus và chọn nội dung hiện có để nhập thay. Cột công thức vẫn chỉ đọc, dropdown giữ nguyên; nháy đúp Mã SP mở lịch sử. Hai kiểm tra tương tác đạt.
+
+
+04/11/2026 — Sửa ô số thùng mã con bị cắt do input số chưa theo kích thước cột: dùng cell-input text/inputmode numeric, rộng 100%, min-width 0, căn phải. Enter hoặc rời ô cập nhật bản nháp và số liệu tính toán. Kiểm tra nhập 77 giữ giá trị, tổng SL 23,100 và chặn lưu trống đạt.
+
+
+04/11/2026 — Bỏ spinner tăng/giảm của ô nhập số trên giao diện Thu mua (mockup và trang thật) qua shared CSS; giữ type number và kiểm hợp lệ số. Ô sửa bảng luôn nằm gọn trong cột.
+
+
+05/11/2026 — Hoàn thiện năng suất trên mockup Thu mua bằng public/prototypes/thu-mua/productivity.js: dán vùng Excel kiểm cả vùng trước staging; Enter/Tab điều hướng; đặt lại từ lần lên list gần nhất; chuyển cont nhiều dòng; bộ lọc nhanh riêng; danh sách lỗi có điều hướng ô. Thêm hoàn tác từng thao tác và từng lần lưu với so sánh trạng thái dòng trước khi khôi phục, tách xử lý hai nhánh; xóa mềm có xác nhận/lưu, khôi phục và audit, stale delete chặn cả lần lưu. Dữ liệu thử/lịch sử/undo giữ theo sessionStorage; menu Tác vụ tránh thêm quá nhiều nút. Hướng dẫn public/prototypes/thu-mua/USAGE.md. Đây là mở rộng mockup, chưa có API/DB cho xóa/khôi phục/undo và chưa triển khai các tiện ích này vào trang production.
+
+
+05/11/2026 — Cột NV trên mockup đổi thành dropdown ngay tại ô, danh sách tên từ nhân viên/dữ liệu hiện có. Chọn NV tạo bản nháp, hỗ trợ hoàn tác và lưu như ô thường; kiểm tra dropdown đổi/hoàn tác đạt.
+
+
+05/11/2026 — Chuẩn bị production Thu mua: chuyển các tiện ích dán bảng/bàn phím/đặt lại/chuyển cont/lọc nhanh/soát lỗi sang purchase.js; dropdown NV từ API HR rút gọn, lưu buyer_employee_id và kiểm active ở lần ghi. Thêm migration 0102_purchase_operations.sql (chưa chạy): xóa mềm và snapshot thao tác máy chủ, API trash/delete/restore/operations/undo có quyền edit/view, actor ownership, CAS và projection trong cùng transaction. Hoàn tác nhiều bước và hai nhánh tách được kiểm trước khi đảo; import/xuất/nhận không hoàn tác bằng endpoint này. Có công cụ purchaseOrdersReconcile.js đọc hai JSON chuẩn hóa, không ghi DB. Chi tiết schema/giới hạn/cách đối chiếu tại server/purchaseOrders/ROLLOUT.md. Chưa seed/chạy migration/cutover/deploy; chưa đối chiếu nguồn thật hay kiểm nhiều trình duyệt/máy chủ thật.
+
+05/11/2026 — Kiểm tra cuối phần chuẩn bị production: 65 ca service/route/import/reconcile/UI đạt (PGlite + jsdom), gồm phân quyền API mới, hai actor sửa khác/cùng ô, stale delete, import bị xóa sau preview, undo nhiều bước/hai nhánh và mất mạng giữ draft/filter. Chưa áp dụng migrations trên DB thật, chưa kiểm nhiều trình duyệt/SSE đa tiến trình thực tế.
+
+
+05/11/2026 — Đợt hoàn thiện trước nghiệm thu: thêm 0103_purchase_requests.sql chưa áp dụng, mã Idempotency-Key theo tài khoản/fingerprint và kết quả ghi chung transaction; UI outbox giữ request qua mất mạng/reload, chỉ dọn đúng draft đã gửi khi xác nhận lại, không mất draft khác. Đồng bộ ghim dòng cont live với mockup (chọn theo dõi không tự lọc), lịch sử theo họ khóa và chỉ dblclick Mã SP. Hoàn tác có preview trường/giá trị, audit có liên kết operation. Tối ưu lookup và không dựng packing ẩn; có test 5,001 dòng UI và 5,000 dòng/500 sửa service. Bảng phạm vi server/purchaseOrders/READINESS.md ghi 38/40 tiêu chí đã triển khai/kiểm cục bộ (95% triển khai), không phải nghiệm thu production; nguồn thật và staging nhiều tài khoản là hai cổng bắt buộc còn lại. Chưa migrate/seed/cutover/deploy.
+
+05/11/2026 — Kiểm tra cuối đợt hoàn thiện: 78 ca đạt, bao gồm replay/rollback request, outbox sau mất phản hồi và reload, không dọn draft khác, lịch sử họ khóa, preview undo và dữ liệu lớn. Chưa thay đổi dữ liệu hệ thống thật.
+
+
+05/11/2026 — Sửa chồng lấn dòng cont ghim và tiêu đề cột Đặt hàng: tính offset theo đáy khối ghim và vị trí viewport bảng, cập nhật khi cuộn/resize/đổi chiều cao; giữ sticky tiêu đề bên dưới và reset offset khi bỏ ghim. Áp dụng mockup và live; kiểm tra hình học DOM cả hai đạt.
+
+
+05/11/2026 — Theo công thức nguồn mới: Tiền VC cont tự tính = freight_base / freight_capacity × tổng m³ bản nháp (mặc định 202,000,000 / 170), làm tròn đồng; VC/m³ lấy cùng định mức. Có nhập đè trực tiếp (mode manual), Dùng tự tính và sửa tiền/m³ chuẩn; dòng chờ xếp có ước tính. Không tự phân bổ hay sửa chi phí/giá NET từng mã. Shared purchase-freight.js dùng chung mock/live; mock freight.js, xuất Excel cont dùng số hiển thị. Migration 0104 chưa chạy giữ cước hiện có ở manual; cont tạo mới chọn formula. API cập nhật mode/định mức kiểm phiên bản/quyền/audit và giá trị hợp lệ. Kiểm tra mẫu 120 m³=142,588,235; 170 m³=202,000,000.
+
+
+05/11/2026 — Quyết định mới thay thế quy tắc VC dòng nhập tay: Tiền VC từng mã = tổng m³ mã × VC/m³ cont. Tính lại khi đổi số thùng, số đo, cont hoặc cước cont; Tiền VC dòng là cột suy ra, không nhập/import đè. Giá NET và projection dùng cùng phân bổ. Cước cont nhập tay chia cho tổng m³ cont; thiếu số đo thì chưa phân bổ để tránh tính sai. Giữ độ chính xác đơn giá khi tính, làm tròn đồng khi hiển thị. Dòng cont ghim cho sửa Tiền VC và công thức qua cùng luồng kiểm tra/lưu của bảng gốc. Chưa áp migration hoặc deploy.
+
+05/11/2026 — Xóa/để trống Tiền VC cont khôi phục tự tính chuẩn 202,000,000 / 170 × tổng m³; nhập 0 vẫn là cước tay bằng 0. Dùng chung ở bảng gốc, bản ghim và API freight:null.
+
+
+### Thu mua — chuẩn công thức 05/11/2026 (thay quy tắc VC dòng nhập tay cũ)
+
+Nguồn kiểm chứng: công thức Sheet đã ghi nhận trong memory phiên d23eeb66 và các quyết định mới của người dùng. Lần rà này đối chiếu code, bộ kiểm thử và PostgreSQL cục bộ; chưa nghiệm thu dữ liệu Sheet hiện hành/staging.
+
+| Chỉ số | Công thức / đơn vị |
+|---|---|
+| Tổng SL | SL/thùng × số thùng |
+| Tổng tệ | Tổng SL × giá tệ + VC trước (CNY) |
+| Tiền hàng | Tổng tệ × tỉ giá VND/CNY |
+| Tổng tấn | kg/thùng × số thùng / 1,000 |
+| Tổng m³ | m³/thùng × số thùng |
+| VC cont tự tính | 202,000,000 / 170 × tổng m³ (hoặc định mức đã sửa) |
+| VC/m³ | Tự tính: tiền chuẩn / m³ chuẩn; nhập tay: tiền cont / tổng m³ đầy đủ của cont |
+| Tiền VC mã | Tổng m³ mã × VC/m³ cont |
+| Giá NET VND/cái | (Tiền hàng + Tiền VC mã + VC sau CNY × tỉ giá) / Tổng SL; không cộng Thuế |
+| L/c TQ; g/c TQ | m³/thùng × 1,000 / SL/thùng; kg/thùng × 1,000 / SL/thùng |
+| Lệch số đo | (Số đo TQ − số đo kho) / số đo kho; hiển thị % |
+| Tỉ lệ | Tổng tấn / tổng m³; hiển thị % |
+
+Ô trống = chưa biết, không mặc định bằng 0. Giá/chi phí 0 hợp lệ; tỉ giá phải >0 hoặc trống. Số thùng và SL/thùng là số nguyên dương; chặn số không hữu hạn, âm, nhóm phẩy sai và tích vượt Number.MAX_SAFE_INTEGER. Kg/m³/số đo kho 0 được coi là chưa có số đo sử dụng được. Không chia cho 0 và không xuất NaN/Infinity. Thiếu dữ liệu thì kết quả phụ thuộc để trống; tổng tải/khối chỉ cộng phần biết và giữ cảnh báo thiếu số đo. Cont nhập cước tay mà còn mã thiếu m³/số thùng thì chưa phân bổ cho mọi mã, tránh dồn cước sai cho số mã còn lại.
+
+Chuẩn nhập/xuất: 1,234.56; số Excel thật giữ nguyên độ chính xác. Tổng tệ hiển thị 3 chữ số thập phân, VND hiển thị đồng; không làm tròn giữa chừng hoặc lấy số đã hiển thị làm đầu vào phép tính. Tổng các dòng đã làm tròn hiển thị có thể chênh vài đồng với tổng làm tròn một lần; dữ liệu gốc không bị điều chỉnh để bù chênh. Xóa tiền cont khôi phục chuẩn 202,000,000 / 170; nhập 0 là cước 0. Tách mã con chưa nhập số thùng thì chưa cộng vào tải/khối/cước. Đổi cont cập nhật cả nguồn và đích.
+
+Mã dùng chung: public/shared/purchase-calculations.js và purchase-freight.js; mockup/live/export dùng cùng phép tính, SQL projection kiểm chéo với export qua PGlite. Bộ đối soát bổ sung FX, VC sau, Thuế và số đo kho. Chưa migrate/cutover/deploy.
+
+
+05/11/2026 — Triển khai đợt 1–2 trang Thu mua thật: index.html dùng header/sidebar chung, tổng quan 6 chỉ số, Chỉ số cont trên/Đặt hàng dưới/Nhật ký riêng; thêm workspace.css riêng cho trang production. Bảng cont có 15 cột gồm cước/m³, tỉ lệ, ngày về/lịch bốc, nhà VC/cont TQ/người xếp; giữ chỉnh cước/trạng thái và bản ghim có cùng độ rộng. Tạo cont chuyển lên panel cont và khóa khi chỉ xem.
+Bộ lọc đặt hàng có trạng thái, HR ID/tên legacy, NCC, VAT, ngày lên list và cảnh báo, tìm không dấu. Lọc cont độc lập. Bộ lọc lưu riêng theo tài khoản, giữ nguyên khi người khác sửa mất giá trị đang lọc; xuất file/dán bảng dùng cùng tập dòng. Tổng quan tính theo lọc/bản nháp, cảnh báo thiếu số liệu thay 0 giả. Thêm mã ưu tiên thông tin chính, phần phụ thu gọn, lấy cont đang theo dõi và không mang ngày đã phát/đã đến từ đơn cũ.
+107 ca kiểm thử module đạt, trong đó 32 ca trang thật; kiểm thêm ID HTML không trùng và asset tồn tại. Đây là jsdom/PGlite, chưa nghiệm thu CSS/ảnh thực tế trên trình duyệt. Không có SUPABASE_TEST_DB_URL trong môi trường local hiện tại (chỉ kiểm cờ, không in secret); chưa chạy app kết nối DB thật, migration/seed/deploy/cutover. Cần môi trường thử nghiệm/DB độc lập để mở link trang thật và nghiệm thu bước 3–4. Câu hỏi môi trường thử nghiệm đã gửi người dùng.
