@@ -2911,6 +2911,74 @@
       text-align: left;
     }
 
+    /* ---------- Báo cáo hàng hóa: thanh tiêu đề cyan, cỡ chữ gọn, giống bảng Kiểm kê (stocktake.css #stTable) ----------
+       Chữ trắng trên #0e7490 đạt tương phản 5:1 ở cả giao diện sáng / tối; cột đang sắp xếp đậm hơn một nấc. */
+    #productReportTable thead th {
+      background: #0e7490;
+      color: #fff;
+      border-bottom-color: #155e75;
+      z-index: 2;
+      padding: 6px 8px;
+      font-size: 11px;
+      line-height: 1.3;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    #productReportTable thead th .sort-button,
+    #productReportTable thead th .sort-indicator {
+      color: #fff;
+      font-size: 11px;
+    }
+
+    #productReportTable thead th[aria-sort="ascending"],
+    #productReportTable thead th[aria-sort="descending"] {
+      background: #155e75;
+    }
+
+    #productReportTable thead th[aria-sort="ascending"] .sort-indicator,
+    #productReportTable thead th[aria-sort="descending"] .sort-indicator {
+      color: #a5f3fc;
+    }
+
+    /* Tô màu cột tồn: Hà Nội xanh dương, Sài Gòn tím (tránh xanh lá / vàng / cam / đỏ dành cho rule Ngày cần đặt). */
+    :root {
+      --pr-hn-bg: rgba(59, 130, 246, .18);
+      --pr-sg-bg: rgba(167, 139, 250, .2);
+      --pr-days-low-bg: rgba(16, 185, 129, .25);
+      --pr-days-low-text: #6EE7B7;
+      --pr-days-mid-bg: rgba(250, 204, 21, .22);
+      --pr-days-mid-text: #FDE047;
+      --pr-days-high-bg: rgba(249, 115, 22, .32);
+      --pr-days-high-text: #FDBA74;
+      --pr-days-over-bg: rgba(239, 68, 68, .28);
+      --pr-days-over-text: #FCA5A5;
+    }
+
+    :root[data-theme="light"] {
+      --pr-hn-bg: #DBEAFE;
+      --pr-sg-bg: #EDE9FE;
+      --pr-days-low-bg: #C6EFCE;
+      --pr-days-low-text: #006100;
+      --pr-days-mid-bg: #FFEB9C;
+      --pr-days-mid-text: #9C5700;
+      --pr-days-high-bg: #FFC000;
+      --pr-days-high-text: #3D2B00;
+      --pr-days-over-bg: #FFC7CE;
+      --pr-days-over-text: #9C0006;
+    }
+
+    #productReportTable td.pr-hn { background: var(--pr-hn-bg); }
+    #productReportTable td.pr-sg { background: var(--pr-sg-bg); }
+    #productReportTable td.pr-avail { font-weight: 700; }
+
+    /* Rule màu Ngày cần đặt, sao đúng Conditional Formatting của file Excel:
+       < 10,5 xanh lá · 10,5 đến dưới 20 vàng · 20 đến 30 cam · > 30 đỏ nhạt (ô trống "—" không tô). */
+    #productReportTable td.pr-days-low { background: var(--pr-days-low-bg); color: var(--pr-days-low-text); font-weight: 700; }
+    #productReportTable td.pr-days-mid { background: var(--pr-days-mid-bg); color: var(--pr-days-mid-text); font-weight: 700; }
+    #productReportTable td.pr-days-high { background: var(--pr-days-high-bg); color: var(--pr-days-high-text); font-weight: 700; }
+    #productReportTable td.pr-days-over { background: var(--pr-days-over-bg); color: var(--pr-days-over-text); font-weight: 700; }
+
     .name-cell {
       color: var(--text);
       font-weight: 500;
@@ -4222,7 +4290,7 @@
                   </div>
                 </div>
                 <div class="scroll-list" style="max-height:600px;">
-                  <table class="fixed-table" data-table-key="dashboard-table-2">
+                  <table class="fixed-table" id="productReportTable" data-table-key="dashboard-table-2">
                     <!-- 35 cột theo thứ tự sheet BC CHUNG (UI = Excel xuất ra): 19 cột file HÀNG HÓA.xlsx + Khách lớn nhất + các cột bổ sung (Giá trị có bán, SL bán 30 ngày theo cơ sở, Đứt, Ngày, SL đơn, Tăng trưởng, DS khách lớn nhất, Đơn giá).
                          data-price-column = cột nhạy cảm chỉ Quản lý/Trợ lý (reports.products.price) thấy. data-hint = chú giải khi rê chuột
                          (không dùng title: nút sắp xếp thay nội dung th và che mất title của th). Không dùng ký tự dấu lớn hơn trong data-hint. -->
@@ -8308,9 +8376,30 @@
 
     // Ô số có thể ÂM (Có bán khi hàng bị giữ quá tồn, Ngày cần đặt) hoặc chưa có (null) nên KHÔNG dùng mốc -1 như
     // productContainerQuantityCell: ô "—" không có data-sort-value → xếp cuối ở cả hai chiều sắp xếp.
-    function productReportNullableCell(value, format) {
-      if (value === null || value === undefined || !Number.isFinite(Number(value))) return '<td class="mono">—</td>';
-      return '<td class="mono" data-sort-value="' + Number(value) + '">' + format(value) + '</td>';
+    // cls (tuỳ chọn) = class tô màu thêm cho ô; ô "—" chỉ giữ emptyCls (cột tồn HN/SG vẫn tô cả khi trống, ô Ngày cần đặt thì không).
+    function productReportNullableCell(value, format, cls, emptyCls) {
+      if (value === null || value === undefined || !Number.isFinite(Number(value))) return '<td class="mono' + (emptyCls ? ' ' + emptyCls : '') + '">—</td>';
+      return '<td class="mono' + (cls ? ' ' + cls : '') + '" data-sort-value="' + Number(value) + '">' + format(value) + '</td>';
+    }
+
+    // Ô tồn / có bán tô theo cơ sở: 'pr-hn' (Hà Nội) hoặc 'pr-sg' (Sài Gòn); Có bán thêm 'pr-avail' (đậm).
+    function productReportStockCell(value, region, bold) {
+      const cls = region + (bold ? ' pr-avail' : '');
+      return productReportNullableCell(value, fmtNumber, cls, cls);
+    }
+
+    // Rule màu Ngày cần đặt (sao Conditional Formatting Excel, thứ tự ưu tiên 20–30 → >30 → 10,5–20 → <10,5):
+    // < 10,5 xanh lá · [10,5; 20) vàng · [20; 30] cam · > 30 đỏ nhạt. Số ÂM (hết hàng, bị giữ quá tồn) cũng thuộc nhóm < 10,5.
+    function productReportDaysToOrderClass(value) {
+      const n = Number(value);
+      if (n > 30) return 'pr-days-over';
+      if (n >= 20) return 'pr-days-high';
+      if (n >= 10.5) return 'pr-days-mid';
+      return 'pr-days-low';
+    }
+    function productReportDaysToOrderCell(value) {
+      const known = value !== null && value !== undefined && Number.isFinite(Number(value));
+      return productReportNullableCell(value, function (v) { return VN_NUMBER_1DP.format(Number(v)); }, known ? productReportDaysToOrderClass(value) : '');
     }
 
     // Tỉ trọng khách lớn nhất: số > 0 là nút dẫn tới mục Doanh số theo khách của hộp chi tiết; 0 hoặc chưa có thì chỉ là chữ.
@@ -8355,19 +8444,19 @@
         productContainerQuantityCell(p.unloadedQty) + productContainerQuantityCell(p.loadedQty) +
         productReportNullableCell(p.availableValueHanoi, fmtTableMoney) +
         productReportNullableCell(p.qtySold30dHanoi, fmtNumber) +
-        '<td class="mono" data-sort-value="' + p.stockHanoi + '">' + fmtNumber(p.stockHanoi) + '</td>' +
-        productReportNullableCell(p.availableHanoi, fmtNumber) +
+        '<td class="mono pr-hn" data-sort-value="' + p.stockHanoi + '">' + fmtNumber(p.stockHanoi) + '</td>' +
+        productReportStockCell(p.availableHanoi, 'pr-hn', true) +
         '<td class="mono" data-sort-value="' + (p.transferRequest || 0) + '">' + fmtNumber(p.transferRequest || 0) + '</td>' +
         '<td class="mono" data-sort-value="' + (p.inTransit || 0) + '">' + fmtNumber(p.inTransit) + '</td>' +
-        '<td class="mono" data-sort-value="' + p.stockSaigon + '">' + fmtNumber(p.stockSaigon) + '</td>' +
-        productReportNullableCell(p.availableSaigon, fmtNumber) +
+        '<td class="mono pr-sg" data-sort-value="' + p.stockSaigon + '">' + fmtNumber(p.stockSaigon) + '</td>' +
+        productReportStockCell(p.availableSaigon, 'pr-sg', true) +
         productReportNullableCell(p.qtySold30dSaigon, fmtNumber) +
         productReportNullableCell(p.availableValueSaigon, fmtTableMoney) +
         productReportNullableCell(p.totalStock, fmtNumber) +
         '<td class="mono" data-sort-value="' + p.availableToSell + '">' + fmtNumber(p.availableToSell) + '</td>' +
         '<td class="mono" data-sort-value="' + p.qtySold30d + '">' + fmtNumber(p.qtySold30d) + '</td>' +
         productReportStockoutCell(p.stockoutDaysHanoi) + productReportStockoutCell(p.stockoutDaysSaigon) +
-        productReportDaysCell(p.daysToOrder) +
+        productReportDaysToOrderCell(p.daysToOrder) +
         productReportDaysCell(p.daysSaigonTransit) + productReportDaysCell(p.daysHanoi) + productReportDaysCell(p.daysBothBranches) +
         productReportNullableCell(p.revenue90d, fmtTableMoney) +
         '<td class="mono" data-sort-value="' + p.customerCount90d + '">' + fmtNumber(p.customerCount90d) + '</td>' +
