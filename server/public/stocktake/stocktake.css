@@ -183,3 +183,18 @@
 .vt-dialog .vt-field textarea{resize:vertical}
 .vt-dialog .vt-field textarea:focus-visible,.vt-dialog .vt-field input[type="date"]:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 .vt-dialog .vt-dialog-actions button:disabled{opacity:.5;cursor:not-allowed}
+
+/* Menu "Thao tác đợt": khung đợt phải cho menu tràn ra ngoài (mặc định .locations-panel cắt phần thừa). */
+.st-sessions{overflow:visible}
+.st-actions{position:relative;margin-left:auto}
+.st-actions[hidden]{display:none}
+.st-actions summary{display:inline-flex;align-items:center;gap:6px;cursor:pointer;list-style:none;white-space:nowrap}
+.st-actions summary::-webkit-details-marker{display:none}
+.st-actions summary::after{content:"▾";font-size:11px}
+.st-actions-list{position:absolute;z-index:30;top:calc(100% + 4px);right:0;display:flex;flex-direction:column;gap:6px;min-width:150px;padding:8px;
+  border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel);box-shadow:0 8px 24px rgba(0,0,0,.25)}
+.st-actions-list button{width:100%;justify-content:center}
+@media(max-width:600px){
+  .st-actions{margin-left:0}
+  .st-actions-list{right:auto;left:0}
+}
