@@ -37,7 +37,7 @@ async function start(t, { user = MANAGER, scope = 'Cả hai', events, fail } = {
     getBoard: async (ctx, id) => { calls.push(['getBoard', id, ctx.scope]); return { session: SESSION, rows: ROWS, employees: [{ id: 501, name: 'Cảnh' }] }; },
     createSession: record('createSession'), saveLine: record('saveLine'), addLine: record('addLine'), saveNote: record('saveNote'),
     saveTag: record('saveTag'), updateSession: record('updateSession'), saveCells: record('saveCells'), codeHistory: record('codeHistory'), closeSession: record('closeSession'),
-    cancelSession: record('cancelSession'), restoreSession: record('restoreSession'), dependents: record('dependents')
+    cancelSession: record('cancelSession'), restoreSession: record('restoreSession'), dependents: record('dependents'), getOrderStatus: record('getOrderStatus')
   };
   const app = express();
   app.use((req, res, next) => { if (user) req.user = user; next(); });
@@ -198,4 +198,11 @@ test('Huy / khoi phuc / dot phu thuoc / nap lai sheet: chi Quan ly; xem dot da h
   }
   await fetch(stock.base + '/sessions?includeCancelled=1');
   assert.deepEqual(stock.calls, [['listSessions', ['hanoi', 'saigon']]], 'khong phai Quan ly: bo qua includeCancelled');
+});
+
+test('order-status: nguoi chi co quyen xem goi duoc', async t => {
+  const viewer = { id: 'v', vaiTro: 'Nhân viên kho', featurePermissions: { 'stocktake.view': true } };
+  const { base, calls } = await start(t, { user: viewer });
+  assert.equal((await fetch(base + '/sessions/7/order-status')).status, 200);
+  assert.deepEqual(calls.at(-1).slice(0, 2), ['getOrderStatus', 7]);
 });

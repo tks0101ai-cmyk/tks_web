@@ -563,3 +563,36 @@ test('gom don: don 23:30 van thuoc ngay do, chi tinh khach TEAM + so, gia von gi
   assert.equal(rowOf(board, 'LE1').cost, 511.41);
   assert.equal(rowOf(board, 'LE1').diffValue, -511410);
 });
+
+test('sua ngay dot dang mo: ghi lich su, kiem tra ngay + version, dot da dong bi chan', async () => {
+  const { db, service, session } = await fixture();
+  const { session: updated } = await service.updateSession(ctx(), session.id, { dateFrom: '2026-10-29', dateTo: '2026-10-30', version: session.version });
+  assert.deepEqual([updated.dateFrom, updated.dateTo], ['2026-10-29', '2026-10-30']);
+  const board = await service.getBoard(ctx(), session.id);
+  assert.equal(rowOf(board, 'BBB2').counted, 99, 'don 30/10 nay duoc tinh');
+  const { rows } = await db.query(`SELECT before, after FROM stocktake_history WHERE action = 'session_update'`);
+  assert.equal(rows[0].before.dateTo, '2026-10-29');
+  assert.equal(rows[0].after.dateTo, '2026-10-30');
+  await assert.rejects(service.updateSession(ctx(), session.id, { dateFrom: '2026-10-31', version: updated.version }), { statusCode: 400 });
+  await assert.rejects(service.updateSession(ctx(), session.id, { dateTo: 'x', version: updated.version }), { statusCode: 400 });
+  await assert.rejects(service.updateSession(ctx(), session.id, { dateTo: '2026-10-29', version: 99 }), { code: 'STOCKTAKE_CONFLICT' });
+  await service.closeSession(ctx(), session.id, { version: updated.version });
+  await assert.rejects(service.updateSession(ctx(), session.id, { dateTo: '2026-10-29', version: updated.version + 1 }), { code: 'STOCKTAKE_CLOSED' });
+});
+
+test('order-status: dem trong khoang, ngoai khoang bo don huy va qua 14 ngay, revision theo synced_at', async () => {
+  const { db, service, session } = await fixture();
+  await db.exec(`
+    INSERT INTO orders (branch, id, code, order_date, customer_id, raw) VALUES
+      ('hanoi', 108, 'DH108', '2026-11-05 08:15+00', 11, '{"statusValue":"Phiếu tạm"}'),
+      ('hanoi', 109, 'DH109', '2026-11-06 08:15+00', 11, '{"statusValue":"Đã hủy"}'),
+      ('hanoi', 110, 'DH110', '2026-12-30 08:15+00', 11, '{"statusValue":"Phiếu tạm"}');
+  `);
+  const status = await service.getOrderStatus(ctx(), session.id);
+  assert.equal(status.inRange, 2, 'DH101 + DH102 da huy');
+  // DH104 ngay 30/10 + DH108 ngay 05/11; DH109 da huy, DH110 qua 14 ngay.
+  assert.deepEqual(status.outOfRange, { count: 2, from: '2026-10-30', to: '2026-11-05' });
+  await db.exec(`UPDATE orders SET synced_at = now() + interval '1 hour' WHERE id = 101`);
+  assert.notEqual((await service.getOrderStatus(ctx(), session.id)).revision, status.revision);
+  await assert.rejects(service.getOrderStatus(ctx(QL, ['saigon']), session.id), { code: 'BRANCH_OUT_OF_SCOPE' });
+});
