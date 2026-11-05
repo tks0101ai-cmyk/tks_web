@@ -92,7 +92,7 @@ test('chenh theo Cum SP, KK truoc, ghi chu; khong con vi tri kho', () => {
 
 test('toResults: ban chup gon theo ma', () => {
   const board = buildBoard({ lines: [line(1, 1, 'A', 2)], products: [{ code: 'A', name: 'Hang A', stock: 1, cost: 300 }] });
-  assert.deepEqual(toResults(board), [{ code: 'A', name: 'Hang A', counted: 2, stock: 1, cost: 300, diffQty: 1, diffValue: 300, prevDiff: null, otherDiff: null }]);
+  assert.deepEqual(toResults(board), [{ code: 'A', name: 'Hang A', counted: 2, stock: 1, cost: 300, diffQty: 1, diffValue: 300, prevDiff: null, otherDiff: null, prevDiffAuto: null, otherDiffAuto: null }]);
 });
 
 test('applyLineEdits: khong co phan sua thi giu nguyen', () => {

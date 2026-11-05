@@ -437,6 +437,13 @@ Triển khai: migrate 0108 → backend/worker mới → tính lại tăng dần 
 - `public/stocktake/`: bỏ form trong hộp chi tiết, `lineInput` lưu khi rời ô, `saveLine` xếp hàng và nhớ `version`, `Grid.sortLines`, giữ ô đang gõ khi dựng lại bảng.
 - Thiết kế: `docs/superpowers/specs/2026-11-05-stocktake-detail-products-stats-design.md`, kế hoạch: `docs/superpowers/plans/2026-11-05-stocktake-detail-products-stats.md`.
 
+## 05/11/2026 — Kiểm kê: đóng đợt vẫn sửa được, tăng tốc
+
+- Migration `0114`: `lines_frozen_at`, `stocktake_session_lines`. `stocktakeService`: `loadFrozenInputs`, `syncResults`, `openSessionForWrite(..., { allowFrozen })`.
+- `stocktakeExport`: `numberFormat`, cột Đơn. `TEAM_NAME_MATCH_SQL`, `isTeamOrder` theo từ `team`.
+- Tốc độ: `batchDetails` cho `orders`, sắp dòng ngoài giao dịch ở nút cập nhật, cache `counterpart:<id>` 60 giây, `Grid.trailingThrottle`, `startTiming` cho `/api/stocktake`.
+- Thiết kế: `docs/superpowers/specs/2026-11-05-stocktake-close-editable-speed-design.md`, kế hoạch: `docs/superpowers/plans/2026-11-05-stocktake-close-editable-speed.md`.
+
 Cập nhật gần nhất: 05/11/2026.
 
 

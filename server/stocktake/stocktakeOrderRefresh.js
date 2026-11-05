@@ -1,15 +1,16 @@
 'use strict';
 
-// Nut "Cap nhat don Kiot" tren trang Kiem ke: lay ngay cac don vua sua tren KiotViet, chi ghi don TEAM + so.
+// Nut "Cap nhat don Kiot" tren trang Kiem ke: lay ngay cac don vua sua tren KiotViet, chi ghi don cua khach co tu team.
 // KHONG doi checkpoint: luot nen van tu quet lai cua so cua no, ghi de cung noi dung (upsert lap lai vo hai).
 // Khong dung syncDriver.pollEntityOnce vi ham do tien checkpoint va se ghi ca don khong lien quan.
 const { getPool } = require('../db/pool');
+const { timedOperation } = require('../lib/requestTiming');
 
 const MIN_INTERVAL_MS = 15 * 1000;
 const OVERLAP_MS = 5 * 60 * 1000; // dong ho KiotViet lech vai giay so voi may chu
 const NO_CHECKPOINT_WINDOW_MS = 60 * 60 * 1000;
 const MAX_WINDOW_MS = 24 * 60 * 60 * 1000;
-const TEAM_ORDER_NAME = /^\s*TEAM\s*[0-9]/iu; // cung y nghia voi TEAM_NAME_MATCH_SQL trong stocktakeService.js
+const TEAM_ORDER_NAME = /(^|[^\p{L}])team([^\p{L}]|$)/iu; // cung y nghia voi TEAM_NAME_MATCH_SQL trong stocktakeService.js
 
 const isTeamOrder = item => TEAM_ORDER_NAME.test(String((item && (item.customerName || item.CustomerName)) || ''));
 
@@ -50,7 +51,7 @@ function createOrderRefresher({
     const client = await db.connect();
     try {
       await client.query('BEGIN');
-      await ordersEntity.upsertPage(client, branch, items);
+      await ordersEntity.upsertPage(client, branch, items, { prepared: true });
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {});
@@ -69,15 +70,17 @@ function createOrderRefresher({
     try {
       const client = createClient({ ...config, requestOptions: { maxRetries: 2, timeoutMs: 15000 } });
       const query = { ...ordersEntity.listQuery, lastModifiedFrom: await sinceOf(db, branch) };
-      await client.fetchAllPages(ordersEntity.endpoint, query, async items => {
+      await timedOperation('kiotFetch', () => client.fetchAllPages(ordersEntity.endpoint, query, async items => {
         fetched += items.length;
         const team = items.filter(isTeamOrder);
         if (!team.length) return;
         const changed = await changedOnly(db, branch, team);
         if (!changed.length) return;
-        await writePage(db, branch, changed);
+        // Sap dong truoc khi mo giao dich: goi API noi bo cham thi khong giu khoa don, khoa nhan vien cua luot nen.
+        const sorted = ordersEntity.prepareItems ? await timedOperation('sortLines', () => ordersEntity.prepareItems(branch, changed)) : changed;
+        await timedOperation('writeOrders', () => writePage(db, branch, sorted));
         teamOrders += changed.length;
-      });
+      }));
     } catch (error) {
       logger.error('[stocktake] cap nhat don Kiot loi:', error.message);
       throw failure('KIOT_READ_FAILED', 'Không cập nhật được đơn từ KiotViet. Thử lại sau ít phút.');

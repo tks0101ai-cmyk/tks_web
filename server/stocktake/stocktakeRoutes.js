@@ -5,6 +5,7 @@
 const express = require('express');
 const { requireAuth, requireFeature } = require('../auth/authMiddleware');
 const { hasFeature } = require('../auth/featureRegistry');
+const { startTiming } = require('../lib/requestTiming');
 const { resolveBranch } = require('../branch/branchMiddleware');
 const { BRANCHES, resolveBranchScope } = require('../branch/branches');
 const service = require('./stocktakeService');
@@ -16,7 +17,9 @@ function createStocktakeRouter(dependencies = {}) {
   const router = express.Router();
   const svc = () => dependencies.service || service;
 
+  // Do thoi gian tung API (log [timing] khi >= 500 ms), tru SSE vi ket noi mo rat lau.
   router.use('/api/stocktake', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); },
+    (req, res, next) => (req.path.endsWith('/events') ? next() : startTiming(req, res, next)),
     dependencies.requireAuth || requireAuth,
     requireFeature('stocktake.view'),
     dependencies.resolveBranch || resolveBranch,
