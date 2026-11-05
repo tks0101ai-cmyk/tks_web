@@ -49,9 +49,9 @@ function harness({ checkpoint = '2026-11-05T02:29:00.000Z', pages = [[]], fetchE
   return { refresh, state };
 }
 
-test('nhan dien don TEAM + so giong dieu kien gom don cua dot', () => {
-  for (const name of ['TEAM 1: Quân test', 'team5 kho', '  TEAM 12 : A + B']) assert.equal(isTeamOrder({ customerName: name }), true, name);
-  for (const name of ['Team Lỗi', 'KH Team Hàng Lỗi', 'Khách thường', '', null]) assert.equal(isTeamOrder({ customerName: name }), false, String(name));
+test('nhan dien don co tu team giong dieu kien gom don cua dot', () => {
+  for (const name of ['TEAM 1: Quân test', 'team5 kho', '  TEAM 12 : A + B', 'Team Lỗi', 'KH Team Hàng Lỗi', 'team-5']) assert.equal(isTeamOrder({ customerName: name }), true, name);
+  for (const name of ['Khách thường', 'Steam Việt', 'Teamwork', '', null]) assert.equal(isTeamOrder({ customerName: name }), false, String(name));
 });
 
 test('lay don tu 5 phut truoc checkpoint, chi ghi don TEAM, khong dong vao checkpoint', async () => {

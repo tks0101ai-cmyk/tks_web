@@ -546,20 +546,20 @@ test('huy dot doi chieu: bang khong con Kiem SG, khong dat lam doi chieu duoc; d
   await assert.rejects(service.dependents(ctx(QL, ['saigon']), hn.id), { statusCode: 403 });
 });
 
-test('gom don: don 23:30 van thuoc ngay do, chi tinh khach TEAM + so, gia von giu so le', async () => {
+test('gom don: don 23:30 van thuoc ngay do, tinh moi khach co tu team, gia von giu so le', async () => {
   const { db, service, session } = await fixture();
   await db.exec(`
     INSERT INTO products (branch, id, code, name, raw) VALUES ('hanoi', 4, 'LE1', 'Hàng lẻ', '{"inventories":[{"onHand":1000,"cost":511.41}]}');
     INSERT INTO customers (branch, id, code, name, raw) VALUES
-      ('hanoi', 13, 'KH3', 'KH Team Hàng Lỗi', '{}'), ('hanoi', 14, 'KH4', 'Team Lỗi', '{}'), ('hanoi', 15, 'KH5', 'team5 kho', '{}');
+      ('hanoi', 13, 'KH3', 'KH Team Hàng Lỗi', '{}'), ('hanoi', 14, 'KH4', 'Team Lỗi', '{}'), ('hanoi', 15, 'KH5', 'team5 kho', '{}'), ('hanoi', 16, 'KH6', 'Steam Việt', '{}');
     INSERT INTO orders (branch, id, code, order_date, customer_id, raw) VALUES
-      ('hanoi', 105, 'DH105', '2026-10-29 10:00+00', 13, '{}'), ('hanoi', 106, 'DH106', '2026-10-29 10:00+00', 14, '{}'), ('hanoi', 107, 'DH107', '2026-10-29 10:00+00', 15, '{}');
+      ('hanoi', 105, 'DH105', '2026-10-29 10:00+00', 13, '{}'), ('hanoi', 106, 'DH106', '2026-10-29 10:00+00', 14, '{}'), ('hanoi', 107, 'DH107', '2026-10-29 10:00+00', 15, '{}'), ('hanoi', 111, 'DH111', '2026-10-29 10:00+00', 16, '{}');
     INSERT INTO order_details (branch, order_id, line_no, product_id, quantity, raw) VALUES
-      ('hanoi', 105, 1, 3, 7, '{"productCode":"CCC3","quantity":7}'), ('hanoi', 106, 1, 3, 7, '{"productCode":"CCC3","quantity":7}'), ('hanoi', 107, 1, 3, 2, '{"productCode":"CCC3","quantity":2}');
+      ('hanoi', 105, 1, 3, 7, '{"productCode":"CCC3","quantity":7}'), ('hanoi', 106, 1, 3, 7, '{"productCode":"CCC3","quantity":7}'), ('hanoi', 107, 1, 3, 2, '{"productCode":"CCC3","quantity":2}'), ('hanoi', 111, 1, 3, 50, '{"productCode":"CCC3","quantity":50}');
   `);
   const board = await service.getBoard(ctx(), session.id);
   assert.equal(rowOf(board, 'AAA1').lines.some(l => l.orderId === 102), true, 'don 23:30 thuoc ngay 29/10');
-  assert.equal(rowOf(board, 'CCC3').counted, 3.5, 'chi 1.5 + team5 2, bo 2 khach team loi');
+  assert.equal(rowOf(board, 'CCC3').counted, 17.5, '1.5 + 7 + 7 + 2: moi khach co tu team');
   assert.equal(rowOf(board, 'LE1').cost, 511.41);
   assert.equal(rowOf(board, 'LE1').diffValue, -511410);
 });

@@ -8,6 +8,8 @@ const { parseSpec } = require('../public/shared/carton');
 
 const NUMBER = '#,##0.##';
 const MONEY = '#,##0';
+// Excel hien `60.` neu so nguyen dung NUMBER, nen chon dinh dang theo tung o.
+const numberFormat = value => (Number.isInteger(Number(value)) ? MONEY : NUMBER);
 const PERCENT = '0%';
 // Chan cong thuc Excel do du lieu nguoi dung nhap (giong stockPositionsExport.js).
 const safeText = value => (/^[\s]*[=+\-@]/u.test(String(value ?? '')) ? `'${value}` : String(value ?? ''));
@@ -63,9 +65,11 @@ function checkSpec(spec, quantity) {
 const CHECK_FILL = Object.freeze({ diff: 'FFFECACA', unreadable: 'FFFEF3C7', blank: 'FFFEF3C7' });
 const STATS_COLUMNS = Object.freeze([
   { header: 'Tên khách hàng', width: 38 }, { header: 'Ghi chú', width: 14 }, { header: 'Mã hàng', width: 16 }, { header: 'Tên hàng', width: 40 },
-  { header: 'Ghi chú hàng hóa', width: 24 }, { header: 'Số lượng', width: 12, numFmt: NUMBER }, { header: 'Kiểm quy cách', width: 30 }, { header: 'Trang in', width: 10 }
+  { header: 'Ghi chú hàng hóa', width: 24 }, { header: 'Số lượng', width: 12 }, { header: 'Kiểm quy cách', width: 30 }, { header: 'Trang in', width: 10 },
+  { header: 'Đơn', width: 14 }
 ]);
 const CHECK_COLUMN = STATS_COLUMNS.findIndex(col => col.header === 'Kiểm quy cách') + 1;
+const QUANTITY_COLUMN = STATS_COLUMNS.findIndex(col => col.header === 'Số lượng') + 1;
 const statsHeaders = () => STATS_COLUMNS.map(col => col.header);
 const compareVi = (a, b) => String(a ?? '').localeCompare(String(b ?? ''), 'vi', { numeric: true });
 
@@ -79,11 +83,12 @@ async function createStatsWorkbook({ session, rows = [] }) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'TOKOSI Dashboard';
   const sheet = workbook.addWorksheet('THỐNG KÊ');
-  sheet.columns = STATS_COLUMNS.map(col => ({ header: col.header, width: col.width, ...(col.numFmt ? { style: { numFmt: col.numFmt } } : {}) }));
+  sheet.columns = STATS_COLUMNS.map(col => ({ header: col.header, width: col.width }));
   for (const { row, line } of lines) {
     const check = checkSpec(line.spec, line.quantity);
     const added = sheet.addRow([safeText(line.team), safeText(line.zone), safeText(row.code), safeText(row.name), safeText(line.spec), line.quantity, check.text,
-      safeText(row.note ? row.note.printPage : '')]);
+      safeText(row.note ? row.note.printPage : ''), line.manual ? 'Thêm tay' : safeText(line.orderCode)]);
+    added.getCell(QUANTITY_COLUMN).numFmt = numberFormat(line.quantity);
     const fill = CHECK_FILL[check.status];
     if (fill) added.getCell(CHECK_COLUMN).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } };
   }
@@ -110,6 +115,11 @@ async function createStocktakeWorkbook({ session, rows = [], employees = [] }) {
       const value = col.value(row);
       return value === null || value === undefined ? null : value;
     }));
+    cols.forEach((col, index) => {
+      if (col.numFmt !== NUMBER) return;
+      const value = col.value(row);
+      if (value !== null && value !== undefined) added.getCell(index + 1).numFmt = numberFormat(value);
+    });
     // To o Trang thai theo loai (stocktakeStatus.js); Chua XL / Khac khong to.
     const color = Status.colorOf(row.note ? row.note.statusText : '');
     if (color) added.getCell(statusColumn).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + color.slice(1).toUpperCase() } };
@@ -128,4 +138,4 @@ async function createStocktakeWorkbook({ session, rows = [], employees = [] }) {
   };
 }
 
-module.exports = { createStocktakeWorkbook, createStatsWorkbook, checkSpec, statsHeaders, boardColumnHeaders };
+module.exports = { createStocktakeWorkbook, createStatsWorkbook, checkSpec, numberFormat, statsHeaders, boardColumnHeaders };

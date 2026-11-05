@@ -1,6 +1,6 @@
 'use strict';
 
-// Nut "Cap nhat don Kiot" tren trang Kiem ke: lay ngay cac don vua sua tren KiotViet, chi ghi don TEAM + so.
+// Nut "Cap nhat don Kiot" tren trang Kiem ke: lay ngay cac don vua sua tren KiotViet, chi ghi don cua khach co tu team.
 // KHONG doi checkpoint: luot nen van tu quet lai cua so cua no, ghi de cung noi dung (upsert lap lai vo hai).
 // Khong dung syncDriver.pollEntityOnce vi ham do tien checkpoint va se ghi ca don khong lien quan.
 const { getPool } = require('../db/pool');
@@ -9,7 +9,7 @@ const MIN_INTERVAL_MS = 15 * 1000;
 const OVERLAP_MS = 5 * 60 * 1000; // dong ho KiotViet lech vai giay so voi may chu
 const NO_CHECKPOINT_WINDOW_MS = 60 * 60 * 1000;
 const MAX_WINDOW_MS = 24 * 60 * 60 * 1000;
-const TEAM_ORDER_NAME = /^\s*TEAM\s*[0-9]/iu; // cung y nghia voi TEAM_NAME_MATCH_SQL trong stocktakeService.js
+const TEAM_ORDER_NAME = /(^|[^\p{L}])team([^\p{L}]|$)/iu; // cung y nghia voi TEAM_NAME_MATCH_SQL trong stocktakeService.js
 
 const isTeamOrder = item => TEAM_ORDER_NAME.test(String((item && (item.customerName || item.CustomerName)) || ''));
 

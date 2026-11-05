@@ -101,10 +101,10 @@ function quantityOf(value, field = 'quantity') {
 
 const versionOf = value => (value === undefined || value === null || value === '' ? null : Number(value));
 
-// Khach dem kiem ke ten "TEAM <so> ..." (khong gom "Team Loi", "KH Team Hang Loi").
-const TEAM_NAME_MATCH_SQL = `btrim(COALESCE(NULLIF(c.name, ''), o.raw->>'customerName', '')) ~* '^TEAM[[:space:]]*[0-9]'`;
+// Khach dem kiem ke: trong ten co tu "team" (TEAM 1, TEAM1, KH Team Hang Loi), khong tinh chu nam trong tu khac (Steam).
+const TEAM_NAME_MATCH_SQL = `btrim(COALESCE(NULLIF(c.name, ''), o.raw->>'customerName', '')) ~* '(^|[^[:alpha:]])team([^[:alpha:]]|$)'`;
 
-// Don dat hang cua khach TEAM + so, ngay dat trong [date_from, date_to].
+// Don dat hang cua khach co tu team, ngay dat trong [date_from, date_to].
 // orders.order_date luu gio VN nhung gan nhan UTC nen doi bang 'UTC'; dieu kien khoang dung duoc chi muc (branch, order_date).
 // So luong lay tu raw (co the le) truoc cot INTEGER.
 const TEAM_LINES_SQL = `
