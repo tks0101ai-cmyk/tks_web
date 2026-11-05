@@ -92,3 +92,6 @@
 
 .purchase-page #containerTable input[data-cont-freight]{padding:3px 4px}
 .purchase-page #watchedContainer table{min-width:0}
+
+/* A shrink-to-content scroll viewport prevents shared min-width:100% from stretching short tables. */
+.purchase-page #orderTable,.purchase-page #containerTable{width:fit-content;max-width:100%;min-width:0}
