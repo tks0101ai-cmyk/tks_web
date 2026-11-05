@@ -10,6 +10,18 @@ const TEST_DB_URL = process.env.SUPABASE_TEST_DB_URL || '';
 const TEST_DB_IS_PRODUCTION = Boolean(TEST_DB_URL && CONFIG.SUPABASE_DB_URL && TEST_DB_URL === CONFIG.SUPABASE_DB_URL);
 
 const EXPECTED_TABLES = [
+  'product_containers',
+  'purchase_orders',
+  'purchase_history',
+  'purchase_departures',
+  'purchase_key_history',
+  'purchase_import_previews',
+  'purchase_settings',
+  'purchase_presence',
+  'purchase_requests',
+  'purchase_operations',
+  'purchase_operation_rows',
+  'purchase_undo_expected',
   'cash_book_accounts',
   'cash_book_checkpoints',
   'cash_flows',
@@ -35,6 +47,11 @@ const EXPECTED_TABLES = [
 ];
 
 const EXPECTED_INTEGER_COLUMNS = [
+  ['purchase_orders', 'carton_count', 'numeric'],
+  ['purchase_orders', 'qty_per_carton', 'numeric'],
+  ['purchase_orders', 'unit_price_cny', 'numeric'],
+  ['purchase_orders', 'freight_amount', 'numeric'],
+  ['product_containers', 'max_ton', 'numeric'],
   ['cash_flows', 'account_id', 'bigint'],
   ['cash_flows', 'amount', 'numeric'],
   ['cash_flows', 'status', 'integer'],

@@ -909,3 +909,10 @@ Lịch sử hàng hóa không thêm schema khác: UNION invoices/invoice_details
 Rollback: `0108_product_customer_periods.down.sql`; khi rollback phải dừng/quay lại backend và worker tương ứng trước. Chưa áp DB thật, chưa deploy.
 
 Cập nhật gần nhất: 04/11/2026.
+
+
+## Thu mua — PR production 05/11/2026
+
+Thêm /thu-mua/dat-hang/ và /api/purchase-orders với quyền purchase.view/edit/import/export/depart/arrive; mặc định chỉ Quản lý, quyền mở rộng qua cơ chế cấp quyền hiện có. Module có bảng Chỉ số cont và Đặt hàng sửa trực tiếp, lọc riêng theo tài khoản, dropdown NV/cont/trạng thái, tách .01/.02 đệ quy, sửa hàng loạt, undo/xóa mềm/khôi phục, import toàn bộ hợp lệ mới ghi, audit/realtime và bộ công thức dùng chung. Source gate ngăn job Sheet và web ghi đè nhau.
+
+Migrations Thu mua được đổi sang 0110–0113 vì main đã dùng 0101–0109. db/ensurePurchaseSchema.js áp đúng bốn migration này khi web startup, transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.

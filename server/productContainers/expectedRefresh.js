@@ -97,12 +97,19 @@ async function refreshOnce(pool, { log }) {
   let result;
   try {
     await client.query('BEGIN');
+    // Same writer lock as the cont sync and canonical purchase transactions.
+    await client.query('SELECT pg_advisory_xact_lock($1)', [20531015]);
     const lock = await client.query('SELECT pg_try_advisory_xact_lock($1) AS locked', [LOCK_KEY]);
     if (!lock.rows[0] || lock.rows[0].locked !== true) {
       await client.query('ROLLBACK');
       return { status: 'busy', rows: 0, written: 0, deleted: 0, changed: false };
     }
     await client.query(STAGE_SQL);
+    const purchaseTable=await client.query("SELECT to_regclass('purchase_settings') AS name");
+    if(purchaseTable.rows[0]?.name){
+      const mode=await client.query('SELECT source_mode FROM purchase_settings WHERE id=1');
+      if(mode.rows[0]?.source_mode==='web')await client.query("UPDATE expected_stage s SET product_name=o.product_name FROM purchase_orders o WHERE s.sheet_name='THU MUA' AND s.source_row=o.id");
+    }
     const staged = Number((await client.query(COUNT_STAGE_SQL)).rows[0].n) || 0;
     const existing = Number((await client.query(COUNT_TARGET_SQL)).rows[0].n) || 0;
     if (staged === 0 && existing > 0) {
