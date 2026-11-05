@@ -74,7 +74,7 @@
   const selection = { anchor: null, focus: null, dragging: false, painted: [] };
   const live = { source: null, timer: null };
   const ORDER_POLL_MS = 30000;
-  const orders = { sessionId: null, data: null, checking: false };
+  const orders = { sessionId: null, data: null, checking: false, refreshed: null };
   const detail = { code: null };
   let user = null;
 
@@ -437,10 +437,12 @@
       ? dateVn(session.dateFrom) + (session.dateTo !== session.dateFrom ? ' – ' + dateVn(session.dateTo) : '')
         + (session.status === 'closed' ? ' · Đóng bởi ' + (session.closedByName || '—') + ' ' + time(session.closedAt) : ' · Tồn theo KiotViet hiện tại')
         + (orderStatus ? ' · Đã gom ' + num(orderStatus.inRange) + ' đơn TEAM' : '')
+        + (orders.refreshed && orders.refreshed.sessionId === session.id ? ' · Đơn Kiot cập nhật lúc ' + time(orders.refreshed.at).slice(0, 5) : '')
         + (session.reloadedAt ? ' · Nạp lại bởi ' + (session.reloadedByName || '—') + ' ' + time(session.reloadedAt) : '')
       : '';
     const active = Boolean(session && !session.cancelled);
     $('stEditDatesButton').hidden = !(active && session.status === 'open' && state.canEdit);
+    $('stRefreshOrdersButton').hidden = !(active && session.status === 'open');
     renderOrdersNote(session);
     $('stCloseButton').hidden = !(active && session.status === 'open' && state.canClose);
     $('stCancelButton').hidden = !(active && state.canClose);
@@ -1617,6 +1619,37 @@
     });
   }
 
+  // ---------- Lấy ngay đơn TEAM mới từ KiotViet ----------
+  function refreshOrdersMessage(result) {
+    const at = time(result.refreshedAt).slice(0, 5);
+    if (result.cached) return 'Vừa cập nhật đơn từ KiotViet lúc ' + at + ', bảng đã là số mới nhất.';
+    return result.teamOrders
+      ? 'Đã cập nhật ' + num(result.teamOrders) + ' đơn TEAM từ KiotViet lúc ' + at + '.'
+      : 'Đã kiểm tra KiotViet lúc ' + at + ', không có đơn TEAM nào mới.';
+  }
+  function bindRefreshOrders() {
+    const button = $('stRefreshOrdersButton');
+    const label = button.textContent;
+    button.addEventListener('click', async () => {
+      const sessionId = state.sessionId;
+      if (!sessionId || button.disabled) return;
+      button.disabled = true;
+      button.textContent = 'Đang lấy đơn…';
+      try {
+        const { response, payload } = await request(API + '/sessions/' + sessionId + '/refresh-orders', jsonOptions('POST', {}));
+        if (!response.ok) { notify(payload.error || 'Không cập nhật được đơn từ KiotViet.', true); return; }
+        orders.refreshed = { sessionId, at: payload.refreshedAt };
+        await loadBoard({ background: true });
+        notify(refreshOrdersMessage(payload));
+      } catch (error) {
+        notify('Không cập nhật được đơn từ KiotViet. Kiểm tra mạng rồi thử lại.', true);
+      } finally {
+        button.disabled = false;
+        button.textContent = label;
+      }
+    });
+  }
+
   // ---------- Nạp lại đợt nạp từ sheet ----------
   function bindReload() {
     const dialog = $('stReloadDialog');
@@ -1796,6 +1829,7 @@
     });
     bindCancel();
     bindDates();
+    bindRefreshOrders();
     bindReload();
     const importSheet = (source, title, message) => async () => {
       if (!(await confirmAction(title, message, 'Nạp'))) return;
