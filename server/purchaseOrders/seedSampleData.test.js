@@ -66,6 +66,21 @@ test('removing sample data restores an empty module and repeated runs stay idemp
   } finally { await db.close(); }
 });
 
+test('seeding refuses to run once the write source is web so samples cannot reach shared read models', async () => {
+  const db = await freshDb();
+  try {
+    const pool = wrap(db), logger = { log() {} };
+    await db.query("UPDATE purchase_settings SET source_mode='web' WHERE id=1");
+    await assert.rejects(seedSampleData({ pool, logger }), /PURCHASE_SOURCE_IS_WEB|Nguon ghi dang la web/);
+    // Chan truoc khi ghi bat ky dong nao.
+    assert.equal(await count(db, 'SELECT count(*) FROM purchase_orders'), 0);
+    assert.equal(await count(db, 'SELECT count(*) FROM product_containers'), 0);
+    // Tro lai sheets thi nap binh thuong.
+    await db.query("UPDATE purchase_settings SET source_mode='sheets' WHERE id=1");
+    assert.equal((await seedSampleData({ pool, logger })).rows, ROWS.length);
+  } finally { await db.close(); }
+});
+
 test('removing sample data never touches rows outside the reserved range', async () => {
   const db = await freshDb();
   try {

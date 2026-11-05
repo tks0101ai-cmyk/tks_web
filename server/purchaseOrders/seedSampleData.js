@@ -53,6 +53,15 @@ async function seedSampleData({ pool = getPool(), logger = console } = {}) {
     await client.query("SET LOCAL lock_timeout='5s'");
     // Cung advisory lock voi ghi cont va job Sheet: khong chen giua mot luot ghi that.
     await client.query('SELECT pg_advisory_xact_lock($1)', [20531015]);
+    // Chot cach ly: chi nap khi nguon ghi con la Sheets. Luc do productContainers
+    // sync.js va expectedRefresh.js deu bo qua bang Thu mua (cong source_mode==='web'),
+    // nen dong mau khong the chay sang product_container_lines / _expected / _sync —
+    // read model dung chung cua "Du kien hang ve" va "Vong doi don hang".
+    // Neu da cutover sang web thi dung lai: dong mau se lan vao cac module do.
+    const mode = await client.query('SELECT source_mode FROM purchase_settings WHERE id=1');
+    if (mode.rows[0] && mode.rows[0].source_mode === 'web') {
+      throw Object.assign(new Error('Nguon ghi dang la web: du lieu mau se lan sang read model dung chung. Khong nap.'), { code: 'PURCHASE_SOURCE_IS_WEB' });
+    }
     const ids = new Map();
     for (const c of CONTAINERS) {
       const { rows } = await client.query(
