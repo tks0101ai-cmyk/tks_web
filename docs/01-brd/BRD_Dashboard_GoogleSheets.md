@@ -630,3 +630,5 @@ Lên list bằng mã và lấy lần lên list gần nhất; xếp/chuyển/tác
 
 
 05/11/2026 — Quyết định mới thay thế quy tắc VC dòng nhập tay: Tiền VC từng mã = tổng m³ mã × VC/m³ cont. Tính lại khi đổi số thùng, số đo, cont hoặc cước cont; Tiền VC dòng là cột suy ra, không nhập/import đè. Giá NET và projection dùng cùng phân bổ. Cước cont nhập tay chia cho tổng m³ cont; thiếu số đo thì chưa phân bổ để tránh tính sai. Giữ độ chính xác đơn giá khi tính, làm tròn đồng khi hiển thị. Dòng cont ghim cho sửa Tiền VC và công thức qua cùng luồng kiểm tra/lưu của bảng gốc. Chưa áp migration hoặc deploy.
+
+05/11/2026 — Thu mua: bổ sung trang dùng thử dữ liệu mẫu tách biệt (`?trial=1`), cùng giao diện/nghiệp vụ/quyền purchase.*; cho thử thêm/sửa/cont/import/hoàn tác trên schema riêng, không chuyển nguồn chính hoặc cập nhật Dự kiến hàng về/tồn kho. Thay thế giới hạn trước đây chỉ có thể xem dữ liệu mẫu ở production; dữ liệu nghiệp vụ thật chưa được nạp hoặc cutover.

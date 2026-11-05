@@ -95,3 +95,7 @@
 
 /* A shrink-to-content scroll viewport prevents shared min-width:100% from stretching short tables. */
 .purchase-page #orderTable,.purchase-page #containerTable{width:fit-content;max-width:100%;min-width:0}
+
+.purchase-trial-link{margin-left:auto;color:var(--blue);font:500 12px var(--font-body);padding:8px 0;text-decoration:none}
+.purchase-trial-link:hover{text-decoration:underline}
+.purchase-page #sourceBanner.trial-banner{border-left:3px solid var(--amber);color:var(--text);background:var(--panel)}

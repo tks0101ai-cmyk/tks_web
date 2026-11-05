@@ -949,3 +949,7 @@ Migrations Thu mua được đổi sang 0110–0113 vì main đã dùng 0101–0
 
 
 05/11/2026 — Quyết định mới thay thế quy tắc VC dòng nhập tay: Tiền VC từng mã = tổng m³ mã × VC/m³ cont. Tính lại khi đổi số thùng, số đo, cont hoặc cước cont; Tiền VC dòng là cột suy ra, không nhập/import đè. Giá NET và projection dùng cùng phân bổ. Cước cont nhập tay chia cho tổng m³ cont; thiếu số đo thì chưa phân bổ để tránh tính sai. Giữ độ chính xác đơn giá khi tính, làm tròn đồng khi hiển thị. Dòng cont ghim cho sửa Tiền VC và công thức qua cùng luồng kiểm tra/lưu của bảng gốc. Chưa áp migration hoặc deploy.
+
+## Schema dùng thử Thu mua — `purchase_trial` (05/11/2026)
+
+Khởi tạo riêng, có xác thực, bằng các DDL Thu mua 0110–0113 trong search_path không có public; theo dõi phiên bản trong `purchase_trial.schema_migrations`, không ghi schema_migrations chính. Chứa các bảng purchase_*, product_containers và hr_employees mẫu riêng. `source_mode=web` chỉ thuộc schema thử. Không projection vào product_container_lines/expected, không tăng tồn kho hay ghi nhân sự thật. Không thêm migration công khai hoặc thay schema dữ liệu chính. Marker `trial_sample_v1` ngăn seed lại ghi đè trạng thái đã sửa.

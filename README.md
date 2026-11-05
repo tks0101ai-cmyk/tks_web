@@ -427,3 +427,11 @@ Bản thử ở server/public/prototypes/thu-mua/index.html, kiểm luồng bằ
 05/11/2026 — Thu mua: thêm public/shared/purchase-calculations.js + purchase-calculations.test.js dùng chung số lượng/CNY/VND/số đo/lệch/NET cho mockup, live và export; import/Excel và bộ soát lỗi dùng cùng chuẩn số. Công thức chuẩn và các trường hợp trống/0/thiếu số đo nêu tại server/purchaseOrders/READINESS.md. Chưa triển khai production.
 
 05/11/2026 — Thu mua trang thật /thu-mua/dat-hang/: thêm server/public/thu-mua/dat-hang/workspace.css (CSS riêng môi trường hệ thống), tổng quan và bộ lọc đầy đủ, lọc cont độc lập, bảng Chỉ số cont mở rộng, form thêm mã gọn. 107 tests module đạt; chưa nghiệm thu trình duyệt/hạ tầng thật, chưa migrate/deploy. Tiến độ và điều kiện thử nghiệm tại server/purchaseOrders/READINESS.md.
+
+## Thu mua — dùng thử dữ liệu mẫu (05/11/2026)
+
+Mở `/thu-mua/dat-hang/?trial=1` hoặc chọn **Dùng thử dữ liệu mẫu** trên trang Thu mua. API riêng `/api/purchase-trial` giữ nguyên các quyền `purchase.*`. Trang chính và `source_mode` chính không thay đổi.
+
+`purchaseOrders/purchaseOrdersTrial.js` khởi tạo lười schema `purchase_trial` trong PostgreSQL khi người có quyền mở trang thử lần đầu. Mọi kết nối thử chỉ tra `purchase_trial, pg_catalog, pg_temp` (không có `public`), reset search_path trước khi trả kết nối; lỗi reset làm loại kết nối khỏi pool. Dùng lại service, validation, import, audit và undo thật; tắt projection/cache invalidation/sự kiện production. Mẫu 12 dòng/3 cont và nhân viên mẫu chỉ seed một lần trong schema thử. Không có route reset/xóa toàn bộ. Bộ lọc và bản nháp trình duyệt tách khóa với trang chính; file xuất tên `Thu-mua-dung-thu.xlsx`.
+
+Kiểm thử `purchaseOrders/purchaseOrdersTrial.test.js`: dữ liệu public không đổi, thiếu bảng thử không đọc nhầm public, reset connection, giao dịch đồng thời, sửa/undo/xóa/khôi phục, chặn chưa đăng nhập, khởi tạo lại không reset cont đã sửa. PGlite chỉ dùng cho test; runtime không thêm thư viện hay tiến trình database mới.

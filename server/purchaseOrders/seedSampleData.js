@@ -46,10 +46,10 @@ const ROWS = Object.freeze([
   { rowKey: 'D90010', cont: null, code: 'TH810', name: 'Thùng nhựa 80L', supplier: 'NCC Nghĩa Ô', qtyPerCarton: 2, cartonCount: 55, unitPriceCny: 38, fxRate: 3650, kgPerCarton: 8.9, m3PerCarton: 0.3 },
 ]);
 
-async function seedSampleData({ pool = getPool(), logger = console } = {}) {
+async function seedSampleData({ pool = getPool(), logger = console, manageTransaction = true } = {}) {
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
+    if (manageTransaction) await client.query('BEGIN');
     await client.query("SET LOCAL lock_timeout='5s'");
     // Cung advisory lock voi ghi cont va job Sheet: khong chen giua mot luot ghi that.
     await client.query('SELECT pg_advisory_xact_lock($1)', [20531015]);
@@ -75,11 +75,11 @@ async function seedSampleData({ pool = getPool(), logger = console } = {}) {
       );
       inserted += result.rowCount;
     }
-    await client.query('COMMIT');
+    if (manageTransaction) await client.query('COMMIT');
     logger.log(`[Purchase] Da nap ${inserted} dong mau / ${ROWS.length}, ${CONTAINERS.length} cont mau`);
     return { containers: CONTAINERS.length, rows: inserted };
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
+    if (manageTransaction) await client.query('ROLLBACK').catch(() => {});
     throw error;
   } finally {
     client.release();

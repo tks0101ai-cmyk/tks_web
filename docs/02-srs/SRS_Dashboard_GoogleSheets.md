@@ -1170,3 +1170,5 @@ Nguồn kiểm chứng: công thức Sheet đã ghi nhận trong memory phiên d
 Chuẩn nhập/xuất: 1,234.56; số Excel thật giữ nguyên độ chính xác. Tổng tệ hiển thị 3 chữ số thập phân, VND hiển thị đồng; không làm tròn giữa chừng hoặc lấy số đã hiển thị làm đầu vào phép tính. Tổng các dòng đã làm tròn hiển thị có thể chênh vài đồng với tổng làm tròn một lần; dữ liệu gốc không bị điều chỉnh để bù chênh. Xóa tiền cont khôi phục chuẩn 202,000,000 / 170; nhập 0 là cước 0. Tách mã con chưa nhập số thùng thì chưa cộng vào tải/khối/cước. Đổi cont cập nhật cả nguồn và đích.
 
 Mã dùng chung: public/shared/purchase-calculations.js và purchase-freight.js; mockup/live/export dùng cùng phép tính, SQL projection kiểm chéo với export qua PGlite. Bộ đối soát bổ sung FX, VC sau, Thuế và số đo kho. Chưa migrate/cutover/deploy.
+
+05/11/2026 — Thu mua: bổ sung trang dùng thử dữ liệu mẫu tách biệt (`?trial=1`), cùng giao diện/nghiệp vụ/quyền purchase.*; cho thử thêm/sửa/cont/import/hoàn tác trên schema riêng, không chuyển nguồn chính hoặc cập nhật Dự kiến hàng về/tồn kho. Thay thế giới hạn trước đây chỉ có thể xem dữ liệu mẫu ở production; dữ liệu nghiệp vụ thật chưa được nạp hoặc cutover.

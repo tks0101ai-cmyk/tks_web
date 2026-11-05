@@ -24,11 +24,11 @@ test('purchase uses the shared application shell and brand instead of a private 
   assert.ok(doc.querySelector('.receipt-header .status-line #accountChip'));
  }finally{dom.window.close();reference.window.close()}
 });
-async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees=[]}={}){
- const dom=new JSDOM(fs.readFileSync(path.join(dir,'index.html'),'utf8'),{url:'https://example.test/thu-mua/dat-hang/',runScripts:'outside-only'}),w=dom.window;
+async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees=[],trialMode=false}={}){
+ const dom=new JSDOM(fs.readFileSync(path.join(dir,'index.html'),'utf8'),{url:'https://example.test/thu-mua/dat-hang/'+(trialMode?'?trial=1':''),runScripts:'outside-only'}),w=dom.window;
  t.after(()=>w.close());
  w.HTMLCanvasElement.prototype.getContext=()=>null;
- let current={sourceMode,permissions:{edit:true,import:true,export:true,depart:true,arrive:true},rows:[{id:'1',rowKey:'D00001',version:1,contId:null,productCode:'AC305',productName:'Băng dính',cartonCount:10,qtyPerCarton:100,supplier:'A'}],containers:[{id:'2',name:'CONT 11-1V',status:2,version:1}]};
+ let current={sourceMode,trialMode,permissions:{edit:true,import:true,export:true,depart:true,arrive:true},rows:[{id:'1',rowKey:'D00001',version:1,contId:null,productCode:'AC305',productName:'Băng dính',cartonCount:10,qtyPerCarton:100,supplier:'A'}],containers:[{id:'2',name:'CONT 11-1V',status:2,version:1}]};
  current.rows.push(...extraRows.map(r=>({productName:r.productCode,...r})));const calls=[],listeners={};
  w.PurchaseCalculations=require('../public/shared/purchase-calculations');w.PurchaseFreight=require('../public/shared/purchase-freight');w.PurchaseColumns=require('../public/shared/purchase-columns');w.PurchaseTasks=require('../public/shared/purchase-tasks');w.TKSNav={authGuard:async()=>({id:'buyer'})};
  w.EventSource=class{addEventListener(k,fn){listeners[k]=fn}close(){}};
@@ -190,4 +190,16 @@ test('compact columns declare stable keys, small numeric widths and keep row key
  const names=[...doc.querySelectorAll('#orderTable th')].filter(th=>th.textContent==='Tên SP');
  assert.equal(names.length,2);assert.notEqual(names[0].dataset.columnKey,names[1].dataset.columnKey);
  assert.ok([...doc.querySelectorAll('#containerTable th')].every(th=>Number(th.dataset.defaultWidth)>0));
+});
+
+test('trial UI routes requests and drafts separately from the real purchase workspace',async t=>{
+ const saved={drafts:{'1':{version:1,before:{supplier:'A'},changes:{supplier:'REAL-DRAFT'}}}};
+ const p=await page(t,{trialMode:true,saved}),doc=p.w.document;
+ assert.ok(p.calls.every(call=>call.url.startsWith('/api/purchase-trial')));
+ assert.match(doc.getElementById('sourceBanner').textContent,/DÙNG THỬ/);
+ assert.equal(doc.getElementById('add').disabled,false);
+ assert.equal(doc.getElementById('purchaseTrialLink').getAttribute('href'),'/thu-mua/dat-hang/');
+ p.change('[data-edit="cartonCount"]','8');
+ assert.equal(JSON.parse(p.w.sessionStorage.getItem('purchase:trial:buyer:v1')).drafts['1'].changes.cartonCount,8);
+ assert.equal(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).drafts['1'].changes.supplier,'REAL-DRAFT');
 });

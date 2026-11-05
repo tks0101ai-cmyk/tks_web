@@ -34,15 +34,15 @@ async function patchRow(client,row,changes) {
   if(!keys.length)return row;
   return (await client.query(`UPDATE purchase_orders SET ${keys.map((k,i)=>`${k}=$${i+2}`).join(',')},version=version+1,updated_at=now() WHERE id=$1 RETURNING *`,[row.id,...keys.map(k=>changes[k])])).rows[0];
 }
-function createPurchaseOrdersService({ pool=getPool(), project=projectContainers, events=dashboardRollupEvents }={}) {
+function createPurchaseOrdersService({ pool=getPool(), project=projectContainers, events=dashboardRollupEvents, lockKey=20531015, invalidate=invalidateContainerDetails }={}) {
   async function transaction(user,fn) {
     actor(user);const client=await pool.connect();let committed=false;
-    try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock(20531015)');
+    try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock($1)',[lockKey]);
       const settings=await client.query('SELECT source_mode FROM purchase_settings WHERE id=1 FOR UPDATE');
       if(settings.rows[0]?.source_mode!=='web')throw fail(503,'PURCHASE_SOURCE_NOT_ACTIVE','Thu mua chưa chuyển nguồn sang web.');
       const request=user._purchaseRequest;if(request){const prior=(await client.query('SELECT fingerprint,result FROM purchase_requests WHERE actor_id=$1 AND request_key=$2',[actor(user).id,request.key])).rows[0];if(prior){if(prior.fingerprint!==request.fingerprint)throw fail(409,'REQUEST_KEY_REUSED','Mã lần lưu đã dùng cho dữ liệu khác.');await client.query('COMMIT');committed=true;return prior.result}}
       const operation=randomUUID();client.purchaseOperation=operation;client.purchaseAction='';await client.query('INSERT INTO purchase_operations(id,actor_id) VALUES($1,$2)',[operation,actor(user).id]);await client.query("SELECT set_config('purchase.operation_id',$1,true)",[operation]);const result=await fn(client);await client.query('UPDATE purchase_operations SET action=$2 WHERE id=$1',[operation,client.purchaseAction||'']);if(result.changed){await project(client)}const response=result.changed&&['create','edit','bulk_edit','transfer','balance_plan','delete','restore'].includes(client.purchaseAction)&&result.value&&typeof result.value==='object'?{...result.value,operationId:operation}:result.value;if(request)await client.query('INSERT INTO purchase_requests(actor_id,request_key,fingerprint,result) VALUES($1,$2,$3,$4)',[actor(user).id,request.key,request.fingerprint,JSON.stringify(response)]);await client.query('COMMIT');committed=true;
-      if(result.changed){try{invalidateContainerDetails(pool);events.emit('containersChanged',{source:'purchase'});events.emit('purchase-orders-changed',{})}catch{}}
+      if(result.changed){try{invalidate(pool);events.emit('containersChanged',{source:'purchase'});events.emit('purchase-orders-changed',{})}catch{}}
       return response;
     }catch(error){if(!committed)await client.query('ROLLBACK').catch(()=>{});if(['22P02','22007','23514','23502'].includes(error.code))throw fail(400,'VALIDATION_ERROR','Dữ liệu không hợp lệ.');if(error.code==='42P01')throw fail(503,'PURCHASE_MIGRATION_REQUIRED','Chưa áp dụng migration Thu mua.');throw error}finally{client.release()}
   }
