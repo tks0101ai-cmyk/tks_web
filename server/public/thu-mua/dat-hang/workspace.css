@@ -7,7 +7,20 @@
 .purchase-module{padding-left:16px;border-left:1px solid var(--border);font-weight:600}
 .header-status{display:flex;align-items:center;gap:12px;margin-left:auto;font-size:10px;color:var(--muted)}
 #presence:empty{display:none}
+/* shared-nav.js chen .sidebar-resize-handle lam anh em ngay sau #sidebar
+   (insertBefore(handle, sidebarEl.nextSibling)). Cac trang khac dung .shell
+   display:flex nen phan tu thu ba chi nam cung hang; trang nay la trang duy
+   nhat dung grid 2 cot, nen <main> bi day xuong hang 2 cot 1 — rong 192px va
+   nam duoi man hinh. An thanh keo (sidebar o day rong co dinh 192px) va chi
+   dinh o grid tuong minh de lan sau co chen them anh em cung khong vo. */
 .purchase-page .layout{grid-template-columns:192px minmax(0,1fr);align-items:start}
+.purchase-page .sidebar-resize-handle{display:none}
+/* Chi dinh o tuong minh chi o bo cuc 2 cot. Duoi 850px luoi con 1 cot va
+   sidebar la drawer position:fixed, dat grid-column:2 se sinh cot ngam. */
+@media(min-width:851px){
+  .purchase-page #sidebar{grid-column:1;grid-row:1}
+  .purchase-page main{grid-column:2;grid-row:1}
+}
 .purchase-page #sidebar{position:sticky;top:var(--purchase-header-height);height:calc(100dvh - var(--purchase-header-height));overflow-y:auto;padding:16px 10px;border-right:1px solid var(--border);background:var(--panel)}
 .purchase-page main{padding:0 20px 24px;min-width:0}
 .purchase-tabs{margin:0 0 12px;padding:0;gap:18px;border-bottom:1px solid var(--border);min-height:43px}
