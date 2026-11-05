@@ -67,9 +67,15 @@
   }
 
   // Tong theo loai tren moi dong (khong theo bo loc): so ma + tong gia tri chenh co dau.
+  // Ma khong ai dem, khong co ton, chua co trang thai: khong can xu ly nen khong tinh vao "Chua XL".
+  function isIdle(row) {
+    return Boolean(row) && Number(row.counted) === 0 && Number(row.stock) === 0 && classify(row.note ? row.note.statusText : '') === 'pending';
+  }
+
   function summarize(rows) {
     const totals = new Map(STATUS_TYPES.map(type => [type.key, { count: 0, diffValue: 0 }]));
     for (const row of rows || []) {
+      if (isIdle(row)) continue;
       const key = classify(row && row.note ? row.note.statusText : '');
       if (!totals.has(key)) totals.set(key, { count: 0, diffValue: 0 });
       const entry = totals.get(key);
@@ -79,5 +85,5 @@
     return totals;
   }
 
-  return { STATUS_TYPES, OTHER, fold, labelFor, optionsFor, classify, canonical, isValid, colorOf, summarize };
+  return { STATUS_TYPES, OTHER, fold, labelFor, optionsFor, classify, canonical, isValid, colorOf, summarize, isIdle };
 });

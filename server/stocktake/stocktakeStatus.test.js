@@ -66,3 +66,11 @@ test('summarize: du 7 loai, Khac chi khi co, cong co dau, dong khong note = Chua
   assert.deepEqual([...withOther.keys()].at(-1), 'other');
   assert.deepEqual(withOther.get('other'), { count: 1, diffValue: 7 });
 });
+
+test('summarize + isIdle: ma 0/0 chua co trang thai khong tinh vao Chua XL', () => {
+  const rows = [{ counted: 0, stock: 0, diffValue: 0 }, { counted: 0, stock: 5, diffValue: -5 }, { counted: 0, stock: 0, diffValue: 0, note: { statusText: 'OK' } }];
+  const totals = Status.summarize(rows);
+  assert.equal(totals.get('pending').count, 1);
+  assert.equal(totals.get('ok').count, 1);
+  assert.deepEqual(rows.map(Status.isIdle), [true, false, false]);
+});

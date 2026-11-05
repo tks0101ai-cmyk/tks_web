@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { waitForConfirm, EDIT_COLUMNS, parseClipboard, planPaste, planPasteByCode, planFill, moveIndex, matchesFilter, summarizeCells } = require('../public/stocktake/stocktakeGrid');
+const { sortLines, waitForConfirm, EDIT_COLUMNS, parseClipboard, planPaste, planPasteByCode, planFill, moveIndex, matchesFilter, summarizeCells } = require('../public/stocktake/stocktakeGrid');
 const { PASTE_COLUMNS } = require('../public/stocktake/stocktakePaste');
 
 test('EDIT_COLUMNS: 9 cot, deu la cot dan hop le', () => {
@@ -159,4 +159,20 @@ test('waitForConfirm: moi lan chi tra loi 1 lan, khong con lang nghe sau khi xon
   click(cancel);
   assert.equal(await answer, true);
   assert.deepEqual(added, { dialog: 0, ok: 0, cancel: 0 });
+});
+
+test('sortLines: so tu nhien, tang giam, bo sort giu thu tu goc, o trong cuoi', () => {
+  const a = { team: 'TEAM 10', zone: 'G2', quantity: 5, orderCode: 'DH2' };
+  const b = { team: 'TEAM 2', zone: '', quantity: 50, orderCode: 'DH1' };
+  const c = { team: 'TEAM 1', zone: 'G10', quantity: 7, manual: true, edit: { updatedByName: 'Hưng' } };
+  const teams = list => list.map(line => line.team);
+  assert.deepEqual(teams(sortLines([a, b, c], 'team', 'asc')), ['TEAM 1', 'TEAM 2', 'TEAM 10']);
+  assert.deepEqual(teams(sortLines([a, b, c], 'team', 'desc')), ['TEAM 10', 'TEAM 2', 'TEAM 1']);
+  assert.deepEqual(teams(sortLines([a, b, c], 'zone', 'asc')), ['TEAM 10', 'TEAM 1', 'TEAM 2']);
+  assert.deepEqual(teams(sortLines([a, b, c], 'zone', 'desc')), ['TEAM 1', 'TEAM 10', 'TEAM 2']);
+  assert.deepEqual(teams(sortLines([a, b, c], 'quantity', 'desc')), ['TEAM 2', 'TEAM 1', 'TEAM 10']);
+  assert.deepEqual(teams(sortLines([a, b, c], 'order', 'asc')), ['TEAM 2', 'TEAM 10', 'TEAM 1']);
+  assert.deepEqual(teams(sortLines([a, b, c], 'updated', 'asc')), ['TEAM 1', 'TEAM 10', 'TEAM 2']);
+  assert.deepEqual(teams(sortLines([a, b, c], 'team', null)), ['TEAM 10', 'TEAM 2', 'TEAM 1']);
+  assert.deepEqual(teams([a, b, c]), ['TEAM 10', 'TEAM 2', 'TEAM 1'], 'khong doi mang goc');
 });

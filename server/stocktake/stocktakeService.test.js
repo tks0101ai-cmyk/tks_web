@@ -634,3 +634,67 @@ test('cap nhat don Kiot: don them hang ghi vao DB, Tong kiem doi ngay, bao tab k
   await assert.rejects(service.refreshOrders(ctx(), session.id), { code: 'STOCKTAKE_CLOSED' });
   await assert.rejects(service.refreshOrders(ctx(QL, ['saigon']), session.id), { code: 'BRANCH_OUT_OF_SCOPE' });
 });
+
+test('bang doi chieu: hien hang dang hoat dong 0/0, bo hang ngung 0/0 va ma da nhuong; dong dot chup du', async () => {
+  const { db, service, session } = await fixture();
+  await db.exec(`
+    INSERT INTO products (branch, id, code, name, is_active, raw) VALUES
+      ('hanoi', 5, 'DDD4', 'Hàng D', true, '{"inventories":[{"onHand":0,"cost":9}]}'),
+      ('hanoi', 6, 'EEE5', 'Hàng E', false, '{"inventories":[{"onHand":0,"cost":9}]}'),
+      ('hanoi', 7, 'FFF6', 'Hàng F', NULL, '{"inventories":[{"onHand":0,"cost":9}]}'),
+      ('hanoi', 8, 'GGG7#8', 'Mã nhường', true, '{"inventories":[{"onHand":0,"cost":9}]}'),
+      ('hanoi', 9, 'HHH8', 'Ngừng còn tồn', false, '{"inventories":[{"onHand":4,"cost":9}]}');
+  `);
+  const board = await service.getBoard(ctx(), session.id);
+  assert.equal(rowOf(board, 'DDD4').counted, 0);
+  assert.equal(rowOf(board, 'DDD4').forgotten, false);
+  assert.ok(rowOf(board, 'FFF6'), 'is_active NULL van la dang hoat dong');
+  assert.equal(rowOf(board, 'EEE5'), undefined);
+  assert.equal(rowOf(board, 'GGG7#8'), undefined);
+  assert.equal(rowOf(board, 'HHH8').stock, 4);
+  await service.closeSession(ctx(), session.id, { version: session.version });
+  const closed = await service.getBoard(ctx(), session.id);
+  assert.ok(rowOf(closed, 'DDD4'), 'dong dot chup ca ma 0/0');
+});
+
+test('ma 0/0 cua dot web khong lam cot KK truoc / Kiem SG hien 0: van de trong nhu truoc', async () => {
+  const { db, service, session } = await fixture();
+  await db.exec(`INSERT INTO products (branch, id, code, name, is_active, raw) VALUES
+    ('hanoi', 5, 'DDD4', 'Hàng D', true, '{"inventories":[{"onHand":3,"cost":9}]}'),
+    ('saigon', 5, 'DDD4', 'Hàng D', true, '{"inventories":[{"onHand":0,"cost":9}]}')`);
+  const { session: first } = await service.createSession(ctx(), { branch: 'hanoi', name: 'Đợt trước', dateFrom: '2026-10-01', dateTo: '2026-10-01' });
+  await db.exec(`UPDATE products SET raw = '{"inventories":[{"onHand":0,"cost":9}]}' WHERE branch = 'hanoi' AND id = 5`);
+  await service.closeSession(ctx(), first.id, { version: first.version });
+  await db.exec(`UPDATE products SET raw = '{"inventories":[{"onHand":3,"cost":9}]}' WHERE branch = 'hanoi' AND id = 5`);
+  const { session: sg } = await service.createSession(ctx(), { branch: 'saigon', name: 'SG', dateFrom: '2026-10-29', dateTo: '2026-10-29' });
+  await service.updateSession(ctx(), session.id, { counterpartSessionId: sg.id, version: session.version });
+  let board = await service.getBoard(ctx(), session.id);
+  assert.equal(rowOf(board, 'DDD4').prevDiff, null, 'dot truoc la 0/0');
+  assert.equal(rowOf(board, 'DDD4').otherDiff, null, 'dot doi chieu dang mo la 0/0');
+  await service.closeSession(ctx(), sg.id, { version: sg.version });
+  board = await service.getBoard(ctx(), session.id);
+  assert.equal(rowOf(board, 'DDD4').otherDiff, null, 'dot doi chieu da dong la 0/0');
+  assert.equal(rowOf(board, 'AAA1').otherDiff, -3, 'ma co so o SG van co so');
+});
+
+test('du lieu xuat thong ke: bo dong da bo, co dong tay, cong theo ma bang Tong kiem; dot nap sheet bao loi', async () => {
+  const { db, service, session } = await fixture();
+  await service.saveLine(ctx(), session.id, { orderId: 101, lineNo: 2, removed: true, version: null });
+  await service.saveLine(ctx(), session.id, { orderId: 102, lineNo: 1, zone: 'G7', spec: '2t*2', version: null });
+  await service.addLine(ctx(), session.id, { productCode: 'AAA1', quantity: 6, team: 'Thêm tay', zone: 'G9', spec: '3t*2' });
+  await service.saveNote(ctx(), session.id, 'AAA1', { printPage: '12' });
+  const { session: exported, rows } = await service.getLineExport(ctx(), session.id);
+  assert.equal(exported.id, session.id);
+  const aaa = rows.find(row => row.code === 'AAA1');
+  const kept = aaa.lines.filter(line => !line.removed);
+  assert.equal(kept.reduce((sum, line) => sum + line.quantity, 0), aaa.counted);
+  assert.equal(aaa.note.printPage, '12');
+  assert.equal(kept.find(line => line.orderId === 102).zone, 'G7');
+  assert.equal(kept.find(line => line.orderId === 102).spec, '2t*2');
+  assert.ok(kept.some(line => line.manual && line.spec === '3t*2'));
+  await assert.rejects(service.getLineExport(ctx(QL, ['saigon']), session.id), { code: 'BRANCH_OUT_OF_SCOPE' });
+  await service.closeSession(ctx(), session.id, { version: session.version });
+  assert.ok((await service.getLineExport(ctx(), session.id)).rows.find(row => row.code === 'AAA1').lines.length, 'dot web da dong van xuat duoc');
+  await db.exec(`UPDATE stocktake_sessions SET source = 'sheet_import', source_ref = 'x' WHERE id = ${session.id}`);
+  await assert.rejects(service.getLineExport(ctx(), session.id), { statusCode: 409, code: 'STOCKTAKE_NO_LINES' });
+});
