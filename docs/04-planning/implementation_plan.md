@@ -419,4 +419,10 @@ Triển khai: migrate 0108 → backend/worker mới → tính lại tăng dần 
 - `public/stocktake/`: nút Sửa ngày, cảnh báo đơn ngoài khoảng, hỏi `order-status` mỗi 30 giây, cột Giá vốn 88px có số lẻ, khóa cấu hình bảng `stocktake-board-v7`.
 - Thiết kế: `docs/superpowers/specs/2026-11-05-stocktake-team-orders-cost-design.md`, kế hoạch: `docs/superpowers/plans/2026-11-05-stocktake-team-orders-cost.md`. Không migration.
 
+## 05/11/2026 — Kiểm kê: nút Cập nhật đơn Kiot
+
+- `stocktake/stocktakeOrderRefresh.js`: lấy đơn vừa sửa từ KiotViet trên tiến trình web, chỉ ghi đơn TEAM + số đã đổi so với DB, không đổi checkpoint của lượt nền, gộp lượt trùng + giới hạn 15 giây mỗi cơ sở.
+- `stocktakeService.refreshOrders`, route `POST /api/stocktake/sessions/:id/refresh-orders`, nút `#stRefreshOrdersButton` trên `/stocktake/`.
+- Đo thật 05/11/2026: đơn sửa trên KiotViet vào DB sau khoảng 50 giây; cửa sổ 6 phút trên API mất khoảng 1 giây.
+
 Cập nhật gần nhất: 05/11/2026.
