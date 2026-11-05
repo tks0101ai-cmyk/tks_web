@@ -9,6 +9,7 @@ const { codeKey, buildBoard, toResults, deriveColumns, totalsOf } = require('./s
 const { PASTE_COLUMNS, normalizeValue, parseVnNumber, foldName, columnValue, sameValue } = require('../public/stocktake/stocktakePaste');
 const Status = require('../public/stocktake/stocktakeStatus');
 const { announceChanged } = require('./stocktakeEvents');
+const { refreshTeamOrders: defaultRefreshTeamOrders } = require('./stocktakeOrderRefresh');
 
 const BRANCHES = Object.freeze(['hanoi', 'saigon']);
 const CACHE_TTL_MS = 60 * 1000; // ton KiotViet dong bo moi 10 phut, 1 phut cache khong lam cham them
@@ -235,7 +236,7 @@ function checkVersion(current, expected, shape) {
   if (want === null || want !== current.version) throw conflict(shape(current));
 }
 
-function createStockTakeService({ getDb = getPool, now = () => Date.now(), announce = announceChanged } = {}) {
+function createStockTakeService({ getDb = getPool, now = () => Date.now(), announce = announceChanged, refreshTeamOrders = defaultRefreshTeamOrders } = {}) {
   const cache = new Map(); // key -> { at, value }
 
   async function cached(key, load) {
@@ -528,6 +529,18 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       inRange: row.in_range,
       outOfRange: { count: row.out_count, from: row.out_from, to: row.out_to }
     };
+  }
+
+  // Nut "Cap nhat don Kiot": lay ngay don TEAM vua sua tren KiotViet cho co so cua dot, khong cho luot nen.
+  async function refreshOrders(ctx, sessionId) {
+    const session = await readSession(getDb(), ctx, sessionId);
+    assertNotCancelled(session);
+    if (session.status !== 'open') throw fail(409, 'STOCKTAKE_CLOSED', 'Đợt kiểm kê đã đóng, số liệu không đổi nữa.');
+    const result = await refreshTeamOrders(session.branch);
+    if (result.teamOrders > 0 && !result.cached) {
+      try { announce(sessionId, ctx.clientId); } catch (error) { console.error('[stocktake] khong phat duoc tin hieu doi:', error.message); }
+    }
+    return result;
   }
 
   // Sua dong dem goc (orderId + lineNo) hoac dong tay (editId). Gia tri null = giu goc.
@@ -902,7 +915,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
   }
 
   return {
-    listSessions, createSession, updateSession, getBoard, getOrderStatus, saveLine, addLine, saveNote, saveTag, saveCells, codeHistory, closeSession,
+    listSessions, createSession, updateSession, getBoard, getOrderStatus, refreshOrders, saveLine, addLine, saveNote, saveTag, saveCells, codeHistory, closeSession,
     cancelSession, restoreSession, dependents
   };
 }
