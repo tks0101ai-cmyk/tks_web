@@ -72,6 +72,21 @@ function record(overrides) {
   }, overrides);
 }
 
+test('targeted picking lookup uses both matching Kiot branches and the existing merge rules without reading the full list', async () => {
+  const rows = [record({orderCode:'DH1',_flow:'ACCOUNTING',_branch:'',accountingSender:'KT'}),record({orderCode:'OTHER'})];
+  const context = freshService(rows, []);
+  try {
+    const orders = [{branch:'HN',code:'DH1',kiotStatus:'Hoàn thành',orderDate:'01/11/2026 09:00',saleTelegramId:'12345'},
+      {branch:'SG',code:'DH1',kiotStatus:'Phiếu tạm',orderDate:'01/11/2026 08:00',saleTelegramId:'54321'}];
+    let fullReads = 0;
+    const kiot = {readOrders:async()=>{fullReads++;throw new Error('must not scan all orders');},readOrderHeaders:async code=>{assert.equal(code,'DH1');return orders;}};
+    const expected = context.service.mergeRows({records:rows.slice(0,1),overrides:new Map(),kiotResult:{ok:true,orders}});
+    assert.deepEqual(await context.service.findPickingOrder('SG',' DH1 ',{kiot}),expected.find(row=>row.branch==='SG'));
+    assert.deepEqual(await context.service.findPickingOrder('HN','DH1',{kiot}),expected.find(row=>row.branch==='HN'));
+    assert.equal(fullReads,0);
+  } finally { context.restore(); }
+});
+
 test('computeStatus: không có gì -> NOT_SENT (Đơn chưa gửi kế toán)', () => {
   const ctx = freshService([]);
   try {
@@ -563,39 +578,23 @@ test('queryOrders + pickStatuses: dong cua trang co pickStatus (null neu chua ch
   }
 });
 
-test('queryOrders: bo loc "none" (Chua boc) = don khong co khoa chi chi dinh; canh bao Lech Kiot / Lech SL trong don cong vao warnings, loc/dem/xuat duoc', async () => {
+test('queryOrders: bo loc "none" (Chua boc) = don khong co khoa chi chi dinh; khong con canh bao Lech Kiot / Lech SL trong don', async () => {
   const ctx = freshService([]);
   try {
     const orders = [1, 2, 3, 4].map(i => kiotOrder({ code: 'DH00000' + i, orderDate: `0${i}/10/2026 10:00` }));
     const kiot = fakeKiot({ ok: true, orders });
     const pickStatuses = async () => new Map([['HN|dh000002', 'picking'], ['HN|dh000003', 'confirmed'], ['HN|dh000004', 'cancelled']]);
-    const pickWarnings = async () => new Map([['HN|dh000002', ['PICK_KIOT_DIFF']], ['HN|dh000003', ['PICK_KIOT_DIFF', 'PICK_ORDER_DIFF']]]);
+    // Tuy chon pickWarnings cu (neu con ai truyen) bi bo qua.
+    const pickWarnings = async () => new Map([['HN|dh000002', ['PICK_KIOT_DIFF']]]);
     const none = await ctx.service.queryOrders({ pickStatus: 'none' }, { kiot, pickStatuses, pickWarnings });
     assert.deepEqual(none.orders.map(o => o.orderCode), ['DH000001'], 'Chua boc = khong co khoa (khong co chi dinh / Kiot huy don)');
     const all = await ctx.service.queryOrders({}, { kiot, pickStatuses, pickWarnings });
-    assert.deepEqual(all.orders.map(o => [o.orderCode, o.warnings]), [
-      ['DH000004', []], ['DH000003', ['PICK_KIOT_DIFF', 'PICK_ORDER_DIFF']], ['DH000002', ['PICK_KIOT_DIFF']], ['DH000001', []]]);
-    // Bo loc canh bao: ma cu the va "any" (co canh bao).
-    const kiotDiff = await ctx.service.queryOrders({ warning: 'PICK_KIOT_DIFF' }, { kiot, pickStatuses, pickWarnings });
-    assert.deepEqual(kiotDiff.orders.map(o => o.orderCode), ['DH000003', 'DH000002']);
-    const orderDiff = await ctx.service.queryOrders({ warning: 'PICK_ORDER_DIFF' }, { kiot, pickStatuses, pickWarnings });
-    assert.deepEqual(orderDiff.orders.map(o => o.orderCode), ['DH000003']);
-    const any = await ctx.service.queryOrders({ warning: 'any' }, { kiot, pickStatuses, pickWarnings });
-    assert.deepEqual(any.orders.map(o => o.orderCode), ['DH000003', 'DH000002']);
-    // The KPI va dem theo co so tinh ca 2 ma moi; don nhieu canh bao dem 1 lan o "any".
-    assert.deepEqual([all.kpis.warnings.any, all.kpis.warnings.PICK_KIOT_DIFF, all.kpis.warnings.PICK_ORDER_DIFF], [2, 2, 1]);
-    assert.equal(all.warningCounts.PICK_KIOT_DIFF, 2);
-    assert.equal(all.facets.warning.PICK_ORDER_DIFF, 1);
-    // Khong truyen pickWarnings (nguoi khong co quyen) thi khong co ma canh bao chi dinh.
-    const plain = await ctx.service.queryOrders({}, { kiot, pickStatuses });
-    assert.ok(plain.orders.every(o => !o.warnings.some(code => code.startsWith('PICK_'))));
-    assert.equal((await ctx.service.queryOrders({ warning: 'PICK_KIOT_DIFF' }, { kiot, pickStatuses })).orders.length, 0);
-    // Xuat Excel dung cung bo tham so (loc none, loc canh bao).
+    assert.ok(all.orders.every(o => !o.warnings.some(code => code.startsWith('PICK_'))));
+    assert.equal(all.kpis.warnings.PICK_KIOT_DIFF, undefined);
+    assert.equal(all.kpis.warnings.PICK_ORDER_DIFF, undefined);
+    await assert.rejects(ctx.service.queryOrders({ warning: 'PICK_KIOT_DIFF' }, { kiot, pickStatuses }), { statusCode: 400, code: 'INVALID_WARNING' });
+    await assert.rejects(ctx.service.queryOrders({ warning: 'PICK_ORDER_DIFF' }, { kiot, pickStatuses }), { statusCode: 400, code: 'INVALID_WARNING' });
     assert.deepEqual((await ctx.service.exportOrders({ pickStatus: 'none' }, { kiot, pickStatuses })).map(o => o.orderCode), ['DH000001']);
-    assert.deepEqual((await ctx.service.exportOrders({ warning: 'PICK_ORDER_DIFF' }, { kiot, pickStatuses, pickWarnings })).map(o => o.orderCode), ['DH000003']);
-    // pickWarnings loi/rong khong lam hong danh sach.
-    const empty = await ctx.service.queryOrders({ warning: 'any' }, { kiot, pickStatuses, pickWarnings: async () => new Map() });
-    assert.equal(empty.orders.length, 0);
   } finally {
     ctx.restore();
   }
@@ -1008,3 +1007,22 @@ test('listHistory: dòng lịch sử cũ chưa có cột trạng thái cũ -> tr
   }
 });
 
+
+test('findMergedOrder: allowStale chuyen xuong readAll + readOverrideHistory; mac dinh false', async () => {
+  const ctx = freshService([]);
+  const repoExports = require.cache[require.resolve('./orderLifecycleRepository')].exports;
+  const seen = [];
+  repoExports.readAll = async opts => { seen.push(['all', opts]); return []; };
+  repoExports.readOverrideHistory = async opts => { seen.push(['history', opts]); return []; };
+  try {
+    const kiot = fakeKiot({ ok: true, orders: [kiotOrder({ code: 'DH000001', branch: 'HN' })] });
+    await ctx.service.findMergedOrder('HN', 'DH000001', { kiot, allowStale: true });
+    await ctx.service.findMergedOrder('HN', 'DH000001', { kiot });
+    assert.deepEqual(seen, [
+      ['all', { allowStale: true }], ['history', { allowStale: true }],
+      ['all', { allowStale: false }], ['history', { allowStale: false }]
+    ]);
+  } finally {
+    ctx.restore();
+  }
+});

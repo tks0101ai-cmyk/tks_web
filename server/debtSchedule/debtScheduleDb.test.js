@@ -84,7 +84,6 @@ test('inactive customer edits are rejected and visible history is filtered while
     const target = { branch:'hanoi', customerId:'1', user:{ id:'m1', hoTen:'Manager' } };
     await repo.setSchedule({ ...target, days:3 });
     await repo.saveFeedback({ ...target, field:'sale', value:'Original' });
-    await repo.savePenalty({ ...target, amount:12345 });
     const auditCount = (await db.query('SELECT COUNT(*)::int AS n FROM debt_feedback_history')).rows[0].n;
     await db.exec(`UPDATE customers SET raw = '{"isActive":false}' WHERE branch='hanoi' AND id=1`);
     for (const write of [
@@ -93,7 +92,7 @@ test('inactive customer edits are rejected and visible history is filtered while
       () => repo.saveFeedback({ ...target, field:'sale', value:'Changed' }),
       () => repo.saveFeedback({ ...target, field:'manager', value:'Changed' }),
       () => repo.saveStatus({ ...target, status:'Đã xử lý' }),
-      () => repo.savePenalty({ ...target, amount:99999 })
+      () => repo.saveHistoricalStatus({ ...target, cycleDate:'2026-08-08', status:'Đã xử lý' })
     ]) await assert.rejects(write, error => error.statusCode === 404);
     assert.deepEqual((await repo.listFeedbackHistory({ branches:['hanoi'] })).entries, []);
     assert.deepEqual(await repo.listScheduleLog(), []);
@@ -101,7 +100,6 @@ test('inactive customer edits are rejected and visible history is filtered while
     assert.equal((await db.query('SELECT COUNT(*)::int AS n FROM debt_feedback_history')).rows[0].n, auditCount);
     assert.equal((await db.query('SELECT COUNT(*)::int AS n FROM debt_payment_schedule_log')).rows[0].n, 1);
     assert.equal((await db.query('SELECT schedule_days FROM debt_payment_schedules')).rows[0].schedule_days, 3);
-    assert.equal(Number((await db.query('SELECT amount FROM debt_cycle_penalties')).rows[0].amount), 12345);
   } finally { await db.close(); }
 });
 
@@ -370,23 +368,18 @@ test('repository: lich TT doc truc tiep (sua la doi no qua han ngay), phan hoi +
   } finally { await db.close(); }
 });
 
-test('tien phat: ghi de, xoa ve goi y, lich su, chi chu ky hien tai', async () => {
+test('khong con phat tay: repository khong co savePenalty, du lieu debt_cycle_penalties cu khong anh huong bao cao', async () => {
   const { db, pool } = await setup();
   try {
     await seedKiot(db);
     await takeDebtCycleSnapshot(pool, '2026-08-08', { takenAt: at15('2026-08-08'), log: () => {}, loadAverages: noAverages });
     const repo = createDebtScheduleRepository({ pool });
-    const manager = { id: 'u1', hoTen: 'Quản lý A' };
-    const customerPenalty = async () => (await repo.readReport(['hanoi'])).rows[0].penaltyOverride;
-    assert.equal(await customerPenalty(), null);
-    await repo.savePenalty({ branch: 'hanoi', customerId: '1', amount: 40000, user: manager });
-    assert.equal(await customerPenalty(), 40000);
-    await repo.savePenalty({ branch: 'hanoi', customerId: '1', amount: null, user: manager });
-    assert.equal(await customerPenalty(), null);
-    await assert.rejects(repo.savePenalty({ branch: 'hanoi', customerId: '1', amount: -5, user: manager }), /không âm/);
-    await assert.rejects(repo.savePenalty({ branch: 'hanoi', customerId: '1', cycleDate: '2026-08-01', amount: 1, user: manager }), /chu kỳ mới/);
-    const history = await repo.listFeedbackHistory({ branches: ['hanoi'] });
-    assert.deepEqual(history.entries.map(e => [e.field, e.oldValue, e.newValue]), [['penalty', '40000', ''], ['penalty', '', '40000']]);
+    assert.equal(repo.savePenalty, undefined);
+    await db.exec(`INSERT INTO debt_cycle_penalties (cycle_date, branch, customer_id, amount) VALUES ('2026-08-08', 'hanoi', 1, 40000)`);
+    repo.bumpVersion();
+    const row = (await repo.readReport(['hanoi'])).rows[0];
+    assert.equal('penaltyOverride' in row, false);
+    assert.equal(buildCustomerRow(row, { cycleDate: '2026-08-08', dailyAmounts: [] }).penaltyAmount, 25000);
   } finally { await db.close(); }
 });
 

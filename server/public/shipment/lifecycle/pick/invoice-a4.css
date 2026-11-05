@@ -63,6 +63,7 @@
 #pickingPrintSheet .delivery-slip .invoice-goods tbody td{text-align:center;white-space:normal;overflow-wrap:anywhere}
 #pickingPrintSheet .delivery-slip .invoice-goods tbody td:nth-child(2){text-align:left;white-space:normal;overflow-wrap:anywhere}
 #pickingPrintSheet .delivery-slip .invoice-goods tbody td:nth-child(3){text-align:right;white-space:nowrap;overflow-wrap:normal}
+#pickingPrintSheet .delivery-slip .invoice-goods tbody td.invoice-line-note{font-size:9pt;line-height:1.2}
 #pickingPrintSheet .delivery-slip .delivery-note{margin-top:4mm;font-size:11pt}
 #pickingPrintSheet .delivery-slip .delivery-signatures{text-align:center;margin-top:5mm;min-height:25mm;break-inside:avoid;font-family:"Times New Roman",serif;font-size:11pt}
 /* Biến chỉ đặt khi người dùng chọn định dạng; mặc định giữ tỷ lệ chữ của từng mẫu. */

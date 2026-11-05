@@ -127,8 +127,8 @@ const clickInline = (page, el) => { if (!el.disabled) page.run(el.getAttribute('
 test('muc 2 nam giua Bao cao hang hoa va Tang truong ma hang, bang chi tiet ngay duoi tieu de', () => {
   const page = createPage();
   const sections = [...page.$('view-products').querySelectorAll(':scope > section.section')];
-  assert.deepEqual(sections.map(s => s.id), ['productReportSection', 'expectedArrivalsSection', 'productGrowthSection']);
-  assert.deepEqual(sections.map(s => s.querySelector('.section-step').textContent.trim()), ['1', '2', '3']);
+  assert.deepEqual(sections.map(s => s.id), ['productReportSection', 'expectedArrivalsSection', 'productGrowthSection', 'product90dSection']);
+  assert.deepEqual(sections.map(s => s.querySelector('.section-step').textContent.trim()), ['1', '2', '3', '4']);
   const section = page.$('expectedArrivalsSection');
   assert.equal(section.querySelector('.section-head h2').firstChild.textContent.trim(), 'Dự kiến hàng về');
   assert.ok(section.querySelector(':scope > .section-head').nextElementSibling.classList.contains('grid'));

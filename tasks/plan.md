@@ -1,106 +1,49 @@
-# Kế hoạch: Vá lỗ hổng đổi email + dọn phần BE/FE lệch nhau (2026-10-05)
+# Kế hoạch: sửa Xuất kho và đổi chỉ định đơn Đang bốc
 
-## Tổng quan
+Ngày: 02/11/2026. Trạng thái: người dùng đã duyệt; đã sửa DB và cập nhật mã giao diện, kiểm chứng tự động hoàn tất; giao diện chưa deploy.
+Người dùng đã cho phép thay thế kế hoạch cũ tại tasks/plan.md và tasks/todo.md.
 
-Sáu vấn đề từ đợt rà soát BE↔FE. Mục 1 là lỗ hổng leo thang quyền nên làm và deploy trước, tách riêng. Các mục 3–6 là dọn dẹp, không đổi hành vi người dùng thấy. Mục 2 (sửa SRS/BRD/README) đã xong, chỉ còn kiểm lại ở bước tài liệu cuối.
+## Mục tiêu
+Khắc phục lỗi Xuất kho bằng Excel/CSV của Vị trí hàng hóa; cho phép thay vị trí/số lượng chỉ định khi đơn Đang bốc mà không cần hủy thủ công. Danh sách việc chi tiết: [todo.md](todo.md).
 
-Danh sách việc chi tiết nằm ở [todo.md](todo.md).
+## Bằng chứng hiện có
+- Ảnh cho thấy STOCK_POSITIONS_FAILED: thông báo chung ở stockPositionsRoutes.js; chưa có stack trace hoặc file Excel gốc để kết luận nguyên nhân.
+- stockOutFile đọc file, khóa cơ sở, trừ/xóa vị trí và ghi lịch sử trong một giao dịch. Lịch sử dùng action stock_out, được bổ sung bởi migration 0101_stock_position_stock_out_action.sql. Cần kiểm tra migration thực tế; đây chỉ là giả thuyết, chưa xác nhận DB triển khai.
+- pick-assign.js đã có nhãn Cập nhật chỉ định & In phiếu và gửi reassign:true cùng version. Không xây thêm cơ chế song song; kiểm tra nhánh mở hộp, điều kiện khóa sửa, khả dụng của chính phần giữ chỗ và phiên bản tài nguyên đang phục vụ.
+- Có sẵn test service/API/frontend cho hai tính năng. Git sạch tại thời điểm khảo sát. Chưa chạy kiểm thử và chưa thay mã ứng dụng.
 
-## Lỗ hổng mục 1: đã xác nhận qua code (chưa chạy thử khai thác)
+## Quyết định triển khai
+- Giữ Express/CommonJS, frontend JavaScript thuần và API hiện tại.
+- Tái hiện lỗi bằng fixture cục bộ trước khi sửa. Đọc log/schema môi trường lỗi nếu có quyền truy cập; không dùng thử thao tác trừ tồn trên dữ liệu thật.
+- Xuất kho phải giữ phạm vi HN/SG, không trừ phần đơn Đang bốc khác đang giữ; cập nhật tồn và lịch sử cùng commit/rollback.
+- Đổi chỉ định dùng reassign nguyên tử: giải phóng giữ chỗ cũ và tạo giữ chỗ mới trong cùng giao dịch. Lưu lỗi giữ nguyên chỉ định cũ. Đóng hộp chưa lưu không ghi máy chủ.
+- Chỉ mở rộng hành vi cho Đang bốc theo yêu cầu; không thay đổi quy tắc Đã bốc trong công việc này.
+- Chỉ thêm migration khi đã chứng minh cần; thiếu migration hiện hữu thì xử lý quy trình triển khai, không tự tạo migration trùng.
 
-Chuỗi khai thác đọc ra từ code:
+## Thứ tự và phụ thuộc
+1. T1: tái hiện, sửa và kiểm chứng Xuất kho (rủi ro tồn kho ưu tiên trước).
+2. T2: khắc phục luồng cập nhật chỉ định Đang bốc; không phụ thuộc T1 về nghiệp vụ, thực hiện tuần tự để kiểm soát thay đổi chung.
+3. Checkpoint: kiểm thử tích hợp hai luồng và kiểm tra rollback/giữ chỗ.
+4. T3: kiểm chứng tổng thể, cập nhật tài liệu và ghi rõ yêu cầu triển khai.
 
-1. `POST /api/auth/profile` ([authRoutes.js:809](../server/auth/authRoutes.js)) ghi thẳng `email` mới. Chỉ kiểm định dạng và trùng với `app_users`, không kiểm `hr_employees`, không xác minh, không reset `verifiedEmail`.
-2. Ở request kế tiếp, `requireAuth` gọi `resolveUser` ([effectiveUserResolver.js](../server/auth/effectiveUserResolver.js)). Hàm này tìm nhân sự theo email/SĐT hiện tại của tài khoản rồi ghi đè `vaiTro`/`coSo` bằng vai trò trên dòng nhân sự đó.
-3. Ai lấy được quyền:
-   - TK đã gắn nhân sự (`hrManaged`) hoặc TK nội bộ cũ (`trustedLegacyInternal`): được tin ngay, không cần xác minh.
-   - TK Khách có `verifiedEmail = true` (ví dụ đăng nhập Google): qua được `hasVerifiedEmployeeIdentity`, vì cờ này không bị reset khi đổi email.
-4. Trở ngại duy nhất: nếu SĐT của TK trỏ tới nhân sự khác thì `findEmployeeByIdentifier` ném `HR_IDENTITY_CONFLICT`. Kẻ tấn công vượt qua bằng cách xóa SĐT qua `POST /api/auth/recovery` với `soDienThoai: ""`. Bước này chỉ cần mật khẩu, và TK chỉ đăng nhập Google thì **không cần gì cả** (`if (current.passwordHash)`).
-5. Hệ quả phụ (DoS): nếu nhân sự Quản lý đã có TK web, việc chiếm quyền thất bại, nhưng `findAccountForEmployee` lúc này thấy 2 TK cùng khớp nên ném 409 ở **mọi request của TK Quản lý thật**. Bất kỳ người đăng nhập nào cũng có thể khóa một nhân sự khỏi hệ thống.
-
-Lỗi phụ phát hiện thêm: Quản lý đổi SĐT của TK nhân sự qua trang quản trị ([adminUserRoutes.js:280](../server/auth/adminUserRoutes.js)) gọi `contactChangeService.adminChange(…, 'phone', …)`, nhưng `normalize()` chỉ nhận `'email'` nên luôn trả lỗi 400 `INVALID_CONTACT_FIELD`. Sau khi bỏ đổi SĐT ở recovery, trang quản trị là đường duy nhất, nên phải sửa.
-
-## Quyết định kiến trúc (đã chốt với người dùng 2026-10-05)
-
-- **Email, TK gắn nhân sự (`hrManaged`)**: không được tự đổi. Chỉ Quản lý đổi qua trang quản trị (`adminChange`, đã cập nhật cả `hr_employees`). Ô email trên form hồ sơ chỉ đọc, kèm dòng "Liên hệ Quản lý để đổi email".
-- **Email, TK không gắn nhân sự (Khách, nội bộ cũ)**: đổi qua OTP gửi tới địa chỉ mới, dùng lại `contact-change` sau khi đảo điều kiện (hiện API này *chỉ* nhận TK HR). Xác minh xong thì đặt `verifiedEmail = true`, chỉ ghi `app_users`.
-- **`POST /api/auth/profile` không bao giờ đổi email nữa**: email gửi lên khác email hiện tại thì trả lỗi, với mã riêng cho TK HR và TK thường.
-- **Chốt chặn ở resolver (phòng thủ nhiều lớp)**: TK đã gắn nhân sự `hrRowIndex = X` không bao giờ tự gắn sang nhân sự `Y ≠ X`. Khi khớp sai thì giữ nguyên ràng buộc cũ, không đổi vai trò, ghi log cảnh báo. Lớp này chặn cả những đường ghi email khác mà ta chưa thấy.
-- **`POST /api/auth/recovery`**: bỏ hẳn trường `soDienThoai`, chỉ còn email khôi phục.
-- **Mục 3**: gỡ các trường thừa khỏi BE, giữ trường nào export hoặc phần tính khác còn dùng. Việc này cũng giảm tải truy vấn (xem sự cố Disk IO 2026-09-28).
-- **Mục 4**: gỡ toàn bộ các API không còn giao diện, kể cả luồng đăng ký nhân sự bằng OTP.
-
-## Đồ thị phụ thuộc
-
-```
-T0 Kiểm tra DB đã bị khai thác chưa (chỉ đọc)  ── song song với T1
-T1 Chốt resolver ─┐
-T2 /profile chặn đổi email ─┬─ T4 FE hồ sơ (cần T2 + T3)
-T3 contact-change cho TK thường ─┘
-T5 recovery bỏ SĐT        (độc lập)
-T6 sửa admin đổi SĐT HR   (độc lập; nên xong trước khi deploy T5)
-        │
-   [Checkpoint 1 → deploy riêng bản vá bảo mật]
-        │
-T7–T9 gỡ API chết      (độc lập nhau, làm song song được)
-T10–T12 gỡ trường thừa (độc lập nhau; T10 đụng routes.js giống T7 nên làm tuần tự)
-T13 gỡ nhánh dự phòng FE (sau T10–T12 để kiểm chung một lượt)
-T14 dropdown trạng thái (độc lập, XS, chen vào lúc nào cũng được)
-T15 tài liệu + memory (cuối cùng)
-```
-
-## Danh sách việc
-
-### Giai đoạn 1: Vá bảo mật (deploy riêng)
-- [x] T0: Truy vấn chỉ đọc xem đã có TK nào bị gắn sai nhân sự chưa — đã chạy `tasks/audit-hr-binding.sql` chỉ đọc trên DB thật 19/10/2026 (BEGIN READ ONLY + ROLLBACK): khối 1 (2 TK cùng 1 nhân sự) = 0 dòng, khối 2 (trùng email) = 0 dòng, 0 TK `hr_managed` thiếu `hr_employee_id`; 30 TK quyền cao (11 Kế toán, 13 Trợ lý, 2 Trưởng kho, 4 Quản lý) — 27 TK gắn nhân sự đều khớp email + SĐT dòng nhân sự và vai trò khớp bộ phận. KHÔNG thấy dấu hiệu bị khai thác. Danh sách cần Quản lý nhìn bằng mắt: xem `tasks/todo.md` mục T0.
-  - [ ] (chờ người dùng/ngoài phạm vi) Quản lý xác nhận 3 TK nghi vấn nhẹ ở `tasks/todo.md` T0 (không tự sửa dữ liệu).
-- [x] T1: Resolver không gắn lại TK sang nhân sự khác — `auth/effectiveUserResolver.js` + test `effectiveUserResolver.test.js` dòng 172/195/209/233/288 (commit 0a10477)
-- [x] T2: `POST /api/auth/profile` không đổi email — `authRoutes.js:853-855` (403 `EMAIL_CHANGE_LOCKED` / 409 `EMAIL_CHANGE_REQUIRES_OTP`), test `authRoutes.test.js:221,239,252`
-- [x] T3: `contact-change` dành cho TK không gắn nhân sự — `contactChangeService.js:172`, test `contactChangeService.test.js:68-165`
-- [x] T4: Form hồ sơ: email chỉ đọc (HR) / đổi qua OTP (TK thường) — `public/account/index.html` (`#profEmail` readonly, `openEmailChangeModal`, `/api/auth/profile/contact-change[/verify]`), test `test/frontend/profile-email-change.test.js`
-- [x] T5: `POST /api/auth/recovery` bỏ trường SĐT — `authRoutes.js:880-884` (400 `PHONE_CHANGE_NOT_ALLOWED`), test `authRoutes.test.js:270,286`
-- [x] T6: Sửa lỗi Quản lý đổi SĐT TK nhân sự — test `contactChangeService.test.js:187,221,230`, `adminUserRoutes.test.js:199`
-
-### Checkpoint 1: Bảo mật
-- [x] Test auth + frontend xanh; các kịch bản khai thác thành test và đều bị chặn — `node --test "auth/**/*.test.js"` 19/10/2026: 344/344 đạt; `profile-email-change.test.js` + `hr-leave-loading.test.js` xanh
-- [x] Người dùng duyệt, commit — commit `0a10477` trên main (đã nằm trong `main`)
-  - [ ] (chờ người dùng/ngoài phạm vi) Deploy riêng bản vá: không xác nhận được từ repo (production chạy host khác); người dùng tự xác nhận/deploy. Trước khi deploy: Quản lý xem 3 TK nghi vấn nhẹ (T0).
-
-### Giai đoạn 2: Gỡ API không còn giao diện
-- [x] T7: Gỡ `/api/search` + export `search.results` — grep `api/search|search.results` chỉ còn test khẳng định đã gỡ (`exportService.test.js:1004`, `overview-endpoints-access.test.js:114`); commit `643b85f`
-- [x] T8: Gỡ `/api/customer-product-top` — route không còn (`overview-endpoints-access.test.js:114`); giữ `customerProductTopRepository.js` vì rollup/khách-theo-hàng vẫn dùng
-- [x] T9: Gỡ `register/{channels,send-otp,verify}`, `hr/telegram/link-status`, `shipment/lifecycle/lookup` — test `authRoutes.test.js:303`, `hrLeaveRoutes.test.js:289`, `orderLifecycleRoutes.test.js:197`, `hr-leave-loading.test.js:185`
-
-### Giai đoạn 3: Gỡ trường BE thừa + nhánh FE cũ
-- [x] T10: Tổng quan: bỏ KPI "hôm nay", `activeProducts`, `inventoryValueCategoryCount`, bộ lọc `ov*` — `dashboardData.test.js:1267`; harness 19/10: tab Tổng quan chỉ còn 6 thẻ (không có KPI hôm nay)
-- [x] T11: Hóa đơn: bỏ `returnsCount`, `totalReturns`, `periodGrossRevenue` (chỉ ở đầu ra) — `dashboardData.test.js:398,510,964`; harness 19/10: tab Hóa đơn đúng 4 thẻ (Số giao dịch/Doanh thu/Giảm giá/Thực thu)
-- [x] T12: Hàng hóa/tồn kho: bỏ `stockByCategory`, `stockValueByCategory`, `newlyImported.{topByRevenue,salesByCategory,countByCategory}` — grep toàn `server/` không còn tham chiếu
-- [x] T13: FE: bỏ nhánh `d.topSellingProducts`, `d.days` — grep `d\.days|d\.topSellingProducts|topSellingProducts` trong `public/index.html` = 0
-
-### Checkpoint 2: Dọn dẹp
-- [x] Toàn bộ test xanh; mọi tab hiển thị đúng trên preview; mọi export chạy — 19/10/2026: test tập trung xanh (dashboardData, exportService, overview-endpoints-access, hrLeaveRoutes, export-ui, hr-leave-loading, featureRegistry: 273/273); harness không đăng nhập: tab Tổng quan/Hóa đơn/Hàng hóa/Kinh doanh nạp không lỗi JS, `/api/export` xlsx+html trả 200 cho `overview.transactions`, `overview.productReport`, `debt.management`, `debt.penalty`, `debt.aging`. `customers.productDetail` + 3 bảng `stockout.*` cần payload kết quả quét/khách nên chỉ có test (xanh), chưa bấm tay.
-
-### Giai đoạn 4: Hoàn thiện
-- [x] T14: Dropdown "Toàn bộ đơn hàng" thêm "Sự cố", "Đã hủy"
-- [x] T15: Cập nhật README/SRS/BRD + memory
-
-### Checkpoint 3: Hoàn tất
-- [x] Mọi tiêu chí đạt, sẵn sàng review
-
-## Rủi ro và cách giảm
-
-| Rủi ro | Mức | Cách giảm |
+## Rủi ro và cách xử lý
+| Rủi ro | Ảnh hưởng | Xử lý |
 |---|---|---|
-| Đã có người khai thác trước khi vá | Cao | T0 chạy trước tiên. Nếu thấy TK gắn sai, Quản lý khôi phục tay trước khi deploy T1 (T1 sẽ "đóng băng" ràng buộc hiện tại, kể cả ràng buộc sai). |
-| T1 chặn nhầm trường hợp hợp lệ (Quản lý sửa email nhân sự trong `hr_employees` rồi TK khớp dòng mới) | TB | `adminChange` sửa đúng dòng `hrRowIndex` nên ràng buộc không đổi. Test riêng kịch bản này. Khi khớp sai thì chỉ log, không khóa TK. |
-| Gỡ khóa quyền khỏi `featureRegistry` (T7–T9) làm hỏng quyền đã lưu trong JSON store | TB | Kiểm `resolvePermissions` bỏ qua khóa lạ; viết test với quyền lưu có khóa cũ. |
-| `periodGrossRevenue`/`totalReturns` là bước trung gian của Doanh thu = bán − trả | Cao | T11 chỉ bỏ khỏi đối tượng trả về, giữ phép tính. So số Doanh thu/Thực thu trước và sau trên cùng dữ liệu test. |
-| Export hoặc báo cáo Telegram còn đọc trường sắp gỡ | TB | Mỗi task grep toàn `server/`, kể cả `exportService.js`, `telegram/` và test, trước khi xóa. |
-| Thử thách OTP `contact-change` lưu trong `Map` ở bộ nhớ | Thấp | Hệ thống chạy 1 instance. Khởi động lại thì người dùng chỉ phải xin OTP mới. Ghi chú, không sửa. |
-| Nhiều commit trước vẫn chưa xác nhận deploy | TB | Bản vá Giai đoạn 1 là commit riêng, không phụ thuộc migration nào, deploy được độc lập. |
+| Thiếu migration 0101 hoặc bản triển khai khác mã cục bộ | Cao | Đối chiếu migration, stack trace và phiên bản tài nguyên trước khi kết luận |
+| Xóa dòng hết tồn bị ràng buộc bởi phiếu cũ | Cao | Fixture có lịch sử/phiếu tham chiếu, xác nhận giao dịch rollback đúng |
+| Đơn tự giữ vị trí khiến giao diện báo thiếu hàng | Cao | Tính khả dụng theo đúng excludeOrder; kiểm thử đơn khác vẫn giữ chỗ |
+| Hai người lưu hoặc Kiot chốt cùng lúc | Cao | Giữ version, trả xung đột rõ ràng và tải dữ liệu mới |
+| Sửa UI nhưng trình duyệt vẫn tải JS cũ | Trung bình | Kiểm tra URL/cache-bust và phản hồi tài nguyên của bản triển khai |
 
-## Câu hỏi còn mở
+## Điểm cần xác minh khi thực hiện
+- Stack trace của lần xuất kho lỗi và trạng thái migration ở môi trường xảy ra lỗi.
+- File vt_hn_20261102_0802.xlsx chưa được cung cấp; ban đầu tái hiện bằng file mẫu tương đương.
+- Trình duyệt đang chạy bản nào và thao tác nào khiến đơn Đang bốc bị khóa sửa.
 
-- T0 cần quyền đọc DB production. Bạn chạy câu SQL tôi soạn, hay cấp chuỗi kết nối chỉ đọc?
-- TK Khách xác minh OTP một email trùng email nhân sự (tức họ đúng là nhân sự đó) thì resolver sẽ gắn TK vào nhân sự. Đây là hành vi "tự nhận diện" hợp lệ. Giữ nguyên, hay muốn Quản lý duyệt?
-- Khi T1 phát hiện TK khớp sai nhân sự, ngoài ghi log có cần báo chuông cho Quản lý không?
+## Tiêu chí hoàn tất
+Các tiêu chí tại todo.md đều đạt; có bằng chứng kiểm thử. Phân biệt sửa cục bộ với xác nhận triển khai thực tế. Không tự đánh dấu đã khắc phục production chỉ từ test cục bộ.
+
+## Kết quả thực hiện 02/11/2026
+02/11/2026 — **Sửa Xuất kho và làm rõ đổi chỉ định Đang bốc:** xác nhận DB đã cấu hình thiếu `0101_stock_position_stock_out_action.sql`, ràng buộc lịch sử không nhận `stock_out`. Đã áp dụng riêng 0101 trong giao dịch và kiểm tra lại constraint; không sửa tồn thực tế, không chạy 0102/0103. Test hồi quy tái hiện lỗi 23514, chứng minh rollback cả cập nhật/xóa và xuất thành công sau migration. Đơn Đang bốc đã có reassign nguyên tử; nút mở hộp đổi thành **Thay đổi chỉ định**, JS cache-bust `20261102-1` (thay đổi giao diện chưa deploy). Cách dùng: mở đơn Đang bốc → Thay đổi chỉ định → sửa vị trí/số lượng → Cập nhật chỉ định & In phiếu; không cần hủy trước. Kiểm chứng: 154/154 test service/status/frontend chỉ định, 27/27 API; trang VT 27/30 đạt, 3 lỗi có sẵn (2 bộ lọc cảnh báo, 1 Xuất Excel), các test Xuất kho đều đạt. Build đạt. Chưa thử file Excel gốc hoặc thao tác ghi trên production. Graphify không chạy được do Windows Application Control chặn executable.
+
+Chi tiết kết quả và giới hạn kiểm chứng: xem todo.md. Không thêm bảng/cột/migration hay đổi API, schema contract hiện hữu đã mô tả action stock_out.

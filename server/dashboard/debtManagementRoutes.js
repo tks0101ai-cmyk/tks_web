@@ -6,9 +6,10 @@
 //   QL phan hoi    -> reports.debt.managerFeedback (mac dinh Quan ly)
 //   Trang thai     -> reports.debt.edit            (mac dinh Quan ly)
 //   Lich TT        -> reports.debt.schedule        (mac dinh Quan ly)
-//   Tien phat      -> reports.debt.penalty         (mac dinh Quan ly)
+// Tien phat luon tu tinh theo quy che (da bo phat tay 2026-11-02).
 // Phan hoi/trang thai chi ghi vao chu ky hien tai (ban chot 15:00 moi nhat); client gui kem
-// cycleDate dang xem, lech thi tra 409 de nguoi dung tai lai.
+// cycleDate dang xem, lech thi tra 409 de nguoi dung tai lai. Rieng trang thai co the sua ngay cu trong
+// 7 ngay qua hop lich su cua khach (historical: true) — cac ngay sau tu tinh lai.
 
 const express = require('express');
 const { requireAuth, requireFeature } = require('../auth/authMiddleware');
@@ -72,7 +73,11 @@ router.patch('/api/debt-management/status', requireAuth, requireFeature('reports
     return res.status(400).json({ error: 'Trạng thái xử lý không hợp lệ.', code: 'INVALID_DEBT_STATUS' });
   }
   try {
-    const result = await repository().saveStatus({ ...readTarget(req.body), status, user: req.user });
+    // historical: sua trang thai MOT NGAY CU trong hop lich su 7 ngay cua khach; cac ngay sau tu tinh lai.
+    const target = readTarget(req.body);
+    const result = req.body?.historical === true
+      ? await repository().saveHistoricalStatus({ ...target, status, user: req.user })
+      : await repository().saveStatus({ ...target, status, user: req.user });
     notifyDebtChange();
     return res.status(200).json(result);
   } catch (error) {
@@ -92,17 +97,6 @@ router.patch('/api/debt-management/schedule', requireAuth, requireFeature('repor
     return res.status(200).json(result);
   } catch (error) {
     return sendError(res, error, 'Không thể lưu lịch thanh toán lúc này.', 'DEBT_SCHEDULE_UNAVAILABLE');
-  }
-});
-
-// Tien phat phien nay: Quan ly (hoac nguoi duoc phan quyen) ghi de muc phat goi y; rong = ve goi y.
-router.patch('/api/debt-management/penalty', requireAuth, requireFeature('reports.debt.penalty'), async (req, res) => {
-  try {
-    const result = await repository().savePenalty({ ...readTarget(req.body), amount: req.body?.amount, user: req.user });
-    notifyDebtChange();
-    return res.status(200).json(result);
-  } catch (error) {
-    return sendError(res, error, 'Không thể lưu tiền phạt lúc này.', 'DEBT_PENALTY_UNAVAILABLE');
   }
 });
 
@@ -153,6 +147,20 @@ router.get('/api/debt-management/feedback-history', requireAuth, requireFeature(
       return res.json(await repository().listFeedbackHistory({ branches: branchCodesFor(req) }));
     } catch (error) {
       return sendError(res, error, 'Không thể tải lịch sử chỉnh sửa lúc này.', 'DEBT_HISTORY_UNAVAILABLE');
+    }
+  });
+
+// Lich su 7 ngay cua 1 khach (hop mo khi bam dong o "Danh sach thao tac").
+router.get('/api/debt-management/customer-history', requireAuth, requireFeature('reports.debt'),
+  branchMiddleware.resolveBranch, async (req, res) => {
+    try {
+      const branch = String(req.query?.branch || '').trim();
+      if (!branchCodesFor(req).includes(branch)) {
+        return res.status(403).json({ error: 'Bạn không có quyền xem cơ sở này.', code: 'BRANCH_FORBIDDEN' });
+      }
+      return res.json(await repository().listCustomerHistory({ branch, customerId: req.query?.customerId }));
+    } catch (error) {
+      return sendError(res, error, 'Không thể tải lịch sử công nợ của khách lúc này.', 'DEBT_CUSTOMER_HISTORY_UNAVAILABLE');
     }
   });
 

@@ -190,13 +190,14 @@ test('cảnh báo: đơn đã hủy / sự cố (ghi đè thủ công) không c�
   }
 });
 
-test('WARNING_LABEL: đúng 8 nhãn tiếng Việt (6 cảnh báo vận chuyển + Lệch Kiot, Lệch SL trong đơn)', () => {
+test('WARNING_LABEL: đúng 6 nhãn tiếng Việt (cảnh báo vận chuyển; Lệch Kiot / Lệch SL trong đơn đã bỏ)', () => {
   const ctx = freshService();
   try {
     assert.deepEqual(Object.values(ctx.service.WARNING_LABEL), [
-      'Kế toán sót đơn', 'Lái xe chưa chụp đơn', 'Lái xe quên chụp', 'Chưa nhận đơn quá 6 giờ', 'Khách/Ship chưa lấy', 'Chưa chụp bill tàu',
-      'Lệch Kiot', 'Lệch SL trong đơn'
+      'Kế toán sót đơn', 'Lái xe chưa chụp đơn', 'Lái xe quên chụp', 'Chưa nhận đơn quá 6 giờ', 'Khách/Ship chưa lấy', 'Chưa chụp bill tàu'
     ]);
+    assert.equal(ctx.service.WARNING.PICK_KIOT_DIFF, undefined);
+    assert.equal(ctx.service.WARNING.PICK_ORDER_DIFF, undefined);
   } finally {
     ctx.restore();
   }

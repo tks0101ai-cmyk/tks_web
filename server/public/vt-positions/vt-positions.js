@@ -18,12 +18,13 @@
   };
   // Đủ cho từ dài nhất của tiêu đề + nút sắp xếp + lề ô (≥ 80px), và cho nội dung cột bẻ dòng được.
   const MIN_WIDTHS = { code: 110, name: 150, quantity: 90, available: 100, kiotQuantity: 90, notes: 130, arrivalDate: 90, location: 80, updated: 140, updatedByName: 120 };
-  const WARNING_LABELS = { multi: 'Nhiều quy cách', loose: 'Trừ lẻ', unreadable: 'Sai định dạng', badnumber: 'Số thùng sai', unknowncode: 'Mã SP lạ' };
+  const WARNING_LABELS = { negative: 'Số lượng âm', multi: 'Nhiều quy cách', loose: 'Trừ lẻ', unreadable: 'Sai định dạng', badnumber: 'Số thùng sai', unknowncode: 'Mã SP lạ' };
   const ACTION_LABELS = {
     seed: 'Nhập dữ liệu đầu', create: 'Thêm dòng', edit: 'Sửa', delete: 'Xóa dòng', auto_delete: 'Tự xóa (hết hàng)',
     deduct: 'Trừ SL', import_replace: 'Import thay toàn bộ', import_add: 'Import bổ sung',
     pick: 'Nhặt hàng (đơn)', pick_revert: 'Hoàn tác nhặt (đơn)',
-    ack: 'Đánh dấu Đã sửa', unack: 'Bỏ Đã sửa', history_purged: 'Xóa lịch sử'
+    ack: 'Đánh dấu Đã sửa', unack: 'Bỏ Đã sửa', history_purged: 'Xóa lịch sử',
+    stock_out: 'Xuất kho'
   };
   const FIELD_LABELS = { code: 'Mã hàng', name: 'Tên hàng', notes: 'Ghi chú', arrivalDate: 'Ngày về', location: 'Vị trí', quantity: 'Số lượng' };
   const collator = new Intl.Collator('vi', { numeric: true, sensitivity: 'base' });
@@ -38,6 +39,7 @@
   let user, activeTab, allowedTabs, requestVersion = 0;
   let screenMode, visibleFields, columnPreferences = {}, canEditPermission = false;
   const importState = { busy: false };
+  const stockOutState = { busy: false };
   const history = { rows: [], nextBefore: null, branch: '', version: 0 };
   // Hộp chi tiết một dòng: row = bản đang mở (để lấy version), version chống tải lịch sử cũ ghi đè.
   const detail = { id: null, tab: '', row: null, fresh: null, rows: [], nextBefore: null, version: 0, busy: false };
@@ -438,6 +440,7 @@
   }
   function closeDialog(dialog, force = false) {
     if (dialog.id === 'vtImportDialog' && importState.busy && !force) return;
+    if (dialog.id === 'vtOrderDialog' && stockOutState.busy && !force) return;
     if (dialog.close) dialog.close(); else dialog.removeAttribute('open');
   }
 
@@ -831,7 +834,7 @@
     const needle = normalizeSearch($('vtImportSearch').value);
     return importState.rows.filter(row => (importState.filter === 'all' || row.kind === importState.filter)
       && (importState.warnFilter === 'all' || (importState.warnFilter === 'error' ? row.kind === 'error' : importWarning(row)))
-      && (!needle || normalizeSearch([row.code, row.name, row.notes, row.location, row.arrivalDate].join(' ')).includes(needle)))
+      && (!needle || (window.TKSFuzzySearch ? window.TKSFuzzySearch.matches([row.code, row.name, row.notes, row.location, row.arrivalDate].join(' '), $('vtImportSearch').value) : normalizeSearch([row.code, row.name, row.notes, row.location, row.arrivalDate].join(' ')).includes(needle))))
       .sort((a, b) => {
         const field = importState.sortField;
         if (!field) return importPriority(b) - importPriority(a);
@@ -1076,7 +1079,7 @@
     setImportStep(2);
     renderImportPreview(payload);
     const counts = payload.counts || {};
-    const items = [['added', 'Thêm'], ['updated', 'Cập nhật'], ['deleted', 'Xóa'], ['unchanged', 'Không đổi'], ['skippedEmpty', 'Bỏ qua (trống/lỗi)'], ['errors', 'Lỗi']];
+    const items = [['added', 'Thêm'], ['updated', 'Cập nhật'], ['deleted', 'Xóa'], ['unchanged', 'Không đổi'], ['skippedEmpty', 'Bỏ qua (trống/lỗi)'], ['keptHeld', 'Giữ lại (đơn Đang bốc)'], ['errors', 'Lỗi']];
     const list = document.createElement('ul');
     list.className = 'vt-import-counts';
     items.forEach(([key, label]) => {
@@ -1134,6 +1137,106 @@
     }
   }
 
+  // ---------- Xuất kho Excel: trừ SL theo file (một bước, kết quả hiển thị ngay trong tab "Xuất kho Excel" của hộp Đơn xuất kho) ----------
+  const stockOutFile = () => ($('vtStockOutFile').files && $('vtStockOutFile').files[0]) || null;
+  function setStockOutBusy(busy) {
+    stockOutState.busy = busy;
+    $('vtOrderDialog').querySelectorAll('[data-vt-close], [data-order-view]').forEach(button => { button.disabled = busy; });
+    $('vtStockOutFile').disabled = busy;
+    $('vtStockOutPick').disabled = busy;
+    $('vtStockOutBack').disabled = busy;
+    $('vtStockOutRun').disabled = busy || Boolean(stockOutState.done) || !stockOutFile();
+    $('vtStockOutRun').textContent = busy ? 'Đang trừ kho…' : 'Trừ kho';
+  }
+  // Về trạng thái chọn file (chưa trừ); giữ file đang chọn nếu có.
+  function resetStockOut() {
+    stockOutState.done = false;
+    stockOutState.tab = activeTab;
+    $('vtStockOutPickPanel').hidden = false;
+    $('vtStockOutReview').hidden = true;
+    $('vtStockOutResult').replaceChildren();
+    $('vtStockOutErrorsBox').hidden = true;
+    $('vtStockOutBack').hidden = true;
+    $('vtStockOutRun').hidden = false;
+    $('vtStockOutError').textContent = '';
+    const file = stockOutFile();
+    $('vtStockOutFileName').textContent = file ? file.name : '';
+    $('vtStockOutDrop').classList.toggle('has-file', Boolean(file));
+    setStockOutBusy(false);
+  }
+  // File mẫu dựng ngay trên trình duyệt (CSV có BOM để Excel đọc đúng tiếng Việt).
+  function downloadStockOutTemplate() {
+    const csv = '\ufeffMã hàng,Ghi chú,Vị trí\r\nVASNAM,1T x 50,42\r\n';
+    const url = URL.createObjectURL(new window.Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'mau-xuat-kho.csv';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  function renderStockOutResult(payload) {
+    const counts = payload.counts || {};
+    const box = $('vtStockOutResult');
+    box.replaceChildren();
+    const list = document.createElement('ul');
+    list.className = 'vt-import-counts';
+    [['applied', 'Dòng file đã trừ'], ['deleted', 'Dòng vị trí bị xóa (hết hàng)'], ['skipped', 'Dòng file bị bỏ qua'], ['quantity', 'Tổng SL đã trừ']].forEach(([key, label]) => {
+      const li = document.createElement('li');
+      li.dataset.count = key;
+      const value = document.createElement('b');
+      value.textContent = formatNumber(counts[key] ?? 0);
+      li.append(value, label);
+      list.appendChild(li);
+    });
+    box.appendChild(list);
+    const errors = Array.isArray(payload.errors) ? payload.errors : [];
+    const body = $('vtStockOutErrorRows');
+    body.replaceChildren();
+    errors.forEach(item => {
+      const tr = document.createElement('tr');
+      const cell = (text, className) => { const td = document.createElement('td'); if (className) td.className = className; td.textContent = text; tr.appendChild(td); };
+      cell(item.row === null || item.row === undefined ? '—' : String(item.row), 'num');
+      cell(item.code || '—', 'vt-import-code');
+      cell(item.location || '—', 'vt-import-location');
+      cell(item.notes || '—', 'vt-stockout-notes');
+      cell(item.message || '', 'vt-stockout-reason');
+      body.appendChild(tr);
+    });
+    $('vtStockOutErrorsBox').hidden = !errors.length;
+    $('vtStockOutErrorNote').textContent = payload.errorsTruncated
+      ? `Chỉ hiển thị ${formatNumber(errors.length)} dòng đầu trong tổng ${formatNumber(counts.skipped || 0)} dòng bị bỏ qua. Các dòng hợp lệ đã được trừ.`
+      : 'Các dòng hợp lệ đã được trừ; chỉ những dòng ở trên bị bỏ qua. Sửa file rồi xuất kho lại cho các dòng này nếu cần.';
+  }
+  async function runStockOut() {
+    if (stockOutState.busy || stockOutState.done) return;
+    const file = stockOutFile();
+    $('vtStockOutError').textContent = '';
+    if (!file) { $('vtStockOutError').textContent = 'Vui lòng chọn file .xlsx, .xls hoặc .csv.'; return; }
+    const tab = stockOutState.tab || activeTab;
+    setStockOutBusy(true);
+    try {
+      const form = new window.FormData();
+      form.append('file', file, file.name);
+      const { response, payload } = await request(API + '/stock-out?branch=' + tab.toUpperCase(), { method: 'POST', body: form });
+      if (!response.ok) { $('vtStockOutError').textContent = payload.error || 'Không xuất kho được từ file này.'; return; }
+      stockOutState.done = true;
+      $('vtStockOutPickPanel').hidden = true;
+      $('vtStockOutReview').hidden = false;
+      $('vtStockOutBack').hidden = false;
+      $('vtStockOutRun').hidden = true;
+      renderStockOutResult(payload);
+      const counts = payload.counts || {};
+      notify(`Đã xuất kho: trừ ${counts.applied || 0} dòng, xóa ${counts.deleted || 0} dòng hết hàng, bỏ qua ${counts.skipped || 0} dòng.`);
+      await selectTab(activeTab);
+    } catch (error) {
+      $('vtStockOutError').textContent = 'Không kết nối được máy chủ. Vui lòng thử lại.';
+    } finally {
+      setStockOutBusy(false);
+    }
+  }
+
   // ---------- Xuất Excel (toàn bộ dòng của cơ sở đang chọn, tải qua fetch để giữ cookie) ----------
   function exportFileName(disposition, tab) {
     const text = String(disposition || '');
@@ -1181,14 +1284,21 @@
   function historyValue(entry, side) {
     if (entry.summary && side === 'new') {
       const s = entry.summary, parts = [];
-      [['added', 'Thêm'], ['updated', 'Đổi'], ['deleted', 'Xóa'], ['skippedEmpty', 'Bỏ qua']].forEach(([key, label]) => { if (s[key] !== undefined) parts.push(label + ' ' + s[key]); });
+      [['added', 'Thêm'], ['updated', 'Đổi'], ['deleted', 'Xóa'], ['skippedEmpty', 'Bỏ qua'], ['keptHeld', 'Giữ lại']].forEach(([key, label]) => { if (s[key] !== undefined) parts.push(label + ' ' + s[key]); });
       if (s.rows !== undefined) parts.push(s.rows + ' dòng');
       if ('from' in s || 'to' in s) parts.push(s.from && s.to ? vnDate(s.from) + ' – ' + vnDate(s.to) : s.from ? 'từ ' + vnDate(s.from) : s.to ? 'đến ' + vnDate(s.to) : 'toàn bộ');
       if (Array.isArray(s.warnings) && s.warnings.length) parts.push(s.warnings.map(warningLabel).join(', '));
       if (Array.isArray(s.warnings) && typeof s.notes === 'string' && s.notes.trim()) parts.push('Ghi chú: ' + s.notes.trim());
+      if (s.deducted !== undefined) parts.push('Trừ ' + s.deducted);
+      if (s.removed === true) parts.push('Hết hàng, đã xóa dòng');
       if (s.picked !== undefined) parts.push('Nhặt ' + s.picked);
       if ('confirmedBy' in s) parts.push(s.confirmedBy ? 'Xác nhận: ' + s.confirmedBy : 'Job Kiot');
       if (s.fileName) parts.push(s.fileName);
+      // Sửa/thêm/xóa VT ngay trong hộp Chỉ định vị trí của Vòng đời đơn hàng: ghi kèm mã đơn đang chỉ định.
+      if (s.source === 'pick') parts.unshift(s.orderCode ? 'Chỉ định đơn ' + s.orderCode : 'Chỉ định vị trí');
+      // Chốt Đơn xuất kho (migration 0104): mã đơn hiện thành nút mở chi tiết ở historyChange.
+      if (s.source === 'order') parts.unshift('Đơn xuất kho ' + (s.orderCode || ''));
+      if (s.negative === true) parts.push('Âm');
       if (!parts.length && Array.isArray(s.warnings)) return 'Không có cảnh báo';
       return parts.length ? parts.join(' · ') : JSON.stringify(s);
     }
@@ -1239,7 +1349,7 @@
   }
 
   // Nhãn hành động dạng pill: màu theo loại (có chữ nên không chỉ dựa vào màu).
-  const HISTORY_TONES = { edit: 'blue', create: 'green', import_add: 'green', delete: 'red', auto_delete: 'red', deduct: 'amber', pick: 'amber', pick_revert: 'blue', seed: 'neutral', import_replace: 'neutral', ack: 'green', unack: 'neutral', history_purged: 'red' };
+  const HISTORY_TONES = { edit: 'blue', create: 'green', import_add: 'green', delete: 'red', auto_delete: 'red', deduct: 'amber', pick: 'amber', pick_revert: 'blue', seed: 'neutral', import_replace: 'neutral', ack: 'green', unack: 'neutral', history_purged: 'red', stock_out: 'amber' };
   const HISTORY_ICONS = {
     blue: '<path d="M4 20h4L19 9l-4-4L4 16v4Z"></path>',
     green: '<path d="M12 5v14M5 12h14"></path>',
@@ -1261,7 +1371,25 @@
   function historyChange(entry) {
     const box = document.createDocumentFragment();
     const add = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; node.textContent = text; box.appendChild(node); return node; };
-    if (entry.summary) { add('span', 'vt-hist-summary', historyValue(entry, 'new')); return box; }
+    if (entry.summary) {
+      // Xuất kho và sửa VT từ hộp Chỉ định vị trí (source 'pick'): giữ cả giá trị cũ → mới của dòng, rồi tóm tắt (số lượng trừ · file · Chỉ định đơn X).
+      if (entry.action === 'stock_out' || entry.summary.source === 'pick' || entry.summary.source === 'order') {
+        const was = String(entry.oldValue ?? ''), now = String(entry.newValue ?? '');
+        if (was) add('del', 'vt-hist-old', was);
+        if (was && now) add('span', 'vt-hist-arrow', ' → ');
+        if (now) add('ins', 'vt-hist-new', now);
+        add('span', 'vt-hist-summary', (was || now ? '  ' : '') + historyValue(entry, 'new'));
+        if (entry.summary.source === 'order' && entry.summary.orderId && window.TKSVtStockOutOrder) {
+          const link = add('button', 'vt-link-button vt-hist-order', 'Xem đơn ' + (entry.summary.orderCode || ''));
+          link.type = 'button';
+          link.title = 'Xem chi tiết đơn xuất kho';
+          link.addEventListener('click', () => window.TKSVtStockOutOrder.openDetail(entry.summary.orderId, entry.branch));
+        }
+        return box;
+      }
+      add('span', 'vt-hist-summary', historyValue(entry, 'new'));
+      return box;
+    }
     const before = historyValue(entry, 'old'), after = historyValue(entry, 'new');
     if (!before && !after) { add('span', 'vt-hist-empty', '—'); return box; }
     if (entry.field && entry.field !== 'notes') add('span', 'vt-hist-field', (FIELD_LABELS[entry.field] || entry.field) + ': ');
@@ -1545,6 +1673,23 @@
     $('vtImportWarnFilter').addEventListener('change', () => { importState.warnFilter = $('vtImportWarnFilter').value; importState.page = 0; renderImportPreviewRows(); });
     $('vtImportPrevPage').addEventListener('click', () => { importState.page -= 1; renderImportPreviewRows(); });
     $('vtImportNextPage').addEventListener('click', () => { importState.page += 1; renderImportPreviewRows(); });
+    $('vtStockOutFile').addEventListener('change', resetStockOut);
+    $('vtStockOutPick').addEventListener('click', () => $('vtStockOutFile').click());
+    $('vtStockOutBack').addEventListener('click', () => { $('vtStockOutFile').value = ''; resetStockOut(); });
+    $('vtStockOutTemplate').addEventListener('click', downloadStockOutTemplate);
+    const stockOutDrop = $('vtStockOutDrop');
+    ['dragenter', 'dragover'].forEach(name => stockOutDrop.addEventListener(name, event => { event.preventDefault(); if (!stockOutState.busy) stockOutDrop.classList.add('is-over'); }));
+    ['dragleave', 'dragend'].forEach(name => stockOutDrop.addEventListener(name, () => stockOutDrop.classList.remove('is-over')));
+    stockOutDrop.addEventListener('drop', event => {
+      event.preventDefault();
+      stockOutDrop.classList.remove('is-over');
+      const files = event.dataTransfer && event.dataTransfer.files;
+      if (stockOutState.busy || !files || !files.length) return;
+      $('vtStockOutFile').files = files;
+      resetStockOut();
+    });
+    $('vtStockOutRun').addEventListener('click', runStockOut);
+    $('vtOrderDialog').addEventListener('cancel', event => { if (stockOutState.busy) event.preventDefault(); });
     $('vtExportButton').addEventListener('click', exportExcel);
     $('vtHistoryButton').addEventListener('click', openHistory);
     $('vtHistorySearch').addEventListener('input', renderHistory);
@@ -1726,6 +1871,15 @@
     applyScreenMode(mobileQuery ? mobileQuery.matches : window.innerWidth <= 600);
     if (mobileQuery) mobileQuery.addEventListener('change', event => applyScreenMode(event.matches));
     bindDialogs();
+    // Đơn xuất kho (vt-stockout-order.js): dùng chung request/xác nhận/hộp thoại của trang; chốt đơn xong tải lại bảng.
+    if (window.TKSVtStockOutOrder) {
+      window.TKSVtStockOutOrder.init({
+        branch: () => activeTab.toUpperCase(), request, jsonOptions, confirmBox, notify, openDialog,
+        onChanged: () => selectTab(activeTab),
+        // Tab "Xuất kho Excel" của hộp: vào tab thì về bước chọn file; đang trừ kho thì không cho chuyển tab.
+        excel: { enter: () => { $('vtStockOutFile').value = ''; resetStockOut(); }, busy: () => stockOutState.busy }
+      });
+    }
     initImportTable();
     bindTable();
     bindDetail();

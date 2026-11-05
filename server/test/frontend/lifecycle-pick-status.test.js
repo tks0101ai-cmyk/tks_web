@@ -199,57 +199,14 @@ test('lỗi từ máy chủ (409): dropdown trả về Đang bốc, báo lỗi v
   [page, offline].forEach(p => p.dom.window.close());
 });
 
-test('cảnh báo chỉ định: Lệch Kiot / Lệch SL trong đơn tô đỏ dòng, nhãn có giải thích; tự hết khi danh sách mới không còn; đơn không lệch không tô; ô lọc có 2 lựa chọn', async () => {
+test('không còn cảnh báo chỉ định (Lệch Kiot / Lệch SL trong đơn đã bỏ 02/11/2026): ô lọc không có, dòng không tô đỏ', async () => {
   const page = await renderPage({ orders: [
-    orderRow('DH1', { pickStatus: 'picking', warning: true, warnings: ['PICK_KIOT_DIFF'] }),
-    orderRow('DH2', { pickStatus: 'confirmed' }),
-    orderRow('DH3', { pickStatus: 'picking', warning: true, warnings: ['PICK_KIOT_DIFF', 'PICK_ORDER_DIFF'] })
+    orderRow('DH1', { pickStatus: 'picking', warning: true, warnings: ['NOT_SIGNED_6H'] }),
+    orderRow('DH2', { pickStatus: 'confirmed' })
   ] });
-  const byCode = code => rowsOf(page.document).find(row => row.cells[0].textContent === code);
-  const labels = code => [...byCode(code).querySelectorAll('[data-col="warning"] .lc-warning-badge')].map(node => node.textContent);
-  assert.equal(byCode('DH1').classList.contains('lc-row-mismatch'), true);
-  assert.equal(byCode('DH2').classList.contains('lc-row-mismatch'), false);
-  assert.deepEqual(labels('DH1'), ['Lệch Kiot']);
-  assert.deepEqual(labels('DH3'), ['Lệch Kiot', 'Lệch SL trong đơn']);
-  assert.match(byCode('DH1').querySelector('.lc-warning-badge').title, /Kiot/u);
-  assert.deepEqual(labels('DH2'), []);
-  const options = [...page.document.querySelectorAll('#bulkWarningFilter option')].map(option => [option.value, option.textContent]);
-  assert.deepEqual(options.slice(-2), [['PICK_KIOT_DIFF', 'Lệch Kiot'], ['PICK_ORDER_DIFF', 'Lệch SL trong đơn']]);
-
-  // Chọn lọc -> gửi warning lên máy chủ.
-  const filter = page.document.getElementById('bulkWarningFilter');
-  filter.value = 'PICK_ORDER_DIFF';
-  filter.dispatchEvent(new page.window.Event('change', { bubbles: true }));
-  await settle();
-  assert.match(page.calls.filter(c => isListUrl(c.url)).at(-1).url, /warning=PICK_ORDER_DIFF/u);
-  filter.value = '';
-  filter.dispatchEvent(new page.window.Event('change', { bubbles: true }));
-  await settle();
-
-  // Kiot sửa đơn / chỉ định lại khớp -> lần làm mới sau không còn mã -> hết đỏ.
-  page.source.orders = [orderRow('DH1', { pickStatus: 'picking' }), orderRow('DH2', { pickStatus: 'confirmed' }), orderRow('DH3', { pickStatus: 'picking' })];
-  page.window.eval('loadBulkOrders(true)');
-  await settle();
-  assert.equal(byCode('DH1').classList.contains('lc-row-mismatch'), false);
-  assert.deepEqual(labels('DH1'), []);
-  assert.equal(rowsOf(page.document).length, 3);
-  page.dom.window.close();
-});
-
-test('đổi Đang bốc → Đã hủy thì hết cảnh báo chỉ định ngay trên dòng (cảnh báo khác giữ nguyên)', async () => {
-  const page = await renderPage({ orders: [orderRow('DH1', { pickStatus: 'picking', warning: true, warnings: ['NOT_SIGNED_6H', 'PICK_KIOT_DIFF'] })] });
-  const row = () => rowsOf(page.document)[0];
-  assert.equal(row().classList.contains('lc-row-mismatch'), true);
-  await choose(page, pickCell(row()).querySelector('select'), 'cancelled');
-  assert.equal(row().classList.contains('lc-row-mismatch'), false);
-  assert.deepEqual([...row().querySelectorAll('[data-col="warning"] .lc-warning-badge')].map(node => node.textContent), ['Chưa nhận đơn quá 6 giờ']);
-  page.dom.window.close();
-});
-
-test('đơn Đã bốc vẫn cảnh báo chỉ định (không có dropdown để đổi trạng thái)', async () => {
-  const page = await renderPage({ orders: [orderRow('DH3', { pickStatus: 'confirmed', warning: true, warnings: ['PICK_ORDER_DIFF'] })] });
-  const row = rowsOf(page.document)[0];
-  assert.equal(row.classList.contains('lc-row-mismatch'), true);
-  assert.equal(row.querySelector('select.lc-pick-state'), null);
+  const values = [...page.document.querySelectorAll('#bulkWarningFilter option')].map(option => option.value);
+  assert.equal(values.some(value => value.startsWith('PICK_')), false);
+  assert.equal(page.document.querySelectorAll('.lc-row-mismatch').length, 0);
+  assert.deepEqual([...rowsOf(page.document)[0].querySelectorAll('[data-col="warning"] .lc-warning-badge')].map(node => node.textContent), ['Chưa nhận đơn quá 6 giờ']);
   page.dom.window.close();
 });

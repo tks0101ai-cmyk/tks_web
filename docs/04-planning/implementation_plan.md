@@ -137,6 +137,8 @@ Kiến trúc: `server/debtSchedule/` (quy tắc thuần, job chốt 15:00, repos
 
 **Tuổi nợ theo hóa đơn (17/10/2026, migration 0059):** `debtAgingRules` (thuần) + `debtAgingRefresh` (job tính sẵn, ghi khác biệt, gắn vào `scheduler.runFastGroupAndRollup` trước rollup nóng/SSE, sự kiện `customersChanged` và `PATCH /schedule`) + `debtAgingRepository` (chỉ đọc, cache 60 giây) → `debtScheduleService.buildDebtAging` → `GET /api/debt-management/aging`; giao diện mục 3 tab Công nợ tải riêng như bảng thưởng/phạt, lọc/sắp xếp/phân trang ở client; xuất `debt.aging`. Tab Công nợ — mục 3 **Tuổi nợ theo hóa đơn** (migration `0059`, chưa áp DB): bảng tra cứu mọi khách (kể cả nợ 0) với Cơ sở · Khách hàng · Sale · Lịch TT · Nợ hiện tại · Nợ quá hạn · Ngày hết nợ (ẩn mặc định) · Ngày nợ tương đương · Còn hạn. **Ngày hết nợ** = trừ dần nợ hiện tại bằng tổng hóa đơn Hoàn thành theo ngày từ hôm nay lùi về (không trừ trả hàng), ngày đầu tiên phần còn lại ≤ 0; **Ngày nợ tương đương** = hôm nay − Ngày hết nợ; **Còn hạn** = Lịch TT − Ngày nợ tương đương, ≤ 0 bôi đỏ; nợ ≤ 0 để trống 3 cột ngày; tra cứu tối đa 30 ngày hóa đơn (vượt → "≥"/"≤", ngày hết nợ ghi "trước …"). Nợ quá hạn tính như bảng thao tác nhưng mốc là hôm nay. Số liệu sống theo lần đồng bộ KiotViet, không chờ chốt 15:00: job `debtSchedule/debtAgingRefresh.js` tính sẵn từ các bảng chung `customers` + `invoices` + `debt_payment_schedules` vào `debt_aging_customers` / `debt_aging_state` sau mỗi lượt đồng bộ hóa đơn (7 phút), khi đồng bộ khách (20 phút) và khi sửa Lịch TT; chỉ ghi dòng thay đổi (LEFT JOIN + IS DISTINCT FROM, lượt nhàn rỗi ghi 0 dòng). Web chỉ ĐỌC bảng kết quả qua `GET /api/debt-management/aging` (quyền `reports.debt`, lọc theo cơ sở đang xem, cache 60 giây); xuất Excel/HTML `debt.aging` theo bộ lọc/sắp xếp đang xem. Đo trên DB thật (giao dịch chỉ đọc, 17/10/2026): 8.132 khách, 12.935 dòng hóa đơn-ngày, ~1 s/lượt tính; đối chiếu tay 2 khách khớp. Cập nhật cùng ngày: mục được **đổi tên "Kiểm tra công nợ" và đặt đầu tab Công nợ** (trước các khung Chỉ số then chốt / Danh sách thao tác, đánh lại số 1–3); bấm 1 dòng khách mở **hộp chi tiết hóa đơn** (hộp `#docModalBackdrop` dùng chung, kind `debtAgingInvoices`) liệt kê hóa đơn Hoàn thành của khách từ ngày hết nợ đến nay (Mã hóa đơn · Khách hàng · Nhân viên bán hàng · Ngày · Số tiền, tối đa 500, mới nhất trước) kèm hàng chỉ số tổng quan, sort cột và "Cột hiển thị"; API `GET /api/debt-management/aging/invoices?branch=&customerId=` (quyền `reports.debt`, chặn cơ sở ngoài quyền, đọc `invoices` trực tiếp, không migration mới).
 
+**Lịch sử công nợ 7 ngày theo khách (02/11/2026, không migration):** `debtSchedule/debtHistoryCascade.js` (hàm thuần: đổi trạng thái ngày D thì tính lại `nextOverdueStreak` + `suggestedPenalty` cho D…mới nhất), `listCustomerHistory` / `saveHistoricalStatus` (1 transaction: khóa khách, cập nhật `debt_cycle_customers.overdue_streak`, đồng bộ `debt_penalty_daily` ngày đã chốt, từ chối nếu chạm tháng trong `debt_reward_months`). Đã bỏ phạt tay (gỡ `PATCH /api/debt-management/penalty` và quyền `reports.debt.penalty`). Xem `GET /api/debt-management/customer-history`.
+
 2026-10-17 (bổ sung) — Tab Công nợ, mục 3 Tuổi nợ: **Ngày nợ tương đương = hôm nay − ngày hết nợ + 1** (tính cả ngày hết nợ; hết nợ hôm nay = 1 ngày, khách vượt khoảng tra cứu 30 ngày hiện ≥ 30), **Còn hạn** vẫn = Lịch TT − Ngày nợ tương đương. Cột Còn hạn tô màu theo dấu: âm đỏ, 0 vàng, dương xanh lá — áp dụng cả trên bảng web, hộp chi tiết hóa đơn, file Excel (màu chữ) và file HTML (cột đánh dấu `signTone`); cột số căn phải (table-align.js nhận diện cả ≥/≤). Độ rộng cột mặc định của bảng được đặt lại. Không migration; bảng tính sẵn `0059` tự cập nhật ở lượt `debtAgingRefresh` kế tiếp.
 
 17/10/2026 — Báo cáo hàng hóa thêm hai cột **Đơn giá HN / Đơn giá SG** sau Tên sản phẩm (giá bán chung KiotViet từng cơ sở, migration `0063`), mặc định hiện cho Quản lý/Trợ lý (19/10/2026) và có trong file Excel/HTML xuất, chỉ Quản lý và Trợ lý (quyền `reports.products.price`) được thấy; API không trả giá cho tài khoản khác.
@@ -284,7 +286,7 @@ Module `stockPositions/` + trang `/vt-positions/`: cơ sở dữ liệu Vị tr�
 - **Đợt 27/10/2026 (tối) — trạng thái bốc + phiếu in mới + Có thể bốc (đợt này không migration mới, chưa commit/deploy):** [kế hoạch](../superpowers/plans/2026-10-27-pick-status-lifecycle.md) chia ba luồng.
   - **Trạng thái bốc:** cột ở Vòng đời đơn hàng (Chưa bốc / Đang bốc `picking` / Đã bốc `confirmed` / Đã hủy `cancelled`), chỉ người có `shipment.pick` nhận `pickStatus`/`pickMismatch` và thấy cột. Đã hủy xử lý như Chưa bốc; Đã bốc là trạng thái cuối. In đơn → Đang bốc + giữ chỗ; in lại = `POST /api/shipment/pick` với `reassign: true` (hủy lượt cũ + lượt mới một giao dịch). Dropdown `POST /api/shipment/pick/status` chỉ Đang bốc → Đã bốc / Đã hủy.
   - **Tự động theo Kiot:** `pickKiotData.js` + `pickKiotReconcileJob.js` (2 phút, `PICK_KIOT_RECONCILE_ENABLED`/`_INTERVAL_MS`): Đang bốc + Kiot Hoàn thành → Đã bốc (lúc đó mới trừ thùng và đổi ghi chú vị trí), Kiot Đã hủy → Chưa bốc (trả giữ chỗ). Chỉ đọc bảng `orders` đã đồng bộ, không gọi API KiotViet. Lý do hủy do Kiot lưu ở `order_pick_history.summary.reason` nên không cần migration.
-  - **Cảnh báo chỉ định (30/10/2026, thay “Lệch SL bốc”):** `pickWarnings()` + `withPickWarnings` đưa `PICK_KIOT_DIFF` (Lệch Kiot) và `PICK_ORDER_DIFF` (Lệch SL trong đơn) vào `warnings` cho người có `shipment.pick`; có trong bộ lọc/KPI/xuất Excel. `POST /api/shipment/pick` nhận `needs` (SL cần nhặt sửa tay), snapshot lưu `quantity` + `kiotQuantity`; phiếu in giữ thứ tự đơn Kiot. Bỏ nút Đã xử lý / route `mismatch-ack` (migration `0098` giữ nguyên, không dùng).
+  - **(Đã gỡ 02/11/2026: 2 cảnh báo Lệch Kiot / Lệch SL trong đơn bỏ hẳn, Vòng đời chỉ còn 6 cảnh báo giao hàng; `needs` vẫn giữ, chỉ nội bộ; phiếu in theo thứ tự đang hiện trong hộp) Cảnh báo chỉ định (30/10/2026, thay “Lệch SL bốc”):** `pickWarnings()` + `withPickWarnings` đưa `PICK_KIOT_DIFF` (Lệch Kiot) và `PICK_ORDER_DIFF` (Lệch SL trong đơn) vào `warnings` cho người có `shipment.pick`; có trong bộ lọc/KPI/xuất Excel. `POST /api/shipment/pick` nhận `needs` (SL cần nhặt sửa tay), snapshot lưu `quantity` + `kiotQuantity`; phiếu in giữ thứ tự đơn Kiot. Bỏ nút Đã xử lý / route `mismatch-ack` (migration `0098` giữ nguyên, không dùng).
   - **Phiếu in / thẻ gợi ý / ghi chú thùng:** phiếu 9 cột TT, Tên hàng, SL, Đơn giá, Thành tiền, Ghi chú, Vị trí, Thùng (ST cũ), Thực nhặt; ô Vị trí 1 vị trí chỉ ghi tên, từ 2 vị trí mỗi dòng `VT: SL` (SL in đậm); thẻ gợi ý có tên vị trí đậm ở góc trái, tổng SL góc phải, ghi chú thùng dòng dưới; `carton.js` đọc `a*B` (không T) là `aTxB`.
   - **VT HN/SG:** cột Có thể bốc (API `held`/`available`, xuất Excel 10 cột).
   - **Điểm mở:** Kiot hoàn thành mà xác nhận gặp `STOCK_CHANGED` thì đơn vẫn Đang bốc, cần xử lý tay; người đã lưu tuỳ chọn cột VT phải tự bật cột mới; chưa kiểm trên trình duyệt thật.
@@ -329,3 +331,282 @@ Cập nhật gần nhất: 29/10/2026 (đối soát đầy đủ `products`, syn
 Quyết định: VT Hà Nội / VT Sài Gòn (`stockPositions/`, `/vt-positions/`) là module Vị trí hàng duy nhất. **Gỡ:** trang `public/stock-locations/`, thư mục `server/stockLocations/`, route `GET /api/stock-locations` (nay 404), khóa `stockLocations.view` (và mục `PAGE_FEATURES` tương ứng), hai nguồn đồng bộ `stock_locations_hn/sg` trong `sheetSnapshots/sync.js` (còn `shipping_measures`), cấu hình `STOCK_LOCATIONS_SHEET_HN/_SG`. **Giữ/thêm:** `legacyPageRedirect` (302 `/stock-locations*` → `/vt-positions/`, gắn ở `index.js` trước `pageGuard`); sidebar nhóm Vị trí hàng chỉ còn 2 mục VT theo cơ sở; `vt-base.css` (CSS khung bảng chuyển từ `stock-locations.css`); prototype nhặt đơn đọc `GET /api/stock-positions`. **Phân quyền:** `stockLocationsV2.view`/`.export` mặc định mọi vai trò kể cả Khách (`GUEST_ALLOWED_KEYS`, `escalationExempt`); `.edit`/`.historyDelete` Quản lý, Khách cấm tường minh; khóa cũ trong `feature_permissions` bị bỏ qua vô hại. **Việc treo:** (1) DROP `stock_location_lines` + xóa hàng `stock_locations_hn/sg` của `sheet_snapshot_sync` — cần migration mới sau khi người dùng duyệt; (2) đổi tên biến `STOCK_LOCATIONS_SPREADSHEET_ID` (di sản) nếu muốn, phải đổi cấu hình trên Render đồng thời; (3) 7 test nền đang fail từ trước (xem `CURRENT.md`). Xem [thiết kế](../superpowers/specs/2026-10-30-remove-legacy-stock-locations-design.md).
 
 Cập nhật gần nhất: 30/10/2026 (gỡ module Vị trí hàng cũ; VT Hà Nội/Sài Gòn là module duy nhất, xem + xuất Excel mở cho mọi vai trò).
+
+## 30/10/2026 — VT: Xuất kho từ file (migration 0101, chưa commit/migrate/deploy)
+
+Nút **Xuất kho** trên `/vt-positions/` trừ SL hàng loạt theo file Excel/CSV (Mã hàng, Ghi chú số thùng, Vị trí; Ngày về bỏ qua) vào đúng dòng (mã, vị trí) của cơ sở đang mở, bằng `carton.deduct`; một bước (không xem trước), dòng sai bỏ qua và liệt kê lại, dòng trùng trong file trừ tuần tự, không xuất phần đang bị phiếu bốc giữ chỗ. `stockPositionsService.stockOutFile` + `POST /api/stock-positions/stock-out` (quyền `stockLocationsV2.edit`), lịch sử `stock_out` ("Xuất kho"), migration `0101` mở rộng CHECK hành động. Xem README mục đầu.
+
+- **(Đã gỡ 02/11/2026, xem mục "Chỉ định vị trí không ghi lên KiotViet" ở cuối) Chỉ định vị trí ghi ngược Kiot (30/10/2026):** hộp chỉ định có kéo-thả đổi thứ tự dòng (chỉ trong lần mở, phiếu in theo thứ tự đó), nút Xóa dòng và SL cần nhặt sửa tay ghi lên đơn đặt hàng Kiot qua `kiotviet/kiotOrderEditor.js` (đọc → PUT /orders/{id} giữ nguyên mọi trường khác → đọc lại đối chiếu → khôi phục nếu lệch → upsert DB cục bộ); nhật ký `order_kiot_edit_log` (migration `0102`), cờ `KIOT_ORDER_WRITE_ENABLED`, endpoint `POST /api/shipment/pick/order-lines/remove`.
+
+## 02/11/2026 — Kiểm kê: đối chiếu Hà Nội (migration 0105, đã áp DB 03/11/2026, chưa deploy)
+
+- Module `server/stocktake/`: `stocktakeCompute.js` (hàm thuần gom số đếm + phần sửa, Quên KK, chênh theo Cụm SP), `stocktakeService.js` (đợt, sửa dòng, ghi chú, tag, đóng đợt chụp `stocktake_session_results`, khóa lạc quan `version` + lịch sử bất biến), `stocktakeRoutes.js` (`/api/stocktake`, SSE, xuất Excel), `stocktakeSheetImport.js` (nạp tab KIỂM KÊ HN T10 và KIỂM SG, `source: t10|sg`, tự nối đợt đối chiếu), `stocktakeEvents.js` (bus chung `dashboardRollupEvents`).
+- Trang `public/stocktake/` (menu Vị trí hàng → Kiểm kê, `table-controls.js`, sáng/tối, di động): đủ 23 cột T10 A→W theo thứ tự sheet, sắp xếp bằng bấm tiêu đề trên toàn bộ dòng đã lọc, đối chiếu chéo SG/HN (`counterpart_session_id`, `PATCH /sessions/:id`), dán cột từ Google Sheets (`POST /sessions/:id/paste`, `public/stocktake/stocktakePaste.js` dùng chung trình duyệt + server), xuất Excel 24 cột.
+- **Cập nhật 03/11/2026 (bộ lọc + tiêu đề, bỏ Dán cột):** hộp Dán cột và `POST /api/stocktake/sessions/:id/paste` (service `pasteColumn`, `parsePasteText`) đã bỏ — dán cột từ Google Sheets nay là Ctrl+V trên bảng qua `POST /cells`; lịch sử cũ "Dán cột …" vẫn hiển thị, không migration. Bộ lọc `#stFilter` còn 5 lựa chọn (Tất cả mã, Quên KK, Chỉ có trạng thái, Chỉ có trang in, Không có cả hai; bỏ "Đã ghi chú"); tiêu đề/ô bảng một dòng, cắt chữ ở mép ô, cấu hình cột lưu khóa v4.
+- **Cập nhật 03/11/2026 (trạng thái 7 loại + thẻ tổng, bỏ Vị trí kho, tìm kiếm chặt; không migration, nhánh `claude/inventory-feature-analysis-1ab808`, chưa push/merge/deploy):** module UMD `public/stocktake/stocktakeStatus.js` (`window.TKSStocktakeStatus` / `require`) là nguồn duy nhất cho 7 loại trạng thái (Mất, KK trước, OK, Nhầm SG/HN theo cơ sở, Thừa, Lẫn, Chưa XL = trống), màu, `classify` (chữ cũ xếp loại theo từ khóa sớm nhất, không xếp được = "Khác"), `canonical`, `colorOf`, `summarize`; trình duyệt, `stocktakeService.js` (kiểm tra `isValid` ở `saveCells` và `saveNote`: sai thì vào `skipped.invalid` hoặc 400 `VALIDATION`; bỏ qua `statusColor`, không ghi `status_color`) và `stocktakeExport.js` (tô ô Trạng thái theo loại) dùng chung. Trang: danh sách chọn 7 loại trên ô Trạng thái, thẻ tổng `#stStatusCards` (số mã + giá trị chênh có dấu toàn đợt, bấm lọc / bấm lại bỏ lọc, đồng bộ ô lọc), dán/kéo nhân bản quy về loại, bỏ hộp chọn màu. Bỏ cột Vị trí kho gần nhất (bảng `stocktake-board-v5`, Excel 23 cột; `stocktakeCompute.js` bỏ `latestPosition`, service thôi đọc `stock_positions`, `suggestions` chỉ còn `reason`); ô dữ liệu xuống dòng, tiêu đề một dòng. `stocktakeSearch.js`: cụm liền + bắt đầu ở đầu từ + số trọn, Fuse chỉ khi không có mã khớp, `search()` trả `{ rows, fuzzy }`. Test: `stocktake/stocktakeStatus.test.js` (mới) và các test search/service/compute/routes/export đã sửa. [thiết kế](docs/superpowers/specs/2026-11-03-stocktake-status-dropdown-search-design.md).
+- Quyền `stocktake.view`, `stocktake.edit`, `stocktake.close`; trang `/stocktake` trong `PAGE_FEATURES`.
+- Thiết kế: `docs/superpowers/specs/2026-10-31-stocktake-design.md`; kế hoạch: `docs/superpowers/plans/2026-10-31-stocktake.md`. Thiết kế đợt cột T10 + Sài Gòn + dán cột: `docs/superpowers/specs/2026-11-02-stocktake-columns-sg-paste-design.md`; kế hoạch: `docs/superpowers/plans/2026-11-02-stocktake-columns-sg-paste.md`. Chưa làm: chia team, thưởng/phạt.
+
+- **Bỏ dòng chỉ định của mã đã xóa khỏi đơn Kiot (31/10/2026; nhánh Xóa dòng ghi Kiot đã gỡ 02/11/2026, job đối chiếu giữ nguyên):** Xóa dòng trên đơn Đang bốc bỏ luôn `order_pick_lines` của mã đó (trả giữ chỗ VT, snapshot bỏ mã); job đối chiếu Kiot 2 phút bỏ dòng của mã không còn trên đơn đã đồng bộ trước khi tự Đã bốc (không trừ thùng mã đã xóa); lịch sử `prune` (migration `0103`).
+
+- **Sửa vị trí VT ngay trong hộp Chỉ định vị trí (31/10/2026, không migration, chưa commit/deploy):** vì tồn thực tế kho hay lệch, hộp chỉ định thêm/sửa ghi chú số thùng/xóa dòng `stock_positions` của các mã trong đơn (✎/🗑 trên thẻ vị trí, **+ Thêm vị trí**; `+…` cộng thêm bằng `PickingCarton.mergeNotes` chuyển sang `public/shared/carton.js`; `0`/trống = hết hàng, hỏi xác nhận rồi xóa). Kiến trúc: `pickAssignmentsService.positionScope` (tải đơn, giới hạn mã trong đơn, chặn đơn Đã bốc) → `createPosition`/`updatePosition`/`removePosition` gọi `stockPositionsService` với tùy chọn `branch`/`allowRow`/`excludeOrder`/`checkHeld`/`source`; route `POST /api/shipment/pick/positions`, `PATCH`/`DELETE /api/shipment/pick/positions/:id` xích `shipment.pick` + (`stockLocationsV2.view`, `stockLocationsV2.edit`); candidates trả `canEditPositions`. Lưu VT ngay (lịch sử `summary {source:'pick', orderCode}`, SSE sẵn có), hộp chỉ gợi ý lại mã vừa sửa; chỉ định đơn vẫn lưu khi in. `stockPositionsService.assertHoldsFit` bảo vệ giữ chỗ của đơn Đang bốc khác (`BELOW_HELD`, `HELD_SPEC_CONFLICT` qua `deductAllocation` trên `allocation_snapshot`; xóa vẫn `POSITION_HELD`) và áp cả cho `PATCH /api/stock-positions/:id` của trang VT (thay đổi hành vi: trước đây chỉ lộ ra lúc Xác nhận nhặt). Lịch sử VT hiện cũ → mới kèm "Chỉ định đơn <mã>". Kiểm chứng: 448/452 test liên quan (4 hỏng sẵn), xem trên trình duyệt thật qua harness API giả. Điểm mở: đọc đơn lỗi thì không sửa được; đơn Đang nhặt sửa vị trí của chính mình rồi đóng hộp không Cập nhật có thể gặp `STOCK_CHANGED`; trang VT chưa dùng `mergeNotes` khi gõ "+…" vào ghi chú có phần trừ lẻ.
+
+- **Chỉ định vị trí không ghi lên KiotViet (02/11/2026, không migration, chưa commit/deploy):** gỡ toàn bộ ghi ngược: xóa `kiotviet/kiotOrderEditor.js`, cờ `KIOT_ORDER_WRITE_ENABLED`, endpoint `POST /api/shipment/pick/order-lines/remove`, `updateOrder`/PUT trong `kiotVietApiClient.js`; `order_kiot_edit_log` (`0102`) giữ, không còn ghi. **Xóa dòng** thành thao tác nội bộ: `POST /api/shipment/pick` nhận `removed: [mã hàng]` (`applyRemovals` bỏ mã khỏi snapshot + phân bổ; mã lạ hoặc bỏ hết dòng → 400), mở lại chỉ định thì hộp suy ra mã đã bỏ (có trên đơn Kiot, vắng trong snapshot) và hiện “Đã bỏ: MÃ ↺”. SL cần nhặt sửa tay (`needs`) chỉ đổi snapshot `quantity` + `kiotQuantity` và phiếu in. Bỏ 2 cảnh báo `PICK_KIOT_DIFF`/`PICK_ORDER_DIFF` (`pickWarnings()`, `withPickWarnings`, lọc, KPI, tô đỏ, xuất Excel) — Vòng đời còn 6 cảnh báo giao hàng. Phiếu in theo đúng thứ tự trong hộp (kéo-thả hoặc sort cột; không sort = thứ tự Kiot). Job dọn dòng ma `kiot_line_missing` (`0103`) giữ nguyên. Spec: `docs/superpowers/specs/2026-11-02-remove-pick-kiot-writeback-design.md`.
+
+- **VT: Đơn xuất kho + số lượng âm (02/11/2026, migration `0104` chưa áp DB, chưa commit/deploy):** đơn tạm dùng chung mỗi cơ sở (`stock_out_orders` + `stock_out_order_lines`), chỉ trừ tồn VT khi chốt (`stockPositions/stockOutOrdersService.js`: `buildPlan` thuần trừ tuần tự theo (mã, vị trí), `confirm` một giao dịch dưới `lockBranch`, preview trước/sau ở `getCurrent`); số âm = ghi chú `-kT x size` (`carton.parseSigned`/`subtractNotes`/`negativeNote`, `mergeNotes` tự bù); lịch sử `stock_out` kèm `orderId`/`orderCode` để bấm xem đơn; hộp UI `vt-stockout-order.js`. Hộp Xuất kho Excel cũ giữ nguyên.
+
+## 04/11/2026 — Kiểm kê: chọn đợt KK trước, hủy / khôi phục đợt, nạp lại sheet (migration 0109, đã áp DB 04/11/2026)
+
+- `stocktakeService.js`: `previousSessionOf` (chọn tay còn hợp lệ, không thì tự động bỏ qua đợt hủy; trả `mode` + `manualInvalid`), `previousOf` (kiểm tra chọn tay), `updateSession` chỉ đổi trường có trong body, `cancelSession` / `restoreSession` / `dependents`, `assertNotCancelled` chặn mọi lệnh ghi; `counterpartResults` bỏ đợt hủy; `closeSession` ghi `previousSessionId` vào lịch sử.
+- `stocktakeSheetImport.js`: tách `writeSnapshot` dùng chung, thêm `reloadSheet` (đọc sheet trước giao dịch, khóa + so `version`, `dryRun`, `compareSnapshot`), tự nối đối chiếu bỏ qua đợt hủy.
+- `stocktakeRoutes.js`: `POST /sessions/:id/cancel`, `/restore`, `/reload-sheet`, `GET /sessions/:id/dependents` (quyền `stocktake.close`), `?includeCancelled=1`.
+- Trang `/stocktake/`: ô KK trước, nút Hủy đợt / Nạp lại từ sheet, ô Hiện đợt đã hủy, dải cảnh báo + Khôi phục, hộp Hủy (lý do + đợt phụ thuộc), hộp Nạp lại (tên, ngày, xem trước bắt buộc).
+- Test: `stocktakeService.test.js`, `stocktakeSheetImport.test.js`, `stocktakeRoutes.test.js`, `db/rollbacks/stocktakeRollback.test.js`. Thiết kế: `docs/superpowers/specs/2026-11-04-stocktake-previous-cancel-reload-design.md`.
+
+Cập nhật gần nhất: 04/11/2026 (Kiểm kê: KK trước chọn tay, hủy đợt, nạp lại sheet, migration 0109; trước đó 03/11/2026: Kiểm kê: trạng thái 7 loại + thẻ tổng, bỏ Vị trí kho, tìm kiếm chặt; trước đó 03/11/2026: Kiểm kê: bộ lọc 5 lựa chọn, tiêu đề bảng gọn, bỏ Dán cột; trước đó 02/11/2026: Kiểm kê đối chiếu Hà Nội + Sài Gòn, đủ 23 cột T10, dán cột, nạp tab KIỂM SG, migration 0105; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; VT Đơn xuất kho + số lượng âm, migration 0104; Chỉ định vị trí không ghi lên KiotViet; gỡ 2 cảnh báo Lệch Kiot / Lệch SL trong đơn) — trước đó 31/10/2026 (sửa vị trí VT ngay trong hộp Chỉ định vị trí; trước đó: bỏ dòng chỉ định của mã đã xóa khỏi đơn Kiot).
+## 03/11/2026 — Tăng tốc chỉ định và in phiếu (cục bộ, chưa deploy)
+
+Đường chỉ định tra đúng mã đơn HN/SG và dùng lại quy tắc gộp Vòng đời/Accounting, không tải toàn bộ đơn hoặc tính cước/điều chuyển. Ghi dòng chỉ định theo lô trong cùng giao dịch/khóa PostgreSQL; bản in tiếp tục dùng snapshot sau commit. Tải trước tài nguyên phiếu và QR song song; chỉ cho in khi form chung đọc mới thành công và không còn lượt lưu form đang chạy.
+
+Redis/Valkey dùng cho SĐT sale (fresh 5 phút, last-good tối đa 30 phút, worker hiện có làm mới 4 phút) và nguồn Sheets/lịch sử Vòng đời (15 giây, generation token chống ghi cache cũ kể cả eviction). Không cache tồn, giữ chỗ, auth hoặc form in. Redis lỗi thì đọc nguồn, lệnh cache tối đa 150ms, hàng đợi client tối đa 100 lệnh; cold SĐT chỉ chờ 1 giây. `REDIS_ENABLED=false` hoặc thiếu `REDIS_URL` dùng cache RAM; khi bật cần `REDIS_NAMESPACE` riêng môi trường và private URL cùng vùng trên web/worker.
+
+Server-Timing cho `/api/shipment/pick/*`; browser measures `tokosi.pick.assets/render/layout/preview-ready/submit-ready` không chứa dữ liệu đơn. Monitor bổ sung eventLoopP95/Max, poolTotal/Idle/Waiting, cacheHit/Miss/Error/Bypass bên cạnh RSS/heap.
+
+Kiểm chứng/triển khai: xem [kế hoạch Redis](../../tasks/redis-performance/plan.md), [benchmark cục bộ](../../tasks/redis-performance/benchmark.md) và [runbook](../../tasks/redis-performance/rollout.md). Giữ worker Singapore hiện có; tạo web Singapore thay thế Oregon sau kiểm chứng. Chưa thay đổi dịch vụ Render/domain hoặc xác nhận p95 production; không migration. Integration Redis thật đang chờ TEST Redis; công cụ browser dừng vì không xác định chắc chắn URL Windows.
+
+Sau khi gộp PR in phiếu nhặt nhanh: Redis là tầng L2 dưới cache L1 trong tiến trình của `sheets/sheetValuesCache.js` (trả bản cũ + làm mới nền); `appendRow` xóa L2 rồi L1. SĐT sale giữ bản Redis (`pickKiotData.createSellerPhoneLookup`: last-good 30 phút, worker làm mới 4 phút) thay cho cache trong RAM của PR; `shapeAssignment` bỏ bổ sung SĐT khi đang trong giao dịch.
+
+Cập nhật gần nhất: 03/11/2026 (Kiểm kê: bộ lọc 5 lựa chọn, tiêu đề bảng gọn, bỏ Dán cột; trước đó 02/11/2026: Kiểm kê đối chiếu Hà Nội + Sài Gòn, đủ 23 cột T10, dán cột, nạp tab KIỂM SG, migration 0105; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; VT Đơn xuất kho + số lượng âm, migration 0104; Chỉ định vị trí không ghi lên KiotViet; gỡ 2 cảnh báo Lệch Kiot / Lệch SL trong đơn) — trước đó 31/10/2026 (sửa vị trí VT ngay trong hộp Chỉ định vị trí; trước đó: bỏ dòng chỉ định của mã đã xóa khỏi đơn Kiot).
+
+## 03/11/2026 — Chi tiết hàng hóa: lịch sử 90 ngày
+
+Đã bổ sung repository SQL độc lập productHistoryRepository và GET /api/product-report/history; frontend product-history.js được nạp bởi index.html, mount mục mới dưới phần doanh số theo khách. Hai phần tải độc lập và dùng requestId/generation để bỏ phản hồi cũ. Truy vấn UNION hóa đơn Hoàn thành + phiếu trả Đã trả, gộp chứng từ, fuzzy tên khách, tính tổng trước LIMIT/OFFSET trong một SQL snapshot. Mặc định 25 dòng, mới nhất trước; table-controls quản lý cột, phân trang máy chủ riêng; Light/Dark, điện thoại cuộn ngang. Quyền sales cho lịch sử, price cho giá vốn; chưa có giá vốn lịch sử xác minh được nên unitCost null, không lấy giá hiện tại thay. Không migration/dependency/env mới; chưa deploy.
+
+Cập nhật gần nhất: 03/11/2026.
+
+## 04/11/2026 — Triển khai DB Hàng hóa 90 ngày
+
+Thiết kế đã được người dùng duyệt qua phỏng vấn: 26 cột theo BC 90 ngày.xlsx và nhóm tổng 90 ngày bổ sung; danh mục chỉ mã hàng đang hoạt động (is_active IS NOT FALSE ở ít nhất một cơ sở), gộp hai miền, snapshot kết thúc hôm qua. Chọn bảng dẫn xuất độc lập để không bị luồng báo cáo tăng dần gồm hôm nay thay đổi trong ngày. Dùng mẫu staging/upsert/transaction và lịch worker hiện có, không cần thư viện mới.
+
+- [x] Viết và chạy kiểm thử đỏ trước module/lịch; kiểm chứng SQL thật trên PGlite cho ranh giới kỳ, gộp miền/khách, trả hàng, lượt mua, Top 3, NUMERIC, rollback và phân quyền.
+- [x] Tạo migration 0106 + rollback, bảng product_90d_report (26 cột nghiệp vụ + khóa) và singleton state; RLS và thu hồi quyền truy cập trực tiếp.
+- [x] Tạo kiotvietSync/product90dReport.js; lịch độc lập một lần/ngày từ 02:00 VN, chạy bù sau giờ hẹn, khóa giữa các worker; npm products:90d:refresh nạp tay.
+- [x] Áp riêng 0106 và nạp Supabase 11.135 mã cho 06/08–03/11/2026; đối soát chứng từ nguồn và các kỳ con đạt, không thiếu dòng nguồn.
+- [x] Kiểm thử liên quan theo graphify: 65/65 đạt; gồm migration runner, báo cáo cũ, SQL doanh số, lịch polling, lịch sử mã hàng và module mới.
+- [ ] Deploy worker có code mới với KIOTVIET_SYNC_ENABLED=true; kiểm tra state tự sang kỳ mới sau 02:00 VN. Lịch trong code sẵn sàng, chưa hoạt động trên worker cũ.
+- [x] API chỉ đọc `GET /api/product-report/90d` (`dashboard/product90dReportRepository.js`, quyền `reports.products` + `reports.products.sales`): một SQL tham số hóa, tìm fuzzy + sắp xếp whitelist + phân trang ở máy chủ, `available:false` khi chưa có snapshot; kiểm thử repository/route đạt.
+- [x] Giao diện mục 4 "Hàng hóa 90 ngày" (`public/product-90d-report.js` + `.css`, `#product90dSection` trong `index.html`): bảng 26 cột, table-controls, Light/Dark, cuộn ngang trong khung với 2 cột Mã/Tên cố định, 4 trạng thái đang tải / không kết quả / chưa nạp / lỗi + Thử lại, hiện “Dữ liệu cập nhật lúc” theo giờ VN; web chỉ đọc, không tính lại, không nút làm mới. Có kiểm thử `test/frontend/product-90d-report.test.js`.
+- [x] Xuất Excel + HTML (`tableKey: products.product90d`, khung xuất chung `exportService` / `exportHtmlReport`): toàn bộ dòng khớp từ khóa + sắp xếp đang áp dụng (`getProduct90dReportForExport`), quyền `reports.export` + `reports.products` + `reports.products.sales` kiểm ở API, nhãn phẳng có ngày thật của kỳ, ô số là số thật; HTML có biểu đồ đường "Xu hướng 3 kỳ" + KPI 90 ngày tính lại theo từ khóa (tùy chọn chung `periodTrend` / `searchKeys` / `fractionDigits`). Kiểm thử `dashboard/exportProduct90d.test.js`; kiểm trên trình duyệt thật (Light/Dark, 375px).
+- [x] Theo phản hồi: Top 3 khách 1 dòng `Tên|%DS|DS`, bỏ SL và khách SL = 0 (dùng chung màn hình + file xuất); tiêu đề nhóm kỳ căn giữa, nhãn dính 2 phía khi cuộn ngang.
+- [ ] Deploy web (API + giao diện mục 4 + xuất file) cùng worker ở trên; sau lượt 02:00 đầu kiểm tra mục 4 hiển thị đúng kỳ mới với tài khoản có `reports.products.sales`, thử Xuất Excel/HTML.
+
+Cập nhật gần nhất: 04/11/2026.
+
+Cập nhật gần nhất: 04/11/2026.
+
+## 04/11/2026 — Chi tiết hàng hóa mở rộng
+
+Đã triển khai cục bộ: chỉ số 2 cột cạnh donut, bảng khách toàn hàng với 3 kỳ 30 ngày (tooltip ngày snapshot); lịch sử 5 cột chính, sort toàn bộ kết quả trước phân trang, đơn Phiếu tạm và 2 tổng đặt riêng. Frontend giữ table-controls cho cột/độ rộng; sort lịch sử do API xử lý; bỏ phản hồi cũ theo generation khi đổi lọc/mã/đóng hộp. Xuất qua registry chung `products.productHistory`, truyền mã/lọc/sort/cột hiện tại, đọc mọi dòng cùng một SQL snapshot, Excel giữ kiểu số. Hộp xuất đóng bằng Esc trả về hộp chi tiết và giữ khóa cuộn nền.
+
+Migration 0108 bổ sung 3 NUMERIC nullable + ngày kết thúc kỳ. Cả refresh đầy đủ và incremental tính kỳ trong cùng giao dịch; missing gate tự buộc chạy nặng; cập nhật so sánh cả kỳ khi tổng không đổi. API khách trả periods và revenue1_30d/revenue31_60d/revenue61_90d. Phạm vi HN+SG, giá vốn theo quyền, không sửa dữ liệu nguồn.
+
+Triển khai: migrate 0108 → backend/worker mới → tính lại tăng dần → đối chiếu tổng kỳ/ngày; xem lệnh và hợp đồng API ở server/README.md. Chưa áp DB thật, chưa commit/deploy.
+
+## 05/11/2026 — Kiểm kê: gom đơn TEAM đúng ngày, đồng bộ giá vốn
+
+- `stocktake/stocktakeService.js`: lọc ngày theo `AT TIME ZONE 'UTC'` (dùng được chỉ mục `orders(branch, order_date)`), tên khách `TEAM` + số, `updateSession` nhận `dateFrom`/`dateTo`, thêm `getOrderStatus`.
+- `kiotvietSync/entities/productCosts.js`: entity `product_costs` trong nhóm slow, một câu `UPDATE` so sánh trong Postgres, chỉ đổi `cost`.
+- `public/stocktake/`: nút Sửa ngày, cảnh báo đơn ngoài khoảng, hỏi `order-status` mỗi 30 giây, cột Giá vốn 88px có số lẻ, khóa cấu hình bảng `stocktake-board-v7`.
+- Thiết kế: `docs/superpowers/specs/2026-11-05-stocktake-team-orders-cost-design.md`, kế hoạch: `docs/superpowers/plans/2026-11-05-stocktake-team-orders-cost.md`. Không migration.
+
+## 05/11/2026 — Kiểm kê: nút Cập nhật đơn Kiot
+
+- `stocktake/stocktakeOrderRefresh.js`: lấy đơn vừa sửa từ KiotViet trên tiến trình web, chỉ ghi đơn TEAM + số đã đổi so với DB, không đổi checkpoint của lượt nền, gộp lượt trùng + giới hạn 15 giây mỗi cơ sở.
+- `stocktakeService.refreshOrders`, route `POST /api/stocktake/sessions/:id/refresh-orders`, nút `#stRefreshOrdersButton` trên `/stocktake/`.
+- Đo thật 05/11/2026: đơn sửa trên KiotViet vào DB sau khoảng 50 giây; cửa sổ 6 phút trên API mất khoảng 1 giây.
+
+## 05/11/2026 — Kiểm kê: chống đóng đợt nhầm
+
+- `public/stocktake/stocktakeGrid.js`: `waitForConfirm` trả lời theo sự kiện `close` của `<dialog>`, có test. `stocktake.js` dùng hàm này cho mọi hộp xác nhận.
+- `public/stocktake/index.html`: menu `#stActionsMenu` chứa Đóng đợt / Hủy đợt. `.st-sessions` đặt `overflow:visible` để menu không bị cắt.
+
+## 05/11/2026 — Kiểm kê: gọn hộp chi tiết, đủ sản phẩm, xuất thống kê
+
+- `stocktakeCompute.buildBoard`: thêm hàng `active === true`. `stocktakeStatus.isIdle`: mã 0/0 chưa có trạng thái không tính vào Chưa XL.
+- `stocktakeExport`: `checkSpec`, `createStatsWorkbook`. `stocktakeService.getLineExport`, route `export-lines`.
+- `public/stocktake/`: bỏ form trong hộp chi tiết, `lineInput` lưu khi rời ô, `saveLine` xếp hàng và nhớ `version`, `Grid.sortLines`, giữ ô đang gõ khi dựng lại bảng.
+- Thiết kế: `docs/superpowers/specs/2026-11-05-stocktake-detail-products-stats-design.md`, kế hoạch: `docs/superpowers/plans/2026-11-05-stocktake-detail-products-stats.md`.
+
+Cập nhật gần nhất: 05/11/2026.
+
+
+## Thu mua — PR production 05/11/2026
+
+Thêm /thu-mua/dat-hang/ và /api/purchase-orders với quyền purchase.view/edit/import/export/depart/arrive; mặc định chỉ Quản lý, quyền mở rộng qua cơ chế cấp quyền hiện có. Module có bảng Chỉ số cont và Đặt hàng sửa trực tiếp, lọc riêng theo tài khoản, dropdown NV/cont/trạng thái, tách .01/.02 đệ quy, sửa hàng loạt, undo/xóa mềm/khôi phục, import toàn bộ hợp lệ mới ghi, audit/realtime và bộ công thức dùng chung. Source gate ngăn job Sheet và web ghi đè nhau.
+
+Migrations Thu mua được đổi sang 0110–0113 vì main đã dùng 0101–0109. db/ensurePurchaseSchema.js áp đúng bốn migration này khi web startup, transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
+
+
+
+## Thu mua — chuẩn bị đưa lên web, 03/11/2026
+
+Trạng thái: mockup cục bộ, chưa có API Thu mua, chưa tạo/chạy migration 0101, chưa deploy. File: server/public/prototypes/thu-mua/index.html. Kiểm thử: cd server && node --test public/prototypes/thu-mua/workflows.test.cjs (12 ca DOM; không thay thế kiểm thử nhiều tài khoản trên trình duyệt).
+
+### Các quyết định đã thực hiện trong mockup
+- Thêm mã lấy lần lên list gần nhất, không giới hạn thời gian; mỗi lần lưu tạo dòng mới ở hàng chờ.
+- Xe 17,5m và 18,5m: 32T, dải 160–170 m³; cảnh báo mềm. Hàng chưa đến điểm gom vẫn được lập kế hoạch cont.
+- Tách một lá thành khóa cũ+.01 (giữ lại) và khóa cũ+.02 (phần tách), giữ nguyên ID nội bộ, rootKey dùng truy gia đình. Chỉ cộng các lá hiện hành; khóa trước tách không còn hợp lệ để import, không tự ánh xạ vào nhánh .01.
+- VC trước/VC sau/Tiền VC nhập tay; sau tách để trống ở hai nhánh, giữ ảnh chụp giá trị cũ để đối chiếu. Giá NET chưa tính khi thiếu chi phí; nhập 0 nếu đã xác nhận không phát sinh. Cước cont không làm đổi giá vốn dòng.
+- Xuất thiếu tạo nhánh .02 ở hàng chờ, phần xuất giữ ở .01; không tạo nhánh khi chuyển cả dòng. Lưu ảnh chụp xác nhận xuất độc lập với dữ liệu chỉnh sửa sau xuất.
+- Trạng thái 4 chỉ ghi ngày về thực tế, kho nhận, người xác nhận và lịch sử; không nhận đủ, không đối chiếu Kiot, không cộng tồn hay tự khóa giá.
+- Sửa sau xuất được phép; lọc/sắp xếp/chọn/bản nháp riêng từng phiên. Sửa khác trường có thể cùng ghi nếu các trường đích chưa đổi; cùng trường thì báo xung đột. Mockup chưa có SSE/presence thật.
+- Import không khóa luôn tạo mới; khóa lạ hoặc khóa đã tách báo lỗi; ô trống giữ nguyên. Kiểm tra phiên bản đã chụp tại bước xem trước trước khi ghi. Import toàn bộ hoặc không ghi: mọi dòng phải hợp lệ; sửa tại bảng xem trước hoặc tải lại file, không bỏ qua dòng lỗi. Kiểm tra lại toàn đợt khi xác nhận; xung đột bất kỳ dòng nào chặn cả đợt.
+
+### Kiến trúc và trình tự chuyển nguồn cần thực hiện tiếp
+1. Không tạo hệ cont độc lập với Dự kiến hàng về. Đọc 0053_product_containers.sql, productContainers/parser.js, sync.js, expectedRefresh.js và repository.js: product_container_lines hiện là snapshot, PK (sheet_name, source_row); đây không phải khóa nghiệp vụ bền vững.
+2. Chuẩn bị migration tiếp theo (hiện cuối là 0100): cont dùng chung có ID nội bộ bất biến, dòng đặt/lá tách, root và cạnh cha-con, alias khóa đã nghỉ, phiên bản, lịch sử append-only và ảnh chụp xuất. Không tách HN/SG trên dòng thu mua theo ngoại lệ đã chốt; kho nhận lưu riêng. Chốt schema sau khi rà phụ thuộc và quyền.
+3. Giữ giao diện đọc của Dự kiến hàng về bằng adapter/projection từ nguồn mới. Tổng chưa về = trạng thái 1–3; cont đã về vẫn truy lịch sử được. Không thay đổi stock/onHand hay nguồn điều chuyển SG của Vòng đời đơn hàng.
+4. Tách nghiệp vụ trong service/giao dịch: thêm mã, sửa ô/đợt, tách, chuyển, xuất, đến kho. CAS trường cho sửa ô, kiểm phiên bản dòng/cont cho thao tác cấu trúc. Bulk trả kết quả từng dòng; xác nhận xuất là giao dịch cả cont.
+5. Seed thử trên bản sao: chỉ một nguồn bảng dòng chuẩn, không nhập đồng thời VK-DUNG/THÊM DÒNG MỚI/bản copy. Giữ nguồn sheet/ô và công thức gốc để đối chiếu; kiểm mã/số lượng/tiền, không tự nhập chênh lệch thành dữ liệu đúng.
+6. Chạy nhiều tài khoản: bộ lọc độc lập, giữ ô đang gõ và cuộn, sửa cùng/khác trường, mất mạng, retry không tạo trùng, hai người tách/xuất cùng cont. Dùng lại cầu sự kiện dashboardRollupEvents/SSE; presence chỉ báo, không khóa.
+7. Chuyển nguồn có mốc: dừng job nhập Sheet trước khi bật ghi web; chỉ một writer. Không để job Sheet ghi đè chỉnh sửa web. Có bản sao, kiểm tổng và phương án quay lại; nếu đã có ghi mới trên web phải hòa giải/export thay đổi trước khi quay lại Sheet.
+
+### Những điểm chỉ người dùng có thể chốt
+- Cách chọn rõ thao tác xóa ô khi import; ô trống mặc định giữ nguyên. Chính sách lỗi đã chốt: không ghi gì nếu còn lỗi hoặc xung đột.
+- Danh sách trường/công thức giá vốn cuối cùng, cách nhập lại chi phí sau tách; kiểm lại Thuế vì các tab nguồn có công thức khác nhau.
+- Nguồn Sheet chuẩn để seed: VK-DUNG/THÊM DÒNG MỚI có chênh lệch; tổng cấp cont và tổng dòng khác nhau cần xác định ý nghĩa số khai báo/thực đo.
+- Ai có quyền xem/sửa/xuất/import, ai xác nhận xuất/về, danh sách kho nhận.
+- Tiêu chí gợi ý xếp cont và quy chuẩn mốc tiến độ NCC: chưa tự áp dụng.
+
+Cập nhật: 03/11/2026. Không có thay đổi DB/nguồn đồng bộ production trong đợt này.
+
+
+### Thu mua — Excel cục bộ đã thực hiện 03/11/2026
+Đọc/xuất Excel thật trong mockup qua excel.js + thư viện xlsx có sẵn (giữ LICENSE); chọn sheet, tải mẫu, số/ngày/khóa và cấu trúc cột được kiểm tra, sửa toàn bộ trường nhập ở preview; chỉ xác nhận cả đợt khi không còn lỗi. Xuất dữ liệu đã lưu theo bộ lọc, không xuất bản nháp đang sửa. Kiểm thử gồm roundtrip .xlsx với khóa nhánh, lỗi ô công thức, số/ngày không hợp lệ, file nhiều sheet và upload DOM. Chưa phải endpoint upload/export production, chưa thay nguồn Sheet.
+
+
+### Thu mua — lõi import server đã chuẩn bị 03/11/2026
+- Danh mục cột thống nhất: server/public/shared/purchase-columns.js (thay catalog inline). Đọc/xuất Excel thống nhất: server/public/shared/purchase-workbook.js (chuyển từ prototypes/thu-mua/excel.js). Không có phụ thuộc frontend prototype trong backend.
+- server/purchaseOrders/purchaseOrdersImport.js: prepareRows(sourceRows,existingRows,{listedAt}), prepareWorkbook(buffer,existingRows,{sheetName,listedAt}), recheckPreview(preview,currentRows). Mọi lỗi đều làm operations rỗng; unchanged được giữ trong tập kiểm phiên bản. Không tạo ID/khóa hay sửa dữ liệu đầu vào.
+- Kết quả mỗi dòng gồm sourceRow,rowKey,action,errors,changes và expectedVersion cho dòng đã có; dòng mới luôn contId null. Khóa cũ trước tách báo lỗi, không tự đổi sang nhánh.
+- Kết nối DB tiếp theo phải thực hiện đọc/khóa + kiểm lại phiên bản + ghi cả đợt + log trong một giao dịch. Preview phải lưu phía server hoặc được bảo vệ; không tin kế hoạch ghi do client gửi. Chưa triển khai endpoint xác nhận hay repository SQL vì quyền/cấu trúc cont dùng chung và chuyển nguồn chưa hoàn tất.
+- Kiểm thử: node --test purchaseOrders/purchaseOrdersImport.test.js public/prototypes/thu-mua/workflows.test.cjs public/prototypes/thu-mua/excel.test.cjs.
+
+
+### Thu mua — cấu trúc, giao dịch, phân quyền đã viết 03/11/2026
+- Migration 0101: product_containers chung; purchase_orders; khóa nghỉ, lịch sử, ảnh chụp thực xuất; preview import theo actor và TTL; source_mode mặc định sheets. Chưa áp DB.
+- Service/API: thêm dòng/lấy lần lên list gần nhất; sửa ô có kiểm before; bulk; tạo/sửa cont; đặt lịch; chuyển/tách; xuất thiếu; ghi nhận về; preview/sửa/xác nhận import; Excel export và lịch sử. Ngày về không chốt giá/cộng tồn.
+- Import cập nhật theo tập bằng jsonb_populate_recordset trong một transaction; kiểm lại mọi phiên bản, kể cả dòng không đổi; kết quả token giúp retry xác nhận không tạo trùng.
+- Projection sử dụng lại snapshot và bảng expected để các API đọc hiện tại không đổi. Cùng advisory lock với job Sheet; expectedRefresh cũng lấy khóa này để tránh ghi lại bản cũ sau giao dịch Thu mua. Cache cont xóa sau COMMIT, sự kiện chỉ phát sau khi ghi xong.
+- Phân quyền qua registry, mặc định manager-only cho từng quyền và cấp riêng được; chưa tự cấp phòng mua. Mọi API đều yêu cầu auth + view + quyền thao tác tương ứng.
+- Còn bước vận hành: chốt nguồn seed, nạp thử/đối chiếu và kiểm thử PostgreSQL nhiều kết nối; nối giao diện production/SSE; cấp quyền thật; sau đó mới migrate/cutover/deploy. Không coi mockup hoặc API mới là đã chuyển nguồn thành công.
+
+Khi seed được duyệt, phải nâng purchase_order_key_seq ít nhất tới số gốc Dxxxxx lớn nhất đã nhập; không tái dùng khóa đã nghỉ. Xác nhận tổng dòng/số lượng theo nhóm nguồn trước khi chuyển source_mode. Kết quả kiểm tra 03/11/2026: 120 đạt, 1 test DB thật bỏ qua, không lỗi. Job expectedRefresh giữ tên sản phẩm nguồn Thu mua khi source_mode=web, kể cả mã chưa có trong Kiot. Chưa có CLI graphify để cập nhật đồ thị.
+
+
+### 03/11/2026 — Giao diện Thu mua thật và làm việc đồng thời (chưa deploy)
+- Trang production: server/public/thu-mua/dat-hang/{index.html,purchase.js,purchase.css}, URL /thu-mua/dat-hang/. Dùng shared-nav/quyền purchase.view và danh mục cột chung; mockup giữ riêng để thử dữ liệu.
+- UI gọi API thật cho đặt lại từ lần lên list gần nhất, thêm mã mới vào hàng chờ, sửa ô, xác nhận thay thế, sửa hàng loạt (gom các thay đổi giống nhau thành batch audit), tạo/sửa cont, đặt lịch, chuyển/tách .01/.02, thực xuất, trạng thái 4, lịch sử và Excel. Import sửa toàn bộ preview hoặc tải lại, chỉ ghi khi toàn bộ hợp lệ; export POST chọn ID theo bộ lọc riêng và cột hiện tại, lấy giá trị đã lưu từ server.
+- Bộ lọc/tìm/sắp xếp, trang, cột, độ rộng, lựa chọn và bản nháp không phát sang người khác. Bản nháp/filter/cột/độ rộng lưu sessionStorage theo ID tài khoản, sống qua reload trong cùng tab. Không tự gửi lại thao tác ghi sau mất mạng; import confirm có token chống lặp.
+- SSE /api/purchase-orders/events yêu cầu auth + view, báo hiện diện và thay đổi sau commit. purchaseOrdersRealtime.js dùng lease DB 45 giây, gia hạn/đối chiếu history mỗi 10 giây để hỗ trợ nhiều tiến trình; ngắt kết nối xóa lease, chết tiến trình tự hết hạn. Event không chứa dòng hàng, bộ lọc hay bản nháp. Browser có đọc dự phòng mỗi 30 giây, giữ ô đang nhập, lấy lại dữ liệu khi SSE nối lại.
+- Ô trùng thay đổi được đánh dấu, popup đối chiếu trước/hệ thống/bản nháp, chọn giữ bản nháp hoặc dùng hệ thống rồi xác nhận lưu lại. Sửa trường khác vẫn kiểm before/version phía server. Mọi cont được chọn sửa; không khóa theo trạng thái.
+- Migration 0101 chưa áp dụng, bổ sung purchase_presence (connection_id UUID, actor_id/name, expires_at, index expiry), không bật source_mode. Bảng mới cũng không cấp quyền reporting_readonly.
+- Kiểm tra tuần tự (--test-concurrency=1): 155 ca, 154 đạt, 0 lỗi, 1 PostgreSQL thật bỏ qua do chưa cấu hình SUPABASE_TEST_DB_URL; gồm DOM/API/quyền/page guard/nav và DDL/giao dịch/lease trên PGlite. Chưa kiểm nhiều kết nối PostgreSQL thật hoặc giao diện bằng trình duyệt production. Lượt song song từng thiếu bộ nhớ V8 ở expectedRefresh; chạy riêng và chạy toàn bộ tuần tự đều đạt. Kiểm thêm ô đang focus giữ đúng baseline cũ khi SSE tới, và chuẩn hóa DATE PostgreSQL theo ngày địa phương.
+- Còn vận hành: chọn nguồn Sheet chuẩn, seed/đối chiếu, kiểm staging PostgreSQL và nhiều tài khoản, cấp quyền, duyệt migration/cutover/deploy. Trang hiện không ghi khi nguồn còn sheets. Graphify CLI vẫn chưa có trong môi trường.
+
+03/11/2026 — Chuẩn hóa cột ngày Thu mua: Lên list / Đặt / Phát / DK đến / Đến / Ngày đo dùng metadata datetime; form và ô sửa dùng datetime-local, nhãn ngày hiển thị dd/MM/yyyy HH:mm khi có giờ. Ngày cũ không có giờ vẫn giữ ngày, không suy diễn giờ hay ngày từ ghi chú. Mockup chuyển nội dung tự do cũ của Đặt/Phát/DK đến/Đến nguyên văn sang Ghi chú 2; không chỉnh nguồn Sheet. Import server/preview kiểm ngày-giờ hợp lệ, Excel xuất kiểu số ngày với định dạng ngày/giờ và đọc lại giữ giờ-phút. listed_at ở migration 0101 chưa áp DB đổi từ DATE thành TIMESTAMP WITHOUT TIME ZONE để lưu giờ địa phương UTC+7; bốn trường *_note cũ giữ tên khóa API/TEXT nhưng giá trị phải ISO ngày hoặc ngày-giờ. Chưa seed/migrate/deploy. Kiểm tra DOM+Excel 33 đạt, service 19 đạt, import/live UI liên quan đạt.
+
+
+### 03/11/2026 — Chốt lại thao tác phương án cont ngay trong Đặt hàng
+- Yêu cầu mới thay thế khung Xếp cont hai bảng: ẩn hoàn toàn khung/nút chọn–so sánh cont, giữ các helper nghiệp vụ cũ để tương thích lịch sử; production đưa + Tạo cont về thanh tác vụ Đặt hàng.
+- Mockup thêm public/prototypes/thu-mua/planning.js: sửa ô số lượng, mã, cont trên bảng tạo bản nháp; Chỉ số cont/KPI phản ánh ngay cả cont nguồn và đích, không lấy bộ lọc bảng dưới làm tập dữ liệu tính cont. Hiển thị tấn/m³ so giới hạn xe, phần còn/vượt và cảnh báo thiếu số đo. Thiếu số đo không được coi là phù hợp; cảnh báo tham chiếu không khẳng định chắc chắn xếp vừa thực tế.
+- Thêm mã bất kỳ qua form lấy lại dữ liệu lần đặt gần nhất; chọn cont để thử, chưa cấp khóa chính thức đến khi xác nhận. Có Hủy bản nháp, kiểm trước/phiên bản khi lưu, không đưa dòng mới chưa lưu vào export. Production lưu draft/newRows riêng theo user trong sessionStorage; bản nháp không phát SSE.
+- API tạo dòng nhận contId tùy chọn; PATCH dòng nhận contId cùng số lượng trong một giao dịch, kiểm khóa lạc quan của cùng trường. Không còn bắt buộc mã mới phải đi qua hàng chờ nếu người dùng đã chọn cont trong form.
+- Trạng thái cont là dropdown 1–4 trực tiếp, cho sửa lại, không mở wizard bốc/xác nhận về. POST /api/purchase-orders/status vẫn yêu cầu view + edit; đích 3 cần depart, đích 4 cần arrive; kiểm version, audit status_edit, projection nguyên tử. Không tự cộng tồn, không tự ghi nhận đã nhận đủ, không bịa ngày/kho hoặc ảnh chụp thực xuất. Luồng depart/arrive có manifest cũ vẫn tồn tại ở API, không phải điều kiện dropdown mới.
+- Nút Việt/中文 chỉ áp dụng #mainHead / #orderTable th (43 nhãn gồm khóa dòng); không đổi bảng Chỉ số cont, bộ lọc, tác vụ, popup hay dữ liệu.
+- Chưa migrate/seed/chuyển nguồn/deploy; source_mode=sheets vẫn chặn ghi. Kiểm DOM/mockup/Excel/API/service/quyền/scoped headers bằng bộ kiểm tra liên quan; PostgreSQL thật/nhiều tài khoản thực vẫn là bước staging.
+
+Kiểm tra cuối phương án cont 03/11/2026: 83 ca đạt, 0 lỗi (DOM mockup/live, Excel, import, service/PGlite, routes và phạm vi ngôn ngữ). Chưa kiểm trình duyệt production / PostgreSQL đa kết nối thật.
+
+
+03/11/2026 — Thu mua: hoàn thiện 5 thao tác trên bảng đặt hàng. Tách / Chuyển ở từng mã cho nhập số thùng và tìm cont đích; chuyển toàn bộ giữ khóa, tách một phần xem trước .01/.02, chi phí hai nhánh cần nhập lại. Thanh ghim theo cont hiển thị tải trọng/thể tích theo bản nháp, cảnh báo vượt/thiếu số đo. Có đếm, tìm và xem riêng dòng chưa lưu, giữ bộ lọc cá nhân, lưu nháp theo phiên và nhắc khi đóng trang. Bộ chọn cont có tìm kiếm/trạng thái/tấn/m³. Xác nhận nhóm theo cont với chênh lệch tải/khối và chi tiết thu gọn. Phương án có tách gửi một giao dịch /api/purchase-orders/plan gồm sửa/tách/thêm; phiên bản cũ hủy cả giao dịch. Dùng chung public/shared/purchase-tasks.{js,css}; mockup tích hợp qua public/prototypes/thu-mua/tasks.js, giao diện thật qua purchase.js. Chưa migration/seed/deploy.
+
+
+04/11/2026 — Quy tắc tách mã mới thay luồng tự chia thùng: bấm Tách dòng tạo nhánh .01/.02 trong bản nháp, cha giữ số thùng, con để trống và cùng cont ban đầu. Nhân viên sửa số thùng hai nhánh độc lập và chọn cont bằng dropdown. Con chưa nhập số nguyên dương thì chặn xác nhận/lưu; ô trống chưa cộng vào tải/khối. Không ràng buộc tổng mới bằng số thùng trước tách theo yêu cầu nhập tay. API plan manual lưu số lượng cha/con đã nhập trong một giao dịch; vẫn giữ kiểm phiên bản, khóa lịch sử và xóa chi phí cần nhập lại. Chưa migration/deploy.
+
+
+04/11/2026 — Làm mới giao diện toàn module Thu mua bằng public/shared/purchase-workspace.css, dùng chung mockup và trang thật. Đồng bộ panel/bộ lọc/thanh công cụ/dialog, KPI gọn và số tabular; giữ độ rộng cột và kéo giãn. Màu số liệu theo ý nghĩa: số lượng xanh dương, tấn/m³ xanh ngọc, thành tiền tím, cảnh báo vàng; trạng thái vẫn có nhãn chữ, bản nháp/xung đột có dấu riêng. Có palette sáng/tối và bố cục màn hình hẹp. 17 kiểm tra hành vi liên quan đạt; chưa xác minh hình ảnh trên trình duyệt, chưa deploy.
+
+
+04/11/2026 — Theo phản hồi UI: bỏ balanceBar và thanh chỉ số phụ trong mockup. balance.js chỉ quản lý cont theo dõi: chọn từ bảng Chỉ số cont, bộ lọc đặt hàng giữ độc lập; sao chép nguyên dòng chỉ số + tiêu đề vào vùng sticky khi dòng nguồn cuộn khuất phía trên. Dòng ghim cập nhật từ renderConts theo bản nháp, có Bỏ ghim; không nhân bản control chỉnh sửa. Cuộn trở lại dòng gốc thì ẩn vùng ghim. Kiểm tra 3 ca chọn/ghim/cập nhật và sửa/tách đạt trong DOM; chưa kiểm trực quan trình duyệt.
+
+
+05/11/2026 — Hoàn thiện năng suất trên mockup Thu mua bằng public/prototypes/thu-mua/productivity.js: dán vùng Excel kiểm cả vùng trước staging; Enter/Tab điều hướng; đặt lại từ lần lên list gần nhất; chuyển cont nhiều dòng; bộ lọc nhanh riêng; danh sách lỗi có điều hướng ô. Thêm hoàn tác từng thao tác và từng lần lưu với so sánh trạng thái dòng trước khi khôi phục, tách xử lý hai nhánh; xóa mềm có xác nhận/lưu, khôi phục và audit, stale delete chặn cả lần lưu. Dữ liệu thử/lịch sử/undo giữ theo sessionStorage; menu Tác vụ tránh thêm quá nhiều nút. Hướng dẫn public/prototypes/thu-mua/USAGE.md. Đây là mở rộng mockup, chưa có API/DB cho xóa/khôi phục/undo và chưa triển khai các tiện ích này vào trang production.
+
+
+05/11/2026 — Chuẩn bị production Thu mua: chuyển các tiện ích dán bảng/bàn phím/đặt lại/chuyển cont/lọc nhanh/soát lỗi sang purchase.js; dropdown NV từ API HR rút gọn, lưu buyer_employee_id và kiểm active ở lần ghi. Thêm migration 0102_purchase_operations.sql (chưa chạy): xóa mềm và snapshot thao tác máy chủ, API trash/delete/restore/operations/undo có quyền edit/view, actor ownership, CAS và projection trong cùng transaction. Hoàn tác nhiều bước và hai nhánh tách được kiểm trước khi đảo; import/xuất/nhận không hoàn tác bằng endpoint này. Có công cụ purchaseOrdersReconcile.js đọc hai JSON chuẩn hóa, không ghi DB. Chi tiết schema/giới hạn/cách đối chiếu tại server/purchaseOrders/ROLLOUT.md. Chưa seed/chạy migration/cutover/deploy; chưa đối chiếu nguồn thật hay kiểm nhiều trình duyệt/máy chủ thật.
+
+05/11/2026 — Kiểm tra cuối phần chuẩn bị production: 65 ca service/route/import/reconcile/UI đạt (PGlite + jsdom), gồm phân quyền API mới, hai actor sửa khác/cùng ô, stale delete, import bị xóa sau preview, undo nhiều bước/hai nhánh và mất mạng giữ draft/filter. Chưa áp dụng migrations trên DB thật, chưa kiểm nhiều trình duyệt/SSE đa tiến trình thực tế.
+
+
+05/11/2026 — Đợt hoàn thiện trước nghiệm thu: thêm 0103_purchase_requests.sql chưa áp dụng, mã Idempotency-Key theo tài khoản/fingerprint và kết quả ghi chung transaction; UI outbox giữ request qua mất mạng/reload, chỉ dọn đúng draft đã gửi khi xác nhận lại, không mất draft khác. Đồng bộ ghim dòng cont live với mockup (chọn theo dõi không tự lọc), lịch sử theo họ khóa và chỉ dblclick Mã SP. Hoàn tác có preview trường/giá trị, audit có liên kết operation. Tối ưu lookup và không dựng packing ẩn; có test 5,001 dòng UI và 5,000 dòng/500 sửa service. Bảng phạm vi server/purchaseOrders/READINESS.md ghi 38/40 tiêu chí đã triển khai/kiểm cục bộ (95% triển khai), không phải nghiệm thu production; nguồn thật và staging nhiều tài khoản là hai cổng bắt buộc còn lại. Chưa migrate/seed/cutover/deploy.
+
+
+05/11/2026 — Theo công thức nguồn mới: Tiền VC cont tự tính = freight_base / freight_capacity × tổng m³ bản nháp (mặc định 202,000,000 / 170), làm tròn đồng; VC/m³ lấy cùng định mức. Có nhập đè trực tiếp (mode manual), Dùng tự tính và sửa tiền/m³ chuẩn; dòng chờ xếp có ước tính. Không tự phân bổ hay sửa chi phí/giá NET từng mã. Shared purchase-freight.js dùng chung mock/live; mock freight.js, xuất Excel cont dùng số hiển thị. Migration 0104 chưa chạy giữ cước hiện có ở manual; cont tạo mới chọn formula. API cập nhật mode/định mức kiểm phiên bản/quyền/audit và giá trị hợp lệ. Kiểm tra mẫu 120 m³=142,588,235; 170 m³=202,000,000.
+
+
+05/11/2026 — Quyết định mới thay thế quy tắc VC dòng nhập tay: Tiền VC từng mã = tổng m³ mã × VC/m³ cont. Tính lại khi đổi số thùng, số đo, cont hoặc cước cont; Tiền VC dòng là cột suy ra, không nhập/import đè. Giá NET và projection dùng cùng phân bổ. Cước cont nhập tay chia cho tổng m³ cont; thiếu số đo thì chưa phân bổ để tránh tính sai. Giữ độ chính xác đơn giá khi tính, làm tròn đồng khi hiển thị. Dòng cont ghim cho sửa Tiền VC và công thức qua cùng luồng kiểm tra/lưu của bảng gốc. Chưa áp migration hoặc deploy.
+
+
+## Kế hoạch tích hợp Thu mua vào website hệ thống — 05/11/2026, chờ người dùng xem trước
+
+**Mục tiêu:** đưa toàn bộ nghiệp vụ đã chốt vào /thu-mua/dat-hang/ trên website hiện hữu, hoàn thiện giao diện và nghiệm thu trên môi trường thử nghiệm trước khi chuyển nguồn ghi. Đây là kế hoạch, chưa cho phép tự deploy/chạy migration production.
+
+**Kiến trúc:** tái sử dụng Express/PostgreSQL, auth/featureRegistry, shared-nav và SSE hiện hữu. purchase_orders là dữ liệu nghiệp vụ, dùng chung product_containers và cập nhật product_container_lines/product_container_expected trong cùng giao dịch. Công thức dùng purchase-calculations/purchase-freight; SQL projection được kiểm chéo. Không đưa dữ liệu mô phỏng vào database thật.
+
+**Trạng thái đầu vào:** trang thật và API đã viết nhưng chưa nghiệm thu trực quan trên trình duyệt thật; migrations 0101–0104 chưa chạy trên DB thật; source_mode chưa chuyển web. Kiểm thử cục bộ không đồng nghĩa đã sẵn sàng vận hành.
+
+### 1. Hoàn thiện màn hình thật theo giao diện hệ thống
+- [x] Đối chiếu bản cuối mockup với server/public/thu-mua/dat-hang/index.html, purchase.js, purchase.css và server/public/shared/purchase-workspace.css; ghi rõ thiếu/sai trước khi sửa.
+- [x] Giữ bố cục Chỉ số cont trên, Đặt hàng dưới, Nhật ký riêng. Không khôi phục bảng xếp cont hai bên hoặc thanh cân đối đã bỏ.
+- [ ] Đồng bộ sidebar/header/sáng tối với shared-nav; toolbar gọn, số lượng xanh dương, tải/khối xanh ngọc, tiền tím, cảnh báo vàng/đỏ kèm chữ. Ghim dòng cont không che tiêu đề/cột.
+- [ ] Kiểm đủ tìm/lọc, chọn cột, kéo cột, phím điều hướng, dropdown cont/NV/trạng thái, VI/中文 chỉ tiêu đề đặt hàng; không chấp nhận chức năng có trong mockup nhưng thiếu ở trang thật.
+- [ ] Bàn giao màn hình thật chạy được ở môi trường thử nghiệm để người dùng xem; kiểm 1304/1625/1920px, sáng/tối, cuộn hai chiều, dropdown và dialog.
+
+### 2. Nối và nghiệm thu các thao tác hàng ngày
+- [x] Tái sử dụng server/purchaseOrders/purchaseOrdersService.js, purchaseOrdersRoutes.js; không tạo API song song.
+- [ ] Rà chuỗi: thêm/đặt lại lấy lần lên list gần nhất → sửa trực tiếp → chọn nhiều dòng → xem xác nhận ngắn → lưu → audit. Tách cha .01/con .02 đệ quy, con chưa có số thùng không lưu.
+- [ ] Kiểm xóa mềm/khôi phục, undo nháp và undo sau lưu có kiểm xung đột; lịch sử chỉ nháy đúp Mã SP. Kiểm nhập/xóa cước trên cả dòng gốc và dòng ghim.
+- [ ] Giao diện không tự ghi từng phím gõ; bản nháp riêng chỉ ghi khi xác nhận. Thay đổi cấp cont áp dụng chung cho mọi dòng trong cont, thể hiện rõ tác động.
+- [ ] Chạy tests service/live/workflows/Excel và đối chiếu purchase-calculations với SQL projection; bàn giao danh sách yêu cầu đạt/chưa đạt thay vì dùng phần trăm cục bộ làm nghiệm thu.
+
+### 3. Chuẩn bị database và nguồn dữ liệu thử nghiệm
+- [ ] Xác định DB thử nghiệm độc lập và cấu hình nguồn; kiểm schema hiện tại trước khi áp server/db/migrations/0101_purchase_orders.sql đến 0104_purchase_freight.sql ở đó.
+- [ ] Chuẩn bị snapshot Sheet được chọn và báo cáo ánh xạ: cont hiện hữu, trạng thái 1–4, khóa dòng, ngày giờ, nhân viên legacy. Không ghép chỉ bằng mã SP hoặc tự ghép tên NV trùng.
+- [ ] Thử nhập trên DB thử nghiệm, xuất snapshot web, chạy server/purchaseOrders/purchaseOrdersReconcile.js. Đối chiếu từng dòng và từng cont; các thay đổi tính cước/NET theo quy tắc mới tách khỏi sai lệch dữ liệu gốc.
+- [ ] Chốt quyền xem/sửa/import/export/đổi trạng thái với người dùng; kiểm truy cập API trực tiếp theo vai trò. Thao tác Đã về không phát sinh tăng tồn kho.
+
+### 4. Nghiệm thu làm việc đồng thời và phục hồi
+- [ ] Hai tài khoản: A lọc/sắp xếp/kéo cột, B vẫn giữ giao diện riêng; A/B sửa khác ô có thể gộp, cùng ô có đối chiếu và không ghi đè âm thầm.
+- [ ] Thử đổi cont trong lúc người khác sửa dòng, xóa/tách/undo khi dữ liệu đã đổi; bản nháp và lần lưu chưa rõ kết quả không mất.
+- [ ] Kiểm SSE trên hạ tầng thật, mất mạng sau khi server đã ghi, gửi lại cùng request key, tải lại trang và khôi phục. Không dùng jsdom/PGlite thay bước này.
+- [ ] Kiểm dữ liệu thực tế lớn, thời gian mở/lọc/sửa/lưu và tấn/m³/cước nguồn-đích trên trình duyệt thật; lập danh sách lỗi để sửa trước nghiệm thu.
+
+### 5. Nghiệm thu nghiệp vụ cùng người dùng
+- [ ] Nhân viên chạy ca thực tế: đặt lại mã, sửa lượng, đổi cont, tách nhiều lần, nhập/xóa cước, import lỗi, khôi phục dòng. Import có bất kỳ lỗi thì không ghi dòng nào.
+- [ ] Chốt các mục bắt buộc trong server/purchaseOrders/READINESS.md; tỷ lệ >90% chỉ là thông tin tiến độ, không thay thế điều kiện đúng dữ liệu/quyền/đồng thời.
+- [ ] Đối chiếu và chốt snapshot cuối, danh sách tài khoản/quyền, thời điểm ngừng ghi nguồn Sheet cũ; cập nhật hướng dẫn thao tác ngắn theo màn hình thật.
+
+### 6. Chuyển sang sử dụng chính thức có phương án phục hồi
+- [ ] Chuẩn bị bản thay đổi có thể review, kết quả tests, backup, báo cáo đối soát, bước migrate/seed/cutover và kiểm sau triển khai; gửi người dùng xem trước khi tác động production.
+- [ ] Sau khi được chốt: sao lưu, áp migration đã thử, nạp snapshot cuối, đối soát lại rồi bật source_mode=web. Không để job Sheet ghi đè dữ liệu mới; không có hai nguồn ghi song song.
+- [ ] Kiểm smoke test các tài khoản/quyền/tổng cont sau triển khai. Nếu cần quay lại, giữ lại toàn bộ ghi mới từ web và đối soát trước khi phục hồi; không chỉ đổi cờ nguồn về Sheet rồi làm mất dữ liệu.
+
+**Ngoài phạm vi đợt này:** kiểm nhận đủ/đối chiếu nhập kho tự động, tự tăng tồn Kiot, module thanh toán RMB/TKS2 và sổ quỹ. Các mục đó đã được người dùng để giai đoạn sau.
+
+**Điểm cần người dùng tham gia ở đúng giai đoạn:** xem màn hình thật (1), chốt snapshot và quyền (3), nghiệm thu ca thực tế (5), chốt thời điểm đưa vào dùng (6). Bắt đầu triển khai từ bước 1 sau khi người dùng phản hồi kế hoạch, chưa thay đổi hệ thống thật trong lần lập kế hoạch này.
+
+
+05/11/2026 — Triển khai đợt 1–2 trang Thu mua thật: index.html dùng header/sidebar chung, tổng quan 6 chỉ số, Chỉ số cont trên/Đặt hàng dưới/Nhật ký riêng; thêm workspace.css riêng cho trang production. Bảng cont có 15 cột gồm cước/m³, tỉ lệ, ngày về/lịch bốc, nhà VC/cont TQ/người xếp; giữ chỉnh cước/trạng thái và bản ghim có cùng độ rộng. Tạo cont chuyển lên panel cont và khóa khi chỉ xem.
+Bộ lọc đặt hàng có trạng thái, HR ID/tên legacy, NCC, VAT, ngày lên list và cảnh báo, tìm không dấu. Lọc cont độc lập. Bộ lọc lưu riêng theo tài khoản, giữ nguyên khi người khác sửa mất giá trị đang lọc; xuất file/dán bảng dùng cùng tập dòng. Tổng quan tính theo lọc/bản nháp, cảnh báo thiếu số liệu thay 0 giả. Thêm mã ưu tiên thông tin chính, phần phụ thu gọn, lấy cont đang theo dõi và không mang ngày đã phát/đã đến từ đơn cũ.
+107 ca kiểm thử module đạt, trong đó 32 ca trang thật; kiểm thêm ID HTML không trùng và asset tồn tại. Đây là jsdom/PGlite, chưa nghiệm thu CSS/ảnh thực tế trên trình duyệt. Không có SUPABASE_TEST_DB_URL trong môi trường local hiện tại (chỉ kiểm cờ, không in secret); chưa chạy app kết nối DB thật, migration/seed/deploy/cutover. Cần môi trường thử nghiệm/DB độc lập để mở link trang thật và nghiệm thu bước 3–4. Câu hỏi môi trường thử nghiệm đã gửi người dùng.

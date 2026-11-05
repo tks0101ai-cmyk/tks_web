@@ -192,6 +192,17 @@
 .vt-import-counts li[data-count="errors"] b{color:var(--red)}
 @media(max-width:900px){.vt-import-counts{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:480px){.vt-import-counts{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.vt-import-counts li{padding:12px}.vt-import-counts b{font-size:20px}}
+/* Hộp Xuất kho: dùng lại khung Import, 4 ô kết quả, khối cảnh báo trừ ngay. */
+.vt-stockout{width:min(980px,calc(100vw - 32px))}
+.vt-stockout .vt-import-counts{grid-template-columns:repeat(4,minmax(0,1fr))}
+.vt-stockout .vt-import-counts li[data-count="applied"] b{color:var(--green)}
+.vt-stockout .vt-import-counts li[data-count="skipped"] b{color:var(--red)}
+.vt-stockout .vt-import-counts li[data-count="quantity"] b{color:var(--blue)}
+.vt-stockout-warn{margin:0;font-size:13px;line-height:1.5}
+.vt-stockout-warn svg{flex:none;width:16px;height:16px}
+.vt-stockout .vt-import-table .vt-stockout-reason{min-width:220px;white-space:normal;color:var(--red);font-size:12.5px}
+.vt-stockout .vt-import-table .vt-stockout-notes{font-family:var(--font-data);white-space:nowrap}
+@media(max-width:600px){.vt-stockout .vt-import-counts{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.vt-stockout .vt-import-counts li{padding:12px}.vt-stockout .vt-import-counts b{font-size:20px}}
 .vt-history-filters{display:flex;flex-wrap:wrap;gap:8px}
 .vt-history-filters input,.vt-history-filters select{min-height:36px;padding:0 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel-2);color:var(--text);font:13px var(--font-body)}
 .vt-history-filters input{flex:1 1 240px}

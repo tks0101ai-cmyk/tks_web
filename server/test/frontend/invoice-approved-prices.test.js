@@ -69,7 +69,8 @@ function createPage({ permissions = [VIEW, MANAGE, 'reports.export', 'reports.in
   w.fetch = (url, options = {}) => {
     const href = String(url);
     const method = (options.method || 'GET').toUpperCase();
-    server.requests.push({ href, method, body: options.body ? JSON.parse(options.body) : null });
+    const isForm = options.body && typeof options.body !== 'string';
+    server.requests.push({ href, method, body: options.body && !isForm ? JSON.parse(options.body) : null, form: isForm ? options.body : null });
     const respond = (status, body) => Promise.resolve({ ok: status < 400, status, json: async () => body, blob: async () => ({ size: 1 }) });
     if (!href.startsWith('/api/invoice-approved-prices')) return new Promise(() => {});
     const [pathPart, query = ''] = href.split('?');
@@ -87,6 +88,17 @@ function createPage({ permissions = [VIEW, MANAGE, 'reports.export', 'reports.in
     if (method === 'GET' && sub === '/product-suggest') {
       const all = [{ id: '1', code: 'T100', name: 'Ly giữ nhiệt' }, { id: '2', code: 'T200', name: 'Bình nước' }];
       return respond(200, { results: all.filter(r => match(r, params.get('q') || '')) });
+    }
+    if (method === 'POST' && sub === '/import') {
+      const commit = params.get('commit') === '1';
+      if (server.importError) return respond(400, { error: server.importError });
+      return respond(200, { commit, recalc: commit ? { status: 'applied', recomputedLines: 5, resultChangedLines: 2 } : null,
+        summary: { total: 3, create: 1, update: 1, unchanged: 0, error: 1 },
+        rows: [
+          { row: 2, status: 'create', message: '', customerCode: 'KH1', customerName: 'Khách Vừa', productCode: 'T100', productName: 'Ly', branchLabel: 'Hà Nội', priceNoVat: '23500', priceWithVat: null, approver: 'Anh Quân', approvedOn: '2026-10-19' },
+          { row: 3, status: 'update', message: '', customerCode: 'KH3', customerName: 'An Khách', productCode: 'T200', productName: 'Bình', branchLabel: 'Hà Nội', priceNoVat: null, priceWithVat: '50000', approver: 'Anh Duy', approvedOn: '2026-10-21' },
+          { row: 4, status: 'error', message: 'Mã KH "KH999" không có trên KiotViet Hà Nội.', customerCode: 'KH999', customerName: '', productCode: 'T100', productName: '', branchLabel: 'Hà Nội', priceNoVat: '1000', priceWithVat: null, approver: 'Anh Duy', approvedOn: '2026-10-19' }
+        ] });
     }
     if (method === 'POST' && sub === '') {
       const body = JSON.parse(options.body);
@@ -474,4 +486,64 @@ test('Form Tạo: khung giống form nhân sự (lớp phủ, tiêu đề + nút
   page.$('approvedPriceCreateButton').click();
   page.doc.dispatchEvent(new page.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   assert.equal(dialog(page), null, 'Esc đóng form');
+});
+
+const chooseFile = (page, name = 'gia-duyet.xlsx') => {
+  const input = page.$('approvedPriceImportFile');
+  Object.defineProperty(input, 'files', { value: [new page.w.File(['x'], name)], configurable: true });
+  input.dispatchEvent(new page.w.Event('change', { bubbles: true }));
+};
+const importRequests = page => page.server.requests.filter(r => r.method === 'POST' && r.href.startsWith('/api/invoice-approved-prices/import'));
+
+test('Nhập file: nút chỉ có khi được quyền quản lý; chọn file → xem trước từng dòng (chưa ghi) → xác nhận mới ghi rồi nạp lại bảng', async () => {
+  const viewOnly = await opened({ permissions: [VIEW, 'reports.invoices'] });
+  assert.equal(viewOnly.$('approvedPriceImportButton').hidden, true);
+
+  const page = await opened();
+  assert.equal(page.$('approvedPriceImportButton').hidden, false);
+  chooseFile(page);
+  await settle();
+  const box = page.$('approvedPriceImportDialog');
+  assert.ok(box, 'hộp Nhập file mở ngay sau khi chọn file');
+  assert.equal(importRequests(page).length, 1);
+  assert.equal(importRequests(page)[0].href.includes('commit=1'), false, 'bước 1 chỉ xem trước');
+  assert.equal(importRequests(page)[0].form.get('file').name, 'gia-duyet.xlsx');
+  assert.match(box.querySelector('#apImportSummary').textContent, /Tổng 3 dòng: tạo mới 1 · ghi đè 1 · không đổi 0 · lỗi \(bỏ qua\) 1/);
+  const trs = [...box.querySelectorAll('#apImportRows tr')];
+  assert.deepEqual(trs.map(tr => tr.cells[1].textContent), ['Tạo mới', 'Ghi đè', 'Lỗi']);
+  assert.match(trs[2].cells[9].textContent, /KH999/);
+  assert.equal(trs[0].cells[6].textContent.trim(), '—', 'giá có VAT trống là —');
+  const confirm = box.querySelector('#apImportConfirm');
+  assert.equal(confirm.disabled, false);
+  assert.equal(confirm.textContent, 'Nhập 2 dòng');
+
+  confirm.click();
+  await settle();
+  const reqs = importRequests(page);
+  assert.equal(reqs.length, 2);
+  assert.ok(reqs[1].href.includes('commit=1'), 'bước 2 ghi thật');
+  assert.equal(page.$('approvedPriceImportDialog'), null, 'đóng hộp sau khi nhập');
+  assert.match(page.toasts.at(-1)[0], /tạo mới 1, ghi đè 1, bỏ qua 1 dòng lỗi\. Đã tính lại 5 dòng/);
+  assert.ok(gets(page).length >= 2, 'nạp lại bảng sau khi nhập');
+});
+
+test('Nhập file: lỗi từ máy chủ hiện trong hộp và không cho nhập; Hủy / Esc đóng hộp mà không ghi', async () => {
+  const server = fakeServer();
+  server.importError = 'File thiếu cột: Mã KH.';
+  const page = await opened({ server });
+  chooseFile(page);
+  await settle();
+  const box = page.$('approvedPriceImportDialog');
+  assert.equal(box.querySelector('#apImportError').hidden, false);
+  assert.match(box.querySelector('#apImportError').textContent, /thiếu cột: Mã KH/);
+  assert.equal(box.querySelector('#apImportConfirm').disabled, true);
+  box.querySelector('[data-close].btn-secondary').click();
+  assert.equal(page.$('approvedPriceImportDialog'), null);
+
+  const ok = await opened();
+  chooseFile(ok);
+  await settle();
+  ok.doc.dispatchEvent(new ok.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert.equal(ok.$('approvedPriceImportDialog'), null);
+  assert.equal(importRequests(ok).filter(r => r.href.includes('commit=1')).length, 0, 'Esc không ghi');
 });

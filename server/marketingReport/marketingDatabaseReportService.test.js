@@ -25,3 +25,4 @@ test('blank-employee row detail ignores same-employee date repeats exactly like 
   assert.equal(detail.reconciliation.status,'matched');
   assert.deepEqual(detail.reconciliation.found,{first:1,repeat:0,closed:0});
 });
+test('directory search requires every keyword, in any order',async()=>{const directory=[{branch:'hanoi',code:'K1',name:'KH A Khả Hân Ba Vì'},{branch:'hanoi',code:'K2',name:'HN A Khanh Dương Nội'},{branch:'hanoi',code:'K3',name:'KH Hân Khách'}];const service=createDatabaseMarketingReportService({repository:{readSnapshot:async()=>({...snapshot,rawRows:[]})},legacy:{},revenue:()=>{},businessRepository:{snapshot:async()=>({directory})}});const names=async q=>(await service.customers({q})).customers.map(r=>r.code);assert.deepEqual(await names('khả hân'),['K1']);assert.deepEqual(await names('han kha'),['K1','K2','K3']);assert.deepEqual(await names('hân khả'),['K1']);assert.deepEqual(await names('ba vì khả'),['K1']);});

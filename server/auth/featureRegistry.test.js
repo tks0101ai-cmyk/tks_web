@@ -129,7 +129,7 @@ test('mac dinh theo vai tro: reports.* khop dung REPORTS_ROLES cu', () => {
       // Cong no theo lich TT (2026-10-13): Sale phan hoi mac dinh chi Nhan vien sale; QL phan hoi, trang thai, lich TT chi Quan ly.
       if (key === 'reports.debt.saleFeedback' || key === 'reports.invoices.priceAudit.explain') continue;
       if ((key === 'reports.invoices.priceAudit.decide' || key === 'reports.invoices.approvedPrice' || key === 'reports.invoices.approvedPrice.manage') && role !== ROLES.QUAN_LY) continue;
-      if (['reports.debt.managerFeedback', 'reports.debt.edit', 'reports.debt.schedule', 'reports.debt.penalty', 'reports.debt.refresh'].includes(key) && role !== ROLES.QUAN_LY) continue;
+      if (['reports.debt.managerFeedback', 'reports.debt.edit', 'reports.debt.schedule', 'reports.debt.refresh'].includes(key) && role !== ROLES.QUAN_LY) continue;
       assert.ok(defaults.includes(key), `${role} phai co ${key}`);
     }
   }

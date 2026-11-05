@@ -12,6 +12,7 @@ const FILE_BASE = 'TKS_Gia_duyet';
 
 const COLUMNS = Object.freeze([
   { key: 'customerName', label: 'Khách hàng', width: 34, value: r => r.customerName || '(khách không còn trên KiotViet)' },
+  { key: 'customerCode', label: 'Mã KH', width: 14, value: r => r.customerCode || '' },
   { key: 'branchLabel', label: 'Cơ sở', width: 12, value: r => r.branchLabel },
   { key: 'productCode', label: 'Mã SP', width: 18, value: r => r.productCode },
   { key: 'productName', label: 'Tên SP', width: 44, value: r => r.productName },

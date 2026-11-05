@@ -1,3 +1,5 @@
+> **Đã bị thay thế 02/11/2026** bởi [2026-11-02-remove-pick-kiot-writeback-design.md](2026-11-02-remove-pick-kiot-writeback-design.md): 2 cảnh báo Lệch Kiot / Lệch SL trong đơn đã gỡ, phiếu in theo thứ tự đang hiện trong hộp; sửa "Cần nhặt" vẫn giữ (chỉ nội bộ).
+
 # Chỉ định vị trí: sửa "Cần nhặt", 2 cảnh báo mới, phiếu in giữ thứ tự Kiot
 
 Ngày: 30/10/2026. Đã được người dùng duyệt (hội thoại cùng ngày). Không migration.

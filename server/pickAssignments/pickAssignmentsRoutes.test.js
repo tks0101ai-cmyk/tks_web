@@ -17,7 +17,10 @@ async function start(t, { user = MANAGER, failWith } = {}) {
     if (failWith) throw failWith;
     return name === 'candidates' ? { order: { orderCode: 'DH001' }, candidates: {}, assignment: null } : name === 'get' ? { assignment: null } : { assignment: ASSIGNMENT };
   };
-  const service = { candidates: record('candidates'), get: record('get'), assign: record('assign'), confirm: record('confirm'), cancel: record('cancel'), setStatus: record('setStatus') };
+  const service = { candidates: record('candidates'), get: record('get'), assign: record('assign'), confirm: record('confirm'), cancel: record('cancel'), setStatus: record('setStatus'),
+    createPosition: async (ctx, body) => { calls.push(['createPosition', body]); if (failWith) throw failWith; return { row: { id: 9 }, merged: body.location === 'A01' }; },
+    updatePosition: async (ctx, id, body) => { calls.push(['updatePosition', id, body]); if (failWith) throw failWith; return { row: { id } }; },
+    removePosition: async (ctx, id, params) => { calls.push(['removePosition', id, params]); if (failWith) throw failWith; return { deleted: true, id }; } };
   const app = express();
   app.use(express.json());
   app.use((req, res, next) => { if (user) req.user = user; next(); });
@@ -39,6 +42,7 @@ test('GET candidates / GET chi dinh: truyen branch + order (ma don), khong cache
   const res = await fetch(base + '/candidates?branch=HN&order=DH001');
   assert.equal(res.status, 200);
   assert.equal(res.headers.get('cache-control'), 'no-store');
+  assert.match(res.headers.get('server-timing') || '', /auth;dur=[\d.]+.*total;dur=[\d.]+/);
   assert.equal((await res.json()).order.orderCode, 'DH001');
   assert.equal((await fetch(base + '?branch=SG&order=DH9')).status, 200);
   assert.deepEqual(calls, [['candidates', { branch: 'HN', orderCode: 'DH001' }], ['get', { branch: 'SG', orderCode: 'DH9' }]]);
@@ -118,4 +122,63 @@ test('shared form GET/PUT uses shipment.pick, user from session and no-store',as
  assert.equal((await fetch(denied.base+'/print-layout/order',{method:'PUT',headers:json,body:'{}'})).status,403);
  const anon=await start(t,{user:null});
  assert.equal((await fetch(anon.base+'/print-layout/order')).status,401);
+});
+
+test('POST chi dinh truyen nguyen removed/needs trong body cho service; route /order-lines/remove (ghi Kiot) da bo', async t => {
+  const { base, calls } = await start(t);
+  const body = { branch: 'HN', orderCode: 'DH001', allocations: [{ productCode: 'AAA1', positionId: 1, qty: 5 }], removed: ['BBB2'], needs: { AAA1: 5 } };
+  assert.equal((await fetch(base, { method: 'POST', headers: json, body: JSON.stringify(body) })).status, 201);
+  assert.deepEqual(calls, [['assign', body]]);
+  const gone = await fetch(base + '/order-lines/remove', { method: 'POST', headers: json, body: JSON.stringify({ branch: 'HN', orderCode: 'DH001', productCode: 'AAA1' }) });
+  assert.equal(gone.status, 404);
+  assert.equal(calls.length, 1);
+});
+
+test('Sửa VT trong hộp: /positions cần thêm quyền xem + sửa VT; candidates báo canEditPositions; route truyền đúng tham số', async t => {
+  const { base, calls } = await start(t);
+  const candidates = await (await fetch(base + '/candidates?branch=HN&order=DH001')).json();
+  assert.equal(candidates.canEditPositions, true);
+  const body = { branch: 'HN', orderCode: 'DH001', productCode: 'AAA1', location: 'Z1', notes: '1T x 5' };
+  const created = await fetch(base + '/positions', { method: 'POST', headers: json, body: JSON.stringify(body) });
+  assert.equal(created.status, 201);
+  assert.deepEqual(await created.json(), { row: { id: 9 }, merged: false });
+  const merged = await fetch(base + '/positions', { method: 'POST', headers: json, body: JSON.stringify({ ...body, location: 'A01' }) });
+  assert.equal(merged.status, 200, 'cong vao dong trung -> 200');
+  const patch = { branch: 'HN', orderCode: 'DH001', notes: '2T x 5', version: 3, confirmEmpty: true };
+  assert.deepEqual(await (await fetch(base + '/positions/12', { method: 'PATCH', headers: json, body: JSON.stringify(patch) })).json(), { row: { id: 12 } });
+  assert.deepEqual(await (await fetch(base + '/positions/12?branch=HN&order=DH001&version=4', { method: 'DELETE' })).json(), { deleted: true, id: 12 });
+  assert.deepEqual(calls.slice(1), [
+    ['createPosition', body], ['createPosition', { ...body, location: 'A01' }],
+    ['updatePosition', 12, patch], ['removePosition', 12, { branch: 'HN', orderCode: 'DH001', version: '4' }]
+  ]);
+
+  // Co shipment.pick nhung thieu quyen sua VT: thay hop nhung khong co nut sua, /positions bi 403 va khong goi service.
+  const pickOnly = [
+    { vaiTro: 'Kế toán', featurePermissions: { 'shipment.pick': true } },
+    { ...MANAGER, featurePermissions: { 'stockLocationsV2.edit': false } },
+    { ...MANAGER, featurePermissions: { 'stockLocationsV2.view': false } }
+  ];
+  for (const user of pickOnly) {
+    const limited = await start(t, { user });
+    const view = await fetch(limited.base + '/candidates?branch=HN&order=DH001');
+    assert.equal(view.status, 200);
+    assert.equal((await view.json()).canEditPositions, false, JSON.stringify(user));
+    for (const [method, url] of [['POST', '/positions'], ['PATCH', '/positions/1'], ['DELETE', '/positions/1?branch=HN&order=DH001&version=1']]) {
+      const res = await fetch(limited.base + url, { method, headers: json, ...(method === 'DELETE' ? {} : { body: JSON.stringify(body) }) });
+      assert.equal(res.status, 403, `${JSON.stringify(user)} ${method} ${url}`);
+    }
+    assert.deepEqual(limited.calls.map(c => c[0]), ['candidates']);
+  }
+});
+
+test('Lỗi sửa VT trong hộp trả kèm mã đơn đang giữ (orders) và tổng giữ (held)', async t => {
+  const failWith = Object.assign(new Error('Đơn DH002 đang giữ 100 tại vị trí này, không hạ dưới 100.'), { statusCode: 409, code: 'BELOW_HELD', orders: ['DH002'], held: 100 });
+  const { base } = await start(t, { failWith });
+  const res = await fetch(base + '/positions/1', { method: 'PATCH', headers: json, body: JSON.stringify({ branch: 'HN', orderCode: 'DH001', notes: '1T x 50', version: 1 }) });
+  assert.equal(res.status, 409);
+  assert.deepEqual(await res.json(), { error: failWith.message, code: 'BELOW_HELD', orders: ['DH002'], held: 100 });
+  const held = Object.assign(new Error('Dòng này đang được đơn Đang bốc DH002 chỉ định nên không xóa được.'), { statusCode: 409, code: 'POSITION_HELD', orders: ['DH002'] });
+  const second = await start(t, { failWith: held });
+  const removed = await fetch(second.base + '/positions/1?branch=HN&order=DH001&version=1', { method: 'DELETE' });
+  assert.deepEqual(await removed.json(), { error: held.message, code: 'POSITION_HELD', orders: ['DH002'] });
 });

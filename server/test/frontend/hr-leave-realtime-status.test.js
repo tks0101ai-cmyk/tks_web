@@ -193,6 +193,7 @@ test('Quản lý thay đổi trạng thái gọi API PATCH và cập nhật Ngư
         : { requests: [{
           canManage: true, decision_version: '0', request_id: 'NP-20260822-003',
           ho_ten: 'Phạm D',
+          start_date: '2099-08-23', end_date: '2099-08-23',
           chuc_vu: 'Kế toán',
           ly_do: 'Đi khám',
           thoi_gian_gui: '2026-08-22T08:00:00.000Z',

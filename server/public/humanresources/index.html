@@ -934,7 +934,7 @@
         <div class="hr-subtab-panel active" id="hrSubtab-leave" role="tabpanel">
         <!-- KPI -->
         <div class="leave-overview">
-        <section class="leave-kpi-panel" aria-label="Chỉ số nghỉ phép">
+        <section class="leave-kpi-panel" aria-label="Chỉ số nghỉ phép từ hôm nay" title="Chỉ đếm đơn còn ngày nghỉ từ hôm nay, theo giờ Việt Nam">
         <div class="kpi-row">
           <div class="kpi-stat kpi-amber">
             <div class="lbl">Chưa duyệt</div>
@@ -1917,7 +1917,7 @@
   <script src="/shared/rte-table.js?v=20261026"></script>
   <script src="/shared/fuzzy-search.js?v=20261021"></script>
   <script src="/shared/search-clear.js?v=20261009-1"></script>
-  <script src="/shared/shared-nav.js?v=20261028-leave-btn"></script>
+  <script src="/shared/shared-nav.js?v=20261103-stocktake"></script>
   <script src="/shared/table-align.js?v=20261017"></script>
   <script src="/shared/dateInput.js?v=20260912"></script>
   <script src="/vendor/html2pdf.bundle.min.js"></script>
@@ -3646,9 +3646,28 @@
       }catch(err){ /* badge la thong tin phu, khong chan UI neu loi */ }
     }
 
+    function upcomingLeaveStatsScope(){
+      const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+      const date = Object.fromEntries(parts.map(p => [p.type, p.value]));
+      const today = `${date.year}-${date.month}-${date.day}`;
+      const selectedFrom = document.getElementById('fromDateFilter').value;
+      return { from: selectedFrom > today ? selectedFrom : today, to: document.getElementById('toDateFilter').value };
+    }
+
+    function matchesUpcomingLeaveStats(request, range){
+      if(!matchesLeaveScope(request) || (range.to && range.to < range.from)) return false;
+      if(Array.isArray(request.leave_sessions)){
+        return request.leave_sessions.some(s => s.date >= range.from && (!range.to || s.date <= range.to));
+      }
+      // Older requests have only date boundaries; include leave still in progress.
+      return !!request.end_date && request.end_date >= range.from
+        && (!range.to || (!!request.start_date && request.start_date <= range.to));
+    }
+
     function renderStats(requests){
+      const range = upcomingLeaveStatsScope();
       const counts = { 'Chưa duyệt': 0, 'Đã duyệt': 0, 'Từ chối': 0, 'Vi phạm': 0 };
-      requests.filter(matchesLeaveScope).forEach(r => { if(r.trang_thai !== 'Vi phạm' && counts.hasOwnProperty(r.trang_thai)) counts[r.trang_thai]++; if(r.timing_status === 'Vi phạm' || r.trang_thai === 'Vi phạm') counts['Vi phạm']++; });
+      requests.filter(r => matchesUpcomingLeaveStats(r, range)).forEach(r => { if(r.trang_thai !== 'Vi phạm' && counts.hasOwnProperty(r.trang_thai)) counts[r.trang_thai]++; if(r.timing_status === 'Vi phạm' || r.trang_thai === 'Vi phạm') counts['Vi phạm']++; });
       document.getElementById('statPending').textContent = counts['Chưa duyệt'];
       document.getElementById('statApproved').textContent = counts['Đã duyệt'];
       document.getElementById('statRejected').textContent = counts['Từ chối'];
@@ -3656,14 +3675,12 @@
       renderDepartmentStats(requests);
     }
 
-    // So don nghi theo bo phan trong khoang Tu-Den dang chon: tong don (to) + da duyet / chua duyet / tu choi (nho).
+    // Same upcoming-day scope as the status KPIs; each request is counted once.
     function renderDepartmentStats(requests){
-      const from = document.getElementById('fromDateFilter').value;
-      const to = document.getElementById('toDateFilter').value;
+      const range = upcomingLeaveStatsScope();
+      const { from, to } = range;
       const byDept = new Map();
-      requests.filter(matchesLeaveScope).forEach(r => {
-        if(Array.isArray(r.leave_sessions) && (from || to)
-          && !r.leave_sessions.some(s => (!from || s.date >= from) && (!to || s.date <= to))) return;
+      requests.filter(r => matchesUpcomingLeaveStats(r, range)).forEach(r => {
         const key = departmentKey(r.bo_phan) || '(chưa có)';
         const entry = byDept.get(key) || { name: String(r.bo_phan || '').trim() || 'Chưa có bộ phận', total: 0, approved: 0, pending: 0, rejected: 0 };
         entry.total++;
@@ -3673,8 +3690,7 @@
         byDept.set(key, entry);
       });
       const rows = [...byDept.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, 'vi'));
-      document.getElementById('leaveDeptRange').textContent = from || to
-        ? `(${from ? displayLeaveDate(from) : '…'} – ${to ? displayLeaveDate(to) : '…'})` : '(tất cả thời gian)';
+      document.getElementById('leaveDeptRange').textContent = `(Từ hôm nay · ${displayLeaveDate(from)}${to ? ' – ' + displayLeaveDate(to) : ' trở đi'})`;
       document.getElementById('leaveDeptStats').innerHTML = rows.length ? rows.map(d =>
         `<div class="leave-dept-card" title="${escapeHtml(d.name)}"><div class="leave-dept-name">${escapeHtml(d.name)}</div>`
         + `<div class="leave-dept-val">${d.total}<small>đơn</small></div>`

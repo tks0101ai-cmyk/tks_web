@@ -143,8 +143,9 @@ test('getLeaveRequests lọc tên nhân viên gần đúng: bỏ dấu, hoa thư
   ]);
   const repo = createHrLeaveRepository({ pool });
 
-  // 3 từ khớp quá nửa: B (username nguyenvana) cũng hiện nhưng xếp sau A khớp nguyên cụm.
-  assert.deepEqual((await repo.getLeaveRequests({ employee: ' nguyễn văn a ' }, 'Hà Nội')).map(r => r.request_id), ['A', 'B']);
+  // Từ khóa có dấu phải khớp đúng dấu: B (username không dấu nguyenvana) không hiện. Gõ không dấu thì B hiện nhưng xếp sau A khớp nguyên cụm.
+  assert.deepEqual((await repo.getLeaveRequests({ employee: ' nguyễn văn a ' }, 'Hà Nội')).map(r => r.request_id), ['A']);
+  assert.deepEqual((await repo.getLeaveRequests({ employee: ' nguyen van a ' }, 'Hà Nội')).map(r => r.request_id), ['A', 'B']);
   assert.deepEqual((await repo.getLeaveRequests({ employee: 'tran zzz' }, 'Hà Nội')).map(r => r.request_id), []);
   assert.deepEqual((await repo.getLeaveRequests({ employee: 'NGUYENVANA' }, 'Hà Nội')).map(r => r.request_id), ['B']);
 });

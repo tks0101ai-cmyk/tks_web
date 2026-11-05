@@ -39,7 +39,7 @@ test('xuất đầy đủ mọi trường, không lộ mật khẩu', async () =
   assert.equal(headers.length, svc.FIELD_KEYS.length);
   assert.ok(!JSON.stringify(rows).includes('SECRET_HASH'));
   const binh = rows.find(r => r[0] === 'Bình');
-  assert.ok(binh.includes('Công nợ: đổi trạng thái xử lý (cần Công nợ)'));
+  assert.ok(binh.includes('Công nợ: đổi trạng thái xử lý, kể cả các ngày cũ trong lịch sử 7 ngày của khách (cần Công nợ)'));
   assert.ok(binh.includes('123456789012'));
   const an = rows.find(r => r[0] === 'An');
   assert.ok(an.includes('Khóa thủ công'));

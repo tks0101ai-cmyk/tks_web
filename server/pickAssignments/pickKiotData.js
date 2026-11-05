@@ -4,7 +4,7 @@
 // (vai chuc → vai tram don), khong doc lai 60 nghin don cua trang Vong doi. Khong goi API KiotViet.
 //   - kiotOutcome: trang thai Kiot -> 'completed' (Hoan thanh) | 'cancelled' (Da huy) | null.
 //   - readKiotStatuses: trang thai Kiot cua cac don (dung unique index orders (branch, code)).
-//   - readKiotQuantities / diffQuantities: SL tung ma hang tren don Kiot de doi chieu voi tong SL da chi dinh (canh bao lech SL).
+//   - readKiotLineKeys: ma hang con tren don Kiot (bo dong chi dinh cua ma da xoa khoi don).
 const { tx } = require('../stockPositions/stockPositionsService');
 
 const { DB_BRANCH } = tx;
@@ -20,37 +20,70 @@ function toLocalPhone(value) {
 function createSellerPhoneLookup({
   getBranches = () => require('../kiotvietSync/config').getConfiguredBranches({warn:()=>{}}),
   createClient = require('../kiotviet/kiotVietApiClient').createKiotVietClient,
-  now = Date.now
+  now = Date.now,
+  shared = require('../lib/sharedCache').createSharedCache(),
+  requestBudgetMs = 1000
 } = {}) {
-  const cache = new Map();
-  return async (branch, sellerId) => {
+  const entries = new Map(), pending = new Map(), retryAt = new Map();
+  const keyOf = config => 'seller-phones:' + config.branch + ':' + (config.retailer || '');
+  const usable = value => value && value.phones && typeof value.phones === 'object' && !Array.isArray(value.phones) && Number.isFinite(value.at) && now() - value.at >= 0 && now() - value.at < 1800000;
+  async function refresh(config) {
+    const key = keyOf(config);
+    if (pending.has(key)) return pending.get(key);
+    const task = (async () => {
+      try {
+        const phones = Object.create(null);
+        const client = createClient({...config, requestOptions:{maxRetries:1,timeoutMs:5000}});
+        await client.fetchAllPages('users', {}, async users => {
+          for (const user of users) phones[String(user.id)] = toLocalPhone(user.mobilePhone);
+        }, {requireComplete:true});
+        const value = {at:now(),phones};
+        entries.set(key,value); retryAt.delete(key);
+        await shared.set(key,value,1800000);
+        return value;
+      } catch (_) { retryAt.set(key,now()+30000); return null; }
+    })();
+    pending.set(key,task);
+    task.finally(()=>{if(pending.get(key)===task)pending.delete(key);}).catch(()=>{});
+    return task;
+  }
+  async function lookup(branch, sellerId) {
     if (!sellerId) return '';
     const config = getBranches().find(item => item.branch === branch);
     if (!config) return '';
-    const key = branch + ':' + (config.retailer || '');
-    let entry = cache.get(key);
-    if (!entry || entry.expires <= now()) {
-      entry = {expires:Infinity};
-      entry.pending = (async () => {
-        try {
-          const phones = new Map();
-          const client = createClient({...config, requestOptions:{maxRetries:1,timeoutMs:5000}});
-          await client.fetchAllPages('users', {}, async users => {
-            for (const user of users) phones.set(String(user.id), toLocalPhone(user.mobilePhone));
-          }, {requireComplete:true});
-          entry.expires = now() + 300000;
-          return phones;
-        } catch (error) {
-          entry.expires = now() + 30000;
-          return new Map();
+    const key = keyOf(config);
+    const task = (async () => {
+      let value = entries.get(key);
+      if (!usable(value) || now()-value.at >= 300000) {
+        const stored = await shared.get(key);
+        if (usable(stored) && (!usable(value) || stored.at > value.at)) entries.set(key,value=stored);
+      }
+      if (!usable(value) || now()-value.at >= 300000) {
+        if (now() >= (retryAt.get(key)||0)) {
+          // On a stale hit refresh in the background. A cold miss has one bounded wait.
+          const loading = refresh(config);
+          if (!usable(value)) value = await loading;
         }
-      })();
-      cache.set(key, entry);
-    }
-    return (await entry.pending).get(String(sellerId)) || '';
-  };
+      }
+      return usable(value) && Object.hasOwn(value.phones,String(sellerId)) ? value.phones[String(sellerId)] : '';
+    })();
+    let timer;
+    try { return await Promise.race([task,new Promise(resolve=>{timer=setTimeout(()=>resolve(''),requestBudgetMs);})]); }
+    finally {clearTimeout(timer);}
+  }
+  lookup.refreshAll = () => Promise.all(getBranches().map(refresh));
+  return lookup;
 }
-const readSellerPhone = createSellerPhoneLookup();
+const readSellerPhone = createSellerPhoneLookup({shared:require('../lib/sharedCache').sharedCache});
+
+// Started only by the existing background job host; never creates a second worker.
+function startSellerPhoneRefresh({lookup=readSellerPhone,intervalMs=240000}={}) {
+  let running=false,stopped=false;
+  const tick=async()=>{if(running||stopped)return;running=true;try{await lookup.refreshAll();}catch(_){}finally{running=false;}};
+  void tick();
+  const timer=setInterval(tick,intervalMs);timer.unref?.();
+  return {stop(){stopped=true;clearInterval(timer);}};
+}
 async function loadSellerPhone(db, branch, orderCode) {
   try {
     const {rows} = await db.query('SELECT sold_by_id FROM orders WHERE branch=$1 AND code=$2', [DB_BRANCH[branch], orderCode]);
@@ -82,47 +115,30 @@ async function readKiotStatuses(db, branch, codes) {
   return found;
 }
 
-// Map 'ma don chu thuong' -> Map('ma hang chu thuong' -> SL) cua dong hang don Kiot (gop theo ma, bo dong VAT*).
-async function readKiotQuantities(db, branch, codes) {
+// Map 'ma don chu thuong' -> Set('ma hang chu thuong') cac ma hang (khong VAT*) con tren don Kiot, de bo dong chi dinh cua ma
+// da xoa khoi don. Don co dong khong xac dinh duoc ma (thieu productCode va khong khop products) -> null: khong ket luan duoc.
+// Don khong co dong nao trong DB (chua dong bo chi tiet) khong co khoa.
+async function readKiotLineKeys(db, branch, codes) {
   const found = new Map();
   const list = uniqueCodes(codes);
   if (!list.length) return found;
   const { rows } = await db.query(
-    `SELECT o.code,
-            lower(btrim(COALESCE(NULLIF(d.raw->>'productCode', ''), p.code, ''))) AS product_key,
-            COALESCE(SUM(d.quantity), 0)::float8 AS quantity
+    `SELECT o.code, lower(btrim(COALESCE(NULLIF(d.raw->>'productCode', ''), p.code, ''))) AS product_key
        FROM orders o
        JOIN order_details d ON d.branch = o.branch AND d.order_id = o.id
        LEFT JOIN products p ON p.branch = d.branch AND p.id = d.product_id
-      WHERE o.branch = $1 AND o.code = ANY($2::text[])
-      GROUP BY o.code, 2`,
+      WHERE o.branch = $1 AND o.code = ANY($2::text[])`,
     [DB_BRANCH[branch], list]);
   for (const row of rows) {
     const orderKey = codeKey(row.code);
-    if (!found.has(orderKey)) found.set(orderKey, new Map());
-    if (!row.product_key || row.product_key.startsWith('vat')) continue;
-    found.get(orderKey).set(row.product_key, Number(row.quantity));
+    if (!found.has(orderKey)) found.set(orderKey, new Set());
+    const keys = found.get(orderKey);
+    if (!keys) continue;
+    if (!row.product_key) found.set(orderKey, null);
+    else if (!row.product_key.startsWith('vat')) keys.add(row.product_key);
   }
   return found;
 }
 
-/**
- * HAM THUAN. So SL da chi dinh (tong planned_qty theo ma) voi SL dong don Kiot; tra cac ma LECH nhau
- * [{ productCode, picked, ordered }] sap theo ma. Ma co tren don nhung chua chi dinh dong nao (picked 0) hoac ma chi dinh
- * khong con tren don (ordered 0) deu tinh la lech.
- * @param assigned Map('ma hang chu thuong' -> { productCode, quantity })
- * @param ordered Map('ma hang chu thuong' -> SL)
- */
-function diffQuantities(assigned, ordered) {
-  const out = [];
-  const keys = new Set([...assigned.keys(), ...ordered.keys()]);
-  for (const key of keys) {
-    const picked = assigned.has(key) ? Number(assigned.get(key).quantity) : 0;
-    const want = ordered.has(key) ? Number(ordered.get(key)) : 0;
-    if (Math.abs(picked - want) < 1e-6) continue;
-    out.push({ productCode: assigned.has(key) ? assigned.get(key).productCode : key, picked, ordered: want });
-  }
-  return out.sort((a, b) => a.productCode.localeCompare(b.productCode));
-}
 
-module.exports = { toLocalPhone, kiotOutcome, readKiotStatuses, readKiotQuantities, diffQuantities, codeKey, createSellerPhoneLookup, readSellerPhone, loadSellerPhone };
+module.exports = { toLocalPhone, kiotOutcome, readKiotStatuses, readKiotLineKeys, codeKey, createSellerPhoneLookup, readSellerPhone, loadSellerPhone, startSellerPhoneRefresh };

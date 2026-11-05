@@ -454,8 +454,8 @@
         '<div class="tks-notif-dropdown-header">' +
           '<div class="tks-notif-heading"><span>Thông báo</span><span class="tks-notif-summary" id="tksNotifSummary" hidden></span></div>' +
           '<div class="tks-notif-header-actions">' +
-            '<button type="button" class="tks-notif-mark-all" id="tksNotifMarkAll">Đánh dấu tất cả đã đọc</button>' +
-            '<button type="button" class="tks-notif-clear-all" id="tksNotifClearAll" hidden>Xóa tất cả</button>' +
+            '<button type="button" class="tks-notif-mark-all" id="tksNotifMarkAll"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2 12 4 4L16 6M12 16 22 6"></path></svg><span>Đánh dấu tất cả đã đọc</span></button>' +
+            '<button type="button" class="tks-notif-clear-all" id="tksNotifClearAll" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"></path></svg><span>Xóa tất cả</span></button>' +
           '</div>' +
         '</div>' +
         '<div class="tks-notif-desktop" id="tksNotifDesktop" hidden></div>' +
@@ -2025,8 +2025,19 @@
         icon: locationIcon
       });
     });
+    locationItems.push({
+      feature: 'stocktake.view', href: '/stocktake/', label: 'Kiểm kê',
+      active: currentPath === '/stocktake',
+      icon: '<path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"></path><rect x="9" y="3" width="6" height="4" rx="1"></rect><path d="m9 14 2 2 4-4"></path>'
+    });
 
     var accountingItems = accountingNavItems(currentPath, currentHash);
+    // Sổ quỹ nằm trong nhóm Kế toán (chỉ ở sidebar, không thêm vào thanh tab 3 trang VAT).
+    accountingItems.push({
+      feature: 'cashbook.view', href: '/cashbook/', label: 'Sổ quỹ',
+      active: currentPath === '/cashbook', dataAttr: 'data-tks-nav-key="cashbook"',
+      icon: '<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"></path><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"></path><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"></path>'
+    });
 
     var groups = [
       {
@@ -2046,14 +2057,10 @@
         icon: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>'
       },
       {
-        key: 'cashbook', feature: 'cashbook.view', href: '/cashbook/', label: 'Sổ quỹ',
-        active: currentPath === '/cashbook', dataAttr: 'data-tks-nav-key="cashbook"',
-        icon: '<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"></path><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"></path><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"></path>'
-      },
-      {
         key: 'accounting', label: 'Kế toán', active: activeTop === 'accounting', items: accountingItems,
         icon: '<rect x="4" y="2" width="16" height="20" rx="2"></rect><path d="M8 6h8"></path><path d="M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h4"></path>'
       },
+      {key:'purchase',feature:'purchase.view',href:'/thu-mua/dat-hang/',label:'Thu mua',active:activeTop==='purchase',icon:'<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18M9 9v11"></path>'},
       {
         key: 'account', label: 'Quản lý tài khoản', active: activeTop === 'account', items: accountItems,
         icon: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.8 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path>'

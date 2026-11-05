@@ -50,7 +50,7 @@ async function setup(t, { branch = 'Cả hai', hash = '', data = { HN: [row(1)],
       const target = parsed.searchParams.get('branch');
       return json({ branch: target, canEdit, canExport, rows: data[target] });
     }
-    if (method === 'GET' && parsed.pathname === '/api/stock-positions/export') {
+    if (method === 'POST' && parsed.pathname === '/api/stock-positions/export') {
       return { ok: true, status: 200, headers: { get: name => (name === 'Content-Disposition' ? 'attachment; filename="VT-HN-2026.xlsx"' : null) }, blob: async () => ({ size: 3 }) };
     }
     if (handler) { const answer = await handler(url, options, parsed); if (answer) return answer; }
@@ -343,7 +343,7 @@ test('hàng cảnh báo đổi chữ sang đỏ (không tô nền); bộ lọc C
     SG: [row(4, { warnings: ['unreadable'], quantity: null })]
   };
   const { doc, window, changeTab } = await setup(t, { data });
-  assert.deepEqual(optionTexts(doc), ['Cảnh báo (2)', 'Hợp lệ (1)', 'Tất cả']);
+  assert.deepEqual(optionTexts(doc), ['Cảnh báo (2)', 'Hợp lệ (1)', 'Tất cả', 'Số lượng âm (0)', 'Nhiều quy cách (2)', 'Trừ lẻ (0)', 'Sai định dạng (0)', 'Số thùng sai (0)', 'Mã SP lạ (1)']);
   assert.equal(doc.getElementById('vtWarnFilter').value, 'all', 'mặc định Tất cả');
   assert.equal(doc.querySelectorAll('#vtRows tr.vt-warning').length, 2);
   assert.equal(doc.querySelector('#vtRows tr[data-id="3"]').classList.contains('vt-warning'), false);
@@ -361,7 +361,7 @@ test('hàng cảnh báo đổi chữ sang đỏ (không tô nền); bộ lọc C
   assert.equal(doc.querySelectorAll('#vtRows tr').length, 3);
   pickFilter(doc, window, 'warn');
   await changeTab('sg');
-  assert.deepEqual(optionTexts(doc), ['Cảnh báo (1)', 'Hợp lệ (0)', 'Tất cả']);
+  assert.deepEqual(optionTexts(doc), ['Cảnh báo (1)', 'Hợp lệ (0)', 'Tất cả', 'Số lượng âm (0)', 'Nhiều quy cách (0)', 'Trừ lẻ (0)', 'Sai định dạng (1)', 'Số thùng sai (0)', 'Mã SP lạ (0)']);
   assert.equal(doc.getElementById('vtWarnFilter').value, 'all', 'bộ lọc cảnh báo giữ riêng từng tab');
   assert.equal(doc.querySelector('#vtRows [data-field="quantity"]').textContent, '', 'SL trống khi ghi chú sai định dạng');
 });
@@ -376,7 +376,7 @@ test('bộ lọc cảnh báo: số đếm tính trên toàn bộ dòng (không t
   const search = doc.getElementById('vtSearch');
   search.value = 'MA7';
   search.dispatchEvent(new window.Event('input'));
-  assert.deepEqual(optionTexts(doc), ['Cảnh báo (3)', 'Hợp lệ (127)', 'Tất cả'], 'không đổi theo từ khóa');
+  assert.deepEqual(optionTexts(doc), ['Cảnh báo (3)', 'Hợp lệ (127)', 'Tất cả', 'Số lượng âm (0)', 'Nhiều quy cách (0)', 'Trừ lẻ (0)', 'Sai định dạng (3)', 'Số thùng sai (0)', 'Mã SP lạ (0)'], 'không đổi theo từ khóa');
   assert.equal(doc.getElementById('vtStatus').textContent, 'Không có dòng cảnh báo.');
   const noWarn = await setup(t, { data: { HN: [row(1)], SG: [] } });
   pickFilter(noWarn.doc, noWarn.window, 'warn');
@@ -717,6 +717,8 @@ test('nút Xuất Excel chỉ hiện khi canExport, tải file theo cơ sở v�
   doc.getElementById('vtExportButton').click();
   await settle();
   const exportCall = calls.find(c => c.path === '/api/stock-positions/export');
+  assert.equal(exportCall.method, 'POST');
+  assert.deepEqual(JSON.parse(exportCall.options.body), { ids: [1] });
   assert.equal(exportCall.query.get('branch'), 'HN');
   assert.equal(exportCall.options.credentials, 'same-origin');
   assert.equal(downloads[0].name, 'VT-HN-2026.xlsx');
@@ -728,4 +730,23 @@ test('sắp xếp số theo giá trị, ô trống luôn cuối', async t => {
   const rows = [row(1, { quantity: 10 }), row(2, { quantity: null }), row(3, { quantity: 2 })];
   assert.deepEqual(Array.from(window.TKSVtPositions.sortRows(rows, 'quantity', 'asc'), r => r.id), [3, 1, 2]);
   assert.deepEqual(Array.from(window.TKSVtPositions.sortRows(rows, 'quantity', 'desc'), r => r.id), [1, 3, 2]);
+});
+
+test('Lịch sử: hành động Xuất kho có nhãn, lọc được và hiện ghi chú cũ → mới kèm tóm tắt', async t => {
+  const entries = [
+    { id: 3, createdAt: '2026-10-30T03:00:00Z', branch: 'HN', code: 'AAA', location: 'K1', action: 'stock_out', field: 'notes', oldValue: '3T x 100', newValue: '2T x 100', summary: { deducted: 100, removed: false, fileName: 'xuat.xlsx', fileRows: [2] }, actorName: 'Lan' },
+    { id: 2, createdAt: '2026-10-30T02:00:00Z', branch: 'HN', code: 'BBB', location: 'K2', action: 'stock_out', field: 'notes', oldValue: '1T x 50', newValue: null, summary: { deducted: 50, removed: true, fileName: 'xuat.xlsx', fileRows: [3] }, actorName: 'Lan' },
+    { id: 1, createdAt: '2026-10-30T01:00:00Z', branch: 'HN', code: 'CCC', location: 'K3', action: 'edit', field: 'notes', oldValue: '1T x 5', newValue: '2T x 5', actorName: 'Minh' }
+  ];
+  const { doc, window } = await setup(t, { handler: async (url, options, parsed) => (parsed.pathname === '/api/stock-positions/history' ? json({ rows: entries, nextBefore: null }) : null) });
+  doc.getElementById('vtHistoryButton').click();
+  await settle();
+  const rows = [...doc.querySelectorAll('#vtHistoryRows tr')].map(tr => [...tr.querySelectorAll('td')].map(td => td.textContent.replace(/\s+/g, ' ').trim()));
+  assert.deepEqual(rows[0].slice(2), ['Xuất kho', 'AAA · K1', '3T x 100 → 2T x 100 Trừ 100 · xuat.xlsx']);
+  assert.deepEqual(rows[1].slice(2), ['Xuất kho', 'BBB · K2', '1T x 50 Trừ 50 · Hết hàng, đã xóa dòng · xuat.xlsx']);
+  const action = doc.getElementById('vtHistoryAction');
+  assert.ok([...action.options].some(option => option.value === 'stock_out' && option.textContent === 'Xuất kho'));
+  action.value = 'stock_out';
+  action.dispatchEvent(new window.Event('change'));
+  assert.equal(doc.querySelectorAll('#vtHistoryRows tr').length, 2);
 });

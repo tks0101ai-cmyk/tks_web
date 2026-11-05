@@ -29,6 +29,7 @@ async function start(t, { user = MANAGER, scope = 'Cả hai', events } = {}) {
     create: record('create'), update: record('update'), deduct: record('deduct'), remove: record('remove'), history: record('history'),
     acknowledge: record('acknowledge'), purgeHistory: record('purgeHistory'),
     historyAll: async (ctx, branch, filters) => { calls.push(['historyAll', branch, filters, ctx.scope]); return { rows: HISTORY, truncated: false }; },
+    stockOutFile: async (ctx, branch, options) => { calls.push(['stockOutFile', branch, options.fileName, options.buffer.length, ctx.scope]); return { counts: {}, errors: [] }; },
     importFile: async (ctx, branch, options) => { calls.push(['importFile', branch, options.mode, options.commit, options.fileName, options.buffer.length, ...(options.inputRows === undefined ? [] : [options.inputRows])]); return { counts: {} }; }
   };
   const app = express();
@@ -88,6 +89,7 @@ test('Mọi vai trò kể cả Khách xem + xuất Excel được theo mặc đ�
     assert.equal((await fetch(base + '/5/ack', { method: 'POST', headers: json, body: '{}' })).status, 403, vaiTro);
     assert.equal((await fetch(base + '/5', { method: 'DELETE' })).status, 403, vaiTro);
     assert.equal((await fetch(base + '/import?branch=HN&mode=add', { method: 'POST' })).status, 403, vaiTro);
+    assert.equal((await fetch(base + '/stock-out?branch=HN', { method: 'POST' })).status, 403, vaiTro);
     assert.equal((await fetch(base + '/history?branch=HN', { method: 'DELETE' })).status, 403, vaiTro);
     assert.deepEqual(calls.map(c => c[0]), ['list', 'list', 'historyAll', 'history'], vaiTro);
   }
@@ -139,8 +141,26 @@ test('Route ghi chuyển đúng tham số tới service', async t => {
   await fetch(base + '/7?version=3', { method: 'DELETE' });
   await fetch(base + '/history?branch=HN&limit=5&before=9');
   assert.deepEqual(calls.map(c => c[0]), ['create', 'update', 'deduct', 'remove', 'history']);
-  assert.deepEqual(calls[1].slice(1), [7, { version: 2, notes: '1T x 5' }]);
+  // PATCH bat checkHeld: trang VT cung khong ha ghi chu duoi phan don Dang boc dang giu.
+  assert.deepEqual(calls[1].slice(1), [7, { version: 2, notes: '1T x 5' }, { checkHeld: true }]);
   assert.deepEqual(calls[3].slice(1), [7, 3]);
+});
+
+test('Lỗi giữ chỗ trả kèm mã đơn (orders) + tổng giữ (held) trong body', async t => {
+  const app = express();
+  app.use(express.json());
+  app.use((req, res, next) => { req.user = MANAGER; next(); });
+  const failWith = Object.assign(new Error('Đơn DH1 đang giữ 150 tại vị trí này, không hạ dưới 150.'), { statusCode: 409, code: 'BELOW_HELD', orders: ['DH1'], held: 150 });
+  app.use(createStockPositionsRouter({
+    requireAuth: (req, res, next) => next(),
+    resolveBranch: (req, res, next) => { req.branch = 'Cả hai'; next(); },
+    service: { update: async () => { throw failWith; } }
+  }));
+  const server = await new Promise(resolve => { const s = app.listen(0, () => resolve(s)); });
+  t.after(() => server.close());
+  const res = await fetch(`http://127.0.0.1:${server.address().port}/api/stock-positions/7`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: 1, notes: '1T x 100' }) });
+  assert.equal(res.status, 409);
+  assert.deepEqual(await res.json(), { error: failWith.message, code: 'BELOW_HELD', orders: ['DH1'], held: 150 });
 });
 
 test('Import: nhận file multipart, chặn sai đuôi file, truyền chế độ + commit', async t => {
@@ -152,6 +172,24 @@ test('Import: nhận file multipart, chặn sai đuôi file, truyền chế đ�
   const none = await fetch(base + '/import?branch=SG&mode=add', { method: 'POST', body: new FormData() });
   assert.equal(none.status, 400);
   assert.equal((await none.json()).code, 'IMPORT_FILE_REQUIRED');
+});
+
+test('Xuất kho: Quản lý nhận file multipart, chặn sai đuôi/thiếu file, truyền cơ sở + phạm vi; vai trò không có quyền sửa bị 403', async t => {
+  const { base, calls } = await start(t, { scope: 'Sài Gòn' });
+  const form = name => { const f = new FormData(); f.append('file', new Blob(['abc']), name); return f; };
+  const ok = await fetch(base + '/stock-out?branch=SG', { method: 'POST', body: form('xuat.xlsx') });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(calls, [['stockOutFile', 'SG', 'xuat.xlsx', 3, ['SG']]]);
+  const bad = await fetch(base + '/stock-out?branch=SG', { method: 'POST', body: form('xuat.pdf') });
+  assert.equal(bad.status, 400);
+  assert.equal((await bad.json()).code, 'IMPORT_BAD_EXTENSION');
+  const none = await fetch(base + '/stock-out?branch=SG', { method: 'POST', body: new FormData() });
+  assert.equal(none.status, 400);
+  assert.equal((await none.json()).code, 'IMPORT_FILE_REQUIRED');
+  assert.equal(calls.length, 1);
+  const viewer = await start(t, { user: { vaiTro: 'Nhân viên kho' } });
+  assert.equal((await fetch(viewer.base + '/stock-out?branch=HN', { method: 'POST', body: form('xuat.xlsx') })).status, 403);
+  assert.deepEqual(viewer.calls, []);
 });
 
 test('Import review: malformed JSON is rejected and edited rows reach the service', async t => {

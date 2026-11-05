@@ -37,6 +37,7 @@ const FEATURE_GROUPS = Object.freeze([
   { key: 'hr', label: 'Quản lý nhân sự' },
   { key: 'cashbook', label: 'Sổ quỹ' },
   { key: 'accounting', label: 'Kế toán' },
+  { key: 'purchase', label: 'Thu mua' },
   { key: 'account', label: 'Quản lý tài khoản' },
   { key: 'system', label: 'Hệ thống' }
 ]);
@@ -47,6 +48,12 @@ const FEATURE_GROUPS = Object.freeze([
  * khong ai tat duoc (tranh khoa chet nguoi dung ra khoi he thong).
  */
 const FEATURES = Object.freeze([
+  {key:'purchase.view',groupKey:'purchase',label:'Xem Thu mua',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH]},
+  {key:'purchase.edit',groupKey:'purchase',label:'Sửa Thu mua',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH],requires:'purchase.view'},
+  {key:'purchase.import',groupKey:'purchase',label:'Import Thu mua',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH],requires:'purchase.view'},
+  {key:'purchase.export',groupKey:'purchase',label:'Xuất Excel Thu mua',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH],requires:'purchase.view'},
+  {key:'purchase.depart',groupKey:'purchase',label:'Xác nhận bốc cont',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH],requires:'purchase.view'},
+  {key:'purchase.arrive',groupKey:'purchase',label:'Xác nhận cont về',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH],requires:'purchase.view'},
   { key: 'reports.products.expected.otherNote', groupKey: 'reports', label: 'Dự kiến hàng về: Xem Ghi chú khác', roles: MANAGER_ONLY, requires: 'reports.products.expected' },
   // --- Bao cao tong hop ---
   { key: 'reports.overview', groupKey: 'reports', label: 'Tổng quan', roles: REPORT_VIEW_ROLES },
@@ -90,9 +97,8 @@ const FEATURES = Object.freeze([
   // dinh Quan ly). Quan ly cap them tung tai khoan o /account/.
   { key: 'reports.debt.saleFeedback', groupKey: 'reports', label: 'Công nợ: điền Sale phản hồi (cần Công nợ)', roles: [ROLES.NHAN_VIEN_SALE], requires: 'reports.debt', escalationExempt: true },
   { key: 'reports.debt.managerFeedback', groupKey: 'reports', label: 'Công nợ: điền QL phản hồi (cần Công nợ)', roles: MANAGER_ONLY, requires: 'reports.debt' },
-  { key: 'reports.debt.edit', groupKey: 'reports', label: 'Công nợ: đổi trạng thái xử lý (cần Công nợ)', roles: MANAGER_ONLY, requires: 'reports.debt' },
+  { key: 'reports.debt.edit', groupKey: 'reports', label: 'Công nợ: đổi trạng thái xử lý, kể cả các ngày cũ trong lịch sử 7 ngày của khách (cần Công nợ)', roles: MANAGER_ONLY, requires: 'reports.debt' },
   { key: 'reports.debt.schedule', groupKey: 'reports', label: 'Công nợ: sửa lịch thanh toán (cần Công nợ)', roles: MANAGER_ONLY, requires: 'reports.debt' },
-  { key: 'reports.debt.penalty', groupKey: 'reports', label: 'Công nợ: điền tiền phạt phiên này (cần Công nợ)', roles: MANAGER_ONLY, requires: 'reports.debt' },
   { key: 'reports.debt.refresh', groupKey: 'reports', label: 'Công nợ: tính lại công nợ tại thời điểm bấm (cần Công nợ)', roles: MANAGER_ONLY, requires: 'reports.debt' },
   { key: 'reports.marketing', groupKey: 'reports', label: 'Báo cáo Marketing', roles: [...REPORTS_ROLES, ROLES.NHAN_VIEN_MARKETING] },
   // 2026-10-08: sua 2 cot Khach moi/Ghi chu cua BC thang Marketing va ghi nguoc Google Sheets.
@@ -121,6 +127,11 @@ const FEATURES = Object.freeze([
   { key: 'stockLocationsV2.edit', groupKey: 'stockLocations', label: 'Sửa / thêm / xóa / import VT Hà Nội / VT Sài Gòn (cần xem VT)', roles: MANAGER_ONLY, forbiddenRoles: [ROLES.KHACH], requires: 'stockLocationsV2.view' },
   { key: 'stockLocationsV2.export', groupKey: 'stockLocations', label: 'Xuất Excel VT Hà Nội / VT Sài Gòn (cần xem)', roles: ALL_ROLES, requires: 'stockLocationsV2.view', escalationExempt: true },
   { key: 'stockLocationsV2.historyDelete', groupKey: 'stockLocations', label: 'Xóa lịch sử VT Hà Nội / VT Sài Gòn (cần xem VT)', roles: MANAGER_ONLY, forbiddenRoles: [ROLES.KHACH], requires: 'stockLocationsV2.view' },
+  // 2026-10-31: Kiem ke (doi chieu so dem don TEAM voi ton KiotViet). Mac dinh chi Quan ly; Quan ly cap xem + sua cho
+  // 3 quan ly kiem kho. Dong dot / nap so lieu sheet tach rieng (.close) de chi Quan ly bam.
+  { key: 'stocktake.view', groupKey: 'stockLocations', label: 'Xem Kiểm kê', roles: MANAGER_ONLY, forbiddenRoles: [ROLES.KHACH] },
+  { key: 'stocktake.edit', groupKey: 'stockLocations', label: 'Kiểm kê: tạo đợt, sửa số đếm, giao kiểm lại, ghi lý do (cần xem)', roles: MANAGER_ONLY, forbiddenRoles: [ROLES.KHACH], requires: 'stocktake.view' },
+  { key: 'stocktake.close', groupKey: 'stockLocations', label: 'Kiểm kê: đóng đợt, nạp số liệu sheet (cần xem)', roles: MANAGER_ONLY, forbiddenRoles: [ROLES.KHACH], requires: 'stocktake.view' },
 
   // --- Quan ly nhan su ---
   { key: 'hr.rules', groupKey: 'hr', label: 'Quy định công ty', roles: ALL_ROLES },
@@ -189,7 +200,9 @@ const PAGE_FEATURES = Object.freeze([
   { path: '/reports', href: '/reports/', anyOf: ANY_REPORTS_FEATURES, landingAnyOf: ANY_REPORTS_FEATURES.filter(k => k !== 'reports.products.expected') },
   { path: '/shipment/lifecycle', href: '/shipment/lifecycle/', anyOf: ['shipment.lifecycle'] },
   { path: '/humanresources', href: '/humanresources/', anyOf: ['hr.rules', 'hr.employees', 'hr.leave', 'hr.leave.submit'] },
+  {path:'/thu-mua/dat-hang',href:'/thu-mua/dat-hang/',anyOf:['purchase.view']},
   { path: '/vt-positions', href: '/vt-positions/', anyOf: ['stockLocationsV2.view'] },
+  { path: '/stocktake', href: '/stocktake/', anyOf: ['stocktake.view'] },
   { path: '/cashbook', href: '/cashbook/', anyOf: ['cashbook.view'] },
   { path: '/vat-draft', href: '/vat-draft/', anyOf: ['accounting.vatDraft', 'accounting.qr'] },
   { path: '/vat-lookup', href: '/vat-lookup/', anyOf: ['accounting.vatLookup'] },

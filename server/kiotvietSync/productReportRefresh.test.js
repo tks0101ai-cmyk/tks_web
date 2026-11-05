@@ -41,7 +41,7 @@ test('refreshProductReport chay dung trinh tu BEGIN/TRUNCATE/INSERT/COMMIT trong
 
 test('REFRESH_SQL luu lai customer_agg vao product_report_customers trong CUNG 1 cau lenh (quet 90 ngay 1 lan)', () => {
   const sql = __sql__.REFRESH_SQL;
-  assert.match(sql, /INSERT INTO product_report_customers\s*\(product_key, customer_key, customer_name, revenue\)/);
+  assert.match(sql, /INSERT INTO product_report_customers\s*\(product_key, customer_key, customer_name, revenue, revenue_1_30d, revenue_31_60d, revenue_61_90d\)/);
   assert.match(sql, /FROM customer_agg/);
   // Ca 2 bang cung doc customer_agg => phai la CTE, khong quet lai invoice_details lan nua.
   assert.equal((sql.match(/FROM invoice_details/g) || []).length, 1);
@@ -219,6 +219,8 @@ async function bcChungFixture() {
     '0063_product_report_price_columns.sql', '0067_product_report_bc_chung.sql']) {
     await db.exec(fs.readFileSync(path.join(migrations, file), 'utf8'));
   }
+  await db.exec('CREATE TABLE product_report_state (id smallint PRIMARY KEY, computed_at timestamptz, version bigint, last_full_at timestamptz)');
+  await db.exec(fs.readFileSync(path.join(migrations, '0108_product_customer_periods.sql'), 'utf8'));
   const day = (n) => `(((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date - ${n})::timestamp AT TIME ZONE 'UTC' + interval '2 hours')`;
   const dayDate = (n) => `((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date - ${n})`;
   await db.exec(`
@@ -309,4 +311,34 @@ test('SQL that (PGlite): doi ten khach/hang tren bang chu => product_report_cust
     assert.match(rows[0].customer_name, /^kh +moi$/i);
     assert.doesNotMatch(rows[0].customer_name, /Cu/);
   } finally { await db.close(); }
+});
+
+test('SQL rolling periods: exact 30-day boundaries, signed returns, sum and persisted VN end in both modes', async () => {
+  const incremental = require('./productReportIncremental');
+  for (const includeToday of [false, true]) {
+    const db = await bcChungFixture();
+    try {
+      await db.exec('DELETE FROM invoice_details; DELETE FROM invoices; DELETE FROM return_details; DELETE FROM returns;');
+      const endOffset = includeToday ? 0 : 1;
+      const at = n => `(((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date - ${n + endOffset})::timestamp AT TIME ZONE 'UTC')`;
+      for (const [id, day] of [0,29,30,59,60,89,90,-1].entries()) {
+        await db.exec(`INSERT INTO invoices VALUES ('hanoi', ${id}, 1, ${at(day)}, '{}');
+          INSERT INTO invoice_details VALUES ('hanoi', ${id}, 1, 1, ${day === 90 || day === -1 ? 10000 : 100}, 0, '{}');`);
+      }
+      await db.exec(`INSERT INTO returns VALUES ('hanoi', 1, 1, ${at(30)}, '{"statusValue":"Đã trả"}');
+        INSERT INTO return_details VALUES ('hanoi', 1, 1, 1, 250, '{}');`);
+      if (includeToday) {
+        for (const statement of incremental.__sql__.CREATE_STAGE_SQL) await db.exec(statement.replace(' ON COMMIT DROP',''));
+        await db.query(incremental.__sql__.fillCustomers, [['hanoi','saigon']]);
+        await db.query(incremental.__sql__.INSERT_CUSTOMERS_SQL);
+        await db.query(incremental.__sql__.UPSERT_STATE_SQL, [true,true]);
+      } else await db.query(__sql__.REFRESH_SQL, [['hanoi','saigon']]);
+      const row = (await db.query(`SELECT revenue::float8 AS total, revenue_1_30d::float8 AS p1,
+        revenue_31_60d::float8 AS p2, revenue_61_90d::float8 AS p3 FROM product_report_customers WHERE product_key='a'`)).rows[0];
+      assert.deepEqual(row, {total:350,p1:200,p2:-50,p3:200});
+      assert.equal(row.p1+row.p2+row.p3,row.total);
+      const state = (await db.query(`SELECT customer_window_end = (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date - ${endOffset} AS correct FROM product_report_state`)).rows[0];
+      assert.equal(state.correct,true);
+    } finally { await db.close(); }
+  }
 });

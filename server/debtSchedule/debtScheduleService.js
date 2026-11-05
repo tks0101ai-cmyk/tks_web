@@ -15,7 +15,6 @@ const DEBT_ACCESS_FEATURES = Object.freeze({
   managerFeedback: 'reports.debt.managerFeedback',
   status: 'reports.debt.edit',
   schedule: 'reports.debt.schedule',
-  penalty: 'reports.debt.penalty',
   refresh: 'reports.debt.refresh'
 });
 

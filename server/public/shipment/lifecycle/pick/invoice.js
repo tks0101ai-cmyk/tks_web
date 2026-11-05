@@ -37,12 +37,22 @@ const pageFooter='<p class="invoice-notice" style="text-align: center;"><span><s
 const deliveryTemplate=`<div class="delivery-heading"><strong class="delivery-title">PHIẾU XÁC NHẬN GIAO HÀNG</strong><p>Mã đặt hàng: {Ma_Don_Hang}</p></div>
 <div class="delivery-contacts"><p><strong><u>Người gửi:</u></strong><br>{Nguoi_Gui}</p>
 <p><strong><u>Người nhận:</u></strong><br>Khách hàng: {Khach_Hang}<br>SĐT KH: {So_Dien_Thoai}<br>Địa chỉ: {Dia_Chi_Khach_Hang}<br>NV Bán hàng: {Nhan_Vien_Ban_Hang}<span class="invoice-telegram-slot"></span></p></div>
-<table class="invoice-goods" data-table-controls="off" data-table-sort="off"><colgroup><col style="width:5%"><col style="width:39%"><col style="width:8%"><col style="width:14%"><col style="width:18%"><col style="width:16%"></colgroup>
-<thead><tr><td>TT</td><td>Tên hàng</td><td>SL</td><td>Vị trí</td><td>Thùng</td><td>Thực nhặt</td></tr></thead>
-<tbody><tr><td>{STT}</td><td>{Ten_Hang_Hoa_Don_Gian}</td><td>{So_Luong}</td><td class="invoice-location">{Vi_Tri_Hang_Hoa}</td><td class="invoice-st">{ST}</td><td class="invoice-actual">{Thuc_Te_Nhat}</td></tr></tbody></table>
-<table class="invoice-layout-table delivery-note" data-print-table="deliveryNote" data-table-controls="off" data-table-sort="off"><colgroup><col style="width:100%"></colgroup><tbody><tr><td><strong><u>Quý khách vui lòng kiểm tra hàng khi nhận, gọi trước cho khách, báo sale thu tiền.</u></strong></td></tr></tbody></table>
+<table class="invoice-goods" data-table-controls="off" data-table-sort="off"><colgroup><col style="width:5%"><col style="width:30%"><col style="width:8%"><col style="width:12%"><col style="width:13%"><col style="width:20%"><col style="width:12%"></colgroup>
+<thead><tr><td>TT</td><td>Tên hàng</td><td>SL</td><td>Vị trí</td><td>Thùng</td><td>Ghi chú</td><td>Thực nhặt</td></tr></thead>
+<tbody><tr><td>{STT}</td><td>{Ten_Hang_Hoa_Don_Gian}</td><td>{So_Luong}</td><td class="invoice-location">{Vi_Tri_Hang_Hoa}</td><td class="invoice-st">{ST}</td><td class="invoice-line-note">{Ghi_Chu_Hang_Hoa}</td><td class="invoice-actual">{Thuc_Te_Nhat}</td></tr></tbody></table>
+<table class="invoice-layout-table delivery-note" data-print-table="deliveryNote" data-table-controls="off" data-table-sort="off"><colgroup><col style="width:100%"></colgroup><tbody><tr><td><strong><u>Ghi chú: {Ghi_Chu}</u></strong></td></tr></tbody></table>
 <table class="invoice-layout-table delivery-signatures" data-print-table="deliverySignatures" data-table-controls="off" data-table-sort="off"><colgroup><col style="width:30%"><col style="width:30%"><col style="width:40%"></colgroup><tbody><tr><td><strong>Người nhận hàng</strong></td><td><strong>Nhân viên nhặt hàng</strong></td><td><em>Ngày {Ngay} tháng {Thang} năm {Nam}</em><br><strong>Nhân viên xuất hàng</strong></td></tr></tbody></table>`;
 let currentPrint=null;
+
+// One retained measure per stage; observers can collect distributions without growing the timeline.
+// Numeric start/end isolate overlapping operations without leaving global marks behind.
+function startTiming(stage){
+  const started=performance.now();let ended=false;
+  return ()=>{
+    if(ended)return;ended=true;
+    try{const name='tokosi.pick.'+stage;performance.clearMeasures(name);performance.measure(name,{start:started,end:performance.now()});}catch(_){}
+  };
+}
 
 async function fetchText(url){
   const res=await fetch(url,{credentials:'same-origin'});
@@ -61,23 +71,26 @@ async function dataUri(url){
 function loadAssets(){
   if(window.PickingInvoiceTemplate&&window.PickingPrintCSS)return Promise.resolve();
   if(!assetsPromise){
+    const finish=startTiming('assets');
     assetsPromise=(async()=>{
-      const [template,css]=await Promise.all([fetchText(BASE+'order-template.tpl?v=20261029-7'),fetchText(BASE+'invoice-a4.css?v=20261029-7')]);
+      const [template,css]=await Promise.all([fetchText(BASE+'order-template.tpl?v=20261029-7'),fetchText(BASE+'invoice-a4.css?v=20261104-1')]);
       let out=template;
-      for(const id of new Set([...template.matchAll(CDN)].map(m=>m[1]))){
-        const uri=await dataUri(BASE+'invoice-assets/'+id+'.jpg');
+      const images=await Promise.all([...new Set([...template.matchAll(CDN)].map(m=>m[1]))].map(async id=>[id,await dataUri(BASE+'invoice-assets/'+id+'.jpg')]));
+      for(const [id,uri] of images){
         out=out.split('https://cdn2-retail-images.kiotviet.vn/2026/10/05/chhanoi/'+id+'.jpg').join(uri);
       }
       window.PickingInvoiceTemplate=out;
       window.PickingPrintCSS=css;
-    })().catch(error=>{assetsPromise=null;throw error;});
+    })().catch(error=>{assetsPromise=null;throw error;}).finally(finish);
   }
   return assetsPromise;
 }
 
 /* order: assignment.snapshot (+ orderCode, branch); record: assignment. Trả Promise (nạp mẫu lần đầu cần mạng). */
 async function show(order,record,template='order'){
+  const readyTiming=startTiming('preview-ready');
   await loadAssets();
+  const renderTiming=startTiming('render');
   let style=document.getElementById('pickingInvoiceStyle');
   if(!style){style=document.createElement('style');style.id='pickingInvoiceStyle';document.head.append(style);}
   style.textContent=window.PickingPrintCSS;
@@ -179,9 +192,15 @@ async function show(order,record,template='order'){
   titleEl.replaceChildren(document.createTextNode(title+' · '),codeEl);
   document.getElementById('pickingPrintSheet').replaceChildren(root);
   currentPrint={order,record};
-  await window.PickingPrint?.prepare?.();
+  renderTiming();
+  const layoutTiming=startTiming('layout');
+  let ready;
+  try{ready=await window.PickingPrint?.prepare?.();}finally{layoutTiming();}
+  if(!root.isConnected)return false;
   const dialog=document.getElementById('pickingPrintDialog');
   if(!dialog.open)dialog.showModal();
+  if(ready!==false)readyTiming();
+  return ready!==false;
 }
-window.PickingInvoice={show,loadAssets,changeTemplate:template=>currentPrint?show(currentPrint.order,currentPrint.record,template):Promise.resolve()};
+window.PickingInvoice={show,loadAssets,startTiming,changeTemplate:template=>currentPrint?show(currentPrint.order,currentPrint.record,template):Promise.resolve()};
 })();

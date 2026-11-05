@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kiểm kê · TOKOSI Dashboard</title>
+  <link rel="icon" type="image/jpeg" href="/Logo.jpg">
+  <script>
+    try { document.documentElement.dataset.theme = localStorage.getItem('tks-dashboard-theme') === 'light' ? 'light' : 'dark'; }
+    catch (error) { document.documentElement.dataset.theme = 'dark'; }
+    document.documentElement.style.visibility = 'hidden';
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/shared/shared.css?v=20261028-leave-btn">
+  <script src="/shared/motion.js?v=20261024-1" defer></script>
+  <link rel="stylesheet" href="/shared/search-clear.css?v=20261009-1">
+  <link rel="stylesheet" href="/vt-positions/vt-base.css?v=20261030">
+  <link rel="stylesheet" href="/shared/detail-panel.css?v=20261012">
+  <link rel="stylesheet" href="/shared/table-controls.css?v=20261016-1">
+  <link rel="stylesheet" href="/vt-positions/vt-positions.css?v=20261030-1">
+  <link rel="stylesheet" href="/stocktake/stocktake.css?v=20261105-4">
+</head>
+<body>
+  <div class="receipt-header">
+    <div class="brand">
+      <button class="menu-btn" id="menuBtn" type="button" aria-label="Mở menu điều hướng" aria-expanded="false" aria-controls="sidebar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>
+      </button>
+      <div class="brand-mark"><img src="/Logo.jpg" alt="TOKOSI Logo" width="44" height="44"></div>
+      <div class="brand-text"><h1>Tổng kho gia dụng Tokosi</h1></div>
+    </div>
+    <div class="status-line">
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="Chuyển chế độ giao diện">
+        <svg class="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1 1M18 18l1 1M5 19l1-1M18 6l1-1"></path></svg>
+        <svg class="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg>
+        <span id="themeLabel">Light mode</span>
+      </button>
+      <div class="account-chip" id="accountChip"></div>
+    </div>
+  </div>
+  <div class="shell">
+    <div class="backdrop" id="backdrop"></div>
+    <div class="sidebar" id="sidebar" data-tks-active-top="stockLocations"></div>
+    <main class="content">
+      <h2 class="locations-sr-only">Kiểm kê</h2>
+      <section class="locations-panel st-sessions" aria-label="Đợt kiểm kê">
+        <div class="st-bar">
+          <label class="st-field st-session-pick"><span>Đợt</span><select id="stSession" aria-label="Chọn đợt kiểm kê"></select></label>
+          <span class="st-session-meta" id="stSessionMeta"></span>
+          <button class="locations-columns-button vt-btn" id="stEditDatesButton" type="button" hidden>Sửa ngày</button>
+          <button class="locations-columns-button vt-btn vt-btn-primary" id="stRefreshOrdersButton" type="button" hidden title="Lấy ngay đơn TEAM vừa thêm hoặc sửa trên KiotViet. Web vẫn tự cập nhật sau khoảng 1–2 phút nếu không bấm.">Cập nhật đơn Kiot</button>
+          <div class="st-stats" id="stStats" aria-live="polite"></div>
+          <label class="st-field st-counterpart" id="stCounterpartField" hidden><span>Đối chiếu</span><select id="stCounterpart" class="st-select" aria-label="Đợt đối chiếu cơ sở kia"></select></label>
+          <label class="st-field st-previous" id="stPreviousField" hidden title="Đợt lấy số &quot;KK trước sai&quot;. Tự động = đợt đã đóng gần nhất cùng cơ sở."><span>KK trước</span><select id="stPrevious" class="st-select" aria-label="Đợt KK trước"></select></label>
+          <button class="locations-columns-button vt-btn vt-btn-primary" id="stCreateButton" type="button" hidden>+ Tạo đợt</button>
+          <button class="locations-columns-button vt-btn" id="stImportT10Button" type="button" hidden title="Nạp một lần tab KIỂM KÊ HN T10">Nạp T10 HN từ sheet</button>
+          <button class="locations-columns-button vt-btn" id="stImportSgButton" type="button" hidden title="Nạp một lần tab KIỂM SG">Nạp KIỂM SG từ sheet</button>
+          <button class="locations-columns-button vt-btn" id="stReloadButton" type="button" hidden title="Đọc lại tab sheet và thay số liệu của đợt này">Nạp lại từ sheet</button>
+          <label class="st-check" id="stShowCancelledField" hidden><input type="checkbox" id="stShowCancelled"> Hiện đợt đã hủy</label>
+          <details class="st-actions" id="stActionsMenu" hidden>
+            <summary class="locations-columns-button vt-btn">Thao tác đợt</summary>
+            <div class="st-actions-list">
+              <button class="locations-columns-button vt-btn st-danger" id="stCloseButton" type="button" hidden title="Chụp lại số liệu và khóa đợt, không mở lại được">Đóng đợt</button>
+              <button class="locations-columns-button vt-btn st-danger" id="stCancelButton" type="button" hidden title="Ẩn đợt, không xóa dữ liệu; khôi phục được">Hủy đợt</button>
+            </div>
+          </details>
+        </div>
+        <div class="st-previous-note st-orders-note" id="stOrdersNote" role="status" hidden>
+          <span id="stOrdersNoteText"></span>
+          <button class="locations-columns-button vt-btn" id="stOrdersNoteButton" type="button" hidden>Sửa ngày</button>
+        </div>
+        <p class="st-previous-note" id="stPreviousNote" role="status" hidden></p>
+        <div class="st-cancel-banner" id="stCancelBanner" role="status" hidden>
+          <span id="stCancelText"></span>
+          <button class="locations-columns-button vt-btn" id="stRestoreButton" type="button">Khôi phục</button>
+        </div>
+        <div class="st-status-cards" id="stStatusCards" role="group" aria-label="Tổng giá trị chênh theo trạng thái"></div>
+      </section>
+
+      <section class="locations-panel" aria-labelledby="stTableTitle">
+        <div class="locations-toolbar">
+          <h3 id="stTableTitle">Bảng đối chiếu</h3>
+          <label class="locations-search">
+            <span class="locations-sr-only">Tìm theo mã, tên hàng, cụm hoặc lý do</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m16 16 4 4"></path></svg>
+            <input id="stSearch" type="search" placeholder="Tìm mã, tên hàng, cụm, lý do…" autocomplete="off">
+          </label>
+          <select id="stFilter" class="st-select" aria-label="Lọc mã">
+            <option value="all" selected>Tất cả mã</option>
+            <option value="forgotten">Quên KK</option>
+            <option value="statusOnly">Chỉ có trạng thái</option>
+            <option value="printOnly">Chỉ có trang in</option>
+            <option value="neither">Không có cả hai</option>
+          </select>
+          <select id="stRecheckFilter" class="st-select" aria-label="Lọc theo người kiểm lại"><option value="">Mọi người kiểm lại</option></select>
+          <select id="stStatusFilter" class="st-select" aria-label="Lọc theo trạng thái"><option value="">Mọi trạng thái</option></select>
+          <button class="locations-columns-button vt-btn" id="stExportButton" type="button">Xuất Excel</button>
+          <button class="locations-columns-button vt-btn" id="stExportStatsButton" type="button" title="File giống tab THỐNG KÊ: mỗi dòng đếm một dòng, có cột Kiểm quy cách">Xuất thống kê</button>
+          <button class="locations-columns-button vt-btn" id="stColumnsButton" type="button" aria-haspopup="dialog" aria-expanded="false">Cột hiển thị</button>
+        </div>
+        <p id="stStatus" class="locations-status" role="status" aria-live="polite"></p>
+        <div class="st-hint-row">
+          <p class="st-hint"><span id="stCount"></span> · Chọn ô rồi gõ để sửa · Ctrl+V dán (dán kèm cột Mã hàng ở đầu = ghi theo mã), kéo ô vuông ở góc để nhân bản, Ctrl+Z hoàn tác · Nhấp đúp để mở chi tiết</p>
+          <p id="stNotice" class="st-notice" role="status" aria-live="polite"></p>
+        </div>
+        <div class="locations-scroll st-scroll" tabindex="0" aria-label="Bảng đối chiếu kiểm kê">
+          <table class="users-table locations-table st-table" id="stTable" data-table-key="stocktakeBoard" data-min-column-width="40" data-columns-button="stColumnsButton">
+            <thead><tr></tr></thead>
+            <tbody id="stRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Thanh tổng kiểu Excel: hiện khi chọn từ 2 ô trở lên. -->
+      <div class="st-sel-sum" id="stSelSum" role="status" aria-live="polite" hidden></div>
+
+      <section class="locations-panel st-recheck" aria-labelledby="stRecheckTitle">
+        <div class="locations-toolbar"><h3 id="stRecheckTitle">Số mã giao kiểm lại</h3></div>
+        <div class="st-recheck-list" id="stRecheckList"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Tạo đợt -->
+  <dialog class="vt-dialog" id="stCreateDialog" aria-labelledby="stCreateTitle">
+    <form id="stCreateForm" novalidate>
+      <div class="dp-head">
+        <div class="dp-head-text"><h3 class="dp-title" id="stCreateTitle">Tạo đợt kiểm kê</h3><p class="dp-subtitle">Web gom các đơn đặt hàng của khách tên "TEAM + số" (vd TEAM 1 : …) trong khoảng ngày, kể cả đơn đã hủy.</p></div>
+        <button type="button" class="dp-close" data-st-close aria-label="Đóng">×</button>
+      </div>
+      <div class="dp-body">
+        <label class="vt-field"><span>Tên đợt</span><input name="name" type="text" maxlength="120" required autocomplete="off" placeholder="VD: Kiểm kê HN 29/10"></label>
+        <label class="vt-field"><span>Cơ sở</span><select name="branch"><option value="hanoi">Hà Nội</option><option value="saigon">Sài Gòn</option></select></label>
+        <label class="vt-field"><span>Đợt đối chiếu (cơ sở kia)</span><select name="counterpartSessionId"><option value="">— Không —</option></select></label>
+        <label class="vt-field"><span>Đợt KK trước</span><select name="previousSessionId"><option value="">Tự động</option></select></label>
+        <label class="vt-field"><span>Từ ngày</span><input name="dateFrom" type="date" required></label>
+        <label class="vt-field"><span>Đến ngày</span><input name="dateTo" type="date" required></label>
+        <p class="vt-form-error" id="stCreateError" role="alert"></p>
+        <div class="vt-dialog-actions">
+          <button type="button" class="locations-columns-button" data-st-close>Hủy</button>
+          <button type="submit" class="locations-columns-button vt-primary">Tạo đợt</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Sửa ngày đợt -->
+  <dialog class="vt-dialog" id="stDatesDialog" aria-labelledby="stDatesTitle">
+    <form id="stDatesForm" novalidate>
+      <div class="dp-head">
+        <div class="dp-head-text"><h3 class="dp-title" id="stDatesTitle">Sửa ngày của đợt</h3><p class="dp-subtitle">Tổng kiểm chỉ tính đơn TEAM đặt trong khoảng ngày này. Phần đã sửa trên web vẫn được giữ.</p></div>
+        <button type="button" class="dp-close" data-st-close aria-label="Đóng">×</button>
+      </div>
+      <div class="dp-body">
+        <label class="vt-field"><span>Từ ngày</span><input name="dateFrom" type="date" required></label>
+        <label class="vt-field"><span>Đến ngày</span><input name="dateTo" type="date" required></label>
+        <p class="vt-form-error" id="stDatesError" role="alert"></p>
+        <div class="vt-dialog-actions">
+          <button type="button" class="locations-columns-button" data-st-close>Thôi</button>
+          <button type="submit" class="locations-columns-button vt-primary">Lưu</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Hủy đợt -->
+  <dialog class="vt-dialog" id="stCancelDialog" aria-labelledby="stCancelTitle">
+    <form id="stCancelForm" novalidate>
+      <div class="dp-head">
+        <div class="dp-head-text"><h3 class="dp-title" id="stCancelTitle">Hủy đợt?</h3><p class="dp-subtitle">Đợt bị ẩn khỏi danh sách, chỉ xem được và không còn dùng làm KK trước / đối chiếu. Dữ liệu không bị xóa, khôi phục được. Cụm SP / Combo không bị gỡ.</p></div>
+        <button type="button" class="dp-close" data-st-close aria-label="Đóng">×</button>
+      </div>
+      <div class="dp-body">
+        <h4 class="dp-section-title">Đợt đang dùng đợt này</h4>
+        <div class="st-dependents" id="stCancelDependents"></div>
+        <label class="vt-field"><span>Lý do hủy</span><textarea name="reason" rows="2" maxlength="500" required placeholder="VD: Số liệu sheet cũ, nạp nhầm…"></textarea></label>
+        <p class="vt-form-error" id="stCancelError" role="alert"></p>
+        <div class="vt-dialog-actions">
+          <button type="button" class="locations-columns-button" data-st-close>Thôi</button>
+          <button type="submit" class="locations-columns-button st-danger">Hủy đợt</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Nạp lại từ sheet -->
+  <dialog class="vt-dialog" id="stReloadDialog" aria-labelledby="stReloadTitle">
+    <form id="stReloadForm" novalidate>
+      <div class="dp-head">
+        <div class="dp-head-text"><h3 class="dp-title" id="stReloadTitle">Nạp lại từ sheet</h3><p class="dp-subtitle">Đọc lại đúng tab sheet của đợt này và thay toàn bộ số liệu + ghi chú. Đợt giữ nguyên, nên các đợt đang dùng nó sẽ thấy số mới. Muốn giữ bản cũ thì Xuất Excel trước.</p></div>
+        <button type="button" class="dp-close" data-st-close aria-label="Đóng">×</button>
+      </div>
+      <div class="dp-body">
+        <label class="vt-field"><span>Tên đợt</span><input name="name" type="text" maxlength="120" required autocomplete="off"></label>
+        <label class="vt-field"><span>Ngày kiểm</span><input name="date" type="date" required></label>
+        <h4 class="dp-section-title">Đợt đang dùng đợt này</h4>
+        <div class="st-dependents" id="stReloadDependents"></div>
+        <div class="st-reload-preview" id="stReloadPreview" aria-live="polite"></div>
+        <p class="vt-form-error" id="stReloadError" role="alert"></p>
+        <div class="vt-dialog-actions">
+          <button type="button" class="locations-columns-button" data-st-close>Thôi</button>
+          <button type="button" class="locations-columns-button" id="stReloadPreviewButton">Xem trước</button>
+          <button type="submit" class="locations-columns-button vt-primary" disabled>Nạp lại</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Xác nhận -->
+  <dialog class="vt-dialog vt-dialog-narrow" id="stConfirmDialog" aria-labelledby="stConfirmTitle">
+    <div class="dp-head"><div class="dp-head-text"><h3 class="dp-title" id="stConfirmTitle">Xác nhận</h3><p class="dp-subtitle" id="stConfirmMessage"></p></div></div>
+    <div class="dp-body">
+      <div class="vt-dialog-actions">
+        <button type="button" class="locations-columns-button" id="stConfirmCancel">Hủy</button>
+        <button type="button" class="locations-columns-button vt-primary" id="stConfirmOk">Đồng ý</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Chi tiết mã -->
+  <dialog class="vt-dialog vt-dialog-wide st-detail" id="stDetailDialog" aria-labelledby="stDetailTitle">
+    <div class="dp-head">
+      <div class="dp-head-text"><h3 class="dp-title" id="stDetailTitle"></h3><p class="dp-subtitle" id="stDetailSubtitle"></p></div>
+      <button type="button" class="dp-close" data-st-close aria-label="Đóng">×</button>
+    </div>
+    <div class="dp-body">
+      <p class="vt-form-error" id="stDetailError" role="alert"></p>
+      <div class="st-conflict" id="stConflict" hidden>
+        <span id="stConflictText"></span>
+        <button type="button" class="locations-columns-button" id="stConflictReload">Xem bản mới</button>
+      </div>
+
+      <section class="dp-section" id="stLinesSection">
+        <h4 class="dp-section-title">Dòng đếm theo team / khu</h4>
+        <div class="dp-table-wrap">
+          <table class="dp-table st-lines" data-table-sort="off" data-table-controls="off">
+            <thead id="stLinesHead"><tr><th aria-sort="none"><button type="button" class="st-line-sort" data-line-sort="team">Team</button></th><th aria-sort="none"><button type="button" class="st-line-sort" data-line-sort="zone">Khu</button></th><th aria-sort="none"><button type="button" class="st-line-sort" data-line-sort="spec">Quy cách</button></th><th class="num" aria-sort="none"><button type="button" class="st-line-sort" data-line-sort="quantity">SL</button></th><th aria-sort="none"><button type="button" class="st-line-sort" data-line-sort="order">Đơn</button></th><th aria-sort="none"><button type="button" class="st-line-sort" data-line-sort="updated">Sửa bởi</button></th><th></th></tr></thead>
+            <tbody id="stLineRows"></tbody>
+          </table>
+        </div>
+        <form class="st-add-line" id="stAddLineForm" novalidate>
+          <input name="team" type="text" maxlength="200" placeholder="Team" aria-label="Team">
+          <input name="zone" type="text" maxlength="200" placeholder="Khu" aria-label="Khu">
+          <input name="spec" type="text" maxlength="200" placeholder="Quy cách" aria-label="Quy cách">
+          <input name="quantity" type="number" min="0" step="any" placeholder="SL" aria-label="Số lượng" required>
+          <button type="submit" class="locations-columns-button">+ Thêm dòng quên đếm</button>
+        </form>
+      </section>
+
+      <section class="dp-section">
+        <h4 class="dp-section-title">Lịch sử thay đổi</h4>
+        <ul class="st-history" id="stHistory"></ul>
+      </section>
+    </div>
+  </dialog>
+
+  <script src="/shared/table-controls.js?v=20261104-1"></script>
+  <script src="/shared/search-clear.js?v=20261009-1"></script>
+  <script src="/shared/shared-nav.js?v=20261103-stocktake"></script>
+  <script src="/vendor/fuse.min.js?v=7.1.0"></script>
+  <script src="/stocktake/stocktakePaste.js?v=20261103-3"></script>
+  <script src="/stocktake/stocktakeSearch.js?v=20261103-2"></script>
+  <script src="/stocktake/stocktakeGrid.js?v=20261105-4"></script>
+  <script src="/stocktake/stocktakeStatus.js?v=20261105-4"></script>
+  <script src="/stocktake/stocktake.js?v=20261105-4"></script>
+  <script>window.addEventListener('DOMContentLoaded', function () { TKSStocktake.init(); });</script>
+  <script src="/shared/shooting-star.js?v=20261019"></script>
+</body>
+</html>

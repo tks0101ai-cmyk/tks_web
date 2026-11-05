@@ -155,3 +155,20 @@ test('cột Thay đổi: bỏ Đã sửa (warnings rỗng) không để trống;
   assert.equal(cells[2], 'Nhặt 5 · Job Kiot');
   assert.ok(!cells.join('').includes('{'));
 });
+
+test('cột Thay đổi: sửa/thêm/xóa VT từ hộp Chỉ định vị trí (source pick) hiện cũ → mới kèm "Chỉ định đơn X"', async t => {
+  const entries = [
+    { id: 3, createdAt: '2026-10-31T03:00:00Z', branch: 'HN', code: 'AAA', location: 'K1', action: 'edit', field: 'notes', oldValue: '4T x 50', newValue: '5T x 50', summary: { orderCode: 'DH1', source: 'pick' }, actorName: 'Lan' },
+    { id: 2, createdAt: '2026-10-31T02:00:00Z', branch: 'HN', code: 'AAA', location: 'K9', action: 'create', field: null, oldValue: null, newValue: '1T x 50', summary: { orderCode: 'DH1', source: 'pick' }, actorName: 'Lan' },
+    { id: 1, createdAt: '2026-10-31T01:00:00Z', branch: 'HN', code: 'AAA', location: 'K2', action: 'delete', field: null, oldValue: '2T x 25', newValue: null, summary: { orderCode: 'DH2', source: 'pick' }, actorName: 'Lan' }
+  ];
+  const ctx = await setup(t, { entries });
+  await openHistory(ctx);
+  const cells = [...ctx.doc.querySelectorAll('#vtHistoryRows .vt-hist-change')];
+  assert.equal(cells[0].querySelector('del.vt-hist-old').textContent, '4T x 50');
+  assert.equal(cells[0].querySelector('ins.vt-hist-new').textContent, '5T x 50');
+  assert.equal(cells[0].textContent, '4T x 50 → 5T x 50  Chỉ định đơn DH1');
+  assert.equal(cells[1].textContent, '1T x 50  Chỉ định đơn DH1');
+  assert.equal(cells[2].textContent, '2T x 25  Chỉ định đơn DH2');
+  assert.ok(!cells.map(c => c.textContent).join('').includes('{'));
+});

@@ -14,6 +14,7 @@
     "worker": "node --max-old-space-size=1024 worker.js",
     "test": "node --max-old-space-size=4096 --test",
     "db:migrate": "node db/migrate.js",
+    "products:90d:refresh": "node kiotvietSync/product90dReport.js",
     "telegram-manager:set-webhook": "node telegram/setManagerLeaveWebhook.js",
     "kiotviet-sync:preflight": "node kiotvietSync/preflightCheck.js",
     "kiotviet-sync:backfill": "node kiotvietSync/backfill.js",
@@ -41,6 +42,7 @@
     "multer": "^2.2.0",
     "nodemailer": "^9.0.6",
     "pg": "^8.23.0",
+    "redis": "^5.12.1",
     "sanitize-html": "^2.18.1",
     "xlsx": "^0.18.5"
   },

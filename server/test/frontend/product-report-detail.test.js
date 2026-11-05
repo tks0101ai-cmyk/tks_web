@@ -38,7 +38,7 @@ function customersPayload(code, count = 3) {
   return { code, totalRevenue: total, customerCount: count, rows };
 }
 
-function createPage({ customers = code => customersPayload(code), meta, report, reportVersion, can = () => true } = {}) {
+function createPage({ customers = code => customersPayload(code), history, meta, report, reportVersion, can = () => true } = {}) {
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://tokosi.example/#products' });
   dom.window.HTMLCanvasElement.prototype.getContext = () => ({});
   const charts = [];
@@ -48,7 +48,7 @@ function createPage({ customers = code => customersPayload(code), meta, report, 
     destroy() { this.destroyed = true; }
   };
   dom.window.setInterval = () => 1;
-  dom.window.requestAnimationFrame = callback => callback();
+  dom.window.requestAnimationFrame = callback => { if (dom.window.document) callback(); };
   dom.window.HTMLElement.prototype.scrollIntoView = function () {
     dom.window.__scrolled = (dom.window.__scrolled || 0) + 1;
     (dom.window.__scrolledTo = dom.window.__scrolledTo || []).push(this.id);
@@ -59,6 +59,10 @@ function createPage({ customers = code => customersPayload(code), meta, report, 
   dom.window.fetch = (url) => {
     const href = String(url);
     urls.push(href);
+    if (href.startsWith('/api/product-report/history?') && history) {
+      const payload = history(new URL(href, 'https://tokosi.example').searchParams);
+      return Promise.resolve(payload).then(body => ({ ok: !(body instanceof Error), status: body instanceof Error ? 500 : 200, json: async () => body }));
+    }
     if (href === '/api/product-report') {
       return Promise.resolve({ ok: true, status: 200, json: async () => report ? report() : ({ rows: PRODUCTS, computedAt: '2026-09-29T00:15:00.000Z' }) });
     }
@@ -75,6 +79,7 @@ function createPage({ customers = code => customersPayload(code), meta, report, 
   ['pagination.js', 'table-explorer.js'].forEach(file => {
     dom.window.eval(fs.readFileSync(path.join(publicDir, 'js', file), 'utf8'));
   });
+  if (history) dom.window.eval(fs.readFileSync(path.join(publicDir, 'js/product-history.js'), 'utf8'));
   const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(match => match[1]).filter(script => script.trim());
   const mainIndex = scripts.reduce((best, script, index) => (script.length > scripts[best].length ? index : best), 0);
   scripts.forEach((script, index) => dom.window.eval(script + (index === mainIndex ? '\nwindow.__reportTestState = state; window.__reportTestInternals = { docDetail, hiddenByProfile: PRODUCT_REPORT_HIDDEN_BY_PROFILE, widthsByProfile: PRODUCT_REPORT_WIDTHS_BY_PROFILE };' : '')));
@@ -244,7 +249,7 @@ test('Ti trong khach lon nhat la nut chi khi co so > 0; Chua boc / Da boc la chu
   assert.deepEqual([...page.$('productReportRows').querySelectorAll('button')].map(button => button.closest('td').cellIndex), [idx('ti-trong-khach-lon-nhat')]);
 });
 
-test('hop chi tiet chi con muc Doanh so theo khach (kem bang Khach hang va bieu do), khong goi API CONT', async () => {
+test('hop chi tiet giu Doanh so theo khach va them muc lich su, khong goi API CONT', async () => {
   const page = createPage();
   await settle();
   rowOf(page, 'SP-1').click();
@@ -252,12 +257,28 @@ test('hop chi tiet chi con muc Doanh so theo khach (kem bang Khach hang va bieu 
   const customers = page.$('productCustomerSection');
   assert.ok(customers);
   assert.equal(page.$('productContainerSection'), null);
-  assert.equal([...page.$('docModalBody').querySelectorAll(':scope > section')].map(section => section.id).join(','), 'productCustomerSection');
+  assert.equal([...page.$('docModalBody').querySelectorAll(':scope > section')].map(section => section.id).join(','), 'productCustomerSection,productHistorySection');
   assert.match(customers.querySelector('.dp-section-title').textContent, /Doanh số theo khách/);
   assert.doesNotMatch(page.$('docModalBody').textContent, /Hàng dự kiến/);
   assert.ok(customers.querySelector('#productDetailChart'), 'bieu do ty trong nam trong Doanh so theo khach');
   assert.match(customers.textContent, /Khách hàng/);
   assert.equal(page.urls.some(url => url.startsWith('/api/product-report/containers?')), false);
+});
+
+test('history loads independently of failed customer section and stale product requests cannot overwrite new product', async () => {
+  let answerFirst;
+  const data = name => ({from:'2026-08-06',to:'2026-11-03',page:1,pageSize:25,totalRows:1,canViewCost:true,
+    summary:{purchaseQuantity:2,returnQuantity:0,purchaseCount:1,returnCount:0},
+    rows:[{time:'2026-11-03T10:00:00',customerName:name,type:'invoice',branch:'hanoi',documentCode:'HD1',quantity:2,unitCost:null}]});
+  const page = createPage({ customers: () => new Error('fail'), history: query => query.get('code') === 'SP-1'
+    ? new Promise(resolve => {answerFirst = resolve;}) : data('Khách mới') });
+  await settle(); rowOf(page,'SP-1').click(); await settle();
+  rowOf(page,'SP-2').click(); await settle();
+  assert.match(page.$('productCustomerContent').textContent,/Không tải được/);
+  assert.match(page.$('productHistorySection').textContent,/Khách mới/);
+  answerFirst(data('Khách cũ')); await settle();
+  assert.doesNotMatch(page.$('productHistorySection').textContent,/Khách cũ/);
+  assert.equal(page.$('productHistorySection').querySelector('[data-stat="purchaseCount"]').textContent,'1');
 });
 
 test('bam so Ti trong khach lon nhat: mo hop va cuon toi Doanh so theo khach SAU khi da tai xong', async () => {
@@ -482,13 +503,35 @@ test('bam 1 dong: goi API dung ma, hop giua man hinh hien bang khach (so tien + 
   assert.equal(rows.length, 3);
   assert.match(rows[0].cells[0].textContent, /KH A/);
   assert.match(rows[0].cells[1].textContent, /300/);
-  assert.match(rows[0].cells[2].textContent, /50/); // 300 / 600
+  assert.match(rows[0].cells[5].textContent, /50/); // 300 / 600
 
   const pies = pieCharts(page);
   assert.equal(pies.length, 1);
   assert.deepEqual(pies[0].config.data.labels, ['KH A', 'KH B', 'KH C']);
   assert.deepEqual(pies[0].config.data.datasets[0].data, [300, 200, 100]);
   assert.ok(page.$('docModalBody').contains(page.$('productDetailChart')), 'bieu do nam trong hop');
+});
+
+test('product detail places chart beside stats, customer table below and renders three nullable rolling periods', async () => {
+  const page=createPage({customers:code=>({...customersPayload(code),periods:[
+    {key:'1_30d',label:'T.này',from:'2026-10-06',to:'2026-11-04'},
+    {key:'31_60d',label:'T.trước',from:'2026-09-06',to:'2026-10-05'},
+    {key:'61_90d',label:'T.trước nữa',from:'2026-08-07',to:'2026-09-05'}
+  ],rows:[{customerName:'Khách A',revenue:300,share:1,revenue1_30d:-20,revenue31_60d:0,revenue61_90d:320}]})});
+  await settle();rowOf(page,'SP-1').click();await settle();
+  const content=page.$('productCustomerContent');
+  const overview=content.querySelector('.product-detail-overview');
+  assert.ok(overview.querySelector('.dp-stats'));
+  assert.ok(overview.contains(page.$('productDetailChart')));
+  const table=content.querySelector('table');
+  assert.equal(overview.contains(table),false);
+  assert.deepEqual([...table.tHead.rows[0].cells].map(c=>c.textContent),['Khách hàng','DS 90 ngày','T.này','T.trước','T.trước nữa','% của SP']);
+  assert.match(table.tHead.rows[0].cells[2].title,/06\/10\/2026.*04\/11\/2026/);
+  assert.deepEqual([...table.tBodies[0].rows[0].cells].slice(2,5).map(c=>c.getAttribute('data-sort-value')),['-20','0','320']);
+  page.dom.window.close();
+  const missing=createPage();await settle();rowOf(missing,'SP-1').click();await settle();
+  assert.deepEqual([...missing.$('productCustomerContent').querySelector('tbody tr').cells].slice(2,5).map(c=>c.textContent),['—','—','—']);
+  missing.dom.window.close();
 });
 
 test('bam dong khac: huy bieu do cu, chi con 1 bieu do; dong hop huy bieu do', async () => {
@@ -609,7 +652,7 @@ test('hop co sort, thanh keo do rong cot va nut "Cột hiển thị" o dau khoi 
   const buttons = page.$('docModalBackdrop').querySelectorAll('.tks-columns-button');
   assert.equal(buttons.length, 1);
   assert.ok(buttons[0].parentElement.classList.contains('dp-section-head'), 'nut nam o dau khoi, khong them hang cong cu');
-  assert.equal(table.querySelectorAll('th > .tks-column-resizer').length, 3);
+  assert.equal(table.querySelectorAll('th > .tks-column-resizer').length, 6);
 
   // sort theo cot "Doanh so 90 ngay": tang dan roi giam dan, thu tu goc khi bam lan 3
   const names = () => [...table.tBodies[0].rows].map(row => row.cells[0].textContent.trim());

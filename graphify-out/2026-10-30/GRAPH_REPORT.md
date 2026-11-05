@@ -1,23 +1,23 @@
 # Graph Report - Web TKS Dashboard  (2026-10-30)
 
 ## Corpus Check
-- 1017 files · ~1,537,513 words
+- 1019 files · ~1,544,662 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 36 file(s) not represented in the graph (top: .css 18, .jfif 8, (none) 3)
 
 ## Summary
-- 13813 nodes · 30248 edges · 580 communities (430 shown, 150 thin omitted)
-- Extraction: 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · INFERRED: 3039 edges (avg confidence: 0.86)
+- 13828 nodes · 30304 edges · 597 communities (439 shown, 158 thin omitted)
+- Extraction: 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · INFERRED: 3047 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `e7c36d4e`
+- Built from commit: `2de4bd2c`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - chart.umd.min.js
-- Mn
+- warn
 - va
 - an
 - JpegImage
@@ -28,7 +28,7 @@
 - e
 - exportService.js
 - dashboardData.js
-- .createDocumentHandler
+- RefSetCache
 - authRoutes.js
 - priceAuditRefresh.test.js
 - orderLifecycleQuery.js
@@ -37,7 +37,7 @@
 - Glyph
 - hrLeaveRepository.js
 - src-dashboard/ Apps Script project
-- s
+- sn
 - html2pdf.bundle.min.js
 - CFFParser
 - express
@@ -46,13 +46,13 @@
 - PDFFunctionFactory
 - Qe
 - .createDocumentHandler
-- CanvasExtraState
+- ._create
 - exportService.test.js
 - approvedPriceRepository.js
 - backfill.js
 - AnnotationElement
 - otpService.js
-- n
+- s
 - adminUserRoutes.js
 - Quản lý công nợ Implementation Plan
 - Spec: Bot Telegram nhận dạng tin nhắn xin nghỉ bằng AI
@@ -71,14 +71,14 @@
 - .a
 - effectiveUserResolver.js
 - debtPenaltyRecalc.js
-- hrEmployeeWorkbookImport.js
+- hrEmployeeAdminService.js
 - vt-positions.js
 - AltText
 - vn
 - shadow
 - exportFieldCatalog.test.js
 - pdf.worker.min.mjs
-- LocaleSetNamespace
+- XFAObject
 - productReportIncremental.js
 - .checkAndRepair
 - createPickAssignmentsService
@@ -103,7 +103,7 @@
 - localUserStore.js
 - pancakeSummary.test.js
 - purchases
-- EditorToolbar
+- vat-request.test.js
 - normalizeText
 - freightCalculator.js
 - Sổ quỹ (Cash book) — Thiết kế & hướng dẫn triển khai cho agent
@@ -115,10 +115,10 @@
 - Kế hoạch: Thể tích (m³) và giá cước nhà xe trong hộp chi tiết đơn (Vòng đời đơn hàng)
 - PDFDocumentProxy
 - product-report-detail.test.js
-- createManagerLeaveRuntime
+- CURRENT: BẢNG TRẠNG THÁI THỜI GIAN THỰC (REALTIME DASHBOARD)
 - TKSNav
 - pool
-- draw
+- stockPositionsService.js
 - compileGlyf
 - styleBaselineSnapshot.js
 - Webhook-first + incremental reconciliation (phương án chọn)
@@ -132,16 +132,16 @@
 - debt-management-ui.test.js
 - marketing-report.js
 - order-lifecycle-kiot.test.js
-- render
+- computeDashboardData
 - businessReportExport.js
 - rte-table.js
 - priceAuditRefresh.test.js
 - shadow
-- managerLeaveBot.js
+- managerLeaveRuntime.js
 - TextMeasure
 - Thiết kế: Tìm kiếm từng bảng và điều hướng từ biểu đồ
 - renderTable
-- bindEvents
+- ChunkedStream
 - AnnotationEditor
 - CanvasGraphics
 - Giảm lag TKS Dashboard Implementation Plan
@@ -165,11 +165,11 @@
 - 2. Chi tiết chức năng & Quy tắc vận hành
 - dashboard-per-view-loading.test.js
 - scheduler.js
-- customerProductTopRepository.js
+- branchLabelToCode
 - initShootingStar
 - FreeTextEditor
 - Skill: Update File — Đồng bộ file khi cấu trúc thư mục thay đổi
-- Stream
+- business-report.test.js
 - XFAFactory
 - Kế hoạch triển khai HR Sheet identity
 - debtCycleSnapshot.js
@@ -207,7 +207,7 @@
 - BasePdfManager
 - FakeEventSource
 - priceAuditExport.js
-- pageGuard.test.js
+- dashboardViews.js
 - Báo cáo kiểm kê trước khi xóa cột (KIOT TOKOSI)
 - customerPriceLevelRepository.js
 - Phân hệ Quản lý Nghỉ phép HR & Telegram Bot
@@ -234,18 +234,18 @@
 - 0008_backfill_progress.sql
 - 0018_product_report.sql
 - ref_crypto
-- customer-profile.test.js
-- vt-positions-live.test.js
+- getDashboardData
+- jn
 - FreeDrawOutliner
-- Word64
+- AES256Cipher
 - createCustomerProfileRepository
 - Danh sách việc
-- xn
+- o
 - customerInvoiceLinesRefresh.js
 - 0024_order_suppliers.sql
 - 0023_product_report_customers.sql
 - vat-request.js
-- Kế hoạch: luồng "Đơn Bắc-Nam" cho Vòng đời đơn hàng
+- 2026-10-12-lifecycle-north-south/plan.md
 - cashbookRepository.js
 - public/vendor/pdfjs/pdf.min.mjs
 - .success
@@ -261,9 +261,9 @@
 - businessReportService.js
 - vat-lookup.js
 - marketingParsers.js
-- res
+- repository.test.js
 - vat-draft.js
-- supplierReturnImportService.js
+- dashboardPermissionFilter.js
 - ChunkedStream
 - attach
 - Builder
@@ -271,20 +271,20 @@
 - app.js
 - Pick Assignment Hardening Implementation Plan
 - xt
-- orderLifecycleRoutes.js
+- .makeHexColor
 - Marketing tính độc lập từ Pancake
 - roleChangeRequestRepository.js
-- vt-positions-inline-edit.test.js
+- lifecycle-pick-invoice.test.js
 - l
 - hrLeaveSelfService.js
 - Danh sách việc: vá đổi email + dọn BE/FE (2026-10-05)
 - hrRuleDocumentRoutes.test.js
-- Util
+- ho
 - debtRewardService.js
 - special-days.js
 - Sổ quỹ — Prompt cho nhiều subagent
 - Thiết lập bot Telegram quản lý nghỉ phép
-- hrEmployeeExportService.js
+- OperatorList
 - vatDraftService.js
 - daily-project-digest.mjs
 - expected-arrivals.test.js
@@ -295,7 +295,7 @@
 - ref_crypto
 - .setEditingState
 - prototype-kiemke-demo.cjs
-- hrLeaveBellNotifier.test.js
+- migrate.integration.test.js
 - stockout30dScanService.js
 - businessReportRepository.js
 - priceAuditRepository.js
@@ -315,7 +315,7 @@
 - Hoàn thành đơn và đồng bộ Kiot — nghiên cứu nghiệp vụ
 - hrRuleDocumentsRepository.js
 - debug-route.test.js
-- CURRENT: BẢNG TRẠNG THÁI THỜI GIAN THỰC (REALTIME DASHBOARD)
+- productContainers/repository.js
 - Nghiệp vụ chỉ định vị trí và thực nhặt TOKOSI
 - Nâng cấp nghỉ phép và quản trị tài khoản
 - exportError
@@ -333,14 +333,14 @@
 - production-migration-0031.md
 - roleChangeRequestRoutes.test.js
 - Global Constraints
-- escapeHtml
-- table-time-sort.test.js
+- Word64
+- pickStatusFlow.test.js
 - priceAuditService.js
 - invoice-price-audit.test.js
 - apply
 - 0096_order_pick_assignments.sql
 - api
-- adminUserExportService.js
+- Rà soát Chỉ định vị trí — 2026-10-27
 - priceAuditSql.js
 - TextLayer
 - Bộ lọc khách, xuất thông tin chi tiết và level giá nội bộ
@@ -350,13 +350,13 @@
 - 0053_product_containers.sql
 - locations-entry.test.js
 - MessageHandler
-- Ghi chú và Tiếp khách lần cuối theo khách hàng
+- saleNotifier.test.js
 - debtScheduleRepository.js
 - Kế hoạch: Trạng thái, thêm và sửa nhân sự ở tab Danh sách nhân sự
 - syncDriver.js
 - vt-positions-history.test.js
 - 0043_special_day_notice_log.sql
-- hrRuleDocumentNotifier.js
+- VT Hà Nội / VT Sài Gòn: "Đã sửa", lịch sử tự động theo mã đơn, xóa lịch sử
 - Tiến độ triển khai — tasks/2026-10-09-pancake-marketing/plan.md
 - XFAAttribute
 - DrawingEditor
@@ -376,8 +376,8 @@
 - vietqr.js
 - vatRequests/repository.js
 - customerDebtReportRefresh.js
-- listenToPostgres
-- ref_node_assert
+- 2. Nguyên tắc kiến trúc & Quy tắc bất biến (Do's & Don'ts)
+- productReportRoutes.test.js
 - Ghi nhớ độ rộng cột và cột hiển thị theo tài khoản
 - locations-detail.test.js
 - orderLifecycleAccounting.test.js
@@ -389,8 +389,8 @@
 - InkDrawOutliner
 - marketingRepository.test.js
 - preflightCheck.js
-- leave-calendar.test.js
-- lookupSource.js
+- amountWords.js
+- vatDraftRoutes.js
 - 0029_hr_manager_telegram.sql
 - stock_position_history_guard
 - etaParser.js
@@ -398,22 +398,22 @@
 - BỘ LUẬT VẬN HÀNH HỆ THỐNG (CLAUDE CODE / AI ASSISTANT GUIDELINES)
 - StructElementNode
 - featureRegistry.js
-- PDFDataTransportStreamReader
+- assert
 - normalization.js
-- BinaryCMapStream
+- AESBaseCipher
 - Todo: Tính sẵn báo cáo trong DB (2026-10-19)
 - Annotation
 - Datasets
 - table-controls.test.js
 - LabCS
-- normalization.js
+- suggestions.js
 - buildRecentStockoutResultDataset
 - numberMinimums
-- CURRENT.md
+- telegram-manager-leave-setup.md
 - Leave registration deadlines
-- ref_node_fs
+- ref_node_assert
 - branch-column-tables.test.js
-- File Structure
+- Kế hoạch: Vòng đời đơn hàng hợp nhất đơn Phiếu tạm Kiot + "Giá trị có bán" + công thức Tồn có thể bán + phân quyền
 - kiotvietSyncStatusRoutes.test.js
 - rs
 - pick/print-tools.js
@@ -425,9 +425,9 @@
 - 0031_hr_leave_approval_scope.sql
 - documentDetailRoutes.test.js
 - pick/invoice.js
-- expectedRefresh.test.js
+- Thiết kế: tab "VT Hà Nội" và "VT Sài Gòn" (cơ sở dữ liệu vị trí hàng mới)
 - jsdom
-- IdentityToUnicodeMap
+- allocation.test.js
 - TextState
 - ColorSpace
 - 0075_product_container_expected.sql
@@ -442,17 +442,17 @@
 - 0059_debt_aging.sql
 - navGroupHtml
 - Checklist triển khai Pancake Marketing
-- orderLifecycleSheetsClient.js
+- googleapis
 - orderLifecycleQuery.test.js
 - memoryMonitor.test.js
-- stockout-branch-column.test.js
+- Kế hoạch tối ưu tốc độ "Báo cáo tổng hợp" (`/api/dashboard`)
 - userTablePrefs/repository.js
 - hr_leave_work_schedules
-- BỘ LUẬT VẬN HÀNH HỆ THỐNG (CLAUDE CODE / AI ASSISTANT GUIDELINES)
+- CURRENT.md
 - marketingRevenueView.test.js
 - returns
 - motion.js
-- 6. Bước 3 — Backend `server/cashbook/`
+- ye
 - lookupSource.js
 - Tự động hóa báo cáo Marketing từ Pancake
 - Tự động hóa báo cáo Marketing từ Pancake
@@ -471,8 +471,8 @@
 - debtCollectionStatusRepository.test.js
 - filter-links.test.js
 - setText
-- vatLookupRoutes.test.js
-- no-3d-effects.test.js
+- createKiotOrdersRepository
+- priceAuditMigration.test.js
 - 0067_product_report_bc_chung.sql
 - 0080_customer_notes.sql
 - Migrations 0001-0006 (16 tables)
@@ -486,49 +486,65 @@
 - VT Hà Nội / VT Sài Gòn: cập nhật thời gian thực (SSE)
 - Global Constraints
 - Cập nhật Chi tiết khách Implementation Plan
-- DeviceCmykCS
+- audit-sheet-columns.js
 - kiot-link.js
 - Global Constraints
 - guest-leave-access.md
 - 0080_vat_request_notice_state.sql
-- DeviceRgbCS
-- eo
+- Page Design Notes — `shipment/lifecycle/index.html` (Vòng Đời Đơn Hàng)
+- no
 - TKS Dashboard README
 - stockPositionsImport.js
 - contactChangeService.test.js
 - Roadmap Supabase KiotViet Sync
-- CalGrayCS
+- info
 - stockPositionsService.test.js
 - getPool
 - DeviceGrayCS
 - quantity
-- kiotvietSyncStatusRoutes.js
+- Báo cáo kinh doanh — lọc team, gộp khách theo tên, bố cục mới (2026-10-07)
 - Page Design Notes — `/reports/` (Trang Báo Cáo Tổng Hợp)
-- DeviceRgbaCS
-- main
+- debtPenaltyLedger.test.js
+- pickAssignmentsService.test.js
 - marketing_history_identities
-- tokenizeHardcodedStyles.js
+- PDFNodeStreamFsRangeReader
 - 0085_user_table_prefs.sql
 - Giai đoạn 1: Vá bảo mật (commit + deploy riêng)
 - cell-select.js
+- cashbook.test.js
+- Kiểm chứng đợt sửa Chỉ định hàng — 27/10/2026
 - hrLeaveRoutes.js
 - exceljs
 - printLayouts.test.js
 - Thùng, ST và trạng thái nhặt (26/10/2026) — thay thế mọi mô tả cũ về SL, tồn và trạng thái bên dưới
-- Kế hoạch: Trạng thái bốc hàng + phiếu in mới (2026-10-27)
+- Danh sách việc (3 luồng, tách tệp để chạy song song)
 - 0056_pancake_independent.sql
 - 0091_invoice_approved_prices.sql
-- xdp_Xdp
+- orderLifecycleSheetsClient.js
+- Page Design Notes — `vat-draft/index.html` (Kế toán – Nháp VAT / Tạo QR)
+- 2026-10-22-customer-notes-design.md
 - 0094_hr_leave_cancellation.sql
+- Trạng thái "Còn VAT" tính theo Mã VAT Kiot (2026-10-27)
 - prototype-single.cjs
 - escapeHtml
 - dashboard-section-layout.test.js
 - FormatError
 - marketing_immutable_guard
+- adminTelegram.test.js
 - orderLifecycleService.test.js
+- accountLeaveTriggerMigration.test.js
+- createPriceAuditScheduler
 - Page Design Notes — `vt-positions/index.html` (VT Hà Nội / VT Sài Gòn)
 - marketing-report.test.js
+- HighlightOutline
+- FontFinder
+- Own Leave Cancellation Implementation Plan
+- Cá nhân hủy và xóa vĩnh viễn đơn nghỉ phép
 - 2026-10-28-position-import-review.md
+- devDependencies
+- locations-source.js
+- orderLifecycleRepository.test.js
+- TimeSlotManager
 - FreeDrawOutline
 - MetadataParser
 - setHidden
@@ -572,67 +588,71 @@
 - **Tiến hóa thiết kế đồng bộ KiotViet (stockout API sources → invoice sync → quota guard)** — docs_superpowers_specs_2026_09_07_stockout_kiotviet_api_sources_design_api_first_fallback_strategy, docs_superpowers_specs_2026_09_09_near_realtime_invoice_sync_design_webhook_first_incremental_reconciliation, docs_superpowers_specs_2026_09_11_webhook_first_quota_guard_design_quotaguard [INFERRED 0.85]
 - **Supabase KiotViet sync pipeline: schema, driver, scheduler, checkpoint, backfill** — phase1_plan_supabase_kiotviet_sync_migrations_0001_0006, server_kiotvietsync_syncdriver, server_kiotvietsync_scheduler, server_kiotvietsync_checkpointrepository, server_kiotvietsync_backfill, phase3_plan_supabase_kiotviet_sync_backfill_progress_table [INFERRED 0.90]
 
-## Communities (580 total, 150 thin omitted)
+## Communities (597 total, 158 thin omitted)
 
 ### Community 0 - "chart.umd.min.js"
-Cohesion: 0.02
-Nodes (71): addElements(), at(), b(), beforeDatasetDraw(), beforeDatasetsDraw(), beforeDraw(), beforeLayout(), buildTicks() (+63 more)
+Cohesion: 0.03
+Nodes (51): ai(), ao(), beforeDatasetDraw(), beforeDatasetsDraw(), beforeDraw(), beforeLayout(), buildTicks(), d() (+43 more)
 
-### Community 1 - "Mn"
-Cohesion: 0.04
-Nodes (11): Mn(), getFloat(), getInteger(), getKeyword(), getMeasurement(), getRatio(), getRelevant(), getStringOption() (+3 more)
+### Community 1 - "warn"
+Cohesion: 0.03
+Nodes (15): addChildren(), AnnotationFactory, BaseShading, addPageError(), decodeString(), DummyShading, find(), isRefsEqual() (+7 more)
 
 ### Community 2 - "va"
-Cohesion: 0.08
-Nodes (12): ba, Ee(), generateLabels(), gs(), ki(), Le(), Oi(), ps() (+4 more)
+Cohesion: 0.06
+Nodes (15): ba, Bi(), Ci(), eo(), Fi(), f(), generateLabels(), initialize() (+7 more)
 
 ### Community 3 - "an"
-Cohesion: 0.08
-Nodes (6): an(), f(), ke(), u(), i(), wn()
+Cohesion: 0.06
+Nodes (6): an(), dt(), ke(), u(), wn(), xt
 
 ### Community 4 - "JpegImage"
 Cohesion: 0.07
-Nodes (29): buildComponentData(), buildHuffmanTable(), decodeScan(), decodeBlock(), decodeHuffman(), decodeMcu(), readBit(), receive() (+21 more)
+Nodes (28): buildComponentData(), buildHuffmanTable(), decodeScan(), decodeBlock(), decodeHuffman(), decodeMcu(), readBit(), receive() (+20 more)
 
 ### Community 5 - "debtManagement.js"
-Cohesion: 0.15
-Nodes (26): ALERT_CODES, amountOrZero(), buildColumnIndex(), buildOperationalNameSet(), buildStatusMap(), buildSummary(), createAlertSignature(), customerKeyFor() (+18 more)
+Cohesion: 0.09
+Nodes (37): ALERT_CODES, amountOrZero(), buildColumnIndex(), buildOperationalNameSet(), buildStatusMap(), buildSummary(), createAlertSignature(), customerKeyFor() (+29 more)
 
 ### Community 6 - "ns"
-Cohesion: 0.06
-Nodes (15): As(), _calculateBarIndexPixels(), _calculateBarValuePixels(), getLabelAndValue(), _getRuler(), _getStackCount(), _getStackIndex(), _getStacks() (+7 more)
+Cohesion: 0.08
+Nodes (4): As(), ns(), rt(), zs()
 
 ### Community 7 - "FormatError"
-Cohesion: 0.05
-Nodes (12): Ascii85Stream, AsciiHexStream, DecodeStream, DecryptStream, Jbig2Stream, JpxError, JpxImage, JpxStream (+4 more)
+Cohesion: 0.04
+Nodes (14): Ascii85Stream, AsciiHexStream, CCITTFaxStream, DecodeStream, DecryptStream, Jbig2Stream, JpxStream, LocalPdfManager (+6 more)
+
+### Community 8 - "tn"
+Cohesion: 0.14
+Nodes (3): at(), tn, w()
 
 ### Community 9 - "e"
-Cohesion: 0.08
-Nodes (63): Be(), e(), ar(), at(), br(), bt(), cr(), ct() (+55 more)
+Cohesion: 0.10
+Nodes (49): Be(), e(), at(), br(), bt(), cr(), ct(), dr() (+41 more)
 
 ### Community 10 - "exportService.js"
 Cohesion: 0.06
 Nodes (39): branchFilePrefix(), buildLogicalRows(), catalogColumn(), compositeKey(), CUSTOMER_PRODUCT_DETAIL_COLUMNS, DEBT_AGING_COLUMNS, DEBT_AGING_SORT_FIELDS, DEBT_BRANCH_COLUMN (+31 more)
 
 ### Community 11 - "dashboardData.js"
-Cohesion: 0.04
-Nodes (105): Bằng chứng dữ liệu thật (chỉ đọc, 01/10/2026), WP-D — Dọn tab Hóa đơn, alignSheetRow(), buildCustomerProductRevenueReport(), buildRevenuePeriod(), buildRevenuePeriodFromRollup(), buildTransactionsReport(), cacheEntryFor() (+97 more)
+Cohesion: 0.07
+Nodes (47): alignSheetRow(), cacheEntryFor(), compactSearchValue(), concatenateSheet(), CUSTOMER_DIRECTORY_BRANCH_RANK, customerDirectoryCacheByBranch, dashboardCoreSheetsCacheByBranch, dashboardResultCache (+39 more)
 
-### Community 12 - ".createDocumentHandler"
-Cohesion: 0.03
-Nodes (13): AnnotationFactory, clearGlobalCaches(), getNewAnnotationsMap(), GlobalImageCache, isDict(), isRefsEqual(), NullStream, ObjectLoader (+5 more)
+### Community 12 - "RefSetCache"
+Cohesion: 0.05
+Nodes (11): BaseLocalCache, GlobalImageCache, LocalColorSpaceCache, LocalFunctionCache, LocalGStateCache, LocalImageCache, LocalTilingPatternCache, Ref (+3 more)
 
 ### Community 13 - "authRoutes.js"
 Cohesion: 0.03
-Nodes (66): jsonwebtoken, canEditOwnTelegram(), checkAndBumpRateLimit(), clearFailedLogins(), contactChangeHitsByIp, contactChangeHitsByUser, contactChangeRateLimit(), cookieOptions() (+58 more)
+Nodes (67): jsonwebtoken, canEditOwnTelegram(), checkAndBumpRateLimit(), clearFailedLogins(), contactChangeHitsByIp, contactChangeHitsByUser, contactChangeRateLimit(), cookieOptions() (+59 more)
 
 ### Community 14 - "priceAuditRefresh.test.js"
-Cohesion: 0.10
-Nodes (28): at23(), daily(), lines(), quiet, recalc(), snapshotAll(), assertDay(), isValidDay() (+20 more)
+Cohesion: 0.13
+Nodes (20): at23(), daily(), recalc(), assertDay(), isValidDay(), latestDueDay(), previewDailyAudit(), result() (+12 more)
 
 ### Community 15 - "orderLifecycleQuery.js"
 Cohesion: 0.08
-Nodes (30): WP-C — Vòng đời đơn hàng hợp nhất + Giá trị có bán + chi tiết, WP-F — Sort cột thời gian đúng kiểu thời gian, trên toàn bảng, 2.4. Sổ quỹ, Báo cáo & Hàng hóa, BRANCHES, compareValues(), countFacets(), countSummary(), countWarnings() (+22 more)
+Nodes (30): Cập nhật 21/10/2026 — Nhóm sale trong Công nợ, WP-F — Sort cột thời gian đúng kiểu thời gian, trên toàn bảng, 2.4. Sổ quỹ, Báo cáo & Hàng hóa, BRANCHES, compareValues(), countFacets(), countSummary(), countWarnings() (+22 more)
 
 ### Community 16 - "app_users"
 Cohesion: 0.14
@@ -648,27 +668,27 @@ Nodes (6): CompositeGlyph, Contour, GlyfTable, Glyph, GlyphHeader, SimpleGlyph
 
 ### Community 19 - "hrLeaveRepository.js"
 Cohesion: 0.10
-Nodes (30): cancel(), boundaryLabel(), createHrLeaveRepository(), createLeaveRequest(), getLeaveRequestById(), getLeaveRequests(), getLeaveVersions(), getSubmissionHistory() (+22 more)
+Nodes (29): boundaryLabel(), createHrLeaveRepository(), createLeaveRequest(), getLeaveRequestById(), getLeaveRequests(), getLeaveVersions(), getSubmissionHistory(), getUrgentFlagSummary() (+21 more)
 
 ### Community 20 - "src-dashboard/ Apps Script project"
-Cohesion: 0.12
-Nodes (13): FR-06: Apps Script Đồng bộ KiotViet tự động, Luồng A: Đồng bộ KiotViet -> Google Sheets, Near-Realtime Invoice Sync Implementation Plan, KIOTVIET_HYDRATE_SKIP_ENTITIES flag, Quota Guard (UrlFetch circuit breaker), KiotViet API rate limits (5000/h, pageSize 100), server/dashboard/stockoutCheck/ (kiểm tra đứt hàng), src-dashboard/ Apps Script project (+5 more)
+Cohesion: 0.13
+Nodes (10): Near-Realtime Invoice Sync Implementation Plan, KIOTVIET_HYDRATE_SKIP_ENTITIES flag, Quota Guard (UrlFetch circuit breaker), KiotViet API rate limits (5000/h, pageSize 100), server/dashboard/stockoutCheck/ (kiểm tra đứt hàng), Stockout KiotViet API Sources Implementation Plan, stockoutEventLoader.js (API-first with Sheets fallback), Webhook-first + Quota Guard Implementation Plan (+2 more)
 
-### Community 21 - "s"
-Cohesion: 0.08
-Nodes (20): fe(), H(), ho(), Hs, ii(), inRange(), inXRange(), inYRange() (+12 more)
+### Community 21 - "sn"
+Cohesion: 0.26
+Nodes (5): fe(), ks(), nn(), on(), sn
 
 ### Community 22 - "html2pdf.bundle.min.js"
 Cohesion: 0.08
-Nodes (12): Cr(), ve(), Er(), Ge(), Ht(), it(), Je(), Nr() (+4 more)
+Nodes (12): Ee(), Cr(), ve(), z(), Er(), Ge(), Ht(), Je() (+4 more)
 
 ### Community 23 - "CFFParser"
-Cohesion: 0.05
-Nodes (13): CFF, CFFCharset, CFFDict, CFFEncoding, CFFFDSelect, CFFHeader, CFFParser, parseOperand() (+5 more)
+Cohesion: 0.06
+Nodes (11): CFF, CFFCharset, CFFDict, CFFHeader, CFFParser, parseOperand(), CFFPrivateDict, CFFStrings (+3 more)
 
 ### Community 24 - "express"
 Cohesion: 0.03
-Nodes (81): 2. Quyền và điều hướng, express, multer, createRequireAuth(), readTokenFromRequest(), requireAuth, requireFeature(), fakeRes() (+73 more)
+Nodes (67): 2. Quyền và điều hướng, express, multer, createRequireAuth(), readTokenFromRequest(), requireAuth, requireFeature(), fakeRes() (+59 more)
 
 ### Community 25 - "expectedExport.js"
 Cohesion: 0.12
@@ -679,20 +699,20 @@ Cohesion: 0.09
 Nodes (12): Bt(), Ft(), Gt(), It(), jt(), kt(), mt(), qt() (+4 more)
 
 ### Community 27 - "PDFFunctionFactory"
-Cohesion: 0.08
-Nodes (5): PDFWorkerStream, PDFWorkerStreamRangeReader, PDFWorkerStreamReader, PostScriptEvaluator, PostScriptStack
+Cohesion: 0.12
+Nodes (3): PDFWorkerStream, PDFWorkerStreamRangeReader, PDFWorkerStreamReader
 
 ### Community 28 - "Qe"
-Cohesion: 0.29
-Nodes (14): B(), b(), be(), j(), ue(), v(), y(), gr() (+6 more)
+Cohesion: 0.17
+Nodes (24): B(), ar(), b(), be(), ge(), j(), lr(), me() (+16 more)
 
 ### Community 29 - ".createDocumentHandler"
-Cohesion: 0.07
-Nodes (23): co(), AbortException, createDataNode(), ct, getVerbosityLevel(), MessageHandler, MissingPDFException, ParserEOFException (+15 more)
+Cohesion: 0.06
+Nodes (24): co(), AbortException, clearGlobalCaches(), ct, getNewAnnotationsMap(), getVerbosityLevel(), JpxError, JpxImage (+16 more)
 
-### Community 30 - "CanvasExtraState"
+### Community 30 - "._create"
 Cohesion: 0.10
-Nodes (4): CanvasExtraState, getXfaPageViewport(), PageViewport, Util
+Nodes (20): CaretAnnotation, CircleAnnotation, FileAttachmentAnnotation, getPdfColorArray(), getQuadPoints(), getRgbColor(), HighlightAnnotation, isNumberArray() (+12 more)
 
 ### Community 31 - "exportService.test.js"
 Cohesion: 0.08
@@ -700,7 +720,7 @@ Nodes (20): buildDashboard(), buildRowsBySheet(), DEBT_AGING, DEBT_HTML_EXPORT, 
 
 ### Community 32 - "approvedPriceRepository.js"
 Cohesion: 0.11
-Nodes (38): applyRecalc(), conflict(), createApprovedPriceRepository(), assertTargets(), cached(), create(), inTransaction(), list() (+30 more)
+Nodes (40): applyRecalc(), conflict(), createApprovedPriceRepository(), assertTargets(), cached(), create(), inTransaction(), list() (+32 more)
 
 ### Community 33 - "backfill.js"
 Cohesion: 0.14
@@ -708,19 +728,19 @@ Nodes (15): backfill_progress table, backfillCashFlowsChunk(), backfillEntity(),
 
 ### Community 34 - "AnnotationElement"
 Cohesion: 0.04
-Nodes (20): AnnotationElement, AnnotationElementFactory, CaretAnnotationElement, CircleAnnotationElement, FileAttachmentAnnotationElement, FreeTextAnnotationElement, getRectDims(), HighlightAnnotationElement (+12 more)
+Nodes (19): AnnotationElement, AnnotationElementFactory, CaretAnnotationElement, CircleAnnotationElement, FileAttachmentAnnotationElement, FreeTextAnnotationElement, getRectDims(), HighlightAnnotationElement (+11 more)
 
 ### Community 35 - "otpService.js"
 Cohesion: 0.36
 Nodes (9): clearAllOtp(), clearResetOtp(), deliverOtp(), generateResetOtp(), getAvailableChannels(), maskEmail(), normalize(), otpStore (+1 more)
 
-### Community 36 - "n"
-Cohesion: 0.10
-Nodes (11): Fn(), getMaxOverflow(), jn, n(), ne(), numeric(), parseArrayData(), parseObjectData() (+3 more)
+### Community 36 - "s"
+Cohesion: 0.06
+Nodes (38): addElements(), _calculateBarIndexPixels(), _calculateBarValuePixels(), Do(), es(), Fn(), getLabelAndValue(), getMaxOverflow() (+30 more)
 
 ### Community 37 - "adminUserRoutes.js"
-Cohesion: 0.05
-Nodes (71): Context, Docs / sau khi duyệt, Kiểm chứng, Kế hoạch: Vòng đời đơn hàng hợp nhất đơn Phiếu tạm Kiot + "Giá trị có bán" + công thức Tồn có thể bán + phân quyền, Quyết định đã chốt với người dùng, Rủi ro & điểm tôi tự quyết (bạn có thể phản đối), Thứ tự & commit (mỗi gói 1 commit riêng; KHÔNG tự commit khi chưa được yêu cầu), WP-A — Phân quyền (+63 more)
+Cohesion: 0.04
+Nodes (61): Account and Leave Decoupling Implementation Plan, Create, File Structure, Final Verification Gate, Global Constraints, Modify, Task 10: Full regression, documentation, and migration readiness, Task 1: Canonical workplace assignment contract (+53 more)
 
 ### Community 38 - "Quản lý công nợ Implementation Plan"
 Cohesion: 0.09
@@ -735,72 +755,76 @@ Cohesion: 0.29
 Nodes (9): computeDiff(), fetchKiotVietTotal(), fetchPostgresCount(), formatReportTable(), main(), ORDERS_RETURNS_TOLERANT, parseArgs(), reconcileAll() (+1 more)
 
 ### Community 41 - "CFFCompiler"
-Cohesion: 0.12
-Nodes (3): CFFCompiler, CFFIndex, CFFOffsetTracker
-
-### Community 42 - "AnnotationEditorLayer"
-Cohesion: 0.05
-Nodes (3): AnnotationEditorLayer, AnnotationLayer, setLayerDimensions()
+Cohesion: 0.08
+Nodes (5): CFFCompiler, CFFIndex, CFFOffsetTracker, Commands, StateManager
 
 ### Community 43 - "dashboardPgReader.js"
-Cohesion: 0.04
-Nodes (44): 3.1 — Bỏ việc đọc toàn bộ lịch sử hóa đơn/đặt hàng/trả hàng, 3.2 — Tải theo tab (lazy) các bảng lớn, 3.3 — Xem lại danh sách `lowStock`, Không làm (đã đo, không đáng), Kế hoạch tối ưu tốc độ "Báo cáo tổng hợp" (`/api/dashboard`), Nghiệm thu Đợt 1, Nghiệm thu Đợt 2, Phụ lục — Script đo lại (+36 more)
+Cohesion: 0.05
+Nodes (47): WP-B — Tồn có thể bán = Tồn − Khách đặt (Phiếu tạm) + Đang vận chuyển, applyInTransit(), CORE_EXCLUDED_SHEET_NAMES, CORE_SHEET_NAMES, CORE_TABS, createDashboardPgReader(), readCoreDashboardSheets(), readDashboardSheets() (+39 more)
 
 ### Community 44 - "accountAuditLog.js"
-Cohesion: 0.11
-Nodes (22): ACTIONS, diffPermissions(), diffUser(), featureLabel(), fieldValue(), initialValues(), isDateString(), listEntries() (+14 more)
+Cohesion: 0.17
+Nodes (16): ACTIONS, diffPermissions(), diffUser(), featureLabel(), fieldValue(), initialValues(), isDateString(), listEntries() (+8 more)
 
 ### Community 45 - "PDFNetworkStreamFullRequestReader"
-Cohesion: 0.03
-Nodes (21): BaseStandardFontDataFactory, createFetchOptions(), createHeaders(), createResponseStatusError(), extractFilenameFromHeader(), fixupEncoding(), rfc2047decode(), rfc5987decode() (+13 more)
+Cohesion: 0.04
+Nodes (20): createFetchOptions(), createHeaders(), createResponseStatusError(), extractFilenameFromHeader(), fixupEncoding(), rfc2047decode(), rfc5987decode(), textdecode() (+12 more)
 
 ### Community 46 - "export-ui.test.js"
 Cohesion: 0.33
 Nodes (9): createExportDashboard(), exportField(), exportMetadata(), flush(), htmlPath, openExportWithFields(), publicDir, readDashboardHtml() (+1 more)
 
+### Community 47 - "TextLayer"
+Cohesion: 0.10
+Nodes (5): AnnotationLayer, BaseSVGFactory, DOMSVGFactory, setLayerDimensions(), TextLayer
+
 ### Community 48 - "AnnotationStorage"
-Cohesion: 0.05
-Nodes (8): AnnotationStorage, info(), Metadata, MurmurHash3_64, objectFromMap(), OptionalContentConfig, OptionalContentGroup, PrintAnnotationStorage
+Cohesion: 0.06
+Nodes (5): AnnotationStorage, Metadata, MurmurHash3_64, objectFromMap(), PrintAnnotationStorage
 
 ### Community 49 - "WidgetAnnotationElement"
-Cohesion: 0.12
-Nodes (6): CheckboxWidgetAnnotationElement, ChoiceWidgetAnnotationElement, n, RadioButtonWidgetAnnotationElement, TextWidgetAnnotationElement, WidgetAnnotationElement
+Cohesion: 0.11
+Nodes (8): CheckboxWidgetAnnotationElement, ChoiceWidgetAnnotationElement, n, PushButtonWidgetAnnotationElement, RadioButtonWidgetAnnotationElement, SignatureWidgetAnnotationElement, TextWidgetAnnotationElement, WidgetAnnotationElement
 
 ### Community 50 - "Dict"
-Cohesion: 0.03
-Nodes (42): ButtonWidgetAnnotation, CaretAnnotation, ChoiceWidgetAnnotation, CircleAnnotation, codePointIter(), Dict, escapeString(), FakeUnicodeFont (+34 more)
+Cohesion: 0.04
+Nodes (23): ButtonWidgetAnnotation, ChoiceWidgetAnnotation, codePointIter(), DefaultAppearanceEvaluator, Dict, escapeString(), FakeUnicodeFont, FreeTextAnnotation (+15 more)
 
 ### Community 51 - "dashboardData.test.js"
 Cohesion: 0.09
 Nodes (19): Task 1.1 — Tra cache kết quả TRƯỚC khi truy vấn rollup + đưa phiên bản rollup vào khóa cache, AGG_DETAIL_HEADER, AGG_INVOICE_HEADER, AGG_PRODUCT_HEADER, BASE_FILTERS, CATEGORY_HEADERS, categoryRow(), DETAIL_HEADERS (+11 more)
 
 ### Community 52 - ".a"
-Cohesion: 0.14
-Nodes (9): readBits(), decrypt(), EvalState, isHexDigit(), isSpecial(), run(), doRun(), Type1Parser (+1 more)
+Cohesion: 0.30
+Nodes (4): decrypt(), isHexDigit(), isSpecial(), Type1Parser
 
 ### Community 53 - "effectiveUserResolver.js"
-Cohesion: 0.09
-Nodes (24): freshAuthRoutes(), boundRowIndex(), changedFields(), createEffectiveUserResolver(), findAccountForEmployee(), persistIfChanged(), resolveUser(), defaultResolver (+16 more)
+Cohesion: 0.05
+Nodes (40): Bối cảnh, Giữ lại / thêm, Gỡ module Vị trí hàng cũ (đọc Google Sheets), VT Hà Nội / VT Sài Gòn là module duy nhất, Kiểm chứng đề xuất sau deploy, Phạm vi gỡ, Việc treo (chờ người dùng quyết), freshAuthRoutes(), boundRowIndex() (+32 more)
 
 ### Community 54 - "debtPenaltyRecalc.js"
 Cohesion: 0.15
 Nodes (20): backupSuffix(), formatReport(), freeTableName(), main(), money(), monthBounds(), recalcLedger(), recalcPenaltyLedger() (+12 more)
 
-### Community 55 - "hrEmployeeWorkbookImport.js"
-Cohesion: 0.40
-Nodes (7): xlsx, checked(), isoDate(), numericIdentifier(), parseEmployeeWorkbook(), parseSheet(), text()
+### Community 55 - "hrEmployeeAdminService.js"
+Cohesion: 0.11
+Nodes (26): clean(), createHrEmployeeAdminService(), assertBranchAllowed(), assertNoDuplicate(), assertPolicy(), createEmployee(), linkedTo(), parseInput() (+18 more)
 
 ### Community 56 - "vt-positions.js"
-Cohesion: 0.07
-Nodes (93): Task 6: Giao diện — "Đã sửa" trong bảng và hộp chi tiết, Task 7: Giao diện — nút và hộp thoại Xóa lịch sử, Self-Review, Task 4: Client nghe SSE + hộp chi tiết đang mở, ackDetail(), applyResult(), applyScreenMode(), bindDetail() (+85 more)
+Cohesion: 0.06
+Nodes (109): Task 6: Giao diện — "Đã sửa" trong bảng và hộp chi tiết, Task 7: Giao diện — nút và hộp thoại Xóa lịch sử, File Structure, Global Constraints, Self-Review, Task 1: Phát tín hiệu sau COMMIT, Task 2: Route SSE `/api/stock-positions/events`, Task 3: Client đối chiếu bảng tại chỗ + tải nền (+101 more)
+
+### Community 57 - "AltText"
+Cohesion: 0.06
+Nodes (4): AltText, EditorToolbar, HighlightToolbar, noContextMenu()
 
 ### Community 58 - "vn"
 Cohesion: 0.01
-Nodes (118): vn(), Acrobat, Acrobat7, ADBE_JSConsole, ADBE_JSDebugger, AddSilentPrint, AddViewerPreferences, AdjustData (+110 more)
+Nodes (98): vn(), Acrobat7, ADBE_JSConsole, ADBE_JSDebugger, AddSilentPrint, AddViewerPreferences, AdjustData, AdobeExtensionLevel (+90 more)
 
 ### Community 59 - "shadow"
-Cohesion: 0.07
-Nodes (6): ColorManager, getRGB(), ImageManager, KeyboardManager, shadow(), util_FeatureTest
+Cohesion: 0.05
+Nodes (8): ColorManager, getRGB(), ImageManager, KeyboardManager, shadow(), stopEvent(), TouchManager, util_FeatureTest
 
 ### Community 60 - "exportFieldCatalog.test.js"
 Cohesion: 0.13
@@ -808,43 +832,43 @@ Nodes (14): CUSTOMER_FIELDS, getSourceBySheetName(), INVOICE_FIELDS, LABEL_BY_SH
 
 ### Community 61 - "pdf.worker.min.mjs"
 Cohesion: 0.01
-Nodes (199): a, Aa, addChildren(), addHex(), adjustMapping(), amendFallbackToUnicode(), An, Ao (+191 more)
+Nodes (207): Aa, addHex(), addLocallyCachedImageOps(), An, Ao, Ar, As, ba (+199 more)
 
-### Community 62 - "LocaleSetNamespace"
-Cohesion: 0.03
-Nodes (24): CalendarSymbols, CurrencySymbol, CurrencySymbols, DatePattern, DatePatterns, Day, DayNames, Era (+16 more)
+### Community 62 - "XFAObject"
+Cohesion: 0.01
+Nodes (46): Acrobat, Agent, CalendarSymbols, Common, Config, config_FontInfo, ConnectionSet, CurrencySymbols (+38 more)
 
 ### Community 63 - "productReportIncremental.js"
 Cohesion: 0.07
 Nodes (31): BRANCH_CODES, buildSql(), CREATE_STAGE_SQL, cut(), decideHeavy(), HN_PRODUCTS, MISSING, PENDING_ORDERS (+23 more)
 
 ### Community 64 - ".checkAndRepair"
-Cohesion: 0.06
-Nodes (18): adjustWidths(), CFFFont, convertCidString(), Font, readNameTable(), readTableEntry(), readTables(), sanitizeGlyph() (+10 more)
+Cohesion: 0.04
+Nodes (40): adjustMapping(), adjustWidths(), amendFallbackToUnicode(), applyStandardFontGlyphMap(), buildToFontChar(), CFFFont, convertCidString(), createCmapTable() (+32 more)
 
 ### Community 65 - "createPickAssignmentsService"
-Cohesion: 0.06
-Nodes (54): Cập nhật 19/10/2026 (tối) — đồng bộ với design system, Khung chung, Page Design Notes — `vat-draft/index.html` (Kế toán – Nháp VAT / Tạo QR), Tab Tạo QR — bố cục, Vai trò trang, Task 4: Snapshot tiền gốc và phiếu không lặp ST, File Structure, Global Constraints (+46 more)
+Cohesion: 0.10
+Nodes (41): File Structure, Global Constraints, Task 1: Migration 0099 + quyền `stockLocationsV2.historyDelete`, Task 2: Service `acknowledge` + `shape` (Đã sửa), Task 4: Route `POST /:id/ack`, `DELETE /history`, `canDeleteHistory`, Task 5: Người sửa = mã đơn khi trừ tồn theo đơn, Task 8: Tài liệu, kiểm tra toàn bộ, đồ thị mã nguồn, VT hàng: "Đã sửa", lịch sử trừ tồn theo mã đơn, xóa lịch sử — Implementation Plan (+33 more)
 
 ### Community 66 - "unreachable"
-Cohesion: 0.06
-Nodes (6): BaseCanvasFactory, BaseCMapReaderFactory, bytesToString(), DrawingOptions, PDFDataRangeTransport, unreachable()
+Cohesion: 0.05
+Nodes (9): BaseCanvasFactory, BaseCMapReaderFactory, bytesToString(), DOMCMapReaderFactory, FontFaceObject, OptionalContentGroup, PDFDataRangeTransport, stringToBytes() (+1 more)
 
 ### Community 67 - "createBatchForm"
 Cohesion: 0.07
 Nodes (57): Báo cáo Marketing (`#marketing`), Component đặc thù của trang (đã chuẩn hoá vào MASTER §5), Cột Sale/Team (từ 2026-10-14), Hộp Chi tiết khách (`.cp-*`, từ 2026-10-22), Nợ thiết kế riêng của trang (xem MASTER §12 để biết đầy đủ), Page Design Notes — `index.html` (Dashboard Chính), Quy tắc "chỉ tính khách/mã hàng đang hoạt động" (từ 2026-10-15), Tab Công nợ — Bảng thưởng/phạt sale (`#debt-reward`) (+49 more)
 
 ### Community 68 - "o"
-Cohesion: 0.16
-Nodes (46): insert(), a(), C(), a(), c(), E(), er(), ht() (+38 more)
+Cohesion: 0.17
+Nodes (40): insert(), a(), C(), Dr(), a(), c(), E(), er() (+32 more)
 
 ### Community 69 - "measureSheet.js"
 Cohesion: 0.23
 Nodes (10): codeKey(), createMeasureSheet(), lookup(), HEADERS, parseMeasureRows(), sourceError(), HEADER, VALUES (+2 more)
 
 ### Community 70 - "pancakeSync.js"
-Cohesion: 0.11
-Nodes (33): isPhoneReportObservation(), createPancakeClient(), fetchPage(), request(), SAFE_CODES, safeError(), sourceTimestamp(), run() (+25 more)
+Cohesion: 0.12
+Nodes (31): isPhoneReportObservation(), PAGE_IDS, createPancakeClient(), fetchPage(), request(), SAFE_CODES, safeError(), sourceTimestamp() (+23 more)
 
 ### Community 71 - "buildCalendar"
 Cohesion: 0.25
@@ -855,32 +879,32 @@ Cohesion: 0.20
 Nodes (18): requireRole(), cell(), check(), columnsFor(), createExportFile(), exportFieldsFor(), invalid(), KIND_TITLES (+10 more)
 
 ### Community 73 - ".getTextContent"
-Cohesion: 0.08
-Nodes (22): AppearanceStreamEvaluator, BaseLocalCache, LocalColorSpaceCache, LocalFunctionCache, LocalGStateCache, LocalImageCache, LocalTilingPatternCache, addFakeSpaces() (+14 more)
+Cohesion: 0.16
+Nodes (15): AppearanceStreamEvaluator, EvaluatorPreprocessor, addFakeSpaces(), appendEOL(), applyInverseRotation(), buildTextContentItem(), compareWithLastPosition(), ensureTextContentItem() (+7 more)
 
 ### Community 74 - "Binder"
-Cohesion: 0.26
-Nodes (3): Binder, createText(), searchNode()
+Cohesion: 0.22
+Nodes (5): Binder, createDataNode(), createText(), parseExpression(), searchNode()
 
 ### Community 75 - "pick-assign.js"
 Cohesion: 0.17
-Nodes (32): allLocations(), allocationsFromAssignment(), api(), changeStatus(), dirty(), displayLines(), editedNeeds(), ensureDialogs() (+24 more)
+Nodes (33): allLocations(), allocationsFromAssignment(), api(), changeStatus(), dirty(), displayLines(), editedNeeds(), ensureDialogs() (+25 more)
 
 ### Community 76 - "PDFDocumentProxy"
-Cohesion: 0.04
-Nodes (9): assert(), FontFaceObject, FontLoader, isRefProxy(), PDFDataTransportStream, PDFDataTransportStreamRangeReader, PDFObjects, warn() (+1 more)
+Cohesion: 0.05
+Nodes (6): FontLoader, info(), isRefProxy(), OptionalContentConfig, warn(), WorkerTransport
 
 ### Community 78 - "InkEditor"
-Cohesion: 0.08
-Nodes (3): FakeEditor, InkDrawingOptions, InkEditor
+Cohesion: 0.07
+Nodes (4): DrawingOptions, FakeEditor, InkDrawingOptions, InkEditor
 
 ### Community 80 - "stockPositionsService.js"
-Cohesion: 0.10
-Nodes (59): Self-Review (đối chiếu spec), Task 3: Service `purgeHistory` + nhãn lịch sử, announceChanged(), ACTION_LABELS, FIELD_LABELS, SUMMARY_KEYS, summaryText(), vnDate() (+51 more)
+Cohesion: 0.18
+Nodes (44): Self-Review (đối chiếu spec), actorOf(), assertBranch(), assertScope(), clean(), createStockPositionsService(), acknowledge(), create() (+36 more)
 
 ### Community 81 - "XFAObject"
 Cohesion: 0.01
-Nodes (77): Arc, Assist, Barcode, Bind, BindItems, Bookend, Border, Break (+69 more)
+Nodes (80): Mn(), Arc, Area, Assist, Barcode, BatchOutput, Bind, BindItems (+72 more)
 
 ### Community 82 - "handleSubmitRoleRequest"
 Cohesion: 0.14
@@ -891,20 +915,20 @@ Cohesion: 0.18
 Nodes (12): parseSearchCodes() (tab Tổng quan), applyBulkFilters(), buildRow(), escapeHtml(), loadBulkOrders(), normalizeSearchText(), openDetailModal(), parseSearchCodes() (+4 more)
 
 ### Community 84 - "localUserStore.js"
-Cohesion: 0.05
-Nodes (58): buildFallbackAdminUser(), buildFallbackThangUser(), cache, createCache(), createUser(), deleteUser(), ensureHardcodedAdminsInDb(), ensureSnapshot() (+50 more)
+Cohesion: 0.06
+Nodes (55): Task 2: Persist workplace assignment through repository and store, buildFallbackAdminUser(), buildFallbackThangUser(), cache, createCache(), createUser(), deleteUser(), ensureHardcodedAdminsInDb() (+47 more)
 
 ### Community 85 - "pancakeSummary.test.js"
-Cohesion: 0.09
-Nodes (36): aggregateIndependentPhones(), aggregatePhones(), countMonthlyClosures(), countPhoneKpis(), phonesFromSummary(), vietnamDate(), createDatabaseMarketingReportService(), customers() (+28 more)
+Cohesion: 0.10
+Nodes (32): aggregateIndependentPhones(), aggregatePhones(), countMonthlyClosures(), countPhoneKpis(), phonesFromSummary(), vietnamDate(), createDatabaseMarketingReportService(), customers() (+24 more)
 
 ### Community 86 - "purchases"
 Cohesion: 0.32
 Nodes (6): idx_purchases_modified, purchase_details, purchases, idx_invoices_purchase_date, idx_purchases_purchase_date, idx_returns_return_date
 
-### Community 87 - "EditorToolbar"
-Cohesion: 0.08
-Nodes (6): bindEvents(), EditorToolbar, HighlightToolbar, noContextMenu(), stopEvent(), TouchManager
+### Community 87 - "vat-request.test.js"
+Cohesion: 0.07
+Nodes (24): batchCode, bulkEcho(), code, dragRow(), dragSelect(), editCell(), gridCell(), gridCode (+16 more)
 
 ### Community 88 - "normalizeText"
 Cohesion: 0.12
@@ -915,8 +939,8 @@ Cohesion: 0.27
 Nodes (13): buildOrderFreight(), calculateDM(), calculateFreight(), calculateJT(), calculateVL(), CARRIER_LABELS, CARRIER_NOTES, KG_TEXT (+5 more)
 
 ### Community 90 - "Sổ quỹ (Cash book) — Thiết kế & hướng dẫn triển khai cho agent"
-Cohesion: 0.07
-Nodes (26): Level giá khách theo email (21/10/2026), Cấu trúc (từ trên xuống), Lưu ý thiết kế, Page Design Notes — `cashbook/index.html` (Sổ Quỹ), Vai trò trang, 1. Tính năng là gì, 2. Trạng thái hiện tại, 3. Bản đồ file (+18 more)
+Cohesion: 0.09
+Nodes (21): Cấu trúc (từ trên xuống), Lưu ý thiết kế, Page Design Notes — `cashbook/index.html` (Sổ Quỹ), Vai trò trang, 10. Thứ tự giao việc & commit, 11. Checklist deploy, 12. Kết quả xác minh (agent điền ở Bước 0), 1. Mục tiêu (+13 more)
 
 ### Community 91 - "marketingReportService.js"
 Cohesion: 0.12
@@ -928,7 +952,7 @@ Nodes (10): callRoute(), delegate(), fakeRes(), res, getRouteHandler(), ordinary
 
 ### Community 93 - "business-report.test.js"
 Cohesion: 0.03
-Nodes (45): 8. Bước 5 — Frontend `server/public/cashbook/index.html`, jobOptions(), key(), MIGRATION, MONTHS, NOW, october(), quiet() (+37 more)
+Nodes (47): 8. Bước 5 — Frontend `server/public/cashbook/index.html`, exceljs, USERS, jobOptions(), key(), MIGRATION, MONTHS, NOW (+39 more)
 
 ### Community 94 - "server-tests.yml"
 Cohesion: 0.08
@@ -946,9 +970,9 @@ Nodes (15): Context, Công thức đã đọc từ sheet, Kiểm chứng end-to-
 Cohesion: 0.08
 Nodes (19): cellOf(), columnKeys(), COLUMNS, createPage(), HEADERS, html, idx(), KEYS (+11 more)
 
-### Community 99 - "createManagerLeaveRuntime"
-Cohesion: 0.19
-Nodes (19): createManagerLeaveRuntime(), acknowledgeUpdate(), activate(), callTelegram(), drain(), drainDeliveries(), drainInbox(), executeEffect() (+11 more)
+### Community 99 - "CURRENT: BẢNG TRẠNG THÁI THỜI GIAN THỰC (REALTIME DASHBOARD)"
+Cohesion: 0.08
+Nodes (35): 1. Tổng quan trạng thái hiện tại (Current Status), 21/10/2026 13:22 — Nạp backend mới để hiển thị Nhóm sale, 21/10/2026 — Nhóm sale tại Công nợ, 23/10/2026 — Ghi chú khác của CONT, 2. Các đầu việc vừa hoàn thành (Recently Completed — Tháng 10/2026), 3. Hành động tiếp theo cần thực hiện (Next Steps & Operations), CURRENT: BẢNG TRẠNG THÁI THỜI GIAN THỰC (REALTIME DASHBOARD), Cập nhật 13/10/2026 — Công nợ theo lịch thanh toán (+27 more)
 
 ### Community 100 - "TKSNav"
 Cohesion: 0.12
@@ -958,13 +982,13 @@ Nodes (6): accountingNavItems(), autoShowSpecialDay(), clearJSONReads(), isMobil
 Cohesion: 0.12
 Nodes (48): Các bước, pool(), ACCOUNTANT_FIELDS, canEditSaleFields(), canProcess(), createVatRequestService(), bulkUpdate(), conflict() (+40 more)
 
-### Community 102 - "draw"
+### Community 102 - "stockPositionsService.js"
 Cohesion: 0.12
-Nodes (20): ai(), ao(), dataset(), draw(), hi(), index(), ji(), kn() (+12 more)
+Nodes (17): Task 3: Service `purgeHistory` + nhãn lịch sử, announceChanged(), ACTION_LABELS, FIELD_LABELS, SUMMARY_KEYS, summaryText(), vnDate(), WARNING_LABELS (+9 more)
 
 ### Community 103 - "compileGlyf"
-Cohesion: 0.08
-Nodes (13): Commands, compileCharString(), lineTo(), moveTo(), CompiledFont, compileGlyf(), getFloat214(), getInt16() (+5 more)
+Cohesion: 0.10
+Nodes (12): compileCharString(), lineTo(), moveTo(), CompiledFont, compileGlyf(), getFloat214(), getInt16(), getInt8() (+4 more)
 
 ### Community 104 - "styleBaselineSnapshot.js"
 Cohesion: 0.33
@@ -980,7 +1004,7 @@ Nodes (4): PDFDateString, PopupElement, XfaLayer, XfaText
 
 ### Community 107 - "warn"
 Cohesion: 0.05
-Nodes (20): ErrorFont, getEncoding(), getFontSubstitution(), getStandardFontName(), getTilingPatternIR(), getXfaFontDict(), getXfaFontName(), isKnownFontName() (+12 more)
+Nodes (15): CMapFactory, ErrorFont, getEncoding(), getTilingPatternIR(), getXfaFontDict(), getXfaFontName(), IdentityToUnicodeMap, isPDFFunction() (+7 more)
 
 ### Community 108 - "0044_pancake_marketing.sql"
 Cohesion: 0.24
@@ -991,32 +1015,32 @@ Cohesion: 0.20
 Nodes (15): Dashboard Table Search and Chart Navigation Implementation Plan, Global Constraints, Task 1: Pure table-search engine, Task 2: Whole-dataset search controls for all dashboard tables, Task 3: Chart-to-row navigation, Task 5: Full regression and acceptance verification, searchText(), collect() (+7 more)
 
 ### Community 110 - "lookupModel.js"
-Cohesion: 0.12
-Nodes (35): Hiện trạng, Không đổi, Kiểm thử (`server/vatLookup/lookupModel.test.js`), Quy tắc mới, Thiết kế, Trạng thái "Còn VAT" tính theo Mã VAT Kiot (2026-10-27), addMissingDkVeProducts(), buildDkVeRows() (+27 more)
+Cohesion: 0.15
+Nodes (30): Thiết kế, addMissingDkVeProducts(), buildDkVeRows(), buildGopVatGroups(), buildHeaderResolver(), buildIncomingDebug(), buildIncomingRows(), buildKhopMaRows() (+22 more)
 
 ### Community 112 - "kiotOrdersRepository.js"
-Cohesion: 0.12
-Nodes (19): defaultLoadOrder(), allocateSellable(), createKiotOrdersRepository(), inScope(), queryOrders(), readOrderDetail(), readOrders(), refresh() (+11 more)
+Cohesion: 0.14
+Nodes (11): defaultLoadOrder(), allocateSellable(), readOrderDetail(), DB_TO_LIFECYCLE_BRANCH, isServiceProductKey(), kiotOrders, LIFECYCLE_TO_DB_BRANCH, makeError() (+3 more)
 
 ### Community 113 - "debt-management-ui.test.js"
 Cohesion: 0.38
 Nodes (6): createDashboard(), debtPayload(), html(), indexPath, navPath, scheduleDebtPayload()
 
 ### Community 114 - "marketing-report.js"
-Cohesion: 0.09
-Nodes (44): Báo cáo kinh doanh — lọc team, gộp khách theo tên, bố cục mới (2026-10-07), Dữ liệu đã kiểm chứng (2026-10-07, DB thật), Kiểm chứng, Quyết định, Việc sau deploy, Xử lý lỗi, Yêu cầu của người dùng, 14/10/2026 — Thưởng/phạt sale Công nợ (+36 more)
+Cohesion: 0.20
+Nodes (26): active(), detailStats(), editorDialog(), format(), growEditor(), initialize(), kpis(), load() (+18 more)
 
 ### Community 115 - "order-lifecycle-kiot.test.js"
 Cohesion: 0.03
-Nodes (63): choose(), html, json(), publicDir, read(), renderPage(), settle(), click() (+55 more)
+Nodes (64): Task 4: Snapshot tiền gốc và phiếu không lặp ST, choose(), html, json(), publicDir, read(), renderPage(), settle() (+56 more)
 
-### Community 116 - "render"
-Cohesion: 0.25
-Nodes (19): api(), applyGridEdits(), deleteEditing(), dropHistory(), load(), moveRows(), notify(), parseCellText() (+11 more)
+### Community 116 - "computeDashboardData"
+Cohesion: 0.15
+Nodes (24): WP-D — Dọn tab Hóa đơn, buildCustomerProductRevenueReport(), buildRevenuePeriod(), buildRevenuePeriodFromRollup(), buildTransactionsReport(), computeCustomerProductRevenue(), computeDashboardData(), dmyKey() (+16 more)
 
 ### Community 117 - "businessReportExport.js"
 Cohesion: 0.12
-Nodes (27): Task 5: Frontend — tab "Báo cáo kinh doanh", CHANNEL_LABELS, columnsFor(), createExportFile(), dateLabel(), ddmmyyyy(), EXPORT_ONLY_PROFILE_FIELDS, exportFieldsFor() (+19 more)
+Nodes (29): Task 5: Frontend — tab "Báo cáo kinh doanh", CHANNEL_LABELS, columnsFor(), createExportFile(), dateLabel(), ddmmyyyy(), EXPORT_ONLY_PROFILE_FIELDS, exportFieldsFor() (+21 more)
 
 ### Community 118 - "rte-table.js"
 Cohesion: 0.27
@@ -1024,15 +1048,15 @@ Nodes (24): allTh(), buildGrid(), cellPosition(), cellsAtColumn(), deleteColumn(
 
 ### Community 119 - "priceAuditRefresh.test.js"
 Cohesion: 0.07
-Nodes (31): addInvoice(), addVatInvoice(), NOW, quiet, setup(), USERS, customer(), invoice() (+23 more)
+Nodes (34): addInvoice(), addVatInvoice(), NOW, quiet, setup(), USERS, customer(), invoice() (+26 more)
 
 ### Community 120 - "shadow"
-Cohesion: 0.04
-Nodes (24): Catalog, appendIfJavaScriptDict(), addPageError(), parseNestedOrder(), parseOrder(), collectActions(), _collectJS(), createValidAbsoluteUrl() (+16 more)
+Cohesion: 0.05
+Nodes (20): Catalog, appendIfJavaScriptDict(), parseNestedOrder(), parseOrder(), collectActions(), _collectJS(), createValidAbsoluteUrl(), FeatureTest (+12 more)
 
-### Community 121 - "managerLeaveBot.js"
-Cohesion: 0.09
-Nodes (31): businessError(), createManagerLeaveBot(), completeRejection(), currentRequest(), handleUpdate(), ownsSession(), removeSession(), showList() (+23 more)
+### Community 121 - "managerLeaveRuntime.js"
+Cohesion: 0.05
+Nodes (72): branchCodeToLabel(), BRANCHES_ALL, createHrLeaveAuthorization(), authorize(), authorizeEmployee(), canDecide(), describeRequests(), routingFor() (+64 more)
 
 ### Community 122 - "TextMeasure"
 Cohesion: 0.19
@@ -1046,13 +1070,9 @@ Nodes (16): Backend/export và hồi quy, Bối cảnh, Frontend/JSDOM, Giao di�
 Cohesion: 0.24
 Nodes (4): loadLeaveRequests(), loadUrgentSummary(), parseApiResponse(), renderTable()
 
-### Community 125 - "bindEvents"
-Cohesion: 0.19
-Nodes (19): autosizeNote(), bindEvents(), closeMenu(), cycleSort(), dropNeighbors(), fmtNumber(), loadPriceSuggestion(), loadProductInfo() (+11 more)
-
 ### Community 127 - "CanvasGraphics"
-Cohesion: 0.04
-Nodes (10): CachedCanvases, CanvasGraphics, copyCtxState(), drawImageAtIntegerCoords(), DummyShadingPattern, getCurrentTransform(), getCurrentTransformInverse(), getImageSmoothingEnabled() (+2 more)
+Cohesion: 0.03
+Nodes (13): CachedCanvases, CanvasExtraState, CanvasGraphics, convertBlackAndWhiteToRGBA(), copyCtxState(), drawImageAtIntegerCoords(), getCurrentTransform(), getCurrentTransformInverse() (+5 more)
 
 ### Community 128 - "Giảm lag TKS Dashboard Implementation Plan"
 Cohesion: 0.31
@@ -1063,20 +1083,20 @@ Cohesion: 0.17
 Nodes (13): CHART_JS_PATH, embedValue(), embedWorksheet(), formatGeneratedAt(), getChartJsSource(), gzipWorksheets(), isoDate(), kit (+5 more)
 
 ### Community 130 - "orderLifecycleService.js"
-Cohesion: 0.13
-Nodes (39): 4. Bộ lọc / KPI, computeEffectiveStatus(), computeStatus(), computeWarnings(), exportOrders(), findMergedOrder(), findOrder(), hasValue() (+31 more)
+Cohesion: 0.10
+Nodes (48): computeEffectiveStatus(), computeStatus(), computeWarnings(), exportOrders(), findMergedOrder(), findOrder(), hasValue(), kiotKey() (+40 more)
 
 ### Community 131 - "info"
-Cohesion: 0.04
-Nodes (14): Cmd, DefaultAppearanceEvaluator, EvaluatorPreprocessor, find(), InvalidPDFException, isWhiteSpace(), Lexer, Parser (+6 more)
+Cohesion: 0.07
+Nodes (11): Cmd, InvalidPDFException, isCmd(), isWhiteSpace(), Lexer, Linearization, Parser, toHexDigit() (+3 more)
 
 ### Community 132 - "dashboardRollupRepository.js"
-Cohesion: 0.26
-Nodes (15): Task 6: Đối chiếu trên DB thật + toàn bộ test + tài liệu, createDashboardRollupRepository(), getFirstPurchaseDates(), getInvoiceQuantitiesByCode(), getInvoiceRevenueByDay(), getProductSalesBreakdown(), getTopSellingProducts(), mapProductSalesRow() (+7 more)
+Cohesion: 0.13
+Nodes (18): Task 6: Đối chiếu trên DB thật + toàn bộ test + tài liệu, createCustomerInvoiceLinesRepository(), repository, freshDashboardData(), createDashboardRollupRepository(), getFirstPurchaseDates(), getInvoiceQuantitiesByCode(), getInvoiceRevenueByDay() (+10 more)
 
 ### Community 135 - "bytesToString"
-Cohesion: 0.11
-Nodes (10): ARCFourCipher, bytesToString(), CipherTransform, CipherTransformFactory, eo, getFontFileType(), isTrueTypeCollectionFile(), NullCipher (+2 more)
+Cohesion: 0.18
+Nodes (5): ARCFourCipher, CipherTransformFactory, eo, NullCipher, PasswordException
 
 ### Community 136 - "sheetSnapshots/sync.test.js"
 Cohesion: 0.10
@@ -1095,8 +1115,8 @@ Cohesion: 0.15
 Nodes (14): captureWebhookRawBody(), createKiotVietWebhookRouter(), createWebhookJsonErrorHandler(), defaultQueue, isWebhookUrl(), router, secretFromUrl(), secretMatches() (+6 more)
 
 ### Community 140 - "businessCurrentMonthRefresh.js"
-Cohesion: 0.10
-Nodes (24): cleanupFrozenMonths(), CREATE_STAGING_SQL, CUSTOMER_KEY, CUSTOMER_VALUES, DELETE_CUSTOMER_SQL, DELETE_PRODUCT_SQL, deleteSql(), DROP_FROZEN_SQL (+16 more)
+Cohesion: 0.09
+Nodes (26): cleanupFrozenMonths(), CREATE_STAGING_SQL, CUSTOMER_KEY, CUSTOMER_VALUES, DELETE_CUSTOMER_SQL, DELETE_PRODUCT_SQL, deleteSql(), DROP_FROZEN_SQL (+18 more)
 
 ### Community 141 - "scripts"
 Cohesion: 0.10
@@ -1130,9 +1150,9 @@ Nodes (6): createPage(), html, kpi(), payloadFor(), publicDir, viewOf()
 Cohesion: 0.13
 Nodes (12): allowed(), fakeRes(), res, withRewards(), setup(), onDebtAgingChanged(), BRANCH_CODES, createDebtAgingRepository() (+4 more)
 
-### Community 149 - "customerProductTopRepository.js"
-Cohesion: 0.17
-Nodes (16): buildTopCustomersQuery(), createCustomerProductTopRepository(), findTopCustomersByRevenueForProduct(), resolveBranchCode(), resolveScope(), customerCodeSql(), customerKeySql(), customerNameSql() (+8 more)
+### Community 149 - "branchLabelToCode"
+Cohesion: 0.05
+Nodes (50): branchLabelToCode(), resolveBranchScope(), createCustomerDebtActivityRepository(), readOperationalPeriods(), PERIOD_TO_SHEET, repository, createCustomerDirectoryRepository(), readCustomerDirectory() (+42 more)
 
 ### Community 150 - "initShootingStar"
 Cohesion: 0.36
@@ -1142,9 +1162,9 @@ Nodes (9): initShootingStar(), chooseEffect(), handleTrigger(), isInteractiveCon
 Cohesion: 0.33
 Nodes (6): .clasp.json / .clasp.saigon.json, .claspignore / .claspignore.saigon, docs/04-planning/implementation_plan.md, README.md (project structure doc), Skill: Update File — Đồng bộ file khi cấu trúc thư mục thay đổi, docs/02-srs/SRS_Dashboard_GoogleSheets.md
 
-### Community 153 - "Stream"
-Cohesion: 0.08
-Nodes (21): BinaryCMapReader, createBuiltInCMap(), expectInt(), expectString(), extendCMap(), FontRendererFactory, getUint16(), getUint32() (+13 more)
+### Community 153 - "business-report.test.js"
+Cohesion: 0.14
+Nodes (10): BUILDERS, businessUrls(), exportUrls(), fieldsUrls(), html, newCustomerRows(), profileRows(), publicDir (+2 more)
 
 ### Community 155 - "Kế hoạch triển khai HR Sheet identity"
 Cohesion: 0.40
@@ -1152,23 +1172,23 @@ Nodes (5): Kế hoạch triển khai HR Sheet identity, employeeDirectory.js / e
 
 ### Community 156 - "debtCycleSnapshot.js"
 Cohesion: 0.07
-Nodes (45): backfillOverdueStreak(), main(), agingHistoryStart(), buildAgingRow(), daysBetween(), findPayoffDay(), applyOverdueStreaks(), BRANCH_CODES (+37 more)
+Nodes (46): backfillOverdueStreak(), main(), buildAgingRow(), daysBetween(), findPayoffDay(), applyOverdueStreaks(), BRANCH_CODES, CLEANUP_SQL (+38 more)
 
 ### Community 157 - "StringObject"
-Cohesion: 0.02
-Nodes (43): Amd, AppearanceFilter, Base, Certificate, config_Picture, connection_set_Uri, ConnectionSet, ConnectionSetNamespace (+35 more)
+Cohesion: 0.01
+Nodes (54): Amd, AppearanceFilter, Base, Certificate, config_Picture, connection_set_Uri, ConnectionSetNamespace, Creator (+46 more)
 
 ### Community 158 - "debt-reward-ui.test.js"
 Cohesion: 0.22
 Nodes (5): baseRow, createDashboard(), html(), indexPath, navPath
 
 ### Community 159 - "x"
-Cohesion: 0.18
-Nodes (6): ce(), de, he(), qs(), te(), x()
+Cohesion: 0.19
+Nodes (5): ce(), de, he(), qs(), te()
 
 ### Community 160 - "marketingAdsSync.test.js"
-Cohesion: 0.12
-Nodes (16): COLUMNS, createAdsStore(), num(), numberOrNull(), pendingShrink, readAdsCosts(), readWorkbook(), refreshAdsCosts() (+8 more)
+Cohesion: 0.07
+Nodes (32): COLUMNS, createAdsStore(), num(), numberOrNull(), pendingShrink, readAdsCosts(), readWorkbook(), refreshAdsCosts() (+24 more)
 
 ### Community 161 - "Global Constraints"
 Cohesion: 0.25
@@ -1187,16 +1207,12 @@ Cohesion: 0.12
 Nodes (16): 16/10/2026 — Tập Pancake độc lập (phương án B đã duyệt), Cập nhật 21/10/2026 — ORDER VAT: cột hàng về theo cont, ẩn 4 cột số liệu với sale, Cập nhật 21/10/2026 — ORDER VAT thao tác kiểu Google Sheet, Cập nhật 22/10/2026 — Ghi chú và Tiếp khách lần cuối theo khách (tab Khách hàng), Cập nhật 22/10/2026 — ORDER VAT giữ dòng vừa sửa, lọc nhiều trạng thái, Ctrl+Z / Ctrl+Y, bỏ thanh hàng loạt, Cập nhật 22/10/2026 — ORDER VAT: hết thanh cuộn ngang với sale, nhập lại dữ liệu từ sheet mới, Cập nhật 22/10/2026 — ORDER VAT kéo dòng đổi thứ tự ưu tiên chung, Cập nhật 22/10/2026 — ORDER VAT kéo nhiều dòng một lúc (+8 more)
 
 ### Community 166 - "orderLifecycleRepository.js"
-Cohesion: 0.15
-Nodes (20): ACCOUNTING_HEADER_ALIASES, appendOverride(), buildColumnIndex(), DELIVERY_FIELD_KEYS, generateId(), HEADER_ALIASES, HISTORY_SCHEMA, normalizeHeaderText() (+12 more)
-
-### Community 167 - "XmlObject"
-Cohesion: 0.10
-Nodes (3): encodeToXmlString(), utf8StringToString(), XmlObject
+Cohesion: 0.14
+Nodes (21): ACCOUNTING_HEADER_ALIASES, appendOverride(), buildColumnIndex(), DELIVERY_FIELD_KEYS, generateId(), HEADER_ALIASES, HISTORY_SCHEMA, LIFECYCLE_BRANCH (+13 more)
 
 ### Community 168 - ".compile"
-Cohesion: 0.07
-Nodes (13): AstArgument, AstBinaryOperation, AstLiteral, AstMin, AstNode, AstVariable, AstVariableDefinition, buildAddOperation() (+5 more)
+Cohesion: 0.08
+Nodes (12): AstArgument, AstBinaryOperation, AstLiteral, AstMin, AstNode, AstVariable, AstVariableDefinition, buildAddOperation() (+4 more)
 
 ### Community 169 - "Register (Khách) Page (/register/)"
 Cohesion: 0.40
@@ -1227,8 +1243,8 @@ Cohesion: 0.40
 Nodes (4): Component đặc thù của trang, Nợ thiết kế riêng của trang, Page Design Notes — `register/index.html`, Vai trò trang
 
 ### Community 176 - "carton.js"
-Cohesion: 0.06
-Nodes (44): 6 Cảnh Báo (warnings), 6 Luồng Đơn Hàng (flows), Component đặc thù của trang, Nợ thiết kế riêng của trang, Page Design Notes — `shipment/lifecycle/index.html` (Vòng Đời Đơn Hàng), Quy tắc lọc đơn, Vai trò trang, Task 2: Service `acknowledge` + `shape` (Đã sửa) (+36 more)
+Cohesion: 0.11
+Nodes (27): 1. Ý định đã chốt, 2. Số đo trên DB thật (2026-10-16), 3. Thiết kế, 4. Đánh giá rủi ro, 5. Lộ trình, 6. Cần bạn duyệt trước khi làm, A. Doanh thu theo khách (`customer_invoice_lines_90d`), B. Báo cáo hàng hóa (`product_report`, `product_report_customers`) (+19 more)
 
 ### Community 177 - "GET /api/dashboard"
 Cohesion: 0.40
@@ -1243,48 +1259,44 @@ Cohesion: 0.11
 Nodes (8): assert(), convertBlackAndWhiteToRGBA(), convertToRGBA(), decodeAndClamp(), ImageResizer, PDFImage, resizeImageMask(), toRomanNumerals()
 
 ### Community 180 - "package.json"
-Cohesion: 0.08
-Nodes (31): bcryptjs, compression, cookie-parser, dotenv, google-auth-library, nodemailer, sanitize-html, freshGoogleAuthService() (+23 more)
+Cohesion: 0.09
+Nodes (26): bcryptjs, compression, cookie-parser, google-auth-library, nodemailer, sanitize-html, freshGoogleAuthService(), dependencies (+18 more)
 
 ### Community 181 - "pancakeIdentity.test.js"
-Cohesion: 0.13
-Nodes (11): applyIdentityImport(), invalid(), prepareIdentityImport(), RESOLUTIONS, PAGE_IDS, actor, setup(), api() (+3 more)
+Cohesion: 0.18
+Nodes (9): applyIdentityImport(), invalid(), prepareIdentityImport(), RESOLUTIONS, actor, run(), setup(), main() (+1 more)
 
 ### Community 183 - "Qe"
-Cohesion: 0.12
-Nodes (32): Ye(), Z(), be(), Ce(), De(), ae(), ee(), fe() (+24 more)
+Cohesion: 0.14
+Nodes (33): Ye(), Z(), be(), Ce(), De(), ae(), de(), ee() (+25 more)
 
 ### Community 184 - "Dashboard Result Cache Implementation Plan"
 Cohesion: 0.83
 Nodes (3): Dashboard Result Cache Implementation Plan, computeDashboardData(sheets, filters, now), dashboardSheetsCache (raw Sheets cache with version counter)
 
-### Community 189 - "FakeEventSource"
-Cohesion: 0.14
-Nodes (4): FakeEventSource, html, liveUpdateSource(), run()
-
 ### Community 190 - "priceAuditExport.js"
 Cohesion: 0.11
 Nodes (31): BRANCH_LABELS, BUSINESS_KEYS, COLUMNS, DECISION_LABELS, exportValue(), formatLocalDateTime(), formatTimestamp(), pad() (+23 more)
 
-### Community 191 - "pageGuard.test.js"
-Cohesion: 0.12
-Nodes (16): Bối cảnh, Giữ lại / thêm, Gỡ module Vị trí hàng cũ (đọc Google Sheets), VT Hà Nội / VT Sài Gòn là module duy nhất, Kiểm chứng đề xuất sau deploy, Phạm vi gỡ, Việc treo (chờ người dùng quyết), createPageGuard(), isPageRequest() (+8 more)
+### Community 191 - "dashboardViews.js"
+Cohesion: 0.21
+Nodes (14): ALL_CORE_KEYS, ALL_ROLLUPS, CORE_SHEETS_ORDER, invalidViewError(), parseViewsParam(), pickFilters(), pickPayload(), resolveViewPlan() (+6 more)
 
 ### Community 193 - "customerPriceLevelRepository.js"
-Cohesion: 0.07
-Nodes (37): setup(), assertInitialized(), createCustomerPriceLevelRepository(), initialize(), saveLevel(), transaction(), fromLabel(), normalizeNewCustomer() (+29 more)
+Cohesion: 0.08
+Nodes (36): setup(), assertInitialized(), createCustomerPriceLevelRepository(), initialize(), saveLevel(), transaction(), fromLabel(), normalizeNewCustomer() (+28 more)
 
 ### Community 215 - "server/config.js"
-Cohesion: 0.05
-Nodes (46): Bản chốt yêu cầu, Các bước, Khi triển khai lên production, ORDER VAT — thông báo chuông cho sale sau khi kế toán sửa — kế hoạch triển khai, Thiết kế, CONFIG, prewarmDashboardCaches(), ensureHrInsuranceSchema() (+38 more)
+Cohesion: 0.07
+Nodes (30): pg, CONFIG, prewarmDashboardCaches(), ensureHrInsuranceSchema(), buildPayload(), createLeaveBellNotifier(), runOnce(), startLeaveBellSchedule() (+22 more)
 
 ### Community 216 - "mount"
 Cohesion: 0.20
 Nodes (25): clamp(), mount(), addFlash(), addParticle(), common(), ensureLoop(), explode(), fire() (+17 more)
 
 ### Community 217 - "pickAssignmentsService.js"
-Cohesion: 0.13
-Nodes (19): allocationMatches(), codeKey(), deductAllocation(), locationKey(), makeAllocationSnapshot(), CANCEL_REASON, KIOT_CTX, num() (+11 more)
+Cohesion: 0.18
+Nodes (13): allocationMatches(), codeKey(), deductAllocation(), locationKey(), makeAllocationSnapshot(), CANCEL_REASON, KIOT_CTX, num() (+5 more)
 
 ### Community 218 - "0013_dashboard_rollups.sql"
 Cohesion: 0.40
@@ -1300,7 +1312,7 @@ Nodes (3): customer_invoice_lines_90d, customer_invoice_lines_state, idx_custome
 
 ### Community 222 - "ContentObject"
 Cohesion: 0.02
-Nodes (24): AlwaysEmbed, BehaviorOverride, BooleanElement, ContentObject, DateElement, DateTime, DateTimeSymbols, Decimal (+16 more)
+Nodes (24): prepare(), replace(), AlwaysEmbed, BehaviorOverride, BooleanElement, ContentObject, DateElement, DateTime (+16 more)
 
 ### Community 223 - "cash_flows"
 Cohesion: 0.27
@@ -1310,17 +1322,13 @@ Nodes (7): cash_flows, idx_cash_flows_trans_date, cash_book_accounts, cash_book_
 Cohesion: 0.24
 Nodes (7): createBotLifecycleIntegrationRouter(), findKiotIdentity(), publicOrder(), callLookup(), fakeRes(), res, tokenMatches()
 
-### Community 234 - "customer-profile.test.js"
+### Community 234 - "getDashboardData"
 Cohesion: 0.18
-Nodes (11): calendarButton(), createPage(), customerRow(), detailButton(), html, openBusiness(), openPages, openProfile() (+3 more)
+Nodes (16): dashboardCoreEntry(), dashboardCoreSourcesNeedBlockingFetch(), dashboardCoreSourcesVersion(), dashboardResultCacheKey(), dashboardResultScope(), dashboardSourceVersion(), expireCoreSources(), fetchDashboardCoreSources() (+8 more)
 
-### Community 235 - "vt-positions-live.test.js"
-Cohesion: 0.13
-Nodes (11): BAD(), code, FakeEventSource, html, json(), nav, publicDir, row() (+3 more)
-
-### Community 237 - "Word64"
-Cohesion: 0.08
-Nodes (8): AES128Cipher, AES256Cipher, AESBaseCipher, io, isArrayEqual(), PDF17, PDF20, Word64
+### Community 237 - "AES256Cipher"
+Cohesion: 0.24
+Nodes (4): AES256Cipher, isArrayEqual(), PDF17, PDF20
 
 ### Community 238 - "createCustomerProfileRepository"
 Cohesion: 0.14
@@ -1330,33 +1338,29 @@ Nodes (26): createCustomerProfileRepository(), addImage(), createNote(), deleteI
 Cohesion: 0.12
 Nodes (14): Checkpoint 1: Bảo mật, Checkpoint 2: Dọn dẹp, Checkpoint 3: Hoàn tất, Câu hỏi còn mở, Danh sách việc, Giai đoạn 1: Vá bảo mật (deploy riêng), Giai đoạn 2: Gỡ API không còn giao diện, Giai đoạn 3: Gỡ trường BE thừa + nhánh FE cũ (+6 more)
 
-### Community 240 - "xn"
-Cohesion: 0.14
-Nodes (5): bn(), dn(), pn(), un(), xn
+### Community 240 - "o"
+Cohesion: 0.05
+Nodes (38): b(), bn(), cn(), ct(), dn(), e(), ei(), fs() (+30 more)
 
 ### Community 241 - "customerInvoiceLinesRefresh.js"
 Cohesion: 0.07
 Nodes (26): Task 2: Mảnh SQL dùng chung + hàm thuần tính tháng/tăng trưởng, BRANCH_CODES, nameKey(), BRANCH_CODES, computeWindow(), FILL_STAGING_INCR_SQL, FILL_STAGING_RETURNS_INCR_SQL, isRefreshDue() (+18 more)
 
 ### Community 244 - "vat-request.js"
-Cohesion: 0.14
-Nodes (26): closeDialog(), columns(), compareBySort(), debounce(), downloadBlob(), editorHtml(), exportExcel(), filterQuery() (+18 more)
-
-### Community 245 - "Kế hoạch: luồng "Đơn Bắc-Nam" cho Vòng đời đơn hàng"
-Cohesion: 0.14
-Nodes (12): parseSheetTimeMs(), Checkpoint A — sau T1–T2, Checkpoint B — hoàn tất, Context, Câu hỏi còn mở, Danh sách việc, Kế hoạch: luồng "Đơn Bắc-Nam" cho Vòng đời đơn hàng, Quyết định đã chốt với người dùng (2026-10-12) (+4 more)
+Cohesion: 0.06
+Nodes (98): 1. Tính năng là gì, 2. Trạng thái hiện tại, 3. Bản đồ file, 4. Giao diện hiện tại (để không làm hỏng khi sửa tiếp), 5. Việc còn lại (theo thứ tự ưu tiên), 6. Cách chạy / kiểm tra, 7. Điều cấm / lưu ý, 8. Prompt gợi ý cho Codex (+90 more)
 
 ### Community 246 - "cashbookRepository.js"
 Cohesion: 0.12
 Nodes (26): buildWhere(), now, BRANCH_KEYS, createRepository(), entries(), filterOptions(), funds(), q() (+18 more)
 
 ### Community 247 - "public/vendor/pdfjs/pdf.min.mjs"
-Cohesion: 0.03
-Nodes (53): addAlphaFilter(), addFilter(), addHCMFilter(), addHighlightHCMFilter(), addLuminosityFilter(), applyBoundingBox(), b, BaseFilterFactory (+45 more)
+Cohesion: 0.04
+Nodes (47): addAlphaFilter(), addFilter(), addHCMFilter(), addHighlightHCMFilter(), addLuminosityFilter(), applyBoundingBox(), b, BaseFilterFactory (+39 more)
 
 ### Community 248 - ".success"
-Cohesion: 0.04
-Nodes (42): applyAssist(), ariaLabel(), Caption, CheckButton, checkDimensions(), ChoiceList, computeBbox(), Corner (+34 more)
+Cohesion: 0.05
+Nodes (41): applyAssist(), ariaLabel(), Caption, CheckButton, checkDimensions(), ChoiceList, computeBbox(), ContentArea (+33 more)
 
 ### Community 249 - "Thiết kế hoàn thiện tách Tài khoản khỏi Nhân sự cho phân quyền và nghỉ phép"
 Cohesion: 0.12
@@ -1387,12 +1391,12 @@ Cohesion: 0.19
 Nodes (19): applySaved(), cellText(), copyColumns(), declaredMinimums(), defaultWidth(), enhance(), fetchPrefs(), headers() (+11 more)
 
 ### Community 258 - "vnDateKey"
-Cohesion: 0.10
-Nodes (32): cycleDateDue(), refreshDebtCycle(), BRANCH_CODES, finalizePenaltyBeforeReset(), finalizePenaltyCycle(), finalizePendingPenaltyCycles(), main(), penalizedCustomers() (+24 more)
+Cohesion: 0.12
+Nodes (24): refreshDebtCycle(), refreshError(), BRANCH_CODES, finalizePenaltyBeforeReset(), finalizePenaltyCycle(), finalizePendingPenaltyCycles(), main(), penalizedCustomers() (+16 more)
 
 ### Community 259 - "businessReportService.js"
-Cohesion: 0.14
-Nodes (28): Constraints, Nhóm sale trong Công nợ — Implementation Plan, Tasks, Nhóm sale trong tab Công nợ, monthLabel(), nameKey(), buildCustomerReport(), buildDetail() (+20 more)
+Cohesion: 0.15
+Nodes (27): Constraints, Nhóm sale trong Công nợ — Implementation Plan, Tasks, Nhóm sale trong tab Công nợ, monthLabel(), nameKey(), buildCustomerReport(), buildDetail() (+19 more)
 
 ### Community 260 - "vat-lookup.js"
 Cohesion: 0.30
@@ -1402,41 +1406,41 @@ Nodes (17): api(), autoGrow(), badge(), bindEvents(), emptyState(), escapeHtml()
 Cohesion: 0.40
 Nodes (14): COST_PAGES, dateParts(), dateText(), key(), monthOfTitle(), norm(), number(), parseCheck() (+6 more)
 
+### Community 262 - "repository.test.js"
+Cohesion: 0.11
+Nodes (8): connectionOver(), many(), runSync(), SEVEN_SHEETS, sheetClient(), fakeRes(), res, sql
+
 ### Community 263 - "vat-draft.js"
 Cohesion: 0.06
 Nodes (90): accountByKey(), accountOptions(), amountWords(), api(), bindEvents(), bindInvoiceDrop(), bindQrResultActions(), calloutHtml() (+82 more)
 
-### Community 264 - "supplierReturnImportService.js"
-Cohesion: 0.19
-Nodes (11): buildColumnIndex(), COMPLETED_STOCK_MOVEMENT_STATUSES, getSupplierReturnImportStatus(), isCompletedStockMovementStatus(), OPTIONAL_COLUMNS, pad2(), parseCellDateKey(), parseSupplierReturnWorkbook() (+3 more)
+### Community 264 - "dashboardPermissionFilter.js"
+Cohesion: 0.16
+Nodes (12): Nghiệm thu Đợt 2, Task 2.1 — Làm mới cache thô theo sự kiện, không theo nhịp 90 s, Task 2.2 — ETag/304 cho `/api/dashboard`, Task 2.3 — Không parse lại ngày của hóa đơn/đặt hàng mỗi lần đổi bộ lọc, ĐỢT 2 — Giảm tải đọc thô và dung lượng truyền (rủi ro thấp, cần kiểm thử kỹ hơn), landingPathFor(), permissionsHave(), ALWAYS_KEPT_KEYS (+4 more)
 
 ### Community 265 - "ChunkedStream"
-Cohesion: 0.08
-Nodes (5): arrayBuffersToBytes(), ChunkedStream, ChunkedStreamManager, MissingDataException, NetworkPdfManager
+Cohesion: 0.16
+Nodes (3): arrayBuffersToBytes(), ChunkedStreamManager, NetworkPdfManager
 
 ### Community 266 - "attach"
 Cohesion: 0.16
 Nodes (17): attach(), cellOf(), clear(), fields(), fillable(), finishFill(), isEditing(), move() (+9 more)
 
 ### Community 267 - "Builder"
-Cohesion: 0.13
-Nodes (3): Builder, UnknownNamespace, XFAParser
+Cohesion: 0.14
+Nodes (4): Builder, Empty, Root, UnknownNamespace
 
 ### Community 269 - "app.js"
-Cohesion: 0.26
-Nodes (12): attach(), changeStatus(), current(), injectSt(), open(), print(), printPick(), refresh() (+4 more)
+Cohesion: 0.24
+Nodes (13): Task 4: Repository + service + API + xuất file, attach(), changeStatus(), current(), injectSt(), open(), print(), printPick() (+5 more)
 
 ### Community 270 - "Pick Assignment Hardening Implementation Plan"
-Cohesion: 0.15
+Cohesion: 0.17
 Nodes (12): Bàn giao thực thi, File map và hợp đồng dùng chung, Global Constraints, Pick Assignment Hardening Implementation Plan, Task 1: Bảo toàn số chiếc nguyên, Task 2: Snapshot vị trí và xác nhận theo phiếu, Task 3: Hoàn tác dữ liệu cũ an toàn, Task 5: Popup phục hồi khi mạng lỗi (+4 more)
 
-### Community 271 - "xt"
-Cohesion: 0.12
-Nodes (3): Cs, os(), xt
-
-### Community 272 - "orderLifecycleRoutes.js"
-Cohesion: 0.17
-Nodes (10): kiotOrderUrl(), normalizeRetailer(), retailerHosts(), LIFECYCLE_BRANCH, authBulk, authExport, authHistory, authLookup (+2 more)
+### Community 272 - ".makeHexColor"
+Cohesion: 0.18
+Nodes (3): FreeHighlightOutline, FreeHighlightOutliner, TilingPattern
 
 ### Community 273 - "Marketing tính độc lập từ Pancake"
 Cohesion: 0.17
@@ -1446,17 +1450,17 @@ Nodes (12): A — Giữ lịch sử đã nhập, độc lập cho dữ liệu m�
 Cohesion: 0.26
 Nodes (13): createRequest(), DATA_DIR, DEFAULT_STORE_PATH, ensureDataDir(), ensureLoaded(), getRequestById(), hasPendingRequest(), initStore() (+5 more)
 
-### Community 275 - "vt-positions-inline-edit.test.js"
-Cohesion: 0.15
-Nodes (9): code, FakeEventSource, html, json(), nav, publicDir, settle(), setup() (+1 more)
+### Community 275 - "lifecycle-pick-invoice.test.js"
+Cohesion: 0.23
+Nodes (7): add(), decimal(), invalid(), key(), makeOrderSnapshot(), text(), dir
 
 ### Community 276 - "l"
-Cohesion: 0.20
-Nodes (17): d(), Dr(), ce(), f(), fr(), g(), gr(), h() (+9 more)
+Cohesion: 0.21
+Nodes (17): d(), ce(), f(), g(), gr(), h(), je(), l() (+9 more)
 
 ### Community 277 - "hrLeaveSelfService.js"
-Cohesion: 0.07
-Nodes (44): Account and Leave Decoupling Implementation Plan, Create, File Structure, Final Verification Gate, Global Constraints, Modify, Task 10: Full regression, documentation, and migration readiness, Task 2: Persist workplace assignment through repository and store (+36 more)
+Cohesion: 0.12
+Nodes (32): Task 6: Account-keyed work schedule administration, createHrLeaveSelfService(), canEdit(), context(), prepare(), preview(), resubmit(), submit() (+24 more)
 
 ### Community 278 - "Danh sách việc: vá đổi email + dọn BE/FE (2026-10-05)"
 Cohesion: 0.12
@@ -1466,9 +1470,9 @@ Nodes (16): Checkpoint 1: Bảo mật, Checkpoint 2: Dọn dẹp, Checkpoint 3: 
 Cohesion: 0.13
 Nodes (9): fakeRes(), res, getRouteHandler(), MANAGER, multipartRequest(), PDF_BYTES, PDF_DOC, routeLayer() (+1 more)
 
-### Community 280 - "Util"
-Cohesion: 0.14
-Nodes (3): getTransformMatrix(), StateManager, Util
+### Community 280 - "ho"
+Cohesion: 0.18
+Nodes (11): getCenterPoint(), ho(), Hs, inRange(), inXRange(), inYRange(), la(), oo() (+3 more)
 
 ### Community 281 - "debtRewardService.js"
 Cohesion: 0.17
@@ -1486,13 +1490,9 @@ Nodes (10): 0. Prompt cho ORCHESTRATOR (agent chính), A. Xác minh dữ liệu 
 Cohesion: 0.18
 Nodes (11): 1. Tạo bot riêng, 2. Áp migration trước bản web mới, 3. Cấu hình và khởi động, 4. Đăng ký webhook bot mới, 5. Cho từng quản lý Start bot, 6. Kiểm tra giao tin và quyết định, Chuẩn bị, Dừng bot quản lý (+3 more)
 
-### Community 285 - "hrEmployeeExportService.js"
-Cohesion: 0.22
-Nodes (13): BASE_HEADERS, BASE_WIDTHS, branchFilePrefix(), buildEmployeeDirectoryWorkbook(), EXTENDED_HEADERS, EXTENDED_WIDTHS, formatDateOnly(), formatDateVN() (+5 more)
-
 ### Community 286 - "vatDraftService.js"
-Cohesion: 0.09
-Nodes (35): readGroup(), toVietnameseWords(), DIGITS, END, parseVietnameseAmountWords(), SCALES, SKIP, AMOUNT_WORDS_RE (+27 more)
+Cohesion: 0.12
+Nodes (28): AMOUNT_WORDS_RE, parseInvoiceAmount(), parseInvoiceText(), SELLER_RE, SERIAL_RE, TOTAL_BEFORE_VAT_RE, TOTAL_PAYMENT_RE, VAT_AMOUNT_RE (+20 more)
 
 ### Community 287 - "daily-project-digest.mjs"
 Cohesion: 0.16
@@ -1526,9 +1526,9 @@ Nodes (5): ALLOWED_MIME, extractAndPersistImages(), MIME_TO_SIGNATURE, RuleDocIm
 Cohesion: 0.12
 Nodes (17): built, byCode, candidates, customers, locations, orders, output, random() (+9 more)
 
-### Community 296 - "hrLeaveBellNotifier.test.js"
-Cohesion: 0.17
-Nodes (6): createLeaveBellNotifier(), notifier(), fakeRes(), res, MIGRATION, useNotificationTestPool()
+### Community 296 - "migrate.integration.test.js"
+Cohesion: 0.18
+Nodes (5): DEFAULT_MIGRATIONS_DIR, EXPECTED_INTEGER_COLUMNS, EXPECTED_TABLES, TEST_DB_IS_PRODUCTION, runMigrations()
 
 ### Community 297 - "stockout30dScanService.js"
 Cohesion: 0.05
@@ -1536,11 +1536,11 @@ Nodes (53): createChildJobSink(), mergeBranchStockoutResults(), runBothBranchesS
 
 ### Community 298 - "businessReportRepository.js"
 Cohesion: 0.08
-Nodes (56): Báo cáo kinh doanh — kế hoạch triển khai, Bản đồ file, Ràng buộc chung (mọi task đều phải tuân theo), Task 1: Migration 0036 + SCHEMA.md, Task 3: SQL theo tháng + job chốt tháng + scheduler, Task 4: Repository + service + API + xuất file, Tự rà soát (đã làm khi viết kế hoạch), Repository / API `server/dashboard/businessReportRepository.js` + `server/routes.js` (+48 more)
+Nodes (54): Báo cáo kinh doanh — kế hoạch triển khai, Bản đồ file, Ràng buộc chung (mọi task đều phải tuân theo), Task 1: Migration 0036 + SCHEMA.md, Task 3: SQL theo tháng + job chốt tháng + scheduler, Tự rà soát (đã làm khi viết kế hoạch), Repository / API `server/dashboard/businessReportRepository.js` + `server/routes.js`, addMonths() (+46 more)
 
 ### Community 299 - "priceAuditRepository.js"
 Cohesion: 0.10
-Nodes (39): ALL_INVOICES_SQL, assertMeasuresReady(), buildCaptureInputs(), codeKey(), createPriceAuditRepository(), readReport(), readRow(), readState() (+31 more)
+Nodes (37): ALL_INVOICES_SQL, assertMeasuresReady(), buildCaptureInputs(), codeKey(), createPriceAuditRepository(), readReport(), readRow(), readState() (+29 more)
 
 ### Community 300 - "customerLevelExcelImport.test.js"
 Cohesion: 0.28
@@ -1568,7 +1568,7 @@ Nodes (7): Global Constraints, Kết quả xác minh ngày 03/10/2026, Task 1 �
 
 ### Community 307 - "scheduler.js"
 Cohesion: 0.06
-Nodes (33): BRANCH_CODES, COLUMNS, computeAgingRows(), refreshDebtAging(), refreshOnce(), requestDebtAgingRefresh(), toColumnArrays(), VALUE_COLUMNS (+25 more)
+Nodes (34): BRANCH_CODES, COLUMNS, computeAgingRows(), refreshDebtAging(), refreshOnce(), requestDebtAgingRefresh(), toColumnArrays(), VALUE_COLUMNS (+26 more)
 
 ### Community 308 - "documentEntityFactory.js"
 Cohesion: 0.26
@@ -1579,8 +1579,8 @@ Cohesion: 0.54
 Nodes (7): appendRow(), getSheetsApi(), getValues(), invalidateCache(), quoteSheetName(), requireSpreadsheetId(), spreadsheetNotConfigured()
 
 ### Community 310 - "PDFPageProxy"
-Cohesion: 0.07
-Nodes (4): InternalRenderTask, PDFPageProxy, RenderTask, StatTimer
+Cohesion: 0.06
+Nodes (6): getXfaPageViewport(), InternalRenderTask, PageViewport, PDFPageProxy, RenderTask, StatTimer
 
 ### Community 311 - "Báo cáo kinh doanh — thiết kế (2026-10-07) (tab cấp 2 trong Báo cáo tổng hợp)"
 Cohesion: 0.17
@@ -1602,9 +1602,9 @@ Nodes (29): ALLOWED_ICON_KEY_SET, ALLOWED_ICON_KEYS, normalizeIconKey(), pruneUn
 Cohesion: 0.25
 Nodes (4): fakeRes(), res, poolPath, queries
 
-### Community 316 - "CURRENT: BẢNG TRẠNG THÁI THỜI GIAN THỰC (REALTIME DASHBOARD)"
-Cohesion: 0.04
-Nodes (84): 1. Tổng quan trạng thái hiện tại (Current Status), 21/10/2026 13:22 — Nạp backend mới để hiển thị Nhóm sale, 21/10/2026 — Nhóm sale tại Công nợ, 23/10/2026 — Ghi chú khác của CONT, CURRENT: BẢNG TRẠNG THÁI THỜI GIAN THỰC (REALTIME DASHBOARD), Cập nhật 13/10/2026 — Công nợ theo lịch thanh toán, Cập nhật 22/10/2026 — Nháp VAT: dán mã hóa đơn là xử lý luôn, bỏ bảng tick chọn, Cập nhật gần nhất (+76 more)
+### Community 316 - "productContainers/repository.js"
+Cohesion: 0.12
+Nodes (19): Task 1: Đọc nguồn thứ bảy và giữ tính nhất quán, INTERVAL_MS, normalizeCode(), numeric(), parseContainerSheet(), SHEET_NAMES, text(), detailCache() (+11 more)
 
 ### Community 317 - "Nghiệp vụ chỉ định vị trí và thực nhặt TOKOSI"
 Cohesion: 0.17
@@ -1627,12 +1627,12 @@ Cohesion: 0.18
 Nodes (10): getSource(), getSourceFields(), allFields(), EXPECTED_SOURCES, FIELD_TYPES, FORBIDDEN_ABBREVIATIONS, FORBIDDEN_ENGLISH_TOKENS, labelOf() (+2 more)
 
 ### Community 324 - "ExclGroup"
-Cohesion: 0.05
-Nodes (11): addHTML(), Area, createLine(), ExclGroup, flushHTML(), getAvailableSpace(), getContainedChildren(), Image (+3 more)
+Cohesion: 0.07
+Nodes (8): addHTML(), createLine(), ExclGroup, flushHTML(), getAvailableSpace(), getContainedChildren(), Subform, SubformSet
 
 ### Community 325 - "vat-request.test.js"
 Cohesion: 0.03
-Nodes (71): Task 5: Permission eligibility and account self-service, canSubmitOwnLeave(), isFeatureForbiddenForRole(), resolvePermissions(), makeApp(), user(), user(), ALLOC_COLUMNS (+63 more)
+Nodes (65): isFeatureForbiddenForRole(), resolvePermissions(), makeApp(), user(), user(), ALLOC_COLUMNS, allocRow(), api() (+57 more)
 
 ### Community 326 - "0040_account_audit_log.sql"
 Cohesion: 0.70
@@ -1643,20 +1643,16 @@ Cohesion: 0.70
 Nodes (4): enhance(), init(), refresh(), sync()
 
 ### Community 335 - "roleChangeRequestRoutes.test.js"
-Cohesion: 0.11
-Nodes (12): columnLetter(), credentials, main(), normalize(), quoteSheet(), requested, audit, lines (+4 more)
+Cohesion: 0.09
+Nodes (13): audit, lines, testDbPath, fakeRes(), res, requestsDbPath, fakeRes(), res (+5 more)
 
 ### Community 341 - "Global Constraints"
 Cohesion: 0.22
 Nodes (8): Customer filters and local price levels Implementation Plan, Global Constraints, Task 1: Local levels and source backup, Task 2: Report profiles, filters, exports and API, Task 3: Immutable invoice capture integration, Task 4: Main table controls, Task 5: Documentation and verification, Verification record — 23/10/2026
 
-### Community 342 - "escapeHtml"
-Cohesion: 0.20
-Nodes (14): canDragRows(), cellHtml(), chatItemHtml(), copyText(), escapeHtml(), fmtDate(), fmtDateTime(), groupHeaderHtml() (+6 more)
-
-### Community 343 - "table-time-sort.test.js"
-Cohesion: 0.14
-Nodes (4): accountHtml, ALL_PRODUCTS_IDS, dashboardHtml, publicDir
+### Community 343 - "pickStatusFlow.test.js"
+Cohesion: 0.21
+Nodes (7): ctx(), fixture(), migration(), MIGRATIONS, poolFor(), QL, warningsOf()
 
 ### Community 344 - "priceAuditService.js"
 Cohesion: 0.20
@@ -1674,17 +1670,13 @@ Nodes (10): Ghi nhớ cột theo tài khoản (23/10/2026), apply(), attachHandl
 Cohesion: 0.39
 Nodes (8): order_pick_assignments, order_pick_assignments_active_uidx, order_pick_assignments_order_idx, order_pick_history, order_pick_history_assignment_idx, order_pick_history_guard(), order_pick_lines, order_pick_lines_position_idx
 
-### Community 349 - "adminUserExportService.js"
-Cohesion: 0.19
-Nodes (8): buildUserWorkbook(), DEFAULT_FIELD_KEYS, featureLabelByKey, FIELD_KEYS, filterUsers(), SOURCE_LABELS, USERS, userSearchText()
+### Community 349 - "Rà soát Chỉ định vị trí — 2026-10-27"
+Cohesion: 0.18
+Nodes (11): 1. [P1] Xác nhận trừ vị trí/quy cách đã đổi nhưng phiếu vẫn ghi thông tin cũ, 2. [P1] Số lượng lẻ được giữ chỗ/ghi đã nhặt nhưng lượng thực trừ bị làm tròn, 3. [P2] Gộp dòng cùng mã làm sai tiền trên phiếu, 4. [P2] Lỗi mạng làm popup mắc vĩnh viễn ở trạng thái bận, Bằng chứng và giới hạn, Các mục đã đối chiếu, chưa thấy lỗi trực tiếp, Kiểm thử của phiên rà soát, Lỗi cần sửa (theo mức nghiêm trọng) (+3 more)
 
 ### Community 350 - "priceAuditSql.js"
 Cohesion: 0.16
 Nodes (7): LEVEL_LABELS, LEVEL_POSITIONS, levelPriceSql(), quantityPriceSql(), REASONS, regionColumnsSql(), WINNING_SOURCES
-
-### Community 351 - "TextLayer"
-Cohesion: 0.14
-Nodes (3): BaseSVGFactory, DOMSVGFactory, DrawLayer
 
 ### Community 352 - "Bộ lọc khách, xuất thông tin chi tiết và level giá nội bộ"
 Cohesion: 0.18
@@ -1711,12 +1703,12 @@ Cohesion: 0.25
 Nodes (3): LOCATIONS, read(), setup()
 
 ### Community 358 - "MessageHandler"
-Cohesion: 0.04
-Nodes (16): AbortException, FormatError, InvalidPDFException, LoopbackPort, MessageHandler, MissingPDFException, PasswordException, PDFNodeStream (+8 more)
+Cohesion: 0.05
+Nodes (16): FormatError, getDocument(), InvalidPDFException, LoopbackPort, m, MessageHandler, MissingPDFException, PasswordException (+8 more)
 
-### Community 359 - "Ghi chú và Tiếp khách lần cuối theo khách hàng"
-Cohesion: 0.15
-Nodes (12): Ghi chú và Tiếp khách lần cuối theo khách hàng, Giao diện, Kiểm chứng, Kỹ thuật, Mục tiêu, Ngoài phạm vi, Quy tắc nghiệp vụ, Cập nhật Chi tiết khách — 23/10/2026 (+4 more)
+### Community 359 - "saleNotifier.test.js"
+Cohesion: 0.07
+Nodes (27): Bản chốt yêu cầu, Các bước, Khi triển khai lên production, ORDER VAT — thông báo chuông cho sale sau khi kế toán sửa — kế hoạch triển khai, Thiết kế, Ghi chú và Tiếp khách lần cuối theo khách hàng, Giao diện, Kiểm chứng (+19 more)
 
 ### Community 360 - "debtScheduleRepository.js"
 Cohesion: 0.18
@@ -1728,23 +1720,23 @@ Nodes (7): 1. DB (migration `0041_hr_employee_status.sql`, số kế tiếp sau 
 
 ### Community 363 - "syncDriver.js"
 Cohesion: 0.05
-Nodes (25): SUPABASE_DB_URL config (fail-soft), GET /api/internal/kiotviet-sync/status, fullSync.integration.test.js (Supabase test project), pg, DEFAULT_MIGRATIONS_DIR, EXPECTED_INTEGER_COLUMNS, EXPECTED_TABLES, TEST_DB_IS_PRODUCTION (+17 more)
+Nodes (21): SUPABASE_DB_URL config (fail-soft), GET /api/internal/kiotviet-sync/status, fullSync.integration.test.js (Supabase test project), createCheckpointRepository(), repository, assertChildReplacement(), assertSimpleEntity(), fakeClient() (+13 more)
 
 ### Community 364 - "vt-positions-history.test.js"
 Cohesion: 0.23
 Nodes (11): code, ENTRIES, html, json(), nav, openHistory(), publicDir, row() (+3 more)
 
-### Community 366 - "hrRuleDocumentNotifier.js"
-Cohesion: 0.18
-Nodes (14): 1. "Đã sửa" cho dòng có cảnh báo, 2. Lịch sử cho lượt trừ tồn tự động theo đơn, 3. Xóa lịch sử, Kiểm thử, Ngoài phạm vi, VT Hà Nội / VT Sài Gòn: "Đã sửa", lịch sử tự động theo mã đơn, xóa lịch sử, createHrRuleDocumentNotifier(), actorName() (+6 more)
+### Community 366 - "VT Hà Nội / VT Sài Gòn: "Đã sửa", lịch sử tự động theo mã đơn, xóa lịch sử"
+Cohesion: 0.29
+Nodes (6): 1. "Đã sửa" cho dòng có cảnh báo, 2. Lịch sử cho lượt trừ tồn tự động theo đơn, 3. Xóa lịch sử, Kiểm thử, Ngoài phạm vi, VT Hà Nội / VT Sài Gòn: "Đã sửa", lịch sử tự động theo mã đơn, xóa lịch sử
 
 ### Community 367 - "Tiến độ triển khai — tasks/2026-10-09-pancake-marketing/plan.md"
 Cohesion: 0.25
 Nodes (7): Bằng chứng/private artifacts, Không chạy lại công việc đã hoàn tất, Nhật ký rà soát, Tiến độ triển khai — tasks/2026-10-09-pancake-marketing/plan.md, Tiếp tục 09/10: lưu DB và giữ nguồn doanh số, Tiếp tục 12/10/2026, Đang thực hiện
 
 ### Community 374 - "XhtmlObject"
-Cohesion: 0.05
-Nodes (14): B, Body, br, Html, _i, li, Ol, P (+6 more)
+Cohesion: 0.03
+Nodes (23): a, B, Body, br, Button, readBits(), EvalState, fixURL() (+15 more)
 
 ### Community 376 - "0051_debt_penalty_ledger.sql"
 Cohesion: 0.67
@@ -1783,24 +1775,20 @@ Cohesion: 0.17
 Nodes (3): Hợp đồng dữ liệu (HTML lưu trong DB), MIGRATIONS, table()
 
 ### Community 390 - "vietqr.js"
-Cohesion: 0.25
+Cohesion: 0.22
 Nodes (13): pyQuote(), accountsByKey(), addLine(), buildVietqrImageUrl(), computeSourceAmounts(), computeTotalAmount(), emptyAmount(), formatAccountLabel() (+5 more)
 
 ### Community 391 - "vatRequests/repository.js"
-Cohesion: 0.08
-Nodes (10): Cập nhật 21/10/2026 — Nhóm sale trong Công nợ, Bản chốt yêu cầu, Bổ sung 22/10/2026 — kéo nhiều dòng một lúc (đã làm), Khi triển khai lên production, ORDER VAT — kéo dòng lên/xuống (thứ tự ưu tiên chung) — kế hoạch triển khai, Thiết kế, createMatcher(), exactFraction() (+2 more)
+Cohesion: 0.07
+Nodes (15): Bản chốt yêu cầu, Bổ sung 22/10/2026 — kéo nhiều dòng một lúc (đã làm), Khi triển khai lên production, ORDER VAT — kéo dòng lên/xuống (thứ tự ưu tiên chung) — kế hoạch triển khai, Thiết kế, filter(), fold(), matches() (+7 more)
 
 ### Community 392 - "customerDebtReportRefresh.js"
 Cohesion: 0.29
 Nodes (5): getConfiguredBranches(), KEYS, main(), refreshCustomerDebtReports(), startCustomerDebtReportRefreshSchedule()
 
-### Community 393 - "listenToPostgres"
-Cohesion: 0.83
-Nodes (4): listenToPostgres(), connect(), onNotification(), scheduleRetry()
-
-### Community 395 - "ref_node_assert"
-Cohesion: 0.02
-Nodes (35): freshRepository(), USERS, createCustomerInvoiceLinesRepository(), CUSTOMERS, calls, repositoryPath, calls, repositoryPath (+27 more)
+### Community 393 - "2. Nguyên tắc kiến trúc & Quy tắc bất biến (Do's & Don'ts)"
+Cohesion: 0.18
+Nodes (11): 14/10/2026 — Thưởng/phạt sale Công nợ, 1. Hồ sơ dự án (Project Profile), 2.1. Quy ước cơ sở & dữ liệu, 2.2. Tài khoản, Bảo mật & Phân quyền, 2.3. Nhân sự & Nghỉ phép, 2.5. Vòng đời đơn hàng & Khung chi tiết dùng chung, 2. Nguyên tắc kiến trúc & Quy tắc bất biến (Do's & Don'ts), 3. Bản đồ Migration Cơ sở dữ liệu (0001 – 0086) (+3 more)
 
 ### Community 396 - "Ghi nhớ độ rộng cột và cột hiển thị theo tài khoản"
 Cohesion: 0.18
@@ -1823,12 +1811,12 @@ Cohesion: 0.29
 Nodes (6): CSS, Cải tiến UI theo ảnh demo đã duyệt (26/10/2026), Giao diện, Hiện trạng, Kiểm thử, Sửa bảng trong trình soạn tài liệu quy định (2026-10-26)
 
 ### Community 403 - "inventory.js"
-Cohesion: 0.18
-Nodes (15): 3. Hành động tiếp theo cần thực hiện (Next Steps & Operations), applyPick(), available(), availableRaw(), conflicts(), ledgerRecord(), log(), onHand() (+7 more)
+Cohesion: 0.20
+Nodes (13): applyPick(), available(), availableRaw(), conflicts(), ledgerRecord(), log(), onHand(), open() (+5 more)
 
 ### Community 404 - "SimpleXMLParser"
 Cohesion: 0.11
-Nodes (3): DatasetXMLParser, SimpleDOMNode, SimpleXMLParser
+Nodes (4): DatasetXMLParser, encodeToXmlString(), SimpleDOMNode, SimpleXMLParser
 
 ### Community 406 - "marketingRepository.test.js"
 Cohesion: 0.20
@@ -1838,13 +1826,13 @@ Nodes (7): actor, apiRow(), independentCoverage, migrationPath, monthly, reposit
 Cohesion: 0.40
 Nodes (8): compareFieldSets(), compareOldVsRecentInvoice(), estimateAllEntities(), estimateStorageMb(), fetchSampleAndTotal(), main(), parseArgs(), STOP_AFTER_FIRST_PAGE
 
-### Community 408 - "leave-calendar.test.js"
-Cohesion: 0.20
-Nodes (4): fakeUser(), MODULE_PATH, moduleSource, mountInline()
+### Community 408 - "amountWords.js"
+Cohesion: 0.25
+Nodes (7): readGroup(), toVietnameseWords(), DIGITS, END, parseVietnameseAmountWords(), SCALES, SKIP
 
-### Community 409 - "lookupSource.js"
+### Community 409 - "vatDraftRoutes.js"
 Cohesion: 0.07
-Nodes (27): createTtlSnapshotCache(), parseCsv(), createInvoiceVisionClient(), callModel(), extractInvoice(), parseModelJson(), PROMPT, RETRYABLE (+19 more)
+Nodes (35): Cập nhật 22/10/2026 — Nháp VAT: dán mã hóa đơn là xử lý luôn, bỏ bảng tick chọn, badRequest(), cleanCode(), getInvoiceDetail(), getOrderDetail(), mapLine(), n(), notFound() (+27 more)
 
 ### Community 410 - "0029_hr_manager_telegram.sql"
 Cohesion: 0.22
@@ -1859,28 +1847,32 @@ Cohesion: 0.40
 Nodes (8): iso(), isValidDate(), latestArrived(), nearestContainer(), parseEta(), scheduleLabel(), NOW, vietnamToday()
 
 ### Community 413 - "expectedRepository.js"
-Cohesion: 0.33
-Nodes (10): buildFilters(), createExpectedRepository(), getExpected(), readState(), empty(), getExpected(), isMissingColumn(), isMissingTable() (+2 more)
+Cohesion: 0.16
+Nodes (13): migration(), MIGRATIONS, setup(), buildFilters(), createExpectedRepository(), getExpected(), readState(), empty() (+5 more)
 
 ### Community 414 - "BỘ LUẬT VẬN HÀNH HỆ THỐNG (CLAUDE CODE / AI ASSISTANT GUIDELINES)"
-Cohesion: 0.25
+Cohesion: 0.33
 Nodes (6): 0. Nguyên tắc tiên quyết: Tham khảo mã nguồn mở trước khi làm, 1. Khởi động phiên làm việc (Startup Checklist), 2. Tiêu chuẩn mã nguồn & Quy tắc lập trình (Coding Standards), 3. Quy trình cập nhật đồng bộ (Sync & Documentation Rules), 4. Kiểm tra trước khi kết thúc (Verification & Teardown), BỘ LUẬT VẬN HÀNH HỆ THỐNG (CLAUDE CODE / AI ASSISTANT GUIDELINES)
 
 ### Community 416 - "featureRegistry.js"
 Cohesion: 0.02
-Nodes (91): Phân quyền, ADMIN_GRANTS, manager, otherManager, seniorDefaultAdmin, seniorOwner, ALL_ROLES, ALWAYS_ON_KEYS (+83 more)
+Nodes (90): Phân quyền, ADMIN_GRANTS, manager, otherManager, seniorDefaultAdmin, seniorOwner, ALL_ROLES, ALWAYS_ON_KEYS (+82 more)
+
+### Community 417 - "assert"
+Cohesion: 0.05
+Nodes (7): AbortException, assert(), PDFDataTransportStream, PDFDataTransportStreamRangeReader, PDFDataTransportStreamReader, PDFNodeStream, PDFNodeStreamFsFullReader
 
 ### Community 418 - "normalization.js"
-Cohesion: 0.10
-Nodes (39): addGopVatMappingFallbacks(), addIssue(), allocateInvoiceSources(), allocateOneProduct(), allocateWithinSource(), buildLine(), buildMappingIndexes(), buildStockIndex() (+31 more)
+Cohesion: 0.09
+Nodes (54): addGopVatMappingFallbacks(), addIssue(), allocateInvoiceSources(), allocateOneProduct(), allocateWithinSource(), buildLine(), buildMappingIndexes(), buildStockIndex() (+46 more)
 
 ### Community 420 - "Todo: Tính sẵn báo cáo trong DB (2026-10-19)"
 Cohesion: 0.20
 Nodes (8): Checkpoint 1, Checkpoint 2, Chưa đo được (cần deploy + lượt job đầu), Todo: Tính sẵn báo cáo trong DB (2026-10-19), Việc chỉ bạn làm được, Wave 1 (song song), Wave 2, Wave 3
 
 ### Community 421 - "Annotation"
-Cohesion: 0.08
-Nodes (4): Annotation, AnnotationBorderStyle, lookupNormalRect(), PopupAnnotation
+Cohesion: 0.06
+Nodes (6): Annotation, AnnotationBorderStyle, getTransformMatrix(), lookupNormalRect(), PopupAnnotation, Util
 
 ### Community 422 - "Datasets"
 Cohesion: 0.20
@@ -1890,9 +1882,9 @@ Nodes (3): Datasets, datasets_Data, DatasetsNamespace
 Cohesion: 0.19
 Nodes (6): localSortFixture, prefsContext(), setup(), sourcePath, state(), stretchContext()
 
-### Community 425 - "normalization.js"
-Cohesion: 0.12
-Nodes (25): calculateAccountingNameScore(), indelRatio(), lcsLength(), normalizeCached, normalizeName(), numberTokenBonusPenalty(), sortTokens, stringScore() (+17 more)
+### Community 425 - "suggestions.js"
+Cohesion: 0.52
+Nodes (6): createVatRequestSuggestions(), customers(), prices(), matchRank(), rankCustomerSuggestions(), searchKey()
 
 ### Community 426 - "buildRecentStockoutResultDataset"
 Cohesion: 0.39
@@ -1902,29 +1894,25 @@ Nodes (9): Task 4: Export the currently searched dataset, buildCustomerProductRe
 Cohesion: 0.29
 Nodes (3): dropdownMinimums(), grid(), numberMinimums()
 
-### Community 429 - "CURRENT.md"
-Cohesion: 0.08
-Nodes (25): BRD Dashboard GoogleSheets v1.9, SRS Dashboard GoogleSheets v2.2/2.3, BPMN Dashboard GoogleSheets v2.0, Implementation Plan v2.3, Cá nhân hủy đơn — 26/10/2026, Nghỉ phép và Quản lý người dùng — 05/10/2026, Triển khai và nghiệm thu, Các bước triển khai và xác minh (+17 more)
+### Community 429 - "telegram-manager-leave-setup.md"
+Cohesion: 0.14
+Nodes (11): Cá nhân hủy đơn — 26/10/2026, Nghỉ phép và Quản lý người dùng — 05/10/2026, Triển khai và nghiệm thu, Các bước triển khai và xác minh, Kế hoạch bot Telegram quản lý nghỉ phép, Mục tiêu và phạm vi đã duyệt, Thiết kế, Điều kiện vận hành và quay lại (+3 more)
 
 ### Community 430 - "Leave registration deadlines"
 Cohesion: 0.25
 Nodes (7): API, External employee bot, Leave registration deadlines, Rollout sequence (requires separate production authorization), Rule, Storage and compatibility, Verification
 
-### Community 431 - "ref_node_fs"
+### Community 431 - "ref_node_assert"
 Cohesion: 0.02
-Nodes (58): @electric-sql/pglite, handler(), layer(), manager, now, queries, versionedFixture(), sql (+50 more)
+Nodes (75): @electric-sql/pglite, freshRepository(), USERS, now, queries, calls, repositoryPath, versionedFixture() (+67 more)
 
 ### Community 433 - "branch-column-tables.test.js"
 Cohesion: 0.29
 Nodes (5): createPage(), html, payload(), publicDir, TABLES_WITH_BRANCH
 
-### Community 434 - "File Structure"
-Cohesion: 0.25
-Nodes (7): File Structure, Global Constraints, Task 1: Phát tín hiệu sau COMMIT, Task 2: Route SSE `/api/stock-positions/events`, Task 3: Client đối chiếu bảng tại chỗ + tải nền, Task 5: Kiểm thử tổng, xem thật trên trình duyệt, tài liệu, graphify, VT Positions Realtime (SSE) Implementation Plan
-
-### Community 436 - "rs"
-Cohesion: 0.08
-Nodes (10): prepare(), replace(), ct(), ge(), ls, rs, vs(), we() (+2 more)
+### Community 434 - "Kế hoạch: Vòng đời đơn hàng hợp nhất đơn Phiếu tạm Kiot + "Giá trị có bán" + công thức Tồn có thể bán + phân quyền"
+Cohesion: 0.20
+Nodes (9): Bằng chứng dữ liệu thật (chỉ đọc, 01/10/2026), Context, Docs / sau khi duyệt, Kiểm chứng, Kế hoạch: Vòng đời đơn hàng hợp nhất đơn Phiếu tạm Kiot + "Giá trị có bán" + công thức Tồn có thể bán + phân quyền, Quyết định đã chốt với người dùng, Rủi ro & điểm tôi tự quyết (bạn có thể phản đối), Thứ tự & commit (mỗi gói 1 commit riêng; KHÔNG tự commit khi chưa được yêu cầu) (+1 more)
 
 ### Community 437 - "pick/print-tools.js"
 Cohesion: 0.43
@@ -1951,24 +1939,28 @@ Cohesion: 0.50
 Nodes (4): hr_leave_department_snapshot(), hr_leave_requests_department_pending_idx, hr_manager_telegram_cards, hr_manager_telegram_cards_request_idx
 
 ### Community 445 - "documentDetailRoutes.test.js"
-Cohesion: 0.47
-Nodes (5): call(), calls, fakeRes(), repositoryPath, routeLayer()
+Cohesion: 0.28
+Nodes (6): call(), calls, fakeRes(), repositoryPath, routeLayer(), settleDebtRewards()
 
 ### Community 446 - "pick/invoice.js"
 Cohesion: 0.70
 Nodes (4): dataUri(), fetchText(), loadAssets(), show()
 
-### Community 447 - "expectedRefresh.test.js"
-Cohesion: 0.29
-Nodes (3): migration(), MIGRATIONS, setup()
+### Community 447 - "Thiết kế: tab "VT Hà Nội" và "VT Sài Gòn" (cơ sở dữ liệu vị trí hàng mới)"
+Cohesion: 0.20
+Nodes (9): 3. Bảng, 4. Sửa trực tiếp (cần `stockLocationsV2.edit`), 5. Import file, 6. Lịch sử cập nhật, 7. Kiểm thử và tài liệu, Giả định cần theo dõi, Mục tiêu, Nằm ngoài phạm vi (+1 more)
 
 ### Community 448 - "jsdom"
 Cohesion: 0.02
-Nodes (40): jsdom, dom, errors, html, vc, STOCKTAKE, html, page() (+32 more)
+Nodes (35): jsdom, dom, errors, html, vc, source, html, page() (+27 more)
+
+### Community 449 - "allocation.test.js"
+Cohesion: 0.22
+Nodes (5): buildUnifiedColumns(), config, mapping(), mappings(), run()
 
 ### Community 454 - "ColorSpace"
-Cohesion: 0.10
-Nodes (4): AlternateCS, ColorSpace, IndexedCS, PatternCS
+Cohesion: 0.05
+Nodes (7): AlternateCS, ColorSpace, DeviceCmykCS, DeviceRgbaCS, DeviceRgbCS, IndexedCS, PatternCS
 
 ### Community 458 - "profile-email-change.test.js"
 Cohesion: 0.32
@@ -1998,9 +1990,9 @@ Nodes (4): navGroupHtml(), navIcon(), navItemHtml(), navTopLinkHtml()
 Cohesion: 0.40
 Nodes (5): Checklist triển khai Pancake Marketing, T1–T3 — Kết nối, lưu DB và nhập lịch sử, T4 — Đồng bộ nền, T5–T6 — Báo cáo DB và nhập BC tháng, T7 — Nghiệm thu và tích hợp
 
-### Community 469 - "orderLifecycleSheetsClient.js"
-Cohesion: 0.21
-Nodes (12): googleapis, googleapis@^140.0.1, columnIndexToLetter(), getSheetsApi(), HEADERS, main(), getSheetsApi(), getValues() (+4 more)
+### Community 469 - "googleapis"
+Cohesion: 0.38
+Nodes (6): googleapis, googleapis@^140.0.1, columnIndexToLetter(), getSheetsApi(), HEADERS, main()
 
 ### Community 470 - "orderLifecycleQuery.test.js"
 Cohesion: 0.60
@@ -2010,9 +2002,9 @@ Nodes (3): row(), SAMPLE(), summaryRow()
 Cohesion: 0.53
 Nodes (4): startMemoryMonitor(), tick(), setup(), toMb()
 
-### Community 473 - "stockout-branch-column.test.js"
-Cohesion: 0.25
-Nodes (4): indexPath, NINETY_BOTH, publicDir, RECENT_BOTH
+### Community 473 - "Kế hoạch tối ưu tốc độ "Báo cáo tổng hợp" (`/api/dashboard`)"
+Cohesion: 0.22
+Nodes (8): Không làm (đã đo, không đáng), Kế hoạch tối ưu tốc độ "Báo cáo tổng hợp" (`/api/dashboard`), Nghiệm thu Đợt 1, Phụ lục — Script đo lại, Task 1.2 — Gộp request trùng khóa (single-flight), Task 1.3 — Client: bỏ response cũ khi đổi bộ lọc nhanh + giãn nhịp gọi sau SSE, Task 1.4 — Nạp sẵn cache lúc khởi động (prewarm), ĐỢT 1 — Sửa nhỏ, rủi ro thấp (ưu tiên làm ngay)
 
 ### Community 474 - "userTablePrefs/repository.js"
 Cohesion: 0.46
@@ -2022,13 +2014,13 @@ Nodes (6): assertTarget(), badRequest(), MODES, sanitizePrefs(), savePrefs(), va
 Cohesion: 0.28
 Nodes (7): hr_leave_schedule_version(), hr_leave_work_schedules, hr_leave_department_snapshot(), hr_leave_requests_user_pending_idx, hr_leave_submission_snapshot(), hr_leave_work_schedules_employee_date_idx, hr_leave_work_schedules_user_date_idx
 
-### Community 476 - "BỘ LUẬT VẬN HÀNH HỆ THỐNG (CLAUDE CODE / AI ASSISTANT GUIDELINES)"
-Cohesion: 0.17
-Nodes (10): Editable Table Sorting Implementation Plan, Global Constraints, Task 1: Đọc đúng giá trị và bổ sung sort còn thiếu, Task 2: Căn giữa tiêu đề bảng và nghiệm thu, Bằng chứng hiện có, Hành vi đã duyệt, Mục tiêu, Phạm vi kỹ thuật (+2 more)
+### Community 476 - "CURRENT.md"
+Cohesion: 0.08
+Nodes (17): Dropdown Nguồn — kế hoạch triển khai, Editable Table Sorting Implementation Plan, Global Constraints, Task 1: Đọc đúng giá trị và bổ sung sort còn thiếu, Task 2: Căn giữa tiêu đề bảng và nghiệm thu, Checkpoint cuối (do luồng điều phối làm, không giao agent), Hiện trạng (đã có từ commit 812f6e25 → 0dc6e218), Kế hoạch: Trạng thái bốc hàng + phiếu in mới (2026-10-27) (+9 more)
 
 ### Community 477 - "marketingRevenueView.test.js"
-Cohesion: 0.10
-Nodes (23): createRevenueProvider(), ramLookup(), viewLookup(), lookupFrom(), resolveMonthKey(), unavailable(), vnMonthKey(), CUSTOMERS (+15 more)
+Cohesion: 0.16
+Nodes (13): createRevenueProvider(), ramLookup(), viewLookup(), lookupFrom(), resolveMonthKey(), unavailable(), vnMonthKey(), CUSTOMERS (+5 more)
 
 ### Community 478 - "returns"
 Cohesion: 0.38
@@ -2038,16 +2030,16 @@ Nodes (5): idx_returns_modified, return_details, returns, idx_invoices_synced_at
 Cohesion: 0.33
 Nodes (11): count(), finish(), tick(), enter(), play(), reduce(), scan(), schedule() (+3 more)
 
-### Community 480 - "6. Bước 3 — Backend `server/cashbook/`"
-Cohesion: 0.29
-Nodes (7): 6. Bước 3 — Backend `server/cashbook/`, API, Cache, Công thức (D2, D5), Cột sổ chi tiết, Quy ước "quỹ", Tham số bộ lọc (dùng chung summary/entries/export)
+### Community 480 - "ye"
+Cohesion: 0.31
+Nodes (9): hr(), pr(), rr(), ye(), H(), I(), L(), P() (+1 more)
 
 ### Community 481 - "lookupSource.js"
-Cohesion: 0.11
-Nodes (34): normalizeCode(), normalizeCodeForMatch(), buildColMap(), columnLetterToIndex(), createMasterDataSource(), fetchSheetCsv(), fetchSheetRecords(), isNa() (+26 more)
+Cohesion: 0.06
+Nodes (50): createTtlSnapshotCache(), parseCsv(), normalizeCodeForMatch(), buildColMap(), columnLetterToIndex(), createMasterDataSource(), fetchSheetCsv(), fetchSheetRecords() (+42 more)
 
 ### Community 482 - "Tự động hóa báo cáo Marketing từ Pancake"
-Cohesion: 0.25
+Cohesion: 0.29
 Nodes (7): 09/10/2026 — Cấu hình token và kiểm tra API có xác thực, 09/10/2026 — Kiểm tra ban đầu, Bằng chứng xác minh Pancake Marketing, Kiểm tra tiếp tục 12/10/2026, Kết quả đối soát toàn bộ — T1 đạt, PostgreSQL — T2 đã áp dụng, Điều kiện để hoàn tất T1
 
 ### Community 483 - "Tự động hóa báo cáo Marketing từ Pancake"
@@ -2087,8 +2079,8 @@ Cohesion: 0.50
 Nodes (3): hr_rule_documents, hr_rule_document_images, idx_hr_rule_document_images_document_id
 
 ### Community 493 - "pickKiotData.js"
-Cohesion: 0.11
-Nodes (18): codeKey(), createSellerPhoneLookup(), foldText(), kiotOutcome(), loadSellerPhone(), readKiotQuantities(), readKiotStatuses(), readSellerPhone (+10 more)
+Cohesion: 0.24
+Nodes (11): codeKey(), createSellerPhoneLookup(), foldText(), kiotOutcome(), loadSellerPhone(), readKiotQuantities(), readKiotStatuses(), readSellerPhone (+3 more)
 
 ### Community 494 - "print-tools.js"
 Cohesion: 0.50
@@ -2110,13 +2102,13 @@ Nodes (3): apply(), rows, toList()
 Cohesion: 0.33
 Nodes (4): pushChange(), saveHistory(), setText(), specText()
 
-### Community 500 - "vatLookupRoutes.test.js"
-Cohesion: 0.22
-Nodes (15): 6. Cách chạy / kiểm tra, cell(), insertRows(), main(), mapOrderVatRows(), parseStatus(), parseVnDate(), parseVnNumber() (+7 more)
+### Community 500 - "createKiotOrdersRepository"
+Cohesion: 0.39
+Nodes (8): createKiotOrdersRepository(), inScope(), queryOrders(), readOrders(), refresh(), toMs(), view(), repoFor()
 
-### Community 501 - "no-3d-effects.test.js"
-Cohesion: 0.29
-Nodes (3): PAGES, publicDir, sharedCssPath
+### Community 501 - "priceAuditMigration.test.js"
+Cohesion: 0.13
+Nodes (7): dir, newDb(), SHEET_SQL, SQL, PAGES, publicDir, sharedCssPath
 
 ### Community 507 - "0080_customer_notes.sql"
 Cohesion: 0.33
@@ -2131,7 +2123,7 @@ Cohesion: 0.29
 Nodes (6): Nhóm tài khoản — 08/10/2026, Sửa sai số và đối soát — 07/10/2026, Thiết lập Sổ quỹ, Trước khi đưa lên môi trường thật, Tồn quỹ (từ 06/10/2026, bỏ chốt số dư và nhập tên ngân hàng), Tự động cập nhật không cần F5 — 07/10/2026
 
 ### Community 510 - "Bổ sung “Hàng dự kiến” vào Báo cáo hàng hóa"
-Cohesion: 0.20
+Cohesion: 0.22
 Nodes (9): 1. Mục tiêu và hợp đồng nghiệp vụ, 2. Parser và snapshot, 3. API và giao diện, 4. Thực hiện và kiểm chứng, 5. Prompt triển khai cụ thể, 6. Bằng chứng kiểm chứng — 15/10/2026, 7. Áp migration DB đích — 15/10/2026, 16:26 (Asia/Ho_Chi_Minh), 8. Kích hoạt và đồng bộ DB thật — 15/10/2026, 16:51 VN (+1 more)
 
 ### Community 512 - "0047_debt_schedule_report.sql"
@@ -2139,8 +2131,8 @@ Cohesion: 0.27
 Nodes (10): debt_cycle_amounts, debt_cycle_customers, debt_cycle_feedback, debt_cycle_runs, debt_feedback_history, debt_feedback_history_cycle_idx, debt_payment_schedule_log, debt_payment_schedule_log_created_idx (+2 more)
 
 ### Community 513 - "o"
-Cohesion: 0.04
-Nodes (32): a(), aa(), Ae(), afterDatasetsUpdate(), bo, buildLookupTable(), configure(), determineDataLimits() (+24 more)
+Cohesion: 0.05
+Nodes (21): a(), aa(), Ae(), afterDatasetsUpdate(), bo, determineDataLimits(), et(), getValueForPixel() (+13 more)
 
 ### Community 514 - "0076_vat_requests.sql"
 Cohesion: 0.31
@@ -2162,21 +2154,29 @@ Nodes (6): Ghi nhớ cột theo tài khoản — Kế hoạch triển khai, Glob
 Cohesion: 0.29
 Nodes (6): Bàn giao, Cập nhật Chi tiết khách Implementation Plan, Global Constraints, Task 1 — Dữ liệu và quyền (hoàn tất), Task 2 — Giao diện và hành vi (hoàn tất), Task 3 — Kiểm chứng và tài liệu (hoàn tất)
 
+### Community 520 - "audit-sheet-columns.js"
+Cohesion: 0.36
+Nodes (6): columnLetter(), credentials, main(), normalize(), quoteSheet(), requested
+
 ### Community 522 - "Global Constraints"
 Cohesion: 0.40
 Nodes (4): GitHub Actions Daily Project Digest Implementation Plan, Global Constraints, Task 1: Build the no-API activity digest, Task 2: Schedule, verify, commit, and activate
 
-### Community 527 - "eo"
-Cohesion: 0.09
-Nodes (8): Bi(), Ci(), Do(), eo(), Fi(), Oe(), zi(), Type1CharString
+### Community 526 - "Page Design Notes — `shipment/lifecycle/index.html` (Vòng Đời Đơn Hàng)"
+Cohesion: 0.25
+Nodes (7): 6 Cảnh Báo (warnings), 6 Luồng Đơn Hàng (flows), Component đặc thù của trang, Nợ thiết kế riêng của trang, Page Design Notes — `shipment/lifecycle/index.html` (Vòng Đời Đơn Hàng), Quy tắc lọc đơn, Vai trò trang
+
+### Community 527 - "no"
+Cohesion: 0.06
+Nodes (14): buildLookupTable(), ca(), configure(), Fo(), _generate(), _getTimestampsForTable(), ha, initOffsets() (+6 more)
 
 ### Community 528 - "TKS Dashboard README"
-Cohesion: 0.11
-Nodes (14): Shared UI motion implementation plan, Công việc, Nghiệm thu, Own Leave Cancellation Implementation Plan, Vận hành, Print columns implementation plan, Cá nhân hủy và xóa vĩnh viễn đơn nghỉ phép, Giao dịch và đồng bộ (+6 more)
+Cohesion: 0.14
+Nodes (14): BRD Dashboard GoogleSheets v1.9, SRS Dashboard GoogleSheets v2.2/2.3, FR-06: Apps Script Đồng bộ KiotViet tự động, BPMN Dashboard GoogleSheets v2.0, Luồng A: Đồng bộ KiotViet -> Google Sheets, Implementation Plan v2.3, Shared UI motion implementation plan, Print columns implementation plan (+6 more)
 
 ### Community 530 - "stockPositionsImport.js"
-Cohesion: 0.43
-Nodes (7): COLUMNS, dateText(), fold(), importError(), pad2(), parseImportWorkbook(), plainText()
+Cohesion: 0.31
+Nodes (8): xlsx, COLUMNS, dateText(), fold(), importError(), pad2(), parseImportWorkbook(), plainText()
 
 ### Community 534 - "contactChangeService.test.js"
 Cohesion: 0.40
@@ -2186,37 +2186,41 @@ Nodes (4): empA, empB, fixture(), hrEmployee
 Cohesion: 0.39
 Nodes (7): Phase 0 Plan: Dọn dẹp & chuẩn bị hạ tầng, Stub webhook endpoint POST /api/kiotviet/webhook, Phase 1 Plan: Schema Postgres, Phase 2 Plan: Engine đồng bộ Webhook+Polling, Phase 3 Plan: Backfill dữ liệu lịch sử, Phase 4 Plan: Kiểm thử & xác minh, Roadmap Supabase KiotViet Sync
 
+### Community 536 - "info"
+Cohesion: 0.29
+Nodes (3): CalGrayCS, CCITTFaxDecoder, info()
+
 ### Community 537 - "stockPositionsService.test.js"
-Cohesion: 0.24
-Nodes (8): ctx(), fixture(), HEADER, migration(), MIGRATIONS, poolFor(), QL, seedImportRows()
+Cohesion: 0.18
+Nodes (9): ctx(), fixture(), HEADER, migration(), MIGRATIONS, OUT_HEADER, poolFor(), QL (+1 more)
 
 ### Community 538 - "getPool"
-Cohesion: 0.06
-Nodes (51): 2. Backend, attachBranch(), CO_SO_FROM_DB, CO_SO_TO_DB, coSoFromDb(), coSoToDb(), insertUser(), normalizeDepartments() (+43 more)
+Cohesion: 0.07
+Nodes (48): 2. Backend, attachBranch(), CO_SO_FROM_DB, CO_SO_TO_DB, coSoFromDb(), coSoToDb(), insertUser(), normalizeDepartments() (+40 more)
 
 ### Community 542 - "quantity"
 Cohesion: 0.43
 Nodes (3): quantity(), suggest(), validate()
 
-### Community 543 - "kiotvietSyncStatusRoutes.js"
-Cohesion: 0.29
-Nodes (9): BRANCHES, BUSINESS_TABLES, createKiotVietSyncStatusRouter(), loadBackfillProgress(), loadCounts(), loadSamples(), router, SAMPLE_EXCLUDED_COLUMNS (+1 more)
+### Community 543 - "Báo cáo kinh doanh — lọc team, gộp khách theo tên, bố cục mới (2026-10-07)"
+Cohesion: 0.25
+Nodes (7): Báo cáo kinh doanh — lọc team, gộp khách theo tên, bố cục mới (2026-10-07), Dữ liệu đã kiểm chứng (2026-10-07, DB thật), Kiểm chứng, Quyết định, Việc sau deploy, Xử lý lỗi, Yêu cầu của người dùng
 
 ### Community 544 - "Page Design Notes — `/reports/` (Trang Báo Cáo Tổng Hợp)"
 Cohesion: 0.09
-Nodes (21): 2. Các đầu việc vừa hoàn thành (Recently Completed — Tháng 10/2026), Component đặc thù của trang, Nợ thiết kế riêng của trang (ưu tiên xử lý khi chạm vào file này), Page Design Notes — `account/index.html` (Tài Khoản & Quản Trị Người Dùng), Tab `#history` — Lịch sử chỉnh sửa tài khoản (Migration `0040`), Vai trò trang, Bảng dữ liệu báo cáo, Bảng thưởng/phạt sale (xem `pages/index.md` — Tab Công nợ) (+13 more)
+Nodes (20): Component đặc thù của trang, Nợ thiết kế riêng của trang (ưu tiên xử lý khi chạm vào file này), Page Design Notes — `account/index.html` (Tài Khoản & Quản Trị Người Dùng), Tab `#history` — Lịch sử chỉnh sửa tài khoản (Migration `0040`), Vai trò trang, Bảng dữ liệu báo cáo, Bảng thưởng/phạt sale (xem `pages/index.md` — Tab Công nợ), Bộ lọc active marker (+12 more)
 
-### Community 548 - "main"
-Cohesion: 0.83
-Nodes (3): main(), readTeams(), replaceTeams()
+### Community 545 - "debtPenaltyLedger.test.js"
+Cohesion: 0.36
+Nodes (7): at15(), MIGRATION, noAverages(), poolFor(), setup(), snapshot(), user
+
+### Community 548 - "pickAssignmentsService.test.js"
+Cohesion: 0.32
+Nodes (5): fixture(), migration(), MIGRATIONS, poolFor(), QL
 
 ### Community 549 - "marketing_history_identities"
 Cohesion: 0.39
 Nodes (7): marketing_import_batches, marketing_import_guard, marketing_baseline_guard, marketing_baseline_messages, marketing_history_identities, marketing_history_identity_message_idx, marketing_identity_guard
-
-### Community 550 - "tokenizeHardcodedStyles.js"
-Cohesion: 0.67
-Nodes (3): countOccurrences(), main(), REPLACEMENTS
 
 ### Community 553 - "Giai đoạn 1: Vá bảo mật (commit + deploy riêng)"
 Cohesion: 0.50
@@ -2226,13 +2230,21 @@ Nodes (4): Giai đoạn 1: Vá bảo mật (commit + deploy riêng), T0: Kiểm 
 Cohesion: 0.44
 Nodes (9): attach(), cellText(), clear(), init(), isHidden(), locate(), paint(), rowsOf() (+1 more)
 
+### Community 555 - "cashbook.test.js"
+Cohesion: 0.29
+Nodes (6): entries, file, fireRefresh(), options, summary, tick()
+
+### Community 556 - "Kiểm chứng đợt sửa Chỉ định hàng — 27/10/2026"
+Cohesion: 0.29
+Nodes (7): Bằng chứng hiển thị, Graph và giới hạn còn lại, Kiểm chứng đợt sửa Chỉ định hàng — 27/10/2026, Kiểm tra tích hợp liên quan, Kết quả tập trung, Phạm vi và mã đã lưu, Toàn suite
+
 ### Community 557 - "hrLeaveRoutes.js"
-Cohesion: 0.03
-Nodes (71): Task 1: Canonical workplace assignment contract, Task 3: Create/edit account API and audit log, AccountWorkAssignmentError, normalizeWorkAssignment(), allowedBranches(), BRANCH_CODE_TO_LABEL, BRANCH_LABEL_TO_CODE, BRANCHES (+63 more)
+Cohesion: 0.04
+Nodes (67): allowedBranches(), BRANCH_CODE_TO_LABEL, BRANCH_LABEL_TO_CODE, BRANCHES, defaultBranch(), isBranchAllowed(), isBranchSelectable(), LEGACY_ALIASES (+59 more)
 
 ### Community 559 - "exceljs"
-Cohesion: 0.07
-Nodes (46): exceljs, applyFullTableBorder(), frozenNoGridlinesView(), HEADER_FONT, TABLE_BORDER, applySort(), branchFilePrefix(), buildLeaveRequestsWorkbook() (+38 more)
+Cohesion: 0.06
+Nodes (53): buildUserWorkbook(), DEFAULT_FIELD_KEYS, featureLabelByKey, FIELD_KEYS, filterUsers(), SOURCE_LABELS, userSearchText(), applyFullTableBorder() (+45 more)
 
 ### Community 560 - "printLayouts.test.js"
 Cohesion: 0.33
@@ -2242,9 +2254,9 @@ Nodes (11): assertTemplate(), fail(), footerTables, plain(), readLayout(), templ
 Cohesion: 0.25
 Nodes (8): Ghi chú hàng hóa là nguồn SL, Gợi ý và cột ST, Nguồn dữ liệu vị trí (đọc từ VT Hà Nội / VT Sài Gòn thật), Sổ vị trí (nút "Sổ vị trí" ở banner), Thùng, ST và trạng thái nhặt (26/10/2026) — thay thế mọi mô tả cũ về SL, tồn và trạng thái bên dưới, Trạng thái của CẢ ĐƠN, Trừ hàng và hoàn tác, Tệp
 
-### Community 562 - "Kế hoạch: Trạng thái bốc hàng + phiếu in mới (2026-10-27)"
-Cohesion: 0.22
-Nodes (9): Checkpoint cuối (do luồng điều phối làm, không giao agent), Danh sách việc (3 luồng, tách tệp để chạy song song), Hiện trạng (đã có từ commit 812f6e25 → 0dc6e218), Kế hoạch: Trạng thái bốc hàng + phiếu in mới (2026-10-27), Luồng 1 — Phiếu in + thẻ gợi ý + luật ghi chú thùng (frontend dùng chung), Luồng 2 — Trạng thái bốc trong Vòng đời đơn hàng (backend + UI) + cảnh báo lệch SL, Luồng 3 — Cột "Có thể bốc" ở VT Hà Nội / VT Sài Gòn, Rủi ro (+1 more)
+### Community 562 - "Danh sách việc (3 luồng, tách tệp để chạy song song)"
+Cohesion: 0.50
+Nodes (4): Danh sách việc (3 luồng, tách tệp để chạy song song), Luồng 1 — Phiếu in + thẻ gợi ý + luật ghi chú thùng (frontend dùng chung), Luồng 2 — Trạng thái bốc trong Vòng đời đơn hàng (backend + UI) + cảnh báo lệch SL, Luồng 3 — Cột "Có thể bốc" ở VT Hà Nội / VT Sài Gòn
 
 ### Community 563 - "0056_pancake_independent.sql"
 Cohesion: 0.53
@@ -2254,9 +2266,25 @@ Nodes (5): marketing_independent_observation_fact_idx, marketing_independent_obs
 Cohesion: 0.53
 Nodes (5): idx_invoice_approved_price_changes_price, idx_invoice_approved_prices_approved_on, invoice_approved_price_changes, invoice_approved_price_changes_guard(), invoice_approved_prices
 
+### Community 565 - "orderLifecycleSheetsClient.js"
+Cohesion: 0.48
+Nodes (6): getSheetsApi(), getValues(), quoteSheetName(), requireSpreadsheetId(), sheetCache, spreadsheetNotConfigured()
+
+### Community 566 - "Page Design Notes — `vat-draft/index.html` (Kế toán – Nháp VAT / Tạo QR)"
+Cohesion: 0.33
+Nodes (5): Cập nhật 19/10/2026 (tối) — đồng bộ với design system, Khung chung, Page Design Notes — `vat-draft/index.html` (Kế toán – Nháp VAT / Tạo QR), Tab Tạo QR — bố cục, Vai trò trang
+
+### Community 567 - "2026-10-22-customer-notes-design.md"
+Cohesion: 0.33
+Nodes (4): Cập nhật Chi tiết khách — 23/10/2026, Dữ liệu và quyền, Giao diện, Kiểm chứng
+
 ### Community 568 - "0094_hr_leave_cancellation.sql"
 Cohesion: 0.22
 Nodes (11): notifications, notifications_recipient_idx, notifications_unread_idx, hr_cancel_own_leave(), hr_leave_approver_recipients, hr_leave_cancel_delete_guard(), hr_leave_cancellation_jobs, hr_leave_cancellation_jobs_ready (+3 more)
+
+### Community 569 - "Trạng thái "Còn VAT" tính theo Mã VAT Kiot (2026-10-27)"
+Cohesion: 0.33
+Nodes (5): Hiện trạng, Không đổi, Kiểm thử (`server/vatLookup/lookupModel.test.js`), Quy tắc mới, Trạng thái "Còn VAT" tính theo Mã VAT Kiot (2026-10-27)
 
 ### Community 570 - "prototype-single.cjs"
 Cohesion: 0.40
@@ -2271,8 +2299,20 @@ Cohesion: 0.40
 Nodes (3): html, sectionTitles(), view()
 
 ### Community 573 - "FormatError"
-Cohesion: 0.06
-Nodes (14): BaseShading, CCITTFaxDecoder, CCITTFaxStream, DummyShading, FlateStream, FormatError, getB(), info() (+6 more)
+Cohesion: 0.05
+Nodes (13): BinaryCMapStream, FlateStream, FormatError, getB(), MeshShading, PDFFunction, PDFFunctionFactory, PostScriptCompiler (+5 more)
+
+### Community 575 - "adminTelegram.test.js"
+Cohesion: 0.40
+Nodes (3): handler(), layer(), manager
+
+### Community 577 - "accountLeaveTriggerMigration.test.js"
+Cohesion: 0.40
+Nodes (3): DIR, fixture(), run()
+
+### Community 578 - "createPriceAuditScheduler"
+Cohesion: 0.47
+Nodes (5): createPriceAuditScheduler(), resolvePool(), start(), tick(), harness()
 
 ### Community 579 - "Page Design Notes — `vt-positions/index.html` (VT Hà Nội / VT Sài Gòn)"
 Cohesion: 0.40
@@ -2282,9 +2322,21 @@ Nodes (4): Cấu trúc & component, Lưu ý thiết kế, Page Design Notes — 
 Cohesion: 0.40
 Nodes (3): databasePage(), page(), source
 
-### Community 591 - "FreeDrawOutline"
-Cohesion: 0.21
-Nodes (3): FreeDrawOutline, FreeHighlightOutline, FreeHighlightOutliner
+### Community 583 - "Own Leave Cancellation Implementation Plan"
+Cohesion: 0.40
+Nodes (4): Công việc, Nghiệm thu, Own Leave Cancellation Implementation Plan, Vận hành
+
+### Community 584 - "Cá nhân hủy và xóa vĩnh viễn đơn nghỉ phép"
+Cohesion: 0.40
+Nodes (4): Cá nhân hủy và xóa vĩnh viễn đơn nghỉ phép, Giao dịch và đồng bộ, Hành vi, Kiểm thử và giới hạn vận hành
+
+### Community 586 - "devDependencies"
+Cohesion: 0.40
+Nodes (5): dotenv, devDependencies, dotenv@^16.4.5, @electric-sql/pglite@^0.5.8, jsdom@^30.0.1
+
+### Community 589 - "orderLifecycleRepository.test.js"
+Cohesion: 0.40
+Nodes (4): freshRepository(), HEADERS, HISTORY_HEADERS, NORTH_SOUTH_HEADERS
 
 ### Community 595 - "setHidden"
 Cohesion: 0.23
@@ -2297,34 +2349,34 @@ Nodes (3): balanceAt(), cp, entries
 ## Ambiguous Edges - Review These
 - `Webhook-first + Polling reconciliation (Supabase sync)` → `Webhook-first + Polling reconciliation (Supabase sync)`  [AMBIGUOUS]
   docs/04-planning/2026-09-14-roadmap-supabase-kiotviet-sync.md · relation: references
-- `server/db/migrate.js runner` → `Migrations 0001-0006 (16 tables)`  [AMBIGUOUS]
-  docs/04-planning/2026-09-14-phase1-plan-supabase-kiotviet-sync.md · relation: calls
 - `GET /api/internal/kiotviet-sync/status` → `Stub webhook endpoint POST /api/kiotviet/webhook`  [AMBIGUOUS]
   docs/04-planning/2026-09-14-phase0-plan-supabase-kiotviet-sync.md · relation: conceptually_related_to
+- `server/db/migrate.js runner` → `Migrations 0001-0006 (16 tables)`  [AMBIGUOUS]
+  docs/04-planning/2026-09-14-phase1-plan-supabase-kiotviet-sync.md · relation: calls
 
 ## Knowledge Gaps
 - **47 isolated node(s):** `ensureKiotVietQuotaAvailable_() — chặn trước mọi UrlFetch thật`, `hydrateIncompleteWebhookItems_() — hydrate-skip tổng quát có cờ bật/tắt`, `runKiotVietMaintenanceTick_() — tách bảo trì khỏi hàng đợi webhook`, `Gzip compression + Cache-Control middleware`, `.clasp.json / .clasp.saigon.json` (+42 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 4321 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **150 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 4325 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **158 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `c()` connect `o` to `e`, `Qe`, `Thùng, ST và trạng thái nhặt (26/10/2026) — thay thế mọi mô tả cũ về SL, tồn và trạng thái bên dưới`, `l`, `html2pdf.bundle.min.js`, `Qe`, `shadow`, `CURRENT: BẢNG TRẠNG THÁI THỜI GIAN THỰC (REALTIME DASHBOARD)`, `pdf.worker.min.mjs`?**
-  _High betweenness centrality (0.196) - this node is a cross-community bridge._
+- **Why does `c()` connect `o` to `CURRENT: BẢNG TRẠNG THÁI THỜI GIAN THỰC (REALTIME DASHBOARD)`, `e`, `Thùng, ST và trạng thái nhặt (26/10/2026) — thay thế mọi mô tả cũ về SL, tồn và trạng thái bên dưới`, `l`, `html2pdf.bundle.min.js`, `Qe`, `shadow`, `Qe`, `pdf.worker.min.mjs`?**
+  _High betweenness centrality (0.207) - this node is a cross-community bridge._
 - **What connects `ensureKiotVietQuotaAvailable_() — chặn trước mọi UrlFetch thật`, `hydrateIncompleteWebhookItems_() — hydrate-skip tổng quát có cờ bật/tắt`, `runKiotVietMaintenanceTick_() — tách bảo trì khỏi hàng đợi webhook` to the rest of the system?**
   _47 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `chart.umd.min.js` be split into smaller, more focused modules?**
-  _Cohesion score 0.0227891834429606 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.02588579291365669 - nodes in this community are weakly interconnected._
 - **Why does `yt()` connect `e` to `CanvasGraphics`?**
   _High betweenness centrality (0.180) - this node is a cross-community bridge._
-- **Should `Mn` be split into smaller, more focused modules?**
-  _Cohesion score 0.041647597254004576 - nodes in this community are weakly interconnected._
+- **Should `warn` be split into smaller, more focused modules?**
+  _Cohesion score 0.03408373658741847 - nodes in this community are weakly interconnected._
 
 ### Low-confidence Hints
 _AMBIGUOUS edges — the extractor was unsure. Verify before acting on these._
 
 - **What is the exact relationship between `Webhook-first + Polling reconciliation (Supabase sync)` and `Webhook-first + Polling reconciliation (Supabase sync)`?**
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
-- **What is the exact relationship between `server/db/migrate.js runner` and `Migrations 0001-0006 (16 tables)`?**
-  _Edge tagged AMBIGUOUS (relation: calls) - confidence is low._
+- **What is the exact relationship between `GET /api/internal/kiotviet-sync/status` and `Stub webhook endpoint POST /api/kiotviet/webhook`?**
+  _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._

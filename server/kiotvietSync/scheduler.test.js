@@ -47,6 +47,7 @@ test('scheduler creates independent fast and slow timers at configured intervals
   const rollupCalls = [];
   const debtReportCalls = [];
   const productReportCalls = [];
+  const product90dCalls = [];
   const invoiceLinesCalls = [];
   const inventorySnapshotCalls = [];
   const businessMonthlyCalls = [];
@@ -59,12 +60,17 @@ test('scheduler creates independent fast and slow timers at configured intervals
     startDashboardRollupSchedule:(pool,opts)=>{rollupCalls.push({pool,...opts}); return 'rollup-handle';},
     startCustomerDebtReportRefreshSchedule:(pool,opts)=>{debtReportCalls.push({pool,...opts}); return 'debt-report-handle';},
     startProductReportSchedule:(pool,opts)=>{productReportCalls.push({pool,...opts}); return 'product-report-handle';},
+    startProduct90dReportSchedule:(pool,opts)=>{product90dCalls.push({pool,...opts}); return 'product-90d-handle';},
     startCustomerInvoiceLinesSchedule:(pool,opts)=>{invoiceLinesCalls.push({pool,...opts}); return 'invoice-lines-handle';},
     startInventoryValueSnapshotSchedule:(pool,opts)=>{inventorySnapshotCalls.push({pool,...opts}); return 'inventory-snapshot-handle';},
     startBusinessMonthlySchedule:(pool,opts)=>{businessMonthlyCalls.push({pool,...opts}); return 'business-monthly-handle';},
     startDebtCycleSnapshotSchedule:(pool,opts)=>{debtCycleCalls.push({pool,...opts}); return 'debt-cycle-handle';}
   });
-  assert.deepEqual(scheduler.startPollingScheduler(), [7,20,86400000,60000,'rollup-handle','debt-report-handle','product-report-handle','invoice-lines-handle','inventory-snapshot-handle','business-monthly-handle','debt-cycle-handle']);
+  assert.deepEqual(scheduler.startPollingScheduler(), [7,20,86400000,60000,'rollup-handle','debt-report-handle','product-report-handle','product-90d-handle','invoice-lines-handle','inventory-snapshot-handle','business-monthly-handle','debt-cycle-handle']);
+  assert.equal(product90dCalls.length, 1);
+  assert.equal(product90dCalls[0].pool, 'fake-pool');
+  assert.equal(product90dCalls[0].intervalMs, 60000);
+  assert.equal(typeof product90dCalls[0].scheduleImmediate, 'function');
   assert.deepEqual(timers.map((x)=>x.ms), [7,20,86400000,60000]);
   assert.equal(immediate.length, 1);
   assert.equal(rollupCalls.length, 1);
@@ -131,7 +137,7 @@ test('cash flow synchronization is excluded from the slow group and overlapping 
     },
     setIntervalFn: (fn, ms) => (timers.push({ fn, ms }), ms), scheduleImmediate: () => {},
     getPool: () => ({}), startDashboardRollupSchedule: () => {}, startCustomerDebtReportRefreshSchedule: () => {},
-    startProductReportSchedule: () => {}, startCustomerInvoiceLinesSchedule: () => {}, startInventoryValueSnapshotSchedule: () => {},
+    startProductReportSchedule: () => {}, startProduct90dReportSchedule: () => {}, startCustomerInvoiceLinesSchedule: () => {}, startInventoryValueSnapshotSchedule: () => {},
     startBusinessMonthlySchedule: () => {},
     startDebtCycleSnapshotSchedule: () => {}
   });
@@ -163,6 +169,7 @@ test('scheduler schedules an immediate background catch-up from persisted checkp
     startDashboardRollupSchedule:()=>({}),
     startCustomerDebtReportRefreshSchedule:()=>({}),
     startProductReportSchedule:()=>({}),
+    startProduct90dReportSchedule:()=>({}),
     startCustomerInvoiceLinesSchedule:()=>({}),
     startInventoryValueSnapshotSchedule:()=>({}),
     startBusinessMonthlySchedule:()=>({}),startDebtCycleSnapshotSchedule:()=>({})
@@ -191,6 +198,7 @@ test('moi luot sync fast keo theo mot luot rollup "nong" ngay sau do', async () 
     startDashboardRollupSchedule:()=>'rollup-handle',
     startCustomerDebtReportRefreshSchedule:()=>'debt-handle',
     startProductReportSchedule:()=>'product-handle',
+    startProduct90dReportSchedule:()=>({}),
     startCustomerInvoiceLinesSchedule:()=>'invoice-lines-handle',
     startInventoryValueSnapshotSchedule:()=>'inventory-snapshot-handle',
     startBusinessMonthlySchedule:()=>'business-monthly-handle',startDebtCycleSnapshotSchedule:()=>'debt-cycle-handle'
@@ -253,7 +261,7 @@ function bankScheduler({empty=true,queryError=false,clientError=false,pollError=
  setIntervalFn:(fn,ms)=>(timers.push({fn,ms}),ms),scheduleImmediate:fn=>immediate.push(fn),
  getPool:()=>({query:async()=>{if(queryError)throw Error('database');return {rows:empty?[]:[{id:1}]};}}),
  refreshDashboardRollupsAndNotify:async()=>{},startDashboardRollupSchedule:()=>{},startCustomerDebtReportRefreshSchedule:()=>{},
- startProductReportSchedule:()=>{},startCustomerInvoiceLinesSchedule:()=>{},startInventoryValueSnapshotSchedule:()=>{},startBusinessMonthlySchedule:()=>{},startDebtCycleSnapshotSchedule:()=>{},
+ startProductReportSchedule:()=>{},startProduct90dReportSchedule:()=>{},startCustomerInvoiceLinesSchedule:()=>{},startInventoryValueSnapshotSchedule:()=>{},startBusinessMonthlySchedule:()=>{},startDebtCycleSnapshotSchedule:()=>{},
  logger:{log(){},warn(){},error:(...args)=>errors.push(args)}});
  scheduler.startPollingScheduler();return {timers,immediate,calls,failures,errors};
 }
@@ -280,7 +288,7 @@ test('one KiotViet client per branch per run so the cached OAuth token is reused
  createKiotVietClient:b=>{created.push(b.branch);return {};},pollEntityOnce:async()=>{},recordFailure:async()=>{},
  setIntervalFn:(fn,ms)=>ms,scheduleImmediate:()=>{},getPool:()=>({query:async()=>({rows:[{id:1}]})}),
  refreshDashboardRollupsAndNotify:async()=>{},startDashboardRollupSchedule:()=>{},startCustomerDebtReportRefreshSchedule:()=>{},
- startProductReportSchedule:()=>{},startCustomerInvoiceLinesSchedule:()=>{},startInventoryValueSnapshotSchedule:()=>{},startBusinessMonthlySchedule:()=>{},startDebtCycleSnapshotSchedule:()=>{},
+ startProductReportSchedule:()=>{},startProduct90dReportSchedule:()=>{},startCustomerInvoiceLinesSchedule:()=>{},startInventoryValueSnapshotSchedule:()=>{},startBusinessMonthlySchedule:()=>{},startDebtCycleSnapshotSchedule:()=>{},
  logger:{log(){},warn(){},error(){}}});
  await scheduler.runGroup([{entity:'a'},{entity:'b'},{entity:'c'}]);
  assert.deepEqual(created.sort(),['hanoi','saigon']);
@@ -299,7 +307,7 @@ function fastScheduler(overrides = {}) {
     refreshDebtAging: async () => { order.push('debt-aging'); },
     refreshDashboardRollupsAndNotify: async () => { order.push('rollup'); },
     startDashboardRollupSchedule: () => 'rollup-handle', startCustomerDebtReportRefreshSchedule: () => 'debt-handle',
-    startProductReportSchedule: () => 'product-handle', startCustomerInvoiceLinesSchedule: () => 'lines-handle',
+    startProductReportSchedule: () => 'product-handle', startProduct90dReportSchedule: () => '90d-handle', startCustomerInvoiceLinesSchedule: () => 'lines-handle',
     startInventoryValueSnapshotSchedule: () => 'inventory-handle', startBusinessMonthlySchedule: () => 'business-handle',
     startDebtCycleSnapshotSchedule: () => 'cycle-handle',
     logger: { log() {}, warn() {}, error: (...args) => errors.push(args.join(' ')) },

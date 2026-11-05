@@ -57,6 +57,43 @@ async function openPage({ branches = ['Hà Nội', 'Sài Gòn'] } = {}) {
 }
 
 const optionValues = select => [...select.options].map(option => option.value);
+
+test('thống kê chỉ đếm đơn còn buổi nghỉ từ hôm nay theo giờ Việt Nam', async () => {
+  const { dom, window } = await openPage();
+  try {
+    const RealDate = window.Date;
+    window.Date = class extends RealDate {
+      constructor(...args) { super(...(args.length ? args : ['2026-11-04T17:05:00Z'])); }
+    };
+    const row = { bo_phan: 'KHO', trang_thai: 'Đã duyệt', start_date: '2026-11-01', end_date: '2026-11-10' };
+    const requests = [
+      { ...row, end_date: '2026-11-04' },
+      { ...row, leave_sessions: [{ date: '2026-11-04' }] },
+      { ...row, leave_sessions: [{ date: '2026-11-05' }] },
+      { ...row, leave_sessions: [{ date: '2026-11-04' }, { date: '2026-11-08' }] },
+      { ...row },
+      { ...row, trang_thai: 'Chưa duyệt', start_date: '2026-11-06' },
+      { ...row, trang_thai: 'Từ chối', timing_status: 'Vi phạm', start_date: '2026-11-06' }
+    ];
+    window.renderStats(requests);
+    const doc = window.document;
+    assert.equal(doc.getElementById('statApproved').textContent, '3');
+    assert.equal(doc.getElementById('statPending').textContent, '1');
+    assert.equal(doc.getElementById('statRejected').textContent, '1');
+    assert.equal(doc.getElementById('statViolation').textContent, '1');
+    assert.match(doc.getElementById('leaveDeptStats').textContent, /5đơn/);
+    assert.match(doc.getElementById('leaveDeptRange').textContent, /Từ hôm nay/);
+    assert.equal(window.visibleLeaveRequests(requests).length, 1, 'bảng vẫn dùng bộ lọc trạng thái hiện có');
+
+    doc.getElementById('fromDateFilter').value = '2026-11-07';
+    doc.getElementById('toDateFilter').value = '2026-11-07';
+    window.renderStats(requests);
+    assert.equal(doc.getElementById('statApproved').textContent, '1', 'đơn cách quãng không có buổi ngày 7 bị loại');
+    doc.getElementById('toDateFilter').value = '2026-11-04';
+    window.renderStats(requests);
+    assert.equal(doc.getElementById('statApproved').textContent, '0');
+  } finally { dom.window.close(); }
+});
 const listUrls = urls => urls.filter(url => url.startsWith('/api/hr/leave-requests?'));
 
 // JSDOM (runScripts: 'outside-only') không chạy thuộc tính onchange inline, nên chạy đúng

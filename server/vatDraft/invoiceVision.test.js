@@ -54,6 +54,13 @@ test('429 / timeout / JSON hong o model chinh -> thu model du phong', async () =
   }
 });
 
+test('nhieu model du phong (chuoi cach nhau dau phay) thu lan luot den khi co model doc duoc', async () => {
+  const { impl, calls } = fakeFetch([reply('', 429), reply('', 503), reply('{"totalPayment":"1.000"}')]);
+  const client = createInvoiceVisionClient({ apiKey: 'k', model: 'main', fallbackModel: ' b1:free , b2 ,main', fetchImpl: impl });
+  assert.deepEqual(await client.extractInvoice(IMAGE, 'image/png'), { totalPayment: '1.000' });
+  assert.deepEqual(calls.map(c => c.body.model), ['main', 'b1:free', 'b2']);
+});
+
 test('loi khong thu lai (401) -> 503 ngay, khong goi du phong', async () => {
   const { impl, calls } = fakeFetch([reply('', 401)]);
   const client = createInvoiceVisionClient({ apiKey: 'k', model: 'main', fallbackModel: 'backup', fetchImpl: impl });

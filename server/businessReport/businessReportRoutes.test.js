@@ -150,7 +150,7 @@ test('GET /export/fields: can ca reports.business va reports.export; tra truong 
   assert.equal(ws.key, 'customers');
   assert.deepEqual(ws.fields.slice(0, 3).map(f => f.label), ['Tên khách', 'Sale', 'Level giá']);
   const all = await request('/export/fields?kind=customers&inactive=1', both);
-  assert.ok(all.data.worksheets[0].rowCount > ws.rowCount, 'inactive=1 dem ca khach khong hoat dong');
+  assert.equal(all.data.worksheets[0].rowCount, ws.rowCount, 'khach hoat dong theo KiotViet: inactive=1 khong them dong');
   assert.equal((await request('/export/fields?kind=zzz', both)).status, 400);
 });
 

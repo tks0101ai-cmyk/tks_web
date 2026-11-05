@@ -1,5 +1,32 @@
 # Supabase schema cho đồng bộ KiotViet
 
+## Migration 0109 — Kiểm kê: KK trước chọn tay, hủy đợt, nạp lại sheet (04/11/2026, đã áp DB 04/11/2026)
+
+`0109_stocktake_previous_cancel.sql`: `stocktake_sessions` thêm `previous_session_id` BIGINT FK `stocktake_sessions` ON DELETE SET NULL (đợt KK trước chọn tay; NULL = tự động: đợt `closed` gần nhất cùng `branch`, `cancelled_at IS NULL`, `date_to <= date_from`; CHECK `stocktake_sessions_previous_not_self`), `cancelled_at` TIMESTAMPTZ, `cancelled_by_user_id`, `cancelled_by_name` TEXT, `cancel_reason` TEXT NOT NULL DEFAULT '' (hủy = ẩn + chỉ đọc, `status` giữ nguyên open|closed, khôi phục = xóa `cancelled_at`; không xóa vật lý), `reloaded_at` TIMESTAMPTZ, `reloaded_by_name` TEXT (lần nạp lại gần nhất của đợt `sheet_import`). CHECK `stocktake_history_action_check` thêm `session_cancel`, `session_restore`, `sheet_reload`. Đợt đã hủy không được chọn làm KK trước hay đối chiếu (kể cả tự động). Gỡ tay: `db/rollbacks/0109_stocktake_previous_cancel.down.sql`.
+## Migration 0107 — Nhật ký thao tác đơn xuất kho (04/11/2026, đã áp DB 04/11/2026)
+
+`0107_stock_out_order_events.sql`: `stock_out_order_events` (`id`, `order_id` → `stock_out_orders` ON DELETE CASCADE, `line_id` BIGINT không khóa ngoại để dòng đã xóa vẫn còn vết, `action` CHECK add|update|delete|import|confirm, `user_id`, `user_name`, `detail` JSONB `{before, after}` là ảnh chụp `{code, name, location, notes}`, `created_at`). Ghi trong cùng giao dịch với thao tác; index `(order_id, id DESC)`; REVOKE cho `reporting_readonly` (có tên người dùng).
+
+## Migration 0105 — Kiểm kê (02/11/2026, đã áp DB 03/11/2026)
+
+`0105_stocktake.sql`: `stocktake_sessions` (đợt: `branch` hanoi|saigon, `name`, `date_from`/`date_to` DATE, `status` open|closed, `source` web|sheet_import, `source_ref` UNIQUE khi có, `version`, người tạo/đóng, `counterpart_session_id` FK chính bảng ON DELETE SET NULL: đợt đối chiếu cho cột Kiểm SG/HN, nối hai chiều); `stocktake_line_edits` (sửa dòng đếm gốc `(order_id, line_no)` UNIQUE theo đợt, hoặc dòng thêm tay khi `order_id` NULL; cột NULL = giữ gốc; `quantity NUMERIC`, `removed`, `version`); `stocktake_code_notes` (PK `(session_id, product_code)`: `status_text`, `status_color` (khóa màu trạng thái: red|orange|yellow|green|cyan|blue|purple|gray, '' = không màu, CHECK; **cột cũ từ 03/11/2026**: web không còn ghi và bỏ qua khi hiển thị (bảng đối chiếu vẫn trả về dưới dạng `note.statusColor` nhưng không dùng để tô màu) — màu tính từ `status_text` qua `public/stocktake/stocktakeStatus.js` (7 loại Mất, KK trước, OK, Nhầm SG/HN, Thừa, Lẫn, Chưa XL), giá trị đang có giữ nguyên, dòng mới để ''; CHECK giữ nguyên vì chỉ nhận tên màu cũ, không migration mới), `reason_text`, `recheck_employee_id` FK `hr_employees` ON DELETE SET NULL, `recheck_name` chữ từ sheet, `print_page` TEXT, `print_time` TEXT (Trang in / Giờ in), `prev_diff_manual`, `other_diff_manual` NUMERIC (Do KK trước / Do kiểm SG|HN nhập tay hoặc dán, NULL = chưa nhập), `version`); `stocktake_product_tags` (PK `(branch, product_code)`, giữ qua các đợt: `cluster`, `is_combo`, `version`); `stocktake_session_results` (bản chụp lúc đóng: `counted`, `stock`, `cost`, `diff_qty`, `diff_value`, `prev_diff` (KK trước sai), `other_diff` (kiểm cơ sở kia) NUMERIC); `stocktake_history` (chỉ thêm, trigger chặn UPDATE/DELETE, action `session_create|session_update|session_close|sheet_import|line_edit|line_add|note|tag|paste`, `before`/`after` JSONB). Mã hàng lưu dạng chuẩn (viết hoa, bỏ khoảng trắng). Thu hồi `reporting_readonly` trên `stocktake_history`, `stocktake_code_notes`. Số đếm KHÔNG lưu: đọc từ `orders`/`order_details` (khách tên bắt đầu `TEAM`, ngày đặt giờ VN trong khoảng của đợt, kể cả đơn hủy).
+
+## Migration 0104 — Đơn xuất kho VT (02/11/2026, đã áp DB 02/11/2026)
+
+`0104_stock_out_orders.sql`: `stock_out_orders` (`id`, `branch` HN/SG, `code` unique theo cơ sở dạng `XK-HN-00001` cấp lúc tạo đơn tạm bằng `max+1` dưới khóa advisory `stock_out_orders:<cơ sở>`, `status` `draft|confirmed`, `version` tăng mỗi lần dòng đổi để chốt phát hiện đơn đã thay đổi, `created_by_*`, `confirmed_by_*`, `confirmed_at`, `summary` JSONB) với **unique một đơn `draft` mỗi cơ sở** (`WHERE status='draft'`) và `stock_out_order_lines` (`order_id` FK `ON DELETE CASCADE`, `sort_order`, `code`, `name`, `location`, `notes` ghi chú thùng, `source` `manual|excel`, `version`, `result` JSONB `{before, after, quantity, negative, created, positionId}` ghi lúc chốt). Không khóa ngoại sang `stock_positions` (dòng VT có thể bị xóa khi hết hàng, lịch sử đơn vẫn giữ). Không đổi CHECK `stock_position_history.action`: chốt đơn ghi action `stock_out` với `summary {source:'order', orderId, orderCode, deducted, lineIds, negative, removed, created}`. Số lượng âm không có cột riêng: là ghi chú dạng `-2T x 100` (xem `public/shared/carton.js` `parseSigned`). `REVOKE ALL` cho `reporting_readonly` (có tên người dùng).
+
+## Migration 0103 — Lịch sử bỏ dòng chỉ định (31/10/2026, chưa áp DB)
+
+`0103_order_pick_history_prune.sql`: chỉ mở rộng CHECK `order_pick_history.action` thành `assign|confirm|cancel|mismatch_ack|prune`. `prune` ghi khi dòng chỉ định Đang bốc của mã đã bị xóa khỏi đơn Kiot được bỏ (`summary` `{reason: "line_removed"|"kiot_line_missing", lines:[{productCode, positionId, location, quantity}]}`; từ 02/11/2026 chỉ còn `kiot_line_missing` do job đối chiếu ghi — `line_removed` gắn với nút Xóa dòng ghi Kiot đã gỡ). Không thêm cột/bảng; code fail-soft khi chưa áp (vẫn bỏ dòng, không ghi lịch sử).
+
+## Migration 0102 — Nhật ký ghi ngược lên đơn KiotViet (30/10/2026, chưa áp DB; không còn được ghi từ 02/11/2026)
+
+`0102_order_kiot_edit_log.sql`: bảng `order_kiot_edit_log` (`id`, `created_at`, `branch` HN|SG, `order_code`, `action` `remove_line|set_quantity|rollback`, `summary JSONB` {productCode/quantities, before[], after[] hoặc problems/restored}, `actor_user_id`, `actor_name`); trigger chặn UPDATE/DELETE; thu hồi `reporting_readonly`; index `(branch, lower(btrim(order_code)), id)`. Trước đây ghi bởi `kiotviet/kiotOrderEditor.js` (fail-soft khi bảng chưa tồn tại). **Không còn được ghi từ 02/11/2026:** đã gỡ toàn bộ ghi ngược lên đơn KiotViet (xóa `kiotOrderEditor.js`, `KIOT_ORDER_WRITE_ENABLED`, `POST /api/shipment/pick/order-lines/remove`); bảng và migration giữ nguyên làm lịch sử, áp hay chưa áp đều không ảnh hưởng.
+
+## Migration 0101 — VT: hành động lịch sử Xuất kho (30/10/2026, chưa áp DB)
+
+`0101_stock_position_stock_out_action.sql`: chỉ mở rộng CHECK `stock_position_history_action_check` thêm `stock_out` (xóa rồi tạo lại ràng buộc, giữ nguyên toàn bộ giá trị của `0099`). Không thêm cột/bảng/trigger. Chi tiết ở mục cuối.
+
 ## Migration 0099 — VT: Đã sửa + xóa lịch sử có kiểm soát (28/10/2026, chưa áp DB)
 
 `0099_stock_position_ack_and_history_purge.sql`: thêm `stock_positions.format_ack`, mở CHECK action lịch sử, viết lại trigger chặn. Chi tiết ở mục cuối.
@@ -502,7 +529,7 @@ Migration `0044_purchases_raw_hash.sql` thêm `purchases.raw_hash TEXT` (nullabl
 
 ## Tiền phạt công nợ + số phiên liên tiếp — migration 0048
 
-`0048_debt_penalty.sql` (2026-10-13): `debt_cycle_customers` thêm `overdue_debt`, `overdue_streak` (số phiên liên tiếp quá hạn ≥ 400k tại bản chốt); bảng `debt_cycle_penalties (cycle_date, branch, customer_id)` lưu tiền phạt Quản lý điền (không FK, không bị dọn 7 ngày; SELECT của `reporting_readonly` bị thu hồi); `debt_feedback_history.field` thêm `penalty`; `debt_cycle_feedback.status` bỏ `Đang xử lý` (dữ liệu cũ → `Chưa xử lý`).
+`0048_debt_penalty.sql` (2026-10-13): `debt_cycle_customers` thêm `overdue_debt`, `overdue_streak` (số phiên liên tiếp quá hạn ≥ 400k tại bản chốt); bảng `debt_cycle_penalties (cycle_date, branch, customer_id)` lưu tiền phạt Quản lý điền (không FK, không bị dọn 7 ngày; SELECT của `reporting_readonly` bị thu hồi); `debt_feedback_history.field` thêm `penalty`; `debt_cycle_feedback.status` bỏ `Đang xử lý` (dữ liệu cũ → `Chưa xử lý`). **Từ 02/11/2026** `debt_cycle_penalties` không còn được đọc/ghi (đã bỏ phạt tay); `debt_feedback_history.field = 'penalty'` chỉ còn dòng lịch sử cũ. Sửa trạng thái ngày cũ (`saveHistoricalStatus`) cập nhật `debt_cycle_customers.overdue_streak` và `debt_penalty_daily` của các ngày sau, không đổi schema.
 
 ## Sổ phạt công nợ theo ngày — migration 0051
 
@@ -762,9 +789,10 @@ Cập nhật gần nhất: 24/10/2026.
 
 - `stock_positions (id BIGSERIAL)`: `branch` ('HN'|'SG'), `code` (không rỗng), `name` (dự phòng khi `products` chưa có mã), `notes` (ghi chú số thùng, chuẩn hóa khi lưu), `arrival_date` (**TEXT**, có thể rỗng, vd "KK 4.10", "16/10"), `location`, `version` (khóa lạc quan, +1 mỗi lần sửa), `updated_by_user_id`, `updated_by_name`, `updated_at`, `created_at`. Index `(branch, lower(btrim(code)))` và `(branch, location)`. **Không có UNIQUE** (mã, vị trí): dữ liệu đầu có dòng trùng; nhập mới/import trùng (mã, vị trí) thì ứng dụng tự cộng ghi chú vào dòng cũ; dòng trùng sẵn có của dữ liệu đầu giữ nguyên, không cảnh báo.
 - **SL kho và cảnh báo KHÔNG lưu**: luôn tính từ `notes` bằng `public/shared/carton.js` (`parseSpec`, `normalizeNote`, `warnings`). Tên SP và SL KiotViet đọc theo mã từ `products` (`code`, `name`, tổng `raw->'inventories'[].onHand`) khi xem.
-- `stock_position_history`: nhật ký **chỉ thêm** (trigger chặn UPDATE/DELETE, không khóa ngoại): `id`, `created_at`, `branch`, `position_id`, `code`, `location`, `action` (`seed|create|edit|delete|auto_delete|deduct|import_replace|import_add`), `field`, `old_value`, `new_value`, `summary JSONB` (số dòng thêm/đổi/xóa/bỏ qua của import), `actor_user_id`, `actor_name`. Thu hồi `reporting_readonly`.
+- `stock_position_history`: nhật ký **chỉ thêm** (trigger chặn UPDATE/DELETE, không khóa ngoại): `id`, `created_at`, `branch`, `position_id`, `code`, `location`, `action` (`seed|create|edit|delete|auto_delete|deduct|import_replace|import_add`, thêm `pick|pick_revert` từ `0096`, `ack|unack|history_purged` từ `0099`, `stock_out` từ `0101`), `field`, `old_value`, `new_value`, `summary JSONB` (số dòng thêm/đổi/xóa/bỏ qua của import), `actor_user_id`, `actor_name`. Thu hồi `reporting_readonly`.
 - **Dữ liệu đầu (một lần, chỉ khi bảng rỗng)**: `INSERT … SELECT` từ `stock_location_lines`, `updated_by_name = 'Nhập dữ liệu đầu'`. Gỡ tiền tố "T x " thừa của HN (vd "T x 4T*100" → "4T*100") khi phần sau là "<số>T…"; **bỏ** dòng thiếu mã và dòng hết hàng (ghi chú rỗng / "Hết hàng") vì quy tắc tự xóa khi SL = 0. Sau khi sao chép, hai bảng không còn liên hệ (trước 30/10/2026 Google Sheets còn nuôi hai tab cũ "Vị trí HN/SG", nay đã gỡ). Mỗi cơ sở có một bản ghi lịch sử `seed`.
 - Tự xóa khi hết: sau mọi lần lưu, SL tính ra = 0 thì dòng bị xóa và ghi `auto_delete`.
+- **31/10/2026 (không migration mới, chỉ tài liệu):** thao tác thêm/sửa/xóa vị trí từ hộp **Chỉ định vị trí** (`/api/shipment/pick/positions`) ghi `stock_position_history` bằng các hành động sẵn có (`create`, `edit` — kể cả `{merged: true, added}` khi trùng mã+vị trí, `auto_delete`, `delete`) và `summary` có thêm `{source: 'pick', orderCode}` (gộp với khóa sẵn có của `create`/merge); người ghi là người bấm. Không đổi cột/CHECK/index; giao diện lịch sử VT và Excel lịch sử đọc khóa này để hiện "Chỉ định đơn <mã>". Từ ngày này `stock_positions.notes` không được sửa xuống dưới tổng phần các chỉ định `order_pick_assignments` Đang bốc (`picking`) đang giữ, cũng không đổi quy cách làm hỏng `allocation_snapshot` đã in (kiểm trong ứng dụng, không có ràng buộc DB).
 - **27/10/2026 (không migration mới):** `GET /api/stock-positions/history` có thêm tham số `positionId` lọc theo cột `position_id` có sẵn (hộp chi tiết dòng); `GET /api/stock-positions/history/export` đọc cùng bảng `stock_position_history` (trần 50.000 dòng mới nhất). Không đổi cấu trúc bảng/index.
 
 ## 0096 — Chỉ định vị trí trên Vòng đời đơn hàng (27/10/2026, chưa áp DB)
@@ -791,7 +819,7 @@ Trạng thái: đang làm trên nhánh `feat/lifecycle-pick-assign`, **chưa mer
 
 - `order_pick_history.action` CHECK mở rộng thành `assign|confirm|cancel|mismatch_ack`. Bảng vẫn chỉ thêm (trigger chặn UPDATE/DELETE).
 - Dòng `mismatch_ack` ghi khi người có `shipment.pick` bấm **Đã xử lý**: `summary.signature` = JSON các `[mã chữ thường, picked, ordered]` của số lệch lúc bấm, `summary.items` = `[{productCode, picked, ordered}]`. Chỉ dòng mới nhất của chỉ định hoạt động được xét; còn khớp số lệch hiện tại thì API đánh dấu `handled`. Kiot sửa tiếp hoặc chỉ định mới (`assignment_id` mới) thì không còn khớp.
-- **Từ 30/10/2026 ứng dụng không còn ghi `mismatch_ack`** (nút Đã xử lý và route `mismatch-ack` đã bỏ, thay bằng cảnh báo Lệch Kiot / Lệch SL trong đơn tính từ snapshot + `order_pick_lines`, không migration). Migration giữ nguyên; áp hay chưa áp đều không ảnh hưởng. Snapshot đơn (`order_snapshot.lines[]`) có thêm `kiotQuantity` khi SL cần nhặt được sửa tay khác SL Kiot.
+- **Từ 30/10/2026 ứng dụng không còn ghi `mismatch_ack`** (nút Đã xử lý và route `mismatch-ack` đã bỏ, thay bằng cảnh báo Lệch Kiot / Lệch SL trong đơn tính từ snapshot + `order_pick_lines`, không migration; **2 cảnh báo này cũng đã gỡ 02/11/2026**, Vòng đời chỉ còn 6 cảnh báo giao hàng). Migration giữ nguyên; áp hay chưa áp đều không ảnh hưởng. Snapshot đơn (`order_snapshot.lines[]`) có thêm `kiotQuantity` khi SL cần nhặt được sửa tay khác SL Kiot. Từ 02/11/2026 snapshot cũng có thể thiếu mã có trên đơn Kiot khi người chỉ định bấm **Xóa dòng** (`removed` của `POST /api/shipment/pick`, chỉ nội bộ, không sửa đơn Kiot); không đổi cấu trúc JSON.
 
 ## 0099 — VT: Đã sửa + xóa lịch sử (28/10/2026, chưa áp DB)
 
@@ -815,3 +843,105 @@ Cập nhật gần nhất: 28/10/2026.
 29/10/2026 — Shared print layout JSON (0100): goods delivery validates 6 columns (order 9); `groups.body/header.columns[index]` accepts size 7–36pt plus bold/italic/align. Optional `tables` holds independent validated footer layouts: order summary(4), signatures(2), notes(1); delivery deliverySignatures(3), deliveryNote(1). No DDL change. Existing order_snapshot sellerPhone is populated from Kiot users mobilePhone for new assignments; old history is not rewritten.
 
 Cập nhật gần nhất: 30/10/2026 (gỡ module Vị trí hàng cũ: `stock_location_lines` và hàng `stock_locations_hn/sg` của `sheet_snapshot_sync` thành di sản không còn job ghi, chưa DROP; không migration mới).
+
+## 0101 — VT: Xuất kho (30/10/2026, chưa áp DB)
+
+- `stock_position_history_action_check` mở rộng: thêm `stock_out` = một lượt **Xuất kho từ file** trừ SL khỏi một dòng vị trí. Mỗi vị trí bị trừ có đúng một bản ghi: `position_id`, `code`, `location`, `field = 'notes'`, `old_value` = ghi chú trước, `new_value` = ghi chú sau (`NULL` khi dòng về 0 và bị xóa), `summary = {deducted, removed, fileName, fileRows}` (`fileRows` = số dòng Excel đã góp vào lượt trừ), `actor_*` = người bấm Xuất kho.
+- Không thêm cột/bảng/trigger; dòng vị trí vẫn dùng `version`, `updated_by_*` như mọi thao tác ghi. Chưa áp migration thì `stockOutFile` lỗi 500 và rollback toàn bộ lượt (CHECK từ chối `stock_out`) — phải `npm run db:migrate` trước deploy.
+
+
+Cập nhật gần nhất: 04/11/2026 (Kiểm kê: migration `0109` KK trước chọn tay, hủy đợt, nạp lại sheet; trước đó 02/11/2026: Kiểm kê: đủ cột T10, Sài Gòn + đợt đối chiếu, dán cột, nạp tab KIỂM SG; migration `0105` đã áp DB 03/11/2026; ghi chú tài liệu: `order_kiot_edit_log` (0102) không còn được ghi; `prune` chỉ còn `kiot_line_missing`; snapshot có thể thiếu mã đã Xóa dòng nội bộ; không migration mới) — trước đó 31/10/2026 (ghi chú tài liệu: `stock_position_history.summary` có thể chứa `{source: 'pick', orderCode}` khi sửa VT từ hộp Chỉ định vị trí; không migration mới).
+
+
+## 03/11/2026 — Redis performance (không migration)
+
+Redis chỉ là cache nguồn Sheets/SĐT sale, không có bảng/cột hoặc schema PostgreSQL mới. `stock_positions`, `order_pick_assignments`, `order_pick_lines`, `order_pick_history` giữ nguyên hợp đồng và khóa/rollback. Bulk INSERT dùng jsonb_to_recordset với NUMERIC và thứ tự dòng gốc, vẫn trong một giao dịch; form chung tiếp tục PostgreSQL/version/409. Snapshot lịch sử không bị ghi lại. Chưa deploy/chuyển region; xem `tasks/redis-performance/rollout.md` tại gốc repo.
+
+Cập nhật gần nhất: 03/11/2026 (Kiểm kê: ghi chú `status_color` là cột cũ, trạng thái 7 loại tính từ `status_text`, không migration).
+
+Cập nhật gần nhất: 03/11/2026.
+
+## 03/11/2026 — Lịch sử giao dịch của hàng hóa (không migration)
+
+Không thay schema. GET /api/product-report/history đọc invoices + invoice_details và returns + return_details, join products/customers theo branch + ID; cửa sổ 90 ngày gồm hôm nay theo VN. purchase_date/return_date dùng giờ tường VN mang nhãn UTC nên đọc AT TIME ZONE UTC, không chuyển thêm UTC+7. quantity vẫn NUMERIC; gộp theo chứng từ/mã hàng, tách cơ sở và loại. Chỉ hóa đơn Hoàn thành / phiếu trả Đã trả. Giá vốn lịch sử không có trường đã xác minh trong dữ liệu nguồn, API trả unitCost NULL (hoặc loại trường theo quyền); không suy ra từ giá bán hay giá vốn tồn hiện tại. Không backfill hoặc ghi lại dữ liệu nguồn.
+
+Cập nhật gần nhất: 03/11/2026.
+
+## Migration 0106 — Hàng hóa 90 ngày (04/11/2026, đã áp DB)
+
+- `product_90d_report`: khóa chính `product_key = lower(btrim(product_code))`, một dòng/mã gộp hai cơ sở. 26 cột nghiệp vụ gồm `product_code`, `product_name`, bốn nhóm hậu tố `61_90d`, `31_60d`, `1_30d`, `1_90d`; mỗi nhóm có `qty`, `revenue`, `avg_price`, `customer_count`, `invoice_count` kiểu NUMERIC và `top_customers` JSONB (tối đa 3 phần tử `{name, share, revenue, quantity}`, share dạng tỷ lệ 0–1, không kẹp giá trị âm hoặc >1 khi doanh số ròng có trả hàng).
+- `product_90d_report_state`: singleton `id=1`; `as_of_date`, `window_start=as_of_date-90`, `window_end=as_of_date-1`, `computed_at` TIMESTAMPTZ, `row_count` NUMERIC, `version` BIGINT. Không lưu lịch sử từng ngày.
+- Nguồn: `products` chỉ mã hàng đang hoạt động (is_active IS NOT FALSE ở ít nhất một cơ sở) (mã chỉ ngừng bán/đã xóa ở cả HN và SG bị loại, kèm chứng từ của mã đó), mã trùng ưu tiên tên hiện tại HN rồi SG trong các dòng đang hoạt động, bản đồng bộ mới nhất/id lớn nhất; hóa đơn Hoàn thành + trả hàng Đã trả. Trạng thái ưu tiên statusValue, dùng status=1 khi thiếu chuỗi. Ngày chứng từ là giờ tường VN mang nhãn UTC, lấy AT TIME ZONE 'UTC'; ngày chạy theo Asia/Ho_Chi_Minh. Không lấy hôm nay.
+- SL/DS trừ trả theo ngày trả. Thành tiền ưu tiên subTotal, dự phòng giá × SL − giảm giá dòng; trả lấy trị tuyệt đối subTotal hoặc giá × SL. Không tự cộng VAT/phân bổ chiết khấu toàn hóa đơn. Mọi phép cộng dùng NUMERIC. Giá TB = DS/SL, SL=0 thì NULL.
+- Khách gộp theo tên hiện tại chuẩn hóa NFKC/hoa thường/khoảng trắng/ký tự rỗng, không bỏ dấu. Không loại khách ngừng hoạt động. SL khách chỉ đếm tên có hóa đơn thành công; lượt mua DISTINCT (branch,id) cho từng mã, không đếm trả, không giảm khi trả hết. Tổng 90 ngày đếm khách DISTINCT lại, không cộng số khách ba kỳ con.
+- Top 3 theo DS ròng giảm dần, hòa thì khóa tên tăng dần; tỷ trọng chia DS ròng toàn bộ khách cùng mã/kỳ (DS=0 thì NULL). Có ít hơn 3 khách thì giữ số thực có; khách chỉ trả vẫn tham gia DS/SL và xếp hạng nhưng không được tính lượt mua/SL khách. Không phát sinh: 0 ở các tổng/đếm, Giá TB NULL và Top 3 [].
+- Job `kiotvietSync/product90dReport.js` chạy một lần/ngày từ 02:00 VN, không liên kết các báo cáo tăng dần khác. Khóa advisory 20531106, staging + upsert chỉ dòng đổi/xóa mã rời danh mục + state trong cùng giao dịch, lỗi rollback giữ bản cũ. Đọc đồng thời vẫn thấy bản chốt trước COMMIT. Lệnh nạp tay có thể ép tính lại; lịch tự động chống lặp bằng as_of_date.
+- Hai bảng bật RLS, thu hồi quyền anon/authenticated/reporting_readonly. Web đọc qua backend có phân quyền (`GET /api/product-report/90d`, xem mục “Hợp đồng đọc” bên dưới). Không sửa bảng chứng từ/khách/hàng nguồn. Rollback: `rollbacks/0106_product_90d_report.down.sql`.
+- Đã nạp đầu: 11.135 mã, kỳ 06/08–03/11/2026; tổng SL 78.131.018,83 và DS 406.836.857.112 khớp kiểm tra độc lập, 0 dòng chứng từ ngoài danh mục. Worker có lịch mới chưa deploy.
+
+### Hợp đồng đọc 0106 (`GET /api/product-report/90d`, 04/11/2026)
+
+- Chỉ `dashboard/product90dReportRepository.js` đọc hai bảng này (không ghi, không quét chứng từ); quyền `reports.products` + `reports.products.sales`. `product_key` là khóa kỹ thuật, không trả ra API/UI.
+- Một câu SQL tham số hóa đọc `product_90d_report_state` (id=1) + `product_90d_report` cùng một ảnh chụp: tổng dòng sau lọc, trang đã kẹp về trang cuối, sắp xếp/tìm trên toàn bộ kết quả trước `LIMIT/OFFSET`. Tìm `product_code || ' ' || product_name` bằng `shared/fuzzySql.js`; cột sắp xếp chỉ là whitelist tên cột (`product_code`, `product_name`, `qty|revenue|avg_price|customer_count|invoice_count` × 4 hậu tố); NULL xếp cuối, hòa bằng `product_code` rồi `product_key`.
+- NUMERIC đọc `::text` rồi đổi sang số, NULL giữ NULL (`avg_price_*` NULL khi SL = 0 hiển thị “—”, không thành 0). `top_customers_*` JSONB chuẩn hóa tối đa 3 phần tử `{name, share, revenue, quantity}`; dữ liệu hỏng → `[]`.
+- Không có dòng `product_90d_report_state` → API trả `available:false` (không phải bảng số 0). Kỳ hiển thị suy ra từ `as_of_date` (A): `61_90d` = A−90..A−61, `31_60d` = A−60..A−31, `1_30d` = A−30..A−1, `1_90d` = A−90..A−1; `computed_at` (TIMESTAMPTZ) trả ISO UTC, giao diện đổi sang giờ VN.
+
+## Migration 0107 — Lưu vết đơn xuất kho tạm (04/11/2026, đã áp DB)
+
+`0107_stock_out_order_events.sql` tạo bảng `stock_out_order_events`:
+- `id BIGSERIAL PRIMARY KEY`, `order_id BIGINT NOT NULL REFERENCES stock_out_orders(id) ON DELETE CASCADE`, `line_id BIGINT`, `action TEXT NOT NULL CHECK (action IN ('add', 'update', 'delete', 'import', 'confirm'))`, `user_id TEXT`, `user_name TEXT NOT NULL DEFAULT ''`, `detail JSONB NOT NULL DEFAULT '{}'::jsonb`, `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`.
+- Index: `stock_out_order_events_order_idx` trên `(order_id, id DESC)`.
+- Ghi cùng giao dịch với thao tác thêm/sửa/xóa/nhập/chốt đơn tạm; `detail` lưu ảnh chụp dòng trước/sau (`code`, `name`, `location`, `notes`).
+- RLS / phân quyền: thu hồi ALL từ `reporting_readonly`. Đọc qua `GET /api/stock-positions/orders/:id/events`. Rollback: `0107_stock_out_order_events.down.sql`.
+
+Cập nhật gần nhất: 04/11/2026.
+
+Cập nhật gần nhất: 04/11/2026.
+
+## Migration 0108 — Doanh số khách theo ba kỳ 30 ngày (04/11/2026, đã áp DB 04/11/2026)
+
+`product_report_customers` thêm `revenue_1_30d`, `revenue_31_60d`, `revenue_61_90d` kiểu NUMERIC nullable, không default: NULL nghĩa chưa tính kỳ; 0 là kỳ đã tính không phát sinh. `product_report_state` thêm `customer_window_end DATE` nullable, lưu ngày kết thúc cửa sổ khách, cùng transaction với dữ liệu tổng hợp. Không thay khóa chính, bảng chứng từ nguồn hoặc quyền hiện hành.
+
+Ba kỳ tính từ ngày E đã lưu: E−29..E, E−59..E−30, E−89..E−60. Tổng ba kỳ bằng revenue; doanh số ròng giữ trả hàng theo ngày trả nên kỳ có thể âm. Giữ quy tắc khách đang hoạt động, gộp tên chuẩn hóa, tổng ròng >0 của báo cáo hiện hành. Luồng đầy đủ E=hôm qua; tăng dần E=hôm nay theo Asia/Ho_Chi_Minh; thời gian chứng từ đọc giờ tường VN mang nhãn UTC, không cộng 7 giờ lần nữa. Tăng dần buộc luồng nặng khi thiếu kỳ/ngày hoặc đổi ngày, so sánh cả ba cột khi ghi kể cả tổng 90 ngày không đổi. API đọc khách/ngày trong một snapshot.
+
+Lịch sử hàng hóa không thêm schema khác: UNION invoices/invoice_details + returns/return_details + orders/order_details. Đơn chỉ nhận chính xác `orders.raw->>'statusValue' = 'Phiếu tạm'` (dùng partial index hiện có), không suy ra từ số status. Gộp chứng từ theo branch/type/id. Không đưa đơn tạm vào doanh số hoặc tổng mua hoàn thành.
+
+Rollback: `0108_product_customer_periods.down.sql`; khi rollback phải dừng/quay lại backend và worker tương ứng trước. Chưa áp DB thật, chưa deploy.
+
+Cập nhật gần nhất: 04/11/2026.
+
+
+## Thu mua — PR production 05/11/2026
+
+Thêm /thu-mua/dat-hang/ và /api/purchase-orders với quyền purchase.view/edit/import/export/depart/arrive; mặc định chỉ Quản lý, quyền mở rộng qua cơ chế cấp quyền hiện có. Module có bảng Chỉ số cont và Đặt hàng sửa trực tiếp, lọc riêng theo tài khoản, dropdown NV/cont/trạng thái, tách .01/.02 đệ quy, sửa hàng loạt, undo/xóa mềm/khôi phục, import toàn bộ hợp lệ mới ghi, audit/realtime và bộ công thức dùng chung. Source gate ngăn job Sheet và web ghi đè nhau.
+
+Migrations Thu mua được đổi sang 0110–0113 vì main đã dùng 0101–0109. db/ensurePurchaseSchema.js áp đúng bốn migration này khi web startup, transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
+
+
+
+## Migration 0101 — Thu mua / cont dùng chung (03/11/2026, chưa áp DB)
+- product_containers: một nguồn cont chuẩn cho Thu mua và các bảng đọc Dự kiến hàng về; không tạo purchase_containers riêng. Trạng thái 1–4, xe và sức chứa NUMERIC, ngày/kho/người xác nhận về, version. Tên cont có khóa chuẩn hóa UNIQUE.
+- purchase_orders: ID BIGSERIAL bất biến, row_key UNIQUE, root_key, split_from_key, container_id NULL là hàng chờ; các trường tiền/số lượng NUMERIC, listed_at DATE. Không phân tách branch theo ngoại lệ chỉ HN đặt hàng. Khóa .01/.02 đệ quy, số thùng và quy cách nguyên dương.
+- purchase_key_history: lưu khóa đã nghỉ khi tách, không cho UPDATE/DELETE; import chỉ nhận khóa lá hiện hành.
+- purchase_history và purchase_departures: audit và ảnh chụp thực xuất append-only, trigger chặn sửa/xóa.
+- purchase_import_previews: UUID token, actor_id, payload server, hạn 30 phút và result cho xác nhận lặp. Ghi dữ liệu và đánh dấu token trong cùng giao dịch.
+- purchase_settings: source_mode mặc định sheets. Đây là hàng rào chuyển nguồn; mọi lệnh ghi mới bị chặn cho tới khi chuyển sang web có kiểm soát. Migration không seed, không bật nguồn web.
+- Transaction ghi dùng advisory lock 20531015 chung với sync Sheet. Khi web là nguồn, Sheet sync bỏ qua cả khi force; projection cập nhật dữ liệu Thu mua, snapshot cont, expected và audit nguyên tử. Hàng đã về vẫn đọc lịch sử, không cộng tồn Kiot.
+- Chưa được tự bật source_mode=web trước khi chọn nguồn Sheet chuẩn, seed và đối chiếu đủ dữ liệu. Các bảng mới không cấp SELECT cho reporting_readonly theo default grants cũ.
+
+
+03/11/2026 — Bổ sung vào migration 0101 chưa áp dụng: purchase_presence(connection_id UUID PRIMARY KEY, actor_id TEXT, actor_name TEXT, expires_at TIMESTAMPTZ), index expires_at. Đây là lease ngắn hạn cho SSE/hiện diện liên tiến trình (gia hạn 10s, hết hạn 45s), không chứa bộ lọc hay bản nháp, không ghi vào audit nghiệp vụ. Không cấp reporting_readonly. Mã production UI /thu-mua/dat-hang/ đã nối API; migration/seed/cutover vẫn chưa chạy.
+
+03/11/2026 — Chuẩn hóa cột ngày Thu mua: Lên list / Đặt / Phát / DK đến / Đến / Ngày đo dùng metadata datetime; form và ô sửa dùng datetime-local, nhãn ngày hiển thị dd/MM/yyyy HH:mm khi có giờ. Ngày cũ không có giờ vẫn giữ ngày, không suy diễn giờ hay ngày từ ghi chú. Mockup chuyển nội dung tự do cũ của Đặt/Phát/DK đến/Đến nguyên văn sang Ghi chú 2; không chỉnh nguồn Sheet. Import server/preview kiểm ngày-giờ hợp lệ, Excel xuất kiểu số ngày với định dạng ngày/giờ và đọc lại giữ giờ-phút. listed_at ở migration 0101 chưa áp DB đổi từ DATE thành TIMESTAMP WITHOUT TIME ZONE để lưu giờ địa phương UTC+7; bốn trường *_note cũ giữ tên khóa API/TEXT nhưng giá trị phải ISO ngày hoặc ngày-giờ. Chưa seed/migrate/deploy. Kiểm tra DOM+Excel 33 đạt, service 19 đạt, import/live UI liên quan đạt.
+
+
+05/11/2026 — Chuẩn bị production Thu mua: chuyển các tiện ích dán bảng/bàn phím/đặt lại/chuyển cont/lọc nhanh/soát lỗi sang purchase.js; dropdown NV từ API HR rút gọn, lưu buyer_employee_id và kiểm active ở lần ghi. Thêm migration 0102_purchase_operations.sql (chưa chạy): xóa mềm và snapshot thao tác máy chủ, API trash/delete/restore/operations/undo có quyền edit/view, actor ownership, CAS và projection trong cùng transaction. Hoàn tác nhiều bước và hai nhánh tách được kiểm trước khi đảo; import/xuất/nhận không hoàn tác bằng endpoint này. Có công cụ purchaseOrdersReconcile.js đọc hai JSON chuẩn hóa, không ghi DB. Chi tiết schema/giới hạn/cách đối chiếu tại server/purchaseOrders/ROLLOUT.md. Chưa seed/chạy migration/cutover/deploy; chưa đối chiếu nguồn thật hay kiểm nhiều trình duyệt/máy chủ thật.
+
+
+05/11/2026 — Đợt hoàn thiện trước nghiệm thu: thêm 0103_purchase_requests.sql chưa áp dụng, mã Idempotency-Key theo tài khoản/fingerprint và kết quả ghi chung transaction; UI outbox giữ request qua mất mạng/reload, chỉ dọn đúng draft đã gửi khi xác nhận lại, không mất draft khác. Đồng bộ ghim dòng cont live với mockup (chọn theo dõi không tự lọc), lịch sử theo họ khóa và chỉ dblclick Mã SP. Hoàn tác có preview trường/giá trị, audit có liên kết operation. Tối ưu lookup và không dựng packing ẩn; có test 5,001 dòng UI và 5,000 dòng/500 sửa service. Bảng phạm vi server/purchaseOrders/READINESS.md ghi 38/40 tiêu chí đã triển khai/kiểm cục bộ (95% triển khai), không phải nghiệm thu production; nguồn thật và staging nhiều tài khoản là hai cổng bắt buộc còn lại. Chưa migrate/seed/cutover/deploy.
+
+
+05/11/2026 — Theo công thức nguồn mới: Tiền VC cont tự tính = freight_base / freight_capacity × tổng m³ bản nháp (mặc định 202,000,000 / 170), làm tròn đồng; VC/m³ lấy cùng định mức. Có nhập đè trực tiếp (mode manual), Dùng tự tính và sửa tiền/m³ chuẩn; dòng chờ xếp có ước tính. Không tự phân bổ hay sửa chi phí/giá NET từng mã. Shared purchase-freight.js dùng chung mock/live; mock freight.js, xuất Excel cont dùng số hiển thị. Migration 0104 chưa chạy giữ cước hiện có ở manual; cont tạo mới chọn formula. API cập nhật mode/định mức kiểm phiên bản/quyền/audit và giá trị hợp lệ. Kiểm tra mẫu 120 m³=142,588,235; 170 m³=202,000,000.
+
+
+05/11/2026 — Quyết định mới thay thế quy tắc VC dòng nhập tay: Tiền VC từng mã = tổng m³ mã × VC/m³ cont. Tính lại khi đổi số thùng, số đo, cont hoặc cước cont; Tiền VC dòng là cột suy ra, không nhập/import đè. Giá NET và projection dùng cùng phân bổ. Cước cont nhập tay chia cho tổng m³ cont; thiếu số đo thì chưa phân bổ để tránh tính sai. Giữ độ chính xác đơn giá khi tính, làm tròn đồng khi hiển thị. Dòng cont ghim cho sửa Tiền VC và công thức qua cùng luồng kiểm tra/lưu của bảng gốc. Chưa áp migration hoặc deploy.

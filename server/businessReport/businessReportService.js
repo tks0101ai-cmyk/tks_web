@@ -13,9 +13,12 @@ function notFound(message) {
   return e;
 }
 
-function withMetrics(row, series, snap) {
+// active: mac dinh theo doanh so (TB 4 thang > 0) cho Sale / Ma hang. Khach KHONG dung cong thuc nay:
+// khach ngung hoat dong (isActive = false o KiotViet) da bi repository loai khoi snapshot nen moi dong
+// khach con lai deu dang hoat dong -> truyen activeOverride = true.
+function withMetrics(row, series, snap, activeOverride) {
   const m = buildMetrics(series, snap.currentMonth, snap.day);
-  return { ...row, series, ...m, active: m.avg4 > 0 };
+  return { ...row, series, ...m, active: activeOverride === undefined ? m.avg4 > 0 : activeOverride };
 }
 
 function header(snap) {
@@ -66,7 +69,7 @@ function customerRecords(snap) {
     }
     g.series[r.month] = (g.series[r.month] || 0) + Number(r.netRevenue || 0);
   }
-  return [...groups.values()].map(g => withMetrics(g.row, g.series, snap));
+  return [...groups.values()].map(g => withMetrics(g.row, g.series, snap, true));
 }
 
 const seriesTotal = series => Object.values(series).reduce((s, v) => s + v, 0);
@@ -98,7 +101,7 @@ function mergeByName(records, snap) {
     return withMetrics({
       key, name: main.name, saleName: best[1] > 0 ? best[0] : main.saleName, priceLevel: levelOf(recs),
       refs: recs.map(rec => ({ branch: rec.branch, code: rec.code }))
-    }, series, snap);
+    }, series, snap, true);
   });
 }
 
@@ -180,6 +183,9 @@ function last4Months(snap) {
   return [3, 2, 1, 0].map(i => addMonths(snap.currentMonth, -i));
 }
 
+// Biểu đồ cột trong hộp chi tiết chỉ vẽ 6 tháng gần nhất (tổng "từ T3/26" vẫn cộng đủ các tháng).
+const CHART_MONTHS = 6;
+
 function detailBase(row, snap, title, subtitle) {
   return {
     ...header(snap), title, subtitle,
@@ -191,7 +197,7 @@ function detailBase(row, snap, title, subtitle) {
       { key: 'avg4', label: 'TB 4 tháng', value: row.avg4, type: 'money' },
       { key: 'total', label: 'Tổng từ T3/26', value: Object.values(row.series).reduce((s, v) => s + v, 0), type: 'money' }
     ],
-    chart: snap.months.map(m => ({ month: m, label: monthLabel(m), value: row.series[m] || 0, partial: m === snap.currentMonth }))
+    chart: snap.months.slice(-CHART_MONTHS).map(m =>({ month: m, label: monthLabel(m), value: row.series[m] || 0, partial: m === snap.currentMonth }))
   };
 }
 
@@ -203,19 +209,24 @@ function buildDetail(kind, key, snap, extra = {}) {
     if (!row) throw notFound('Không tìm thấy sale này.');
     const customers = buildCustomerReport(snap).rows.filter(c => c.saleName === key);
     const base = detailBase(row, snap, key, `${row.team} · ${row.activeCustomers} khách hoạt động`);
+    base.summary = base.summary.filter(s => s.key !== 'normalized' && s.key !== 'total');
     base.summary.push({ key: 'activeCustomers', label: 'SL khách hoạt động', value: row.activeCustomers, type: 'number' });
     return { ...base, kind, customers };
   }
   if (kind === 'customer') {
     const row = buildCustomerReport(snap).rows.find(r => r.key === key);
     if (!row) throw notFound('Không tìm thấy khách hàng này.');
-    return { ...detailBase(row, snap, row.name, `Sale ${row.saleName}`),
+    const base = detailBase(row, snap, row.name, `Sale ${row.saleName}`);
+    base.summary = base.summary.filter(s => s.key !== 'normalized');
+    return { ...base,
       kind, customer: row, topProducts: extra.topProducts || [], window: last4Months(snap) };
   }
   if (kind === 'product') {
     const row = buildProductReport(snap).rows.find(r => r.key === key);
     if (!row) throw notFound('Không tìm thấy mã hàng này.');
-    return { ...detailBase(row, snap, `${row.code} – ${row.name}`, 'Doanh số theo tháng'),
+    const base = detailBase(row, snap, `${row.code} – ${row.name}`, 'Doanh số theo tháng');
+    base.summary = base.summary.filter(s => s.key !== 'normalized' && s.key !== 'total');
+    return { ...base,
       kind, product: row, topCustomers: extra.topCustomers || [], window: last4Months(snap) };
   }
   const e = new Error('Loại chi tiết không hợp lệ.');

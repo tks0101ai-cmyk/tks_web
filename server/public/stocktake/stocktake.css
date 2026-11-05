@@ -1,0 +1,207 @@
+/* Trang Kiểm kê: dùng lại khung + bảng của VT Hà Nội (vt-base.css, vt-positions.css), chỉ thêm phần riêng. */
+.st-sessions{margin-bottom:12px}
+.st-recheck{margin-bottom:16px}
+.st-recheck{margin-top:16px}
+.st-field{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+.st-session-pick select,.st-select{min-height:40px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel-2);color:var(--text);font:13px var(--font-body)}
+.st-session-pick select{min-width:260px}
+.st-session-meta{flex:1;color:var(--muted);font-size:13px}
+.st-danger{color:var(--red);border-color:color-mix(in srgb,var(--red) 45%,var(--border))}
+.st-stats{display:flex;flex-wrap:wrap;gap:10px;padding:0 16px 16px}
+.dp-body .st-stats{padding:0}
+.st-stat{display:flex;flex-direction:column;gap:2px;min-width:120px;padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel-2)}
+.st-stat b{font:600 18px var(--font-data);color:var(--text);font-variant-numeric:tabular-nums}
+.st-stat span{font-size:12px;color:var(--muted)}
+.st-stat.st-warn b{color:var(--amber,#d97706)}
+.st-stat.st-bad b{color:var(--red)}
+.st-table{--locations-min-width:0px}
+.st-table td.num,.st-table th.num,.st-lines .num{text-align:right;font-variant-numeric:tabular-nums}
+.st-table tbody td{cursor:cell}
+.st-table tbody tr:hover td,.st-table tbody tr:focus-visible td{background:var(--panel-2)}
+.st-table tbody tr:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
+.st-table td[data-field="code"]{font-family:var(--font-data)}
+.st-neg{color:var(--red)}
+.st-pos{color:var(--green,#16a34a)}
+.st-recheck-list{display:flex;flex-wrap:wrap;gap:8px;padding:0 16px 16px;color:var(--muted);font-size:13px}
+.st-chip{min-height:36px;padding:6px 12px;border:1px solid var(--border);border-radius:999px;background:var(--panel-2);color:var(--text);font:13px var(--font-body);cursor:pointer}
+.st-chip:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.st-detail{width:min(900px,calc(100vw - 32px))}
+.st-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:end}
+.st-wide{grid-column:1 / -1}
+.st-meta{margin:0;color:var(--muted);font-size:12px}
+.st-meta:empty{display:none}
+.st-check{display:flex;align-items:center;gap:8px;min-height:40px;font-size:13px;color:var(--text)}
+.st-conflict{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border:1px solid var(--amber,#d97706);border-radius:var(--radius-sm);background:color-mix(in srgb,var(--amber,#d97706) 12%,transparent);color:var(--text);font-size:13px}
+.st-conflict[hidden]{display:none}
+.st-lines input{width:90px;min-height:32px;padding:4px 6px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel-2);color:var(--text);font:13px var(--font-data);text-align:right}
+.st-lines small{display:block;color:var(--muted);font-size:11px}
+.st-removed td{opacity:.5;text-decoration:line-through}
+.st-removed td:last-child{text-decoration:none;opacity:1}
+.st-add-line{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.st-add-line[hidden]{display:none}
+.st-add-line input{flex:1 1 120px;min-height:40px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel-2);color:var(--text);font:13px var(--font-body)}
+.st-history{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--muted)}
+.st-history li{display:flex;flex-direction:column;gap:2px;padding:8px 0;border-bottom:1px solid var(--border)}
+.st-history b{color:var(--text);font-weight:600}
+.dp-section-title small{font-weight:400;color:var(--muted)}
+#stLinesSection[hidden]{display:none}
+@media(max-width:600px){
+  .st-session-pick{grid-column:1 / -1}
+  .st-session-pick select{min-width:0;width:100%}
+  .st-session-meta{grid-column:1 / -1}
+  .st-select{width:100%}
+  .st-stat{min-width:calc(50% - 5px);flex:1 1 calc(50% - 5px)}
+  .st-grid{grid-template-columns:minmax(0,1fr)}
+  .st-table td[data-field="code"]{position:sticky;left:0;background:var(--panel);z-index:1;box-shadow:1px 0 0 var(--border)}
+}
+.st-table td.st-manual { box-shadow: inset 2px 0 0 var(--amber, #c48a2c); font-style: italic; }
+.st-table th .sort-button { width: 100%; }
+.st-counterpart select { min-width: 220px; }
+@media (max-width: 720px) { .st-counterpart select { min-width: 0; width: 100%; } }
+#stCounterpartField[hidden]{display:none}
+/* Hàng tiêu đề màu cyan cho dễ nhìn (cả sáng / tối; chữ trắng trên #0e7490 đạt tương phản 5:1). */
+#stTable thead th{background:#0e7490;color:#fff;border-bottom-color:#155e75;z-index:2}
+#stTable thead th .sort-button,#stTable thead th .sort-indicator{color:#fff}
+#stTable thead th[aria-sort="ascending"],#stTable thead th[aria-sort="descending"]{background:#155e75}
+#stTable thead th[aria-sort="ascending"] .sort-indicator,#stTable thead th[aria-sort="descending"] .sort-indicator{color:#a5f3fc}
+/* Danh sách liền mạch: cuộn trong khung cao gần hết màn hình, tiêu đề dính trên cùng. */
+.st-scroll{max-height:calc(100vh - 180px);min-height:320px}
+.st-sentinel td{padding:14px 16px;color:var(--muted);font-size:12px;text-align:center;cursor:default}
+/* Hàng gợi ý: gợi ý bên trái, thông báo hành động vừa làm ("Đã xóa 1 ô") dồn sang phải cùng hàng. */
+.st-hint-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 16px;margin:0 16px 8px}
+.st-hint{margin:0;flex:1 1 auto;color:var(--muted);font-size:12px}
+.st-notice{margin:0 0 0 auto;color:var(--text);font-size:12px;font-weight:600;text-align:right}
+.st-notice:empty{display:none}
+.st-notice[data-error="true"]{color:var(--red)}
+/* Thanh tổng vùng chọn kiểu Excel: dính góc dưới phải màn hình. */
+.st-sel-sum{position:fixed;right:20px;bottom:16px;z-index:30;display:flex;flex-wrap:wrap;gap:4px 18px;max-width:calc(100vw - 40px);padding:8px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel);box-shadow:0 6px 18px rgba(0,0,0,.25);color:var(--muted);font-size:12px}
+.st-sel-sum[hidden]{display:none}
+.st-sel-sum b{color:var(--text);font:600 13px var(--font-data);font-variant-numeric:tabular-nums}
+@media(max-width:600px){.st-sel-sum{right:12px;left:12px;bottom:12px;justify-content:space-between}}
+/* Vùng chọn kiểu sheet. */
+.st-table tbody{user-select:none}
+.st-table td.st-sel{background:color-mix(in srgb,#06b6d4 38%,var(--panel)) !important;box-shadow:inset 0 0 0 1px #06b6d4}
+/* Sua tren bang kieu sheet: o nhap de len o, nut keo goc vung chon, vien vung se dien. */
+.st-scroll{position:relative}
+.st-table td[data-editable]{cursor:cell}
+.st-editor{position:absolute;z-index:6;box-sizing:border-box;margin:0;padding:4px 6px;border:2px solid #06b6d4;border-radius:0;background:var(--panel);color:var(--text);font:13px var(--font-body);outline:none;box-shadow:0 4px 12px rgba(0,0,0,.25)}
+.st-fill{position:absolute;z-index:5;width:8px;height:8px;margin:0;padding:0;border:1px solid var(--panel);background:#06b6d4;cursor:crosshair}
+.st-fill[hidden]{display:none}
+.st-table td.st-fill-preview{outline:1px dashed #06b6d4;outline-offset:-2px}
+
+/* Tiêu đề cột xuống dòng theo từ để luôn đọc hết tên cột (từ dài hơn cột mới ngắt giữa từ); hàng tiêu đề cao theo tên dài nhất.
+   Ô dữ liệu xuống dòng để luôn thấy hết chữ (từ quá dài ngắt giữa từ), hàng cao theo ô dài nhất.
+   Ghi đè table-controls (overflow-wrap:anywhere) chỉ cho bảng kiểm kê. */
+#stTable thead th{white-space:normal !important;overflow:hidden;overflow-wrap:break-word !important;word-break:normal !important;text-overflow:clip !important;vertical-align:middle}
+#stTable tbody td{white-space:normal !important;overflow-wrap:anywhere !important;text-overflow:clip !important;vertical-align:top}
+/* Số và mã hàng không ngắt giữa chừng: một dòng, cột hẹp hơn giá trị thì hiện "…" (kéo rộng cột để xem đủ). */
+#stTable tbody td.num,#stTable tbody td[data-field="code"]{white-space:nowrap !important;overflow-wrap:normal !important;overflow:hidden;text-overflow:ellipsis !important}
+#stTable thead th{padding-top:5px;padding-bottom:9px;padding-left:4px;padding-right:4px;font-size:11px;line-height:1.25;text-transform:none;letter-spacing:0}
+#stTable tbody td{padding-left:6px;padding-right:6px}
+#stTable thead th .sort-button,#stTable thead th .sort-button>.sort-label{white-space:normal !important;overflow-wrap:break-word !important;word-break:normal !important;font-size:11px}
+#stTable thead th .sort-button{position:relative;justify-content:center}
+#stTable thead th .sort-indicator{position:absolute;right:-2px;bottom:-8px;width:auto;font-size:7px;pointer-events:none;opacity:.45}
+#stTable thead th .sort-button:hover .sort-indicator{opacity:1}
+#stTable thead th[aria-sort="ascending"] .sort-indicator,#stTable thead th[aria-sort="descending"] .sort-indicator{opacity:1}
+/* ▲▼ nằm ở góc dưới phải (trong phần đệm dưới ô) nên nhãn dùng hết bề ngang, cột hẹp không phải ngắt giữa từ. */
+#stTable thead th .sort-button>.sort-label{flex:1 1 auto;padding:0}
+
+/* Ô Trạng thái tô theo loại (màu lấy từ stocktakeStatus.js qua --st-status); chữ tối trên mọi nền màu, cả giao diện tối. */
+#stTable td[data-field="status"][data-status]{background:var(--st-status);color:#111;font-weight:600}
+/* Ô Trạng thái đang chọn giữ màu loại (pha nhẹ cyan) + viền cyan dày, chữ vẫn tối — không bị nền vùng chọn đè mất màu. */
+#stTable td.st-sel[data-status]{background:color-mix(in srgb,var(--st-status) 82%,#06b6d4) !important;color:#111;box-shadow:inset 0 0 0 2px #0891b2}
+/* Khung đợt gọn: 1 hàng điều khiển (đợt · ngày · tổng chênh … đối chiếu · nút), dưới là 1 hàng thẻ trạng thái. */
+.st-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 14px 8px}
+.st-bar .st-field{flex-direction:row;align-items:center;gap:6px;font-size:12px;white-space:nowrap}
+.st-bar .st-session-pick select,.st-bar .st-select{min-height:34px;padding:5px 8px}
+.st-bar .st-session-pick select{min-width:220px}
+.st-bar .st-session-meta{flex:0 1 auto;font-size:12px}
+.st-bar .st-counterpart{margin-left:auto}
+.st-bar .st-counterpart select{min-width:180px}
+.st-bar .locations-columns-button{min-height:34px;padding-top:5px;padding-bottom:5px}
+.st-bar .st-stats{padding:0;gap:6px}
+.st-bar .st-stat{flex-direction:row-reverse;align-items:baseline;gap:8px;min-width:0;padding:5px 12px}
+.st-bar .st-stat b{font-size:15px}
+.st-bar .st-stat span{white-space:nowrap}
+.st-stats:empty{display:none}
+.st-status-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;padding:0 14px 10px}
+.st-status-cards:empty{display:none}
+.st-status-card{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:0 8px;min-width:0;min-height:0;padding:4px 10px;border:1px solid var(--border);border-left:6px solid var(--st-status,var(--muted));border-radius:var(--radius-sm);background:var(--panel-2);color:var(--text);font:13px var(--font-body);text-align:left;cursor:pointer}
+.st-status-card[data-status-key="pending"]{border-left-color:var(--muted)}
+.st-status-card .st-status-name{font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st-status-card .st-status-count{color:var(--muted);font-size:11px;text-align:right;white-space:nowrap}
+.st-status-card b{grid-column:1 / -1;font:600 14px var(--font-data);font-variant-numeric:tabular-nums;line-height:1.3}
+.st-status-card b.st-neg{color:var(--red)}
+.st-status-card[aria-pressed="true"]{border-color:var(--text);border-left-color:var(--st-status,var(--muted));box-shadow:inset 0 0 0 1px var(--text)}
+.st-status-card[data-status-key="pending"][aria-pressed="true"]{border-left-color:var(--muted)}
+.st-status-card:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+/* Danh sách chọn Trạng thái (gõ / Enter trên ô Trạng thái). */
+.st-status-menu{position:absolute;z-index:7;display:flex;flex-direction:column;padding:4px;border:2px solid #06b6d4;background:var(--panel);box-shadow:0 6px 16px rgba(0,0,0,.3);outline:none}
+.st-status-option{display:flex;align-items:center;gap:8px;min-height:32px;padding:4px 10px;color:var(--text);font:13px var(--font-body);cursor:pointer;white-space:nowrap}
+.st-status-option::before{content:"";flex:0 0 auto;width:12px;height:12px;border-radius:50%;background:var(--st-status);border:1px solid var(--border)}
+.st-status-option:hover{background:color-mix(in srgb,#06b6d4 18%,var(--panel))}
+.st-status-option[aria-selected="true"]{background:color-mix(in srgb,#06b6d4 32%,var(--panel))}
+@media(max-width:600px){
+  .st-bar{padding:10px 12px 8px}
+  .st-bar .st-field{flex:1 1 100%}
+  .st-bar .st-field select{flex:1 1 auto;min-width:0 !important;width:auto}
+  .st-bar .st-counterpart{margin-left:0}
+  .st-bar .st-stats{flex:1 1 100%}
+  .st-bar .st-stat{flex:1 1 auto;justify-content:space-between}
+  .st-status-cards{grid-template-columns:repeat(2,minmax(0,1fr));padding:0 12px 10px}
+}
+
+/* 0106: Đợt KK trước, hủy / khôi phục, nạp lại sheet */
+.st-bar .st-previous select{min-width:180px}
+.st-check{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);white-space:nowrap;cursor:pointer}
+.st-previous-note{margin:0 14px 8px;padding:6px 10px;border-radius:8px;font-size:12px;
+  color:var(--amber);background:color-mix(in srgb,var(--amber) 12%,transparent);border:1px solid color-mix(in srgb,var(--amber) 40%,var(--border))}
+.st-cancel-banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;margin:0 14px 10px;padding:8px 12px;
+  border-radius:8px;font-size:13px;color:var(--red);background:color-mix(in srgb,var(--red) 10%,transparent);border:1px solid color-mix(in srgb,var(--red) 40%,var(--border))}
+.st-orders-note{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px}
+.st-orders-note .locations-columns-button{min-height:28px;padding-top:2px;padding-bottom:2px}
+.st-cancel-banner[hidden],.st-previous-note[hidden]{display:none}
+.st-dependents{font-size:13px;color:var(--muted);margin-bottom:10px}
+.st-dependents ul{margin:4px 0 0;padding-left:18px}
+.st-dependents li{margin:2px 0}
+.st-dependents b{color:var(--text,inherit)}
+.st-reload-preview{font-size:13px;margin:6px 0}
+.st-reload-preview p{margin:4px 0}
+.st-muted{color:var(--muted)}
+.st-reload-table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.st-reload-table th,.st-reload-table td{padding:4px 8px;border-bottom:1px solid var(--border);text-align:right}
+.st-reload-table th:first-child,.st-reload-table td:first-child{text-align:left}
+@media (max-width: 720px){
+  .st-bar .st-previous{margin-left:0}
+  .st-bar .st-previous select{min-width:0;width:100%}
+  .st-previous-note,.st-cancel-banner{margin-left:12px;margin-right:12px}
+}
+/* Ô ngày + lý do trong hộp thoại kiểm kê dùng cùng kiểu với ô chữ của vt-field. */
+.vt-dialog .vt-field input[type="date"],.vt-dialog .vt-field textarea{box-sizing:border-box;width:100%;min-height:38px;padding:8px 10px;
+  border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel-2);color:var(--text);font:13px var(--font-body);color-scheme:light dark}
+.vt-dialog .vt-field textarea{resize:vertical}
+.vt-dialog .vt-field textarea:focus-visible,.vt-dialog .vt-field input[type="date"]:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.vt-dialog .vt-dialog-actions button:disabled{opacity:.5;cursor:not-allowed}
+
+/* Menu "Thao tác đợt": khung đợt phải cho menu tràn ra ngoài (mặc định .locations-panel cắt phần thừa). */
+.st-sessions{overflow:visible}
+.st-actions{position:relative;margin-left:auto}
+.st-actions[hidden]{display:none}
+.st-actions summary{display:inline-flex;align-items:center;gap:6px;cursor:pointer;list-style:none;white-space:nowrap}
+.st-actions summary::-webkit-details-marker{display:none}
+.st-actions summary::after{content:"▾";font-size:11px}
+.st-actions-list{position:absolute;z-index:30;top:calc(100% + 4px);right:0;display:flex;flex-direction:column;gap:6px;min-width:150px;padding:8px;
+  border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel);box-shadow:0 8px 24px rgba(0,0,0,.25)}
+.st-actions-list button{width:100%;justify-content:center}
+@media(max-width:600px){
+  .st-actions{margin-left:0}
+  .st-actions-list{right:auto;left:0}
+}
+
+/* Bảng dòng đếm: Khu, Quy cách sửa trong ô; tiêu đề bấm để sort. */
+.st-lines input[type="text"]{width:100%;min-width:110px;box-sizing:border-box;text-align:left;font-family:inherit}
+.st-line-sort{display:inline-flex;align-items:center;gap:4px;padding:0;border:0;background:none;color:inherit;font:inherit;text-transform:inherit;letter-spacing:inherit;cursor:pointer;white-space:nowrap}
+.st-line-sort::after{content:"▲▼";font-size:8px;letter-spacing:-1px;opacity:.45}
+th[aria-sort="ascending"] .st-line-sort::after{content:"▲";opacity:1}
+th[aria-sort="descending"] .st-line-sort::after{content:"▼";opacity:1}

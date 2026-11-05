@@ -6,13 +6,13 @@
 // Khac sheetsClient.js: CA HAI tab nam trong CUNG 1
 // spreadsheet (khong phai 1 spreadsheet/co so), nen chi can 1 client duy nhat
 // — khong tach hanoiClient/saigonClient. Cache TTL ngan (15s) vi du lieu bot
-// ghi gan-realtime; khong can generation-guard vi
-// module nay KHONG BAO GIO ghi.
+// ghi gan-realtime. Shared generation guard cũng nhận invalidation từ history client.
 // ==========================================
 'use strict';
 
 const { google } = require('googleapis');
 const CONFIG = require('../config');
+const { createSheetValuesCache } = require('./sheetValuesCache');
 
 const API_TIMEOUT_MS = 15000; // 15s
 const CACHE_TTL_MS = 15 * 1000; // 15s
@@ -51,35 +51,33 @@ function requireSpreadsheetId() {
   return id;
 }
 
-const sheetCache = new Map(); // sheetName -> { data, expiresAt, loading }
+const {sharedCache} = require('../lib/sharedCache');
+
+// L1 trong tien trinh (tra ban cu + lam moi nen) dung tren L2 Redis (sharedCache, fail-open): nhieu instance chia se mot lan doc Google.
+const valuesCache = createSheetValuesCache({
+  ttlMs: CACHE_TTL_MS,
+  load: sheetName => {
+    const spreadsheetId = requireSpreadsheetId();
+    return sharedCache.readThrough(`lifecycle-sheets:${spreadsheetId}:${sheetName}`, CACHE_TTL_MS, async () => {
+      const sheets = await getSheetsApi();
+      const res = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: quoteSheetName(sheetName),
+        valueRenderOption: 'UNFORMATTED_VALUE',
+        dateTimeRenderOption: 'FORMATTED_STRING'
+      }, { timeout: API_TIMEOUT_MS });
+      return res.data.values || [];
+    }, { validate: rows => Array.isArray(rows) && rows.every(Array.isArray) });
+  },
+  onBackgroundError: err => console.warn('[orderLifecycleSheetsClient] lam moi nen loi:', err.message)
+});
 
 /**
  * Doc toan bo du lieu cua 1 tab, tra ve mang 2 chieu (giong sheetsClient.js).
+ * options.allowStale: cache het han van tra ban cu ngay va lam moi o nen (hop Chi dinh vi tri dung).
  */
-async function getValues(sheetName) {
-  const cached = sheetCache.get(sheetName);
-  if (cached && cached.data && Date.now() < cached.expiresAt) {
-    return cached.data;
-  }
-  if (cached && cached.loading) return cached.loading;
-
-  const spreadsheetId = requireSpreadsheetId();
-  const loading = getSheetsApi().then(sheets => sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: quoteSheetName(sheetName),
-    valueRenderOption: 'UNFORMATTED_VALUE',
-    dateTimeRenderOption: 'FORMATTED_STRING'
-  }, { timeout: API_TIMEOUT_MS })).then(res => {
-    const values = res.data.values || [];
-    sheetCache.set(sheetName, { data: values, expiresAt: Date.now() + CACHE_TTL_MS, loading: null });
-    return values;
-  }).catch(err => {
-    sheetCache.delete(sheetName);
-    throw err;
-  });
-
-  sheetCache.set(sheetName, { data: cached ? cached.data : null, expiresAt: 0, loading });
-  return loading;
+function getValues(sheetName, options) {
+  return valuesCache.get(sheetName, options);
 }
 
 module.exports = { getValues };

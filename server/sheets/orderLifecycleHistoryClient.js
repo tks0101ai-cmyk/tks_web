@@ -12,6 +12,7 @@
 
 const { google } = require('googleapis');
 const CONFIG = require('../config');
+const { createSheetValuesCache } = require('./sheetValuesCache');
 
 const API_TIMEOUT_MS = 15000; // 15s
 const CACHE_TTL_MS = 15 * 1000; // 15s, invalidate ngay sau moi lan ghi
@@ -50,30 +51,34 @@ function requireSpreadsheetId() {
   return id;
 }
 
-let cache = null; // { data, expiresAt } | null
+const {sharedCache} = require('../lib/sharedCache');
+const cacheKey = (spreadsheetId, sheetName) => `lifecycle-sheets:${spreadsheetId}:${sheetName}`;
 
-function invalidateCache() {
-  cache = null;
-}
+// L1 trong tien trinh (tra ban cu + lam moi nen) dung tren L2 Redis (sharedCache, fail-open): nhieu instance chia se mot lan doc Google.
+const valuesCache = createSheetValuesCache({
+  ttlMs: CACHE_TTL_MS,
+  load: sheetName => {
+    const spreadsheetId = requireSpreadsheetId();
+    return sharedCache.readThrough(cacheKey(spreadsheetId, sheetName), CACHE_TTL_MS, async () => {
+      const sheets = await getSheetsApi();
+      const res = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: quoteSheetName(sheetName),
+        valueRenderOption: 'UNFORMATTED_VALUE',
+        dateTimeRenderOption: 'FORMATTED_STRING'
+      }, { timeout: API_TIMEOUT_MS });
+      return res.data.values || [];
+    }, { validate: rows => Array.isArray(rows) && rows.every(Array.isArray) });
+  },
+  onBackgroundError: err => console.warn('[orderLifecycleHistoryClient] lam moi nen loi:', err.message)
+});
 
 /**
  * Doc toan bo du lieu tab "Lich su cap nhat" (mang 2 chieu, dong 1 la header).
+ * options.allowStale: xem orderLifecycleSheetsClient.getValues. Sau moi lan ghi cache bi xoa nen luon doc ban moi.
  */
-async function getValues(sheetName) {
-  if (cache && Date.now() < cache.expiresAt) return cache.data;
-
-  const spreadsheetId = requireSpreadsheetId();
-  const sheets = await getSheetsApi();
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: quoteSheetName(sheetName),
-    valueRenderOption: 'UNFORMATTED_VALUE',
-    dateTimeRenderOption: 'FORMATTED_STRING'
-  }, { timeout: API_TIMEOUT_MS });
-
-  const values = res.data.values || [];
-  cache = { data: values, expiresAt: Date.now() + CACHE_TTL_MS };
-  return values;
+function getValues(sheetName, options) {
+  return valuesCache.get(sheetName, options);
 }
 
 /**
@@ -93,7 +98,9 @@ async function appendRow(sheetName, row) {
       requestBody: { values: [row] }
     }, { timeout: API_TIMEOUT_MS });
   } finally {
-    invalidateCache();
+    // L2 truoc roi moi toi L1: doc xen giua khong the nap lai ban cu tu Redis vao L1.
+    await sharedCache.invalidate(cacheKey(spreadsheetId, sheetName));
+    valuesCache.invalidate();
   }
 }
 

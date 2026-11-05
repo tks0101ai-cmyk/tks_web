@@ -79,7 +79,7 @@ async function finalizePenaltyCycle(pool, cycleDate, { repository = createDebtSc
         customers.map(c => c.overdueDebt),
         customers.map(c => c.overdueStreak),
         customers.map(c => c.penaltyAmount),
-        customers.map(c => c.penaltyIsManual),
+        customers.map(() => false),
         customers.map(c => c.workflowStatus)
       ]);
     }

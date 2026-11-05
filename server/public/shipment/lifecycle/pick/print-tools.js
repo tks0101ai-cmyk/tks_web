@@ -208,8 +208,18 @@ function formattingControls(host,restore=true,shared=null){
   window.requestAnimationFrame?.(()=>{if(root.isConnected)names().forEach(applyGroup);});
 }
 const layoutWrites=new Map();
+function setPrintReady(root,ready){
+  if(!root?.isConnected)return;
+  // A successful later save can make this same root ready again. Frames must still
+  // reject the revision they captured before that prepare/save began.
+  if(!ready)root.dataset.printRevision=String((Number(root.dataset.printRevision)||0)+1);
+  root.dataset.printReady=String(ready);
+  for(const id of ['pickingPrintBtn','pickingSavePrint'])if($(id))$(id).disabled=!ready;
+}
+const printReady=()=>!!$('pickingPrintSheet')?.querySelector('.tokosi-invoice[data-print-ready="true"]');
 async function prepare(){
-  const root=$('pickingPrintSheet')?.querySelector('.tokosi-invoice');if(!root)return;
+  const root=$('pickingPrintSheet')?.querySelector('.tokosi-invoice');if(!root)return false;
+  setPrintReady(root,false);
   let host=$('pickingPrintFormatting');
   if(!host){host=document.createElement('div');host.id='pickingPrintFormatting';host.className='print-format-controls';$('pickingPrintSheet').before(host);}
   host.replaceChildren();
@@ -221,23 +231,27 @@ async function prepare(){
     const res=await fetch(url,{credentials:'same-origin',cache:'no-store'});
     if(!res.ok)throw new Error('Không tải được form chung. Đóng rồi mở lại phiếu để thử lại.');
     const saved=await res.json();
-    if(!root.isConnected)return;
+    if(!root.isConnected)return false;
     let version=saved.version,blocked=false;
     formattingControls(host,true,{layout:saved.layout,save:prefs=>{
       const layout=JSON.parse(JSON.stringify(prefs));
       message('Đang lưu form chung…','saving');
+      setPrintReady(root,false);
       const task=(layoutWrites.get(template)||Promise.resolve()).then(async()=>{
         if(blocked){message('Chưa lưu form chung. Đóng rồi mở lại phiếu trước khi chỉnh tiếp.','error');return;}
         const result=await fetch(url,{method:'PUT',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({layout,version})});
         const data=await result.json();
         if(!result.ok)throw new Error(data.error||'Không lưu được form chung.');
         version=data.version;message('Đã lưu form chung','saved');
-      }).catch(error=>{blocked=true;message(error.message+' Các chỉnh sửa trên phiếu này chưa được lưu chung.','error');});
+      }).catch(error=>{blocked=true;message(error.message+' Các chỉnh sửa trên phiếu này chưa được lưu chung.','error');}).finally(()=>{
+        if(layoutWrites.get(template)===task&&!blocked)setPrintReady(root,true);
+      });
       layoutWrites.set(template,task);
     }});
     const picker=$('pickingPrintTemplate');if(picker)picker.value=template;
     message(saved.version?'Đã lưu form chung':'Form mặc định','saved');
-  }catch(error){message('Không tải được form chung. Đóng rồi mở lại phiếu để thử lại.','error');}
+    setPrintReady(root,true);return true;
+  }catch(error){message('Không tải được form chung. Đóng rồi mở lại phiếu để thử lại.','error');return false;}
 }
 // Các nút này cũng được nhúng trong file đơn độc lập tải về.
 function standaloneControls(){
@@ -252,7 +266,7 @@ function standaloneControls(){
   document.getElementById('saveDocument').onclick=()=>{
     const blob=new Blob(['<!doctype html>\n'+document.documentElement.outerHTML],{type:'text/html;charset=utf-8'});
     const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download=document.title.replace(/[\\/:*?"<>|]/g,'-')+'.html';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+    a.href=url;a.download=document.documentElement.dataset.name.replace(/[\\/:*?"<>|]/g,'-')+'.html';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
   };
 }
 function printDocument(){
@@ -266,9 +280,11 @@ function printDocument(){
   content.append(layout);
   content.querySelectorAll('[contenteditable]').forEach(el=>el.setAttribute('contenteditable','false'));
   const title=$('pickingPrintTitle').textContent;
-  return '<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(title)+'</title><style>'+css.join('\n')+'\nbody{margin:0;background:#eee;font-family:Arial,sans-serif}#pickingPrintDialog{max-width:794px;margin:20px auto;background:white}.print-controls{padding:12px;text-align:center}.print-controls button{padding:9px 14px;margin:4px;cursor:pointer}.print-controls p{font-size:12px} [contenteditable]:focus{outline:1px dashed #888}@media print{.print-controls{display:none!important}body{background:white}#pickingPrintDialog{margin:0;max-width:none}[contenteditable]:focus{outline:none}}</style></head><body><div class="print-controls"><button id="printDocument">'+printerIcon+'<span>In</span></button><button id="saveDocument">Lưu file HTML</button><p>Nội dung và số liệu chỉ đọc. Kéo viền chỉnh cột/hàng tiêu đề; hàng dữ liệu tự khít nội dung; bôi đen và Ctrl+] / Ctrl+[ chỉnh cỡ chữ. Ctrl+L / R / E căn trái / phải / giữa; Định dạng đồng bộ theo cột trong từng bảng; tiêu đề chỉnh riêng. Bấm In để chọn máy in. Chỉnh form chung tại Dashboard; thay đổi trong file này chỉ áp dụng cho file này.</p></div><div id="pickingPrintFormatting" class="print-format-controls"></div><main id="pickingPrintDialog">'+content.outerHTML+'</main><script>'+formattingControls.toString()+';('+standaloneControls.toString()+')();<\/script></body></html>';
+  // Tiêu đề tài liệu chỉ là ký tự rộng 0: Chrome/Edge in nó ở giữa đầu trang; để trống thì sẽ in URL thay vào.
+  return '<!doctype html><html lang="vi" data-name="'+esc(title)+'"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>&#8203;</title><style>'+css.join('\n')+'\nbody{margin:0;background:#eee;font-family:Arial,sans-serif}#pickingPrintDialog{max-width:794px;margin:20px auto;background:white}.print-controls{padding:12px;text-align:center}.print-controls button{padding:9px 14px;margin:4px;cursor:pointer}.print-controls p{font-size:12px} [contenteditable]:focus{outline:1px dashed #888}@media print{.print-controls{display:none!important}body{background:white}#pickingPrintDialog{margin:0;max-width:none}[contenteditable]:focus{outline:none}}</style></head><body><div class="print-controls"><button id="printDocument">'+printerIcon+'<span>In</span></button><button id="saveDocument">Lưu file HTML</button><p>Nội dung và số liệu chỉ đọc. Kéo viền chỉnh cột/hàng tiêu đề; hàng dữ liệu tự khít nội dung; bôi đen và Ctrl+] / Ctrl+[ chỉnh cỡ chữ. Ctrl+L / R / E căn trái / phải / giữa; Định dạng đồng bộ theo cột trong từng bảng; tiêu đề chỉnh riêng. Bấm In để chọn máy in. Chỉnh form chung tại Dashboard; thay đổi trong file này chỉ áp dụng cho file này.</p></div><div id="pickingPrintFormatting" class="print-format-controls"></div><main id="pickingPrintDialog">'+content.outerHTML+'</main><script>'+formattingControls.toString()+';('+standaloneControls.toString()+')();<\/script></body></html>';
 }
 function save(){
+  if(!printReady())return;
   const blob=new Blob([printDocument()],{type:'text/html;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
   a.href=url;a.download=$('pickingPrintTitle').textContent.replace(/[\\/:*?"<>|]/g,'-')+'.html';
   document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
@@ -278,29 +294,40 @@ function init(){
   const button=$('pickingPrintBtn');
   if(!button||button.dataset.ready)return;
   button.dataset.ready='1';
+  button.disabled=true;
   button.innerHTML=printerIcon+'<span>In phiếu</span>';
   button.parentElement.classList.add('print-header-actions');
   button.insertAdjacentHTML('afterend',' <button id="pickingSavePrint" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></svg>Lưu HTML</button>');
+  $('pickingSavePrint').disabled=true;
   $('pickingPrintDialog').querySelector('.dp-head').insertAdjacentHTML('afterend',
     '<div class="print-toolbar"><label class="print-template-field" for="pickingPrintTemplate"><span>Mẫu in</span><select id="pickingPrintTemplate"><option value="order">Phiếu đặt hàng</option><option value="delivery">Phiếu xác nhận giao hàng</option></select></label>'
     +'<div class="print-save-status"><p id="pickingPrintMessage" role="status" aria-live="polite" data-state="loading">Đang tải form chung…</p><small>Định dạng dùng chung cho mọi người</small></div><div id="pickingPrintFormatting" class="print-format-controls"></div></div>'
     +'<div class="print-edit-hint"><span><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 3v18M3 12h18M8 7l4-4 4 4M8 17l4 4 4-4M7 8l-4 4 4 4m10-8 4 4-4 4"/></svg>Kéo viền chỉnh cột / hàng tiêu đề (hàng dữ liệu tự khít nội dung)</span><span class="print-shortcuts">Bôi đen chữ <kbd>Ctrl</kbd> + <kbd>]</kbd><span aria-hidden="true">/</span><kbd>Ctrl</kbd> + <kbd>[</kbd><span>Cỡ chữ</span></span><span class="print-shortcuts"><kbd>Ctrl</kbd> + <kbd>L / E / R</kbd><span>Trái / giữa / phải</span></span><span class="print-readonly">Nội dung chỉ đọc</span></div>');
-  $('pickingPrintTemplate').onchange=async event=>{const picker=event.target;picker.disabled=true;try{await window.PickingInvoice.changeTemplate(picker.value);}catch(error){$('pickingPrintMessage').textContent='Không đổi được mẫu in. Hãy thử lại.';}finally{picker.disabled=false;}};
+  $('pickingPrintTemplate').onchange=async event=>{const picker=event.target;picker.disabled=true;setPrintReady($('pickingPrintSheet')?.querySelector('.tokosi-invoice'),false);try{await window.PickingInvoice.changeTemplate(picker.value);}catch(error){$('pickingPrintMessage').textContent='Không đổi được mẫu in. Hãy thử lại.';}finally{picker.disabled=false;}};
   button.onclick=()=>{
+    if(!printReady())return;
+    const sourceRoot=$('pickingPrintSheet').querySelector('.tokosi-invoice');
+    const sourceRevision=sourceRoot.dataset.printRevision;
     $('pickingPrintFrame')?.remove();
     const frame=document.createElement('iframe');frame.id='pickingPrintFrame';frame.title='Nội dung gửi máy in';frame.setAttribute('aria-hidden','true');
     frame.style.cssText='position:fixed;left:-10000px;top:0;width:794px;height:1123px;border:0';
     frame.onload=async()=>{
       try{
         await Promise.all([...frame.contentDocument.images].map(img=>img.complete?Promise.resolve():new Promise(resolve=>{img.addEventListener('load',resolve,{once:true});img.addEventListener('error',resolve,{once:true});})));
-        // afterprint fires when the native print dialog closes, including Cancel.
-        frame.contentWindow.addEventListener('afterprint',()=>{
+        if(!sourceRoot.isConnected||sourceRoot.dataset.printReady!=='true'||sourceRoot.dataset.printRevision!==sourceRevision||!$('pickingPrintDialog')?.open)return;
+        // Đóng phiếu, hộp chỉ định và chi tiết đơn để về thẳng danh sách vòng đời.
+        let returned=false;
+        const backToList=()=>{
+          if(returned)return;returned=true;
           for(const id of ['pickingPrintDialog','pickingDialog']){
             const dialog=$(id);if(dialog?.open)dialog.close();
           }
           $('lcDetailClose')?.click();
-        },{once:true});
+        };
+        // afterprint (kể cả Hủy) không ổn định trên iframe; print() của Chrome/Edge chặn tới khi hộp in đóng nên gọi lại sau đó.
+        frame.contentWindow.addEventListener('afterprint',backToList,{once:true});
         frame.contentWindow.focus();frame.contentWindow.print();
+        backToList();
       }catch(error){$('pickingPrintMessage').textContent='Trình duyệt chưa mở được hộp in. Hãy mở file HTML bằng Chrome hoặc Edge rồi bấm In.';}
     };
     frame.srcdoc=printDocument();document.body.append(frame);

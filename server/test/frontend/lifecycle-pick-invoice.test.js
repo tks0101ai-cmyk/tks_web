@@ -65,20 +65,23 @@ test('v2 print uses original amounts, keeps ST and prints placement once per cod
   } finally {dom.window.close();}
 });
 
-test('delivery template has six columns, no prices, and uses saved order data', async () => {
-  const order={schemaVersion:2,orderCode:'DH7',branch:'SG',customerName:'Khách <A>',customerPhone:'0901234567',customerAddress:'Địa chỉ',saleName:'Sale',lines:[{productCode:'A',productName:'Bình',quantity:600,unitPrice:'10',amount:'6000',note:'15th'}]};
+test('delivery template has seven columns incl. line note, no prices, and uses saved order data', async () => {
+  const order={schemaVersion:2,orderCode:'DH7',branch:'SG',customerName:'Khách <A>',customerPhone:'0901234567',customerAddress:'Địa chỉ',saleName:'Sale',note:'Giao trước 10h <gấp>',lines:[{productCode:'A',productName:'Bình',quantity:600,unitPrice:'10',amount:'6000',note:'15th'}]};
   const record={status:'picking',lines:[{productCode:'A',location:'128',plannedQty:600,stText:'12Tx50'}]};
   const dom=await invoice(order,record);
   try {
     await dom.window.PickingInvoice.show(order,record,'delivery');
     const d=dom.window.document;
-    assert.deepEqual(headers(d),['TT','Tên hàng','SL','Vị trí','Thùng','Thực nhặt']);
+    assert.equal(d.querySelector('.delivery-note').textContent.trim(),'Ghi chú: Giao trước 10h <gấp>','ghi chú lấy từ đơn Kiot, không còn câu cố định');
+    assert.doesNotMatch(d.querySelector('.delivery-slip').textContent,/Quý khách vui lòng/);
+    assert.deepEqual(headers(d),['TT','Tên hàng','SL','Vị trí','Thùng','Ghi chú','Thực nhặt']);
     assert.match(d.querySelector('.delivery-slip').textContent,/TỔNG KHO GIA DỤNG SÀI GÒN/);
     assert.match(d.querySelector('.delivery-slip').textContent,/Khách <A>/);
     assert.equal(cells(d)[2].textContent.trim(),'600');
     assert.equal(cells(d)[3].textContent.trim(),'128');
     assert.equal(cells(d)[4].textContent.trim(),'12Tx50');
-    assert.equal(cells(d)[5].textContent.trim(),'');
+    assert.equal(cells(d)[5].textContent.trim(),'15th','ghi chú hàng hóa của dòng đơn');
+    assert.equal(cells(d)[6].textContent.trim(),'');
     assert.equal(d.querySelector('.invoice-summary'),null);
     assert.equal(d.querySelector('[contenteditable="true"]'),null);
   } finally {dom.window.close();}
@@ -138,7 +141,7 @@ test('direct print formatting keeps text read-only, persists across sessions and
     assert.equal(exported.window.document.querySelector('.invoice-goods tr').style.height,'45px');
     exported.window.close();
     await w.PickingInvoice.changeTemplate('delivery');
-    assert.equal(d.querySelectorAll('.invoice-goods col').length,6);
+    assert.equal(d.querySelectorAll('.invoice-goods col').length,7);
     assert.equal(d.querySelector('[data-print-font]'),null);
     await w.PickingInvoice.changeTemplate('order');
     assert.equal(d.querySelector('.invoice-goods col').style.width,'6%');

@@ -1,0 +1,62 @@
+/* Trang Thu mua — Đặt hàng. Chỉ chứa phần riêng của trang này.
+   body, .receipt-header và dialog đã có trong shared.css: KHÔNG khai lại ở đây,
+   nếu không header sẽ mất nền var(--panel) và chữ sẽ rơi về font hệ thống.
+   Màu luôn đi qua token để sáng/tối tự theo; cỡ chữ bảng giữ 11px/9px theo
+   quyết định mật độ 03/11/2026 (ngoại lệ có chủ ý so với MASTER.md §4.2). */
+
+body{font-size:13px}
+
+.layout{display:grid;grid-template-columns:210px minmax(0,1fr)}
+main{min-width:0;padding:16px}
+nav,.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+h2{font-size:15px;margin:0 auto 0 0}
+small,.toolbar span{font-size:11px;opacity:.7}
+
+button,input,select{font:inherit;color:inherit;background:var(--panel-2);border:1px solid var(--border);border-radius:4px;padding:6px 9px}
+button{cursor:pointer;min-height:30px}
+button:disabled{opacity:.4;cursor:default}
+input{min-width:0}
+#search{width:290px}
+
+.scroll{overflow:auto;max-height:66vh;border:1px solid var(--border)}
+table{border-collapse:collapse;width:max-content;min-width:100%;table-layout:fixed}
+th,td{text-align:left;border-right:1px solid var(--border-subtle);border-bottom:1px solid var(--border-subtle);padding:7px 9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:31px}
+th{position:sticky;top:0;background:var(--panel-2);z-index:1;font-size:11px}
+td input{width:100%;box-sizing:border-box;padding:3px}
+.draft{background:color-mix(in srgb,var(--primary) 13%,transparent)}
+.conflict{outline:1px solid var(--amber)}
+
+/* Bảng Đặt hàng dày hơn phần còn lại: 42 cột phải vừa một màn hình.
+   Lề ngang 5px cho cột chữ, 3px cho cột số — gộp từ ba luật từng đè nhau. */
+#orderTable table{min-width:0;width:max-content}
+#orderTable th,#orderTable td{padding:4px 5px;font-size:11px;height:25px;box-sizing:border-box}
+#orderTable th{font-size:9px;line-height:1.15;white-space:normal;overflow-wrap:anywhere;vertical-align:middle}
+#orderTable th.num,#orderTable td.num{padding-left:3px;padding-right:3px}
+#orderTable td input,#orderTable td select{font-size:11px;min-width:0;padding:2px 3px;box-sizing:border-box}
+#orderTable td input{font-variant-numeric:tabular-nums}
+
+.panes{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.panes section{min-width:0}
+.panes select{width:100%;margin-bottom:8px}
+.panes table{width:100%}
+.panes td{white-space:normal}
+.panes small{display:block}
+.panes .scroll{height:53vh}
+#metrics{padding:12px 0}
+
+/* Hộp chi tiết theo khuôn .dp-* của shared/detail-panel.css: .dp-head và .dp-body
+   tự lo đệm trong, nên dialog để padding:0 cho khỏi đệm đôi. */
+dialog{background:var(--bg);color:inherit;border:1px solid var(--border);border-radius:6px;width:min(1100px,92vw);max-height:86vh;padding:0}
+dialog::backdrop{background:#0009}
+#modalBody label{display:inline-grid;gap:4px;margin:7px;width:210px}
+#modalBody .scroll{max-height:56vh}
+
+#notice{min-height:18px;color:var(--amber)}
+.error{color:var(--amber)}
+.resize{position:absolute;right:0;top:0;width:6px;height:100%;cursor:col-resize}
+
+@media(max-width:850px){
+  .layout{grid-template-columns:1fr}
+  .layout aside{display:none}
+  .panes{grid-template-columns:1fr}
+}

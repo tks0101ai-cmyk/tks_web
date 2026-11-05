@@ -396,13 +396,13 @@ test('sau khi nap quyen: hash tro toi tab khong duoc xem -> van tai tab dang mo 
     can: feature => allowed.includes(feature) // luc khoi dong quyen chua nap -> false het
   });
   await settle();
-  assert.deepEqual(page.viewsCalled(), ['debt'], 'khoi dong tai tab theo hash khi chua biet quyen');
+  assert.deepEqual(page.viewsCalled(), ['overview'], 'khong tai tab theo hash khi chua co quyen');
 
   allowed = ['reports.overview', 'reports.invoices']; // tai khoan khong co reports.debt
   page.run('applyReportViewPermissions()');
   await settle();
 
-  assert.deepEqual(page.viewsCalled(), ['debt', 'overview'], 'Tong quan (tab hien tai) chua co du lieu -> tai them');
+  assert.deepEqual(page.viewsCalled(), ['overview'], 'giu tab duoc phep, khong tai lap lai du lieu da co');
 });
 
 test('tai khoan chi co quyen Hoa don: tab dau tien duoc phep duoc tai (khong tai lai tab khong duoc xem)', async () => {

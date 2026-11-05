@@ -15,7 +15,7 @@
 | Tên dự án         | Hệ thống Dashboard nội bộ TOKOSI (KiotViet → Supabase PostgreSQL → Web; Google Sheets bổ trợ) |
 | Phiên bản         | 2.3                                                                 |
 | Ngày tạo          | 27/07/2026                                                          |
-| Ngày cập nhật     | 30/10/2026                                                          |
+| Ngày cập nhật     | 31/10/2026                                                          |
 | Đối tượng sử dụng | Ban lãnh đạo, nhân viên nội bộ công ty                              |
 | Trạng thái        | Nội dung nền rà soát tại HEAD `11751c4` (05/10); bổ sung Sổ quỹ đã kiểm chứng cục bộ 06/10, migration `0033` và deploy production còn chờ. |
 
@@ -322,6 +322,8 @@ Bổ sung 14/10/2026: bổ sung điểm/thưởng trực tiếp vào bảng ph�
 
 Bổ sung 17/10/2026: tab Công nợ có thêm bảng **Tuổi nợ theo hóa đơn** cập nhật cận thời gian thực (theo lần đồng bộ KiotViet, không chờ chốt 15:00) để tra cứu mỗi khách đang nợ tương đương bao nhiêu ngày hóa đơn và còn bao nhiêu ngày trước khi chạm lịch thanh toán (Còn hạn ≤ 0 bôi đỏ). Số liệu tính sẵn trên máy chủ vào bảng riêng, trình duyệt chỉ đọc; xuất Excel/HTML theo bộ lọc đang xem. Cập nhật cùng ngày: mục được **đổi tên "Kiểm tra công nợ" và đặt đầu tab Công nợ** (trước các khung Chỉ số then chốt / Danh sách thao tác, đánh lại số 1–3); bấm 1 dòng khách mở **hộp chi tiết hóa đơn** (hộp `#docModalBackdrop` dùng chung, kind `debtAgingInvoices`) liệt kê hóa đơn Hoàn thành của khách từ ngày hết nợ đến nay (Mã hóa đơn · Khách hàng · Nhân viên bán hàng · Ngày · Số tiền, tối đa 500, mới nhất trước) kèm hàng chỉ số tổng quan, sort cột và "Cột hiển thị"; API `GET /api/debt-management/aging/invoices?branch=&customerId=` (quyền `reports.debt`, chặn cơ sở ngoài quyền, đọc `invoices` trực tiếp, không migration mới).
 
+Bổ sung 02/11/2026: bấm một dòng ở "Danh sách thao tác" mở hộp lịch sử công nợ 7 ngày của khách + cơ sở; người có quyền `reports.debt.edit` đổi được trạng thái từng ngày cũ (`PATCH /api/debt-management/status` với `historical: true`), các ngày sau tự tính lại số phiên và tiền phạt theo quy chế và đồng bộ sổ phạt đã chốt; ngày thuộc tháng đã chốt thưởng/phạt vẫn sửa được (đổi lịch sử và sổ phạt; bảng thưởng đã chốt `debt_reward_months.result` giữ nguyên). Đã bỏ phạt tay (gỡ `PATCH /api/debt-management/penalty` và quyền `reports.debt.penalty`). Xem `GET /api/debt-management/customer-history`.
+
 2026-10-17 (bổ sung) — Tab Công nợ, mục 3 Tuổi nợ: **Ngày nợ tương đương = hôm nay − ngày hết nợ + 1** (tính cả ngày hết nợ; hết nợ hôm nay = 1 ngày, khách vượt khoảng tra cứu 30 ngày hiện ≥ 30), **Còn hạn** vẫn = Lịch TT − Ngày nợ tương đương. Cột Còn hạn tô màu theo dấu: âm đỏ, 0 vàng, dương xanh lá — áp dụng cả trên bảng web, hộp chi tiết hóa đơn, file Excel (màu chữ) và file HTML (cột đánh dấu `signTone`); cột số căn phải (table-align.js nhận diện cả ≥/≤). Độ rộng cột mặc định của bảng được đặt lại. Không migration; bảng tính sẵn `0059` tự cập nhật ở lượt `debtAgingRefresh` kế tiếp.
 
 17/10/2026 — Báo cáo hàng hóa thêm hai cột **Đơn giá HN / Đơn giá SG** sau Tên sản phẩm (giá bán chung KiotViet từng cơ sở, migration `0063`), mặc định hiện cho Quản lý/Trợ lý (19/10/2026) và có trong file Excel/HTML xuất, chỉ Quản lý và Trợ lý (quyền `reports.products.price`) được thấy; API không trả giá cho tài khoản khác.
@@ -491,7 +493,9 @@ Rà soát bản trước khi sửa ngày 2026-10-27 ghi lỗi xử lý vị trí
 
 **Sửa chỉ định khi đang nhặt, phiếu theo kho, Đã xử lý lệch SL (27/10/2026, khuya).** Không còn nút Chỉ định lại: đơn Đang nhặt được sửa vị trí/số lượng ngay trong hộp chỉ định rồi lưu bằng nút “Cập nhật chỉ định & In phiếu” (chưa lưu thì chưa cho xác nhận nhặt hoặc in đơn, tránh xác nhận nhầm bản cũ); Đã hủy chỉ định mới ngay; Đã bốc chỉ xem. Các vị trí của mỗi mã hàng được xếp theo thứ tự hệ thống ưu tiên bốc (vị trí gợi ý trước) thay vì theo tên kho. Phiếu in sắp dòng theo vị trí kho đầu tiên (theo chữ cái đầu cột Vị trí) để người kho đi lấy theo tuyến, cột TT vẫn đánh 1, 2, 3. Với đơn Lệch SL bốc, người có quyền chỉ định mở chi tiết đơn và bấm **Đã xử lý** khi đã xem xét mà không đổi số lượng: cảnh báo chuyển sang “Đã xử lý” màu vàng, và tự hiện lại nếu Kiot sửa tiếp làm số lệch thay đổi. Cần áp thêm migration `0098`.
 
-**Sửa SL cần nhặt và cảnh báo chỉ định (30/10/2026):** người có quyền bốc có thể sửa tay số lượng cần nhặt khi chỉ định (vd kho chỉ đủ 5 thùng x 100 nên nhặt 500 thay vì 600); phiếu in ghi số đã sửa và giữ thứ tự dòng như đơn Kiot. Hệ thống cảnh báo **Lệch Kiot** (số đã sửa ≠ số trên đơn Kiot, hết khi Kiot sửa khớp) và **Lệch SL trong đơn** (số chọn theo thùng ≠ số cần nhặt), có trong bộ lọc cảnh báo của Vòng đời đơn hàng; thay cho cảnh báo “Lệch SL bốc” và nút “Đã xử lý” cũ.
+**Sửa vị trí kho ngay khi chỉ định (31/10/2026, chưa commit/deploy):** số thùng thực tế ở kho hay lệch với sổ Vị trí hàng, nên người bốc có **cả** quyền chỉ định và quyền sửa VT Hà Nội/Sài Gòn được thêm vị trí mới, sửa ghi chú số thùng (gõ `+1T x 50` để cộng thêm, gõ `0` hoặc để trống là hết hàng — hỏi xác nhận rồi xóa) hoặc xóa vị trí của các mã hàng trong đơn ngay trong hộp Chỉ định vị trí, không phải chuyển sang trang VT. Sửa vị trí được lưu vào sổ VT ngay (lịch sử ghi người bấm kèm "Chỉ định đơn <mã>", trang VT tự cập nhật) và hệ thống chỉ gợi ý lại mã vừa sửa; phân bổ của đơn vẫn chỉ lưu khi bấm Xác nhận & In / Cập nhật chỉ định & In phiếu. Để không làm hỏng phiếu đã in của đơn khác: vị trí đang được đơn Đang bốc khác giữ chỗ vẫn sửa được nhưng không hạ dưới phần đang giữ, không đổi quy cách khiến phiếu đó không lấy được nữa, và không xóa được; đơn Đã bốc chỉ xem. Quy tắc này áp dụng cả khi sửa ghi chú trên trang VT Hà Nội/Sài Gòn (trước đây chỉ bị phát hiện lúc xác nhận nhặt).
+
+**Sửa SL cần nhặt và cảnh báo chỉ định (30/10/2026; 2 cảnh báo Lệch Kiot / Lệch SL trong đơn ĐÃ GỠ 02/11/2026 — Vòng đời chỉ còn 6 cảnh báo giao hàng; sửa SL cần nhặt vẫn giữ, chỉ lưu nội bộ):** người có quyền bốc có thể sửa tay số lượng cần nhặt khi chỉ định (vd kho chỉ đủ 5 thùng x 100 nên nhặt 500 thay vì 600); phiếu in ghi số đã sửa và giữ thứ tự dòng như đơn Kiot. Hệ thống cảnh báo **Lệch Kiot** (số đã sửa ≠ số trên đơn Kiot, hết khi Kiot sửa khớp) và **Lệch SL trong đơn** (số chọn theo thùng ≠ số cần nhặt), có trong bộ lọc cảnh báo của Vòng đời đơn hàng; thay cho cảnh báo “Lệch SL bốc” và nút “Đã xử lý” cũ.
 
 **Có thể bốc và ST đầy đủ khi chỉ định (28/10/2026).** Hộp chỉ định cho người bốc thấy thêm số **Có thể bốc** (tồn còn lại sau khi trừ số đang chọn) và cột ST ghi đầy đủ quy cách thùng đã gộp từ mọi vị trí, ví dụ `5T x 100 + 2T x 50 - 30`, để biết ngay phải lấy bao nhiêu thùng loại nào và phần lẻ trừ đi. Phiếu in chưa đổi.
 
@@ -510,4 +514,117 @@ Cập nhật gần nhất: 28/10/2026 (chỉnh sửa khi xem trước import VT)
 
 28/10/2026 — Phiếu in: đồng bộ chiều cao và cỡ chữ mọi hàng dữ liệu trong bảng, tiêu đề chỉnh riêng. Ctrl+L/R/E căn trái/phải/giữa và Ctrl+B/I đậm/nghiêng cho các cột bôi chọn ở mọi hàng cùng nhóm; ngoài bảng định dạng vùng chữ/đoạn chọn. Form chung JSONB thêm `groups.body/header` (height/size/columns: align/bold/italic), `blocks` (căn đoạn); `fonts` hỗ trợ đậm/nghiêng vùng chữ. Cấu hình áp dụng cả phiếu số dòng khác, qua tài khoản/máy/phiên; giữ kiểm tra version, chỉ lưu khi báo thành công. Không migration/API mới; nội dung chỉ đọc.
 
-Cập nhật gần nhất: 30/10/2026 (gỡ module Vị trí hàng cũ đọc Google Sheets; VT Hà Nội/Sài Gòn là module duy nhất, xem + xuất Excel mở cho mọi vai trò kể cả Khách).
+- (Lịch sử 30/10/2026, phần ghi ngược Kiot đã gỡ 02/11/2026) Chỉ định vị trí: người có quyền chỉ định kéo-thả (nhấn giữ) để đổi thứ tự dòng hàng trong hộp và trên phiếu in (chỉ trong lần mở hộp, không lưu); xóa dòng hàng khỏi đơn và sửa số lượng cần nhặt đều **ghi ngược lên đơn KiotViet** ở mọi trạng thái đơn, có hộp xác nhận, đối chiếu sau khi ghi, tự khôi phục nếu Kiot ghi lệch và nhật ký người thao tác. Không cho xóa dòng hàng cuối cùng của đơn.
+
+## Bổ sung 02/11/2026 — Kiểm kê trên web
+
+- Thay tab "KIỂM KÊ HN T10" của sheet kiểm kê: không còn xuất đơn TEAM / danh sách hàng từ KiotViet rồi dán vào sheet; web tự lấy số đếm từ đơn TEAM, tồn và giá vốn từ dữ liệu đồng bộ.
+- Ba quản lý kiểm kho (Thắng, Quân, Hưng) làm chung một bảng thay cho ba tab sao chép riêng; giao mã cho người kiểm lại, ghi trạng thái và lý do; bảng đếm số mã mỗi người được giao (thay Sheet87).
+- Quản lý đóng đợt để chốt số liệu; đợt sau tự có cột "KK trước sai".
+- Bảng web có đủ 23 cột như tab T10 (kể cả Trang in, Giờ in, Do KK trước, Kiểm SG/HN) và bấm tiêu đề để sắp xếp; kiểm kê Sài Gòn dùng chung cách làm và đối chiếu chéo với Hà Nội; dán nhanh một cột từ Google Sheets thay cho gõ tay; nạp thêm tab KIỂM SG.
+- Chưa làm: chia team/khu, thưởng/phạt; cân bằng kho trên KiotViet vẫn làm tay.
+- **Trạng thái (03/11/2026):** mỗi mã chọn một trong 7 loại (Mất, KK trước, OK, Nhầm SG/HN, Thừa, Lẫn, Chưa XL), màu tự động theo loại; phía trên bảng có thẻ tổng số mã và giá trị chênh theo từng trạng thái, bấm thẻ để lọc.
+
+**Chỉ định vị trí không sửa đơn KiotViet (02/11/2026, chưa commit/deploy):** dashboard không còn ghi gì lên đơn đặt hàng KiotViet. Nút **Xóa dòng** chỉ bỏ mã hàng khỏi chỉ định và phiếu in của kho (đơn Kiot giữ nguyên; đơn phải còn ít nhất một dòng); mở lại chỉ định thấy dòng “Đã bỏ: MÃ ↺” để đưa mã trở lại. Sửa số lượng cần nhặt chỉ ghi trên phiếu in, không đổi đơn Kiot. Phiếu in theo đúng thứ tự dòng đang thấy trong hộp (đã kéo-thả hoặc đã sort cột; không sort thì theo thứ tự đơn Kiot). Bỏ hai cảnh báo Lệch Kiot và Lệch SL trong đơn; Vòng đời đơn hàng chỉ còn 6 cảnh báo giao hàng.
+
+- **Đơn xuất kho VT (02/11/2026, chưa commit/deploy):** hàng mới về ghi vị trí CONT, người bốc ghi lại vị trí thật; kho lập một Đơn xuất kho tạm dùng chung để ghi phần đã bốc (gõ theo tên hàng), chốt đơn mới trừ tồn VT, cho phép ra số âm để bù khi xếp hàng lên vị trí; lịch sử VT lưu người chốt và mã đơn, bấm xem lại chi tiết đơn.
+- Kiểm kê (04/11/2026): khi số liệu đợt nạp từ sheet đã cũ, Quản lý nạp lại từ sheet (xem trước rồi mới thay) thay vì phải xóa tay trong DB; đợt sai thì hủy (ẩn, khôi phục được, không mất dữ liệu); người kiểm chọn được đợt nào làm số "KK trước" của đợt đang mở.
+
+- Kiểm kê (05/11/2026): Tổng kiểm tự cập nhật từ đơn của các đội `TEAM` + số, quản lý thấy ngay đơn nào chưa được tính vì sai ngày và sửa được ngày của đợt; giá vốn trên web khớp KiotViet với độ trễ tối đa khoảng 20 phút.
+
+- Kiểm kê (05/11/2026): sau khi thêm hàng vào đơn TEAM trên KiotViet, người kiểm bấm **Cập nhật đơn Kiot** để thấy Tổng kiểm mới ngay, không phải ngồi chờ.
+
+- Kiểm kê (05/11/2026): thao tác không mở lại được như Đóng đợt được tách khỏi các nút thường dùng để tránh nhấn nhầm.
+
+- Kiểm kê (05/11/2026): thấy đủ hàng đang hoạt động kể cả hàng không có tồn, và xuất file thống kê tự chỉ ra dòng có quy cách lệch số lượng hoặc nhập sai, không phải tự nhân tay.
+
+Cập nhật gần nhất: 05/11/2026 (Kiểm kê: đủ sản phẩm, file thống kê; chống đóng đợt nhầm; nút Cập nhật đơn Kiot; gom đơn TEAM + số, sửa ngày đợt, giá vốn khớp KiotViet; trước đó 04/11/2026: Kiểm kê: KK trước chọn tay, hủy đợt, nạp lại sheet; trước đó 02/11/2026: Kiểm kê trên web: đủ cột T10, Sài Gòn, dán cột; trước đó: Chỉ định vị trí: kéo-thả, xóa dòng, ghi ngược Kiot; trước đó: gỡ module Vị trí hàng cũ; VT Đơn xuất kho + số lượng âm, migration 0104; Chỉ định vị trí không sửa đơn KiotViet: Xóa dòng/SL cần nhặt chỉ nội bộ, phiếu in theo thứ tự trong hộp, gỡ cảnh báo Lệch Kiot / Lệch SL trong đơn) — trước đó 31/10/2026 (Chỉ định vị trí: thêm/sửa/xóa vị trí VT ngay trong hộp, bảo vệ giữ chỗ đơn Đang bốc khác; trước đó 30/10: kéo-thả, xóa dòng, ghi ngược Kiot; gỡ module Vị trí hàng cũ).
+
+
+## 03/11/2026 — Tăng tốc chỉ định và in phiếu (cục bộ, chưa deploy)
+
+Đường chỉ định tra đúng mã đơn HN/SG và dùng lại quy tắc gộp Vòng đời/Accounting, không tải toàn bộ đơn hoặc tính cước/điều chuyển. Ghi dòng chỉ định theo lô trong cùng giao dịch/khóa PostgreSQL; bản in tiếp tục dùng snapshot sau commit. Tải trước tài nguyên phiếu và QR song song; chỉ cho in khi form chung đọc mới thành công và không còn lượt lưu form đang chạy.
+
+Redis/Valkey dùng cho SĐT sale (fresh 5 phút, last-good tối đa 30 phút, worker hiện có làm mới 4 phút) và nguồn Sheets/lịch sử Vòng đời (15 giây, generation token chống ghi cache cũ kể cả eviction). Không cache tồn, giữ chỗ, auth hoặc form in. Redis lỗi thì đọc nguồn, lệnh cache tối đa 150ms, hàng đợi client tối đa 100 lệnh; cold SĐT chỉ chờ 1 giây. `REDIS_ENABLED=false` hoặc thiếu `REDIS_URL` dùng cache RAM; khi bật cần `REDIS_NAMESPACE` riêng môi trường và private URL cùng vùng trên web/worker.
+
+Server-Timing cho `/api/shipment/pick/*`; browser measures `tokosi.pick.assets/render/layout/preview-ready/submit-ready` không chứa dữ liệu đơn. Monitor bổ sung eventLoopP95/Max, poolTotal/Idle/Waiting, cacheHit/Miss/Error/Bypass bên cạnh RSS/heap.
+
+Kiểm chứng/triển khai: xem [kế hoạch Redis](../../tasks/redis-performance/plan.md), [benchmark cục bộ](../../tasks/redis-performance/benchmark.md) và [runbook](../../tasks/redis-performance/rollout.md). Giữ worker Singapore hiện có; tạo web Singapore thay thế Oregon sau kiểm chứng. Chưa thay đổi dịch vụ Render/domain hoặc xác nhận p95 production; không migration. Integration Redis thật đang chờ TEST Redis; công cụ browser dừng vì không xác định chắc chắn URL Windows.
+
+Cập nhật gần nhất: 03/11/2026 (Kiểm kê: trạng thái 7 loại và thẻ tổng).
+
+Cập nhật gần nhất: 03/11/2026.
+
+## 03/11/2026 — Tra cứu lịch sử mua và trả theo hàng hóa
+
+Người xem Báo cáo chung mở một hàng hóa để tra cứu thêm hóa đơn hoàn thành và trả hàng thành công trong 90 ngày gồm hôm nay, giữ phần doanh số/khách và biểu đồ cũ. Tìm khách và chọn loại giao dịch làm bốn tổng mua/trả (số lượng và lượt chứng từ) thay đổi đồng thời, giúp đối chiếu hành vi mua/trả của khách; phân trang không làm thay đổi tổng. Giá vốn lịch sử chỉ hiển thị cho người có quyền xem giá; dữ liệu nguồn chưa xác minh được thì hiện “—”, không thay bằng giá bán hoặc giá vốn hiện tại. Không thay quy trình tạo hóa đơn/trả hàng, không ghi KiotViet. Cục bộ trên main, chưa deploy.
+
+Cập nhật gần nhất: 03/11/2026.
+
+## 04/11/2026 — Hàng hóa 90 ngày
+
+Bổ sung mục 4 trong tab Hàng hóa để so sánh sức bán danh mục gộp hai miền, chỉ mã hàng đang hoạt động (is_active IS NOT FALSE ở ít nhất một cơ sở) qua ba khoảng 30 ngày liên tiếp và tổng 90 ngày. Mỗi khoảng thể hiện số lượng, doanh số, giá trung bình, số khách, lượt mua và ba khách lớn nhất kèm tỷ trọng/DS/SL. Dữ liệu chỉ từ hóa đơn/trả hàng thành công trong DB; trả hàng ảnh hưởng SL/DS theo ngày trả, không giảm số khách/lượt mua. Khách gộp theo tên hiện tại. Dùng báo cáo tính sẵn hằng ngày 02:00 giờ Việt Nam, kết thúc hết hôm qua, để web đọc nhanh và số liệu ổn định trong ngày. Đợt này đã tạo DB/nạp đầu 11.135 mã (06/08–03/11/2026), code lịch sẵn sàng chờ deploy worker. Giao diện mục 4 và API đọc đã làm xong (cùng ngày, chưa deploy): người có quyền xem doanh số hàng hóa (`reports.products` + `reports.products.sales`) tìm theo mã/tên, sắp xếp và phân trang bảng 26 cột, thấy rõ thời điểm dữ liệu cập nhật; web chỉ đọc số liệu tính sẵn, không có nút làm mới. Tài khoản thiếu quyền không thấy mục này. Chưa có số liệu thì báo “chưa nạp báo cáo”, lỗi thì cho thử lại, không bao giờ hiển thị thành số 0.
+
+Cập nhật gần nhất: 04/11/2026.
+
+Cập nhật gần nhất: 04/11/2026.
+
+## Bổ sung 04/11/2026 — Theo dõi khách mua và đơn tạm theo hàng hóa
+
+Hộp Chi tiết hàng hóa giúp người dùng xem nhanh chỉ số cạnh biểu đồ, so sánh doanh số từng khách qua ba kỳ 30 ngày liên tiếp và xem lịch sử bán/trả/đặt. Phiếu tạm được trình bày riêng với số lượng và số đơn đặt, không làm tăng doanh số hoặc số mua hoàn thành. Bảng giao dịch có mã kèm cơ sở HN/SG, tìm khách, lọc loại, sắp xếp và xuất Excel đầy đủ theo lựa chọn đang xem. Dùng trên điện thoại/máy tính với giao diện Sáng/Tối, giữ phân quyền hiện hành. Triển khai cần migration 0108 và tính lại dữ liệu tổng hợp; chưa áp DB thật/chưa deploy.
+
+Cập nhật gần nhất: 04/11/2026.
+
+
+## Thu mua — PR production 05/11/2026
+
+Thêm /thu-mua/dat-hang/ và /api/purchase-orders với quyền purchase.view/edit/import/export/depart/arrive; mặc định chỉ Quản lý, quyền mở rộng qua cơ chế cấp quyền hiện có. Module có bảng Chỉ số cont và Đặt hàng sửa trực tiếp, lọc riêng theo tài khoản, dropdown NV/cont/trạng thái, tách .01/.02 đệ quy, sửa hàng loạt, undo/xóa mềm/khôi phục, import toàn bộ hợp lệ mới ghi, audit/realtime và bộ công thức dùng chung. Source gate ngăn job Sheet và web ghi đè nhau.
+
+Migrations Thu mua được đổi sang 0110–0113 vì main đã dùng 0101–0109. db/ensurePurchaseSchema.js áp đúng bốn migration này khi web startup, transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
+
+
+
+### Thu mua — phạm vi v1 đã chốt, 03/11/2026
+Lên list bằng mã và lấy lần lên list gần nhất; xếp/chuyển/tách cont dùng chung Dự kiến hàng về; khóa nhánh .01/.02 đệ quy; chi phí nhập tay. Xuất cont ghi số thực xuất; trạng thái 4 chỉ xác nhận đã về, không nhận đủ/khớp Kiot/cộng tồn. Cho sửa sau xuất có lịch sử. Mockup chưa phải module production; import yêu cầu đúng toàn bộ, không lưu một phần; nguồn seed còn chờ chốt.
+
+
+03/11/2026 — Thu mua: mockup đọc .xlsx thật, sửa lỗi ở preview, chọn sheet, tải mẫu và xuất Excel theo bộ lọc. Khóa dòng luôn ở cột đầu, Mã SP được giữ để nhập lại; cột công thức/tra cứu/cont không ghi đè. File có lỗi/xung đột không ghi một phần. Vẫn chỉ lưu trong bộ nhớ, chưa API/DB hay kiểm nhiều tài khoản.
+
+
+03/11/2026 — Thu mua: thêm purchaseOrders/purchaseOrdersImport.js phía server để lập kế hoạch import toàn bộ hoặc không ghi. Dùng chung public/shared/purchase-columns.js và public/shared/purchase-workbook.js với mockup; module Excel cũ chuyển khỏi thư mục prototype. Kiểm khóa nhánh/khóa đã tách, trùng khóa, trường chỉ đọc, ô trống, số/ngày và phiên bản; trả diff và kiểm lại preview trước giao dịch. Chưa có route/API ghi, repository, migration hay thay đổi dữ liệu thật.
+
+
+03/11/2026 — Thu mua: chuẩn bị migration 0101_purchase_orders.sql, API /api/purchase-orders, giao dịch ghi và projection chung sang product_container_lines/product_container_expected. Cont chuẩn là product_containers; ID dòng bất biến khác khóa nhánh .01/.02. Import giữ preview ở DB, gắn người tải, kiểm phiên bản, ghi cả đợt và chống xác nhận lặp. Phân quyền purchase.view/edit/import/export/depart/arrive mặc định chỉ Quản lý, có thể cấp riêng; Khách bị chặn. Nguồn mặc định vẫn sheets; chưa chạy migration, chưa seed/chuyển nguồn hay deploy, chưa nối giao diện production.
+
+
+### 03/11/2026 — Giao diện Thu mua thật và làm việc đồng thời (chưa deploy)
+- Trang production: server/public/thu-mua/dat-hang/{index.html,purchase.js,purchase.css}, URL /thu-mua/dat-hang/. Dùng shared-nav/quyền purchase.view và danh mục cột chung; mockup giữ riêng để thử dữ liệu.
+- UI gọi API thật cho đặt lại từ lần lên list gần nhất, thêm mã mới vào hàng chờ, sửa ô, xác nhận thay thế, sửa hàng loạt (gom các thay đổi giống nhau thành batch audit), tạo/sửa cont, đặt lịch, chuyển/tách .01/.02, thực xuất, trạng thái 4, lịch sử và Excel. Import sửa toàn bộ preview hoặc tải lại, chỉ ghi khi toàn bộ hợp lệ; export POST chọn ID theo bộ lọc riêng và cột hiện tại, lấy giá trị đã lưu từ server.
+- Bộ lọc/tìm/sắp xếp, trang, cột, độ rộng, lựa chọn và bản nháp không phát sang người khác. Bản nháp/filter/cột/độ rộng lưu sessionStorage theo ID tài khoản, sống qua reload trong cùng tab. Không tự gửi lại thao tác ghi sau mất mạng; import confirm có token chống lặp.
+- SSE /api/purchase-orders/events yêu cầu auth + view, báo hiện diện và thay đổi sau commit. purchaseOrdersRealtime.js dùng lease DB 45 giây, gia hạn/đối chiếu history mỗi 10 giây để hỗ trợ nhiều tiến trình; ngắt kết nối xóa lease, chết tiến trình tự hết hạn. Event không chứa dòng hàng, bộ lọc hay bản nháp. Browser có đọc dự phòng mỗi 30 giây, giữ ô đang nhập, lấy lại dữ liệu khi SSE nối lại.
+- Ô trùng thay đổi được đánh dấu, popup đối chiếu trước/hệ thống/bản nháp, chọn giữ bản nháp hoặc dùng hệ thống rồi xác nhận lưu lại. Sửa trường khác vẫn kiểm before/version phía server. Mọi cont được chọn sửa; không khóa theo trạng thái.
+- Migration 0101 chưa áp dụng, bổ sung purchase_presence (connection_id UUID, actor_id/name, expires_at, index expiry), không bật source_mode. Bảng mới cũng không cấp quyền reporting_readonly.
+- Kiểm tra tuần tự (--test-concurrency=1): 155 ca, 154 đạt, 0 lỗi, 1 PostgreSQL thật bỏ qua do chưa cấu hình SUPABASE_TEST_DB_URL; gồm DOM/API/quyền/page guard/nav và DDL/giao dịch/lease trên PGlite. Chưa kiểm nhiều kết nối PostgreSQL thật hoặc giao diện bằng trình duyệt production. Lượt song song từng thiếu bộ nhớ V8 ở expectedRefresh; chạy riêng và chạy toàn bộ tuần tự đều đạt. Kiểm thêm ô đang focus giữ đúng baseline cũ khi SSE tới, và chuẩn hóa DATE PostgreSQL theo ngày địa phương.
+- Còn vận hành: chọn nguồn Sheet chuẩn, seed/đối chiếu, kiểm staging PostgreSQL và nhiều tài khoản, cấp quyền, duyệt migration/cutover/deploy. Trang hiện không ghi khi nguồn còn sheets. Graphify CLI vẫn chưa có trong môi trường.
+
+
+### 03/11/2026 — Chốt lại thao tác phương án cont ngay trong Đặt hàng
+- Yêu cầu mới thay thế khung Xếp cont hai bảng: ẩn hoàn toàn khung/nút chọn–so sánh cont, giữ các helper nghiệp vụ cũ để tương thích lịch sử; production đưa + Tạo cont về thanh tác vụ Đặt hàng.
+- Mockup thêm public/prototypes/thu-mua/planning.js: sửa ô số lượng, mã, cont trên bảng tạo bản nháp; Chỉ số cont/KPI phản ánh ngay cả cont nguồn và đích, không lấy bộ lọc bảng dưới làm tập dữ liệu tính cont. Hiển thị tấn/m³ so giới hạn xe, phần còn/vượt và cảnh báo thiếu số đo. Thiếu số đo không được coi là phù hợp; cảnh báo tham chiếu không khẳng định chắc chắn xếp vừa thực tế.
+- Thêm mã bất kỳ qua form lấy lại dữ liệu lần đặt gần nhất; chọn cont để thử, chưa cấp khóa chính thức đến khi xác nhận. Có Hủy bản nháp, kiểm trước/phiên bản khi lưu, không đưa dòng mới chưa lưu vào export. Production lưu draft/newRows riêng theo user trong sessionStorage; bản nháp không phát SSE.
+- API tạo dòng nhận contId tùy chọn; PATCH dòng nhận contId cùng số lượng trong một giao dịch, kiểm khóa lạc quan của cùng trường. Không còn bắt buộc mã mới phải đi qua hàng chờ nếu người dùng đã chọn cont trong form.
+- Trạng thái cont là dropdown 1–4 trực tiếp, cho sửa lại, không mở wizard bốc/xác nhận về. POST /api/purchase-orders/status vẫn yêu cầu view + edit; đích 3 cần depart, đích 4 cần arrive; kiểm version, audit status_edit, projection nguyên tử. Không tự cộng tồn, không tự ghi nhận đã nhận đủ, không bịa ngày/kho hoặc ảnh chụp thực xuất. Luồng depart/arrive có manifest cũ vẫn tồn tại ở API, không phải điều kiện dropdown mới.
+- Nút Việt/中文 chỉ áp dụng #mainHead / #orderTable th (43 nhãn gồm khóa dòng); không đổi bảng Chỉ số cont, bộ lọc, tác vụ, popup hay dữ liệu.
+- Chưa migrate/seed/chuyển nguồn/deploy; source_mode=sheets vẫn chặn ghi. Kiểm DOM/mockup/Excel/API/service/quyền/scoped headers bằng bộ kiểm tra liên quan; PostgreSQL thật/nhiều tài khoản thực vẫn là bước staging.
+
+
+05/11/2026 — Hoàn thiện năng suất trên mockup Thu mua bằng public/prototypes/thu-mua/productivity.js: dán vùng Excel kiểm cả vùng trước staging; Enter/Tab điều hướng; đặt lại từ lần lên list gần nhất; chuyển cont nhiều dòng; bộ lọc nhanh riêng; danh sách lỗi có điều hướng ô. Thêm hoàn tác từng thao tác và từng lần lưu với so sánh trạng thái dòng trước khi khôi phục, tách xử lý hai nhánh; xóa mềm có xác nhận/lưu, khôi phục và audit, stale delete chặn cả lần lưu. Dữ liệu thử/lịch sử/undo giữ theo sessionStorage; menu Tác vụ tránh thêm quá nhiều nút. Hướng dẫn public/prototypes/thu-mua/USAGE.md. Đây là mở rộng mockup, chưa có API/DB cho xóa/khôi phục/undo và chưa triển khai các tiện ích này vào trang production.
+
+
+05/11/2026 — Chuẩn bị production Thu mua: chuyển các tiện ích dán bảng/bàn phím/đặt lại/chuyển cont/lọc nhanh/soát lỗi sang purchase.js; dropdown NV từ API HR rút gọn, lưu buyer_employee_id và kiểm active ở lần ghi. Thêm migration 0102_purchase_operations.sql (chưa chạy): xóa mềm và snapshot thao tác máy chủ, API trash/delete/restore/operations/undo có quyền edit/view, actor ownership, CAS và projection trong cùng transaction. Hoàn tác nhiều bước và hai nhánh tách được kiểm trước khi đảo; import/xuất/nhận không hoàn tác bằng endpoint này. Có công cụ purchaseOrdersReconcile.js đọc hai JSON chuẩn hóa, không ghi DB. Chi tiết schema/giới hạn/cách đối chiếu tại server/purchaseOrders/ROLLOUT.md. Chưa seed/chạy migration/cutover/deploy; chưa đối chiếu nguồn thật hay kiểm nhiều trình duyệt/máy chủ thật.
+
+
+05/11/2026 — Đợt hoàn thiện trước nghiệm thu: thêm 0103_purchase_requests.sql chưa áp dụng, mã Idempotency-Key theo tài khoản/fingerprint và kết quả ghi chung transaction; UI outbox giữ request qua mất mạng/reload, chỉ dọn đúng draft đã gửi khi xác nhận lại, không mất draft khác. Đồng bộ ghim dòng cont live với mockup (chọn theo dõi không tự lọc), lịch sử theo họ khóa và chỉ dblclick Mã SP. Hoàn tác có preview trường/giá trị, audit có liên kết operation. Tối ưu lookup và không dựng packing ẩn; có test 5,001 dòng UI và 5,000 dòng/500 sửa service. Bảng phạm vi server/purchaseOrders/READINESS.md ghi 38/40 tiêu chí đã triển khai/kiểm cục bộ (95% triển khai), không phải nghiệm thu production; nguồn thật và staging nhiều tài khoản là hai cổng bắt buộc còn lại. Chưa migrate/seed/cutover/deploy.
+
+
+05/11/2026 — Quyết định mới thay thế quy tắc VC dòng nhập tay: Tiền VC từng mã = tổng m³ mã × VC/m³ cont. Tính lại khi đổi số thùng, số đo, cont hoặc cước cont; Tiền VC dòng là cột suy ra, không nhập/import đè. Giá NET và projection dùng cùng phân bổ. Cước cont nhập tay chia cho tổng m³ cont; thiếu số đo thì chưa phân bổ để tránh tính sai. Giữ độ chính xác đơn giá khi tính, làm tròn đồng khi hiển thị. Dòng cont ghim cho sửa Tiền VC và công thức qua cùng luồng kiểm tra/lưu của bảng gốc. Chưa áp migration hoặc deploy.

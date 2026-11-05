@@ -22,6 +22,10 @@ async function calendarPage(t) {
   const html = fs.readFileSync(htmlPath, 'utf8');
   const dom = new JSDOM(html, { runScripts: 'outside-only', pretendToBeVisual: true, url: 'https://tokosi.example/humanresources/#leave' });
   const { window } = dom;
+  const RealDate = window.Date;
+  window.Date = class extends RealDate {
+    constructor(...args) { super(...(args.length ? args : ['2026-10-02T01:00:00Z'])); }
+  };
   t.after(async () => {
     window.dispatchEvent(new window.Event('pagehide'));
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -188,7 +192,7 @@ test('người dùng thường mặc định chỉ tải các lịch nghỉ giao
   dom.window.close();
 });
 
-test('Quản lý mặc định xem toàn thời gian, lọc client-side đơn Chưa duyệt và KPI vẫn đếm đủ', async () => {
+test('Quản lý xem bảng toàn thời gian, lọc đơn Chưa duyệt và KPI đếm mọi trạng thái nghỉ sắp tới', async () => {
   const html = fs.readFileSync(htmlPath, 'utf8');
   const dom = new JSDOM(html, {
     runScripts: 'outside-only',
@@ -203,6 +207,7 @@ test('Quản lý mặc định xem toàn thời gian, lọc client-side đơn Ch
     renderTopSidebar() {}
   };
   const base = {
+    start_date: '2099-08-22', end_date: '2099-08-22',
     ho_ten: 'A', chuc_vu: 'NV', bo_phan: 'Kho', co_so: 'Hà Nội', ly_do: 'x',
     thoi_gian_gui: '2026-08-22T01:00:00.000Z', thoi_gian_bat_dau: 'Sáng 22/08/2026',
     thoi_gian_ket_thuc: 'Chiều 22/08/2026', tong_buoi_nghi: 2, tong_ngay_nghi: 1
