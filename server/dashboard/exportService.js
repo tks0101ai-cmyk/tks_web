@@ -24,6 +24,7 @@ const debtScheduleService = require('../debtSchedule/debtScheduleService');
 const dashboardPgReader = require('./dashboardPgReader');
 const productReportRepository = require('./productReportRepository');
 const product90dReportRepository = require('./product90dReportRepository');
+const productCustomerGrowthRepository = require('./productCustomerGrowthRepository');
 const productHistoryRepository = require('./productHistoryRepository');
 const product90dScreen = require('../public/product-90d-report.js');
 const exportFieldCatalog = require('./exportFieldCatalog');
@@ -57,6 +58,7 @@ const TABLE_TITLES = Object.freeze({
   'customers.productDetail': 'Bảng chi tiết sản phẩm theo khách',
   'overview.productReport': 'Báo cáo hàng hóa',
   'products.product90d': 'Hàng hóa 90 ngày',
+  'products.productCustomerGrowth': 'Khách hàng theo sản phẩm 90 ngày',
   'products.productHistory': 'Lịch sử giao dịch hàng hóa',
   'debt.management': 'Quản lý công nợ',
   'debt.penalty': 'Thưởng/phạt sale theo công nợ',
@@ -454,6 +456,50 @@ function product90dColumnsWithDates(columns, periods) {
     const period = byKey.get(column.period);
     const range = product90dRange(period);
     return range ? { ...column, label: `${period.label} (${range}) – ${column.metricLabel}` } : column;
+  });
+}
+
+// Khach hang theo san pham (muc 4 tab Hang hoa, bang moi): doc product_report_customers qua
+// productCustomerGrowthRepository, CUNG thu tu cot voi man hinh (public/product-customer-growth.js COLUMNS) nhung tach Ma/Ten hang.
+// Ti trong va tang truong la PHAN SO (0,25 = 25%) kieu 'percent'; nhan ky them khoang ngay that o dataset (growthColumnsWithDates).
+const GROWTH_STATUS_LABELS = Object.freeze({ check: 'Cần check', drop: 'Giảm dưới 50%', up: 'Đang tăng', new: 'Mới' });
+const PRODUCT_CUSTOMER_GROWTH_COLUMNS = [
+  aggregateColumn('productCode', 'Mã hàng', 'text', 'Mã hàng (gộp Hà Nội + Sài Gòn theo mã).'),
+  aggregateColumn('productName', 'Tên hàng', 'text', 'Tên hàng.'),
+  aggregateColumn('customerName', 'Khách hàng', 'text', 'Tên khách hàng (gộp theo tên chuẩn hóa).'),
+  { ...aggregateColumn('revenue', 'DS 90 ngày', 'number', 'Doanh số của khách với mã hàng trong 90 ngày gần nhất (VNĐ).'), fractionDigits: 0 },
+  { ...aggregateColumn('revenue1_30d', 'T.này', 'number', 'Doanh số kỳ 30 ngày gần nhất (VNĐ); trống khi chưa tính kỳ.'), fractionDigits: 0, period: '1_30d' },
+  { ...aggregateColumn('revenue31_60d', 'T.trước', 'number', 'Doanh số kỳ 30 ngày liền trước (VNĐ); trống khi chưa tính kỳ.'), fractionDigits: 0, period: '31_60d' },
+  { ...aggregateColumn('revenue61_90d', 'T.trước nữa', 'number', 'Doanh số kỳ 30 ngày trước nữa (VNĐ); trống khi chưa tính kỳ.'), fractionDigits: 0, period: '61_90d' },
+  aggregateColumn('share', '% của SP', 'percent', 'Doanh số của khách chia tổng doanh số của mã hàng trên tất cả khách.'),
+  aggregateColumn('growth', 'Tăng trưởng', 'percent',
+    'T.này ÷ trung bình(T.trước, T.trước nữa) − 1. Trống khi hai kỳ trước không có doanh số dương hoặc chưa tính kỳ.'),
+  aggregateColumn('status', 'Trạng thái', 'text', 'Cần check (giảm quá 50%), Giảm dưới 50%, Đang tăng hoặc Mới (chưa có doanh số hai kỳ trước).')
+];
+
+// Bo loc + sap xep cua man hinh gui trong context; kiem tra lai bang CUNG whitelist cua repository (khong I/O).
+function growthFiltersFromContext(context) {
+  const source = plainObject(context);
+  const filters = {
+    product: source.productQuery === undefined ? '' : source.productQuery,
+    customer: source.customerQuery === undefined ? '' : source.customerQuery,
+    growth: source.growthGroup === undefined || source.growthGroup === '' ? 'all' : source.growthGroup
+  };
+  if (source.sortKey !== undefined && source.sortKey !== '') {
+    filters.sort = source.sortKey;
+    if (source.sortDir !== undefined) filters.dir = source.sortDir;
+  }
+  if (typeof filters.product === 'string') filters.product = filters.product.trim();
+  if (typeof filters.customer === 'string') filters.customer = filters.customer.trim();
+  return filters;
+}
+
+function growthColumnsWithDates(columns, periods) {
+  const byKey = new Map((periods || []).map(period => [period.key, period]));
+  return columns.map(column => {
+    if (!column.period) return column;
+    const range = product90dRange(byKey.get(column.period));
+    return range ? { ...column, label: `${column.label} (${range})` } : column;
   });
 }
 
@@ -880,6 +926,17 @@ const TABLE_SPECS = {
       autoRowHeight: true
     }]
   }),
+  // Khach hang theo san pham: dong doc o buildProductCustomerGrowthDataset (khong qua dashboard). HTML: chi so ma/ten/khach de tim,
+  // khong bieu do xu huong (khong dat periodTrend).
+  'products.productCustomerGrowth': () => ({
+    worksheets: [{
+      ...reportWorksheet('product_customer_growth', 'Khách theo sản phẩm', PRODUCT_CUSTOMER_GROWTH_COLUMNS),
+      codeKey: 'productCode',
+      summaryKeys: ['revenue'],
+      hints: { labelKey: 'productName', categoryKey: false },
+      searchKeys: ['productCode', 'productName', 'customerName']
+    }]
+  }),
   'stockout.recentScan': () => ({
     worksheets: [reportWorksheet('recent_stockout_result', 'Hàng đứt gần đây', STOCKOUT_RECENT_COLUMNS)]
   }),
@@ -1142,6 +1199,53 @@ async function buildProduct90dDataset(description, payload, signal) {
   };
 }
 
+/**
+ * Khach hang theo san pham: TOAN BO dong khop bo loc (context.productQuery / customerQuery / growthGroup) theo thu tu
+ * sap xep cua man hinh (context.sortKey / sortDir). Chua co cua so khach / khong co dong -> EXPORT_NO_DATA, khong bao gio tao
+ * file rong.
+ */
+async function buildProductCustomerGrowthDataset(description, payload, signal) {
+  const worksheet = description.worksheets[0];
+  const filters = growthFiltersFromContext(payload.context);
+  const data = await productCustomerGrowthRepository.getProductCustomerGrowthForExport(filters);
+  throwIfAborted(signal);
+  if (!data.available) {
+    throw exportError('Chưa có dữ liệu kỳ của khách theo sản phẩm (số liệu được tính sau mỗi lượt đồng bộ KiotViet), chưa có dữ liệu để xuất.', 404, 'EXPORT_NO_DATA');
+  }
+  if (!data.rows.length) {
+    const keyword = [filters.product, filters.customer].filter(Boolean).join(' / ');
+    throw exportError(keyword ? `Không có dòng nào khớp “${keyword}” để xuất.` : 'Bảng khách hàng theo sản phẩm chưa có dòng nào để xuất.', 404, 'EXPORT_NO_DATA');
+  }
+  const columns = growthColumnsWithDates(worksheet.columns, data.periods);
+  const rows = data.rows.map(row => ({
+    productCode: row.productCode, productName: row.productName, customerName: row.customerName,
+    revenue: row.revenue, revenue1_30d: row.revenue1_30d, revenue31_60d: row.revenue31_60d, revenue61_90d: row.revenue61_90d,
+    share: row.share, growth: row.growth, status: GROWTH_STATUS_LABELS[row.growthState] || ''
+  }));
+  const periodRange = period => {
+    const from = formatDayKey(period.from), to = formatDayKey(period.to);
+    return from && to ? `${from} – ${to}` : '—';
+  };
+  const notes = [
+    ['Dữ liệu cập nhật lúc', formatVnStamp(data.state.computedAt)],
+    ['Ngày kết thúc cửa sổ', formatDayKey(data.state.customerWindowEnd) || '—'],
+    ...data.periods.map(period => [`Kỳ ${period.label}`, periodRange(period)]),
+    ['Phạm vi', 'Toàn công ty (Hà Nội + Sài Gòn, gộp theo mã hàng, khách gộp theo tên chuẩn hóa)'],
+    ['Số dòng trong file', rows.length.toLocaleString('en-US')],
+    ['Cần check', data.summary.checkRows.toLocaleString('en-US')]
+  ];
+  if (filters.product) notes.push(['Lọc tên sản phẩm', filters.product]);
+  if (filters.customer) notes.push(['Lọc tên khách hàng', filters.customer]);
+  if (filters.growth !== 'all') notes.push(['Nhóm tăng trưởng', GROWTH_STATUS_LABELS[filters.growth]]);
+  return {
+    tableKey: 'products.productCustomerGrowth', title: TABLE_TITLES['products.productCustomerGrowth'], selectionMode: 'custom',
+    reportNotes: notes,
+    reportNotesTitle: 'Thông tin báo cáo',
+    sourceBranch: BRANCH_BOTH,
+    worksheets: [{ ...worksheet, columns, rows }]
+  };
+}
+
 async function buildProductHistoryDataset(description, payload, signal) {
   const context = description.context;
   const worksheet = description.worksheets[0];
@@ -1294,6 +1398,19 @@ function describeExport(payload, branch, options = {}) {
     if (product90dQuery(request.tableSearch).length > 200) throw exportError('Từ khóa tìm kiếm quá dài (tối đa 200 ký tự).');
   }
 
+  // Khach hang theo san pham cung lo doanh so khach: can reports.products + reports.products.sales nhu Hang hoa 90 ngay; bo loc o
+  // context duoc kiem tra bang whitelist cua repository TRUOC khi xin slot (sai -> 400).
+  if (tableKey === 'products.productCustomerGrowth') {
+    if (options.canViewProducts !== true || options.canViewSales !== true) {
+      throw exportError('Bạn không có quyền xuất bảng khách hàng theo sản phẩm.', 403, 'EXPORT_TABLE_NOT_ALLOWED');
+    }
+    try {
+      productCustomerGrowthRepository.validateFilters(growthFiltersFromContext(context));
+    } catch (error) {
+      throw exportError('Bộ lọc xuất bảng khách hàng theo sản phẩm không hợp lệ.', 400, 'EXPORT_INVALID_REQUEST');
+    }
+  }
+
   if (tableKey === 'products.productHistory') {
     if (options.canViewProducts !== true || options.canViewSales !== true) {
       throw exportError('Bạn không có quyền xuất lịch sử giao dịch hàng hóa.', 403, 'EXPORT_TABLE_NOT_ALLOWED');
@@ -1362,6 +1479,9 @@ async function buildExportDataset(payload, branch, options = {}) {
   }
   if (tableKey === 'products.product90d') {
     return buildProduct90dDataset(description, request, signal);
+  }
+  if (tableKey === 'products.productCustomerGrowth') {
+    return buildProductCustomerGrowthDataset(description, request, signal);
   }
   if (tableKey === 'products.productHistory') return buildProductHistoryDataset(description, request, signal);
   if (tableKey === 'debt.penalty') {
