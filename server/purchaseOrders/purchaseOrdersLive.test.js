@@ -300,3 +300,34 @@ test('with the Sheet source the banner says writing is off and never mentions a 
  assert.match(banner.textContent,/Google Sheet/);
  assert.doesNotMatch(banner.textContent,/DÙNG THỬ|dữ liệu mẫu/i);
 });
+
+// Luong phan theo ten nguon (migration 0118): o chon Nguon dung ten sheet that
+// co trong du lieu, loc chinh xac, va tim kiem bat duoc ten nguon.
+test('the source filter lists the sheets present and narrows the table to one of them',async t=>{
+ const p=await page(t,{extraRows:[
+   {id:'10',rowKey:'D00010',version:1,contId:null,productCode:'YW-1',cartonCount:1,qtyPerCarton:1,sourceSheet:'YIWU'},
+   {id:'11',rowKey:'D00011',version:1,contId:null,productCode:'YW-2',cartonCount:1,qtyPerCarton:1,sourceSheet:'YIWU'},
+   {id:'12',rowKey:'D00012',version:1,contId:null,productCode:'TK-1',cartonCount:1,qtyPerCarton:1,sourceSheet:'CONT TKS1'}
+ ]}),doc=p.w.document;
+ const select=doc.getElementById('orderSource');
+ assert.ok(select,'co o chon Nguon');
+ assert.deepEqual([...select.options].map(o=>o.value),['','CONT TKS1','YIWU'],'chi liet ke nguon co that, sap theo ten');
+
+ // Thu tu hang theo kieu sap xep dang chon, nen so sanh theo tap hop.
+ const keys=()=>[...doc.querySelectorAll('#orderTable tbody tr td[data-field="rowKey"]')].map(td=>td.textContent.trim()).sort();
+ p.change('#orderSource','YIWU');
+ assert.deepEqual(keys(),['D00010','D00011'],'chi con dong cua YIWU');
+ p.change('#orderSource','CONT TKS1');
+ assert.deepEqual(keys(),['D00012']);
+ p.change('#orderSource','');
+ assert.ok(keys().length>3,'bo loc thi hien lai tat ca');
+
+ // Cot Nguon hien gia tri va khong cho sua truc tiep.
+ const cell=doc.querySelector('#orderTable tbody tr td[data-field="sourceSheet"]');
+ assert.ok(cell,'bang co cot Nguon');
+ assert.equal(cell.querySelector('input'),null,'cot Nguon khong co o nhap');
+
+ // O tim kiem dung oninput, khong phai change.
+ const box=doc.getElementById('search');box.value='tks1';box.dispatchEvent(new p.w.Event('input',{bubbles:true}));
+ assert.deepEqual(keys(),['D00012'],'tim kiem bat duoc ten nguon');
+});

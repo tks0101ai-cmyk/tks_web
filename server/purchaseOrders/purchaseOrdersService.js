@@ -8,7 +8,9 @@ const { prepareRows, prepareWorkbook, recheckPreview } = require('./purchaseOrde
 const { invalidateContainerDetails } = require('../productContainers/repository');
 const { projectContainers } = require('./purchaseOrdersProjection');
 const { dashboardRollupEvents } = require('../kiotvietSync/dashboardRollupEvents');
-const writable = columns.filter(c=>!c.d&&!c.m&&!['rowKey','container','status'].includes(c.k));
+// Cot chi doc duoc danh dau `ro` trong purchase-columns.js — mot nguon duy nhat,
+// khong lap danh sach ten cot o hai noi nhu truoc.
+const writable = columns.filter(c => !c.d && !c.m && !c.ro);
 writable.push({k:'buyerEmployeeId',t:'text',l:'Nhân viên'});
 const snake = key => key.replace(/[A-Z]/g,c=>'_'+c.toLowerCase());
 const dbCols = writable.map(c=>snake(c.k));
@@ -16,7 +18,7 @@ const numeric = new Set(['num','num1','num2','num4','cny','money','pct','ratio']
 const fail = (statusCode,code,message,extra={}) => Object.assign(new Error(message),{statusCode,code,...extra});
 const { normalizeName } = require('./containerNames');
 function jsRow(row) {
-  const out={freightAmount:null,id:String(row.id),rowKey:row.row_key,rootKey:row.root_key,splitFromKey:row.split_from_key,contId:row.container_id==null?null:String(row.container_id),version:Number(row.version),buyerEmployeeId:row.buyer_employee_id==null?null:String(row.buyer_employee_id)};
+  const out={freightAmount:null,id:String(row.id),rowKey:row.row_key,sourceSheet:row.source_sheet??null,sourceRow:row.source_row==null?null:Number(row.source_row),rootKey:row.root_key,splitFromKey:row.split_from_key,contId:row.container_id==null?null:String(row.container_id),version:Number(row.version),buyerEmployeeId:row.buyer_employee_id==null?null:String(row.buyer_employee_id)};
   writable.forEach(c=>{const value=row[snake(c.k)];out[c.k]=value==null?null:c.k==='buyerEmployeeId'?String(value):c.t==='datetime'? (value instanceof Date?([value.getFullYear(),String(value.getMonth()+1).padStart(2,'0'),String(value.getDate()).padStart(2,'0')].join('-')+(value.getHours()||value.getMinutes()?'T'+String(value.getHours()).padStart(2,'0')+':'+String(value.getMinutes()).padStart(2,'0'):'')):String(value).replace(' ','T').replace(/T00:00:00(?:\.000)?$/,'').replace(/:(\d{2}):00$/ ,':$1')) : c.t==='date'?(value instanceof Date?[value.getFullYear(),String(value.getMonth()+1).padStart(2,'0'),String(value.getDate()).padStart(2,'0')].join('-'):String(value).slice(0,10)):numeric.has(c.t)?Number(value):value});return out;
 }
 function withFreight(rows,containers){const rates=freightModel.rates(rows,containers);return rows.map(r=>({...r,freightAmount:freightModel.rowAmount(r,rates)}))}

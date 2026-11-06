@@ -7,7 +7,17 @@
     "t": "text",
     "w": 95,
     "v": 1,
-    "kk": 1
+    "ro": 1
+  },
+  {
+    "k": "sourceSheet",
+    "l": "Nguồn",
+    "cn": "来源表",
+    "g": "Nhận diện",
+    "t": "text",
+    "w": 90,
+    "v": 1,
+    "ro": 1
   },
   {
     "k": "productCode",
@@ -59,7 +69,8 @@
     "w": 160,
     "v": 1,
     "e": 1,
-    "sel": 1
+    "sel": 1,
+    "ro": 1
   },
   {
     "k": "status",
@@ -68,7 +79,8 @@
     "g": "Cont",
     "t": "status",
     "w": 125,
-    "v": 1
+    "v": 1,
+    "ro": 1
   },
   {
     "k": "color",

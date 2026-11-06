@@ -1,5 +1,22 @@
 # Supabase schema cho đồng bộ KiotViet
 
+## Migration 0118 — Thu mua: nguồn gốc của từng dòng (06/11/2026, chưa áp DB)
+
+`0118_purchase_source_sheet.sql`: `purchase_orders` thêm `source_sheet TEXT` và `source_row INTEGER`.
+
+Bản nguồn TKS nằm trên 7 sheet (YIWU, VK-DUNG, HÀ BẮC, SD, GDONG, KHÁC, CONT TKS1). Hai cột này giữ xuất xứ để (1) lọc và làm việc theo từng luồng trên bảng Đặt hàng, (2) đường nạp biết dòng nào đã nạp để không nạp trùng khi nạp bổ sung từng sheet.
+
+- `purchase_orders_source_unique` — UNIQUE `(source_sheet, source_row)` *WHERE cả hai NOT NULL*: mỗi vị trí nguồn chỉ tồn tại một lần. Dòng cũ (NULL) và dòng tạo tay trên web không bị ràng buộc này.
+- `purchase_orders_source_sheet_idx` — index cho việc lọc theo nguồn.
+
+Hai cột do **đường nạp** ghi, không phải người dùng: cột `sourceSheet` mang cờ `ro` trong `public/shared/purchase-columns.js`, nên nó không nằm trong tập cột ghi được của API sửa dòng, của import Excel, lẫn của thao tác dán ô. Sửa nó qua API trả `FIELD_NOT_WRITABLE`.
+
+552 dòng nạp trước migration này để NULL (hiện trên giao diện là nguồn trống).
+
+### Một nguồn duy nhất cho tập cột ghi được
+
+Trước đây danh sách cột chỉ đọc được viết lặp bằng chữ ở **ba** nơi (`purchaseOrdersService.js`, `purchaseOrdersImport.js`, `public/thu-mua/dat-hang/purchase.js`) cộng một danh sách thứ tư cho thao tác dán — đúng kiểu trùng lặp đã gây ra lỗi `name_key`. Nay cờ `ro` trong catalog là nguồn duy nhất: `rowKey`, `sourceSheet`, `container`, `status`. Cả ba nơi dùng `columns.filter(c => !c.d && !c.m && !c.ro)`; thao tác dán thêm riêng `buyer` vì ô đó là dropdown nhân viên. Cờ `kk` cũ (khai báo nhưng không ai đọc) đã bỏ.
+
 ## Migration 0115, 0116 — Thu mua: VC trước được phép âm, phạm vi projection (06/11/2026, chưa áp DB)
 
 `0115_purchase_freight_prepaid_signed.sql` (đổi số từ `0114_...` vì main đã dùng `0114_stocktake_frozen_lines.sql`): bỏ CHECK `purchase_orders_freight_prepaid_check`, nên `purchase_orders.freight_prepaid` (已付, CNY) nhận số âm — bản chụp nguồn TKS 05/11/2026 có 11 dòng âm, là khoản giảm trừ/hoàn có chủ đích. `freight_postpaid` (代付) và các cột không âm khác giữ nguyên CHECK.

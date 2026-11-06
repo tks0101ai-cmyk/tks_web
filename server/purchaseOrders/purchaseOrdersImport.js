@@ -6,7 +6,9 @@
 const calculations=require('../public/shared/purchase-calculations');
 const columns = require('../public/shared/purchase-columns');
 const workbook = require('../public/shared/purchase-workbook');
-const writable = columns.filter(c => !c.d && !c.m && !['rowKey', 'container', 'status'].includes(c.k));
+// Cot chi doc duoc danh dau `ro` trong purchase-columns.js — mot nguon duy nhat,
+// khong lap danh sach ten cot o hai noi nhu truoc.
+const writable = columns.filter(c => !c.d && !c.m && !c.ro);
 const byKey = new Map(writable.map(c => [c.k, c]));
 const keyPattern = /^D\d{5,}(?:\.(?:01|02))*$/;
 const integerFields = new Set(['qtyPerCarton', 'cartonCount']);

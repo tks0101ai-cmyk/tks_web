@@ -185,3 +185,56 @@ test('two legacy containers that normalize to one name stop the import instead o
     assert.equal(await count(db, 'SELECT count(*) FROM product_containers'), 2, 'khong gop, khong doi ten');
   } finally { await db.close(); }
 });
+
+test('the source sheet and row are recorded, and summarised per sheet', async () => {
+  const db = await freshDb();
+  try {
+    const file = fixture([
+      row({ rowKey: 'D00001', sheet: 'YIWU', row: 12 }),
+      row({ rowKey: 'D00002', sheet: 'YIWU', row: 13 }),
+      row({ rowKey: 'D00003', sheet: 'CONT TKS1', row: 4 })
+    ]);
+    const out = await importSourceRows({ pool: wrap(db), file, logger: { log() {} } });
+    assert.deepEqual(out.bySheet, { YIWU: 2, 'CONT TKS1': 1 });
+    const rows = (await db.query('SELECT row_key,source_sheet,source_row FROM purchase_orders ORDER BY row_key')).rows;
+    assert.deepEqual(rows.map(r => [r.row_key, r.source_sheet, Number(r.source_row)]),
+      [['D00001', 'YIWU', 12], ['D00002', 'YIWU', 13], ['D00003', 'CONT TKS1', 4]]);
+  } finally { await db.close(); }
+});
+
+test('a snapshot without source fields still loads, leaving the source null', async () => {
+  const db = await freshDb();
+  try {
+    const out = await importSourceRows({ pool: wrap(db), file: fixture([row()]), logger: { log() {} } });
+    assert.deepEqual(out.bySheet, { '(khong ro nguon)': 1 });
+    const r = (await db.query('SELECT source_sheet,source_row FROM purchase_orders')).rows[0];
+    assert.equal(r.source_sheet, null);
+    assert.equal(r.source_row, null);
+  } finally { await db.close(); }
+});
+
+test('the same source position twice in one file stops the import before writing', async () => {
+  const db = await freshDb();
+  try {
+    const file = fixture([row({ rowKey: 'D00001', sheet: 'SD', row: 7 }), row({ rowKey: 'D00002', sheet: 'SD', row: 7 })]);
+    await assert.rejects(importSourceRows({ pool: wrap(db), file, logger: { log() {} } }),
+      error => error.code === 'SOURCE_POSITION_DUPLICATE' && /SD#7/.test(error.message));
+    assert.equal(await count(db, 'SELECT count(*) FROM purchase_orders'), 0, 'khong ghi dong nao');
+  } finally { await db.close(); }
+});
+
+test('the database refuses the same source position across two imports', async () => {
+  const db = await freshDb();
+  try {
+    const pool = wrap(db), logger = { log() {} };
+    await importSourceRows({ pool, file: fixture([row({ rowKey: 'D00001', sheet: 'GDONG', row: 9 })]), logger });
+    // Index 0118 la chot cuoi: dong tay cung vi tri nguon phai bi tu choi.
+    await assert.rejects(
+      db.query("INSERT INTO purchase_orders(row_key,root_key,product_code,product_name,qty_per_carton,carton_count,source_sheet,source_row) VALUES('D00009','D00009','X','Hang X',1,1,'GDONG',9)"),
+      /duplicate key|unique/i
+    );
+    // Hai dong khong co nguon thi khong bi rang buoc.
+    await db.query("INSERT INTO purchase_orders(row_key,root_key,product_code,product_name,qty_per_carton,carton_count) VALUES('D00010','D00010','X','Hang X',1,1),('D00011','D00011','Y','Hang Y',1,1)");
+    assert.equal(await count(db, 'SELECT count(*) FROM purchase_orders'), 3);
+  } finally { await db.close(); }
+});

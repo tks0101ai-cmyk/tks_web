@@ -142,3 +142,27 @@ test('the expected-arrivals refresh takes product names from Purchase only when 
   await refreshExpected(pool, { log() {} });
   assert.equal(overwrites(), 1, 'da noi vao he thong: lay ten tu purchase_orders');
 });
+
+// Cot Nguon (source_sheet, migration 0118) la thong tin xuat xu do duong nap
+// ghi: giao dien thay va loc duoc, nhung khong duong ghi nao cua web sua duoc.
+test('the source sheet is readable through the API but is not a writable field', async () => {
+  const created = await service.create(manager, input());
+  assert.equal(created.sourceSheet, null, 'dong tao tay khong co nguon');
+  assert.equal(created.sourceRow, null);
+
+  await db.query("UPDATE purchase_orders SET source_sheet='YIWU', source_row=12 WHERE id=$1", [created.id]);
+  const read = (await service.list(manager)).rows.find(r => r.id === String(created.id));
+  assert.equal(read.sourceSheet, 'YIWU', 'doc ra duoc de loc tren giao dien');
+  assert.equal(read.sourceRow, 12);
+
+  const fresh = (await db.query('SELECT version FROM purchase_orders WHERE id=$1', [created.id])).rows[0];
+  for (const changes of [{ sourceSheet: 'KHÁC' }, { sourceRow: 99 }]) {
+    await assert.rejects(
+      service.update(manager, created.id, { version: Number(fresh.version), changes }),
+      error => error.code === 'FIELD_NOT_WRITABLE', JSON.stringify(changes)
+    );
+  }
+  const after = (await db.query('SELECT source_sheet, source_row FROM purchase_orders WHERE id=$1', [created.id])).rows[0];
+  assert.equal(after.source_sheet, 'YIWU', 'xuat xu khong bi sua');
+  assert.equal(Number(after.source_row), 12);
+});

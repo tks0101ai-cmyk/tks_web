@@ -55,6 +55,10 @@ async function importSourceRows({ pool = getPool(), file, year = 2026, replace =
   const anomalies = [];
   const prepared = rows.map(r => ({
     rowKey: String(r.rowKey),
+    // Ten sheet goc va so dong o ban nguon. Ban chup cu khong co hai truong nay
+    // thi de null — dong nap truoc migration 0118 cung dang la null.
+    sourceSheet: text(r.sheet ?? r.sourceSheet),
+    sourceRow: Number.isSafeInteger(Number(r.row ?? r.sourceRow)) ? Number(r.row ?? r.sourceRow) : null,
     cont: QUEUE_NAME.test(r.cont || '') ? null : text(r.cont),
     listedAt: parseListedAt(r.listedAt, year, anomalies, String(r.rowKey)),
     productCode: text(r.code), productName: text(r.name), productNameCn: text(r.nameCn),
@@ -66,8 +70,22 @@ async function importSourceRows({ pool = getPool(), file, year = 2026, replace =
   }));
 
   const invalid = prepared.filter(r => !(r.qtyPerCarton > 0) || !(r.cartonCount > 0) || !r.productCode || !r.productName);
+  // (sheet, dong) trung trong CUNG file: index 0118 se chan o DB, nhung bao som
+  // thi nguoi dung sua ban chup chu khong phai doc loi Postgres.
+  const seen = new Map(), dupSource = [];
+  for (const r of prepared) {
+    if (!r.sourceSheet || r.sourceRow == null) continue;
+    const key = r.sourceSheet + '#' + r.sourceRow;
+    if (seen.has(key)) dupSource.push(`${key} (${seen.get(key)} va ${r.rowKey})`); else seen.set(key, r.rowKey);
+  }
+  if (dupSource.length) {
+    throw Object.assign(new Error(`${dupSource.length} vi tri nguon bi lap trong file: ` + dupSource.slice(0, 5).join('; ')),
+      { code: 'SOURCE_POSITION_DUPLICATE', duplicates: dupSource });
+  }
+  const bySheet = {};
+  for (const r of prepared) { const key = r.sourceSheet || '(khong ro nguon)'; bySheet[key] = (bySheet[key] || 0) + 1; }
   const summary = {
-    rows: prepared.length, containers: conts.length,
+    rows: prepared.length, containers: conts.length, bySheet,
     queued: prepared.filter(r => !r.cont).length,
     invalid: invalid.length, anomalies
   };
@@ -132,12 +150,13 @@ async function importSourceRows({ pool = getPool(), file, year = 2026, replace =
       const res = await client.query(
         `INSERT INTO purchase_orders(row_key,root_key,container_id,product_code,product_name,product_name_cn,
            supplier,buyer,listed_at,qty_per_carton,carton_count,unit_price_cny,freight_prepaid,fx_rate,
-           freight_postpaid,kg_per_carton,m3_per_carton)
-         VALUES($1,split_part($1,'.',1),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+           freight_postpaid,kg_per_carton,m3_per_carton,source_sheet,source_row)
+         VALUES($1,split_part($1,'.',1),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
          ON CONFLICT(row_key) DO NOTHING`,
         [r.rowKey, r.cont ? ids.get(r.cont) : null, r.productCode, r.productName, r.productNameCn,
           r.supplier, r.buyer, r.listedAt, r.qtyPerCarton, r.cartonCount, r.unitPriceCny,
-          r.freightPrepaid, r.fxRate, r.freightPostpaid, r.kgPerCarton, r.m3PerCarton]
+          r.freightPrepaid, r.fxRate, r.freightPostpaid, r.kgPerCarton, r.m3PerCarton,
+          r.sourceSheet, r.sourceRow]
       );
       inserted += res.rowCount;
     }
