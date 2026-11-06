@@ -1,6 +1,6 @@
 'use strict';
 
-// Muc 4 "Hang hoa 90 ngay" cua tab Hang hoa (product-customer-growth.js): ham thuan (dinh dang, nhan "Can check", chuoi truy van,
+// Muc 4 "Hang hoa 90 ngay" cua tab Hang hoa (product-customer-growth.js): ham thuan (dinh dang, ba muc mau do/cam/vang, chuoi truy van,
 // ngu canh xuat file), cau truc index.html, hanh vi bang (loc/sap xep/phan trang o may chu, chong phan hoi cu, cac trang thai)
 // va phan quyen tren trang that.
 const test = require('node:test');
@@ -55,17 +55,26 @@ function cell(markup) {
   return dom.window.document.querySelector('td');
 }
 
-test('growthCellHtml: check -> chu do + nhan "Cần check"; new -> "Mới"; khong tinh duoc -> "—"; giam nhe / tang khong do', () => {
+test('growthCellHtml: chi hien %, ba muc mau theo lop (lost do, check cam, drop vang) kem title; new -> "Mới"; khong tinh duoc -> "—"; tang khong mau', () => {
+  const lost = cell(H.growthCellHtml({ growth: -1, growthState: 'lost' }));
+  assert.ok(lost.classList.contains('is-lost'));
+  assert.equal(lost.textContent.trim(), '-100%');
+  assert.equal(lost.getAttribute('title'), 'Giảm hết 100%');
   const check = cell(H.growthCellHtml({ growth: -0.62, growthState: 'check' }));
   assert.ok(check.classList.contains('is-check'));
-  assert.match(check.textContent, /Cần check/);
-  assert.match(check.textContent, /-62%/);
+  assert.equal(check.textContent.trim(), '-62%');
+  assert.equal(check.getAttribute('title'), 'Giảm hơn 50%');
+  assert.ok(!check.textContent.includes('Cần check'));
   const drop = cell(H.growthCellHtml({ growth: -0.3, growthState: 'drop' }));
-  assert.ok(!drop.classList.contains('is-check'));
+  assert.ok(drop.classList.contains('is-drop'));
   assert.equal(drop.textContent.trim(), '-30%');
+  assert.equal(drop.getAttribute('title'), 'Giảm dưới 50%');
+  const up = cell(H.growthCellHtml({ growth: 0.4, growthState: 'up' }));
+  assert.equal(up.textContent.trim(), '+40%');
+  assert.ok(!/is-(lost|check|drop)/.test(up.className));
+  assert.equal(up.getAttribute('title'), null);
   assert.equal(cell(H.growthCellHtml({ growth: null, growthState: 'new' })).textContent.trim(), 'Mới');
   assert.equal(cell(H.growthCellHtml({ growth: null, growthState: null })).textContent.trim(), '—');
-  assert.equal(cell(H.growthCellHtml({ growth: 0.4, growthState: 'up' })).textContent.trim(), '+40%');
 });
 
 test('rowHtml: 8 o theo thu tu COLUMNS, 0 -> "0", NULL -> "—", khach rong -> "Khách lẻ", ky tu HTML duoc escape', () => {
@@ -95,6 +104,7 @@ test('buildQuery: bo tham so rong; growth=all khong gui; dir chi di kem sort; tr
     'product=binh&customer=H%E1%BA%A1nh&growth=check&sort=growth&dir=asc&page=2&pageSize=100');
   assert.equal(H.buildQuery({ growth: 'all', sort: 'revenue', page: 1, pageSize: 500 }), 'sort=revenue&page=1&pageSize=200');
   assert.equal(H.buildQuery({ growth: 'bad', dir: 'asc' }), '');
+  assert.equal(H.buildQuery({ growth: 'lost' }), 'growth=lost');
 });
 
 test('nextSort: tang dan -> giam dan -> bo sap xep; sortAction bao hanh dong ke tiep', () => {
@@ -113,6 +123,7 @@ test('exportContext: dung bo loc dang ap dung, mac dinh khong gui sap xep', () =
   assert.deepEqual(H.exportContext({}), { context: { productQuery: '', customerQuery: '', growthGroup: 'all' } });
   assert.deepEqual(H.exportContext({ growth: 'bad', sort: 'revenue', dir: 'xxx' }),
     { context: { productQuery: '', customerQuery: '', growthGroup: 'all', sortKey: 'revenue', sortDir: 'desc' } });
+  assert.equal(H.exportContext({ growth: 'lost' }).context.growthGroup, 'lost');
 });
 
 // ---------- cau truc index.html ----------
@@ -151,16 +162,31 @@ test('tieu de bang: 8 cot khop COLUMNS, nut sap xep, do rong ghi trong thead; bo
     assert.equal(th.style.width, H.COLUMNS[index].width + 'px');
   });
   assert.deepEqual([...pageDoc.querySelectorAll('#pcgGrowth option')].map(o => [o.value, o.textContent]), H.GROWTH_OPTIONS);
+  assert.deepEqual(H.GROWTH_OPTIONS.map(o => o[0]), ['all', 'lost', 'check', 'drop', 'up', 'new']);
   ['pcgProductSearch', 'pcgCustomerSearch', 'pcgGrowth', 'pcgExportButton', 'pcgPageSize'].forEach(id => assert.ok(pageDoc.getElementById(id), id));
   assert.match(pageDoc.getElementById('pcgExportButton').getAttribute('onclick'), /openExportDialog\('products\.productCustomerGrowth'\)/);
   assert.ok(pageDoc.getElementById('pcgExportButton').closest('#product90dSection .panel-head-actions'));
 });
 
-test('CSS: nhan "Can check" dung bien mau cua trang (khong ma hex), bang co khung cuon rieng', () => {
+test('CSS: ba muc mau dung bien mau cua trang (khong ma hex), bang co khung cuon rieng', () => {
   const css = fs.readFileSync(path.join(publicDir, 'product-customer-growth.css'), 'utf8');
-  assert.match(css, /\.pcg-table td\.is-check[^{]*\{[^}]*var\(--red\)/);
+  assert.match(css, /\.pcg-table td\.is-lost[^{]*\{[^}]*var\(--red\)/);
+  assert.match(css, /\.pcg-table td\.is-check[^{]*\{[^}]*var\(--orange\)/);
+  assert.match(css, /\.pcg-table td\.is-drop[^{]*\{[^}]*var\(--yellow\)/);
+  assert.doesNotMatch(css, /pcg-flag/);
   assert.match(css, /\.pcg-scroll\s*\{[^}]*overflow:\s*auto/);
   assert.doesNotMatch(css, /#[0-9a-fA-F]{3,8}\b/);
+});
+
+test('shared.css: --orange va --yellow co o ca khoi Toi lan khoi Sang (moi token xuat hien it nhat 2 lan)', () => {
+  const css = fs.readFileSync(path.join(publicDir, 'shared', 'shared.css'), 'utf8');
+  ['--orange', '--yellow'].forEach(token => {
+    assert.ok((css.match(new RegExp('\\s' + token + ':\\s*#[0-9A-Fa-f]{6}', 'g')) || []).length >= 2, token);
+  });
+  assert.match(css, /--orange:#FB923C/);
+  assert.match(css, /--orange:#EA580C/);
+  assert.match(css, /--yellow:#FACC15/);
+  assert.match(css, /--yellow:#A16207/);
 });
 
 // ---------- hanh vi bang (DOM toi thieu + table-controls that) ----------
@@ -184,7 +210,10 @@ function sampleRow(customer, extra) {
 function report(rows, extra) {
   return Object.assign({
     available: true, state: { customerWindowEnd: '2026-11-05', computedAt: '2026-11-05T19:05:00.000Z', version: 3 }, periods: periods(),
-    summary: { totalRows: rows.length, checkRows: rows.filter(r => r.growthState === 'check').length }, rows,
+    summary: {
+      totalRows: rows.length, lostRows: rows.filter(r => r.growthState === 'lost').length,
+      checkRows: rows.filter(r => r.growthState === 'check').length
+    }, rows,
     page: 1, pageSize: 50, sort: 'revenue', dir: 'desc'
   }, extra);
 }
@@ -212,7 +241,7 @@ function createWidget({ can = () => true } = {}) {
   return { dom, w, $, calls, answer, params, texts, type, choose };
 }
 
-test('tai lan dau: goi API mac dinh, ve dong, tieu de ky co khoang ngay, nhan do dung o, "Dữ liệu cập nhật lúc" gio VN', async () => {
+test('tai lan dau: goi API mac dinh, ve dong, tieu de ky co khoang ngay, mau theo muc dung o, "Dữ liệu cập nhật lúc" gio VN', async () => {
   const p = createWidget();
   try {
     p.w.TKSProductCustomerGrowth.load(false);
@@ -220,15 +249,16 @@ test('tai lan dau: goi API mac dinh, ve dong, tieu de ky co khoang ngay, nhan do
     assert.equal(p.calls.length, 1);
     assert.equal(p.calls[0].url, '/api/product-report/customer-growth?page=1&pageSize=50');
     assert.match(p.$('pcgRows').textContent, /Đang tải/);
-    p.answer(0, report([sampleRow('Khách A', { growth: -0.62, growthState: 'check' }), sampleRow('Khách B')]));
+    p.answer(0, report([sampleRow('Khách A', { growth: -1, growthState: 'lost' }), sampleRow('Khách B'), sampleRow('Khách C', { growth: -0.62, growthState: 'check' })]));
     await settle();
     const rows = p.texts();
-    assert.equal(rows.length, 2);
+    assert.equal(rows.length, 3);
     assert.equal(rows[0][1], 'Khách A');
-    assert.match(rows[0][7], /Cần check/);
+    assert.match(rows[0][7], /^-100%$/);
+    assert.equal(p.w.document.querySelectorAll('#pcgRows td.is-lost').length, 1);
     assert.equal(p.w.document.querySelectorAll('#pcgRows td.is-check').length, 1);
-    assert.equal(p.$('pcgStatus').textContent, '2 dòng khớp · 1 cần check');
-    assert.equal(p.$('pcgRowsTag').textContent, '2 dòng');
+    assert.equal(p.$('pcgStatus').textContent, '3 dòng khớp · 1 giảm hết 100% · 1 giảm hơn 50%');
+    assert.equal(p.$('pcgRowsTag').textContent, '3 dòng');
     assert.equal(p.$('pcgUpdatedAt').textContent, 'Dữ liệu cập nhật lúc 02:05 06/11/2026');
     const title = key => p.w.document.querySelector('th[data-column-key="' + key + '"] .sort-button').title;
     assert.equal(title('revenue_1_30d'), 'Sắp xếp tăng dần theo T.này (07/10–05/11/2026)');
@@ -243,11 +273,11 @@ test('loc: debounce 150ms, bo qua khi dang go IME, doi nhom ve trang 1, giu cac 
   const p = createWidget();
   try {
     p.w.TKSProductCustomerGrowth.load(true);
-    p.answer(0, report([sampleRow('Khách A')], { summary: { totalRows: 120, checkRows: 0 } }));
+    p.answer(0, report([sampleRow('Khách A')], { summary: { totalRows: 120, lostRows: 0, checkRows: 0 } }));
     await settle();
     p.$('pcgNextPage').click();
     assert.equal(p.params(1).get('page'), '2');
-    p.answer(1, report([sampleRow('Khách B')], { summary: { totalRows: 120, checkRows: 0 }, page: 2 }));
+    p.answer(1, report([sampleRow('Khách B')], { summary: { totalRows: 120, lostRows: 0, checkRows: 0 }, page: 2 }));
     await settle();
     p.type('pcgProductSearch', 'binh');
     assert.equal(p.calls.length, 2, 'debounce: chua goi ngay');
@@ -356,13 +386,13 @@ test('trang thai: loi -> thong bao + Thu lai (khong ve so 0); chua co du lieu; k
     assert.equal(p.$('pcgRows').textContent.includes('0'), false, 'loi khong duoc thanh bang so 0');
     p.$('pcgRows').querySelector('[data-action="retry"]').click();
     assert.equal(p.calls.length, 2);
-    p.answer(1, { available: false, rows: [], summary: { totalRows: 0, checkRows: 0 } });
+    p.answer(1, { available: false, rows: [], summary: { totalRows: 0, lostRows: 0, checkRows: 0 } });
     await settle();
     assert.match(p.$('pcgRows').textContent, /Chưa có dữ liệu kỳ/);
     // Khong khop bo loc.
     p.type('pcgProductSearch', 'zzz');
     await wait(220);
-    p.answer(2, report([], { summary: { totalRows: 0, checkRows: 0 } }));
+    p.answer(2, report([], { summary: { totalRows: 0, lostRows: 0, checkRows: 0 } }));
     await settle();
     assert.match(p.$('pcgRows').textContent, /Không có dòng nào khớp bộ lọc/);
     // Phan hoi cu ve muon KHONG ghi de truy van moi hon.

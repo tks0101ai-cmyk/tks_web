@@ -1,6 +1,6 @@
 /* Tab Hàng hóa — mục 4 "Hàng hóa 90 ngày": bảng Khách hàng theo sản phẩm (mỗi dòng một cặp sản phẩm × khách) kèm Tăng trưởng
    (API chỉ đọc /api/product-report/customer-growth, quyền reports.products + reports.products.sales). Tăng trưởng = T.này ÷
-   trung bình(T.trước, T.trước nữa) − 1, do máy chủ tính; dưới −50% là "Cần check" (chữ đỏ + nhãn). Lọc tên sản phẩm / tên khách /
+   trung bình(T.trước, T.trước nữa) − 1, do máy chủ tính; ba mức màu theo %: đỏ ≤ −100% (không còn doanh số), cam −100%..−50%, vàng −50%..0 (chỉ hiện %). Lọc tên sản phẩm / tên khách /
    nhóm tăng trưởng, sắp xếp và phân trang đều ở máy chủ trên TOÀN BỘ kết quả. thead tĩnh trong index.html (1 tầng, khớp COLUMNS
    bên dưới — test/frontend/product-customer-growth.test.js khóa khớp). Ẩn/hiện cột + kéo độ rộng: shared/table-controls.js
    (data-table-sort="off": trang tự sắp xếp qua API). Phần đầu file là hàm thuần (không đụng DOM) — Node require() được để test. */
@@ -20,7 +20,8 @@
     { key: 'growth', label: 'Tăng trưởng', sort: 'growth', width: 170, mobile: 140, type: 'growth' }
   ];
   const GROWTH_OPTIONS = [
-    ['all', 'Tất cả'], ['check', 'Cần check (giảm quá 50%)'], ['drop', 'Giảm dưới 50%'], ['up', 'Đang tăng'], ['new', 'Khách mới']
+    ['all', 'Tất cả'], ['lost', 'Giảm hết 100%'], ['check', 'Giảm hơn 50%'], ['drop', 'Giảm dưới 50%'],
+    ['up', 'Đang tăng'], ['new', 'Khách mới']
   ];
   const GROWTH_VALUES = GROWTH_OPTIONS.map(function (option) { return option[0]; });
 
@@ -96,17 +97,17 @@
 
   function muted() { return '<span class="muted">' + DASH + '</span>'; }
 
-  // check → chữ đỏ + nhãn "Cần check"; new → nhãn "Mới"; không tính được → "—"; còn lại chỉ hiện %.
+  // lost/check/drop → chỉ hiện %, tô đỏ / cam / vàng (lớp is-lost / is-check / is-drop) kèm title mô tả mức; new → nhãn "Mới";
+  // không tính được → "—"; tăng (up) chỉ hiện % không màu.
+  const TIER_TITLES = { lost: 'Giảm hết 100%', check: 'Giảm hơn 50%', drop: 'Giảm dưới 50%' };
   function growthCellHtml(row) {
     const state = row ? row.growthState : null;
     const n = toNumber(row ? row.growth : null);
     if (state === 'new') return '<td class="col-num pcg-growth"><span class="pcg-new" title="Chưa có doanh số 2 kỳ trước">Mới</span></td>';
     if (n === null || !state) return '<td class="col-num pcg-growth">' + muted() + '</td>';
-    const text = escapeHtml(formatGrowth(n));
-    if (state === 'check') {
-      return '<td class="col-num pcg-growth is-check"><span class="pcg-flag">Cần check</span><span class="pcg-pct">' + text + '</span></td>';
-    }
-    return '<td class="col-num pcg-growth"><span class="pcg-pct">' + text + '</span></td>';
+    const tier = TIER_TITLES[state];
+    return '<td class="col-num pcg-growth' + (tier ? ' is-' + state : '') + '"' + (tier ? ' title="' + tier + '"' : '') + '>' +
+      '<span class="pcg-pct">' + escapeHtml(formatGrowth(n)) + '</span></td>';
   }
 
   function shareCellHtml(value) {
@@ -288,6 +289,7 @@
     const stamp = ok && d.state ? formatStamp(d.state.computedAt) : '';
     $('pcgUpdatedAt').textContent = stamp ? 'Dữ liệu cập nhật lúc ' + stamp : '—';
     const total = ok ? totalRows() : 0;
+    const lost = ok && d.summary ? Number(d.summary.lostRows) || 0 : 0;
     const check = ok && d.summary ? Number(d.summary.checkRows) || 0 : 0;
     $('pcgRowsTag').textContent = ok ? NUMBER.format(total) + ' dòng' : '—';
     const busy = state.loading && !!d && !state.error;
@@ -295,7 +297,7 @@
     frame.classList.toggle('is-busy', busy);
     if (busy || (state.loading && !d)) frame.setAttribute('aria-busy', 'true'); else frame.removeAttribute('aria-busy');
     $('pcgStatus').textContent = state.loading ? (d ? 'Đang cập nhật…' : 'Đang tải…')
-      : ok ? NUMBER.format(total) + ' dòng khớp · ' + NUMBER.format(check) + ' cần check' : '';
+      : ok ? NUMBER.format(total) + ' dòng khớp · ' + NUMBER.format(lost) + ' giảm hết 100% · ' + NUMBER.format(check) + ' giảm hơn 50%' : '';
     const pages = totalPages();
     $('pcgPagination').hidden = !ok || total === 0;
     $('pcgPageLabel').textContent = 'Trang ' + state.page + '/' + pages;
@@ -361,7 +363,7 @@
     try { request = Promise.resolve(window.fetch(url, options)); } catch (err) { request = Promise.reject(err); }
     const pending = request.then(readJson).then(function (data) {
       if (seq !== state.seq) return;
-      state.data = data && typeof data === 'object' ? data : { available: false, rows: [], summary: { totalRows: 0, checkRows: 0 } };
+      state.data = data && typeof data === 'object' ? data : { available: false, rows: [], summary: { totalRows: 0, lostRows: 0, checkRows: 0 } };
       if (state.data.available && Number.isInteger(Number(state.data.page)) && Number(state.data.page) >= 1) state.page = Number(state.data.page);
       state.loadedAt = Date.now();
     }, function (err) {

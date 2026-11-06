@@ -52,7 +52,7 @@
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261016">
   <link rel="stylesheet" href="/shared/product-history.css?v=20261105-1">
   <link rel="stylesheet" href="/marketing-report.css?v=20261102-kpis">
-  <link rel="stylesheet" href="/product-customer-growth.css?v=20261106-1">
+  <link rel="stylesheet" href="/product-customer-growth.css?v=20261106-2">
   <link rel="stylesheet" href="/invoice-approved-prices.css?v=20261024-4">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -4535,7 +4535,8 @@
                   <label class="pcg-growth-filter"><span>Tăng trưởng</span>
                     <select id="pcgGrowth" aria-label="Lọc theo nhóm tăng trưởng">
                       <option value="all">Tất cả</option>
-                      <option value="check">Cần check (giảm quá 50%)</option>
+                      <option value="lost">Giảm hết 100%</option>
+                      <option value="check">Giảm hơn 50%</option>
                       <option value="drop">Giảm dưới 50%</option>
                       <option value="up">Đang tăng</option>
                       <option value="new">Khách mới</option>
@@ -5514,7 +5515,7 @@
   <script src="/marketing-report.js?v=20261021-1"></script>
   <script src="/invoice-price-audit.js?v=20261029-1"></script>
   <script src="/invoice-approved-prices.js?v=20261024-6"></script>
-  <script src="/product-customer-growth.js?v=20261106-1"></script>
+  <script src="/product-customer-growth.js?v=20261106-2"></script>
 
   <script>
     // Toast thong bao inline — thay the window.alert() cho loi/canh bao (khong chan luong,
