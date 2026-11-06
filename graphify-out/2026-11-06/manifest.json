@@ -816,9 +816,9 @@
     "semantic_hash": ""
   },
   "server/public/index.html": {
-    "mtime": 1793929761.3236053,
-    "seen": 1793929919.201118,
-    "ast_hash": "30b0a6e4fec031fef46451c09393c5af",
+    "mtime": 1793930400.726928,
+    "seen": 1793930545.4724393,
+    "ast_hash": "f222d66ba9a8378eac7b2eed1bd33235",
     "semantic_hash": ""
   },
   "server/public/login/index.html": {
@@ -3042,9 +3042,9 @@
     "semantic_hash": ""
   },
   "server/test/frontend/product-report-detail.test.js": {
-    "mtime": 1793929761.4809995,
-    "seen": 1793929919.164559,
-    "ast_hash": "4fa90e7d4caed290fe7b74ab18ecee32",
+    "mtime": 1793930410.910718,
+    "seen": 1793930545.4453914,
+    "ast_hash": "fd5f2333070652a1e6887c9951248c1a",
     "semantic_hash": ""
   },
   "server/test/frontend/profile-email-change.test.js": {
@@ -3306,9 +3306,9 @@
     "semantic_hash": ""
   },
   "CURRENT.md": {
-    "mtime": 1793929883.3347394,
-    "seen": 1793929919.1803718,
-    "ast_hash": "4e0d1082c34dfb677098896e130ff1db",
+    "mtime": 1793930514.0777817,
+    "seen": 1793930545.4560916,
+    "ast_hash": "0d4aa04643bbaa3ca4f535d70e82f14f",
     "semantic_hash": ""
   },
   "MEMORY.md": {
