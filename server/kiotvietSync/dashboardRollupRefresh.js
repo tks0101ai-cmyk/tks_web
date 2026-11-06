@@ -159,8 +159,20 @@ const PRODUCT_SALES_AGG_SQL = `
     ) s
     GROUP BY s.sale_date, s.product_id`;
 
+// DONG MO COI: phieu tra/hoa don da vao bang roi bi doi sang 'Đã hủy' thi nhom (ngay, ma hang) khong con
+// trong `agg`, INSERT ... ON CONFLICT chi cham toi nhom CO trong agg nen dong cu o lai mai (2026-11-06: TVPAMS
+// -1950 tinh hai lan vi phieu tra da huy). Nen cung cau lenh XOA dong trong cua so ngay dang tinh ma `agg` khong
+// con (agg chi doc 1 lan: CTE duoc dung chung). Chi dong cua branch nay va ngay >= dau cua so — ngoai cua so
+// agg khong nhin thay nen khong duoc dong vao. Moc ngay = cung moc WINDOW_START_SQL, quy ve date.
 const PRODUCT_SALES_SQL = `
   WITH agg AS (${PRODUCT_SALES_AGG_SQL}
+  ),
+  stale AS (
+    DELETE FROM daily_product_sales t
+    WHERE t.branch = $1
+      AND t.sale_date >= ((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date - $2::int)
+      AND NOT EXISTS (SELECT 1 FROM agg a WHERE a.sale_date = t.sale_date AND a.product_id = t.product_id)
+    RETURNING 1
   )
   INSERT INTO daily_product_sales (branch, sale_date, product_id, qty, revenue)
   SELECT a.branch, a.sale_date, a.product_id, a.qty, a.revenue
