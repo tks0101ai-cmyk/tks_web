@@ -107,7 +107,8 @@ async function refreshOnce(pool, { log }) {
     await client.query(STAGE_SQL);
     const purchaseTable=await client.query("SELECT to_regclass('purchase_settings') AS name");
     if(purchaseTable.rows[0]?.name){
-      const mode=await client.query('SELECT source_mode,integration_enabled FROM purchase_settings WHERE id=1');
+      // Read the optional 0117 flag through JSON so pre-migration Sheets sync keeps running.
+      const mode=await client.query(`SELECT source_mode, COALESCE((to_jsonb(s)->>'integration_enabled')::boolean, false) AS integration_enabled FROM purchase_settings s WHERE id=1`);
       // Cung dieu kien voi sync.js: o che do cach ly, Du kien hang ve khong lay ten
       // tu purchase_orders vi ban Thu mua luc do la du lieu dang thu nghiem.
       if(mode.rows[0]?.source_mode==='web'&&mode.rows[0]?.integration_enabled===true)await client.query("UPDATE expected_stage s SET product_name=o.product_name FROM purchase_orders o WHERE s.sheet_name='THU MUA' AND s.source_row=o.id");

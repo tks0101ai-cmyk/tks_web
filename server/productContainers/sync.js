@@ -63,7 +63,8 @@ async function refreshContainers({
     // thong (integration_enabled, migration 0117). O che do cach ly, Thu mua ghi
     // that nhung khong so huu read model, nen job nay VAN PHAI chay: neu dung thi
     // ca workbook (7 sheet + cont lich su) khong con duoc cap nhat.
-    if(purchaseTable.rows[0]?.name){const mode=await connection.query('SELECT source_mode,integration_enabled FROM purchase_settings WHERE id=1');if(mode.rows[0]?.source_mode==='web'&&mode.rows[0]?.integration_enabled===true)return {status:'web-source'};}
+    // Read the optional 0117 flag through JSON so pre-migration Sheets sync keeps running.
+    if(purchaseTable.rows[0]?.name){const mode=await connection.query(`SELECT source_mode, COALESCE((to_jsonb(s)->>'integration_enabled')::boolean, false) AS integration_enabled FROM purchase_settings s WHERE id=1`);if(mode.rows[0]?.source_mode==='web'&&mode.rows[0]?.integration_enabled===true)return {status:'web-source'};}
 
     const { rows } = await connection.query('SELECT last_attempt_at,last_success_at FROM product_container_sync WHERE singleton = true');
     const attemptAt = now();
