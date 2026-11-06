@@ -1026,3 +1026,29 @@ test('findMergedOrder: allowStale chuyen xuong readAll + readOverrideHistory; ma
     ctx.restore();
   }
 });
+
+test('queryOrders mode=product: hỏi kiot.findOrderKeysByProduct rồi chỉ trả các đơn chứa hàng đó (kể cả đơn chỉ có ở Kiot)', async () => {
+  const ctx = freshService([]);
+  try {
+    const asked = [];
+    const kiot = {
+      readOrders: async () => ({ ok: true, stale: false, fetchedAt: null, orders: [
+        kiotOrder({ code: 'DH000001' }), kiotOrder({ code: 'DH000002' }), kiotOrder({ code: 'DH000003', branch: 'SG' })
+      ] }),
+      findOrderKeysByProduct: async term => { asked.push(term); return new Set(['HN|dh000002', 'SG|dh000003']); }
+    };
+    const result = await ctx.service.queryOrders({ mode: 'product', q: 'kem chong nang', sort: 'orderCode' }, { kiot });
+    assert.deepEqual(asked, ['kem chong nang']);
+    assert.deepEqual(result.orders.map(o => o.orderCode), ['DH000002', 'DH000003']);
+    assert.equal(result.filteredTotal, 2);
+    assert.equal(result.total, 3);
+    const exported = await ctx.service.exportOrders({ mode: 'product', q: 'kem chong nang', sort: 'orderCode' }, { kiot });
+    assert.deepEqual(exported.map(o => o.orderCode), ['DH000002', 'DH000003']);
+    // Kieu tim khac / q rong khong hoi DB.
+    await ctx.service.queryOrders({ mode: 'customer', q: 'kh' }, { kiot });
+    await ctx.service.queryOrders({ mode: 'product', q: '  ' }, { kiot });
+    assert.equal(asked.length, 2);
+  } finally {
+    ctx.restore();
+  }
+});
