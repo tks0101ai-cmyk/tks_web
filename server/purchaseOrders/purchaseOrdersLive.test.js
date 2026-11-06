@@ -268,7 +268,7 @@ test('compact columns declare stable keys, small numeric widths and keep row key
  assert.ok(Number(table.querySelector('th[data-column-key="cartonCount"]').dataset.defaultWidth)<64);
  assert.equal(table.querySelector('.resize'),null);
  doc.getElementById('columns').click();doc.getElementById('showSourceColumns').click();
- const names=[...doc.querySelectorAll('#orderTable th')].filter(th=>th.textContent==='Tên SP');
+ const names=[...doc.querySelectorAll('#orderTable th')].filter(th=>th.querySelector('.sort-label').textContent==='Tên SP');
  assert.equal(names.length,2);assert.notEqual(names[0].dataset.columnKey,names[1].dataset.columnKey);
  assert.ok([...doc.querySelectorAll('#containerTable th')].every(th=>Number(th.dataset.defaultWidth)>0));
 });
@@ -330,4 +330,80 @@ test('the source filter lists the sheets present and narrows the table to one of
  // O tim kiem dung oninput, khong phai change.
  const box=doc.getElementById('search');box.value='tks1';box.dispatchEvent(new p.w.Event('input',{bubbles:true}));
  assert.deepEqual(keys(),['D00012'],'tim kiem bat duoc ten nguon');
+});
+
+// Sort cua table-controls doi cho dong trong DOM nen chi xep 50 dong dang hien; o day phai xep
+// toan bo dong da loc roi moi cat trang, nen dong nho nhat o trang cuoi phai nhay len dau.
+test('nut sap xep o tieu de xep toan bo dong da loc truoc khi cat trang va xoay vong ba trang thai',async t=>{
+ const extraRows=Array.from({length:60},(_,i)=>({id:String(i+2),rowKey:'D'+String(i+2).padStart(5,'0'),version:1,contId:null,productCode:'SKU'+i,cartonCount:(i*7)%60+2,qtyPerCarton:10}));
+ const p=await page(t,{extraRows}),doc=p.w.document;
+ const head=()=>doc.querySelector('#orderTable th[data-key="cartonCount"]');
+ const first=()=>doc.querySelector('#orderTable tbody tr td[data-field="cartonCount"] input').value;
+ const glyph=()=>head().querySelector('.sort-indicator').textContent;
+ assert.equal(doc.querySelectorAll('#orderTable tbody tr').length,50,'van phan trang 50 dong');
+ assert.equal(head().getAttribute('aria-sort'),'none');assert.equal(glyph(),'▲▼');
+ assert.equal(first(),'55','mac dinh xep theo id giam dan');
+
+ head().querySelector('.sort-button').click();
+ assert.equal(head().getAttribute('aria-sort'),'ascending');assert.equal(glyph(),'▼');
+ assert.equal(first(),'2','tang dan: so nho nhat o trang cuoi theo thu tu goc phai len dau trang 1');
+ assert.equal(doc.querySelectorAll('#orderTable th[aria-sort="ascending"]').length,1,'chi mot cot duoc sap xep');
+ assert.deepEqual(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).colSort,{k:'cartonCount',dir:'asc'});
+
+ head().querySelector('.sort-button').click();
+ assert.equal(head().getAttribute('aria-sort'),'descending');assert.equal(glyph(),'▲');
+ assert.equal(first(),'61');
+
+ head().querySelector('.sort-button').click();
+ assert.equal(head().getAttribute('aria-sort'),'none');assert.equal(first(),'55','nhan lan ba thi tra lai thu tu goc');
+ assert.equal(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).colSort,null);
+
+ // Chon lai o Sap xep thi bo sap xep theo cot, khong de hai thu tu tranh nhau.
+ head().querySelector('.sort-button').click();
+ assert.equal(head().getAttribute('aria-sort'),'ascending');
+ p.change('#sort','code');
+ assert.equal(head().getAttribute('aria-sort'),'none');
+ assert.equal(p.calls.filter(c=>c.options.method).length,0,'sap xep la viec cua may tram, khong goi may chu');
+});
+
+test('sap xep theo cot giu nguyen trang thai sau khi tai lai va giu mã da tach o dau bang',async t=>{
+ const p=await page(t,{saved:{colSort:{k:'productCode',dir:'desc'}},extraRows:[
+  {id:'3',rowKey:'D00003',version:1,contId:null,productCode:'AAA',cartonCount:9,qtyPerCarton:10},
+  {id:'4',rowKey:'D00004',version:1,contId:null,productCode:'ZZZ',cartonCount:9,qtyPerCarton:10}
+ ]}),doc=p.w.document;
+ const codes=()=>[...doc.querySelectorAll('#orderTable tbody tr td[data-field="productCode"]')].map(td=>td.textContent.trim().replace('✎',''));
+ assert.equal(doc.querySelector('#orderTable th[data-key="productCode"]').getAttribute('aria-sort'),'descending');
+ assert.deepEqual(codes(),['ZZZ','AC305','AAA']);
+
+ // Tach dong: hai nhanh .01 / .02 phai dung canh nhau o dau bang du dang sap xep theo cot.
+ const keys=()=>[...doc.querySelectorAll('#orderTable tbody tr td[data-field="rowKey"]')].map(td=>td.textContent.trim());
+ doc.querySelector('#orderTable tr[data-id="3"] td[data-field="productCode"] .code-label').dispatchEvent(new p.w.MouseEvent('click',{bubbles:true}));
+ await new Promise(resolve=>setTimeout(resolve,300)); // mot nhan phai doi qua cua so cho nhan thu hai
+ doc.getElementById('splitConfirm').click();
+ assert.deepEqual(keys(),['D00003.01','D00003.02','D00004','D00001']);
+
+ // Khoa khong hop le trong bo nho phien thi bo qua, khong lam trang do.
+ const broken=await page(t,{saved:{colSort:{k:'khong-co-cot-nay',dir:'asc'}}});
+ assert.equal(broken.w.document.querySelectorAll('#orderTable th[aria-sort="none"]').length,broken.w.document.querySelectorAll('#orderTable th.sortable').length);
+});
+
+test('mười hai cot cong thuc mang mau rieng, VC truoc am to nen do va nhan rowKey la Mã dòng',async t=>{
+ const columns=require('../public/shared/purchase-columns');
+ const p=await page(t,{saved:{columnLayout:3,visible:columns.map(c=>c.k)},extraRows:[
+  {id:'3',rowKey:'D00003',version:1,contId:null,productCode:'NEG',cartonCount:2,qtyPerCarton:10,unitPriceCny:5,freightPrepaid:-1101,fxRate:3920}
+ ]}),doc=p.w.document;
+ const derived=columns.filter(c=>c.d).map(c=>c.k);
+ assert.equal(derived.length,12);
+ for(const k of derived)assert.ok(doc.querySelector('#orderTable td[data-field="'+k+'"].calc'),k+' phai co lop mau cot cong thuc');
+ const coloured=[...doc.querySelectorAll('#orderTable tbody tr:first-child td.calc')].map(td=>td.dataset.field);
+ assert.deepEqual(coloured.slice().sort(),derived.slice().sort(),'chi 12 cot cong thuc duoc to mau');
+ assert.ok(doc.querySelector('#orderTable th[data-key="netPrice"].calc'),'tieu de cot cong thuc cung mang lop mau');
+
+ const negative=doc.querySelector('#orderTable tr[data-id="3"] td[data-field="freightPrepaid"]');
+ assert.ok(negative.classList.contains('negative'),'VC truoc am to nen do');
+ assert.equal(negative.querySelector('input').value,'-1,101');
+ assert.equal(doc.querySelector('#orderTable tr[data-id="1"] td[data-field="freightPrepaid"]').classList.contains('negative'),false,'o trong khong to do');
+
+ assert.equal(doc.querySelector('#orderTable th[data-key="rowKey"] .sort-label').textContent,'Mã dòng');
+ assert.ok(doc.querySelector('#orderTable td[data-field="cartonCount"]').classList.contains('num'),'cot so mang lop num de can phai');
 });

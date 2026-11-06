@@ -13,9 +13,11 @@ button:hover:not(:disabled){filter:brightness(1.08)}button:focus-visible,input:f
 #mainHead th,#orderTable th,#contFull tr th,#containerTable th{font-size:9px;line-height:1.25;font-weight:650;color:var(--text-secondary,#cbd5e1);letter-spacing:.15px}
 #mainRows tr:hover>td,#orderTable tbody tr:hover>td,#contFull tr:hover>td,#containerTable tr:hover>td{background-color:var(--purchase-tint)}
 #mainRows td.num,#orderTable td.num{text-align:right;font-weight:550}
-:is(#mainRows,#orderTable) :is([data-k="cartonCount"],[data-field="cartonCount"],[data-k="totalQty"],[data-field="totalQty"]){color:var(--purchase-blue)}
-:is(#mainRows,#orderTable) :is([data-k="totalTon"],[data-field="totalTon"],[data-k="totalM3"],[data-field="totalM3"],[data-k="kgPerCarton"],[data-field="kgPerCarton"],[data-k="m3PerCarton"],[data-field="m3PerCarton"]){color:var(--purchase-teal)}
-:is(#mainRows,#orderTable) :is([data-k="totalCny"],[data-field="totalCny"],[data-k="goodsAmount"],[data-field="goodsAmount"],[data-k="netPrice"],[data-field="netPrice"]){color:var(--purchase-violet)}
+/* Bảng Đặt hàng (#orderTable) KHÔNG dùng ba luật màu theo tên cột này nữa: ở đó chỉ 12 cột
+   công thức được tô màu, bằng lớp .calc (xem thu-mua/dat-hang/workspace.css). */
+#mainRows :is([data-k="cartonCount"],[data-field="cartonCount"],[data-k="totalQty"],[data-field="totalQty"]){color:var(--purchase-blue)}
+#mainRows :is([data-k="totalTon"],[data-field="totalTon"],[data-k="totalM3"],[data-field="totalM3"],[data-k="kgPerCarton"],[data-field="kgPerCarton"],[data-k="m3PerCarton"],[data-field="m3PerCarton"]){color:var(--purchase-teal)}
+#mainRows :is([data-k="totalCny"],[data-field="totalCny"],[data-k="goodsAmount"],[data-field="goodsAmount"],[data-k="netPrice"],[data-field="netPrice"]){color:var(--purchase-violet)}
 :is(#mainRows,#orderTable) :is([data-k="productCode"],[data-field="productCode"]){font-weight:650}
 #orderTable td input{color:inherit;background:transparent;border-color:transparent;border-radius:2px}#orderTable td input:hover,#orderTable td input:focus{border-color:var(--border,var(--purchase-line));background:var(--panel-2)}
 #contFull td:nth-child(4),#contFull td:nth-child(5),#containerTable td:nth-child(4),#containerTable td:nth-child(5){color:var(--purchase-teal);font-weight:650}#contFull td:nth-child(6),#containerTable td:nth-child(7){color:var(--purchase-violet)}

@@ -1,7 +1,7 @@
 (function(root,factory){if(typeof module==='object'&&module.exports)module.exports=factory();else root.PurchaseColumns=factory();})(typeof globalThis!=='undefined'?globalThis:this,function(){return Object.freeze([
   {
     "k": "rowKey",
-    "l": "Khóa dòng",
+    "l": "Mã dòng",
     "cn": "",
     "g": "Nhận diện",
     "t": "text",
