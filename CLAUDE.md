@@ -67,3 +67,20 @@ Trước khi kết thúc phiên hoặc commit code:
    ```
    Đảm bảo `graphify-out/` đồng bộ với mã nguồn mới nhất.
 3. Cập nhật lại [CURRENT.md](CURRENT.md) để phản ánh chính xác kết quả của phiên làm việc.
+
+### 4.1. Hai lỗi nền đã biết trên `main` (bỏ qua, từ 06/11/2026)
+
+Hai test sau **đang đỏ trên `main`** và đã được người dùng chốt là bỏ qua. Không điều tra lại, không báo lại, và **không tính vào kết luận CI** của phần việc đang làm:
+
+| Test | File |
+|---|---|
+| `timing remains independent after approval and legacy violation is readable without a new violation decision` | `server/test/frontend/hr-leave-deadlines.test.js` |
+| `printing and saving stay blocked until fresh shared form succeeds, including programmatic clicks` | `server/test/frontend/lifecycle-pick-performance.test.js` |
+
+Nguyên nhân đã xác định (giữ lại để khỏi tìm lại): test in phiếu khẳng định hành vi cũ, trong khi commit `3451ffc` đã cố ý đổi sang *không khóa nút In khi form chung lỗi*; test HR nạp `summary: []` rồi đợi client tự đếm, còn phần thống kê lấy theo `summary` của máy chủ.
+
+Ba điều kiện ràng buộc:
+
+1. **Không được** thêm `.skip`, `todo`, comment-out hay quarantine hai test này, cũng không đổi assert để chúng xanh. Bỏ qua ở đây nghĩa là không xét tới khi đánh giá, không phải tắt test.
+2. Duyệt CI phải **đối chiếu tên lỗi**, không duyệt theo số lượng. Nếu một lượt chạy có lỗi với tên khác, hoặc số lỗi khác 2, thì phần chênh đó là lỗi mới và **phải báo cùng xử lý**.
+3. Luật này chỉ áp cho hai tên test trên. Hai test đó được sửa xong thì xóa mục này.
