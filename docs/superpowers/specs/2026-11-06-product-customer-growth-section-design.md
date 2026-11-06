@@ -75,7 +75,7 @@ vẫn là "Hàng hóa 90 ngày", panel con đổi thành "Khách hàng theo sả
 - **Bộ lọc** (thanh phía trên bảng): ô "Tìm tên/mã sản phẩm", ô "Tìm tên khách hàng", danh sách thả xuống tăng
   trưởng. Debounce 150 ms như bảng cũ; có nút xóa ô; đổi bộ lọc → về trang 1.
 - **Dòng trạng thái** (`role="status"`): "N dòng khớp · M cần check" (đếm trên toàn bộ kết quả đã lọc, không chỉ trang
-  hiện tại), kèm "Dữ liệu cập nhật lúc …" và ngày chốt.
+  hiện tại), kèm "Dữ liệu cập nhật lúc …" ở phần đầu mục. Ngày chốt (cuối cửa sổ) không hiện ở dòng trạng thái; nó chỉ có trong ghi chú đầu file xuất và trong `title` (hover) của tiêu đề các kỳ.
 - **Sắp xếp**: mặc định DS 90 ngày giảm dần; bấm tiêu đề: tăng → giảm → bỏ (quy tắc `nextSort` sẵn có). Sắp xếp theo
   Tăng trưởng: giá trị không tính được (NULL / "Mới") luôn cuối ở cả hai chiều.
 - **Phân trang**: 50 dòng/trang, tùy chọn như bảng cũ, tối đa 200.
@@ -124,18 +124,18 @@ Phản hồi:
 
 Chưa có `customer_window_end` → `200 { available:false, rows:[], summary:{totalRows:0,checkRows:0} }`.
 Một câu SQL duy nhất (CTE: dòng trạng thái + dòng tính sẵn growth/share + đếm tổng) để trang, tổng và số "cần check"
-cùng đọc một ảnh chụp, giống mẫu `getProduct90dReport`. Thứ tự ổn định: khóa sắp xếp → `product_key` → `customer_key`.
+cùng đọc một ảnh chụp, giống mẫu `getProduct90dReport`. Thứ tự ổn định: khóa sắp xếp → `product_code` → `customer_name` → `customer_key`.
 
 Hiệu năng: `product_report_customers` khóa chính `(product_key, customer_key)`; window function `SUM(...) OVER
 (PARTITION BY product_key)` chạy trên toàn bảng (đã cần để có `share`). Cần đo số dòng thực tế bằng `EXPLAIN` ở bước lập kế hoạch; nếu chậm, tính `share` bằng subquery gộp theo `product_key` thay vì window. Không thêm migration
 trừ khi số liệu đo cho thấy cần.
 
-**Quy mô web**: pool DB chỉ 5 kết nối (xem nghẽn pool trước đây) → truy vấn phải nhẹ, có `statement_timeout`/timedQuery
-như mẫu hiện có, không gọi lặp theo từng phím gõ (debounce + hủy request cũ bằng `AbortController`).
+**Quy mô web**: pool DB chỉ 5 kết nối (xem nghẽn pool trước đây) → truy vấn phải nhẹ; `statement_timeout` KHÔNG được thêm (giống endpoint `/90d` hiện có) và chỉ là khuyến nghị,
+chỉ dùng timedQuery như mẫu hiện có; không gọi lặp theo từng phím gõ (debounce + hủy request cũ bằng `AbortController`).
 
 ## 6. Xuất file
 
-Khóa mới `products.productCustomerGrowth`, tiêu đề "Hàng hóa 90 ngày – Khách theo sản phẩm", đăng ký trong
+Khóa mới `products.productCustomerGrowth`, tiêu đề "Khách hàng theo sản phẩm 90 ngày", đăng ký trong
 `exportService.js` song song `products.product90d` (không sửa nhánh cũ).
 
 - Cột: Mã hàng, Tên hàng, Khách hàng, DS 90 ngày, T.này, T.trước, T.trước nữa (nhãn có khoảng ngày thật như file
