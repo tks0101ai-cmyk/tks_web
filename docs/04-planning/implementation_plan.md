@@ -639,3 +639,19 @@ Giao diện: bảng báo trên trang nêu rõ chế độ — `CÁCH LY · …` 
 Kiểm thử: `purchaseOrders/purchaseOrdersIsolation.test.js` (7 ca: ghi thật nhưng không chạm dữ liệu chung, bật cờ thì nối vào, mọi đường ghi, cùng khóa với source gate, chặn khi nguồn là Sheet, `list` trả cả hai cờ, gate của Dự kiến hàng về), `productContainers/sync.test.js` (cách ly không làm dừng job Sheet).
 
 Bật/tắt bằng SQL, xem `server/purchaseOrders/ROLLOUT.md`.
+
+## 06/11/2026 — Triển khai bảng Khách hàng theo sản phẩm + Tăng trưởng (mục 4 tab Hàng hóa)
+
+Kiến trúc đã triển khai: **repository → route → module giao diện → xuất file**.
+
+- [x] `dashboard/productCustomerGrowthRepository.js`: một câu SQL (CTE `s` trạng thái, `tot` tổng DS theo sản phẩm, `b` cặp sản phẩm × khách kèm `prior`, `g` thêm `growth` / `growth_state`) trên `product_report_customers` JOIN `product_report`; lọc tên sản phẩm/khách (`fuzzySqlParts`), nhóm tăng trưởng, sắp xếp whitelist, phân trang đều ở SQL. Không migration.
+- [x] Route `GET /api/product-report/customer-growth` (`routes.js`, quyền `reports.products` + `reports.products.sales`).
+- [x] Giao diện `public/product-customer-growth.js` + `.css`, section `#product90dSection` trong `index.html`: bảng 8 cột, table-controls (khóa lưu `dashboard-table-product-customer-growth`), Sáng/Tối, responsive; nhãn đỏ "Cần check" chỉ ở ô Tăng trưởng.
+- [x] Xuất Excel/HTML `products.productCustomerGrowth` (`exportService.js`): bộ lọc truyền qua `context`, kiểm tra lại bằng `validateFilters`, trần 50.000 dòng.
+- [x] Dọn giao diện cũ của mục 4 (bảng 26 cột, CSS, thead, test khóa khớp); `product-90d-report.js` giữ cho xuất file cũ `products.product90d`.
+
+Công thức: `prior = T.trước + T.trước nữa` (= 2 × trung bình hai kỳ trước); `growth = T.này × 2 / prior − 1` khi `prior > 0`. Ngưỡng nhóm so sánh bằng **NUMERIC nhân chéo**, không dùng số thực: `check` khi `4 × T.này < prior` (dưới −50%), `drop` khi `2 × T.này < prior`, `up` khi còn lại với `prior > 0`, `new` khi `prior ≤ 0` và `T.này > 0`. Kỳ `NULL` → không có nhóm.
+
+Việc tiếp: gỡ job/API/xuất cũ của mục 4 (`product_90d_report`, `/api/product-report/90d`, `products.product90d`) ở một đợt riêng sau khi người dùng yên tâm; deploy web.
+
+Cập nhật gần nhất: 06/11/2026.

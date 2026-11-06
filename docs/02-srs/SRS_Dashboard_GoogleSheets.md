@@ -1180,3 +1180,15 @@ Mã dùng chung: public/shared/purchase-calculations.js và purchase-freight.js;
 05/11/2026 — Thu mua (giao diện): bảng Đặt hàng và Chỉ số cont phủ kín bề ngang với mọi số cột, cuộn ngang khi vượt khung; cột số không còn cắt chữ (đệm đủ, tính cả bề rộng tiêu đề). Ô Mã SP: một nhấn mở hộp xác nhận chọn cont rồi mới tách, hai nhấn xem lịch sử, bút chì hoặc F2 mới sửa mã; bỏ nút "Tách dòng". Cột ngày hiển thị ngày/tháng, bấm vào mở ô ngày đầy đủ. Bảng Chỉ số cont bỏ cột rỗng chứa nút "Sửa", còn 14 cột, nút đồng cỡ chữ. Form Thêm mã có gợi ý mã kèm tên và NCC, chọn xong tự điền. Sidebar Thu mua có mục con Đặt hàng / Lịch sử. Không migration, không đổi API.
 
 06/11/2026 — **Vòng đời đơn hàng: tìm theo hàng:** chế độ tìm "Theo hàng" (`mode=product`) trả các đơn chứa mã/tên hàng đã nhập (bỏ dấu, ≥ 2 ký tự), kết hợp được với mọi bộ lọc và xuất Excel. Không migration.
+
+## FR-PRODUCT-CUSTOMER-GROWTH — Hàng hóa 90 ngày: Khách hàng theo sản phẩm + Tăng trưởng (06/11/2026)
+
+Mục 4 tab Hàng hóa hiển thị bảng mỗi dòng một cặp sản phẩm × khách hàng của 90 ngày gần nhất (toàn công ty, hai cơ sở gộp theo mã hàng; khách gộp theo tên chuẩn hóa).
+
+- FR-PRODUCT-CUSTOMER-GROWTH.1 — Cột: Sản phẩm, Khách hàng, DS 90 ngày, T.này, T.trước, T.trước nữa, % của SP, Tăng trưởng. Ba kỳ là ba khoảng 30 ngày liên tiếp kết thúc ở ngày chốt (`customer_window_end`): T.này (−30..−1), T.trước (−60..−31), T.trước nữa (−90..−61). Kỳ chưa tính hiển thị "—", không coi là 0.
+- FR-PRODUCT-CUSTOMER-GROWTH.2 — Tăng trưởng = T.này ÷ trung bình(T.trước, T.trước nữa) − 1, chỉ tính được khi trung bình hai kỳ trước lớn hơn 0; ngưỡng so sánh dùng số thập phân chính xác. Dòng giảm quá 50% (dưới −50%) được gắn nhãn đỏ **"Cần check"**; khách có T.này > 0 nhưng hai kỳ trước bằng 0 là **"Mới"**.
+- FR-PRODUCT-CUSTOMER-GROWTH.3 — Lọc theo tên/mã sản phẩm, tên khách (bỏ dấu) và nhóm: Tất cả, Cần check (giảm quá 50%), Giảm dưới 50%, Đang tăng, Khách mới. Sắp xếp theo mọi cột; dòng không tính được tăng trưởng luôn ở cuối. Lọc, sắp xếp, phân trang áp trên toàn bộ kết quả; trạng thái hiển thị "N dòng khớp · M cần check".
+- FR-PRODUCT-CUSTOMER-GROWTH.4 — Quyền xem: `reports.products` + `reports.products.sales`. Quyền xuất: thêm `reports.export`; xuất Excel/HTML đúng bộ lọc đang chọn, tối đa 50.000 dòng (vượt thì báo thu hẹp bộ lọc, không cắt ngầm).
+- FR-PRODUCT-CUSTOMER-GROWTH.5 — Chỉ đọc dữ liệu đã tính sau mỗi lượt đồng bộ KiotViet; không migration, không thêm biến môi trường.
+
+Cập nhật gần nhất: 06/11/2026.

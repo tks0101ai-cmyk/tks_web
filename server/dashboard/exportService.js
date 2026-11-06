@@ -380,8 +380,10 @@ const STOCKOUT_30D_COLUMNS = [
   aggregateColumn('periods', 'Các đợt đứt hàng', undefined, 'Từng đợt đứt hàng, mỗi đợt một dòng (từ ngày -> đến ngày).', { wrapText: true })
 ];
 
-// Hang hoa 90 ngay (muc 4 tab Hang hoa) — doc thang bang tinh san product_90d_report (02:00), CUNG 22 cot va thu tu voi
-// man hinh (public/product-90d-report.js COLUMNS): Ma, Ten, roi 4 ky T.nay | T.trc | T.trc nua | 90 ngay x 5 chi so.
+// Hang hoa 90 ngay (muc 4 tab Hang hoa) — doc thang bang tinh san product_90d_report (02:00), 22 cot theo thu tu cua man hinh
+// CU (public/product-90d-report.js COLUMNS): Ma, Ten, roi 4 ky T.nay | T.trc | T.trc nua | 90 ngay x 5 chi so. Tu 06/11/2026 man hinh
+// do khong con nap trong index.html (muc 4 nay hien bang Khach hang theo san pham), nen khong con test khoa khop cot/do rong voi
+// giao dien; nhanh xuat file nay con lai de giu tuong thich, duoc kiem bang exportProduct90d.test.js.
 // Nhan tinh (hop thoai chon truong) = "T.nay – SL"; file xuat doi sang nhan co ngay that cua ky, vd "T.nay (05/10–03/11) – SL"
 // (xem product90dColumnsWithDates). Khoa cot = ten cot DB (trung whitelist sap xep cua repository).
 const PRODUCT_90D_PERIOD_HINTS = {

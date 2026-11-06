@@ -1,6 +1,6 @@
 # Mục 4 tab Hàng hóa: bảng Sản phẩm × Khách hàng có cột Tăng trưởng
 
-Ngày: 06/11/2026 · Trạng thái: chờ người dùng duyệt spec
+Ngày: 06/11/2026 · Trạng thái: đã duyệt, đã triển khai
 
 ## 1. Mục tiêu
 
@@ -140,8 +140,9 @@ Khóa mới `products.productCustomerGrowth`, tiêu đề "Hàng hóa 90 ngày �
 
 - Cột: Mã hàng, Tên hàng, Khách hàng, DS 90 ngày, T.này, T.trước, T.trước nữa (nhãn có khoảng ngày thật như file
   cũ), % của SP, Tăng trưởng (số %, ô trống khi không tính được), Trạng thái (Cần check / Giảm dưới 50% / Đang tăng / Mới).
-- Dùng đúng bộ lọc đang áp dụng: `context: { productQuery, customerQuery, growthGroup }` + `tableSort` theo nhãn cột
-  (như `exportContext` cũ). Máy chủ kiểm tra lại giá trị (cùng whitelist) rồi gọi `getProductCustomerGrowthForExport`.
+- Dùng đúng bộ lọc đang áp dụng: `context: { productQuery, customerQuery, growthGroup, sortKey?, sortDir? }` (khóa sắp xếp
+  gửi thẳng, không qua nhãn cột). Máy chủ kiểm tra lại bằng cùng whitelist của repository (`validateFilters`) trước khi xin
+  slot xuất, rồi gọi `getProductCustomerGrowthForExport`.
 - Quyền: `reports.export` + `reports.products` + `reports.products.sales` (cùng điều kiện nhánh cũ, `canViewProducts`/
   `canViewSales`, thiếu cờ → 403 `EXPORT_TABLE_NOT_ALLOWED`).
 - Không phân trang; trần `EXPORT_MAX_ROWS` (mặc định 50.000 dòng). Vượt trần → 413 `EXPORT_TOO_MANY_ROWS` với lời nhắn

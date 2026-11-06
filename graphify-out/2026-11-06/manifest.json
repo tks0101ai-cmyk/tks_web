@@ -1386,9 +1386,9 @@
     "semantic_hash": ""
   },
   "server/db/SCHEMA.md": {
-    "mtime": 1793927756.8558178,
-    "seen": 1793928332.7698345,
-    "ast_hash": "40a00569438c10a3370bb38495655deb",
+    "mtime": 1793934443.4553702,
+    "seen": 1793934675.5668962,
+    "ast_hash": "141676a8d8f3e20e9a1a4c9ad32bf8c8",
     "semantic_hash": ""
   },
   "server/auth/appUsersRepository.js": {
@@ -1524,9 +1524,9 @@
     "semantic_hash": ""
   },
   "server/kiotvietSync/dashboardRollupRefresh.js": {
-    "mtime": 1792047529.6470802,
-    "seen": 1793928332.769074,
-    "ast_hash": "36824d8847fb0297f2ad1ea08311678f",
+    "mtime": 1793934283.3396218,
+    "seen": 1793934675.4976041,
+    "ast_hash": "da5db13be77b1566373335b0e3cd69a8",
     "semantic_hash": ""
   },
   "server/kiotvietSync/dashboardRollupRefresh.test.js": {
@@ -3306,9 +3306,9 @@
     "semantic_hash": ""
   },
   "CURRENT.md": {
-    "mtime": 1793930514.0777817,
-    "seen": 1793930545.4560916,
-    "ast_hash": "0d4aa04643bbaa3ca4f535d70e82f14f",
+    "mtime": 1793934443.4603703,
+    "seen": 1793934675.5509214,
+    "ast_hash": "3baa0b63cc0ce8c6c2e9fed531adb307",
     "semantic_hash": ""
   },
   "MEMORY.md": {
@@ -7245,6 +7245,12 @@
     "mtime": 1793605354.6777217,
     "seen": 1793928332.769894,
     "ast_hash": "21c54a7c47209f0770927a1d3c1a359d",
+    "semantic_hash": ""
+  },
+  "server/kiotvietSync/dashboardRollupStaleRows.test.js": {
+    "mtime": 1793934257.0176806,
+    "seen": 1793934675.4977124,
+    "ast_hash": "63c0ff73e7bec3300b53e4a448433ef4",
     "semantic_hash": ""
   },
   "server/package-lock.json": {

@@ -156,7 +156,7 @@ server/
 │   ├── customerProfileRepository.js  # Ghi chú / thông tin theo khách của bảng Doanh số theo khách (22/10/2026, migration 0080): Thông tin chung, ảnh kho (BYTEA), note kiểu tin nhắn, ngày đã đi tiếp khách, người được gán sửa; fail-soft khi chưa có bảng
 │   └── customerProfileRules.js       # Luật thuần (không DB) kiểm tra đầu vào: quy mô kho, hình thức bán hàng, note ≤ 2000 ký tự, ngày đã đi, người sửa
 ├── cashbook/             # Sổ quỹ toàn công ty: số dư, sổ chi tiết, lịch sử chốt và xuất Excel/HTML; repository đọc qua view v_cash_book_transactions (0070, lùi về subquery nếu thiếu view)
-├── dashboard/            # Tổng hợp dashboard (dashboardData + dashboardViews: API theo tab), xuất Excel/HTML, kiểm tra đứt hàng; product90dReportRepository.js (04/11/2026): đọc bảng tính sẵn Hàng hóa 90 ngày, `GET /api/product-report/90d`
+├── dashboard/            # Tổng hợp dashboard (dashboardData + dashboardViews: API theo tab), xuất Excel/HTML, kiểm tra đứt hàng; product90dReportRepository.js (04/11/2026): đọc bảng tính sẵn Hàng hóa 90 ngày, `GET /api/product-report/90d`; productCustomerGrowthRepository.js (06/11/2026): bảng Khách hàng theo sản phẩm + Tăng trưởng của mục 4, `GET /api/product-report/customer-growth`
 │   ├── productHistoryRepository.js  # Lịch sử hóa đơn / trả hàng / Phiếu tạm theo mã, lọc/sort/tổng trước phân trang, xuất toàn bộ
 │   ├── documentDetailRepository.js  # Chi tiết hóa đơn (popup bảng Chi tiết giao dịch) và chi tiết đơn đặt hàng (trang Vòng đời đơn hàng)
 │   └── stockoutCheck/    # Engine kiểm tra đứt hàng + upload Trả NCC Excel; stockoutDaysStore.js lưu số ngày đứt 30 ngày theo cơ sở vào product_stockout_days (cột Đứt HN/SG của Báo cáo hàng hóa)
@@ -173,7 +173,8 @@ server/
 ├── notifications/        # Chuông thông báo: notificationRepository.js (bảng `notifications`, 0093), notificationRoutes.js (/api/notifications), specialDayNotifier.js; testHelpers/notificationTestPool.js (PGlite cho test)
 ├── productContainers/    # Parser CONT, snapshot repository, đồng bộ Sheets chỉ đọc mỗi 10 phút (ghi khác biệt) và kiểm thử; bảng Dự kiến hàng về (20/10/2026): expectedRefresh.js (job dựng bảng tính sẵn), expectedRepository.js (đọc + cache theo version), expectedRoutes.js (/api/expected-arrivals), expectedExport.js (xuất Excel/HTML); từ 21/10/2026 route trả `fullAccess` và bỏ trường giá khi thiếu quyền `reports.overview.containers.full`, xuất file thêm cột giá theo quyền
 ├── public/               # Frontend HTML/CSS/JS
-│   ├── product-90d-report.js / .css # Mục 4 "Hàng hóa 90 ngày" của tab Hàng hóa (04/11/2026): bảng 26 cột đọc API `/api/product-report/90d`, tìm/sắp xếp/phân trang ở máy chủ, 2 cột Mã/Tên cố định khi cuộn, 4 trạng thái đang tải / không có kết quả / chưa nạp / lỗi + Thử lại
+│   ├── product-customer-growth.js / .css # Mục 4 "Hàng hóa 90 ngày" của tab Hàng hóa (06/11/2026): bảng Khách hàng theo sản phẩm (mỗi dòng một cặp sản phẩm × khách) + 3 kỳ + Tăng trưởng, lọc tên sản phẩm/khách/nhóm tăng trưởng, "Cần check" khi giảm quá 50%; đọc API /api/product-report/customer-growth
+│   ├── product-90d-report.js # (còn dùng cho xuất file cũ products.product90d, không còn nạp trong index.html)
 │   ├── invoice-approved-prices.js / .css # Mục Bảng giá duyệt của tab Hóa đơn (24/10/2026): bộ lọc Người duyệt + Ngày duyệt, sắp xếp phía máy chủ, hộp Tạo/Sửa/Xóa chọn khách + sản phẩm từ gợi ý KiotViet, 2 cột/ô giá tùy chọn Giá không VAT + Giá có VAT, xuất Excel
 │   ├── kho-hn/ / kho-sg/ # Sơ đồ Kho Hà Nội / Kho Sài Gòn (05/11/2026): trang tĩnh `/kho-hn/` (10 ảnh trong `img/`, chip A…V, bấm ảnh phóng to) và `/kho-sg/` (trống, "Chưa có sơ đồ kho"); quyền `stockLocationsV2.view`
 │   ├── cashbook/         # Trang Sổ quỹ: bộ lọc/hash, số dư, chốt và xuất chọn cột
@@ -457,3 +458,13 @@ Giao diện: bảng báo trên trang nêu rõ chế độ — `CÁCH LY · …` 
 Kiểm thử: `purchaseOrders/purchaseOrdersIsolation.test.js` (7 ca: ghi thật nhưng không chạm dữ liệu chung, bật cờ thì nối vào, mọi đường ghi, cùng khóa với source gate, chặn khi nguồn là Sheet, `list` trả cả hai cờ, gate của Dự kiến hàng về), `productContainers/sync.test.js` (cách ly không làm dừng job Sheet).
 
 Bật/tắt bằng SQL, xem `server/purchaseOrders/ROLLOUT.md`.
+
+## 06/11/2026 — Hàng hóa 90 ngày: bảng Khách hàng theo sản phẩm + Tăng trưởng (chưa deploy)
+
+Mục 4 "Hàng hóa 90 ngày" của tab Hàng hóa giờ hiển thị **một bảng duy nhất "Khách hàng theo sản phẩm"**: mỗi dòng là một cặp sản phẩm × khách của 90 ngày gần nhất, kèm DS 90 ngày, ba kỳ 30 ngày (T.này / T.trước / T.trước nữa), % của sản phẩm và cột **Tăng trưởng** = T.này ÷ trung bình(T.trước, T.trước nữa) − 1. Giảm quá 50% được gắn nhãn đỏ **"Cần check"**; có thể lọc theo tên sản phẩm, tên khách và nhóm (Tất cả / Cần check / Giảm dưới 50% / Đang tăng / Khách mới), sắp xếp và phân trang ở máy chủ trên toàn bộ kết quả, xuất Excel/HTML theo đúng bộ lọc đang chọn (`tableKey: products.productCustomerGrowth`).
+
+Module mới: `server/dashboard/productCustomerGrowthRepository.js` (một câu SQL đọc `product_report_customers` JOIN `product_report`), route `GET /api/product-report/customer-growth` trong `server/routes.js`, `server/public/product-customer-growth.js` + `.css`. Bảng 26 cột cũ của mục 4 (CSS và thead tương ứng) đã gỡ khỏi trang; `product-90d-report.js` chỉ còn được máy chủ dùng cho xuất file cũ `products.product90d`.
+
+Không migration, không biến môi trường mới. Phần máy chủ cũ của mục 4 (API `/api/product-report/90d`, bảng tính sẵn `product_90d_report`, job 02:00) giữ nguyên, sẽ gỡ ở một đợt riêng. Kiểm thử: `dashboard/productCustomerGrowthRepository.test.js`, `productCustomerGrowthRoutes.test.js`, `exportProductCustomerGrowth.test.js`, `test/frontend/product-customer-growth.test.js`.
+
+Cập nhật gần nhất: 06/11/2026.

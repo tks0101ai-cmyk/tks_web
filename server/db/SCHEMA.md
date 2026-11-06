@@ -986,3 +986,9 @@ Migrations Thu mua được đổi sang 0110–0116 vì main đã dùng 0101–0
 Đọc cùng một `SELECT ... FOR UPDATE` với `source_mode` trong giao dịch ghi, nên không có lượt ghi nào nửa cách ly nửa nối vào hệ thống. `projection_owns_all` (`0116`) chỉ có nghĩa khi cờ này là `true`.
 
 Schema dùng thử `purchase_trial` (05/11/2026) đã bị gỡ khỏi mã nguồn ngày 06/11/2026 cùng `purchaseOrders/purchaseOrdersTrial.js` và API `/api/purchase-trial`. Không migration nào xóa schema đó: nó chỉ chứa dữ liệu mẫu và không còn nơi nào đọc. Xóa tay nếu muốn dọn, xem `server/purchaseOrders/ROLLOUT.md`.
+
+## 06/11/2026 — Không đổi schema (bảng Khách hàng theo sản phẩm của mục 4)
+
+API `GET /api/product-report/customer-growth` đọc `product_report_customers` (`0023` + `0108`) JOIN `product_report` theo `lower(btrim(product_code)) = product_key`, và `product_report_state.customer_window_end`. `NULL` ở các cột kỳ nghĩa là kỳ chưa tính (không coi là 0). Không migration mới, không bảng/cột/index mới; không ghi vào bảng nào.
+
+Cập nhật gần nhất: 06/11/2026.

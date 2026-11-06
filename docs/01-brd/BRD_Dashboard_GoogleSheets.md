@@ -639,3 +639,9 @@ Lên list bằng mã và lấy lần lên list gần nhất; xếp/chuyển/tác
 05/11/2026 — Thu mua (giao diện): bảng Đặt hàng và Chỉ số cont phủ kín bề ngang với mọi số cột, cuộn ngang khi vượt khung; cột số không còn cắt chữ (đệm đủ, tính cả bề rộng tiêu đề). Ô Mã SP: một nhấn mở hộp xác nhận chọn cont rồi mới tách, hai nhấn xem lịch sử, bút chì hoặc F2 mới sửa mã; bỏ nút "Tách dòng". Cột ngày hiển thị ngày/tháng, bấm vào mở ô ngày đầy đủ. Bảng Chỉ số cont bỏ cột rỗng chứa nút "Sửa", còn 14 cột, nút đồng cỡ chữ. Form Thêm mã có gợi ý mã kèm tên và NCC, chọn xong tự điền. Sidebar Thu mua có mục con Đặt hàng / Lịch sử. Không migration, không đổi API.
 
 06/11/2026 — **Vòng đời đơn hàng:** thêm tìm kiếm theo mã/tên hàng để xem những đơn đang chứa một mặt hàng.
+
+## 06/11/2026 — Hàng hóa 90 ngày: Khách hàng theo sản phẩm + Tăng trưởng
+
+Mục 4 tab Hàng hóa chuyển sang bảng theo từng cặp sản phẩm × khách hàng để thấy ngay khách nào đang giảm mua. Mỗi dòng có doanh số 90 ngày, ba kỳ 30 ngày liên tiếp (T.này, T.trước, T.trước nữa), tỷ trọng trong sản phẩm và **Tăng trưởng** = T.này so với trung bình hai kỳ trước. Khách giảm quá 50% (dưới −50%) được đánh dấu đỏ **"Cần check"** để sale gọi hỏi thăm; khách mới (hai kỳ trước chưa mua) được tách riêng. Người dùng lọc theo tên sản phẩm, tên khách và nhóm tăng trưởng (Tất cả / Cần check / Giảm dưới 50% / Đang tăng / Khách mới), sắp xếp theo mọi cột và xuất Excel/HTML đúng bộ lọc đang chọn (tối đa 50.000 dòng). Chỉ người có quyền xem Hàng hóa và doanh số hàng hóa (`reports.products` + `reports.products.sales`) mới xem được; xuất file cần thêm quyền xuất báo cáo. Dữ liệu cập nhật sau mỗi lượt đồng bộ KiotViet, không phát sinh chi phí vận hành mới.
+
+Cập nhật gần nhất: 06/11/2026.
