@@ -20,24 +20,27 @@ test('giao dien gan dung 7 nut xuat Excel cho 7 bang co dinh (khong con Dat hang
   assert.equal(new Set(matches).size, 7);
   assert.deepEqual(matches.sort(), [
     'customers.productDetail', 'debt.aging', 'debt.management', 'debt.penalty',
-    'overview.productReport', 'overview.transactions', 'products.product90d'
+    'overview.productReport', 'overview.transactions', 'products.productCustomerGrowth'
   ].sort());
 });
 
-test('Hang hoa 90 ngay: nut Xuat file gui dung tu khoa dang ap dung + nhan cot sap xep (lay tu TKSProduct90d.exportState)', async () => {
+test('Khach hang theo san pham: nut Xuat file gui dung bo loc + sap xep dang ap dung (lay tu TKSProductCustomerGrowth.exportState)', async () => {
   const h = createExportDashboard();
-  // Chua nap product-90d-report.js (jsdom chi chay script inline): payload van hop le, tu khoa rong.
-  h.win.openExportDialog('products.product90d');
+  // Chua nap product-customer-growth.js (jsdom chi chay script inline): payload van hop le, khong co bo loc.
+  h.win.openExportDialog('products.productCustomerGrowth');
   let call = h.fieldsCalls().pop();
-  assert.deepEqual(call.body.tableSearch, { mode: 'normal', query: '' });
+  assert.equal(call.body.tableKey, 'products.productCustomerGrowth');
+  assert.equal(call.body.context.productQuery, undefined);
   assert.equal(call.body.tableSort, undefined);
-  h.win.TKSProduct90d = { exportState: () => ({ tableSearch: { mode: 'normal', query: 'binh' }, tableSort: { label: 'T.này – DS', direction: 'desc' } }) };
-  h.win.openExportDialog('products.product90d');
+  h.win.TKSProductCustomerGrowth = { exportState: () => ({ context: { productQuery: 'binh', customerQuery: 'hanh', growthGroup: 'check', sortKey: 'growth', sortDir: 'asc' } }) };
+  h.win.openExportDialog('products.productCustomerGrowth');
   call = h.fieldsCalls().pop();
-  assert.equal(call.body.tableKey, 'products.product90d');
-  assert.deepEqual(call.body.tableSearch, { mode: 'normal', query: 'binh' });
-  assert.deepEqual(call.body.tableSort, { label: 'T.này – DS', direction: 'desc' });
-  const button = h.document.getElementById('product90dExportButton');
+  assert.equal(call.body.context.productQuery, 'binh');
+  assert.equal(call.body.context.customerQuery, 'hanh');
+  assert.equal(call.body.context.growthGroup, 'check');
+  assert.equal(call.body.context.sortKey, 'growth');
+  assert.equal(call.body.context.sortDir, 'asc');
+  const button = h.document.getElementById('pcgExportButton');
   assert.ok(button.closest('#product90dSection .panel-head-actions'));
   assert.ok(button.classList.contains('export-button'));
   assert.equal(button.disabled, true, 'khoa cho toi khi co du lieu');

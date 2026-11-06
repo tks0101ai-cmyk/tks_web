@@ -7078,11 +7078,12 @@
         }
         return payload;
       }
-      // Hàng hóa 90 ngày: tìm/sắp xếp ở máy chủ — gửi đúng từ khóa đang áp dụng + nhãn cột sắp xếp do product-90d-report.js giữ.
-      if (tableKey === 'products.product90d') {
-        const context = window.TKSProduct90d && typeof window.TKSProduct90d.exportState === 'function' ? window.TKSProduct90d.exportState() : null;
-        payload.tableSearch = context ? context.tableSearch : { mode: 'normal', query: '' };
-        if (context && context.tableSort) payload.tableSort = context.tableSort;
+      // Hàng hóa 90 ngày (bảng Khách hàng theo sản phẩm): lọc/sắp xếp ở máy chủ — gửi đúng bộ lọc đang áp dụng do
+      // product-customer-growth.js giữ (context.productQuery/customerQuery/growthGroup/sortKey/sortDir).
+      if (tableKey === 'products.productCustomerGrowth') {
+        const growth = window.TKSProductCustomerGrowth && typeof window.TKSProductCustomerGrowth.exportState === 'function'
+          ? window.TKSProductCustomerGrowth.exportState() : null;
+        if (growth) Object.assign(payload.context, growth.context);
         return payload;
       }
       const tableSearchKey = EXPORT_TABLE_SEARCH_KEYS[tableKey];
@@ -7585,8 +7586,9 @@
         applyProductsViewPermissions();
         loadProductGrowth();
         loadExpectedArrivals();
-        // Muc 4 "Hang hoa 90 ngay": API rieng /api/product-report/90d, tu kiem quyen (reports.products + .sales) truoc khi goi.
-        if (window.TKSProduct90d) window.TKSProduct90d.load(false);
+        // Muc 4 "Hang hoa 90 ngay" (bang Khach hang theo san pham): API rieng /api/product-report/customer-growth, tu kiem quyen
+        // (reports.products + .sales) truoc khi goi.
+        if (window.TKSProductCustomerGrowth) window.TKSProductCustomerGrowth.load(false);
       }
       if (view === 'overview' && allowedAtBoot('reports.overview')) {
         loadInventoryHistory(true);

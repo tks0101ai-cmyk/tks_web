@@ -403,3 +403,51 @@ test('table-controls: nhan hop "Cot hien thi" dung ten cot, an cot Tang truong k
     assert.deepEqual(labels, H.COLUMNS.map(c => c.label));
   } finally { p.dom.window.close(); }
 });
+
+// ---------- trang that: phan quyen + tai khi mo tab ----------
+function createPage(permissions) {
+  const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://tokosi.example/reports/#products' });
+  const w = dom.window;
+  w.HTMLCanvasElement.prototype.getContext = () => ({});
+  w.Chart = class { static defaults = { font: {}, animation: {}, plugins: { tooltip: {} } }; constructor(c, config) { this.config = config; } destroy() {} };
+  w.setInterval = () => 1;
+  w.requestAnimationFrame = cb => cb();
+  w.HTMLElement.prototype.scrollIntoView = function () {};
+  w.EventSource = class { addEventListener() {} close() {} };
+  w.TKSNav = {
+    getPermissions: () => permissions.slice(),
+    can: (...keys) => keys.some(k => permissions.includes(k)),
+    authGuard: () => Promise.resolve({ vaiTro: 'Kế toán', permissions }),
+    handleBranchError: () => false, renderTopSidebar() {}
+  };
+  const urls = [];
+  w.fetch = url => { urls.push(String(url)); return new Promise(() => {}); };
+  ['pagination.js', 'table-explorer.js'].forEach(file => w.eval(fs.readFileSync(path.join(publicDir, 'js', file), 'utf8')));
+  w.eval(moduleSource);
+  [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(m => m[1]).filter(s => s.trim()).forEach(s => w.eval(s));
+  return { dom, urls, $: id => w.document.getElementById(id) };
+}
+
+test('trang that: chi co Du kien hang ve -> muc 4 an, khong goi /api/product-report/customer-growth', async () => {
+  const page = createPage(['reports.products.expected']);
+  try {
+    await settle();
+    assert.equal(page.$('product90dSection').hidden, true);
+    assert.equal(page.urls.some(u => u.startsWith('/api/product-report/customer-growth')), false);
+    assert.deepEqual(page.urls, ['/api/expected-arrivals']);
+  } finally { /* khong close(): MutationObserver cua trang chay sau khi dong cua so se nem loi vo hai */ }
+});
+
+test('trang that: reports.products + reports.products.sales -> muc 4 hien va goi API; thieu .sales -> an', async () => {
+  const allowed = createPage(['reports.products', 'reports.products.sales']);
+  const denied = createPage(['reports.products']);
+  try {
+    await settle();
+    assert.equal(allowed.$('product90dSection').hidden, false);
+    assert.ok(allowed.urls.includes('/api/product-report/customer-growth?page=1&pageSize=50'));
+    await settle();
+    assert.equal(denied.$('product90dSection').hidden, true);
+    assert.equal(denied.urls.some(u => u.startsWith('/api/product-report/customer-growth')), false);
+    assert.equal(denied.urls.some(u => u.startsWith('/api/product-report/90d')), false, 'API cu cua muc 4 khong con duoc goi tu giao dien');
+  } finally { /* xem ghi chu o test tren */ }
+});
