@@ -320,7 +320,7 @@ async function getProductReportCustomers({ code, pool = getPool() } = {}) {
 }
 
 module.exports = {
-  getProductReport, getProductReportCustomers, getProductReportVersion, createProductReportReader,
+  getProductReport, getProductReportCustomers, getProductReportVersion, createProductReportReader, customerPeriods,
   PRODUCT_REPORT_PRICE_KEYS, PRODUCT_REPORT_SALES_KEYS,
   __test__: { mapRow, daysToOrder, daysOfCover }
 };
