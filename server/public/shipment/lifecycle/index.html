@@ -442,7 +442,7 @@
     .bulk-daterange-label, .bulk-daterange .dd, .bulk-daterange #bulkDateAll{ grid-column:1 / -1; }
     .bulk-date-field{ display:flex; flex-direction:column; align-items:stretch; gap:4px; min-width:0; }
     .bulk-search{ padding:12px; }
-    .bulk-search-modes{ display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); }
+    .bulk-search-modes{ display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); }
     .bulk-mode-btn{ min-height:36px; padding:0 4px; }
     .bulk-search input[type=text]{ min-width:0; min-height:42px; font-size:16px; }
     .bulk-search-submit{ min-height:42px; }
@@ -596,6 +596,7 @@
               <div class="bulk-search-modes" id="bulkSearchModes">
                 <button type="button" class="bulk-mode-btn" data-mode="code">Theo mã</button>
                 <button type="button" class="bulk-mode-btn" data-mode="sale">Theo tên sale</button>
+                <button type="button" class="bulk-mode-btn" data-mode="product">Theo hàng</button>
                 <button type="button" class="bulk-mode-btn active" data-mode="customer">Theo tên khách</button>
               </div>
               <input type="text" id="bulkSearchInput" data-search-input data-search-submit-on-clear autocomplete="off">
@@ -1968,7 +1969,8 @@
     const BULK_SEARCH_PLACEHOLDER = {
       code: 'Nhập mã đơn — cách nhau bằng khoảng trắng nếu tìm nhiều mã...',
       sale: 'Nhập tên sale để tìm...',
-      customer: 'Nhập tên khách hàng để tìm...'
+      customer: 'Nhập tên khách hàng để tìm...',
+      product: 'Nhập mã hoặc tên hàng — hiện các đơn có hàng đó...'
     };
 
     // Reconciliation theo key (co so + ma don) thay vi xoa-dung lai toan bo <tbody> —

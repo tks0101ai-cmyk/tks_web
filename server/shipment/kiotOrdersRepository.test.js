@@ -686,3 +686,18 @@ test('backfilled cancellation with old source date evicts pre-cutoff pending ord
   await flush();
   assert.ok(!(await repo.readOrders()).orders.some(o=>o.code==='DH041166'));
 });
+
+test('findOrderKeysByProduct: gửi mã (bỏ khoảng trắng) + tên (có dấu và bỏ dấu) vào SQL, trả Set khóa "HN|mã chữ thường"; từ khóa < 2 ký tự không chạm DB', async () => {
+  const seen = [];
+  const pool = { query: async (sql, params) => { seen.push({ sql, params }); return { rows: [{ branch: 'hanoi', code: 'DH000010' }, { branch: 'saigon', code: ' DH000010 ' }, { branch: 'khac', code: 'X' }] }; } };
+  const { repo } = repoFor(pool);
+  assert.equal((await repo.findOrderKeysByProduct('a')).size, 0);
+  assert.equal(seen.length, 0);
+  const keys = await repo.findOrderKeysByProduct('  Kem  Chống Nắng ');
+  assert.deepEqual([...keys].sort(), ['HN|dh000010', 'SG|dh000010']);
+  assert.ok(seen[0].sql.includes('FROM order_details d'));
+  assert.equal(seen[0].params[0], 'kemchốngnắng');
+  assert.equal(seen[0].params[1], 'Kem Chống Nắng');
+  assert.equal(seen[0].params[4], 'kem chong nang');
+  assert.equal(seen[0].params[2].length, seen[0].params[3].length);
+});

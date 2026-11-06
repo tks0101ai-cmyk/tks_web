@@ -504,6 +504,16 @@ async function loadMergedRows(kiot, { allowStale = false } = {}) {
 }
 
 /**
+ * Kieu tim "theo hang" (mode=product): dong hang nam o Postgres nen hoi truoc tap khoa don chua mat hang (ma hoac ten)
+ * roi gan vao params.productKeys cho filterRows. Khong co Kiot -> tap rong (khong don nao). Kieu khac: tra nguyen params.
+ */
+async function withProductKeys(params, kiot) {
+  if (params.mode !== 'product' || !params.q.trim()) return params;
+  const productKeys = kiot && typeof kiot.findOrderKeysByProduct === 'function' ? await kiot.findOrderKeysByProduct(params.q) : new Set();
+  return Object.assign({}, params, { productKeys });
+}
+
+/**
  * Mot TRANG cua bang "Toan bo don hang". `rawParams` la query string cua GET (branch, status, kiotStatus,
  * dateField, from, to, mode, q, sort, dir, page, pageSize — xem orderLifecycleQuery.parseParams; tham so sai
  * -> loi 400). `kiot` (repository co readOrders(), khong bao gio throw) tuy chon: khong truyen thi chi co dong sheet.
@@ -513,7 +523,7 @@ async function loadMergedRows(kiot, { allowStale = false } = {}) {
  * dropdown, theo cac bo loc khac dang chon — xem orderLifecycleQuery.countFacets), kiot (tom tat nguon Kiot | null) }.
  */
 async function queryOrders(rawParams, { kiot, pickStatuses } = {}) {
-  const params = query.parseParams(rawParams);
+  const params = await withProductKeys(query.parseParams(rawParams), kiot);
   const { rows, kiotResult } = await loadMergedRows(kiot);
   const pickMap = pickStatuses ? await pickStatuses() : null;
   // Loc theo trang thai chi dinh vi tri: thu hep tap dong (chi dinh it, don ~60 nghin) roi loc/sap xep nhu thuong, khong qua
@@ -591,7 +601,7 @@ async function findPickingOrder(branch, orderCode, {kiot} = {}) {
  * nen file khop dung bang tren man hinh. Khong truyen bo loc nao -> toan bo (don moi dat nhat truoc).
  */
 async function exportOrders(rawParams, { kiot, pickStatuses } = {}) {
-  const params = query.parseParams(rawParams);
+  const params = await withProductKeys(query.parseParams(rawParams), kiot);
   const { rows } = await loadMergedRows(kiot);
   if (pickStatuses && (params.pickStatus || params.sort === 'pickStatus')) {
     const pickMap = await pickStatuses();

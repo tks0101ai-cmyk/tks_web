@@ -21,7 +21,9 @@ const SORT_KEYS = Object.freeze([
 ]);
 // Cot thoi gian duoc phep dung cho bo loc "tu ... den ...".
 const DATE_FIELDS = Object.freeze(['saleSentAt', 'at', 'orderDate']);
-const SEARCH_MODES = Object.freeze(['code', 'sale', 'customer']);
+// 'product' = tim theo ma/ten HANG: dong hang nam o Postgres (order_details), khong co trong dong da gop nen service tra
+// truoc tap khoa don chua mat hang do vao `params.productKeys` (Set 'HN|ma don chu thuong'), filterRows chi doi chieu.
+const SEARCH_MODES = Object.freeze(['code', 'sale', 'customer', 'product']);
 const BRANCHES = Object.freeze(['HN', 'SG']);
 // Bo loc canh bao: 'any' = co it nhat 1 canh bao, hoac 1 ma cu the (khop orderLifecycleService.WARNING).
 const WARNING_FILTERS = Object.freeze([
@@ -245,20 +247,29 @@ function countWarnings(rows) {
   return counts;
 }
 
+// Khoa don dung de doi chieu ket qua tim theo hang: 'HN|ma don chu thuong' (cung dang khoa gop Kiot cua service).
+function productOrderKey(row) {
+  return `${row.branch}|${String(row.orderCode == null ? '' : row.orderCode).trim().toLowerCase()}`;
+}
+
 function filterRows(rows, params) {
   const { status, kiotStatus, warning, from, to, dateField, mode, q } = params;
   const codes = mode === 'code' ? parseSearchCodes(q) : [];
   // Ten sale / khach: tim gan dung (luat chung voi giao dien), van ban dong chuan hoa 1 lan roi nho theo dong.
-  const matcher = mode === 'code' ? null : fuzzy.createMatcher(q);
+  const isProduct = mode === 'product';
+  const matcher = mode === 'code' || isProduct ? null : fuzzy.createMatcher(q);
   const text = matcher && !matcher.empty ? matcher : null;
   const textKey = mode === 'sale' ? FOLDED.saleName : FOLDED.customerName;
+  // Tim theo hang: chua co tap khoa (service chua tra) thi coi nhu khong don nao chua mat hang do.
+  const productKeys = isProduct && pickString(q) ? (params.productKeys || new Set()) : null;
   const fromMs = from ? parseDateTimeValue(from) : null;
   // Ngay "den" tinh het ngay (23:59:59) de bao gom don trong ngay do.
   const toMs = to ? parseDateTimeValue(to) + DAY_MS - 1 : null;
   const dateValue = SORT_VALUE[dateField];
-  const needsFilter = codes.length || text || status || kiotStatus || warning || fromMs !== null || toMs !== null;
+  const needsFilter = codes.length || text || productKeys || status || kiotStatus || warning || fromMs !== null || toMs !== null;
   if (!needsFilter) return rows;
   return rows.filter(row => {
+    if (productKeys && !productKeys.has(productOrderKey(row))) return false;
     if (codes.length) {
       const code = SORT_VALUE.orderCode(row);
       if (!codes.some(item => code.includes(item))) return false;
@@ -355,7 +366,7 @@ function distinctKiotStatuses(rows) {
 function selectRows(rows, params) {
   const sorted = sortRows(filterRows(rowsInBranch(rows, params.branch), params), params.sort, params.dir, params.sortValues);
   // Tim ten (gan dung) ma chua chon cot sap xep: khop nhieu tu / nguyen cum xep truoc, giu thu tu mac dinh khi bang diem.
-  if (params.mode === 'code' || params.sortExplicit || !pickString(params.q)) return sorted;
+  if (params.mode === 'code' || params.mode === 'product' || params.sortExplicit || !pickString(params.q)) return sorted;
   const matcher = fuzzy.createMatcher(params.q);
   if (matcher.empty) return sorted;
   const keyOf = params.mode === 'sale' ? FOLDED.saleName : FOLDED.customerName;
@@ -381,6 +392,8 @@ function createSelectionCache(limit = 6) {
   const entries = new Map();
   return {
     select(rows, params) {
+      // Tim theo hang: tap khoa don doi theo du lieu DB moi lan hoi (khong nam trong khoa cache) nen khong nho.
+      if (params.mode === 'product' && pickString(params.q)) return selectRows(rows, params);
       if (rows !== source) { source = rows; entries.clear(); }
       const key = JSON.stringify([
         params.branch, params.status, params.kiotStatus, params.warning, params.dateField, params.from, params.to,

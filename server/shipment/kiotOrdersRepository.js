@@ -29,6 +29,7 @@ const { getPool } = require('../db/pool');
 const { readInTransitByCode } = require('../dashboard/inTransitSource');
 const { saleNameSql, saleTelegramIdSql } = require('../dashboard/saleName');
 const { getOrderDetail } = require('../dashboard/documentDetailRepository');
+const fuzzy = require('../shared/fuzzySearch');
 const measureSheet = require('./measureSheet');
 const { buildOrderFreight } = require('./freightCalculator');
 
@@ -160,6 +161,21 @@ const ON_HAND_BY_CODE_SQL = `
   LEFT JOIN LATERAL jsonb_array_elements(COALESCE(p.raw->'inventories', '[]'::jsonb)) inv ON true
   WHERE p.branch = $1 AND p.code = ANY($2::text[])
   GROUP BY p.code`;
+
+// Tim don theo ma/ten hang. $1 = ma (bo khoang trang, chu thuong), $2 = ten nguyen van (ILIKE), $3/$4 = bang doi chu
+// co dau -> khong dau, $5 = ten da bo dau. Go "kem chong nang" van ra "Kem chống nắng" (translate, khong can unaccent).
+// Dong khong lien ket duoc san pham thi doi chieu ma/ten tren chinh dong don (raw productCode/productName).
+const PRODUCT_ORDERS_SQL = `
+  SELECT DISTINCT o.branch, o.code
+  FROM order_details d
+  JOIN orders o ON o.branch = d.branch AND o.id = d.order_id
+  LEFT JOIN products p ON p.branch = d.branch AND p.id = d.product_id
+  WHERE lower(regexp_replace(COALESCE(NULLIF(d.raw->>'productCode', ''), p.code, ''), '\\s+', '', 'g')) LIKE '%' || $1 || '%' ESCAPE '\\'
+     OR COALESCE(NULLIF(p.name, ''), NULLIF(d.raw->>'productName', ''), '') ILIKE '%' || $2 || '%' ESCAPE '\\'
+     OR translate(lower(COALESCE(NULLIF(p.name, ''), NULLIF(d.raw->>'productName', ''), '')), $3, $4) LIKE '%' || $5 || '%' ESCAPE '\\'`;
+
+const ACCENTED = 'àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ';
+const UNACCENTED = [...ACCENTED].map(char => (char === 'đ' ? 'd' : char.normalize('NFD')[0])).join('');
 
 async function readOnHandByKey(db, dbBranch, productCodes) {
   const codes = [...new Set(productCodes.filter(Boolean))];
@@ -336,6 +352,26 @@ function createKiotOrdersRepository({
     return refresh();
   }
 
+  /**
+   * Tim DON CHUA MAT HANG theo ma hoac ten hang (bo dau, khong phan biet hoa/thuong; ma bo khoang trang). Doc truc
+   * tiep order_details o Postgres (dong hang khong nam trong bo nho dem cua Vong doi). Tra Set khoa 'HN|ma don chu thuong'
+   * (khop khoa gop Kiot cua orderLifecycleService). Tu khoa < 2 ky tu -> Set rong. NEM loi DB (route tra 500).
+   */
+  async function findOrderKeysByProduct(term) {
+    const text = String(term == null ? '' : term).replace(/\s+/g, ' ').trim().slice(0, 100);
+    const keys = new Set();
+    if (text.length < 2) return keys;
+    const escape = value => value.replace(/[\\%_]/gu, '\\$&');
+    const { rows } = await getDb().query(PRODUCT_ORDERS_SQL, [
+      escape(text.replace(/\s+/g, '').toLowerCase()), escape(text), ACCENTED, UNACCENTED, escape(fuzzy.fold(text))
+    ]);
+    for (const row of (rows || [])) {
+      const branch = DB_TO_LIFECYCLE_BRANCH[row.branch];
+      if (branch) keys.add(`${branch}|${String(row.code || '').trim().toLowerCase()}`);
+    }
+    return keys;
+  }
+
   function invalidate() { cache = null; nextTryAt = 0; forceFull = true; }
 
   // Picking needs only one code. Query both retailers so the shared accounting
@@ -439,7 +475,7 @@ function createKiotOrdersRepository({
     };
   }
 
-  return { readOrders, readOrderDetail, readOrderHeaders, readPickingDetail, invalidate };
+  return { readOrders, readOrderDetail, readOrderHeaders, readPickingDetail, findOrderKeysByProduct, invalidate };
 }
 
 // Instance mac dinh dung pool that (getPool() duoc goi luc can, khong luc nap module).

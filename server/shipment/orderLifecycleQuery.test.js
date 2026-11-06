@@ -349,3 +349,21 @@ test('countSummary tính trên toàn bộ kết quả tìm gần đúng (không 
   assert.equal(q.countSummary(rows, q.parseParams({ mode: 'sale', q: 'nguyen' })).status.NOT_SENT, 2);
   assert.equal(q.countSummary(rows, q.parseParams({})).status.NOT_SENT, 3);
 });
+
+test('tìm theo hàng (mode=product): chỉ giữ đơn có khóa trong productKeys; không có tập khóa thì không đơn nào; q rỗng thì không lọc', () => {
+  const rows = [row('DH001'), row('dh002', { branch: 'SG' }), row('DH003')];
+  const byProduct = (text, productKeys) => codes(q.selectRows(rows, q.parseParams({ mode: 'product', q: text, sort: 'orderCode' }) && Object.assign(q.parseParams({ mode: 'product', q: text, sort: 'orderCode' }), { productKeys })));
+  assert.deepEqual(byProduct('kem', new Set(['HN|dh001', 'SG|dh002'])), ['DH001', 'dh002']);
+  assert.deepEqual(byProduct('kem', new Set(['SG|dh001'])), [], 'khóa phải khớp cả cơ sở');
+  assert.deepEqual(byProduct('kem', undefined), []);
+  assert.deepEqual(byProduct('', undefined), ['DH001', 'dh002', 'DH003']);
+  assert.ok(q.SEARCH_MODES.includes('product'));
+});
+
+test('createSelectionCache: tìm theo hàng không dùng cache (tập khóa đổi theo DB)', () => {
+  const rows = [row('DH001'), row('DH002')];
+  const cache = q.createSelectionCache();
+  const params = keys => Object.assign(q.parseParams({ mode: 'product', q: 'kem' }), { productKeys: keys });
+  assert.deepEqual(codes(cache.select(rows, params(new Set(['HN|dh001'])))), ['DH001']);
+  assert.deepEqual(codes(cache.select(rows, params(new Set(['HN|dh002'])))), ['DH002']);
+});
