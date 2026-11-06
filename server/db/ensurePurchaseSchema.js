@@ -1,6 +1,6 @@
 'use strict';
 const fs=require('node:fs');const path=require('node:path');const {getPool}=require('./pool');
 // Only this module's additive DDL; never run unrelated pending migrations at startup.
-const FILES=Object.freeze(['0110_purchase_orders.sql','0111_purchase_operations.sql','0112_purchase_requests.sql','0113_purchase_freight.sql']);
+const FILES=Object.freeze(['0110_purchase_orders.sql','0111_purchase_operations.sql','0112_purchase_requests.sql','0113_purchase_freight.sql','0114_purchase_freight_prepaid_signed.sql','0115_purchase_projection_scope.sql']);
 async function ensurePurchaseSchema({pool=getPool(),logger=console}={}){const client=await pool.connect(),applied=[];try{await client.query('BEGIN');await client.query("SET LOCAL lock_timeout='5s'");await client.query("SET LOCAL statement_timeout='30s'");await client.query('SELECT pg_advisory_xact_lock($1)',[20531015]);for(const filename of FILES){const prior=await client.query('SELECT 1 FROM schema_migrations WHERE filename=$1',[filename]);if(prior.rowCount)continue;await client.query(fs.readFileSync(path.join(__dirname,'migrations',filename),'utf8'));await client.query('INSERT INTO schema_migrations(filename) VALUES($1)',[filename]);applied.push(filename)}await client.query('COMMIT');if(applied.length)logger.log('[Purchase] Initialized '+applied.join(', '));return {applied}}catch(error){await client.query('ROLLBACK').catch(()=>{});throw error}finally{client.release()}}
 module.exports={ensurePurchaseSchema,FILES};
