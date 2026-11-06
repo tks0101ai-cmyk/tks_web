@@ -257,7 +257,7 @@ test('hop chi tiet giu Doanh so theo khach va them muc lich su, khong goi API CO
   const customers = page.$('productCustomerSection');
   assert.ok(customers);
   assert.equal(page.$('productContainerSection'), null);
-  assert.equal([...page.$('docModalBody').querySelectorAll(':scope > section')].map(section => section.id).join(','), 'productCustomerSection,productHistorySection');
+  assert.equal([...page.$('docModalBody').querySelectorAll(':scope > section')].map(section => section.id).join(','), 'productHistorySection,productCustomerSection', 'Lịch sử giao dịch đứng đầu hộp, trên Doanh số theo khách');
   assert.match(customers.querySelector('.dp-section-title').textContent, /Doanh số theo khách/);
   assert.doesNotMatch(page.$('docModalBody').textContent, /Hàng dự kiến/);
   assert.ok(customers.querySelector('#productDetailChart'), 'bieu do ty trong nam trong Doanh so theo khach');
