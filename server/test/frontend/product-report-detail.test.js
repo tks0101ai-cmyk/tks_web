@@ -817,3 +817,29 @@ test('Ngay can dat to mau theo rule Excel (<10,5 xanh la, 10,5-20 vang, 20-30 ca
   ['co-ban-hn', 'co-ban-sg'].forEach(key => assert.ok(cellOf(rowOf(page, 'SP-2'), key).classList.contains('pr-avail'), 'o Co ban "—" van to mau de cot lien mach'));
   assert.equal(reportTable(page).id, 'productReportTable');
 });
+
+// Tiêu đề giống bảng Kiểm kê: ▲▼ nhỏ ở góc dưới phải (không chiếm chỗ chữ); Mô tả HN/SG chữ nhỏ hơn.
+test('tieu de bang Bao cao hang hoa giong Kiem ke (mui ten sort o goc, khong an chu) va cot Mo ta HN/SG chu nho', async () => {
+  const css = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map(match => match[1]).join('\n');
+  const rule = selector => {
+    // Gộp thân mọi rule có selector kết thúc đúng bằng `selector {` (selector có thể nằm trong nhóm nhiều selector).
+    const bodies = [];
+    for (let start = css.indexOf(selector + ' {'); start >= 0; start = css.indexOf(selector + ' {', start + 1)) {
+      bodies.push(css.slice(css.indexOf('{', start) + 1, css.indexOf('}', start)));
+    }
+    assert.ok(bodies.length, 'thieu rule CSS ' + selector);
+    return bodies.join(' ').replace(/\s+/g, ' ');
+  };
+  const indicator = rule('#productReportTable thead th .sort-indicator');
+  assert.match(indicator, /position: absolute/);
+  assert.match(indicator, /font-size: 7px/);
+  assert.match(indicator, /bottom: -8px/);
+  assert.match(rule('#productReportTable thead th .sort-button'), /position: relative/);
+  assert.match(rule('#productReportTable thead th'), /padding: 5px 4px 9px/);
+  assert.match(rule('#productReportTable td.pr-desc'), /font-size: 11px/);
+
+  const page = createPage();
+  await settle();
+  const row = rowOf(page, 'SP-1');
+  ['mo-ta-hn', 'mo-ta-sg'].forEach(key => assert.ok(cellOf(row, key).classList.contains('pr-desc'), key + ' dung chu nho'));
+});
