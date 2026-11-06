@@ -42,3 +42,53 @@ Thứ tự kiểm bắt buộc sau mỗi lần nạp:
 4. Cont đã có trên DB được dùng lại theo tên chuẩn hóa và `name_key` được đưa về chuẩn; không tạo bản trùng.
 
 Chỉ sau khi ba bước trên sạch mới tới bước đối soát (`purchaseOrdersReconcile.js`) và đổi nguồn ghi.
+
+## Bật chức năng ở chế độ cách ly (06/11/2026)
+
+Thứ tự bắt buộc. Đổi cờ TRƯỚC khi deploy mã mới là sai: bản cũ không biết `integration_enabled`, nên `source_mode='web'` sẽ dừng job đọc Sheet và đẩy projection sang read model dùng chung.
+
+1. **Merge và deploy trước.** `ensurePurchaseSchema` tự áp `0110`–`0117` lúc web startup; kiểm log có `[Purchase] Initialized … 0117_purchase_isolated_workflow.sql`, hoặc:
+
+   ```sql
+   SELECT filename FROM schema_migrations WHERE filename LIKE '011%_purchase%' ORDER BY 1;
+   ```
+
+2. **Xóa dữ liệu mẫu seed** (các dòng `D90001`–`D99999` và cont `MẪU — `), chạy trên máy chủ có `SUPABASE_DB_URL`:
+
+   ```bash
+   npm run purchase:sample:remove
+   ```
+
+3. **Bật ghi, giữ cách ly.** Một câu, hai cờ, để không có khoảng thời gian nào `web` mà chưa cách ly:
+
+   ```sql
+   UPDATE purchase_settings SET source_mode='web', integration_enabled=false WHERE id=1;
+   ```
+
+4. **Xác minh ngay sau khi bật** — ba điều phải đúng:
+
+   | Kiểm | Kỳ vọng |
+   |---|---|
+   | Mở `/thu-mua/dat-hang/` | Bảng báo `CÁCH LY · …`; các nút Thêm mã / Lưu / Import mở |
+   | Sửa một ô rồi lưu | Dòng đổi thật, Nhật ký có bản ghi, và `SELECT count(*) FROM product_container_lines WHERE sheet_name='THU MUA'` **không tăng** |
+   | Log job cont sau 10 phút | Vẫn có lượt đọc Sheet (không phải `web-source`); Dự kiến hàng về không đổi số |
+
+5. **Khi nào mới bật `integration_enabled=true`:** sau khi bản chụp nguồn đã đầy đủ và đã đối soát (`purchaseOrdersReconcile.js`). Bật cờ này làm job đọc Sheet dừng hẳn và Thu mua tiếp quản read model — không còn là bước thử nghiệm.
+
+### Quay lui
+
+Chỉ cần một câu, hiệu lực ở lượt ghi tiếp theo, không mất dữ liệu đã nhập:
+
+```sql
+UPDATE purchase_settings SET source_mode='sheets' WHERE id=1;
+```
+
+Trang Thu mua trở lại chỉ xem, job đọc Sheet vẫn chạy như trước. Dữ liệu và lịch sử đã ghi được giữ nguyên (audit của Thu mua là bất biến).
+
+### Dọn schema dùng thử (không bắt buộc)
+
+Chế độ dùng thử đã gỡ khỏi mã nguồn nên schema `purchase_trial` không còn nơi nào đọc; để lại cũng vô hại. Muốn dọn thì chạy tay, sau khi đã deploy bản không còn `purchaseOrdersTrial.js`:
+
+```sql
+DROP SCHEMA IF EXISTS purchase_trial CASCADE;
+```

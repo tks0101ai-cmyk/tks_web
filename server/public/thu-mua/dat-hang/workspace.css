@@ -113,6 +113,4 @@
 .purchase-page #orderTable td[data-field="productCode"]:hover .code-edit,.purchase-page #orderTable td[data-field="productCode"] .code-edit:focus-visible{opacity:1}
 .purchase-page #orderTable td[data-field="productCode"] .code-edit:hover{color:var(--blue)}
 
-.purchase-trial-link{margin-left:auto;color:var(--blue);font:500 12px var(--font-body);padding:8px 0;text-decoration:none}
-.purchase-trial-link:hover{text-decoration:underline}
-.purchase-page #sourceBanner.trial-banner{border-left:3px solid var(--amber);color:var(--text);background:var(--panel)}
+.purchase-page #sourceBanner.isolated-banner{border-left:3px solid var(--amber);color:var(--text);background:var(--panel)}

@@ -12,13 +12,30 @@ function fakeConnection({locked=true,lastAttempt=null,lastSuccess=null}={}) {
 }
 const fixed=new Date('2026-10-15T02:00:00Z');
 
+// Chi nhuong quyen khi Thu mua DA noi vao he thong (integration_enabled, 0117).
+function purchaseSettings(conn,settings){const original=conn.query;
+  conn.query=async function(sql,params){if(sql.includes('to_regclass'))return {rows:[{name:'purchase_settings'}]};if(sql.includes('SELECT source_mode'))return {rows:[settings]};return original.call(this,sql,params)};
+  return conn}
+
 test('web source stops Sheet reads and snapshot writes even when forced',async()=>{
-  const conn=fakeConnection(),original=conn.query;let reads=0;
-  conn.query=async function(sql,params){if(sql.includes('to_regclass'))return {rows:[{name:'purchase_settings'}]};if(sql.includes('SELECT source_mode'))return {rows:[{source_mode:'web'}]};return original.call(this,sql,params)};
+  const conn=purchaseSettings(fakeConnection(),{source_mode:'web',integration_enabled:true});let reads=0;
   const result=await refreshContainers({pool:{connect:async()=>conn},spreadsheetId:'fixture',force:true,client:{listSheetTitles:async()=>{reads++;return []}}});
   assert.equal(result.status,'web-source');assert.equal(reads,0);
   assert.equal(conn.calls.some(call=>call.sql?.startsWith('DELETE')),false);
   assert(conn.calls.some(call=>call.sql?.includes('pg_advisory_unlock')));
+});
+
+// Che do cach ly: Thu mua ghi that nhung khong so huu read model, nen job nay
+// phai tiep tuc doc Sheet — neu dung thi ca workbook 7 sheet va cac cont lich su
+// khong con duoc cap nhat, dung dieu ma cach ly phai tranh.
+test('an isolated purchase write source does not stop the Sheet job',async()=>{
+  for(const settings of [{source_mode:'web',integration_enabled:false},{source_mode:'sheets',integration_enabled:false}]){
+    const conn=purchaseSettings(fakeConnection(),settings);const reads=[];
+    const result=await refreshContainers({pool:{connect:async()=>conn},spreadsheetId:'fixture',force:true,now:()=>fixed,
+      client:{listSheetTitles:async()=>SHEET_NAMES,getValues:async name=>{reads.push(name);return []}},logger:{info(){},error(){}}});
+    assert.notEqual(result.status,'web-source',JSON.stringify(settings));
+    assert.deepEqual([...new Set(reads)],SHEET_NAMES,'van doc du 7 sheet: '+JSON.stringify(settings));
+  }
 });
 test('one source failure keeps prior snapshot, records safe error and releases shared lock',async()=>{
   const conn=fakeConnection();

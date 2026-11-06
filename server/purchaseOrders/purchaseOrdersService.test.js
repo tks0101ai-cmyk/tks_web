@@ -25,7 +25,10 @@ before(async () => {
 beforeEach(async () => {
   await db.exec(`TRUNCATE purchase_requests,purchase_undo_expected,purchase_operation_rows,purchase_operations,purchase_orders,product_containers,purchase_key_history,purchase_history,purchase_departures,purchase_import_previews,product_container_lines,product_container_expected,product_container_expected_state RESTART IDENTITY CASCADE;
     ALTER SEQUENCE purchase_order_key_seq RESTART WITH 1;
-    UPDATE purchase_settings SET source_mode='web',projection_owns_all=true;`);
+    UPDATE purchase_settings SET source_mode='web',projection_owns_all=true,integration_enabled=true;`);
+  // integration_enabled=true: bo test nay mo ta hop dong khi Thu mua DA noi vao
+  // he thong. Che do cach ly (mac dinh, migration 0117) duoc kiem rieng o
+  // purchaseOrdersIsolation.test.js.
   // Bo test nay mo ta hop dong SAU cutover: Thu mua la nguon duy nhat nen moi
   // dong — ke ca dong cho xep — deu co trong read model dung chung. Pham vi
   // mot phan (mac dinh) duoc kiem rieng o purchaseOrdersProjectionScope.test.js.

@@ -60,6 +60,3 @@ function createPurchaseOrdersRouter(dependencies={}) {
 }
 module.exports=createPurchaseOrdersRouter();
 module.exports.createPurchaseOrdersRouter=createPurchaseOrdersRouter;
-
-// Both APIs belong to Purchase; the trial router has its own auth, pool and events.
-module.exports.use(require('./purchaseOrdersTrial').createPurchaseTrial({routerFactory:createPurchaseOrdersRouter}).router);

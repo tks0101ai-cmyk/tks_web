@@ -24,11 +24,11 @@ test('purchase uses the shared application shell and brand instead of a private 
   assert.ok(doc.querySelector('.receipt-header .status-line #accountChip'));
  }finally{dom.window.close();reference.window.close()}
 });
-async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees=[],trialMode=false}={}){
- const dom=new JSDOM(fs.readFileSync(path.join(dir,'index.html'),'utf8'),{url:'https://example.test/thu-mua/dat-hang/'+(trialMode?'?trial=1':''),runScripts:'outside-only'}),w=dom.window;
+async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees=[],integrationEnabled=true}={}){
+ const dom=new JSDOM(fs.readFileSync(path.join(dir,'index.html'),'utf8'),{url:'https://example.test/thu-mua/dat-hang/',runScripts:'outside-only'}),w=dom.window;
  t.after(()=>w.close());
  w.HTMLCanvasElement.prototype.getContext=()=>null;
- let current={sourceMode,trialMode,permissions:{edit:true,import:true,export:true,depart:true,arrive:true},rows:[{id:'1',rowKey:'D00001',version:1,contId:null,productCode:'AC305',productName:'Băng dính',cartonCount:10,qtyPerCarton:100,supplier:'A'}],containers:[{id:'2',name:'CONT 11-1V',status:2,version:1}]};
+ let current={sourceMode,integrationEnabled,permissions:{edit:true,import:true,export:true,depart:true,arrive:true},rows:[{id:'1',rowKey:'D00001',version:1,contId:null,productCode:'AC305',productName:'Băng dính',cartonCount:10,qtyPerCarton:100,supplier:'A'}],containers:[{id:'2',name:'CONT 11-1V',status:2,version:1}]};
  current.rows.push(...extraRows.map(r=>({productName:r.productCode,...r})));const calls=[],listeners={};
  w.PurchaseCalculations=require('../public/shared/purchase-calculations');w.PurchaseFreight=require('../public/shared/purchase-freight');w.PurchaseColumns=require('../public/shared/purchase-columns');w.PurchaseTasks=require('../public/shared/purchase-tasks');w.TKSNav={authGuard:async()=>({id:'buyer'})};
  w.EventSource=class{addEventListener(k,fn){listeners[k]=fn}close(){}};
@@ -273,14 +273,30 @@ test('compact columns declare stable keys, small numeric widths and keep row key
  assert.ok([...doc.querySelectorAll('#containerTable th')].every(th=>Number(th.dataset.defaultWidth)>0));
 });
 
-test('trial UI routes requests and drafts separately from the real purchase workspace',async t=>{
- const saved={drafts:{'1':{version:1,before:{supplier:'A'},changes:{supplier:'REAL-DRAFT'}}}};
- const p=await page(t,{trialMode:true,saved}),doc=p.w.document;
- assert.ok(p.calls.every(call=>call.url.startsWith('/api/purchase-trial')));
- assert.match(doc.getElementById('sourceBanner').textContent,/DÙNG THỬ/);
- assert.equal(doc.getElementById('add').disabled,false);
- assert.equal(doc.getElementById('purchaseTrialLink').getAttribute('href'),'/thu-mua/dat-hang/');
+// Che do dung thu da duoc go (06/11/2026). Thay vao do, bang bao phai noi ro
+// dang ghi cach ly hay da noi vao he thong, va moi request van di duong that.
+test('the banner states the isolated write mode and every request uses the real API',async t=>{
+ const p=await page(t,{integrationEnabled:false}),doc=p.w.document;
+ assert.ok(p.calls.every(call=>call.url.startsWith('/api/purchase-orders')),'khong con duong /api/purchase-trial');
+ const banner=doc.getElementById('sourceBanner');
+ assert.equal(banner.hidden,false);
+ assert.match(banner.textContent,/CÁCH LY/);
+ assert.match(banner.textContent,/Dự kiến hàng về/);
+ assert.ok(banner.classList.contains('isolated-banner'));
+ assert.equal(doc.getElementById('add').disabled,false,'cach ly van ghi that nen cac nut mo');
+ assert.equal(doc.getElementById('purchaseTrialLink'),null,'khong con link Dung thu');
  p.change('[data-edit="cartonCount"]','8');
- assert.equal(JSON.parse(p.w.sessionStorage.getItem('purchase:trial:buyer:v1')).drafts['1'].changes.cartonCount,8);
- assert.equal(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).drafts['1'].changes.supplier,'REAL-DRAFT');
+ assert.equal(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).drafts['1'].changes.cartonCount,8,'ban nhap dung mot pham vi duy nhat');
+});
+
+test('the banner disappears once Purchase is wired into the shared system',async t=>{
+ const doc=(await page(t,{integrationEnabled:true})).w.document;
+ assert.equal(doc.getElementById('sourceBanner').hidden,true);
+});
+
+test('with the Sheet source the banner says writing is off and never mentions a sample mode',async t=>{
+ const banner=(await page(t,{sourceMode:'sheets'})).w.document.getElementById('sourceBanner');
+ assert.equal(banner.hidden,false);
+ assert.match(banner.textContent,/Google Sheet/);
+ assert.doesNotMatch(banner.textContent,/DÙNG THỬ|dữ liệu mẫu/i);
 });
