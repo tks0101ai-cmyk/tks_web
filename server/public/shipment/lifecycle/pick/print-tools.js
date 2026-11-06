@@ -229,7 +229,7 @@ async function prepare(){
   try{
     await layoutWrites.get(template);
     const res=await fetch(url,{credentials:'same-origin',cache:'no-store'});
-    if(!res.ok)throw new Error('Không tải được form chung. Đóng rồi mở lại phiếu để thử lại.');
+    if(!res.ok)throw new Error('HTTP '+res.status);
     const saved=await res.json();
     if(!root.isConnected)return false;
     let version=saved.version,blocked=false;
@@ -244,14 +244,19 @@ async function prepare(){
         if(!result.ok)throw new Error(data.error||'Không lưu được form chung.');
         version=data.version;message('Đã lưu form chung','saved');
       }).catch(error=>{blocked=true;message(error.message+' Các chỉnh sửa trên phiếu này chưa được lưu chung.','error');}).finally(()=>{
-        if(layoutWrites.get(template)===task&&!blocked)setPrintReady(root,true);
+        // Lưu chung lỗi vẫn cho in/lưu HTML đúng như đang hiển thị; thông báo đỏ nói rõ chưa lưu chung.
+        if(layoutWrites.get(template)===task)setPrintReady(root,true);
       });
       layoutWrites.set(template,task);
     }});
     const picker=$('pickingPrintTemplate');if(picker)picker.value=template;
     message(saved.version?'Đã lưu form chung':'Form mặc định','saved');
     setPrintReady(root,true);return true;
-  }catch(error){message('Không tải được form chung. Đóng rồi mở lại phiếu để thử lại.','error');return false;}
+  }catch(error){
+    // Form chung lỗi không được chặn việc in: phiếu giữ mẫu mặc định, người dùng vẫn In / Lưu HTML được.
+    message('Không tải được form chung ('+(error&&error.message||'lỗi')+'). Phiếu in theo mẫu mặc định; đóng rồi mở lại phiếu để thử lại.','error');
+    setPrintReady(root,true);return false;
+  }
 }
 // Các nút này cũng được nhúng trong file đơn độc lập tải về.
 function standaloneControls(){

@@ -244,6 +244,7 @@ test('shared form load failure is visible and does not fall back to local user p
   await w.PickingPrint.prepare();
   assert.match(w.document.getElementById('pickingPrintMessage').textContent,/Không tải được form chung/);
   assert.equal(w.document.querySelector('#pickingPrintFormatting button'),null);
+  assert.equal(w.document.querySelector('.tokosi-invoice').dataset.printReady,'true','form chung lỗi vẫn cho In / Lưu HTML');
  }finally{dom.window.close();}
 });
 
@@ -257,6 +258,7 @@ test('shared form conflict is visible and never reports local changes as shared 
   await new Promise(resolve=>setImmediate(resolve));
   assert.match(w.document.getElementById('pickingPrintMessage').textContent,/người khác sửa/);
   assert.match(w.document.getElementById('pickingPrintMessage').textContent,/chưa được lưu chung/);
+  assert.equal(w.document.querySelector('.tokosi-invoice').dataset.printReady,'true','lưu chung lỗi vẫn cho In / Lưu HTML');
  }finally{dom.window.close();}
 });
 
