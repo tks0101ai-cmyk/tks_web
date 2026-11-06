@@ -222,9 +222,9 @@
     "semantic_hash": ""
   },
   "server/dashboard/exportService.js": {
-    "mtime": 1793953582.5126681,
-    "seen": 1793953953.6731493,
-    "ast_hash": "b5bb8f681a017e823851a766e8d92d4a",
+    "mtime": 1793955584.992241,
+    "seen": 1793957096.775292,
+    "ast_hash": "e5a02e99643b10c5d0724e162914cb93",
     "semantic_hash": ""
   },
   "server/dashboard/exportService.test.js": {
@@ -654,9 +654,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1793953880.3128867,
-    "seen": 1793953953.6740503,
-    "ast_hash": "ae6290057544e8246fb64df3216e7ec6",
+    "mtime": 1793956600.0588028,
+    "seen": 1793957096.8598924,
+    "ast_hash": "f66aa1e80ea759e7283f789f5a377f22",
     "semantic_hash": ""
   },
   "design-system/tks-dashboard/MASTER.md": {
@@ -666,15 +666,15 @@
     "semantic_hash": ""
   },
   "docs/01-brd/BRD_Dashboard_GoogleSheets.md": {
-    "mtime": 1793953880.366824,
-    "seen": 1793953953.674068,
-    "ast_hash": "5e81ee65dcbb9f581d5174306bc12ebe",
+    "mtime": 1793956630.935536,
+    "seen": 1793957096.8613374,
+    "ast_hash": "ca4c341be2974348b0eb94e954865688",
     "semantic_hash": ""
   },
   "docs/02-srs/SRS_Dashboard_GoogleSheets.md": {
-    "mtime": 1793953880.360303,
-    "seen": 1793953953.674069,
-    "ast_hash": "87768125afb66281b05b483ed56ae724",
+    "mtime": 1793956630.846103,
+    "seen": 1793957096.861339,
+    "ast_hash": "b0c0bcade0f1d9847a64111f339554a9",
     "semantic_hash": ""
   },
   "docs/03-process/BPMN_Dashboard_GoogleSheets.md": {
@@ -684,9 +684,9 @@
     "semantic_hash": ""
   },
   "docs/04-planning/implementation_plan.md": {
-    "mtime": 1793953880.3533113,
-    "seen": 1793953953.6740806,
-    "ast_hash": "4c3902478fdbe250050c49bcb48f52da",
+    "mtime": 1793956630.6845415,
+    "seen": 1793957096.8621724,
+    "ast_hash": "53db1f5331d2414579b2e93680a53edf",
     "semantic_hash": ""
   },
   "docs/superpowers/plans/2026-08-13-dashboard-result-cache.md": {
@@ -786,9 +786,9 @@
     "semantic_hash": "58e700daf0c14819a97499bd94f6f2e1"
   },
   "server/README.md": {
-    "mtime": 1793953880.3452818,
-    "seen": 1793953953.674215,
-    "ast_hash": "5941279b90bb6688db92580cbbf17cc4",
+    "mtime": 1793956613.4651783,
+    "seen": 1793957096.8750682,
+    "ast_hash": "9030169a2729bf260e637365bf385120",
     "semantic_hash": ""
   },
   "server/kiotviet/API_ENDPOINTS.md": {
@@ -816,9 +816,9 @@
     "semantic_hash": ""
   },
   "server/public/index.html": {
-    "mtime": 1793952943.5400224,
-    "seen": 1793953953.6742241,
-    "ast_hash": "132d969771d6939c34cbe1658d8fe044",
+    "mtime": 1793956466.5960574,
+    "seen": 1793957096.8757102,
+    "ast_hash": "98e8cdb622f6a374bc55c3351334c273",
     "semantic_hash": ""
   },
   "server/public/login/index.html": {
@@ -1386,9 +1386,9 @@
     "semantic_hash": ""
   },
   "server/db/SCHEMA.md": {
-    "mtime": 1793953880.3493116,
-    "seen": 1793953953.6742163,
-    "ast_hash": "3a4f38838adc677a647dee882fd8ea66",
+    "mtime": 1793956613.5534732,
+    "seen": 1793957096.8750699,
+    "ast_hash": "976b44ab16ae1be7809aca98d7eddba6",
     "semantic_hash": ""
   },
   "server/auth/appUsersRepository.js": {
@@ -3306,9 +3306,9 @@
     "semantic_hash": ""
   },
   "CURRENT.md": {
-    "mtime": 1793949807.8120213,
-    "seen": 1793953953.674048,
-    "ast_hash": "746148f3982a0d5180ff9ca9b2609efa",
+    "mtime": 1793956841.550979,
+    "seen": 1793957096.859791,
+    "ast_hash": "f990b18755ada81d9e846bdfaa7d386c",
     "semantic_hash": ""
   },
   "MEMORY.md": {
@@ -7236,33 +7236,33 @@
     "semantic_hash": ""
   },
   "server/dashboard/exportProductCustomerGrowth.test.js": {
-    "mtime": 1793951847.5665455,
-    "seen": 1793953953.673146,
-    "ast_hash": "8450a46dcc2a6c5342b2f51abeaf7ed9",
+    "mtime": 1793955571.7162018,
+    "seen": 1793957096.7751572,
+    "ast_hash": "144076d4b16facf6a583d8382e7301ee",
     "semantic_hash": ""
   },
   "server/dashboard/productCustomerGrowthRepository.js": {
-    "mtime": 1793951211.7412481,
-    "seen": 1793953953.6731613,
-    "ast_hash": "3a90dcfd9cb16cf2809d6f84f2210b8f",
+    "mtime": 1793955540.2601316,
+    "seen": 1793957096.7761366,
+    "ast_hash": "7e13f6b0111b2e3f842299eeaa3d4550",
     "semantic_hash": ""
   },
   "server/dashboard/productCustomerGrowthRepository.test.js": {
-    "mtime": 1793951178.0365427,
-    "seen": 1793953953.6731625,
-    "ast_hash": "1e807fa96e6ae9786c01c32cdb53d164",
+    "mtime": 1793955494.2626534,
+    "seen": 1793957096.7761388,
+    "ast_hash": "85c78d63fb831d368680ba5125cec136",
     "semantic_hash": ""
   },
   "server/dashboard/productCustomerGrowthRoutes.test.js": {
-    "mtime": 1793951394.863774,
-    "seen": 1793953953.6731634,
-    "ast_hash": "aa89c160ee322bf5bf2f50a6310ee569",
+    "mtime": 1793955571.7162018,
+    "seen": 1793957096.77614,
+    "ast_hash": "2051442262db2e1bd8a6f3d987fc1eea",
     "semantic_hash": ""
   },
   "server/public/product-customer-growth.js": {
-    "mtime": 1793952160.951424,
-    "seen": 1793953953.6736362,
-    "ast_hash": "85e1ee90b91e3a6dde15395f7feb0c53",
+    "mtime": 1793956026.3618388,
+    "seen": 1793957096.8215363,
+    "ast_hash": "015362c7a741c15aedf8120c6e01d86b",
     "semantic_hash": ""
   },
   "server/purchaseOrders/containerNames.js": {
@@ -7296,9 +7296,9 @@
     "semantic_hash": ""
   },
   "server/test/frontend/product-customer-growth.test.js": {
-    "mtime": 1793952883.991011,
-    "seen": 1793953953.6739373,
-    "ast_hash": "19a1a0cc6cf5381a27001328107da96e",
+    "mtime": 1793956466.7453327,
+    "seen": 1793957096.8491952,
+    "ast_hash": "f7c454634860f5ce4e1c9ccdd1b54286",
     "semantic_hash": ""
   },
   "docs/superpowers/plans/2026-11-06-product-customer-growth-section.md": {
@@ -7308,9 +7308,21 @@
     "semantic_hash": ""
   },
   "docs/superpowers/specs/2026-11-06-product-customer-growth-section-design.md": {
-    "mtime": 1793953597.4719055,
-    "seen": 1793953953.674213,
-    "ast_hash": "8980684f212c8b5cc977054153f4cae7",
+    "mtime": 1793956599.7658367,
+    "seen": 1793957096.874958,
+    "ast_hash": "07dcd324d8fa387aa6f272cbd2702873",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/plans/2026-11-06-growth-color-tiers.md": {
+    "mtime": 1793955443.340457,
+    "seen": 1793957096.869352,
+    "ast_hash": "7f307591685e164de430946fce17192d",
+    "semantic_hash": ""
+  },
+  "docs/superpowers/specs/2026-11-06-growth-color-tiers-design.md": {
+    "mtime": 1793955272.0227761,
+    "seen": 1793957096.8749561,
+    "ast_hash": "b38e54f19050870cee8f6340c74dfcc5",
     "semantic_hash": ""
   },
   "server/package-lock.json": {

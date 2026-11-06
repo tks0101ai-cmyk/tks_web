@@ -2,6 +2,8 @@
 
 Ngày: 06/11/2026 · Trạng thái: đã duyệt, đã triển khai
 
+**Cập nhật 06/11/2026:** các mục 3 (công thức/nhóm), 4 (dropdown, tô đỏ, dòng trạng thái) và 5 (`summary`, tham số `growth`) đã được thay bằng `2026-11-06-growth-color-tiers-design.md` (ba mức màu đỏ/cam/vàng, nhóm `lost`, bỏ nhãn Cần check).
+
 ## 1. Mục tiêu
 
 Thay phần giao diện của mục 4 "Hàng hóa 90 ngày" (tab Hàng hóa, `#product90dSection`) bằng bảng

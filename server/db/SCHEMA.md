@@ -991,4 +991,6 @@ Schema dùng thử `purchase_trial` (05/11/2026) đã bị gỡ khỏi mã ngu�
 
 API `GET /api/product-report/customer-growth` đọc `product_report_customers` (`0023` + `0108`) JOIN `product_report` theo `lower(btrim(product_code)) = product_key`, và `product_report_state.customer_window_end`. `NULL` ở các cột kỳ nghĩa là kỳ chưa tính (không coi là 0). Không migration mới, không bảng/cột/index mới; không ghi vào bảng nào.
 
+Không đổi schema cho thay đổi ba mức màu cột Tăng trưởng (06/11/2026): chỉ thêm nhóm `lost` trong biểu thức `CASE` của câu SQL đọc, không migration, không bảng/cột/index mới.
+
 Cập nhật gần nhất: 06/11/2026.
