@@ -6,13 +6,14 @@
 // TOAN BO ket qua.
 //   prior  = T.truoc + T.truoc nua  (= 2 x trung binh hai ky truoc)
 //   growth = T.nay x 2 / prior - 1  khi prior > 0, so sanh nguong bang NUMERIC nhan cheo (khong dung so thuc):
-//     check: 4 x T.nay < prior (growth < -50%) | drop: 2 x T.nay < prior | up: con lai khi prior > 0 | new: prior <= 0 va T.nay > 0.
+//     lost: prior > 0 va T.nay <= 0 (<= -100%) | check: T.nay > 0 va 4 x T.nay < prior (-100%..-50%) |
+//     drop: 2 x T.nay < prior (-50%..0) | up: con lai khi prior > 0 | new: prior <= 0 va T.nay > 0.
 const { getPool } = require('../db/pool');
 const { fuzzySqlParts } = require('../shared/fuzzySql');
 const { timedQuery } = require('../lib/requestTiming');
 const { customerPeriods } = require('./productReportRepository');
 
-const GROWTH_GROUPS = Object.freeze(['all', 'check', 'drop', 'up', 'new']);
+const GROWTH_GROUPS = Object.freeze(['all', 'lost', 'check', 'drop', 'up', 'new']);
 // Khoa sap xep (whitelist) -> ten cot trong CTE g. KHONG BAO GIO noi chuoi tu nguoi dung vao SQL.
 const SORT_SQL = Object.freeze({
   product_code: 'product_code', product_name: 'product_name', customer_name: 'customer_name',
@@ -86,6 +87,7 @@ const BASE_CTES = `WITH s AS (
     SELECT b.*,
       CASE WHEN prior > 0 THEN r1 * 2 / prior - 1 END AS growth,
       CASE WHEN prior IS NULL THEN NULL
+           WHEN prior > 0 AND r1 <= 0 THEN 'lost'
            WHEN prior > 0 AND r1 * 4 < prior THEN 'check'
            WHEN prior > 0 AND r1 * 2 < prior THEN 'drop'
            WHEN prior > 0 THEN 'up'
@@ -115,7 +117,7 @@ function stateOf(head) {
   return { customerWindowEnd: head.window_end, computedAt: head.computed_at, version: Number(head.version) };
 }
 
-const UNAVAILABLE = () => ({ available: false, rows: [], summary: { totalRows: 0, checkRows: 0 } });
+const UNAVAILABLE = () => ({ available: false, rows: [], summary: { totalRows: 0, lostRows: 0, checkRows: 0 } });
 
 async function getProductCustomerGrowth({ product, customer, growth, sort, dir, page, pageSize, pool } = {}) {
   const values = [];
@@ -130,11 +132,12 @@ async function getProductCustomerGrowth({ product, customer, growth, sort, dir, 
     SELECT g.* FROM g ${filters.where}
   ), meta AS (
     SELECT count(*)::int AS total_rows,
+      (count(*) FILTER (WHERE growth_state = 'lost'))::int AS lost_rows,
       (count(*) FILTER (WHERE growth_state = 'check'))::int AS check_rows,
       LEAST(${pageParam}::int, GREATEST(1, CEIL(count(*)::numeric / ${sizeParam}::int)::int)) AS page
     FROM f
   )
-  SELECT s.*, meta.total_rows, meta.check_rows, meta.page, ${ROW_SELECT}
+  SELECT s.*, meta.total_rows, meta.lost_rows, meta.check_rows, meta.page, ${ROW_SELECT}
   FROM s CROSS JOIN meta
   LEFT JOIN LATERAL (
     SELECT * FROM f ORDER BY ${filters.orderBy('f')}
@@ -149,7 +152,7 @@ async function getProductCustomerGrowth({ product, customer, growth, sort, dir, 
     available: true,
     state: stateOf(head),
     periods: customerPeriods(head.window_end),
-    summary: { totalRows: head.total_rows, checkRows: head.check_rows },
+    summary: { totalRows: head.total_rows, lostRows: head.lost_rows, checkRows: head.check_rows },
     rows: mapRecords(records),
     page: head.page,
     pageSize,
@@ -170,6 +173,7 @@ async function getProductCustomerGrowthForExport({ product, customer, growth, so
     SELECT g.* FROM g ${filters.where}
   )
   SELECT s.*, (SELECT count(*)::int FROM f) AS total_rows,
+    (SELECT (count(*) FILTER (WHERE growth_state = 'lost'))::int FROM f) AS lost_rows,
     (SELECT (count(*) FILTER (WHERE growth_state = 'check'))::int FROM f) AS check_rows, ${ROW_SELECT}
   FROM s
   LEFT JOIN LATERAL (SELECT * FROM f ORDER BY ${filters.orderBy('f')} LIMIT ${limitParam}::int) pg ON true
@@ -187,7 +191,7 @@ async function getProductCustomerGrowthForExport({ product, customer, growth, so
     available: true,
     state: stateOf(head),
     periods: customerPeriods(head.window_end),
-    summary: { totalRows: head.total_rows, checkRows: head.check_rows },
+    summary: { totalRows: head.total_rows, lostRows: head.lost_rows, checkRows: head.check_rows },
     rows,
     sort: filters.sortKey,
     dir: filters.direction.toLowerCase()

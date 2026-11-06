@@ -69,7 +69,7 @@ test('mac dinh: state + 3 ky + summary, 9 dong (bo cap mo coi) xep DS 90 ngay gi
     assert.deepEqual(data.periods.map(p => p.key), ['1_30d', '31_60d', '61_90d']);
     assert.equal(data.periods[0].from, '2026-10-07');
     assert.equal(data.periods[0].to, '2026-11-05');
-    assert.deepEqual(data.summary, { totalRows: 9, checkRows: 2 });
+    assert.deepEqual(data.summary, { totalRows: 9, lostRows: 1, checkRows: 1 });
     assert.equal(data.page, 1);
     assert.equal(data.pageSize, 50);
     assert.equal(data.sort, 'revenue');
@@ -97,7 +97,7 @@ test('cong thuc tang truong va ranh gioi: dung -50% khong do; -90% / -100% do; b
     assert.equal(growth('Khách B'), -0.9);
     assert.equal(state('Khách B'), 'check');
     assert.equal(growth('Khách F'), -1);
-    assert.equal(state('Khách F'), 'check');
+    assert.equal(state('Khách F'), 'lost');
     assert.equal(growth('Khách C'), 5);
     assert.equal(state('Khách C'), 'up');
     assert.equal(growth('Khách H'), 0, '0% thuoc Dang tang');
@@ -114,17 +114,47 @@ test('cong thuc tang truong va ranh gioi: dung -50% khong do; -90% / -100% do; b
   } finally { await db.close(); }
 });
 
+test('ba muc mau: T.nay <= 0 la lost, -100%..-50% la check, dung -50% la drop; T.nay am (tra hang) cung la lost', async () => {
+  const db = await setup();
+  try {
+    await products(db);
+    await pair(db, 'sp3', 'Khách Zero', 100, 0, 100, 100);   // prior 200, T.nay 0 -> -100% -> lost
+    await pair(db, 'sp3', 'Khách Âm', 90, -5, 50, 50);        // prior 100, T.nay am -> lost
+    await pair(db, 'sp3', 'Khách 51', 200, 49, 100, 100);     // 4*49 = 196 < 200 -> -51% -> check (cam)
+    await pair(db, 'sp3', 'Khách 50', 200, 50, 100, 100);     // 4*50 = 200 khong < 200 -> dung -50% -> drop (vang)
+    await pair(db, 'sp3', 'Khách 10', 200, 90, 100, 100);     // -10% -> drop
+    const data = await repo.getProductCustomerGrowth({ product: 'am dun', pool: db });
+    const state = name => byName(data, name).growthState;
+    assert.equal(state('Khách Zero'), 'lost');
+    assert.equal(byName(data, 'Khách Zero').growth, -1);
+    assert.equal(state('Khách Âm'), 'lost');
+    assert.ok(byName(data, 'Khách Âm').growth < -1, 'T.nay am -> tang truong < -100%');
+    assert.equal(state('Khách 51'), 'check');
+    assert.equal(state('Khách 50'), 'drop');
+    assert.equal(byName(data, 'Khách 50').growth, -0.5);
+    assert.equal(state('Khách 10'), 'drop');
+    assert.deepEqual(data.summary, { totalRows: 5, lostRows: 2, checkRows: 1 });
+    assert.deepEqual(names(await repo.getProductCustomerGrowth({ product: 'am dun', growth: 'lost', sort: 'growth', dir: 'asc', pool: db })),
+      ['Khách Âm', 'Khách Zero']);
+    assert.deepEqual(names(await repo.getProductCustomerGrowth({ product: 'am dun', growth: 'check', pool: db })), ['Khách 51']);
+    assert.deepEqual(new Set(names(await repo.getProductCustomerGrowth({ product: 'am dun', growth: 'drop', pool: db }))), new Set(['Khách 50', 'Khách 10']));
+  } finally { await db.close(); }
+});
+
 test('nhom loc loai tru nhau; summary va checkRows theo bo loc', async () => {
   const db = await setup();
   try {
     await seed(db);
     const run = growth => repo.getProductCustomerGrowth({ growth, pool: db });
     const check = await run('check');
-    assert.deepEqual(names(check), ['Khách B', 'Khách F']);
-    assert.deepEqual(check.summary, { totalRows: 2, checkRows: 2 });
+    assert.deepEqual(names(check), ['Khách B']);
+    assert.deepEqual(check.summary, { totalRows: 1, lostRows: 0, checkRows: 1 });
+    const lost = await run('lost');
+    assert.deepEqual(names(lost), ['Khách F']);
+    assert.deepEqual(lost.summary, { totalRows: 1, lostRows: 1, checkRows: 0 });
     const drop = await run('drop');
     assert.deepEqual(names(drop), ['Khách A']);
-    assert.deepEqual(drop.summary, { totalRows: 1, checkRows: 0 });
+    assert.deepEqual(drop.summary, { totalRows: 1, lostRows: 0, checkRows: 0 });
     assert.deepEqual(names(await run('up')), ['Khách C', 'Khách H']);
     assert.deepEqual(names(await run('new')), ['Khách mới D', 'Khách trả hàng']);
     assert.equal((await run('all')).summary.totalRows, 9);
@@ -136,7 +166,7 @@ test('loc san pham / khach (khong dau); % cua SP tinh tren tat ca khach cua san 
   try {
     await seed(db);
     const filtered = await repo.getProductCustomerGrowth({ product: 'binh giu', growth: 'check', pool: db });
-    assert.deepEqual(names(filtered), ['Khách B', 'Khách F']);
+    assert.deepEqual(names(filtered), ['Khách B']);
     // Tong DS cua SP1 = 200 + 210 + 400 + 70 + 0 + 100 + 30 = 1010, bo loc khong lam doi mau so.
     assert.ok(Math.abs(byName(filtered, 'Khách B').share - 210 / 1010) < 1e-12);
     const byCustomer = await repo.getProductCustomerGrowth({ customer: 'tra hang', pool: db });
@@ -145,7 +175,7 @@ test('loc san pham / khach (khong dau); % cua SP tinh tren tat ca khach cua san 
     const none = await repo.getProductCustomerGrowth({ product: 'khongtontai', pool: db });
     assert.equal(none.available, true);
     assert.deepEqual(none.rows, []);
-    assert.deepEqual(none.summary, { totalRows: 0, checkRows: 0 });
+    assert.deepEqual(none.summary, { totalRows: 0, lostRows: 0, checkRows: 0 });
     const sp2Only = await repo.getProductCustomerGrowth({ product: 'coc su', pool: db });
     assert.deepEqual(new Set(names(sp2Only)), new Set(['Khách H', 'Khách trả hàng']));
   } finally { await db.close(); }
@@ -193,6 +223,7 @@ test('validate: tham so sai -> 400, khong cham DB', async () => {
   }
   assert.throws(() => repo.validateFilters({ growth: 'xxx' }), { statusCode: 400 });
   assert.doesNotThrow(() => repo.validateFilters({ product: 'a', customer: '', growth: 'check', sort: 'growth', dir: 'asc' }));
+  assert.doesNotThrow(() => repo.validateFilters({ growth: 'lost' }));
   assert.doesNotThrow(() => repo.validateFilters({}));
 });
 
@@ -202,7 +233,7 @@ test('chua co state / chua tinh cua so khach -> available:false', async () => {
     try {
       await seed(db);
       const data = await repo.getProductCustomerGrowth({ pool: db });
-      assert.deepEqual(data, { available: false, rows: [], summary: { totalRows: 0, checkRows: 0 } }, state);
+      assert.deepEqual(data, { available: false, rows: [], summary: { totalRows: 0, lostRows: 0, checkRows: 0 } }, state);
     } finally { await db.close(); }
   }
 });
@@ -214,10 +245,10 @@ test('xuat file: toan bo dong theo bo loc + sap xep, tran dong -> 413 EXPORT_TOO
     const all = await repo.getProductCustomerGrowthForExport({ pool: db });
     assert.equal(all.available, true);
     assert.equal(all.rows.length, 9);
-    assert.deepEqual(all.summary, { totalRows: 9, checkRows: 2 });
+    assert.deepEqual(all.summary, { totalRows: 9, lostRows: 1, checkRows: 1 });
     assert.equal(all.periods.length, 3);
     const check = await repo.getProductCustomerGrowthForExport({ growth: 'check', sort: 'growth', dir: 'asc', pool: db });
-    assert.deepEqual(names(check), ['Khách F', 'Khách B']);
+    assert.deepEqual(names(check), ['Khách B']);
     await assert.rejects(repo.getProductCustomerGrowthForExport({ maxRows: 3, pool: db }),
       error => error.statusCode === 413 && error.code === 'EXPORT_TOO_MANY_ROWS' && /thu hẹp/.test(error.message));
     const empty = await repo.getProductCustomerGrowthForExport({ product: 'khongtontai', pool: db });

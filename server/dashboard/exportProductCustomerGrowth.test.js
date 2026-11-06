@@ -35,9 +35,10 @@ async function setup({ withState = true } = {}) {
     `INSERT INTO product_report_customers (product_key, customer_key, customer_name, revenue, revenue_1_30d, revenue_31_60d, revenue_61_90d)
      VALUES ($1, $2, $3, $4, $5, $6, $7)`, [key, 'name:' + customer.toLowerCase(), customer, revenue, r1, r2, r3]);
   await pair('sp1', 'Khách A', 200, 40, 60, 100);   // dung -50% -> Giam duoi 50%
-  await pair('sp1', 'Khách B|<b>', 210, 10, 100, 100); // -90% -> Can check (ky tu dac biet phai an toan)
+  await pair('sp1', 'Khách B|<b>', 210, 10, 100, 100); // -90% -> Giam hon 50% (ky tu dac biet phai an toan)
   await pair('sp1', 'Khách mới D', 70, 70, 0, 0);   // Moi
   await pair('sp2', 'Khách H', 15, 5, 5, 5);        // 0% -> Dang tang
+  await pair('sp2', 'Khách Mất', 40, 0, 20, 20);   // hai ky truoc 40, T.nay 0 -> Giam het 100%
   repository.getProductCustomerGrowthForExport = args => original({ ...args, pool: db });
   return db;
 }
@@ -66,6 +67,7 @@ test('quyen: can CA reports.products va reports.products.sales; khoa khong lo ra
 });
 
 test('bo loc o ngu canh bi kiem tra truoc khi xin slot: sai -> 400', async () => {
+  await exportService.getExportFields(payload({ context: { growthGroup: 'lost' } }), 'Hà Nội', ALLOWED);
   for (const context of [{ growthGroup: 'xxx' }, { productQuery: 'x'.repeat(201) }, { customerQuery: 5 }, { sortKey: 'constructor' }, { sortDir: 'up', sortKey: 'revenue' }]) {
     await assert.rejects(exportService.getExportFields(payload({ context }), 'Hà Nội', ALLOWED), { statusCode: 400 }, JSON.stringify(context));
   }
@@ -76,14 +78,15 @@ test('dataset: toan bo dong, nhan ky co ngay that, tang truong/ti trong la phan 
   try {
     const data = await dataset();
     const sheet = data.worksheets[0];
-    assert.equal(sheet.rows.length, 4);
+    assert.equal(sheet.rows.length, 5);
     assert.deepEqual(sheet.columns.map(c => c.key), KEYS);
     assert.deepEqual(sheet.columns.slice(3, 7).map(c => c.label),
       ['DS 90 ngày', 'T.này (07/10–05/11)', 'T.trước (07/09–06/10)', 'T.trước nữa (08/08–06/09)']);
     const byCustomer = name => sheet.rows.find(r => r.customerName === name);
     assert.equal(byCustomer('Khách A').growth, -0.5);
     assert.equal(byCustomer('Khách A').status, 'Giảm dưới 50%');
-    assert.equal(byCustomer('Khách B|<b>').status, 'Cần check');
+    assert.equal(byCustomer('Khách B|<b>').status, 'Giảm hơn 50%');
+    assert.equal(byCustomer('Khách Mất').status, 'Giảm hết 100%');
     assert.equal(byCustomer('Khách mới D').growth, null);
     assert.equal(byCustomer('Khách mới D').status, 'Mới');
     assert.equal(byCustomer('Khách H').status, 'Đang tăng');
@@ -94,8 +97,10 @@ test('dataset: toan bo dong, nhan ky co ngay that, tang truong/ti trong la phan 
     const notes = Object.fromEntries(data.meta.reportNotes);
     assert.equal(notes['Dữ liệu cập nhật lúc'], '02:00 06/11/2026');
     assert.equal(notes['Kỳ T.này'], '07/10/2026 – 05/11/2026');
-    assert.equal(notes['Số dòng trong file'], '4');
-    assert.equal(notes['Cần check'], '1');
+    assert.equal(notes['Số dòng trong file'], '5');
+    assert.equal(notes['Giảm hết 100%'], '1');
+    assert.equal(notes['Giảm hơn 50%'], '1');
+    assert.equal(notes['Cần check'], undefined);
   } finally { await teardown(db); }
 });
 
@@ -104,9 +109,10 @@ test('dataset: ap dung dung bo loc + sap xep cua man hinh; khong khop / chua co 
   try {
     const names = async extra => (await dataset(extra)).worksheets[0].rows.map(r => r.customerName);
     assert.deepEqual(await names({ context: { growthGroup: 'check' } }), ['Khách B|<b>']);
-    assert.deepEqual(await names({ context: { productQuery: 'coc su' } }), ['Khách H']);
+    assert.deepEqual(await names({ context: { growthGroup: 'lost' } }), ['Khách Mất']);
+    assert.deepEqual((await names({ context: { productQuery: 'coc su' } })).sort(), ['Khách H', 'Khách Mất'].sort());
     assert.deepEqual(await names({ context: { customerQuery: 'moi' } }), ['Khách mới D']);
-    assert.deepEqual((await names({ context: { sortKey: 'growth', sortDir: 'asc' } })).slice(0, 3), ['Khách B|<b>', 'Khách A', 'Khách H']);
+    assert.deepEqual((await names({ context: { sortKey: 'growth', sortDir: 'asc' } })).slice(0, 3), ['Khách Mất', 'Khách B|<b>', 'Khách A']);
     const filtered = await dataset({ context: { growthGroup: 'drop', productQuery: 'binh' } });
     const notes = Object.fromEntries(filtered.meta.reportNotes);
     assert.equal(notes['Lọc tên sản phẩm'], 'binh');
@@ -138,11 +144,13 @@ test('xlsx doc lai: o so la so that, tang truong dinh dang %, ten khach chua ky 
     assert.equal(typeof row.getCell(4).value, 'number');
     assert.equal(row.getCell(9).value, -0.9);
     assert.equal(row.getCell(9).numFmt, '0.00%');
-    assert.equal(row.getCell(10).value, 'Cần check');
+    assert.equal(row.getCell(10).value, 'Giảm hơn 50%');
     // Khach moi: tang truong trong, trang thai "Mới".
-    const fresh = [2, 3, 4, 5].map(i => sheet.getRow(i)).find(r => r.getCell(3).value === 'Khách mới D');
+    const fresh = [2, 3, 4, 5, 6].map(i => sheet.getRow(i)).find(r => r.getCell(3).value === 'Khách mới D');
     assert.ok(fresh.getCell(9).value === null || fresh.getCell(9).value === '' || fresh.getCell(9).value === undefined);
     assert.equal(fresh.getCell(10).value, 'Mới');
+    const lost = [2, 3, 4, 5, 6].map(i => sheet.getRow(i)).find(r => r.getCell(3).value === 'Khách Mất');
+    assert.equal(lost.getCell(10).value, 'Giảm hết 100%');
   } finally { await teardown(db); }
 });
 

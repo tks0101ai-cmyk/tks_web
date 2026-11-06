@@ -464,7 +464,7 @@ function product90dColumnsWithDates(columns, periods) {
 // Khach hang theo san pham (muc 4 tab Hang hoa, bang moi): doc product_report_customers qua
 // productCustomerGrowthRepository, CUNG thu tu cot voi man hinh (public/product-customer-growth.js COLUMNS) nhung tach Ma/Ten hang.
 // Ti trong va tang truong la PHAN SO (0,25 = 25%) kieu 'percent'; nhan ky them khoang ngay that o dataset (growthColumnsWithDates).
-const GROWTH_STATUS_LABELS = Object.freeze({ check: 'Cần check', drop: 'Giảm dưới 50%', up: 'Đang tăng', new: 'Mới' });
+const GROWTH_STATUS_LABELS = Object.freeze({ lost: 'Giảm hết 100%', check: 'Giảm hơn 50%', drop: 'Giảm dưới 50%', up: 'Đang tăng', new: 'Mới' });
 const PRODUCT_CUSTOMER_GROWTH_COLUMNS = [
   aggregateColumn('productCode', 'Mã hàng', 'text', 'Mã hàng (gộp Hà Nội + Sài Gòn theo mã).'),
   aggregateColumn('productName', 'Tên hàng', 'text', 'Tên hàng.'),
@@ -476,7 +476,7 @@ const PRODUCT_CUSTOMER_GROWTH_COLUMNS = [
   aggregateColumn('share', '% của SP', 'percent', 'Doanh số của khách chia tổng doanh số của mã hàng trên tất cả khách.'),
   aggregateColumn('growth', 'Tăng trưởng', 'percent',
     'T.này ÷ trung bình(T.trước, T.trước nữa) − 1. Trống khi hai kỳ trước không có doanh số dương hoặc chưa tính kỳ.'),
-  aggregateColumn('status', 'Trạng thái', 'text', 'Cần check (giảm quá 50%), Giảm dưới 50%, Đang tăng hoặc Mới (chưa có doanh số hai kỳ trước).')
+  aggregateColumn('status', 'Trạng thái', 'text', 'Giảm hết 100% (kỳ gần nhất không còn doanh số hoặc âm), Giảm hơn 50%, Giảm dưới 50%, Đang tăng hoặc Mới (chưa có doanh số hai kỳ trước).')
 ];
 
 // Bo loc + sap xep cua man hinh gui trong context; kiem tra lai bang CUNG whitelist cua repository (khong I/O).
@@ -1234,7 +1234,8 @@ async function buildProductCustomerGrowthDataset(description, payload, signal) {
     ...data.periods.map(period => [`Kỳ ${period.label}`, periodRange(period)]),
     ['Phạm vi', 'Toàn công ty (Hà Nội + Sài Gòn, gộp theo mã hàng, khách gộp theo tên chuẩn hóa)'],
     ['Số dòng trong file', rows.length.toLocaleString('en-US')],
-    ['Cần check', data.summary.checkRows.toLocaleString('en-US')]
+    ['Giảm hết 100%', data.summary.lostRows.toLocaleString('en-US')],
+    ['Giảm hơn 50%', data.summary.checkRows.toLocaleString('en-US')]
   ];
   if (filters.product) notes.push(['Lọc tên sản phẩm', filters.product]);
   if (filters.customer) notes.push(['Lọc tên khách hàng', filters.customer]);

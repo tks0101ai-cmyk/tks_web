@@ -15,7 +15,7 @@ require.cache[repositoryPath].exports = {
   getProductCustomerGrowth: async args => {
     calls.push(args);
     if (nextError) throw nextError;
-    return { available: true, rows: [{ productCode: 'SP1' }], summary: { totalRows: 1, checkRows: 0 }, page: 1, pageSize: 50 };
+    return { available: true, rows: [{ productCode: 'SP1' }], summary: { totalRows: 1, lostRows: 0, checkRows: 0 }, page: 1, pageSize: 50 };
   }
 };
 const router = require('../routes');
