@@ -1,7 +1,7 @@
 # Graph Report - tks_web  (2026-11-06)
 
 ## Corpus Check
-- 1162 files · ~1,901,077 words
+- 1162 files · ~1,901,545 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 45 file(s) not represented in the graph (top: .css 27, .jfif 8, (none) 3)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `5c4fc7b3`
+- Built from commit: `4f6c5a88`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -2630,12 +2630,12 @@ Cohesion: 0.18
 Nodes (8): assert, day(), fs, historyPayload(), indexPath, { JSDOM }, path, test
 
 ## Ambiguous Edges - Review These
-- `Stub webhook endpoint POST /api/kiotviet/webhook` → `GET /api/internal/kiotviet-sync/status`  [AMBIGUOUS]
-  docs/04-planning/2026-09-14-phase0-plan-supabase-kiotviet-sync.md · relation: conceptually_related_to
 - `Webhook-first + Polling reconciliation (Supabase sync)` → `Webhook-first + Polling reconciliation (Supabase sync)`  [AMBIGUOUS]
   docs/04-planning/2026-09-14-roadmap-supabase-kiotviet-sync.md · relation: references
 - `server/db/migrate.js runner` → `Migrations 0001-0006 (16 tables)`  [AMBIGUOUS]
   docs/04-planning/2026-09-14-phase1-plan-supabase-kiotviet-sync.md · relation: calls
+- `GET /api/internal/kiotviet-sync/status` → `Stub webhook endpoint POST /api/kiotviet/webhook`  [AMBIGUOUS]
+  docs/04-planning/2026-09-14-phase0-plan-supabase-kiotviet-sync.md · relation: conceptually_related_to
 
 ## Knowledge Gaps
 - **47 isolated node(s):** `ensureKiotVietQuotaAvailable_() — chặn trước mọi UrlFetch thật`, `hydrateIncompleteWebhookItems_() — hydrate-skip tổng quát có cờ bật/tắt`, `runKiotVietMaintenanceTick_() — tách bảo trì khỏi hàng đợi webhook`, `Gzip compression + Cache-Control middleware`, `.clasp.json / .clasp.saigon.json` (+42 more)
@@ -2659,7 +2659,7 @@ _Questions this graph is uniquely positioned to answer:_
 ### Low-confidence Hints
 _AMBIGUOUS edges — the extractor was unsure. Verify before acting on these._
 
-- **What is the exact relationship between `Stub webhook endpoint POST /api/kiotviet/webhook` and `GET /api/internal/kiotviet-sync/status`?**
-  _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
 - **What is the exact relationship between `Webhook-first + Polling reconciliation (Supabase sync)` and `Webhook-first + Polling reconciliation (Supabase sync)`?**
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
+- **What is the exact relationship between `server/db/migrate.js runner` and `Migrations 0001-0006 (16 tables)`?**
+  _Edge tagged AMBIGUOUS (relation: calls) - confidence is low._

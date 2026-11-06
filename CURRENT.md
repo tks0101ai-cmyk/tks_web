@@ -403,6 +403,8 @@
 
 **Đã làm (chỉ giao diện `server/public/index.html`, không migration, chưa commit/deploy):** bảng `#productReportTable` (tab Hàng hóa) dùng thanh tiêu đề cyan `#0e7490` chữ trắng cỡ 11px giống bảng Kiểm kê (`#stTable`). Tô màu theo loại cột, không theo cơ sở: Tồn thực HN + Tồn thực SG cùng màu xanh dương, Có bán HN + Có bán SG cùng màu tím (Có bán đậm; ô "—" vẫn tô để cột liền mạch). Cột Ngày cần đặt tô theo đúng Conditional Formatting Excel: < 10,5 xanh lá · 10,5 đến < 20 vàng · 20 đến 30 cam · > 30 đỏ nhạt (20 và 30 thuộc nhóm cam; số âm thuộc nhóm xanh lá; ô "—" không tô). Có sẵn token màu cho sáng/tối (`--pr-*`). Test mới ở `server/test/frontend/product-report-detail.test.js`; file Excel xuất ra chưa tô màu.
 
+**06/11/2026 — tiêu đề giống hệt Kiểm kê (chưa deploy):** mũi tên ▲▼ trước đó bị to (11px, chiếm cột flex riêng) nên ăn chỗ của chữ; nay copy đúng logic `#stTable`: mũi tên 7px `position:absolute` ở góc dưới phải (trong phần đệm dưới ô, mờ .45, hover/đang sắp xếp = 1), nhãn căn giữa dùng gần hết bề ngang ô, tên cột xuống dòng theo từ, đệm ô `5px 4px 9px`, dòng cao 1.25, căn giữa dọc. Đã đo trên bảng mẫu cạnh `#stTable`: kích thước ô, chiều rộng nhãn, vị trí mũi tên trùng khớp. Cột Mô tả HN / Mô tả SG giảm chữ còn 11px (lớp `pr-desc`). Test mới trong `product-report-detail.test.js`.
+
 ---
 
 ## In phiếu nhặt nhanh hơn (nhánh `perf/fast-pick-print`) — 03/11/2026
