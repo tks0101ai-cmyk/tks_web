@@ -407,6 +407,8 @@
 
 
 **06/11/2026 — hộp chi tiết hàng hóa:** mục Lịch sử giao dịch 90 ngày nay đứng đầu hộp, trên mục Doanh số theo khách (chỉ đổi thứ tự dựng DOM trong `renderDocumentDetail`; các mục vẫn tải độc lập theo id). Test thứ tự cập nhật trong `product-report-detail.test.js`.
+
+**06/11/2026 — cột hẹp hơn + chữ nhỏ:** bảng Báo cáo hàng hóa thêm `data-min-column-width="40"` (như bảng Kiểm kê) nên kéo hẹp cột được tới 40px thay vì sàn 64px của table-controls; tên cột xuống dòng theo từ nên cột như "SL khách bán" kéo được tới mỗi từ một dòng (3 dòng). Cột Khách lớn nhất dùng chữ 11px như Mô tả HN / SG (lớp `pr-desc`). Độ rộng đã lưu của người dùng giữ nguyên, chỉ đổi mức tối thiểu khi kéo.
 ---
 
 ## In phiếu nhặt nhanh hơn (nhánh `perf/fast-pick-print`) — 03/11/2026

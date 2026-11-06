@@ -2982,7 +2982,7 @@
       color: #a5f3fc;
     }
 
-    /* Cột Mô tả HN / SG: chữ nhỏ hơn (11px) vì nội dung là bảng giá dài. */
+    /* Cột Mô tả HN / SG và Khách lớn nhất: chữ nhỏ hơn (11px) vì nội dung dài. */
     #productReportTable td.pr-desc {
       font-size: 11px;
       line-height: 1.35;
@@ -4336,7 +4336,7 @@
                   </div>
                 </div>
                 <div class="scroll-list" style="max-height:600px;">
-                  <table class="fixed-table" id="productReportTable" data-table-key="dashboard-table-2">
+                  <table class="fixed-table" id="productReportTable" data-table-key="dashboard-table-2" data-min-column-width="40">
                     <!-- 35 cột theo thứ tự sheet BC CHUNG (UI = Excel xuất ra): 19 cột file HÀNG HÓA.xlsx + Khách lớn nhất + các cột bổ sung (Giá trị có bán, SL bán 30 ngày theo cơ sở, Đứt, Ngày, SL đơn, Tăng trưởng, DS khách lớn nhất, Đơn giá).
                          data-price-column = cột nhạy cảm chỉ Quản lý/Trợ lý (reports.products.price) thấy. data-hint = chú giải khi rê chuột
                          (không dùng title: nút sắp xếp thay nội dung th và che mất title của th). Không dùng ký tự dấu lớn hơn trong data-hint. -->
@@ -8550,7 +8550,7 @@
         productReportNullableCell(p.orders90d, fmtNumber) + productReportNullableCell(p.orders30d, fmtNumber) +
         productReportGrowthCell(p.ordersGrowth) +
         productReportNullableCell(p.topCustomerRevenue90d, fmtTableMoney) +
-        '<td>' + (p.topCustomerName ? escapeHtml(p.topCustomerName) : '<span class="muted">—</span>') + '</td>' +
+        '<td class="pr-desc">' + (p.topCustomerName ? escapeHtml(p.topCustomerName) : '<span class="muted">—</span>') + '</td>' +
         (hasShare
           ? productReportLinkCell(p.topCustomerShare, 'customers', formatDebtRatio(p.topCustomerShare), 'Xem danh sách khách của ' + p.code, p.topCustomerShare)
           : '<td class="mono" data-sort-value="-1">—</td>') +
