@@ -24,7 +24,7 @@ test('purchase uses the shared application shell and brand instead of a private 
   assert.ok(doc.querySelector('.receipt-header .status-line #accountChip'));
  }finally{dom.window.close();reference.window.close()}
 });
-async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees=[],integrationEnabled=true}={}){
+async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees=[],integrationEnabled=true,onEnhance}={}){
  const dom=new JSDOM(fs.readFileSync(path.join(dir,'index.html'),'utf8'),{url:'https://example.test/thu-mua/dat-hang/',runScripts:'outside-only'}),w=dom.window;
  t.after(()=>w.close());
  w.HTMLCanvasElement.prototype.getContext=()=>null;
@@ -35,6 +35,7 @@ async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false};
  w.fetch=async(url,options={})=>{calls.push({url,options});if(url.endsWith('/employees'))return {ok:true,json:async()=>({rows:employees})};if(url.endsWith('/status')){const input=JSON.parse(options.body),container=current.containers.find(c=>String(c.id)===String(input.containerId));container.status=input.status;container.version++;return {ok:true,json:async()=>structuredClone(container)}}if(url.endsWith('/bulk')){const input=JSON.parse(options.body);return {ok:true,json:async()=>({results:input.rows.map(r=>({id:r.id,status:'updated'}))})}}if(options.method==='PATCH'){const input=JSON.parse(options.body);if(input.before.supplier!==undefined&&current.rows[0].supplier!==input.before.supplier)return {ok:false,status:409,json:async()=>({error:'Ô đã được người khác sửa.'})};current.rows[0]={...current.rows[0],...input.changes,version:current.rows[0].version+1};return {ok:true,json:async()=>current.rows[0]}}return {ok:true,json:async()=>structuredClone(current)}};
  if(saved)w.sessionStorage.setItem('purchase:buyer:v1',JSON.stringify(saved));if(savedOutbox)w.sessionStorage.setItem('purchase:buyer:v1:outbox',JSON.stringify(savedOutbox));
+ if(onEnhance)w.TKSTables={enhance:onEnhance};
  w.eval(fs.readFileSync(path.join(dir,'purchase.js'),'utf8'));await tick();await tick();
  const change=(selector,v)=>{const el=w.document.querySelector(selector);el.value=v;el.dispatchEvent(new w.Event('change',{bubbles:true}))};
  return {w,calls,listeners,change,get current(){return current}};
@@ -460,4 +461,13 @@ test('grid arrow navigation crosses page boundaries in the same column',async t=
  assert.equal(doc.getElementById('pageLabel').textContent,'Trang 2/2');assert.equal(doc.activeElement.dataset.edit,'cartonCount');
  doc.activeElement.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'ArrowUp',bubbles:true,cancelable:true}));
  assert.equal(doc.getElementById('pageLabel').textContent,'Trang 1/2');assert.equal(doc.activeElement.closest('tr').dataset.id,id);
+});
+test('initial order layout uses restored filters before table widths are cached',async t=>{
+ const layouts=[];
+ const p=await page(t,{saved:{filter:'all',columnLayout:6},onEnhance:table=>{if(table.closest('#orderTable'))layouts.push({rows:table.tBodies[0].rows.length,mode:table.dataset.tableSelectWidth})}});
+ assert.equal(layouts[0].rows,1,'first enhancement must contain real rows, not an empty placeholder');
+ assert.equal(layouts[0].mode,'selected');
+ const td=p.w.document.querySelector('#orderTable td[data-field="productCode"]');assert.ok(td.querySelector('.code-cell > .code-label'));
+ p.change('#filter','');p.listeners.changed();await tick();await tick();
+ assert.equal(p.w.document.getElementById('filter').value,'','saved filter is consumed once, not restored over new choices');
 });

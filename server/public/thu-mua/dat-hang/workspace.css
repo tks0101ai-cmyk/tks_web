@@ -105,7 +105,8 @@
 .purchase-page #containerPanel button{font-size:11px;line-height:1.2}
 
 /* Mã SP: chữ chiếm hết ô để một nhấn (tách dòng) / hai nhấn (lịch sử) dễ trúng; bút chì mới mở ô sửa. */
-.purchase-page #orderTable td[data-field="productCode"]{display:flex;align-items:center;gap:2px}
+.purchase-page #orderTable td[data-field="productCode"]{display:table-cell;vertical-align:middle}
+.purchase-page #orderTable .code-cell{display:flex;align-items:center;gap:2px;min-width:0;width:100%}
 .purchase-page #orderTable td[data-field="productCode"] .code-label{flex:1;min-width:0;cursor:pointer;overflow:hidden;text-overflow:ellipsis;border-radius:2px}
 .purchase-page #orderTable td[data-field="productCode"] .code-label:hover{background:var(--panel-2);box-shadow:inset 0 -1px 0 var(--blue)}
 .purchase-page #orderTable td[data-field="productCode"] .code-label:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
@@ -153,3 +154,9 @@
 .purchase-page :is(#orderTable,#containerTable,#watchedContainer) *,
 .purchase-page :is(#orderTable,#containerTable,#watchedContainer) *::before,
 .purchase-page :is(#orderTable,#containerTable,#watchedContainer) *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+
+/* A table cell must remain a table-cell: flex belongs inside .code-cell. Keep
+   the frozen code column opaque even while a hovered/draft row scrolls below it. */
+.purchase-page #orderTable tbody tr>td[data-field="productCode"]{background-color:var(--panel)}
+.purchase-page #orderTable tbody tr>td[data-field="productCode"].draft{background-color:color-mix(in srgb,var(--primary) 13%,var(--panel))!important}
+.purchase-page #orderTable td[data-field] select{appearance:none;-webkit-appearance:none;padding-left:1px;padding-right:11px;background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);background-position:calc(100% - 6px) 50%,calc(100% - 3px) 50%;background-size:3px 3px;background-repeat:no-repeat}
