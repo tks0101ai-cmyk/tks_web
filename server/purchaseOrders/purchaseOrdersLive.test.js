@@ -432,3 +432,32 @@ test('arithmetic, dd/mm, payment and free buyer names stage and save real values
  assert.equal(JSON.parse(write.options.body).changes.buyer,'Tên mới');
  assert.equal(JSON.parse(write.options.body).changes.m3PerCarton,.006);
 });
+test('grid arrows move through inputs, computed cells and dropdowns without saving; F2 edits text',async t=>{
+ const p=await page(t,{saved:{columnLayout:5,visible:['rowKey','productCode','productName','container','status','qtyPerCarton','cartonCount','totalQty','unitPriceCny']},extraRows:[{id:'3',rowKey:'D00003',version:1,productCode:'B',cartonCount:2,qtyPerCarton:10,contId:'2'}]}),doc=p.w.document;
+ const key=k=>doc.activeElement.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:k,bubbles:true,cancelable:true}));
+ doc.querySelector('tr[data-id="3"] [data-edit="cartonCount"]').focus();
+ key('ArrowRight');assert.equal(doc.activeElement.dataset.field,'totalQty');
+ key('ArrowRight');assert.equal(doc.activeElement.dataset.edit,'unitPriceCny');
+ key('ArrowLeft');key('ArrowLeft');assert.equal(doc.activeElement.dataset.edit,'cartonCount');
+ doc.activeElement.value='12';doc.activeElement.dispatchEvent(new p.w.Event('input',{bubbles:true}));
+ key('ArrowDown');assert.equal(doc.activeElement.closest('tr').dataset.id,'1');assert.equal(doc.activeElement.dataset.edit,'cartonCount');
+ assert.equal(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).drafts['3'].changes.cartonCount,12);
+ doc.querySelector('tr[data-id="3"] [data-edit="contId"]').focus();key('ArrowRight');
+ assert.equal(doc.activeElement.dataset.status,'2');key('ArrowDown');assert.equal(doc.activeElement.dataset.field,'status');
+ const text=doc.querySelector('tr[data-id="3"] [data-edit="productName"]');text.focus();key('F2');
+ assert.equal(text.dataset.gridEditing,'true');key('ArrowLeft');assert.equal(doc.activeElement,text);
+ key('Escape');key('ArrowLeft');assert.equal(doc.activeElement.className,'code-label');
+ key('ArrowLeft');assert.equal(doc.activeElement.dataset.field,'rowKey');
+ assert.equal(p.calls.filter(c=>c.options.method).length,0);
+ assert.equal(doc.getElementById('orders').dataset.motion,'off');
+});
+
+test('grid arrow navigation crosses page boundaries in the same column',async t=>{
+ const p=await page(t,{extraRows:Array.from({length:51},(_,i)=>({id:String(i+2),rowKey:'D'+String(i+2).padStart(5,'0'),version:1,productCode:'P'+i,cartonCount:1,qtyPerCarton:1}))}),doc=p.w.document;
+ const last=[...doc.querySelectorAll('#orderTable tbody tr[data-id]')].at(-1),id=last.dataset.id;
+ last.querySelector('[data-edit="cartonCount"]').focus();
+ doc.activeElement.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true}));
+ assert.equal(doc.getElementById('pageLabel').textContent,'Trang 2/2');assert.equal(doc.activeElement.dataset.edit,'cartonCount');
+ doc.activeElement.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'ArrowUp',bubbles:true,cancelable:true}));
+ assert.equal(doc.getElementById('pageLabel').textContent,'Trang 1/2');assert.equal(doc.activeElement.closest('tr').dataset.id,id);
+});

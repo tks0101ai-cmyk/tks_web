@@ -141,3 +141,15 @@
 .purchase-page #orderTable td[data-field="status"] select{width:100%;padding:2px;min-width:0}
 
 .expression-result:not(:empty){display:block;font-size:9px;color:var(--muted);text-align:right;white-space:normal}
+
+/* Dense grid: remove the double horizontal inset from cells and their controls. */
+.purchase-page #orderTable :is(th,td){padding-left:2px;padding-right:2px}
+.purchase-page #orderTable td :is(input,select){padding-left:1px;padding-right:1px}
+.purchase-page #containerTable :is(th,td),.purchase-page #watchedContainer :is(th,td){padding-left:3px;padding-right:3px}
+.purchase-page #orderTable td:focus,.purchase-page #orderTable td:focus-within{outline:1px solid var(--blue);outline-offset:-1px}
+
+/* data-motion=off also disables WAAPI entrance effects in shared/motion.js. */
+.purchase-page :is(#orderTable,#containerTable,#watchedContainer),
+.purchase-page :is(#orderTable,#containerTable,#watchedContainer) *,
+.purchase-page :is(#orderTable,#containerTable,#watchedContainer) *::before,
+.purchase-page :is(#orderTable,#containerTable,#watchedContainer) *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
