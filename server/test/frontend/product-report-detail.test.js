@@ -841,5 +841,16 @@ test('tieu de bang Bao cao hang hoa giong Kiem ke (mui ten sort o goc, khong an 
   const page = createPage();
   await settle();
   const row = rowOf(page, 'SP-1');
-  ['mo-ta-hn', 'mo-ta-sg'].forEach(key => assert.ok(cellOf(row, key).classList.contains('pr-desc'), key + ' dung chu nho'));
+  ['mo-ta-hn', 'mo-ta-sg', 'khach-lon-nhat'].forEach(key => assert.ok(cellOf(row, key).classList.contains('pr-desc'), key + ' dung chu nho'));
+  assert.ok(cellOf(rowOf(page, 'SP-2'), 'khach-lon-nhat').classList.contains('pr-desc'), 'o Khach lon nhat trong van chu nho');
+});
+
+test('bang Bao cao hang hoa cho keo cot hep toi 40px (ten cot xuong den 3 dong, moi tu 1 dong) thay vi san 64px', async () => {
+  const page = pageWithTableControls();
+  await settle();
+  page.dom.window.TKSTables.refreshAll();
+  assert.equal(reportTable(page).dataset.minColumnWidth, '40');
+  const handles = [...reportTable(page).querySelectorAll('thead th > .tks-column-resizer')];
+  assert.ok(handles.length > 0, 'co thanh keo do rong cot');
+  handles.forEach(handle => assert.equal(handle.getAttribute('aria-valuemin'), '40'));
 });
