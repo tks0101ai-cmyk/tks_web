@@ -237,3 +237,23 @@ test('legacy purchase settings without 0117 keep both CONT and expected refresh 
     assert.equal((await refreshExpected(pool, {log:quiet})).rows, 3);
   } finally { await db.close(); }
 });
+
+test('CONT writer contention returns busy without blocking, staging or writing', async () => {
+  const calls = [];
+  let released = false;
+  const client = {
+    async query(sql, params) {
+      calls.push({sql, params});
+      if (sql.includes('pg_advisory_xact_lock(')) throw Object.assign(new Error('statement timeout waiting for CONT'), {code:'57014'});
+      if (sql.includes('pg_try_advisory_xact_lock(')) return {rows:[{locked:false}]};
+      if (sql === 'BEGIN' || sql === 'ROLLBACK') return {rows:[]};
+      throw new Error('Unexpected query: ' + sql);
+    },
+    release() { released = true; }
+  };
+  const result = await refreshExpected({connect:async()=>client}, {log:quiet});
+  assert.equal(result.status, 'busy');
+  assert.deepEqual(calls.map(c=>c.sql), ['BEGIN', 'SELECT pg_try_advisory_xact_lock($1) AS locked', 'ROLLBACK']);
+  assert.deepEqual(calls[1].params, [20531015]);
+  assert.equal(released, true);
+});
