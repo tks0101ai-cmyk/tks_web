@@ -10,16 +10,33 @@ const {seedSampleData}=require('./seedSampleData');
 
 // Fail closed: public is deliberately absent. A missing sandbox table must
 // fail instead of resolving to the identically named production table.
+// SET LOCAL, not SET: the app pool goes through a shared connection pooler, so a
+// session-level search_path sticks on a server connection the rest of the app
+// reuses later (su co 2026-11-05: ca web lan worker bao "relation ... does not
+// exist"). SET LOCAL chet theo giao dich, nen khong the ro ra ngoai.
+const TRIAL_SEARCH_PATH='SET LOCAL search_path TO purchase_trial, pg_catalog, pg_temp';
 function trialPool(source){
   async function connect(){
     const client=await source.connect();
-    try{await client.query('SET search_path TO purchase_trial, pg_catalog, pg_temp')}
-    catch(error){client.release(error);throw error}
-    let released;
-    return {query:(sql,args)=>client.query(sql,args),release(){
-      if(!released)released=client.query('RESET search_path').then(()=>client.release(),error=>client.release(error));
-      return released;
-    }};
+    let inTransaction=false;
+    async function query(sql,args){
+      if(typeof sql==='string'&&/^\s*BEGIN\b/i.test(sql)){
+        const started=await client.query(sql,args);inTransaction=true;await client.query(TRIAL_SEARCH_PATH);return started;
+      }
+      if(typeof sql==='string'&&/^\s*(COMMIT|ROLLBACK|END)\b/i.test(sql)){
+        const ended=await client.query(sql,args);inTransaction=false;return ended;
+      }
+      if(inTransaction)return client.query(sql,args);
+      // Cau lenh le: tu boc giao dich de SET LOCAL co cho song.
+      await client.query('BEGIN');
+      try{
+        await client.query(TRIAL_SEARCH_PATH);
+        const result=await client.query(sql,args);
+        await client.query('COMMIT');
+        return result;
+      }catch(error){await client.query('ROLLBACK').catch(()=>{});throw error}
+    }
+    return {query,release(error){return client.release(error)}};
   }
   return {connect,async query(sql,args){const client=await connect();try{return await client.query(sql,args)}finally{await client.release()}}};
 }

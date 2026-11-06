@@ -40,10 +40,21 @@ test('trial lookup fails closed and released pool connections regain their origi
  assert.equal((await source.query('SELECT marker FROM production_only')).rows[0].marker,'keep');
 });
 
-test('a connection that cannot reset its schema is destroyed instead of returned to production',async()=>{
- const resetError=Object.assign(new Error('reset failed'),{code:'TEST_RESET'});let released;
- const pool=trialPool({async connect(){return {async query(sql){if(sql==='RESET search_path')throw resetError;return {rows:[]}},release(error){released=error}}}});
- const client=await pool.connect();await client.release();assert.equal(released,resetError);
+test('the trial schema is only ever set inside a transaction, so it cannot outlive the query',async()=>{
+ // Khong duoc dung SET phien: ket noi di qua pooler dung chung, SET phien se dinh lai
+ // o ket noi may chu va lam ca app mat schema public (su co 2026-11-05).
+ const seen=[];
+ const pool=trialPool({async connect(){return {async query(sql){seen.push(sql);return {rows:[]}},release(){}}}});
+ await pool.query('SELECT 1');
+ assert.deepEqual(seen,['BEGIN','SET LOCAL search_path TO purchase_trial, pg_catalog, pg_temp','SELECT 1','COMMIT']);
+
+ // Giao dich cua service: SET LOCAL di ngay sau BEGIN, khong boc them giao dich long nhau.
+ seen.length=0;
+ const client=await pool.connect();
+ await client.query('BEGIN');await client.query('SELECT 2');await client.query('COMMIT');
+ assert.deepEqual(seen,['BEGIN','SET LOCAL search_path TO purchase_trial, pg_catalog, pg_temp','SELECT 2','COMMIT']);
+ assert.ok(!seen.some(sql=>/^SET search_path/i.test(sql)));
+ await client.release();
 });
 
 test('concurrent trial writes have distinct keys and isolated audit operations',async()=>{
