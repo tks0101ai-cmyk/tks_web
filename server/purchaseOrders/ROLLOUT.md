@@ -29,3 +29,16 @@ Trước cutover: revert PR code hoặc deploy commit main trước merge; để
 Sau cutover: khóa ghi mới, xuất toàn bộ thay đổi web và audit, đối soát rồi mới phục hồi backup/chọn lại nguồn. Không chỉ đổi cờ về Sheets vì job có thể thay read models và làm mất dấu thay đổi mới. Không xóa dữ liệu/lịch sử bất biến khi rollback.
 
 Code mockup và fixture thử dữ liệu nghiệp vụ không nằm trong PR production. Bản sao code trước ghép được giữ cục bộ ở .codex_tmp/purchase-pr-backup-2026-11-05T02-50-06-076Z, không đưa lên repository.
+
+## Nạp bản chụp nguồn (06/11/2026)
+
+`node purchaseOrders/importSourceRows.js <file.json> [--replace] [--dry-run] [--year=2026]` chỉ chạy khi `purchase_settings.source_mode` còn là `sheets`, và chỉ khi `purchase_orders` rỗng (trừ `--replace`).
+
+Thứ tự kiểm bắt buộc sau mỗi lần nạp:
+
+1. `--dry-run` trước: đọc mục `anomalies`. `reason='NGAY_KHONG_TON_TAI'` là ô ngày không tồn tại trong lịch (bộ đọc không tự cuộn sang tháng sau), ô có hai ngày dính nhau thì lấy ngày đầu. Mỗi ô báo ở đây phải được quyết định bằng tay trước khi nạp thật.
+2. Lệnh nạp thật trả thêm `keySeq` — giá trị `purchase_order_key_seq` sau khi nạp. Phải lớn hơn hoặc bằng khóa gốc lớn nhất trong `purchase_orders`; nếu không, khóa cấp tiếp theo cho dòng mới sẽ trùng dòng đã có. Kiểm lại bằng `SELECT last_value FROM purchase_order_key_seq` và `SELECT max(split_part(row_key,'.',1)) FROM purchase_orders`. `setval` dùng `GREATEST` nên không bao giờ kéo sequence lui, kể cả khi nạp bản chụp cũ hơn.
+3. Nếu lệnh dừng với `CONTAINER_NAME_AMBIGUOUS`: trên DB đang có hai cont mà tên chuẩn hóa về một (`containerNames.normalizeName`). Không ghi dòng nào. Gộp hoặc đổi tên hai cont đó trước, rồi nạp lại — script không tự gộp vì mỗi cont có thể đang giữ dòng khác nhau.
+4. Cont đã có trên DB được dùng lại theo tên chuẩn hóa và `name_key` được đưa về chuẩn; không tạo bản trùng.
+
+Chỉ sau khi ba bước trên sạch mới tới bước đối soát (`purchaseOrdersReconcile.js`) và đổi nguồn ghi.

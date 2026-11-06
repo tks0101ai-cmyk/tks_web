@@ -69,3 +69,20 @@ test('actual workbook roundtrip uses the same columns as frontend', () => {
   assert.equal(result.valid, true);
   assert(result.operations[0].changes.some(c => c.key === 'cartonCount' && c.after === 7));
 });
+
+// Duong ghi cua web (sua o, sua hang loat, import) deu di qua prepareRows, nen
+// VC truoc am phai duoc nhan o day — khong chi o DB.
+test('prepaid freight may be negative on import and edits while other amounts may not', () => {
+  const ok = prepareRows([{ ...fresh(), freightPrepaid: -23 }], []);
+  assert.equal(ok.valid, true, ok.rows[0].errors.join('; '));
+  assert.equal(ok.rows[0].values.freightPrepaid, -23);
+
+  // Sua rieng mot o khac tren dong da co VC truoc am: khong duoc bi tu choi.
+  const current = [{ ...existing()[0], freightPrepaid: -23, unitPriceCny: 15, fxRate: 3920 }];
+  const edit = prepareRows([{ rowKey: 'D00001.01', productCode: 'A', supplier: 'NCC khac' }], current);
+  assert.equal(edit.valid, true, edit.rows[0].errors.join('; '));
+
+  for (const patch of [{ freightPostpaid: -1 }, { unitPriceCny: -1 }, { taxAmount: -1 }, { kgPerCarton: -1 }]) {
+    assert.equal(prepareRows([{ ...fresh(), ...patch }], []).valid, false, JSON.stringify(patch));
+  }
+});

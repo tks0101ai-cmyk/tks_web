@@ -11,6 +11,9 @@
 // doi chieu xong (READINESS muc 39, cong cu purchaseOrdersReconcile.js).
 const fs = require('node:fs');
 const { getPool } = require('../db/pool');
+// Dung CHINH XAC phep chuan hoa ten cont cua service: neu khac, cung mot ten cont
+// se sinh hai name_key va UNIQUE(name_key) khong con chan trung ten tren web.
+const { normalizeName } = require('./containerNames');
 
 // Sheet dung ten cont gia "CONT CHO XEP" cho hang chua xep. Quyet dinh thiet ke:
 // tren web do la container_id NULL, khong tao cont gia.
@@ -31,7 +34,15 @@ function parseListedAt(raw, year, anomalies, rowKey) {
   const m = /^(\d{1,2})\s*\/\s*(\d{1,2})(?:\s*\/\s*(\d{4}))?$/.exec(parts[0]);
   if (!m) { anomalies.push({ rowKey, raw: text, taken: null }); return null; }
   const [, d, mo, y] = m;
-  return new Date(Date.UTC(Number(y || year), Number(mo) - 1, Number(d)));
+  const day = Number(d), month = Number(mo), fullYear = Number(y || year);
+  // Date.UTC tu cuon ngay khong ton tai (31/02 -> 03/03). Ban chup phai bao loi
+  // thay vi am tham doi ngay, nen kiem lai tung thanh phan sau khi dung.
+  const value = new Date(Date.UTC(fullYear, month - 1, day));
+  if (value.getUTCFullYear() !== fullYear || value.getUTCMonth() !== month - 1 || value.getUTCDate() !== day) {
+    anomalies.push({ rowKey, raw: text, taken: null, reason: 'NGAY_KHONG_TON_TAI' });
+    return null;
+  }
+  return value;
 }
 
 const num = v => (v === '' || v == null || !Number.isFinite(Number(v)) ? null : Number(v));
@@ -82,14 +93,39 @@ async function importSourceRows({ pool = getPool(), file, year = 2026, replace =
     }
     if (existing) { await client.query('DELETE FROM purchase_orders'); await client.query('DELETE FROM product_containers'); }
 
+    // Cont da co tren DB co the mang name_key cu (lower(btrim)) tu cac lan nap
+    // truoc. Doi chieu theo TEN da chuan hoa de dung lai dung cont do, khong tao
+    // ban trung, va khong viet lai name_key cua dong khong thuoc ban chup.
     const ids = new Map();
+    const existingConts = new Map();
+    const ambiguous = [];
+    for (const row of (await client.query('SELECT id,name,name_key FROM product_containers ORDER BY id')).rows) {
+      const key = normalizeName(row.name);
+      const prior = existingConts.get(key);
+      // Hai cont cu cung chuan hoa ve mot ten: khong tu gop (hai cont co the dang
+      // giu dong khac nhau). Bao de nguoi dung xu ly trước khi nap.
+      if (prior) { ambiguous.push({ key, ids: [prior.id, row.id], names: [prior.name, row.name] }); continue; }
+      existingConts.set(key, row);
+    }
+    if (ambiguous.length) {
+      throw Object.assign(new Error('Cont tren DB co ten tuong duong nhau sau chuan hoa, phai gop/doi ten truoc khi nap: ' +
+        ambiguous.map(a => a.names.join(' = ')).join('; ')), { code: 'CONTAINER_NAME_AMBIGUOUS', ambiguous });
+    }
     for (const c of conts) {
+      const key = normalizeName(c.name);
+      const prior = existingConts.get(key);
+      if (prior) {
+        await client.query('UPDATE product_containers SET status=$2,name_key=$3 WHERE id=$1', [prior.id, statusOf(c.status), key]);
+        ids.set(c.name, prior.id);
+        continue;
+      }
       const { rows: out } = await client.query(
-        `INSERT INTO product_containers(name,name_key,status) VALUES($1,lower(btrim($1)),$2)
+        `INSERT INTO product_containers(name,name_key,status) VALUES($1,$2,$3)
          ON CONFLICT(name_key) DO UPDATE SET status=EXCLUDED.status RETURNING id`,
-        [c.name, statusOf(c.status)]
+        [c.name, key, statusOf(c.status)]
       );
       ids.set(c.name, out[0].id);
+      existingConts.set(key, { id: out[0].id, name: c.name, name_key: key });
     }
     let inserted = 0;
     for (const r of prepared) {
@@ -105,9 +141,18 @@ async function importSourceRows({ pool = getPool(), file, year = 2026, replace =
       );
       inserted += res.rowCount;
     }
+    // Ban chup dung dai khoa chinh thuc D00001+ nhung khong di qua nextval, nen
+    // sequence van o 0: khoa cap tiep theo (reserveKey/newKey) se trung ngay dong
+    // dau. Day sequence len qua khoa goc lon nhat dang co, khong bao gio keo lui.
+    const keySeq = (await client.query(
+      `SELECT setval('purchase_order_key_seq', GREATEST(
+         (SELECT last_value FROM purchase_order_key_seq),
+         COALESCE((SELECT max(NULLIF(regexp_replace(split_part(row_key,'.',1),'^D','') ,'')::bigint) FROM purchase_orders),0)
+       ))::bigint AS value`
+    )).rows[0].value;
     await client.query('COMMIT');
-    logger.log(`[Purchase] Da nap ${inserted}/${prepared.length} dong, ${conts.length} cont, ${summary.queued} dong cho xep`);
-    return Object.assign(summary, { inserted });
+    logger.log(`[Purchase] Da nap ${inserted}/${prepared.length} dong, ${conts.length} cont, ${summary.queued} dong cho xep; purchase_order_key_seq = ${keySeq}`);
+    return Object.assign(summary, { inserted, keySeq: Number(keySeq) });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     throw error;

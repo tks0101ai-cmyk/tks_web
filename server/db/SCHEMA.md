@@ -1,5 +1,13 @@
 # Supabase schema cho đồng bộ KiotViet
 
+## Migration 0115, 0116 — Thu mua: VC trước được phép âm, phạm vi projection (06/11/2026, chưa áp DB)
+
+`0115_purchase_freight_prepaid_signed.sql` (đổi số từ `0114_...` vì main đã dùng `0114_stocktake_frozen_lines.sql`): bỏ CHECK `purchase_orders_freight_prepaid_check`, nên `purchase_orders.freight_prepaid` (已付, CNY) nhận số âm — bản chụp nguồn TKS 05/11/2026 có 11 dòng âm, là khoản giảm trừ/hoàn có chủ đích. `freight_postpaid` (代付) và các cột không âm khác giữ nguyên CHECK.
+
+`0116_purchase_projection_scope.sql` (đổi số từ `0115_...`): `purchase_settings.projection_owns_all BOOLEAN NOT NULL DEFAULT false`. `false` = sở hữu một phần: Thu mua chỉ thay thế dòng của cont có trong `product_containers`, dòng sheet khác giữ nguyên, dòng chờ xếp không đẩy sang `product_container_lines`. `true` = sở hữu toàn phần: mọi dòng `sheet_name <> 'THU MUA'` bị xóa; chỉ bật sau khi bản chụp nguồn đã đầy đủ.
+
+`db/ensurePurchaseSchema.js` áp 6 file `0110`–`0116` khi web startup (trong một giao dịch, advisory lock, không chạy migration của module khác).
+
 ## Migration 0114 — Kiểm kê: chốt dòng đơn khi đóng đợt (05/11/2026, đã áp DB 05/11/2026)
 
 `0114_stocktake_frozen_lines.sql`: `stocktake_sessions` thêm `lines_frozen_at` TIMESTAMPTZ (NULL = chưa đóng, nạp từ sheet hoặc đóng trước migration này, chỉ đọc). Bảng `stocktake_session_lines` (`session_id` FK ON DELETE CASCADE, `order_id`, `line_no`, `order_code`, `order_status`, `team`, `zone`, `spec`, `product_code`, `product_name`, `quantity` NUMERIC, PK `(session_id, order_id, line_no)`): dòng đơn gốc lúc đóng đợt, phần sửa vẫn ở `stocktake_line_edits`. Từ migration này `stocktake_session_results.prev_diff`, `other_diff` của đợt web lưu số tự lấy; số nhập tay ở `stocktake_code_notes`. Gỡ: `db/rollbacks/0114_stocktake_frozen_lines.down.sql` (chạy tay, sau khi deploy lại bản web không đọc `lines_frozen_at`).
@@ -919,7 +927,7 @@ Cập nhật gần nhất: 04/11/2026.
 
 Thêm /thu-mua/dat-hang/ và /api/purchase-orders với quyền purchase.view/edit/import/export/depart/arrive; mặc định chỉ Quản lý, quyền mở rộng qua cơ chế cấp quyền hiện có. Module có bảng Chỉ số cont và Đặt hàng sửa trực tiếp, lọc riêng theo tài khoản, dropdown NV/cont/trạng thái, tách .01/.02 đệ quy, sửa hàng loạt, undo/xóa mềm/khôi phục, import toàn bộ hợp lệ mới ghi, audit/realtime và bộ công thức dùng chung. Source gate ngăn job Sheet và web ghi đè nhau.
 
-Migrations Thu mua được đổi sang 0110–0113 vì main đã dùng 0101–0109. db/ensurePurchaseSchema.js áp đúng bốn migration này khi web startup, transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
+Migrations Thu mua được đổi sang 0110–0116 vì main đã dùng 0101–0109 và 0114 (0114_stocktake_frozen_lines.sql). db/ensurePurchaseSchema.js áp đúng sáu migration này khi web startup, transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
 
 
 

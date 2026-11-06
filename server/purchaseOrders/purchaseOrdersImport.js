@@ -38,7 +38,8 @@ function prepareRows(sourceRows, existingRows, { listedAt = today() } = {}) {
       if (blank(value)) continue; // Blank imports preserve existing values.
       if (workbook.numericTypes.has(col.t)) {
         const number = calculations.parse(value);
-        if (!Number.isFinite(number) || number < 0 || number > Number.MAX_SAFE_INTEGER) result.errors.push(col.l + ': số không hợp lệ.');
+        // VC truoc duoc phep am (calculations.SIGNED); cac cot so khac khong am.
+        if (!Number.isFinite(number) || number < 0 && !calculations.SIGNED.has(col.k) || Math.abs(number) > Number.MAX_SAFE_INTEGER) result.errors.push(col.l + ': số không hợp lệ.');
         else if (integerFields.has(col.k) && (!Number.isSafeInteger(number) || number <= 0)) result.errors.push(col.l + ': phải là số nguyên dương.');
         else if(col.k==='fxRate'&&number===0)result.errors.push(col.l+': phải lớn hơn 0 hoặc để trống.');else values[col.k] = number;
       } else if ((col.t === 'date'||col.t==='datetime')) {

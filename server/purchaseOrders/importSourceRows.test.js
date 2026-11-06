@@ -66,7 +66,7 @@ test('the sheet queue container becomes a null link instead of a fake container'
   } finally { await db.close(); }
 });
 
-test('negative prepaid freight survives the import after migration 0114', async () => {
+test('negative prepaid freight survives the import after migration 0115', async () => {
   const db = await freshDb();
   try {
     const file = fixture([row({ freightPrepaid: -1101 })]);
@@ -110,5 +110,78 @@ test('a dry run reports the same shape without touching the database', async () 
     assert.equal(out.containers, 1);
     assert.deepEqual(out.anomalies.map(a => a.rowKey), ['D00002']);
     assert.equal(await count(db, 'SELECT count(*) FROM purchase_orders'), 0);
+  } finally { await db.close(); }
+});
+
+test('an impossible calendar date is reported, not silently rolled over', () => {
+  const a = [];
+  // Date.UTC(2026,1,31) tu thanh 03/03/2026 — ban chup phai bao chu khong doi ngay.
+  assert.equal(parseListedAt('31/02/2026', 2026, a, 'D7'), null);
+  assert.deepEqual(a.map(x => [x.rowKey, x.reason]), [['D7', 'NGAY_KHONG_TON_TAI']]);
+  assert.equal(parseListedAt('29/02/2024', 2026, a, 'D8').toISOString().slice(0, 10), '2024-02-29', 'nam nhuan that van nhan');
+  assert.equal(parseListedAt('31/13/2026', 2026, a, 'D9'), null, 'thang 13 khong khop khuon dang');
+});
+
+test('the key sequence is pushed past the imported keys so the next key is free', async () => {
+  const db = await freshDb();
+  try {
+    const file = fixture([row({ rowKey: 'D00001' }), row({ rowKey: 'D00141' }), row({ rowKey: 'D00141.01' })]);
+    const out = await importSourceRows({ pool: wrap(db), file, logger: { log() {} } });
+    assert.equal(out.keySeq, 141, 'khoa goc lon nhat la D00141, nhanh .01 khong tinh rieng');
+    // Khoa cap tiep theo phai la D00142: truoc khi sua, nextval tra 1 -> D00001 da ton tai.
+    const next = 'D' + String((await db.query("SELECT nextval('purchase_order_key_seq')::int AS v")).rows[0].v).padStart(5, '0');
+    assert.equal(next, 'D00142');
+    assert.equal(await count(db, `SELECT count(*) FROM purchase_orders WHERE row_key='${next}'`), 0);
+  } finally { await db.close(); }
+});
+
+test('the sequence is never pulled back below a key already issued', async () => {
+  const db = await freshDb();
+  try {
+    await db.query("SELECT setval('purchase_order_key_seq', 900)");
+    const out = await importSourceRows({ pool: wrap(db), file: fixture([row({ rowKey: 'D00005' })]), logger: { log() {} } });
+    assert.equal(out.keySeq, 900, 'khong tai su dung khoa da phat');
+  } finally { await db.close(); }
+});
+
+test('imported containers carry the same name_key the service writes, so duplicate names stay blocked', async () => {
+  const db = await freshDb();
+  try {
+    const { normalizeName } = require('./containerNames');
+    const file = fixture([row({ cont: 'CONT BẾP GA' })], [{ name: 'CONT BẾP GA', status: '2.Chưa bốc' }]);
+    await importSourceRows({ pool: wrap(db), file, logger: { log() {} } });
+    const cont = (await db.query('SELECT name,name_key FROM product_containers')).rows[0];
+    assert.equal(cont.name_key, normalizeName('CONT BẾP GA'));
+    // Dung duong ghi cua web: ten tuong duong phai vap UNIQUE(name_key).
+    await assert.rejects(
+      db.query('INSERT INTO product_containers(name,name_key) VALUES($1,$2)', ['cont  bếp ga', normalizeName('cont  bếp ga')]),
+      /duplicate key|unique/i
+    );
+  } finally { await db.close(); }
+});
+
+test('a container already on the database is reused instead of duplicated by the import', async () => {
+  const db = await freshDb();
+  try {
+    // Dong cu con mang name_key kieu lower(btrim) tu lan nap truoc.
+    await db.query("INSERT INTO product_containers(name,name_key,status) VALUES('CONT BẾP GA','cont bếp ga',1)");
+    const file = fixture([row({ cont: 'CONT BẾP GA' })], [{ name: 'CONT BẾP GA', status: '4.Đã về' }]);
+    await importSourceRows({ pool: wrap(db), file, logger: { log() {} } });
+    const conts = (await db.query('SELECT id,name_key,status FROM product_containers')).rows;
+    assert.equal(conts.length, 1, 'khong tao ban trung');
+    assert.equal(conts[0].status, 4, 'trang thai lay theo ban chup');
+    assert.equal(conts[0].name_key, require('./containerNames').normalizeName('CONT BẾP GA'), 'key cu duoc dua ve chuan');
+    assert.equal(await count(db, `SELECT count(*) FROM purchase_orders WHERE container_id=${conts[0].id}`), 1);
+  } finally { await db.close(); }
+});
+
+test('two legacy containers that normalize to one name stop the import instead of merging', async () => {
+  const db = await freshDb();
+  try {
+    await db.query("INSERT INTO product_containers(name,name_key,status) VALUES('CONT BẾP GA','cont bếp ga',1),('CONT BẾPGA','cont bếpga',2)");
+    const file = fixture([row({ cont: 'CONT BẾP GA' })], [{ name: 'CONT BẾP GA', status: '4.Đã về' }]);
+    await assert.rejects(importSourceRows({ pool: wrap(db), file, logger: { log() {} } }), /CONTAINER_NAME_AMBIGUOUS|ten tuong duong/);
+    assert.equal(await count(db, 'SELECT count(*) FROM purchase_orders'), 0, 'khong ghi dong nao');
+    assert.equal(await count(db, 'SELECT count(*) FROM product_containers'), 2, 'khong gop, khong doi ten');
   } finally { await db.close(); }
 });
