@@ -7,12 +7,12 @@ const {PGlite}=require('@electric-sql/pglite');
 const {validateLayout,readLayout,writeLayout}=require('./printLayouts');
 const layout={widths:[4,22,8,10,13,10,13,10,10],heights:[40,null],fonts:[{path:'table:nth-child(1) > tbody:nth-child(2) > tr:nth-child(1) > td:nth-child(2)',start:0,end:4,size:13}]};
 
-test('delivery accepts its actual six columns and footer tables persist independently',()=>{
- const input={widths:[5,39,8,14,18,16],heights:[],fonts:[],groups:{body:{columns:{1:{size:13,bold:true}}}},tables:{deliverySignatures:{widths:[30,30,40],heights:[],fonts:[],groups:{body:{columns:{2:{size:14,align:'right'}}}}}}};
+test('delivery accepts its actual seven columns and footer tables persist independently',()=>{
+ const input={widths:[5,30,8,12,13,20,12],heights:[],fonts:[],groups:{body:{columns:{1:{size:13,bold:true}}}},tables:{deliverySignatures:{widths:[30,30,40],heights:[],fonts:[],groups:{body:{columns:{2:{size:14,align:'right'}}}}}}};
  assert.deepEqual(validateLayout('delivery',input),input);
- assert.throws(()=>validateLayout('delivery',{...input,widths:[5,30,8,14,18,15,10]}),{statusCode:400});
+ assert.throws(()=>validateLayout('delivery',{...input,widths:[5,39,8,14,18,16]}),{statusCode:400});
  assert.throws(()=>validateLayout('delivery',{...input,tables:{summary:input.tables.deliverySignatures}}),{statusCode:400});
- assert.throws(()=>validateLayout('delivery',{...input,groups:{body:{columns:{6:{bold:true}}}}}),{statusCode:400});
+ assert.throws(()=>validateLayout('delivery',{...input,groups:{body:{columns:{7:{bold:true}}}}}),{statusCode:400});
 });
 test('shared layout accepts only formatting and valid template geometry',()=>{
  assert.deepEqual(validateLayout('order',layout),layout);

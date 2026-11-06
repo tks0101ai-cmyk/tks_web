@@ -1,7 +1,7 @@
 'use strict';
 // Form in chung: chỉ lưu định dạng, không nhận HTML/text hoặc dữ liệu đơn.
 const fail=(statusCode,message)=>Object.assign(new Error(message),{statusCode});
-const templates={order:9,delivery:6};
+const templates={order:9,delivery:7};
 const footerTables={order:{summary:4,signatures:2,notes:1},delivery:{deliverySignatures:3,deliveryNote:1}};
 function assertTemplate(template){if(!Object.hasOwn(templates,template))throw fail(400,'Mẫu in không hợp lệ.');}
 const plain=value=>value&&typeof value==='object'&&!Array.isArray(value);
