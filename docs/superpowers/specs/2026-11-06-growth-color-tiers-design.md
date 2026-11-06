@@ -41,7 +41,7 @@ chỉ là phần cam. Muốn xem cả đỏ lẫn cam thì chọn lần lượt 
 - Lớp CSS trên `td`: `is-lost` (đỏ), `is-check` (cam), `is-drop` (vàng); chữ đậm cho `is-lost` và `is-check`.
 - Màu dùng token trang, không hard-code hex trong CSS bảng. Trang hiện chỉ có `--red`, `--amber` (và `--green`), nên thêm vào
   `server/public/shared/shared.css` hai token mới, mỗi cái có bản Tối (khối biến đầu file, cạnh `--amber`) và bản Sáng (khối biến chế độ Sáng, cạnh `--amber` thứ hai):
-  `--orange` (Tối `#FB923C`, Sáng `#EA580C`) và `--yellow` (Tối `#FACC15`, Sáng `#A16207`). Bản Sáng dùng vàng đậm để đủ tương phản trên nền sáng.
+  `--orange` (Tối `#FB923C`, Sáng `#C2410C`) và `--yellow` (Tối `#FACC15`, Sáng `#A16207`). Bản Sáng dùng vàng đậm để đủ tương phản trên nền sáng; cam bản Sáng cũng được làm đậm thành #C2410C vì tương phản (≈5,2:1 trên nền trắng; giá trị đầu #EA580C chỉ ≈3,6:1).
   Đỏ dùng `--red`.
 - Dòng trạng thái: `N dòng khớp · A giảm hết 100% · B giảm hơn 50%` (A = số dòng `lost`, B = số dòng `check`, tính trên toàn bộ kết quả đã lọc).
   Không còn chữ "cần check".

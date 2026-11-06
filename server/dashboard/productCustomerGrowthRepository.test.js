@@ -49,7 +49,7 @@ async function seed(db) {
   await pair(db, 'sp1', 'Khách C', 400, 300, 50, 50);           // +500% -> up
   await pair(db, 'sp1', 'Khách mới D', 70, 70, 0, 0);           // prior 0, T.nay > 0 -> new
   await pair(db, 'sp1', 'Khách E', 0, 0, 0, 0);                 // prior 0, T.nay 0 -> khong nhom
-  await pair(db, 'sp1', 'Khách F', 100, 0, 50, 50);             // -100% -> check
+  await pair(db, 'sp1', 'Khách F', 100, 0, 50, 50);             // -100% -> lost
   await pair(db, 'sp1', 'Khách thiếu kỳ', 30, null, null, null); // ky chua tinh -> khong nhom
   await pair(db, 'sp2', 'Khách H', 15, 5, 5, 5);                // 0% -> up
   await pair(db, 'sp2', 'Khách trả hàng', 20, 10, -50, 20);     // prior -30 <= 0, T.nay > 0 -> new
@@ -85,7 +85,7 @@ test('mac dinh: state + 3 ky + summary, 9 dong (bo cap mo coi) xep DS 90 ngay gi
   } finally { await db.close(); }
 });
 
-test('cong thuc tang truong va ranh gioi: dung -50% khong do; -90% / -100% do; base <= 0 la Moi hoac trong', async () => {
+test('cong thuc tang truong va ranh gioi: dung -50% la vang (drop); -90% cam (check); -100% do (lost); base <= 0 la Moi hoac trong', async () => {
   const db = await setup();
   try {
     await seed(db);

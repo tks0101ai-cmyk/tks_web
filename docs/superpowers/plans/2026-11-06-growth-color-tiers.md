@@ -17,7 +17,7 @@ Spec: `docs/superpowers/specs/2026-11-06-growth-color-tiers-design.md` (bổ sun
 - Dropdown (thứ tự, nhãn): Tất cả · Giảm hết 100% · Giảm hơn 50% · Giảm dưới 50% · Đang tăng · Khách mới (giá trị `all|lost|check|drop|up|new`).
 - Nhãn trạng thái xuất file: `lost` Giảm hết 100% · `check` Giảm hơn 50% · `drop` Giảm dưới 50% · `up` Đang tăng · `new` Mới.
 - Ô Tăng trưởng chỉ hiện %, không còn nhãn "Cần check"; giữ nhãn "Mới". Màu không dựa riêng vào sắc: ô có `title` ("Giảm hết 100%" / "Giảm hơn 50%" / "Giảm dưới 50%").
-- Không hard-code hex trong `product-customer-growth.css`; token màu mới `--orange` (Tối `#FB923C`, Sáng `#EA580C`) và `--yellow` (Tối `#FACC15`, Sáng `#A16207`) định nghĩa trong `server/public/shared/shared.css` ở cả khối Tối (cạnh `--amber:#F59E0B`) và khối Sáng (cạnh `--amber:#D97706`).
+- Không hard-code hex trong `product-customer-growth.css`; token màu mới `--orange` (Tối `#FB923C`, Sáng `#C2410C`) và `--yellow` (Tối `#FACC15`, Sáng `#A16207`) định nghĩa trong `server/public/shared/shared.css` ở cả khối Tối (cạnh `--amber:#F59E0B`) và khối Sáng (cạnh `--amber:#D97706`).
 - Mô tả (description) cột xuất file không được chứa viết tắt "T." / "DS" / "SP" (test chuẩn nhãn của `exportService.test.js` chặn mô tả viết tắt).
 - Không đổi: sắp xếp phụ, độ trễ gõ 150 ms, công thức tăng trưởng, cách tính kỳ, quyền, route logic, migration, biến môi trường. Phần máy chủ cũ của mục 4 giữ nguyên.
 - Hai test đỏ sẵn trên `main` (CLAUDE.md §4.1: `hr-leave-deadlines` "timing remains independent after approval and legacy violation is readable without a new violation decision"; `lifecycle-pick-performance` "printing and saving stay blocked until fresh shared form succeeds, including programmatic clicks") không tính vào kết luận; không `.skip`/sửa assert của chúng; lỗi khác tên hoặc số lỗi khác 2 là lỗi mới.
@@ -292,7 +292,7 @@ test('shared.css: --orange va --yellow co o ca khoi Toi lan khoi Sang (moi token
     assert.ok((css.match(new RegExp('\\s' + token + ':\\s*#[0-9A-Fa-f]{6}', 'g')) || []).length >= 2, token);
   });
   assert.match(css, /--orange:#FB923C/);
-  assert.match(css, /--orange:#EA580C/);
+  assert.match(css, /--orange:#C2410C/);
   assert.match(css, /--yellow:#FACC15/);
   assert.match(css, /--yellow:#A16207/);
 });
@@ -315,7 +315,7 @@ Trong `server/public/shared/shared.css`, ngay sau dòng `--amber:#F59E0B;` (kh�
 và ngay sau dòng `--amber:#D97706;` (khối Sáng) thêm:
 
 ```css
-  --orange:#EA580C;
+  --orange:#C2410C;
   --yellow:#A16207;
 ```
 

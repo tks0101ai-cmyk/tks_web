@@ -184,7 +184,7 @@ test('shared.css: --orange va --yellow co o ca khoi Toi lan khoi Sang (moi token
     assert.ok((css.match(new RegExp('\\s' + token + ':\\s*#[0-9A-Fa-f]{6}', 'g')) || []).length >= 2, token);
   });
   assert.match(css, /--orange:#FB923C/);
-  assert.match(css, /--orange:#EA580C/);
+  assert.match(css, /--orange:#C2410C/);
   assert.match(css, /--yellow:#FACC15/);
   assert.match(css, /--yellow:#A16207/);
   // index.html phai bust cache shared.css (server cache ?v= 1 gio) de trinh duyet/edge nhan token moi.
