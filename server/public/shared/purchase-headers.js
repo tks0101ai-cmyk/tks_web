@@ -8,7 +8,10 @@
     function apply(){
       doc.querySelectorAll(selector).forEach(th=>{
         const key=th.dataset.k||th.dataset.columnKey||th.dataset.key,col=columns.find(c=>c.k===key);
-        const node=[...th.childNodes].find(n=>n.nodeType===3&&n.textContent.trim());if(!node)return;
+        // Ô tiêu đề sắp xếp được bọc nhãn trong <button class="sort-button"><span class="sort-label">,
+        // nên phải tìm chữ trong .sort-label; tìm ở th thì không thấy text node nào và cả bảng mất phần dịch.
+        const host=th.querySelector(':scope > .sort-button > .sort-label')||th;
+        const node=[...host.childNodes].find(n=>n.nodeType===3&&n.textContent.trim());if(!node)return;
         if(!originals.has(node))originals.set(node,node.textContent.trim());const vi=col?.l||originals.get(node),match=Object.keys(other).find(k=>k.toLocaleLowerCase()===vi.toLocaleLowerCase()),text=lang==='zh'?(zh[key]||other[match]||vi):vi;
         if(node.textContent!==text)node.textContent=text;
         th.querySelectorAll('.cn').forEach(el=>{if(!el.hidden)el.hidden=true;if(el.style.display!=='none')el.style.display='none'});

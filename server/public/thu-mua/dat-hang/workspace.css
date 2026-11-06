@@ -114,3 +114,23 @@
 .purchase-page #orderTable td[data-field="productCode"] .code-edit:hover{color:var(--blue)}
 
 .purchase-page #sourceBanner.isolated-banner{border-left:3px solid var(--amber);color:var(--text);background:var(--panel)}
+
+/* Tiêu đề sắp xếp được: giữ đúng khuôn .sortable/.sort-button/.sort-indicator dùng chung
+   (shared.css) để trông y hệt các bảng khác; ở đây chỉ gỡ lại khung nút chung của trang
+   (nền var(--panel-2), viền, min-height 30px ở purchase.css) cho nút hòa vào ô tiêu đề. */
+.purchase-page #orderTable th .sort-button{min-height:0;margin:0;padding:0;border:0;background:none;color:inherit;font:inherit;letter-spacing:inherit;gap:4px}
+/* Biểu tượng nhỏ lại cho bảng dày, cùng cách table-controls.css làm với .dp-table: để nguyên
+   20px thì 42 cột đội thêm hơn 300px và cột số không còn vừa một màn hình. */
+.purchase-page #orderTable th .sort-indicator{width:14px;font-size:7px}
+
+/* Cột số và Mã dòng căn phải. Ô số hầu hết là <input> khi có quyền sửa, mà input không
+   thừa hưởng text-align của ô, nên thiếu luật này thì gần như mọi số vẫn nằm bên trái. */
+.purchase-page #orderTable td.num input{text-align:right}
+.purchase-page #orderTable td[data-field="rowKey"]{text-align:right}
+
+/* 12 cột công thức (cờ `d` trong purchase-columns) mang một màu riêng — cột nhập tay để màu chữ thường. */
+.purchase-page #orderTable th.calc .sort-label,.purchase-page #orderTable td.calc{color:var(--purchase-violet)}
+
+/* VC trước âm: tô nền đỏ cả ô. Thắng cả nền bản nháp (.draft dùng !important) để số âm
+   không bị khuất đúng lúc người dùng đang sửa nó. */
+.purchase-page #orderTable td.negative{background-color:color-mix(in srgb,var(--red) 20%,transparent)!important}
