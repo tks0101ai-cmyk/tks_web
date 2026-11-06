@@ -11238,9 +11238,10 @@
       subtitle.textContent = isBusiness || isDebtPenalty || isExpectedArrival ? '' : isProduct ? '90 ngày gần nhất' : (item.branch ? 'Cơ sở ' + item.branch : '');
       if (status === 'loading' && isProduct) {
         // Doanh số theo khách và lịch sử giao dịch tải độc lập; hàng dự kiến nằm ở hộp riêng.
-        body.innerHTML = '<section class="dp-section" id="productCustomerSection" aria-label="Doanh số theo khách">' +
-          detailSectionHeadHtml('Doanh số theo khách') + '<div id="productCustomerContent"><div class="doc-modal-note">Đang tải doanh số theo khách...</div></div></section>' +
-          '<section class="dp-section" id="productHistorySection" aria-label="Lịch sử giao dịch 90 ngày"></section>';
+        // Lịch sử giao dịch đứng ĐẦU hộp (các mục tìm theo id nên thứ tự DOM không ảnh hưởng logic tải), doanh số theo khách xuống dưới.
+        body.innerHTML = '<section class="dp-section" id="productHistorySection" aria-label="Lịch sử giao dịch 90 ngày"></section>' +
+          '<section class="dp-section" id="productCustomerSection" aria-label="Doanh số theo khách">' +
+          detailSectionHeadHtml('Doanh số theo khách') + '<div id="productCustomerContent"><div class="doc-modal-note">Đang tải doanh số theo khách...</div></div></section>';
       } else if (status === 'ready' && isExpectedArrival) {
         renderExpectedArrivalDetailModal(body, subtitle, data);
         if (window.TKSTables && typeof window.TKSTables.refreshAll === 'function') window.TKSTables.refreshAll();

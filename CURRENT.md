@@ -405,6 +405,8 @@
 
 **06/11/2026 — tiêu đề giống hệt Kiểm kê (chưa deploy):** mũi tên ▲▼ trước đó bị to (11px, chiếm cột flex riêng) nên ăn chỗ của chữ; nay copy đúng logic `#stTable`: mũi tên 7px `position:absolute` ở góc dưới phải (trong phần đệm dưới ô, mờ .45, hover/đang sắp xếp = 1), nhãn căn giữa dùng gần hết bề ngang ô, tên cột xuống dòng theo từ, đệm ô `5px 4px 9px`, dòng cao 1.25, căn giữa dọc. Đã đo trên bảng mẫu cạnh `#stTable`: kích thước ô, chiều rộng nhãn, vị trí mũi tên trùng khớp. Cột Mô tả HN / Mô tả SG giảm chữ còn 11px (lớp `pr-desc`). Test mới trong `product-report-detail.test.js`.
 
+
+**06/11/2026 — hộp chi tiết hàng hóa:** mục Lịch sử giao dịch 90 ngày nay đứng đầu hộp, trên mục Doanh số theo khách (chỉ đổi thứ tự dựng DOM trong `renderDocumentDetail`; các mục vẫn tải độc lập theo id). Test thứ tự cập nhật trong `product-report-detail.test.js`.
 ---
 
 ## In phiếu nhặt nhanh hơn (nhánh `perf/fast-pick-print`) — 03/11/2026
