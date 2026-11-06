@@ -43,6 +43,48 @@ Thứ tự kiểm bắt buộc sau mỗi lần nạp:
 
 Chỉ sau khi ba bước trên sạch mới tới bước đối soát (`purchaseOrdersReconcile.js`) và đổi nguồn ghi.
 
+## Dọn dữ liệu đã nạp bằng bản cũ (06/11/2026 — ĐÃ CHẠY trên production)
+
+552 dòng trên production được nạp bằng bản `importSourceRows.js` trước khi có hai bản sửa dưới đây, nên dữ liệu mang đúng hai lỗi đó. Đã chạy trên production ngày 06/11/2026 và xác minh; ghi lại để biết vì sao, và để chạy lại nếu có môi trường khác nạp bằng bản cũ.
+
+**1. Sequence khóa dòng.** `purchase_order_key_seq` còn ở `last_value=1` trong khi khóa gốc lớn nhất là `D00552`. Hệ quả: bấm **Thêm mã** sẽ lấy khóa `D00001` đã tồn tại, `claimKey` từ chối với `ROW_KEY_UNKNOWN`, và **không tạo được dòng mới nào**.
+
+```sql
+SELECT setval('purchase_order_key_seq', GREATEST(
+  (SELECT last_value FROM purchase_order_key_seq),
+  COALESCE((SELECT max(replace(split_part(row_key,'.',1),'D','')::bigint) FROM purchase_orders), 0)
+));
+```
+
+`GREATEST` nên câu này không bao giờ kéo sequence lui; chạy lại nhiều lần vô hại. Kiểm: `SELECT last_value FROM purchase_order_key_seq` phải >= khóa gốc lớn nhất.
+
+**2. `name_key` của cont.** Bản nạp cũ dùng `lower(btrim(name))`, khác hàm `containerNames.normalizeName` mà mọi đường ghi của web dùng. Hệ quả: `UNIQUE(name_key)` không chặn được cont trùng tên — tạo cont `CONT BẾP GA` sinh khóa `CONTBẾPGA`, không đụng `cont bếp ga` đang có, ra hai cont cùng tên.
+
+```sql
+UPDATE product_containers c
+   SET name_key = upper(replace(regexp_replace(btrim(c.name), '\s+', '', 'g'), '.', '-'))
+ WHERE c.name_key <> upper(replace(regexp_replace(btrim(c.name), '\s+', '', 'g'), '.', '-'))
+   AND NOT EXISTS (SELECT 1 FROM product_containers x
+                    WHERE x.id <> c.id
+                      AND x.name_key = upper(replace(regexp_replace(btrim(c.name), '\s+', '', 'g'), '.', '-')));
+```
+
+Điều kiện `NOT EXISTS` để không bao giờ vấp `UNIQUE`: cont nào chuẩn hóa ra khóa đã có người giữ thì **bị bỏ lại** chứ không làm câu lệnh thất bại. Kiểm sau khi chạy: số cont còn lệch phải bằng 0.
+
+```sql
+SELECT count(*) FROM product_containers
+ WHERE name_key <> upper(replace(regexp_replace(btrim(name), '\s+', '', 'g'), '.', '-'));
+```
+
+Nếu số đó vẫn > 0 thì có cont trùng tên sau chuẩn hóa: gộp hoặc đổi tên tay rồi chạy lại. Không migration nào làm việc này, vì áp tự động lúc startup mà vấp dữ liệu thật thì làm hỏng lượt khởi tạo schema.
+
+**Không cần chạy `purchase:sample:remove`** trên production: đã kiểm, không có dòng mẫu `D90001`–`D99999` nào.
+
+### Các lỗi dữ liệu còn lại, cần bản deploy mới
+
+- **11 dòng VC trước âm** đã lưu được trong DB (vì `0114`/`0115` đã áp) nhưng bản đang chạy vẫn chặn ở hàm tính tiền và kiểm Excel, nên Tổng tệ của các dòng đó hiện trống và sửa ô khác trên dòng đó bị từ chối. Bản sửa nằm trong `purchase-calculations.js` — cần deploy.
+- **2 dòng thiếu ngày lên list.** Nhập tay trên web sau khi bật ghi.
+
 ## Bật chức năng ở chế độ cách ly (06/11/2026)
 
 Thứ tự bắt buộc. Đổi cờ TRƯỚC khi deploy mã mới là sai: bản cũ không biết `integration_enabled`, nên `source_mode='web'` sẽ dừng job đọc Sheet và đẩy projection sang read model dùng chung.
