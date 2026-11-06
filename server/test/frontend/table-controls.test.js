@@ -505,3 +505,11 @@ test('data-min-column-width ha muc toi thieu rieng cho bang do (mac dinh van 64p
   plain.api.enhance(plain.table);
   assert.equal(state(plain).columns[2].width, 64, 'bang khong khai bao van toi thieu 64px');
 });
+test('selected dropdown sizing is opt-in and does not reserve space for hidden long choices',t=>{
+ const html='<table data-min-column-width="24" data-table-select-width="selected"><thead><tr><th style="width:50px">Cont</th></tr></thead><tbody><tr><td style="padding:0;border:0"><select style="font:11px Arial;appearance:none;border:0;padding:0"><option selected>10-5V</option><option>Cont có tên rất dài chỉ hiện khi mở danh sách</option></select></td></tr></tbody></table>';
+ const ctx=setup(t,html);ctx.window.HTMLCanvasElement.prototype.getContext=()=>({font:'',measureText:text=>({width:text.length*6})});
+ ctx.api.enhance(ctx.table);assert.ok(state(ctx).columns[0].width<80,JSON.stringify(state(ctx)));
+ const regular=setup(t,html.replace(' data-table-select-width="selected"',''));regular.window.HTMLCanvasElement.prototype.getContext=()=>({font:'',measureText:text=>({width:text.length*6})});
+ regular.api.enhance(regular.table);assert.ok(state(regular).columns[0].width>200);
+ ctx.table.querySelector('select').value='Cont có tên rất dài chỉ hiện khi mở danh sách';ctx.api.refresh(ctx.table);assert.ok(state(ctx).columns[0].width>200);
+});

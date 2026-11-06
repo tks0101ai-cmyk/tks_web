@@ -23,3 +23,11 @@ test('prepaid freight accepts a negative amount while every other money column d
   assert.ok(C.issues({...row,taxAmount:-1}).includes('taxAmount'));
   assert.deepEqual([...C.SIGNED],['freightPrepaid']);
 });
+test('numeric expressions respect precedence and reject code, invalid syntax and division by zero',()=>{
+ const {evaluate}=require('./purchase-calculations');
+ assert.equal(evaluate('(10 * 20 * 30) / 1000000'),.006);
+ assert.equal(evaluate('=2 + 3 * (4 - 1)'),11);
+ assert.equal(evaluate('-2 * -3'),6);
+ assert.equal(evaluate('1,234.5'),1234.5);
+ for(const value of ['1/0','2**3','AA11*2','globalThis.x=1','(1+2','2 3','()'])assert.ok(Number.isNaN(evaluate(value)),value);
+});

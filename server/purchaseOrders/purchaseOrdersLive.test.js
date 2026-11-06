@@ -24,7 +24,7 @@ test('purchase uses the shared application shell and brand instead of a private 
   assert.ok(doc.querySelector('.receipt-header .status-line #accountChip'));
  }finally{dom.window.close();reference.window.close()}
 });
-async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees=[],integrationEnabled=true}={}){
+async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees=[],integrationEnabled=true,onEnhance}={}){
  const dom=new JSDOM(fs.readFileSync(path.join(dir,'index.html'),'utf8'),{url:'https://example.test/thu-mua/dat-hang/',runScripts:'outside-only'}),w=dom.window;
  t.after(()=>w.close());
  w.HTMLCanvasElement.prototype.getContext=()=>null;
@@ -35,6 +35,7 @@ async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false};
  w.fetch=async(url,options={})=>{calls.push({url,options});if(url.endsWith('/employees'))return {ok:true,json:async()=>({rows:employees})};if(url.endsWith('/status')){const input=JSON.parse(options.body),container=current.containers.find(c=>String(c.id)===String(input.containerId));container.status=input.status;container.version++;return {ok:true,json:async()=>structuredClone(container)}}if(url.endsWith('/bulk')){const input=JSON.parse(options.body);return {ok:true,json:async()=>({results:input.rows.map(r=>({id:r.id,status:'updated'}))})}}if(options.method==='PATCH'){const input=JSON.parse(options.body);if(input.before.supplier!==undefined&&current.rows[0].supplier!==input.before.supplier)return {ok:false,status:409,json:async()=>({error:'Ô đã được người khác sửa.'})};current.rows[0]={...current.rows[0],...input.changes,version:current.rows[0].version+1};return {ok:true,json:async()=>current.rows[0]}}return {ok:true,json:async()=>structuredClone(current)}};
  if(saved)w.sessionStorage.setItem('purchase:buyer:v1',JSON.stringify(saved));if(savedOutbox)w.sessionStorage.setItem('purchase:buyer:v1:outbox',JSON.stringify(savedOutbox));
+ if(onEnhance)w.TKSTables={enhance:onEnhance};
  w.eval(fs.readFileSync(path.join(dir,'purchase.js'),'utf8'));await tick();await tick();
  const change=(selector,v)=>{const el=w.document.querySelector(selector);el.value=v;el.dispatchEvent(new w.Event('change',{bubbles:true}))};
  return {w,calls,listeners,change,get current(){return current}};
@@ -135,8 +136,8 @@ test('manual split starts blank, blocks save and sends employee quantities in on
 test('paste is validated before any stage and is undoable as one operation',async t=>{
  const p=await page(t,{extraRows:[{id:'3',rowKey:'D00003',version:1,contId:null,productCode:'B',cartonCount:5,qtyPerCarton:10}]});const doc=p.w.document;doc.querySelector('tr[data-id="3"] [data-field="cartonCount"]').click();const paste=text=>{const event=new p.w.Event('paste',{bubbles:true,cancelable:true});Object.defineProperty(event,'clipboardData',{value:{getData:()=>text}});doc.querySelector('tr[data-id="3"] [data-edit="cartonCount"]').dispatchEvent(event)};paste('12\ninvalid');assert.equal(doc.querySelector('tr[data-id="3"] [data-edit="cartonCount"]').value,'5');paste('12\n13');assert.equal(doc.querySelector('tr[data-id="3"] [data-edit="cartonCount"]').value,'12');doc.getElementById('undoWork').click();await tick();assert.equal(doc.querySelector('tr[data-id="3"] [data-edit="cartonCount"]').value,'5');assert.equal(p.calls.filter(c=>c.options.method).length,0);
 });
-test('employee dropdown stores HR id privately and keyboard Enter moves down',async t=>{
- const p=await page(t,{employees:[{id:'7',name:'Nhân viên',department:'Mua',branch:'hanoi'}],extraRows:[{id:'3',rowKey:'D00003',version:1,contId:null,productCode:'B',cartonCount:5,qtyPerCarton:10}]});p.change('tr[data-id="1"] [data-edit="buyerEmployeeId"]','7');const saved=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.ok(saved.drafts['1'],JSON.stringify({saved,select:p.w.document.querySelector('[data-edit="buyerEmployeeId"]').outerHTML,notice:p.w.document.getElementById('notice').textContent}));assert.equal(saved.drafts['1'].changes.buyerEmployeeId,'7');const el=p.w.document.querySelector('tr[data-id="3"] [data-edit="cartonCount"]');el.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));assert.equal(p.w.document.activeElement.closest('tr').dataset.id,'1');
+test('buyer accepts a new name privately and keyboard Enter moves down',async t=>{
+ const p=await page(t,{employees:[{id:'7',name:'Nhân viên',department:'Mua',branch:'hanoi'}],extraRows:[{id:'3',rowKey:'D00003',version:1,contId:null,productCode:'B',cartonCount:5,qtyPerCarton:10}]});p.change('tr[data-id="1"] [data-edit="buyer"]','Tên mới');const saved=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.ok(saved.drafts['1'],JSON.stringify({saved,select:p.w.document.querySelector('[data-edit="buyer"]').outerHTML,notice:p.w.document.getElementById('notice').textContent}));assert.equal(saved.drafts['1'].changes.buyer,'Tên mới');const el=p.w.document.querySelector('tr[data-id="3"] [data-edit="cartonCount"]');el.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));assert.equal(p.w.document.activeElement.closest('tr').dataset.id,'1');
 });
 test('reorder creates private rows and quick filters do not issue writes',async t=>{
  const p=await page(t);p.w.document.getElementById('bulk').click();p.w.document.querySelector('[data-pick="1"]').click();p.w.document.getElementById('reorderWork').click();await tick();await tick();const saved=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.equal(Object.keys(saved.newRows).length,1);p.change('#quickWork','eta');assert.equal(p.calls.filter(c=>c.options.method).length,0);p.w.document.getElementById('undoWork').click();await tick();assert.equal(Object.keys(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).newRows).length,0);
@@ -324,8 +325,7 @@ test('the source filter lists the sheets present and narrows the table to one of
 
  // Cot Nguon hien gia tri va khong cho sua truc tiep.
  const cell=doc.querySelector('#orderTable tbody tr td[data-field="sourceSheet"]');
- assert.ok(cell,'bang co cot Nguon');
- assert.equal(cell.querySelector('input'),null,'cot Nguon khong co o nhap');
+ assert.equal(cell,null,'Nguồn không còn là cột trên bảng');
 
  // O tim kiem dung oninput, khong phai change.
  const box=doc.getElementById('search');box.value='tks1';box.dispatchEvent(new p.w.Event('input',{bubbles:true}));
@@ -406,4 +406,68 @@ test('mười hai cot cong thuc mang mau rieng, VC truoc am to nen do va nhan ro
 
  assert.equal(doc.querySelector('#orderTable th[data-key="rowKey"] .sort-label').textContent,'Mã dòng');
  assert.ok(doc.querySelector('#orderTable td[data-field="cartonCount"]').classList.contains('num'),'cot so mang lop num de can phai');
+});
+test('arithmetic, dd/mm, payment and free buyer names stage and save real values',async t=>{
+ const p=await page(t,{saved:{columnLayout:4,visible:require('../public/shared/purchase-columns').map(c=>c.k)},employees:[{name:'Tên đã nhập'}],extraRows:[{id:'8',rowKey:'D00008',productCode:'B',cartonCount:1,qtyPerCarton:10,m3PerCarton:.011,literWarehouse:1,kgPerCarton:.008,gramWarehouse:1,listedAt:'2025-01-01',contId:'2'}]}),doc=p.w.document;
+ const input=doc.querySelector('tr[data-id="1"] [data-edit="m3PerCarton"]');
+ input.value='(10 * 20 * 30) / 1000000';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));
+ assert.equal(input.parentElement.querySelector('output').textContent,'= 0.006');
+ input.dispatchEvent(new p.w.Event('change',{bubbles:true}));
+ assert.equal(doc.querySelector('tr[data-id="1"] [data-edit="m3PerCarton"]').value,'0.006');
+ doc.querySelector('tr[data-id="8"] .date-label').click();
+ const date=doc.querySelector('tr[data-id="8"] [data-edit="listedAt"]');assert.equal(date.type,'text');
+ p.change('tr[data-id="8"] [data-edit="listedAt"]','25/12');
+ p.change('tr[data-id="1"] [data-edit="buyer"]','Tên mới');
+ p.change('tr[data-id="1"] [data-edit="paymentNote"]','Chờ tt');
+ const saved=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));
+ assert.equal(saved.drafts['1'].changes.m3PerCarton,.006);
+ assert.equal(saved.drafts['8'].changes.listedAt,'2025-12-25');
+ assert.equal(saved.drafts['1'].changes.buyer,'Tên mới');
+ assert.equal(saved.drafts['1'].changes.paymentNote,'Chờ tt');
+ assert.ok([...doc.querySelectorAll('#purchaseBuyerNames option')].some(o=>o.value==='Tên mới'));
+ assert.equal(doc.querySelector('tr[data-id="8"] [data-edit="contId"] option:checked').textContent,'11-1V');
+ assert.ok(doc.querySelector('tr[data-id="8"] [data-field="literDiff"]').classList.contains('measure-good'));
+ assert.ok(doc.querySelector('tr[data-id="8"] [data-field="gramDiff"]').classList.contains('measure-bad'));
+ doc.getElementById('save').click();doc.getElementById('commit').click();await tick();await tick();
+ const write=p.calls.find(c=>c.options.method==='PATCH'&&c.url.endsWith('/1'));
+ assert.equal(JSON.parse(write.options.body).changes.buyer,'Tên mới');
+ assert.equal(JSON.parse(write.options.body).changes.m3PerCarton,.006);
+});
+test('grid arrows move through inputs, computed cells and dropdowns without saving; F2 edits text',async t=>{
+ const p=await page(t,{saved:{columnLayout:5,visible:['rowKey','productCode','productName','container','status','qtyPerCarton','cartonCount','totalQty','unitPriceCny']},extraRows:[{id:'3',rowKey:'D00003',version:1,productCode:'B',cartonCount:2,qtyPerCarton:10,contId:'2'}]}),doc=p.w.document;
+ const key=k=>doc.activeElement.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:k,bubbles:true,cancelable:true}));
+ doc.querySelector('tr[data-id="3"] [data-edit="cartonCount"]').focus();
+ key('ArrowRight');assert.equal(doc.activeElement.dataset.field,'totalQty');
+ key('ArrowRight');assert.equal(doc.activeElement.dataset.edit,'unitPriceCny');
+ key('ArrowLeft');key('ArrowLeft');assert.equal(doc.activeElement.dataset.edit,'cartonCount');
+ doc.activeElement.value='12';doc.activeElement.dispatchEvent(new p.w.Event('input',{bubbles:true}));
+ key('ArrowDown');assert.equal(doc.activeElement.closest('tr').dataset.id,'1');assert.equal(doc.activeElement.dataset.edit,'cartonCount');
+ assert.equal(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).drafts['3'].changes.cartonCount,12);
+ doc.querySelector('tr[data-id="3"] [data-edit="contId"]').focus();key('ArrowRight');
+ assert.equal(doc.activeElement.dataset.status,'2');key('ArrowDown');assert.equal(doc.activeElement.dataset.field,'status');
+ const text=doc.querySelector('tr[data-id="3"] [data-edit="productName"]');text.focus();key('F2');
+ assert.equal(text.dataset.gridEditing,'true');key('ArrowLeft');assert.equal(doc.activeElement,text);
+ key('Escape');key('ArrowLeft');assert.equal(doc.activeElement.className,'code-label');
+ key('ArrowLeft');assert.equal(doc.activeElement.dataset.field,'rowKey');
+ assert.equal(p.calls.filter(c=>c.options.method).length,0);
+ assert.equal(doc.getElementById('orders').dataset.motion,'off');
+});
+
+test('grid arrow navigation crosses page boundaries in the same column',async t=>{
+ const p=await page(t,{extraRows:Array.from({length:51},(_,i)=>({id:String(i+2),rowKey:'D'+String(i+2).padStart(5,'0'),version:1,productCode:'P'+i,cartonCount:1,qtyPerCarton:1}))}),doc=p.w.document;
+ const last=[...doc.querySelectorAll('#orderTable tbody tr[data-id]')].at(-1),id=last.dataset.id;
+ last.querySelector('[data-edit="cartonCount"]').focus();
+ doc.activeElement.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true}));
+ assert.equal(doc.getElementById('pageLabel').textContent,'Trang 2/2');assert.equal(doc.activeElement.dataset.edit,'cartonCount');
+ doc.activeElement.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'ArrowUp',bubbles:true,cancelable:true}));
+ assert.equal(doc.getElementById('pageLabel').textContent,'Trang 1/2');assert.equal(doc.activeElement.closest('tr').dataset.id,id);
+});
+test('initial order layout uses restored filters before table widths are cached',async t=>{
+ const layouts=[];
+ const p=await page(t,{saved:{filter:'all',columnLayout:6},onEnhance:table=>{if(table.closest('#orderTable'))layouts.push({rows:table.tBodies[0].rows.length,mode:table.dataset.tableSelectWidth})}});
+ assert.equal(layouts[0].rows,1,'first enhancement must contain real rows, not an empty placeholder');
+ assert.equal(layouts[0].mode,'selected');
+ const td=p.w.document.querySelector('#orderTable td[data-field="productCode"]');assert.ok(td.querySelector('.code-cell > .code-label'));
+ p.change('#filter','');p.listeners.changed();await tick();await tick();
+ assert.equal(p.w.document.getElementById('filter').value,'','saved filter is consumed once, not restored over new choices');
 });

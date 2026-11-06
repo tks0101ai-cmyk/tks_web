@@ -1,6 +1,17 @@
 (function(root,factory){if(typeof module==='object'&&module.exports)module.exports=factory();else root.PurchaseCalculations=factory()})(typeof globalThis!=='undefined'?globalThis:this,function(){
  'use strict';
  const MAX=Number.MAX_SAFE_INTEGER;
+ // Arithmetic only: no eval, identifiers, function calls or cell references.
+ function evaluate(value){
+  const plain=parse(value);if(!Number.isNaN(plain))return plain;
+  const text=String(value).trim().replace(/^=/,'').replace(/×/g,'*').replace(/÷/g,'/');
+  if(text.length>256)return NaN;let pos=0;
+  const space=()=>{while(/\s/.test(text[pos]||'')&&pos<text.length)pos++};
+  function atom(){space();if(text[pos]==='+'||text[pos]==='-'){const sign=text[pos++];return (sign==='-'?-1:1)*atom()}if(text[pos]==='('){pos++;const n=sumExpression();space();if(text[pos++]!==')')throw Error();return n}const m=text.slice(pos).match(/^(?:\d+(?:\.\d*)?|\.\d+)/);if(!m)throw Error();pos+=m[0].length;return Number(m[0])}
+  function product(){let n=atom();space();while(text[pos]==='*'||text[pos]==='/'){const op=text[pos++],rhs=atom();n=op==='*'?n*rhs:n/rhs;space()}return n}
+  function sumExpression(){let n=product();space();while(text[pos]==='+'||text[pos]==='-'){const op=text[pos++],rhs=product();n=op==='+'?n+rhs:n-rhs;space()}return n}
+  try{const n=sumExpression();return pos===text.length&&Number.isFinite(n)&&Math.abs(n)<=MAX?n:NaN}catch{return NaN}
+ }
  function parse(value){if(value==null||String(value).trim()==='')return null;if(typeof value==='number')return Number.isFinite(value)?value:NaN;const text=String(value).trim();return /^[+-]?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/.test(text)?Number(text.replace(/,/g,'')):NaN}
  function number(value){if(value==null||typeof value==='boolean'||String(value).trim()==='')return null;const n=typeof value==='number'?value:parse(value);return Number.isFinite(n)&&Math.abs(n)<=MAX?n:null}
  function fraction(value){const n=number(value);if(n==null)return null;const [digits,exp='0']=String(n).toLowerCase().split('e'),parts=digits.split('.'),scale=(parts[1]||'').length-Number(exp);return scale>=0?[BigInt(parts.join('')),10n**BigInt(scale)]:[BigInt(parts.join(''))*10n**BigInt(-scale),1n]}
@@ -24,5 +35,5 @@
  function issues(r){const errors=[];for(const k of ['qtyPerCarton','cartonCount'])if(quantity(r[k])==null)errors.push(k);for(const k of ['unitPriceCny','freightPrepaid','freightPostpaid','fxRate','kgPerCarton','m3PerCarton','literWarehouse','gramWarehouse','taxAmount']){if(r[k]==null||r[k]==='')continue;const n=number(r[k]);if(n==null||n<0&&!SIGNED.has(k)||k==='fxRate'&&n===0)errors.push(k)}const derived=row(r);for(const [key,inputs] of Object.entries({totalQty:['qtyPerCarton','cartonCount'],totalCny:['qtyPerCarton','cartonCount','unitPriceCny','freightPrepaid'],goodsAmount:['qtyPerCarton','cartonCount','unitPriceCny','freightPrepaid','fxRate'],totalTon:['kgPerCarton','cartonCount'],totalM3:['m3PerCarton','cartonCount']})){if(inputs.every(k=>number(r[k])!=null)&&derived[key]==null&&!inputs.some(k=>number(r[k])===0))errors.push(key)}return [...new Set(errors)]}
  function sum(values){return values.reduce((total,v)=>v==null?total:add(total,v),0)}
  function stats(rows){let missing=0;const weights=[],volumes=[];for(const r of rows){const count=quantity(r.cartonCount),kg=positive(r.kgPerCarton),m3=positive(r.m3PerCarton);if(count==null||kg==null||m3==null)missing++;weights.push(scaled([count,kg],1000));volumes.push(mul(count,m3))}return {count:rows.length,ton:sum(weights),m3:sum(volumes),missing}}
- return {stats,sum,parse,number,positive,nonnegative,signed,quantity,add,mul,divide,row,issues,SIGNED};
+ return {stats,sum,parse,evaluate,number,positive,nonnegative,signed,quantity,add,mul,divide,row,issues,SIGNED};
 });

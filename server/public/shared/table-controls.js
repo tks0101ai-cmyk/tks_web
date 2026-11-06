@@ -158,12 +158,15 @@
           if (!textContext) return;
           textContext.font = style.font || [style.fontStyle, style.fontWeight, style.fontSize, style.fontFamily].join(' ');
           var width = 0, spacing = parseFloat(style.letterSpacing) || 0;
-          Array.from(select.options).forEach(function (option) {
+          // Dense editable grids may size closed selects by their current value;
+          // the native popup still contains every option. Other tables keep the default.
+          var compact = ctrl.table.dataset.tableSelectWidth === 'selected';
+          Array.from(compact ? select.selectedOptions : select.options).forEach(function (option) {
             var label = option.label, key = textContext.font + '\u001f' + label;
             if (!measured.has(key)) measured.set(key, textContext.measureText(label).width);
             width = Math.max(width, measured.get(key) + Math.max(0, label.length - 1) * spacing);
           });
-          width += horizontalSpace(style) + (style.appearance === 'none' ? 8 : 24);
+          width += horizontalSpace(style) + (style.appearance === 'none' ? (compact ? 0 : 8) : 24);
           for (var parent = select.parentElement; parent; parent = parent.parentElement) {
             width += horizontalSpace(window.getComputedStyle(parent));
             if (parent === entry.cell) break;

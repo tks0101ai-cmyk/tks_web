@@ -224,3 +224,16 @@ test('0086 other_note survives refresh/read and changing it writes only the chan
     assert.equal((await refreshExpected(pool, { log: quiet })).written, 0);
   } finally { await db.close(); }
 });
+
+test('legacy purchase settings without 0117 keep both CONT and expected refresh working', async () => {
+  const { db, pool } = await setup();
+  try {
+    await seed(db);
+    await db.exec("CREATE TABLE purchase_settings (id integer PRIMARY KEY, source_mode text); INSERT INTO purchase_settings VALUES (1, 'sheets')");
+    const { refreshContainers } = require('./sync');
+    const { SHEET_NAMES } = require('./parser');
+    const result = await refreshContainers({pool, spreadsheetId:'fixture', force:true, client:{listSheetTitles:async()=>SHEET_NAMES, getValues:async()=>[]}, logger:{info(){},error(){}}});
+    assert.equal(result.status, 'held'); // source read succeeded; empty snapshot held by shrink guard
+    assert.equal((await refreshExpected(pool, {log:quiet})).rows, 3);
+  } finally { await db.close(); }
+});
