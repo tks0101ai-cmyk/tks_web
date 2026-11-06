@@ -5,6 +5,7 @@ const path = require('node:path');
 const { EventEmitter } = require('node:events');
 const { PGlite } = require('@electric-sql/pglite');
 const { createPurchaseOrdersService } = require('./purchaseOrdersService');
+const { FILES: PURCHASE_FILES } = require('../db/ensurePurchaseSchema');
 const excel = require('../public/shared/purchase-workbook');
 const columns = require('../public/shared/purchase-columns');
 let db, service, events;
@@ -13,7 +14,9 @@ const input = () => ({ productCode: 'A', productName: 'Hàng A', listedAt: '2026
 const file = rows => Buffer.from(excel.bytes(excel.exportWorkbook(rows, columns)));
 before(async () => {
   db = new PGlite();
-  for (const name of ['0053_product_containers.sql','0072_product_container_unit_price_cny.sql','0075_product_container_expected.sql','0078_product_container_expected_prices.sql','0086_product_container_other_note.sql','0110_purchase_orders.sql','0111_purchase_operations.sql','0112_purchase_requests.sql','0113_purchase_freight.sql']) await db.exec(fs.readFileSync(path.join(__dirname,'../db/migrations',name),'utf8'));
+  // Danh sach migration Thu mua lay tu FILES de them migration moi khong lam
+  // do test (truoc day ghim cung nen 0114/0115 bi bo sot).
+  for (const name of ['0053_product_containers.sql','0072_product_container_unit_price_cny.sql','0075_product_container_expected.sql','0078_product_container_expected_prices.sql','0086_product_container_other_note.sql',...PURCHASE_FILES]) await db.exec(fs.readFileSync(path.join(__dirname,'../db/migrations',name),'utf8'));
   await db.exec('CREATE TABLE product_report(product_code text,product_name text); CREATE TABLE kiot_test_stock(on_hand numeric);INSERT INTO kiot_test_stock VALUES(99)');
   events = new EventEmitter();
   const query = (sql,params) => db.query(sql,params);
@@ -22,7 +25,13 @@ before(async () => {
 beforeEach(async () => {
   await db.exec(`TRUNCATE purchase_requests,purchase_undo_expected,purchase_operation_rows,purchase_operations,purchase_orders,product_containers,purchase_key_history,purchase_history,purchase_departures,purchase_import_previews,product_container_lines,product_container_expected,product_container_expected_state RESTART IDENTITY CASCADE;
     ALTER SEQUENCE purchase_order_key_seq RESTART WITH 1;
-    UPDATE purchase_settings SET source_mode='web';`);
+    UPDATE purchase_settings SET source_mode='web',projection_owns_all=true,integration_enabled=true;`);
+  // integration_enabled=true: bo test nay mo ta hop dong khi Thu mua DA noi vao
+  // he thong. Che do cach ly (mac dinh, migration 0117) duoc kiem rieng o
+  // purchaseOrdersIsolation.test.js.
+  // Bo test nay mo ta hop dong SAU cutover: Thu mua la nguon duy nhat nen moi
+  // dong — ke ca dong cho xep — deu co trong read model dung chung. Pham vi
+  // mot phan (mac dinh) duoc kiem rieng o purchaseOrdersProjectionScope.test.js.
 });
 after(async () => db?.close());
 

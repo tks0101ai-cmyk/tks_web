@@ -1,0 +1,21 @@
+-- Che do ghi CACH LY cua Thu mua.
+--
+-- Van de: bat source_mode='web' lam hai viec cung luc, va chi mot trong hai la
+-- dieu nguoi dung muon khi thu nghiem tren production:
+--   (1) mo duong ghi cho trang Thu mua — DIEU MUON;
+--   (2) coi Thu mua la nguon chung: productContainers/sync.js dung han job doc
+--       Google Sheet, va moi lan ghi lai day ban chieu sang read model dung
+--       chung product_container_lines — DIEU KHONG MUON khi con thu nghiem.
+--
+-- integration_enabled tach hai viec do:
+--   false (mac dinh) — CACH LY: trang Thu mua ghi that (sua, xoa mem, khoi phuc,
+--     hoan tac, tach dong, import, trang thai cont) va van co lich su/audit/SSE
+--     rieng, NHUNG khong chay projection, khong xoa cache cont dung chung va
+--     khong phat su kien containersChanged. Job doc Google Sheet VAN CHAY binh
+--     thuong, nen Du kien hang ve va Vong doi don hang khong doi hanh vi.
+--   true — NOI VAO HE THONG: hanh vi nhu truoc, Thu mua la nguon chung.
+--
+-- Doc lap voi projection_owns_all (0116): co do chi co nghia khi
+-- integration_enabled = true, vi khi cach ly thi projection khong chay.
+ALTER TABLE purchase_settings
+  ADD COLUMN IF NOT EXISTS integration_enabled BOOLEAN NOT NULL DEFAULT false;

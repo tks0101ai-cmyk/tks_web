@@ -1,5 +1,30 @@
 # Supabase schema cho đồng bộ KiotViet
 
+## Migration 0118 — Thu mua: nguồn gốc của từng dòng (06/11/2026, chưa áp DB)
+
+`0118_purchase_source_sheet.sql`: `purchase_orders` thêm `source_sheet TEXT` và `source_row INTEGER`.
+
+Bản nguồn TKS nằm trên 7 sheet (YIWU, VK-DUNG, HÀ BẮC, SD, GDONG, KHÁC, CONT TKS1). Hai cột này giữ xuất xứ để (1) lọc và làm việc theo từng luồng trên bảng Đặt hàng, (2) đường nạp biết dòng nào đã nạp để không nạp trùng khi nạp bổ sung từng sheet.
+
+- `purchase_orders_source_unique` — UNIQUE `(source_sheet, source_row)` *WHERE cả hai NOT NULL*: mỗi vị trí nguồn chỉ tồn tại một lần. Dòng cũ (NULL) và dòng tạo tay trên web không bị ràng buộc này.
+- `purchase_orders_source_sheet_idx` — index cho việc lọc theo nguồn.
+
+Hai cột do **đường nạp** ghi, không phải người dùng: cột `sourceSheet` mang cờ `ro` trong `public/shared/purchase-columns.js`, nên nó không nằm trong tập cột ghi được của API sửa dòng, của import Excel, lẫn của thao tác dán ô. Sửa nó qua API trả `FIELD_NOT_WRITABLE`.
+
+552 dòng nạp trước migration này để NULL (hiện trên giao diện là nguồn trống).
+
+### Một nguồn duy nhất cho tập cột ghi được
+
+Trước đây danh sách cột chỉ đọc được viết lặp bằng chữ ở **ba** nơi (`purchaseOrdersService.js`, `purchaseOrdersImport.js`, `public/thu-mua/dat-hang/purchase.js`) cộng một danh sách thứ tư cho thao tác dán — đúng kiểu trùng lặp đã gây ra lỗi `name_key`. Nay cờ `ro` trong catalog là nguồn duy nhất: `rowKey`, `sourceSheet`, `container`, `status`. Cả ba nơi dùng `columns.filter(c => !c.d && !c.m && !c.ro)`; thao tác dán thêm riêng `buyer` vì ô đó là dropdown nhân viên. Cờ `kk` cũ (khai báo nhưng không ai đọc) đã bỏ.
+
+## Migration 0115, 0116 — Thu mua: VC trước được phép âm, phạm vi projection (06/11/2026, chưa áp DB)
+
+`0115_purchase_freight_prepaid_signed.sql` (đổi số từ `0114_...` vì main đã dùng `0114_stocktake_frozen_lines.sql`): bỏ CHECK `purchase_orders_freight_prepaid_check`, nên `purchase_orders.freight_prepaid` (已付, CNY) nhận số âm — bản chụp nguồn TKS 05/11/2026 có 11 dòng âm, là khoản giảm trừ/hoàn có chủ đích. `freight_postpaid` (代付) và các cột không âm khác giữ nguyên CHECK.
+
+`0116_purchase_projection_scope.sql` (đổi số từ `0115_...`): `purchase_settings.projection_owns_all BOOLEAN NOT NULL DEFAULT false`. `false` = sở hữu một phần: Thu mua chỉ thay thế dòng của cont có trong `product_containers`, dòng sheet khác giữ nguyên, dòng chờ xếp không đẩy sang `product_container_lines`. `true` = sở hữu toàn phần: mọi dòng `sheet_name <> 'THU MUA'` bị xóa; chỉ bật sau khi bản chụp nguồn đã đầy đủ.
+
+`db/ensurePurchaseSchema.js` áp 6 file `0110`–`0116` khi web startup (trong một giao dịch, advisory lock, không chạy migration của module khác).
+
 ## Migration 0114 — Kiểm kê: chốt dòng đơn khi đóng đợt (05/11/2026, đã áp DB 05/11/2026)
 
 `0114_stocktake_frozen_lines.sql`: `stocktake_sessions` thêm `lines_frozen_at` TIMESTAMPTZ (NULL = chưa đóng, nạp từ sheet hoặc đóng trước migration này, chỉ đọc). Bảng `stocktake_session_lines` (`session_id` FK ON DELETE CASCADE, `order_id`, `line_no`, `order_code`, `order_status`, `team`, `zone`, `spec`, `product_code`, `product_name`, `quantity` NUMERIC, PK `(session_id, order_id, line_no)`): dòng đơn gốc lúc đóng đợt, phần sửa vẫn ở `stocktake_line_edits`. Từ migration này `stocktake_session_results.prev_diff`, `other_diff` của đợt web lưu số tự lấy; số nhập tay ở `stocktake_code_notes`. Gỡ: `db/rollbacks/0114_stocktake_frozen_lines.down.sql` (chạy tay, sau khi deploy lại bản web không đọc `lines_frozen_at`).
@@ -919,7 +944,7 @@ Cập nhật gần nhất: 04/11/2026.
 
 Thêm /thu-mua/dat-hang/ và /api/purchase-orders với quyền purchase.view/edit/import/export/depart/arrive; mặc định chỉ Quản lý, quyền mở rộng qua cơ chế cấp quyền hiện có. Module có bảng Chỉ số cont và Đặt hàng sửa trực tiếp, lọc riêng theo tài khoản, dropdown NV/cont/trạng thái, tách .01/.02 đệ quy, sửa hàng loạt, undo/xóa mềm/khôi phục, import toàn bộ hợp lệ mới ghi, audit/realtime và bộ công thức dùng chung. Source gate ngăn job Sheet và web ghi đè nhau.
 
-Migrations Thu mua được đổi sang 0110–0113 vì main đã dùng 0101–0109. db/ensurePurchaseSchema.js áp đúng bốn migration này khi web startup, transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
+Migrations Thu mua được đổi sang 0110–0116 vì main đã dùng 0101–0109 và 0114 (0114_stocktake_frozen_lines.sql). db/ensurePurchaseSchema.js áp đúng sáu migration này khi web startup, transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
 
 
 
@@ -950,6 +975,14 @@ Migrations Thu mua được đổi sang 0110–0113 vì main đã dùng 0101–0
 
 05/11/2026 — Quyết định mới thay thế quy tắc VC dòng nhập tay: Tiền VC từng mã = tổng m³ mã × VC/m³ cont. Tính lại khi đổi số thùng, số đo, cont hoặc cước cont; Tiền VC dòng là cột suy ra, không nhập/import đè. Giá NET và projection dùng cùng phân bổ. Cước cont nhập tay chia cho tổng m³ cont; thiếu số đo thì chưa phân bổ để tránh tính sai. Giữ độ chính xác đơn giá khi tính, làm tròn đồng khi hiển thị. Dòng cont ghim cho sửa Tiền VC và công thức qua cùng luồng kiểm tra/lưu của bảng gốc. Chưa áp migration hoặc deploy.
 
-## Schema dùng thử Thu mua — `purchase_trial` (05/11/2026)
+## Migration 0117 — Thu mua: chế độ ghi cách ly (06/11/2026, chưa áp DB)
 
-Khởi tạo riêng, có xác thực, bằng các DDL Thu mua 0110–0113 trong search_path không có public; theo dõi phiên bản trong `purchase_trial.schema_migrations`, không ghi schema_migrations chính. Chứa các bảng purchase_*, product_containers và hr_employees mẫu riêng. `source_mode=web` chỉ thuộc schema thử. Không projection vào product_container_lines/expected, không tăng tồn kho hay ghi nhân sự thật. Không thêm migration công khai hoặc thay schema dữ liệu chính. Marker `trial_sample_v1` ngăn seed lại ghi đè trạng thái đã sửa.
+`0117_purchase_isolated_workflow.sql`: `purchase_settings.integration_enabled BOOLEAN NOT NULL DEFAULT false`.
+
+`false` (cách ly) — trang Thu mua ghi thật vào `purchase_orders` / `product_containers` và vẫn ghi `purchase_history`, `purchase_operations`, nhưng projection sang `product_container_lines` KHÔNG chạy, cache cont dùng chung không bị xóa và sự kiện `containersChanged` không phát. `productContainers/sync.js` vẫn đọc Google Sheet đủ 7 sheet; `productContainers/expectedRefresh.js` không lấy `product_name` từ `purchase_orders`.
+
+`true` — Thu mua là nguồn chung: hành vi như trước, job đọc Sheet nhường quyền (`web-source`).
+
+Đọc cùng một `SELECT ... FOR UPDATE` với `source_mode` trong giao dịch ghi, nên không có lượt ghi nào nửa cách ly nửa nối vào hệ thống. `projection_owns_all` (`0116`) chỉ có nghĩa khi cờ này là `true`.
+
+Schema dùng thử `purchase_trial` (05/11/2026) đã bị gỡ khỏi mã nguồn ngày 06/11/2026 cùng `purchaseOrders/purchaseOrdersTrial.js` và API `/api/purchase-trial`. Không migration nào xóa schema đó: nó chỉ chứa dữ liệu mẫu và không còn nơi nào đọc. Xóa tay nếu muốn dọn, xem `server/purchaseOrders/ROLLOUT.md`.

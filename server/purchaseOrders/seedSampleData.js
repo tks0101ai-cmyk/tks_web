@@ -13,6 +13,8 @@
 //
 // Khong doi purchase_settings.source_mode. Nguon ghi van la Sheets.
 const { getPool } = require('../db/pool');
+// name_key phai tinh bang cung ham voi service (xem containerNames.js).
+const { normalizeName } = require('./containerNames');
 
 const KEY_MIN = 'D90001';
 const KEY_MAX = 'D99999';
@@ -57,9 +59,9 @@ async function seedSampleData({ pool = getPool(), logger = console, manageTransa
     for (const c of CONTAINERS) {
       const { rows } = await client.query(
         `INSERT INTO product_containers(name,name_key,status,truck_name,freight,carrier,loader,freight_mode)
-         VALUES($1,lower(btrim($1)),$2,$3,$4,$5,$6,$7)
+         VALUES($1,$8,$2,$3,$4,$5,$6,$7)
          ON CONFLICT(name_key) DO UPDATE SET status=EXCLUDED.status RETURNING id`,
-        [c.name, c.status, c.truck, c.freight, c.carrier, c.loader, c.freightMode]
+        [c.name, c.status, c.truck, c.freight, c.carrier, c.loader, c.freightMode, normalizeName(c.name)]
       );
       ids.set(c.key, rows[0].id);
     }

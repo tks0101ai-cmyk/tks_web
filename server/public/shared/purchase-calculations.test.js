@@ -9,3 +9,17 @@ test('grouped numeric text is unambiguous and small scientific numeric values st
 test('container totals include only known measurements and flag unfinished split quantities',()=>{const s=C.stats([{cartonCount:3,kgPerCarton:100,m3PerCarton:.1},{cartonCount:null,kgPerCarton:10,m3PerCarton:.2}]);assert.deepEqual(s,{count:2,ton:.3,m3:.3,missing:1})});
 
 test('large valid NET numerators and unit conversions are divided before checking output bounds',()=>{const r={...row,qtyPerCarton:10,cartonCount:1,unitPriceCny:1,freightPrepaid:0,freightPostpaid:0,fxRate:1};assert.equal(C.row(r,Number.MAX_SAFE_INTEGER).netPrice,(Number.MAX_SAFE_INTEGER+10)/10);assert.notEqual(C.row({...r,kgPerCarton:Number.MAX_SAFE_INTEGER},0).totalTon,null)});
+
+// VC truoc (已付) la cot duy nhat duoc phep am: nguon TKS dung so am lam khoan
+// giam tru. Ban chup 05/11/2026 co dong D00141 voi VC truoc -23 va tong te 2227.
+test('prepaid freight accepts a negative amount while every other money column does not',()=>{
+  const r={...row,qtyPerCarton:1,cartonCount:150,unitPriceCny:15,freightPrepaid:-23};
+  const d=C.row(r,0);
+  assert.equal(d.totalCny,2227,'1*150*15 - 23');
+  assert.equal(d.goodsAmount,2227*3920);
+  assert.ok(Number.isFinite(d.netPrice));
+  assert.deepEqual(C.issues(r),[],'khong con bao loi vi so am');
+  assert.ok(C.issues({...row,freightPostpaid:-1}).includes('freightPostpaid'),'VC sau van khong am');
+  assert.ok(C.issues({...row,taxAmount:-1}).includes('taxAmount'));
+  assert.deepEqual([...C.SIGNED],['freightPrepaid']);
+});

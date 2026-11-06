@@ -453,7 +453,7 @@ Cập nhật gần nhất: 05/11/2026.
 
 Thêm /thu-mua/dat-hang/ và /api/purchase-orders với quyền purchase.view/edit/import/export/depart/arrive; mặc định chỉ Quản lý, quyền mở rộng qua cơ chế cấp quyền hiện có. Module có bảng Chỉ số cont và Đặt hàng sửa trực tiếp, lọc riêng theo tài khoản, dropdown NV/cont/trạng thái, tách .01/.02 đệ quy, sửa hàng loạt, undo/xóa mềm/khôi phục, import toàn bộ hợp lệ mới ghi, audit/realtime và bộ công thức dùng chung. Source gate ngăn job Sheet và web ghi đè nhau.
 
-Migrations Thu mua được đổi sang 0110–0113 vì main đã dùng 0101–0109. db/ensurePurchaseSchema.js áp đúng bốn migration này khi web startup, transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
+Migrations Thu mua được đổi sang 0110–0116 vì main đã dùng 0101–0109 và 0114 (0114_stocktake_frozen_lines.sql). db/ensurePurchaseSchema.js áp đúng sáu migration này khi web startup, transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
 
 
 
@@ -620,14 +620,22 @@ Kiểm tra cuối phương án cont 03/11/2026: 83 ca đạt, 0 lỗi (DOM mocku
 Bộ lọc đặt hàng có trạng thái, HR ID/tên legacy, NCC, VAT, ngày lên list và cảnh báo, tìm không dấu. Lọc cont độc lập. Bộ lọc lưu riêng theo tài khoản, giữ nguyên khi người khác sửa mất giá trị đang lọc; xuất file/dán bảng dùng cùng tập dòng. Tổng quan tính theo lọc/bản nháp, cảnh báo thiếu số liệu thay 0 giả. Thêm mã ưu tiên thông tin chính, phần phụ thu gọn, lấy cont đang theo dõi và không mang ngày đã phát/đã đến từ đơn cũ.
 107 ca kiểm thử module đạt, trong đó 32 ca trang thật; kiểm thêm ID HTML không trùng và asset tồn tại. Đây là jsdom/PGlite, chưa nghiệm thu CSS/ảnh thực tế trên trình duyệt. Không có SUPABASE_TEST_DB_URL trong môi trường local hiện tại (chỉ kiểm cờ, không in secret); chưa chạy app kết nối DB thật, migration/seed/deploy/cutover. Cần môi trường thử nghiệm/DB độc lập để mở link trang thật và nghiệm thu bước 3–4. Câu hỏi môi trường thử nghiệm đã gửi người dùng.
 
-## Thu mua — dùng thử dữ liệu mẫu (05/11/2026)
+## Thu mua — chế độ ghi cách ly (06/11/2026, thay chế độ dùng thử đã gỡ)
 
-05/11/2026 — Thu mua: khóa dòng cấp ngay khi tạo. `POST /api/purchase-orders/next-key` (quyền `purchase.edit`) trả khóa kế tiếp từ `purchase_order_key_seq`; popup Thêm mã gọi endpoint này nên dòng mới hiện khóa thật thay cho "MỚI". Khi lưu, server nhận lại đúng khóa đó qua `claimKey`: chỉ chấp nhận khóa đúng dạng `D` + 5 chữ số, đã thực sự phát ra từ sequence (`<= last_value`) và chưa có trong `purchase_orders` lẫn `purchase_key_history`; khóa lạ, khóa trùng hoặc khóa đã nghỉ đều báo `ROW_KEY_UNKNOWN` chứ không tự cấp khóa khác. Không gửi khóa thì vẫn tự sinh như cũ nên đường import không đổi. `nextval` không quay lui khi rollback, nên mở popup rồi hủy sẽ bỏ trống một số — đúng quy tắc không tái sử dụng khóa. Không migration.
+Chế độ dùng thử (`/thu-mua/dat-hang/?trial=1`, API `/api/purchase-trial`, `purchaseOrders/purchaseOrdersTrial.js`, schema `purchase_trial`) **đã được gỡ** ngày 06/11/2026. Thay thế bằng chế độ ghi cách ly, thử trực tiếp trên dữ liệu thật mà không ảnh hưởng module khác.
 
-05/11/2026 — Thu mua (giao diện): bảng Đặt hàng và Chỉ số cont phủ kín bề ngang với mọi số cột, cuộn ngang khi vượt khung; cột số không còn cắt chữ (đệm đủ, tính cả bề rộng tiêu đề). Ô Mã SP: một nhấn mở hộp xác nhận chọn cont rồi mới tách, hai nhấn xem lịch sử, bút chì hoặc F2 mới sửa mã; bỏ nút "Tách dòng". Cột ngày hiển thị ngày/tháng, bấm vào mở ô ngày đầy đủ. Bảng Chỉ số cont bỏ cột rỗng chứa nút "Sửa", còn 14 cột, nút đồng cỡ chữ. Form Thêm mã có gợi ý mã kèm tên và NCC, chọn xong tự điền. Sidebar Thu mua có mục con Đặt hàng / Lịch sử. Không migration, không đổi API.
+`purchase_settings.integration_enabled` (migration `0117`, mặc định `false`) tách hai việc mà `source_mode='web'` trước đây làm cùng lúc:
 
-Mở `/thu-mua/dat-hang/?trial=1` hoặc chọn **Dùng thử dữ liệu mẫu** trên trang Thu mua. API riêng `/api/purchase-trial` giữ nguyên các quyền `purchase.*`. Trang chính và `source_mode` chính không thay đổi.
+| `source_mode` | `integration_enabled` | Hành vi |
+|---|---|---|
+| `sheets` | bất kỳ | Trang Thu mua chỉ xem. Mọi API ghi trả 503 `PURCHASE_SOURCE_NOT_ACTIVE` |
+| `web` | `false` (cách ly) | Ghi thật: sửa, xóa mềm, khôi phục, hoàn tác, tách dòng, import, trạng thái cont; có đủ lịch sử / audit / SSE riêng. **Không** projection, **không** xóa cache cont dùng chung, **không** phát `containersChanged`. Job đọc Google Sheet (`productContainers/sync.js`) vẫn chạy đủ 7 sheet, nên Dự kiến hàng về và Vòng đời đơn hàng không đổi hành vi |
+| `web` | `true` | Thu mua là nguồn chung: projection chạy, job đọc Sheet dừng (`web-source`), Dự kiến hàng về lấy tên hàng từ `purchase_orders` |
 
-`purchaseOrders/purchaseOrdersTrial.js` khởi tạo lười schema `purchase_trial` trong PostgreSQL khi người có quyền mở trang thử lần đầu. Mọi kết nối thử chỉ tra `purchase_trial, pg_catalog, pg_temp` (không có `public`), reset search_path trước khi trả kết nối; lỗi reset làm loại kết nối khỏi pool. Dùng lại service, validation, import, audit và undo thật; tắt projection/cache invalidation/sự kiện production. Mẫu 12 dòng/3 cont và nhân viên mẫu chỉ seed một lần trong schema thử. Không có route reset/xóa toàn bộ. Bộ lọc và bản nháp trình duyệt tách khóa với trang chính; file xuất tên `Thu-mua-dung-thu.xlsx`.
+Hai cờ được đọc trong cùng một `SELECT ... FOR UPDATE` với `source_mode`, nên không có lượt ghi nào vừa cách ly vừa đẩy projection. `projection_owns_all` (`0116`) chỉ có nghĩa khi `integration_enabled = true`.
 
-Kiểm thử `purchaseOrders/purchaseOrdersTrial.test.js`: dữ liệu public không đổi, thiếu bảng thử không đọc nhầm public, reset connection, giao dịch đồng thời, sửa/undo/xóa/khôi phục, chặn chưa đăng nhập, khởi tạo lại không reset cont đã sửa. PGlite chỉ dùng cho test; runtime không thêm thư viện hay tiến trình database mới.
+Giao diện: bảng báo trên trang nêu rõ chế độ — `CÁCH LY · …` khi `web` + cách ly, `Đang xem dữ liệu từ Google Sheet…` khi còn `sheets`, ẩn hẳn khi đã nối vào hệ thống.
+
+Kiểm thử: `purchaseOrders/purchaseOrdersIsolation.test.js` (7 ca: ghi thật nhưng không chạm dữ liệu chung, bật cờ thì nối vào, mọi đường ghi, cùng khóa với source gate, chặn khi nguồn là Sheet, `list` trả cả hai cờ, gate của Dự kiến hàng về), `productContainers/sync.test.js` (cách ly không làm dừng job Sheet).
+
+Bật/tắt bằng SQL, xem `server/purchaseOrders/ROLLOUT.md`.

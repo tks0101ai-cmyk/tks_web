@@ -6,7 +6,9 @@
 const calculations=require('../public/shared/purchase-calculations');
 const columns = require('../public/shared/purchase-columns');
 const workbook = require('../public/shared/purchase-workbook');
-const writable = columns.filter(c => !c.d && !c.m && !['rowKey', 'container', 'status'].includes(c.k));
+// Cot chi doc duoc danh dau `ro` trong purchase-columns.js — mot nguon duy nhat,
+// khong lap danh sach ten cot o hai noi nhu truoc.
+const writable = columns.filter(c => !c.d && !c.m && !c.ro);
 const byKey = new Map(writable.map(c => [c.k, c]));
 const keyPattern = /^D\d{5,}(?:\.(?:01|02))*$/;
 const integerFields = new Set(['qtyPerCarton', 'cartonCount']);
@@ -38,7 +40,8 @@ function prepareRows(sourceRows, existingRows, { listedAt = today() } = {}) {
       if (blank(value)) continue; // Blank imports preserve existing values.
       if (workbook.numericTypes.has(col.t)) {
         const number = calculations.parse(value);
-        if (!Number.isFinite(number) || number < 0 || number > Number.MAX_SAFE_INTEGER) result.errors.push(col.l + ': số không hợp lệ.');
+        // VC truoc duoc phep am (calculations.SIGNED); cac cot so khac khong am.
+        if (!Number.isFinite(number) || number < 0 && !calculations.SIGNED.has(col.k) || Math.abs(number) > Number.MAX_SAFE_INTEGER) result.errors.push(col.l + ': số không hợp lệ.');
         else if (integerFields.has(col.k) && (!Number.isSafeInteger(number) || number <= 0)) result.errors.push(col.l + ': phải là số nguyên dương.');
         else if(col.k==='fxRate'&&number===0)result.errors.push(col.l+': phải lớn hơn 0 hoặc để trống.');else values[col.k] = number;
       } else if ((col.t === 'date'||col.t==='datetime')) {

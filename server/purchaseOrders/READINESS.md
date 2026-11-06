@@ -1,4 +1,4 @@
-> Bản phát hành PR 05/11/2026: migrations 0110–0113, tự khởi tạo schema riêng trước HTTP; nguồn vẫn Sheets, chưa seed/cutover. Chuyển dữ liệu/bật ghi theo ROLLOUT.md là bước riêng. Nội dung theo ngày bên dưới ghi lại tiến trình, không xác nhận đã deploy.
+> Bản phát hành PR 05/11/2026: migrations 0110–0113 (thêm 0115, 0116 ngày 06/11/2026), tự khởi tạo schema riêng trước HTTP; nguồn vẫn Sheets, chưa seed/cutover. Chuyển dữ liệu/bật ghi theo ROLLOUT.md là bước riêng. Nội dung theo ngày bên dưới ghi lại tiến trình, không xác nhận đã deploy.
 
 # Mức hoàn thiện Thu mua — 05/11/2026
 
