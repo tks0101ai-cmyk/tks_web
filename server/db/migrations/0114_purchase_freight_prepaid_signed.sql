@@ -1,0 +1,14 @@
+-- VC truoc (已付, CNY) duoc phep AM.
+--
+-- Ban chup nguon TKS 05/11/2026 co 11 dong ghi VC truoc am (-1101, -290, -100,
+-- -90, -56, -23, -1, -0.2...), lap lai co quy luat nen day la khoan giam tru /
+-- hoan co chu dich trong sheet, khong phai loi go. Rang buoc >= 0 cu chan nap
+-- dung so va lam Tong te lech so voi sheet.
+--
+-- Chi noi dung cot nay theo bang chung thuc te. freight_postpaid (代付) van giu
+-- CHECK >= 0; neu sau nay nguon cung co gia tri am o do thi se vap cung mot loi
+-- va can mot migration tuong tu.
+--
+-- Cac rang buoc khong am khac (unit_price_cny, fx_rate, kg_per_carton,
+-- m3_per_carton, freight_amount, tax_amount) giu nguyen.
+ALTER TABLE purchase_orders DROP CONSTRAINT IF EXISTS purchase_orders_freight_prepaid_check;
