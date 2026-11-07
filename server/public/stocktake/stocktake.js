@@ -63,7 +63,7 @@
 
   const state = {
     sessions: [], sessionId: null, board: null, canEdit: false, canClose: false, showCancelled: false, importedBranches: new Set(),
-    query: '', filter: 'all', recheck: '', status: '', sortKey: null, sortDir: null, headBranch: null, loadVersion: 0
+    query: '', filter: 'all', recheck: '', status: '', sorts: [], headBranch: null, loadVersion: 0
   };
   // view.rows: các dòng đã lọc + sort; view.drawn: số dòng đã vẽ.
   // view.order: ma theo thu tu dang hien; tai nen (sau luu / SSE) giu nguyen thu tu nay de dong vua sua khong nhay cho.
@@ -79,8 +79,8 @@
   const detail = { code: null };
   let user = null;
 
-  // Số kiểu sheet kiểm kê: phẩy ngăn hàng nghìn, chấm thập phân (163,200 · 1.5).
-  const fmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
+  // Chỉ làm tròn khi hiển thị; dữ liệu tính toán, sắp xếp và ô đang sửa giữ độ chính xác gốc.
+  const fmt = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
   const num = value => (value === null || value === undefined ? '' : fmt.format(value));
   // Tiền (giá trị chênh, tổng): làm tròn đồng — số lẻ thập phân từ công thức sheet chỉ làm cột rộng ra.
   const fmtMoney = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
@@ -280,17 +280,22 @@
   }
   const byDefault = (a, b) => Math.abs(b.diffValue) - Math.abs(a.diffValue) || a.code.localeCompare(b.code);
   function sortRows(rows) {
-    const column = COLUMNS.find(c => c.key === state.sortKey);
-    if (!column || !state.sortDir) return rows.sort(byDefault);
-    const factor = state.sortDir === 'desc' ? -1 : 1;
-    // Đánh dấu (Quên KK, Combo): "tăng" = có trước.
-    const flagFactor = column.type === 'flag' ? -1 : 1;
+    const sorts = state.sorts.map(sort => ({ ...sort, column: COLUMNS.find(c => c.key === sort.key) }))
+      .filter(sort => sort.column);
+    if (!sorts.length) return rows.sort(byDefault);
     return rows.sort((a, b) => {
-      const x = sortValue(a, column);
-      const y = sortValue(b, column);
-      if (x === null || y === null) return x === y ? a.code.localeCompare(b.code) : x === null ? 1 : -1;
-      const diff = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'vi');
-      return diff * factor * flagFactor || a.code.localeCompare(b.code);
+      for (const { column, dir } of sorts) {
+        const x = sortValue(a, column);
+        const y = sortValue(b, column);
+        if (x === null || y === null) {
+          if (x === y) continue;
+          return x === null ? 1 : -1;
+        }
+        const diff = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'vi');
+        // Đánh dấu (Quên KK, Combo): "tăng" = có trước.
+        if (diff) return diff * (dir === 'desc' ? -1 : 1) * (column.type === 'flag' ? -1 : 1);
+      }
+      return a.code.localeCompare(b.code);
     });
   }
 
@@ -310,7 +315,7 @@
     const result = Search.search(searchIndex(), state.query);
     searchFuzzy = result.fuzzy;
     const found = result.rows.filter(row => allowed.has(row));
-    return state.sortKey && state.sortDir ? sortRows(found) : found;
+    return state.sorts.length ? sortRows(found) : found;
   }
 
   function cellText(row, key) {
@@ -326,7 +331,7 @@
       case 'clusterPrevRatio': return pct(row.clusterPrevRatio);
       case 'otherRatio': return pct(row.otherRatio);
       case 'forgotten': return row.forgotten ? 'Quên' : '';
-      case 'cost': return num(row.cost); // giu so le de khop voi Gia tri chenh va KiotViet
+      case 'cost': return num(row.cost);
       case 'counted': return num(row.counted);
       case 'stock': return num(row.stock);
       case 'diffQty': return num(row.diffQty);
@@ -375,10 +380,19 @@
   }
   function syncSortHeader() {
     document.querySelectorAll('#stTable thead th').forEach(th => {
-      const on = th.dataset.field === state.sortKey && state.sortDir;
-      th.setAttribute('aria-sort', on ? (state.sortDir === 'asc' ? 'ascending' : 'descending') : 'none');
+      const index = state.sorts.findIndex(sort => sort.key === th.dataset.field);
+      const sort = state.sorts[index];
+      // aria-sort mô tả cột chính; tên nút đọc đầy đủ hướng và ưu tiên mọi lớp.
+      th.setAttribute('aria-sort', index === 0 ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none');
+      th.dataset.sortActive = String(!!sort);
+      const button = th.querySelector('[data-st-sort]');
+      const label = th.querySelector('.sort-label').textContent;
+      const description = label + (sort ? ', ưu tiên ' + (index + 1) + ', ' + (sort.dir === 'asc' ? 'tăng dần' : 'giảm dần') : '')
+        + '. Bấm để sắp xếp; Shift + bấm để thêm hoặc đổi lớp sắp xếp.';
+      button.setAttribute('aria-label', description);
+      button.title = description;
       const mark = th.querySelector('.sort-indicator');
-      if (mark) mark.textContent = on ? (state.sortDir === 'asc' ? '▼' : '▲') : '▲▼';
+      if (mark) mark.textContent = sort ? (sort.dir === 'asc' ? '▲' : '▼') + (index + 1) : '▲▼';
     });
   }
 
@@ -1331,8 +1345,8 @@
     const tr = [...$('stLineRows').children].find(item => item.dataset.lineKey === saved.key);
     const input = tr && tr.querySelector('[data-line-field="' + saved.field + '"]');
     if (!input || input.disabled) return;
-    input.value = saved.value;
     input.focus();
+    input.value = saved.value;
     if (saved.start !== null) input.setSelectionRange(saved.start, saved.end);
   }
 
@@ -1347,12 +1361,27 @@
     input.dataset.lineField = field;
     input.disabled = disabled;
     input.setAttribute('aria-label', label);
+    if (type === 'number') {
+      input.type = 'text';
+      input.inputMode = 'decimal';
+      input.value = num(Number(value));
+      input.addEventListener('focus', () => {
+        input.type = 'number';
+        input.value = input.dataset.saved;
+      });
+    }
     const commit = () => {
-      if (drawingLines || input.value === input.dataset.saved) return;
+      if (drawingLines || (type === 'number' && input.type !== 'number') || input.value === input.dataset.saved) return;
       input.dataset.saved = input.value;
       saveLine(line, toPatch(input.value));
     };
-    input.addEventListener('blur', commit);
+    input.addEventListener('blur', () => {
+      commit();
+      if (type === 'number') {
+        input.type = 'text';
+        input.value = num(input.dataset.saved === '' ? null : Number(input.dataset.saved));
+      }
+    });
     input.addEventListener('keydown', event => {
       if (event.key === 'Enter') { event.preventDefault(); commit(); }
       else if (event.key === 'Escape' && input.value !== input.dataset.saved) {
@@ -1908,14 +1937,16 @@
       const again = $('stStatusCards').querySelector('[data-status-key="' + key + '"]');
       if (again) again.focus({ preventScroll: true });
     });
-    // Bấm tiêu đề: tăng -> giảm -> mặc định (giá trị chênh lớn trước). Sort toàn bộ dòng đã lọc rồi mới vẽ.
+    // Bấm thường chọn một cột; Shift giữ các lớp khác. Tăng -> giảm -> bỏ lớp.
     document.querySelector('#stTable thead').addEventListener('click', event => {
       const button = event.target.closest('[data-st-sort]');
       if (!button || event.target.closest('.tks-column-resizer')) return;
       const key = button.dataset.stSort;
-      if (state.sortKey !== key) { state.sortKey = key; state.sortDir = 'asc'; }
-      else if (state.sortDir === 'asc') state.sortDir = 'desc';
-      else { state.sortKey = null; state.sortDir = null; }
+      const current = state.sorts.find(sort => sort.key === key);
+      if (!event.shiftKey) state.sorts = current ? [current] : [];
+      if (!current) state.sorts.push({ key, dir: 'asc' });
+      else if (current.dir === 'asc') current.dir = 'desc';
+      else state.sorts = state.sorts.filter(sort => sort.key !== key);
       syncSortHeader();
       rerender();
     });

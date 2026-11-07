@@ -654,9 +654,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1794015661.7542388,
-    "seen": 1794015696.0741434,
-    "ast_hash": "53a77b59c10a2f64c85e70fc230ef41d",
+    "mtime": 1794024459.90029,
+    "seen": 1794024461.0209007,
+    "ast_hash": "03a6440aa6ed3528395a7731b9065e3c",
     "semantic_hash": ""
   },
   "design-system/tks-dashboard/MASTER.md": {
@@ -666,15 +666,15 @@
     "semantic_hash": ""
   },
   "docs/01-brd/BRD_Dashboard_GoogleSheets.md": {
-    "mtime": 1794015661.835319,
-    "seen": 1794015696.0741434,
-    "ast_hash": "417f37b5a7302bbd6b59fd9975dd4a87",
+    "mtime": 1794024459.90381,
+    "seen": 1794024461.0209007,
+    "ast_hash": "59486c2768a5d7b9bb002080d03baf16",
     "semantic_hash": ""
   },
   "docs/02-srs/SRS_Dashboard_GoogleSheets.md": {
-    "mtime": 1794015661.8247933,
-    "seen": 1794015696.0741434,
-    "ast_hash": "cd9300da9a5fcf3e4e341095673baf20",
+    "mtime": 1794024459.9028,
+    "seen": 1794024461.0209007,
+    "ast_hash": "4eb7f18701ea6cd663f4b950d57ca0c8",
     "semantic_hash": ""
   },
   "docs/03-process/BPMN_Dashboard_GoogleSheets.md": {
@@ -684,9 +684,9 @@
     "semantic_hash": ""
   },
   "docs/04-planning/implementation_plan.md": {
-    "mtime": 1794013947.1375875,
-    "seen": 1794015696.0741434,
-    "ast_hash": "cb34cba2e3bf89fb02c51b3631af59b6",
+    "mtime": 1794024325.951855,
+    "seen": 1794024461.0209007,
+    "ast_hash": "a2524df57488ecb8180da7f0760182fc",
     "semantic_hash": ""
   },
   "docs/superpowers/plans/2026-08-13-dashboard-result-cache.md": {
@@ -786,9 +786,9 @@
     "semantic_hash": "58e700daf0c14819a97499bd94f6f2e1"
   },
   "server/README.md": {
-    "mtime": 1794015661.7589202,
-    "seen": 1794015696.0741434,
-    "ast_hash": "923c1d240be13ac44b0440072b2b189f",
+    "mtime": 1794024459.901794,
+    "seen": 1794024461.0219002,
+    "ast_hash": "4bbedaa23e1cbfa0a1617389f9232999",
     "semantic_hash": ""
   },
   "server/kiotviet/API_ENDPOINTS.md": {
@@ -3306,9 +3306,9 @@
     "semantic_hash": ""
   },
   "CURRENT.md": {
-    "mtime": 1794014735.8305645,
-    "seen": 1794015696.0741434,
-    "ast_hash": "e0f5affa306c1b518d9f2db2e5a4e045",
+    "mtime": 1794024569.786858,
+    "seen": 1794024787.6791954,
+    "ast_hash": "768353adbabd7dfc839148b52ef752cb",
     "semantic_hash": ""
   },
   "MEMORY.md": {
@@ -6414,9 +6414,9 @@
     "semantic_hash": ""
   },
   "server/public/stocktake/stocktake.js": {
-    "mtime": 1793875638.2361877,
-    "seen": 1794015696.0731359,
-    "ast_hash": "f42a8e092da6c5fa142e00a5eda9e122",
+    "mtime": 1794024741.0825648,
+    "seen": 1794024787.6791954,
+    "ast_hash": "9bb4fe1a251f493e55dd63527e2bc03a",
     "semantic_hash": ""
   },
   "server/public/stocktake/stocktakePaste.js": {
@@ -6516,9 +6516,9 @@
     "semantic_hash": ""
   },
   "server/public/stocktake/index.html": {
-    "mtime": 1793875638.2351363,
-    "seen": 1794015696.0741434,
-    "ast_hash": "1a4e383f93a9bf9c20e548bee0e29704",
+    "mtime": 1794024741.2636068,
+    "seen": 1794024787.6791954,
+    "ast_hash": "9f1fca66ed7fc4e2d2f8503a35296905",
     "semantic_hash": ""
   },
   "server/public/stocktake/stocktakeGrid.js": {
@@ -6540,9 +6540,9 @@
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeGrid.test.js": {
-    "mtime": 1793875638.2436597,
-    "seen": 1794015696.0731359,
-    "ast_hash": "47c7a421d993d83b19b57c69a185d827",
+    "mtime": 1794024771.0658474,
+    "seen": 1794024787.6791954,
+    "ast_hash": "59f0b8f094927ea47044ad57e082db54",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeSearch.test.js": {

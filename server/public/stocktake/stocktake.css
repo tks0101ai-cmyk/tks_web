@@ -62,8 +62,8 @@
 /* Hàng tiêu đề màu cyan cho dễ nhìn (cả sáng / tối; chữ trắng trên #0e7490 đạt tương phản 5:1). */
 #stTable thead th{background:#0e7490;color:#fff;border-bottom-color:#155e75;z-index:2}
 #stTable thead th .sort-button,#stTable thead th .sort-indicator{color:#fff}
-#stTable thead th[aria-sort="ascending"],#stTable thead th[aria-sort="descending"]{background:#155e75}
-#stTable thead th[aria-sort="ascending"] .sort-indicator,#stTable thead th[aria-sort="descending"] .sort-indicator{color:#a5f3fc}
+#stTable thead th[data-sort-active="true"]{background:#155e75}
+#stTable thead th[data-sort-active="true"] .sort-indicator{color:#a5f3fc}
 /* Danh sách liền mạch: cuộn trong khung cao gần hết màn hình, tiêu đề dính trên cùng. */
 .st-scroll{max-height:calc(100vh - 180px);min-height:320px}
 .st-sentinel td{padding:14px 16px;color:var(--muted);font-size:12px;text-align:center;cursor:default}
@@ -102,7 +102,7 @@
 #stTable thead th .sort-button{position:relative;justify-content:center}
 #stTable thead th .sort-indicator{position:absolute;right:-2px;bottom:-8px;width:auto;font-size:7px;pointer-events:none;opacity:.45}
 #stTable thead th .sort-button:hover .sort-indicator{opacity:1}
-#stTable thead th[aria-sort="ascending"] .sort-indicator,#stTable thead th[aria-sort="descending"] .sort-indicator{opacity:1}
+#stTable thead th[data-sort-active="true"] .sort-indicator{opacity:1;font-size:9px;letter-spacing:0}
 /* ▲▼ nằm ở góc dưới phải (trong phần đệm dưới ô) nên nhãn dùng hết bề ngang, cột hẹp không phải ngắt giữa từ. */
 #stTable thead th .sort-button>.sort-label{flex:1 1 auto;padding:0}
 

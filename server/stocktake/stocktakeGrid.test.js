@@ -4,6 +4,130 @@ const assert = require('node:assert/strict');
 const { trailingThrottle, sortLines, waitForConfirm, EDIT_COLUMNS, parseClipboard, planPaste, planPasteByCode, planFill, moveIndex, matchesFilter, summarizeCells } = require('../public/stocktake/stocktakeGrid');
 const { PASTE_COLUMNS } = require('../public/stocktake/stocktakePaste');
 
+async function boardSortFixture(t) {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { JSDOM } = require('jsdom');
+  const root = path.join(__dirname, '../public/stocktake');
+  const dom = new JSDOM(fs.readFileSync(path.join(root, 'index.html'), 'utf8'), {
+    url: 'https://tokosi.test/stocktake/', runScripts: 'outside-only'
+  });
+  t.after(() => dom.window.close());
+  const w = dom.window;
+  w.TKSNav = { authGuard: async () => ({}), renderTopSidebar() {} };
+  w.fetch = async () => ({ ok: true, json: async () => ({ sessions: [] }) });
+  for (const file of ['stocktakePaste.js', 'stocktakeSearch.js', 'stocktakeGrid.js', 'stocktakeStatus.js', 'stocktake.js']) {
+    w.eval(fs.readFileSync(path.join(root, file), 'utf8'));
+  }
+  await w.TKSStocktake.init();
+  const click = (key, shiftKey = false) => w.document.querySelector('[data-st-sort="' + key + '"]')
+    .dispatchEvent(new w.MouseEvent('click', { bubbles: true, shiftKey }));
+  return { w, app: w.TKSStocktake, click };
+}
+
+test('board multi-sort: Shift adds layers, cycles direction, removes middle and renumbers', async t => {
+  const { w, app, click } = await boardSortFixture(t);
+  click('cluster'); click('stock', true); click('cost', true);
+  assert.equal(JSON.stringify(app.state.sorts), JSON.stringify([
+    { key: 'cluster', dir: 'asc' }, { key: 'stock', dir: 'asc' }, { key: 'cost', dir: 'asc' }
+  ]));
+  assert.equal(w.document.querySelector('[data-field="cost"] .sort-indicator').textContent, '▲3');
+  assert.match(w.document.querySelector('[data-st-sort="cost"]').getAttribute('aria-label'), /ưu tiên 3/);
+  click('stock', true);
+  assert.equal(app.state.sorts[1].dir, 'desc');
+  click('stock', true);
+  assert.equal(w.document.querySelector('[data-field="cost"] .sort-indicator').textContent, '▲2');
+  assert.equal(w.document.querySelector('[data-field="stock"]').getAttribute('aria-sort'), 'none');
+  click('name');
+  assert.equal(JSON.stringify(app.state.sorts), JSON.stringify([{ key: 'name', dir: 'asc' }]));
+  click('name'); click('name');
+  assert.equal(app.state.sorts.length, 0);
+});
+
+test('board multi-sort: ties continue through three layers, numeric values, nulls and flags', async t => {
+  const { app } = await boardSortFixture(t);
+  const rows = [
+    { code: 'A', cluster: 'X', stock: 2, cost: 10 },
+    { code: 'B', cluster: 'X', stock: 2, cost: 20 },
+    { code: 'C', cluster: 'X', stock: 10, cost: 0 },
+    { code: 'D', cluster: 'Y', stock: 1, cost: 0 },
+    { code: 'E', cluster: null, stock: 1, cost: 0 },
+    { code: 'F', cluster: null, stock: 2, cost: 0 },
+    { code: 'G', cluster: 'X', stock: null, cost: 0 }
+  ];
+  const codes = data => Array.from(app.sortRows(data.slice()), r => r.code);
+  app.state.sorts = [{ key: 'cluster', dir: 'asc' }, { key: 'stock', dir: 'asc' }, { key: 'cost', dir: 'desc' }];
+  assert.deepEqual(codes(rows), ['B', 'A', 'C', 'G', 'D', 'E', 'F']);
+  app.state.sorts[0].dir = 'desc'; app.state.sorts[1].dir = 'desc';
+  assert.deepEqual(codes(rows), ['D', 'C', 'B', 'A', 'G', 'F', 'E']);
+  app.state.sorts = [{ key: 'forgotten', dir: 'asc' }, { key: 'stock', dir: 'desc' }];
+  assert.deepEqual(codes([{ code: 'A', stock: 2, forgotten: true }, { code: 'B', stock: 10, forgotten: true }, { code: 'C', stock: 20 }]), ['B', 'A', 'C']);
+  app.state.sorts = [];
+  assert.deepEqual(codes([{ code: 'A', diffValue: 1 }, { code: 'B', diffValue: -20 }]), ['B', 'A']);
+});
+
+test('board multi-sort: filters and search keep the selected sort priorities', async t => {
+  const { app } = await boardSortFixture(t);
+  app.state.board = { rows: [
+    { code: 'A', name: 'Hàng mẫu', stock: 2, cost: 1, forgotten: true },
+    { code: 'B', name: 'Hàng mẫu', stock: 2, cost: 10, forgotten: true },
+    { code: 'C', name: 'Hàng mẫu', stock: 1, cost: 20, forgotten: false }
+  ] };
+  app.state.sorts = [{ key: 'stock', dir: 'asc' }, { key: 'cost', dir: 'desc' }];
+  app.state.filter = 'forgotten'; app.state.query = 'Hàng mẫu';
+  assert.deepEqual(Array.from(app.visibleRows(), r => r.code), ['B', 'A']);
+});
+
+test('board numbers: display whole numbers, preserve nulls, sort by full precision', async t => {
+  const { app } = await boardSortFixture(t);
+  const row = { counted: 1234.56, stock: 1000.49, diffQty: -234.56, cost: 5678.9,
+    prevDiff: 3.25, otherDiff: null, clusterCount: 12.8, clusterDiff: -1.8, diffValue: 1234.56 };
+  for (const [key, expected] of Object.entries({ counted: '1,235', stock: '1,000', diffQty: '-235', cost: '5,679',
+    prevDiff: '3', otherDiff: '', clusterCount: '13', clusterDiff: '-2', diffValue: '1,235' })) {
+    assert.equal(app.cellText(row, key), expected, key);
+  }
+  app.state.sorts = [{ key: 'stock', dir: 'asc' }];
+  assert.deepEqual(Array.from(app.sortRows([{ code: 'A', stock: 1.4 }, { code: 'B', stock: 1.2 }]), r => r.code), ['B', 'A']);
+  assert.equal(row.counted, 1234.56);
+});
+
+test('detail quantity: rounded while idle, exact while editing, focus/blur sends no write', async t => {
+  const { w, app } = await boardSortFixture(t);
+  let writes = 0;
+  w.fetch = async (url, options) => {
+    if (options && options.method && options.method !== 'GET') writes++;
+    return { ok: true, json: async () => ({ history: [] }) };
+  };
+  w.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  app.state.canEdit = true;
+  app.state.board = { session: { status: 'open' }, rows: [{ code: 'A', name: 'Mẫu', lines: [
+    { orderId: 1, lineNo: 1, quantity: 1234.56, orderCode: 'DH1' }
+  ] }] };
+  w.document.getElementById('stRows').innerHTML = '<tr data-code="A"><td>A</td></tr>';
+  w.document.querySelector('#stRows td').dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true }));
+  let input = w.document.querySelector('[data-line-field="quantity"]');
+  assert.equal(input.value, '1,235');
+  input.focus();
+  assert.equal(input.value, '1234.56');
+  assert.equal(input.type, 'number');
+  input.value = '88.75';
+  w.document.querySelector('#stRows td').dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true }));
+  input = w.document.querySelector('[data-line-field="quantity"]');
+  assert.equal(w.document.activeElement, input);
+  assert.equal(input.value, '88.75');
+  input.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  input.blur();
+  assert.equal(input.value, '1,235');
+  assert.equal(writes, 0);
+  input.focus();
+  input.value = '77.25';
+  input.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert.equal(input.value, '1234.56');
+  input.blur();
+  assert.equal(writes, 0);
+  assert.equal(app.state.board.rows[0].lines[0].quantity, 1234.56);
+});
+
 test('EDIT_COLUMNS: 9 cot, deu la cot dan hop le', () => {
   assert.equal(Object.keys(EDIT_COLUMNS).length, 9);
   for (const column of Object.values(EDIT_COLUMNS)) assert.ok(PASTE_COLUMNS[column], column);

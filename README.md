@@ -470,3 +470,11 @@ Không migration, không biến môi trường mới. Phần máy chủ cũ củ
 07/11/2026 — Kiểm kê: chỉ gom đơn TEAM có `raw.statusValue = "Phiếu tạm"` ở cả hai cơ sở; số đếm, chi tiết, xuất thống kê, bộ đếm và cảnh báo ngoài khoảng ngày dùng cùng điều kiện. Đơn hủy/hoàn thành/trạng thái khác hoặc thiếu trạng thái bị loại, kể cả dòng đã sửa trên web. Đợt đã chốt giữ nguyên ảnh chụp lịch sử; không migration, chưa deploy.
 
 Cập nhật gần nhất: 07/11/2026.
+
+07/11/2026 — Kiểm kê: bảng đối chiếu hỗ trợ sắp xếp nhiều cột. Bấm tiêu đề để chọn một cột; Shift + bấm để thêm/đổi lớp, tăng → giảm → bỏ. Tiêu đề hiển thị hướng và số ưu tiên; hòa mới xét cột kế tiếp, ô trống luôn cuối. Sắp xếp toàn bộ kết quả sau lọc/tìm kiếm trước khi vẽ; xuất Excel đối chiếu giữ thứ tự mã đang hiển thị. Không đổi schema/API.
+
+Cập nhật gần nhất: 07/11/2026.
+
+07/11/2026 — Kiểm kê: số trên giao diện làm tròn đến số nguyên; ô số lượng khi sửa giữ đầy đủ phần thập phân. Tính toán/sắp xếp/lưu trữ và xuất Excel dùng giá trị gốc. Kiểm thử liên quan 76/76 đạt, kiểm Edge đạt; chưa deploy.
+
+Cập nhật gần nhất: 07/11/2026.
