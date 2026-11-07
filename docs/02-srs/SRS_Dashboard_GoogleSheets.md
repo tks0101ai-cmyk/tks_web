@@ -962,7 +962,7 @@ Cập nhật gần nhất: 28/10/2026 (chỉnh sửa khi xem trước import VT)
 
 ## Bổ sung 02/11/2026 — Kiểm kê (FR-ST)
 
-- **FR-ST.1** Người có `stocktake.edit` tạo đợt kiểm kê (cơ sở, tên, từ ngày–đến ngày). Số đếm của đợt = tổng số lượng các dòng đơn đặt hàng của khách tên bắt đầu "TEAM" có ngày đặt (giờ VN) trong khoảng, kể cả đơn đã hủy; khu = ghi chú đơn, quy cách = ghi chú dòng.
+- **FR-ST.1** Người có `stocktake.edit` tạo đợt kiểm kê (cơ sở, tên, từ ngày–đến ngày). Số đếm của đợt = tổng số lượng các dòng đơn đặt hàng của khách tên bắt đầu "TEAM" có ngày đặt (giờ VN) trong khoảng, chỉ nhận trạng thái Phiếu tạm; khu = ghi chú đơn, quy cách = ghi chú dòng.
 - **FR-ST.2** Bảng đối chiếu theo mã gồm đủ 23 cột T10 theo đúng thứ tự: Mã hàng, Tên hàng, Tổng kiểm, Tồn KIOT (tồn hiện tại khi đợt mở), SL chênh, Giá trị chênh (= SL chênh × giá vốn), Trạng thái, Chi tiết lý do, Trang in, Giờ in, Người kiểm lại, KK trước sai (SL chênh của đợt đã đóng gần nhất), Kiểm SG/HN, Cụm SP, Count, Chênh cụm, Do KK trước, Lẫn + KK trước, Do kiểm SG/HN, Quên KK, Combo, Vị trí kho gần nhất (bỏ từ 03/11/2026, xem FR-ST.11), Giá vốn; thêm cột ẩn "Cập nhật". Các tỷ lệ được tính và hiển thị dạng % số nguyên, để trống khi mẫu số trống hoặc bằng 0. Bấm tiêu đề cột để sắp xếp trên toàn bộ dòng đã lọc. Danh sách mã gồm cả mã có tồn mà không ai đếm (Quên KK).
 - **FR-ST.3** Sửa từng dòng đếm (SL, quy cách, khu, bỏ dòng) hoặc thêm dòng quên đếm; số gốc từ KiotViet luôn được giữ để so; mỗi lần sửa ghi người và giờ, có lịch sử theo mã.
 - **FR-ST.4** Nhiều người sửa chung: mỗi bản ghi có số phiên bản; lưu đè bản cũ bị từ chối và báo tên người vừa sửa + giờ; bảng tự làm mới khi người khác sửa, không xóa ô đang nhập.
@@ -1191,4 +1191,6 @@ Mục 4 tab Hàng hóa hiển thị bảng mỗi dòng một cặp sản phẩm 
 - FR-PRODUCT-CUSTOMER-GROWTH.4 — Quyền xem: `reports.products` + `reports.products.sales`. Quyền xuất: thêm `reports.export`; xuất Excel/HTML đúng bộ lọc đang chọn, tối đa 50.000 dòng (vượt thì báo thu hẹp bộ lọc, không cắt ngầm).
 - FR-PRODUCT-CUSTOMER-GROWTH.5 — Chỉ đọc dữ liệu đã tính sau mỗi lượt đồng bộ KiotViet; không migration, không thêm biến môi trường.
 
-Cập nhật gần nhất: 06/11/2026.
+07/11/2026 — Kiểm kê: chỉ gom đơn TEAM có `raw.statusValue = "Phiếu tạm"` ở cả hai cơ sở; số đếm, chi tiết, xuất thống kê, bộ đếm và cảnh báo ngoài khoảng ngày dùng cùng điều kiện. Đơn hủy/hoàn thành/trạng thái khác hoặc thiếu trạng thái bị loại, kể cả dòng đã sửa trên web. Đợt đã chốt giữ nguyên ảnh chụp lịch sử; không migration, chưa deploy.
+
+Cập nhật gần nhất: 07/11/2026.

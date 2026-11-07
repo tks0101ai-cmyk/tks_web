@@ -467,4 +467,6 @@ Module mới: `server/dashboard/productCustomerGrowthRepository.js` (một câu 
 
 Không migration, không biến môi trường mới. Phần máy chủ cũ của mục 4 (API `/api/product-report/90d`, bảng tính sẵn `product_90d_report`, job 02:00) giữ nguyên, sẽ gỡ ở một đợt riêng. Kiểm thử: `dashboard/productCustomerGrowthRepository.test.js`, `productCustomerGrowthRoutes.test.js`, `exportProductCustomerGrowth.test.js`, `test/frontend/product-customer-growth.test.js`.
 
-Cập nhật gần nhất: 06/11/2026.
+07/11/2026 — Kiểm kê: chỉ gom đơn TEAM có `raw.statusValue = "Phiếu tạm"` ở cả hai cơ sở; số đếm, chi tiết, xuất thống kê, bộ đếm và cảnh báo ngoài khoảng ngày dùng cùng điều kiện. Đơn hủy/hoàn thành/trạng thái khác hoặc thiếu trạng thái bị loại, kể cả dòng đã sửa trên web. Đợt đã chốt giữ nguyên ảnh chụp lịch sử; không migration, chưa deploy.
+
+Cập nhật gần nhất: 07/11/2026.

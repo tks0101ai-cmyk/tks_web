@@ -37,7 +37,7 @@ async function fixture() {
       ('hanoi', 12, 'KH2', 'Khách thường', '{}');
     INSERT INTO orders (branch, id, code, order_date, customer_id, raw) VALUES
       ('hanoi', 101, 'DH101', '2026-10-29 09:00+00', 11, '{"statusValue":"Phiếu tạm","description":"G1-15"}'),
-      ('hanoi', 102, 'DH102', '2026-10-29 23:30+00', 11, '{"statusValue":"Đã hủy","description":"G2"}'),
+      ('hanoi', 102, 'DH102', '2026-10-29 23:30+00', 11, '{"statusValue":"Phiếu tạm","description":"G2"}'),
       ('hanoi', 103, 'DH103', '2026-10-29 10:00+00', 12, '{"statusValue":"Phiếu tạm"}'),
       ('hanoi', 104, 'DH104', '2026-10-30 00:30+00', 11, '{"statusValue":"Phiếu tạm"}');
     INSERT INTO order_details (branch, order_id, line_no, product_id, quantity, raw) VALUES
@@ -47,7 +47,7 @@ async function fixture() {
       ('hanoi', 103, 1, 2, 99, '{"productCode":"BBB2","quantity":99}'),
       ('hanoi', 104, 1, 2, 99, '{"productCode":"BBB2","quantity":99}');
     INSERT INTO customers (branch, id, code, name, raw) VALUES ('saigon', 21, 'KS1', 'TEAM 2 : SG', '{}');
-    INSERT INTO orders (branch, id, code, order_date, customer_id, raw) VALUES ('saigon', 201, 'DS201', '2026-10-29 09:00+00', 21, '{}');
+    INSERT INTO orders (branch, id, code, order_date, customer_id, raw) VALUES ('saigon', 201, 'DS201', '2026-10-29 09:00+00', 21, '{"statusValue":"Phiếu tạm"}');
     INSERT INTO order_details (branch, order_id, line_no, product_id, quantity, raw) VALUES ('saigon', 201, 1, 1, 4, '{"productCode":"AAA1","quantity":4}');
     INSERT INTO hr_employees (id, branch, ho_ten) VALUES (501, 'hanoi', 'Cảnh');
     INSERT INTO stock_positions (branch, code, location, arrival_date) VALUES ('HN', 'AAA1', 'G1-15', 'KK 4.10');
@@ -61,7 +61,7 @@ async function fixture() {
 const ratioOf = (a, b) => Math.round((a / b) * 10000) / 10000;
 const rowOf = (board, code) => board.rows.find(row => row.code === code);
 
-test('bang doi chieu: don TEAM trong ngay (gio VN, ca don huy), khach thuong bi bo, Quen KK', async () => {
+test('bang doi chieu: don TEAM trong ngay (gio VN, chi Phieu tam), khach thuong bi bo, Quen KK', async () => {
   const { service, session } = await fixture();
   const board = await service.getBoard(ctx(), session.id);
   assert.equal(rowOf(board, 'AAA1').counted, 12);
@@ -557,7 +557,7 @@ test('gom don: don 23:30 van thuoc ngay do, tinh moi khach co tu team, gia von g
     INSERT INTO customers (branch, id, code, name, raw) VALUES
       ('hanoi', 13, 'KH3', 'KH Team Hàng Lỗi', '{}'), ('hanoi', 14, 'KH4', 'Team Lỗi', '{}'), ('hanoi', 15, 'KH5', 'team5 kho', '{}'), ('hanoi', 16, 'KH6', 'Steam Việt', '{}');
     INSERT INTO orders (branch, id, code, order_date, customer_id, raw) VALUES
-      ('hanoi', 105, 'DH105', '2026-10-29 10:00+00', 13, '{}'), ('hanoi', 106, 'DH106', '2026-10-29 10:00+00', 14, '{}'), ('hanoi', 107, 'DH107', '2026-10-29 10:00+00', 15, '{}'), ('hanoi', 111, 'DH111', '2026-10-29 10:00+00', 16, '{}');
+      ('hanoi', 105, 'DH105', '2026-10-29 10:00+00', 13, '{"statusValue":"Phiếu tạm"}'), ('hanoi', 106, 'DH106', '2026-10-29 10:00+00', 14, '{"statusValue":"Phiếu tạm"}'), ('hanoi', 107, 'DH107', '2026-10-29 10:00+00', 15, '{"statusValue":"Phiếu tạm"}'), ('hanoi', 111, 'DH111', '2026-10-29 10:00+00', 16, '{"statusValue":"Phiếu tạm"}');
     INSERT INTO order_details (branch, order_id, line_no, product_id, quantity, raw) VALUES
       ('hanoi', 105, 1, 3, 7, '{"productCode":"CCC3","quantity":7}'), ('hanoi', 106, 1, 3, 7, '{"productCode":"CCC3","quantity":7}'), ('hanoi', 107, 1, 3, 2, '{"productCode":"CCC3","quantity":2}'), ('hanoi', 111, 1, 3, 50, '{"productCode":"CCC3","quantity":50}');
   `);
@@ -593,7 +593,7 @@ test('order-status: dem trong khoang, ngoai khoang bo don huy va qua 14 ngay, re
       ('hanoi', 110, 'DH110', '2026-12-30 08:15+00', 11, '{"statusValue":"Phiếu tạm"}');
   `);
   const status = await service.getOrderStatus(ctx(), session.id);
-  assert.equal(status.inRange, 2, 'DH101 + DH102 da huy');
+  assert.equal(status.inRange, 2, 'DH101 + DH102 Phieu tam');
   // DH104 ngay 30/10 + DH108 ngay 05/11; DH109 da huy, DH110 qua 14 ngay.
   assert.deepEqual(status.outOfRange, { count: 2, from: '2026-10-30', to: '2026-11-05' });
   await db.exec(`UPDATE orders SET synced_at = now() + interval '1 hour' WHERE id = 101`);
@@ -825,4 +825,37 @@ test('dot nap tu sheet van chi doc', async () => {
   assert.equal(board.session.frozen, false);
   await assert.rejects(service.saveNote(ctx(), session.id, 'AAA1', { statusText: 'OK' }), { code: 'STOCKTAKE_CLOSED' });
   await assert.rejects(service.addLine(ctx(), session.id, { productCode: 'AAA1', quantity: 1 }), { code: 'STOCKTAKE_CLOSED' });
+});
+
+
+test('chi Phieu tam: bo don huy/hoan thanh/thieu trang thai, ca ban sua cu va file xuat', async () => {
+  const { db, service, session } = await fixture();
+  await service.saveLine(ctx(), session.id, { orderId: 102, lineNo: 1, quantity: 100, version: null });
+  for (const status of ['Đã hủy', 'Hoàn thành', 'Đã xác nhận', '']) {
+    await db.query(`UPDATE orders SET raw = jsonb_set(raw, '{statusValue}', to_jsonb($1::text)) WHERE id = 102`, [status]);
+    const board = await service.getBoard(ctx(), session.id);
+    assert.equal(rowOf(board, 'AAA1').counted, 8, status);
+    assert.deepEqual(rowOf(board, 'AAA1').lines.map(line => line.orderId), [101], status);
+    assert.equal((await service.getOrderStatus(ctx(), session.id)).inRange, 1, status);
+    const exported = await service.getLineExport(ctx(), session.id);
+    assert.deepEqual(exported.rows.find(row => row.code === 'AAA1').lines.map(line => line.orderId), [101], status);
+    await assert.rejects(service.saveLine(ctx(), session.id, { orderId: 102, lineNo: 1, quantity: 200, version: 1 }), { statusCode: 404 });
+  }
+  await db.exec(`UPDATE orders SET raw = '{}' WHERE id = 102`);
+  assert.equal(rowOf(await service.getBoard(ctx(), session.id), 'AAA1').counted, 8);
+  await service.closeSession(ctx(), session.id, { version: session.version });
+  assert.deepEqual(rowOf(await service.getBoard(ctx(), session.id), 'AAA1').lines.map(line => line.orderId), [101]);
+});
+
+test('canh bao ngoai khoang chi dem Phieu tam o ca hai co so', async () => {
+  const { db, service, session } = await fixture();
+  for (const status of ['Đã hủy', 'Hoàn thành', 'Đã xác nhận', '', 'Phiếu tạm']) {
+    await db.query(`UPDATE orders SET raw = jsonb_set(raw, '{statusValue}', to_jsonb($1::text)) WHERE id = 104`, [status]);
+    const result = await service.getOrderStatus(ctx(), session.id);
+    assert.equal(result.outOfRange.count, status === 'Phiếu tạm' ? 1 : 0, status);
+  }
+  const { session: sg } = await service.createSession(ctx(), { branch: 'saigon', name: 'SG', dateFrom: '2026-10-29', dateTo: '2026-10-29' });
+  await db.exec(`UPDATE orders SET raw = '{"statusValue":"Đã hủy"}' WHERE branch = 'saigon'`);
+  assert.equal(rowOf(await service.getBoard(ctx(), sg.id), 'AAA1').counted, 0);
+  assert.equal((await service.getOrderStatus(ctx(), sg.id)).inRange, 0);
 });
