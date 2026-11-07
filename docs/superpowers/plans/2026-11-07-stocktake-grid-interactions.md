@@ -801,6 +801,6 @@ Expected: hoàn tất không lỗi. Nếu máy không có `graphify`, ghi rõ v�
 - [ ] **Step 5: Commit**
 
 ```bash
-git add CURRENT.md graphify-out docs/superpowers/plans/2026-11-07-stocktake-grid-interactions.md
+git add CURRENT.md graphify-out
 git commit -m "docs: record stocktake grid interactions results"
 ```
