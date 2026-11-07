@@ -150,3 +150,60 @@ test('CSS: tieu de cot sua duoc dung nen ho phach, tieu de dang sap xep dam hon'
   assert.match(css, /#stTable\[data-editable="true"\] thead th\.st-th-edit\{[^}]*background:#b45309/);
   assert.match(css, /th\.st-th-edit\[data-sort-active="true"\]\{[^}]*background:#92400e/);
 });
+
+const dialogOf = f => f.w.document.getElementById('stDetailDialog');
+
+test('nhan dup o Ma hang: mo chi tiet san pham', async t => {
+  const f = await pageFixture(t);
+  f.cell(0, 'code').dispatchEvent(f.mouse('dblclick'));
+  assert.equal(dialogOf(f).open, true);
+});
+
+test('nhan dup o sua duoc: ra o nhap (con tro), khong mo chi tiet', async t => {
+  const f = await pageFixture(t);
+  f.cell(1, 'reason').dispatchEvent(f.mouse('dblclick'));
+  const editor = f.scroller.querySelector('.st-editor');
+  assert.ok(editor, 'co o nhap');
+  assert.equal(f.w.document.activeElement, editor);
+  assert.equal(dialogOf(f).open, false);
+  assert.equal(f.app.selection.focus.row, 1);
+});
+
+test('nhan dup o chi doc (Tong kiem): khong lam gi', async t => {
+  const f = await pageFixture(t);
+  f.cell(0, 'counted').dispatchEvent(f.mouse('dblclick'));
+  assert.equal(f.scroller.querySelector('.st-editor'), null);
+  assert.equal(dialogOf(f).open, false);
+});
+
+test('nhan dup o sua duoc khi dot da dong: bao khong sua duoc, khong mo gi', async t => {
+  const f = await pageFixture(t, { status: 'closed' });
+  f.cell(0, 'reason').dispatchEvent(f.mouse('dblclick'));
+  assert.equal(f.scroller.querySelector('.st-editor'), null);
+  assert.equal(dialogOf(f).open, false);
+  assert.match(f.w.document.getElementById('stNotice').textContent, /đã đóng/);
+});
+
+test('chuot phai vao dong: menu "Chi tiet san pham" mo dung ma, dong khi chon', async t => {
+  const f = await pageFixture(t);
+  const event = f.mouse('contextmenu', { clientX: 50, clientY: 60 });
+  f.cell(2, 'counted').dispatchEvent(event);
+  assert.equal(event.defaultPrevented, true);
+  const item = f.w.document.querySelector('.st-context-menu [role="menuitem"]');
+  assert.equal(item.textContent, 'Chi tiết sản phẩm');
+  item.click();
+  assert.equal(dialogOf(f).open, true);
+  assert.match(f.w.document.getElementById('stDetailTitle').textContent, /SP3/);
+  assert.equal(f.w.document.querySelector('.st-context-menu'), null);
+});
+
+test('menu chuot phai dong khi bam ra ngoai hoac nhan Esc', async t => {
+  const f = await pageFixture(t);
+  f.cell(0, 'counted').dispatchEvent(f.mouse('contextmenu', { clientX: 10, clientY: 10 }));
+  assert.ok(f.w.document.querySelector('.st-context-menu'));
+  f.w.document.body.dispatchEvent(f.mouse('mousedown'));
+  assert.equal(f.w.document.querySelector('.st-context-menu'), null);
+  f.cell(0, 'counted').dispatchEvent(f.mouse('contextmenu', { clientX: 10, clientY: 10 }));
+  f.w.document.dispatchEvent(new f.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert.equal(f.w.document.querySelector('.st-context-menu'), null);
+});

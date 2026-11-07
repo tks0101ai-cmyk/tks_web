@@ -1604,11 +1604,55 @@
     }
   }
 
+  // Menu chuột phải trên dòng: một mục "Chi tiết sản phẩm".
+  function bindContextMenu() {
+    let menu = null;
+    const close = () => { if (menu) { menu.remove(); menu = null; } };
+    $('stRows').addEventListener('contextmenu', event => {
+      const td = event.target.closest('td[data-col]');
+      const tr = td && td.parentElement;
+      if (!tr || !tr.dataset.code) return;
+      event.preventDefault();
+      close();
+      if (editor.input) closeEditor(!editor.options);
+      selection.anchor = selection.focus = cellPos(td);
+      paintSelection();
+      const code = tr.dataset.code;
+      menu = document.createElement('div');
+      menu.className = 'st-context-menu';
+      menu.setAttribute('role', 'menu');
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.setAttribute('role', 'menuitem');
+      item.textContent = 'Chi tiết sản phẩm';
+      item.addEventListener('click', () => { close(); openDetail(code); });
+      menu.appendChild(item);
+      document.body.appendChild(menu);
+      // Giữ menu trong khung nhìn (đảo sang trái / lên trên khi sát mép).
+      const width = menu.offsetWidth || 160;
+      const height = menu.offsetHeight || 40;
+      menu.style.left = Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8)) + 'px';
+      menu.style.top = Math.max(8, Math.min(event.clientY, window.innerHeight - height - 8)) + 'px';
+      item.focus();
+    });
+    document.addEventListener('mousedown', event => { if (menu && !menu.contains(event.target)) close(); });
+    document.addEventListener('keydown', event => { if (menu && event.key === 'Escape') { event.preventDefault(); close(); } });
+    window.addEventListener('resize', close);
+    document.querySelector('.st-scroll').addEventListener('scroll', close);
+  }
+
   function bindDetail() {
-    // Nhấp một lần = chọn ô (như sheet); nhấp đúp = mở chi tiết mã.
+    // Nhấp một lần = chọn ô (như sheet). Nhấp đúp: ô Mã hàng = mở chi tiết mã; ô sửa được = mở ô nhập (như F2); ô khác = không làm gì.
     $('stRows').addEventListener('dblclick', event => {
-      const tr = event.target.closest('tr[data-code]');
-      if (tr) openDetail(tr.dataset.code);
+      const td = event.target.closest('td[data-col]');
+      const tr = td && td.parentElement;
+      if (!tr || !tr.dataset.code) return;
+      const col = Number(td.dataset.col);
+      if (COLUMNS[col] && COLUMNS[col].key === 'code') { openDetail(tr.dataset.code); return; }
+      if (!editColumnOf(col)) return;
+      selection.anchor = selection.focus = cellPos(td);
+      paintSelection();
+      openEditor();
     });
     $('stDetailDialog').addEventListener('close', () => { detail.code = null; });
     $('stConflictReload').addEventListener('click', async () => {
@@ -2042,6 +2086,7 @@
     bindTable();
     bindDetail();
     bindSelection();
+    bindContextMenu();
     window.addEventListener('pagehide', stopLive);
     setInterval(pollOrderStatus, ORDER_POLL_MS);
     document.addEventListener('visibilitychange', () => {
