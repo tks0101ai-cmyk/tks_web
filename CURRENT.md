@@ -1259,3 +1259,5 @@ Bộ lọc đặt hàng có trạng thái, HR ID/tên legacy, NCC, VAT, ngày l�
 
 
 Cập nhật gần nhất: 07/11/2026.
+
+07/11/2026 — Chuẩn bị phát hành sort nhiều cột: commit b1eeb774, merge tks_web/main 02f5b6d8 tại 24f2eb98, giữ bản sửa CONT writer lock. Kiểm tra sau merge 14/14 đạt; cập nhật lại graphify. Đích push theo yêu cầu: origin/main và tks_web/main; deploy chưa xác minh.

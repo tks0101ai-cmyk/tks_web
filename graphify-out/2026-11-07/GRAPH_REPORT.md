@@ -1,7 +1,7 @@
 # Graph Report - Web TKS Dashboard  (2026-11-07)
 
 ## Corpus Check
-- 1174 files · ~1,845,317 words
+- 1174 files · ~1,845,608 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 45 file(s) not represented in the graph (top: .css 27, .jfif 8, (none) 3)
 
@@ -2594,10 +2594,10 @@ Cohesion: 1.00
 Nodes (4): evaluate(), atom(), product(), sumExpression()
 
 ## Ambiguous Edges - Review These
-- `Stub webhook endpoint POST /api/kiotviet/webhook` → `GET /api/internal/kiotviet-sync/status`  [AMBIGUOUS]
-  docs/04-planning/2026-09-14-phase0-plan-supabase-kiotviet-sync.md · relation: conceptually_related_to
 - `Webhook-first + Polling reconciliation (Supabase sync)` → `Webhook-first + Polling reconciliation (Supabase sync)`  [AMBIGUOUS]
   docs/04-planning/2026-09-14-roadmap-supabase-kiotviet-sync.md · relation: references
+- `GET /api/internal/kiotviet-sync/status` → `Stub webhook endpoint POST /api/kiotviet/webhook`  [AMBIGUOUS]
+  docs/04-planning/2026-09-14-phase0-plan-supabase-kiotviet-sync.md · relation: conceptually_related_to
 - `server/db/migrate.js runner` → `Migrations 0001-0006 (16 tables)`  [AMBIGUOUS]
   docs/04-planning/2026-09-14-phase1-plan-supabase-kiotviet-sync.md · relation: calls
 
@@ -2610,20 +2610,20 @@ Nodes (4): evaluate(), atom(), product(), sumExpression()
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `e()` connect `e` to `chart.umd.min.js`, `an`, `Annotation`, `ns`, `t`, `html2pdf.bundle.min.js`, `draw`, `s`, `html2pdf.bundle.min.js`, `xe`, `o`, `t`, `n`, `CanvasGraphics`?**
-  _High betweenness centrality (0.124) - this node is a cross-community bridge._
+  _High betweenness centrality (0.125) - this node is a cross-community bridge._
 - **What connects `ensureKiotVietQuotaAvailable_() — chặn trước mọi UrlFetch thật`, `hydrateIncompleteWebhookItems_() — hydrate-skip tổng quát có cờ bật/tắt`, `runKiotVietMaintenanceTick_() — tách bảo trì khỏi hàng đợi webhook` to the rest of the system?**
   _47 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `chart.umd.min.js` be split into smaller, more focused modules?**
   _Cohesion score 0.02423490488006617 - nodes in this community are weakly interconnected._
 - **Why does `yt()` connect `CanvasGraphics` to `e`?**
-  _High betweenness centrality (0.120) - this node is a cross-community bridge._
+  _High betweenness centrality (0.121) - this node is a cross-community bridge._
 - **Should `.checkAndRepair` be split into smaller, more focused modules?**
   _Cohesion score 0.04 - nodes in this community are weakly interconnected._
 
 ### Low-confidence Hints
 _AMBIGUOUS edges — the extractor was unsure. Verify before acting on these._
 
-- **What is the exact relationship between `Stub webhook endpoint POST /api/kiotviet/webhook` and `GET /api/internal/kiotviet-sync/status`?**
-  _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
 - **What is the exact relationship between `Webhook-first + Polling reconciliation (Supabase sync)` and `Webhook-first + Polling reconciliation (Supabase sync)`?**
   _Edge tagged AMBIGUOUS (relation: references) - confidence is low._
+- **What is the exact relationship between `GET /api/internal/kiotviet-sync/status` and `Stub webhook endpoint POST /api/kiotviet/webhook`?**
+  _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
