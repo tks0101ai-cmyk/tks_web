@@ -259,14 +259,34 @@ function checkVersion(current, expected, shape) {
 }
 
 function createStockTakeService({ getDb = getPool, now = () => Date.now(), announce = announceChanged, refreshTeamOrders = defaultRefreshTeamOrders } = {}) {
-  const cache = new Map(); // key -> { at, value }
+  const cache = new Map(); // key -> { at, value, pending }
 
-  async function cached(key, load) {
+  async function cached(key, load, ttl = CACHE_TTL_MS) {
     const hit = cache.get(key);
-    if (hit && now() - hit.at < CACHE_TTL_MS) return hit.value;
-    const value = await load();
-    cache.set(key, { at: now(), value });
-    return value;
+    if (hit && hit.pending) return hit.pending;
+    if (hit && now() - hit.at < ttl) return hit.value;
+    const entry = {};
+    cache.set(key, entry);
+    entry.pending = Promise.resolve().then(load).then(value => {
+      // Mot lenh ghi co the da xoa/thay entry trong luc query con cho.
+      if (cache.get(key) === entry) {
+        if (ttl > 0) { entry.at = now(); entry.value = value; entry.pending = null; }
+        else cache.delete(key);
+      }
+      return value;
+    }, error => {
+      if (cache.get(key) === entry) cache.delete(key);
+      throw error;
+    });
+    return entry.pending;
+  }
+
+  function invalidateSession(sessionId) {
+    cache.delete('counterpart:' + sessionId);
+    for (const key of cache.keys()) {
+      // Tag/KK truoc/doi chieu co the anh huong bang cua dot khac.
+      if (key.startsWith('board:') || key.startsWith('order-status:' + sessionId + ':')) cache.delete(key);
+    }
   }
 
   // by: ma trinh duyet gui lenh (X-Stocktake-Client) — kem trong tin hieu de chinh trinh duyet do khong tai lai bang lan nua.
@@ -276,8 +296,8 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
       await client.query('BEGIN');
       const result = await work(client);
       await client.query('COMMIT');
+      invalidateSession(sessionId);
       if (sessionId) {
-        cache.delete('counterpart:' + sessionId);
         try { announce(sessionId, by); } catch (error) { console.error('[stocktake] khong phat duoc tin hieu doi:', error.message); }
       }
       return result;
@@ -577,20 +597,23 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
   async function getBoard(ctx, id) {
     const db = getDb();
     const session = await readSession(db, ctx, id);
-    const [board, employees] = await Promise.all([
-      session.status === 'closed' && !session.linesFrozenAt
-        ? closedBoard(db, session)
-        : loadInputs(db, session).then(inputs => ({
-          ...buildBoard(inputs), previousSessionId: inputs.previousSessionId, previousSession: inputs.previousInfo, counterpart: inputs.counterpartInfo
-        })),
-      loadEmployees(db)
-    ]);
-    // Goi y Chi tiet ly do: cac gia tri da dung trong dot (Trang thai nay la danh sach co dinh, xem stocktakeStatus.js).
-    const reasons = new Set();
-    for (const row of board.rows) {
-      if (row.note && row.note.reasonText) reasons.add(row.note.reasonText);
-    }
-    return { session, ...board, employees, suggestions: { reason: [...reasons].sort() } };
+    // Moi request van kiem quyen; chi chia se phan tinh dang chay, khong cache bang sau khi xong.
+    return cached('board:' + session.id + ':' + session.version, async () => {
+      const [board, employees] = await Promise.all([
+        session.status === 'closed' && !session.linesFrozenAt
+          ? closedBoard(db, session)
+          : loadInputs(db, session).then(inputs => ({
+            ...buildBoard(inputs), previousSessionId: inputs.previousSessionId, previousSession: inputs.previousInfo, counterpart: inputs.counterpartInfo
+          })),
+        loadEmployees(db)
+      ]);
+      // Goi y Chi tiet ly do: cac gia tri da dung trong dot (Trang thai nay la danh sach co dinh, xem stocktakeStatus.js).
+      const reasons = new Set();
+      for (const row of board.rows) {
+        if (row.note && row.note.reasonText) reasons.add(row.note.reasonText);
+      }
+      return { session, ...board, employees, suggestions: { reason: [...reasons].sort() } };
+    }, 0);
   }
 
   // Du lieu file thong ke: dong dem sau khi ap phan sua. Dot da chot doc dong da chup.
@@ -606,12 +629,14 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
   async function getOrderStatus(ctx, sessionId) {
     const db = getDb();
     const session = await readSession(db, ctx, sessionId);
-    const row = (await db.query(ORDER_STATUS_SQL, [session.branch, session.dateFrom, session.dateTo])).rows[0];
-    return {
-      revision: `${row.in_range}:${isoOf(row.max_synced) || ''}`,
-      inRange: row.in_range,
-      outOfRange: { count: row.out_count, from: row.out_from, to: row.out_to }
-    };
+    return cached('order-status:' + session.id + ':' + session.version + ':' + session.dateFrom + ':' + session.dateTo, async () => {
+      const row = (await db.query(ORDER_STATUS_SQL, [session.branch, session.dateFrom, session.dateTo])).rows[0];
+      return {
+        revision: `${row.in_range}:${isoOf(row.max_synced) || ''}`,
+        inRange: row.in_range,
+        outOfRange: { count: row.out_count, from: row.out_from, to: row.out_to }
+      };
+    }, 3000);
   }
 
   // Nut "Cap nhat don Kiot": lay ngay don TEAM vua sua tren KiotViet cho co so cua dot, khong cho luot nen.
@@ -621,7 +646,7 @@ function createStockTakeService({ getDb = getPool, now = () => Date.now(), annou
     if (session.status !== 'open') throw fail(409, 'STOCKTAKE_CLOSED', 'Đợt kiểm kê đã đóng, số liệu không đổi nữa.');
     const result = await refreshTeamOrders(session.branch);
     if (result.teamOrders > 0 && !result.cached) {
-      cache.delete('counterpart:' + sessionId);
+      invalidateSession(sessionId);
       try { announce(sessionId, ctx.clientId); } catch (error) { console.error('[stocktake] khong phat duoc tin hieu doi:', error.message); }
     }
     return result;

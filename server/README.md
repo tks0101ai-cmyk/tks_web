@@ -1242,3 +1242,7 @@ Thiết kế triển khai: public/shared/table-controls.js cung cấp nextSorts 
 Kế hoạch kiểm chứng: (1) test hồi quy nhiều lớp, bằng nhau/NULL, chu kỳ/bỏ lớp và lưu-khôi phục; (2) tích hợp nhóm Dashboard/Nhân sự/Tài khoản, nhóm báo cáo phân trang, nhóm Thu mua/VAT/VT/Marketing và chi tiết kiểm kê; (3) chạy test toàn bộ liên quan, kiểm trình duyệt sáng/tối, cập nhật graphify và CURRENT. Không thay nguồn dữ liệu hoặc chạy migration.
 
 Cập nhật gần nhất: 07/11/2026.
+
+07/11/2026 — Kiểm kê: GET board và đường xuất dùng chung phép tính đang chạy của cùng đợt; cache sản phẩm/đối chiếu gộp truy vấn đang chờ. GET order-status giữ kết quả tối đa 3 giây, luôn kiểm phạm vi từng request; commit ghi/refresh xóa cache liên quan, phản hồi cũ không ghi lại cache đã bị xóa. Frontend khóa nút xuất trong lúc chờ và báo lỗi HTTP/mạng/blob. Không đổi API/schema.
+
+Cập nhật gần nhất: 07/11/2026.

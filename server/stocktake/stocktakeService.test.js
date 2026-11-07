@@ -585,7 +585,9 @@ test('sua ngay dot dang mo: ghi lich su, kiem tra ngay + version, dot da dong bi
 });
 
 test('order-status: dem trong khoang, ngoai khoang bo don huy va qua 14 ngay, revision theo synced_at', async () => {
-  const { db, service, session } = await fixture();
+  const { db, session } = await fixture();
+  let clock = 0;
+  const service = createStockTakeService({ getDb: () => poolFor(db), now: () => clock });
   await db.exec(`
     INSERT INTO orders (branch, id, code, order_date, customer_id, raw) VALUES
       ('hanoi', 108, 'DH108', '2026-11-05 08:15+00', 11, '{"statusValue":"Phiếu tạm"}'),
@@ -597,6 +599,7 @@ test('order-status: dem trong khoang, ngoai khoang bo don huy va qua 14 ngay, re
   // DH104 ngay 30/10 + DH108 ngay 05/11; DH109 da huy, DH110 qua 14 ngay.
   assert.deepEqual(status.outOfRange, { count: 2, from: '2026-10-30', to: '2026-11-05' });
   await db.exec(`UPDATE orders SET synced_at = now() + interval '1 hour' WHERE id = 101`);
+  clock += 3001;
   assert.notEqual((await service.getOrderStatus(ctx(), session.id)).revision, status.revision);
   await assert.rejects(service.getOrderStatus(ctx(QL, ['saigon']), session.id), { code: 'BRANCH_OUT_OF_SCOPE' });
 });
@@ -848,9 +851,12 @@ test('chi Phieu tam: bo don huy/hoan thanh/thieu trang thai, ca ban sua cu va fi
 });
 
 test('canh bao ngoai khoang chi dem Phieu tam o ca hai co so', async () => {
-  const { db, service, session } = await fixture();
+  const { db, session } = await fixture();
+  let clock = 0;
+  const service = createStockTakeService({ getDb: () => poolFor(db), now: () => clock });
   for (const status of ['Đã hủy', 'Hoàn thành', 'Đã xác nhận', '', 'Phiếu tạm']) {
     await db.query(`UPDATE orders SET raw = jsonb_set(raw, '{statusValue}', to_jsonb($1::text)) WHERE id = 104`, [status]);
+    clock += 3001;
     const result = await service.getOrderStatus(ctx(), session.id);
     assert.equal(result.outOfRange.count, status === 'Phiếu tạm' ? 1 : 0, status);
   }
@@ -858,4 +864,120 @@ test('canh bao ngoai khoang chi dem Phieu tam o ca hai co so', async () => {
   await db.exec(`UPDATE orders SET raw = '{"statusValue":"Đã hủy"}' WHERE branch = 'saigon'`);
   assert.equal(rowOf(await service.getBoard(ctx(), sg.id), 'AAA1').counted, 0);
   assert.equal((await service.getOrderStatus(ctx(), sg.id)).inRange, 0);
+});
+
+function deferred() {
+  let resolve;
+  const promise = new Promise(done => { resolve = done; });
+  return { promise, resolve };
+}
+
+test('singleflight board: gop request dong thoi, van kiem quyen moi request, khong giu ket qua sau do', async () => {
+  const { db, session } = await fixture();
+  const gate = deferred();
+  const started = deferred();
+  const base = poolFor(db);
+  let employees = 0;
+  let products = 0;
+  const pool = { ...base, query: async (sql, params) => {
+    if (sql.includes('FROM products p')) products++;
+    if (sql.includes('FROM hr_employees')) { employees++; started.resolve(); await gate.promise; }
+    return base.query(sql, params);
+  } };
+  const service = createStockTakeService({ getDb: () => pool });
+  const pending = Array.from({ length: 8 }, () => service.getBoard(ctx(), session.id));
+  await started.promise;
+  await assert.rejects(service.getBoard(ctx(QL, ['saigon']), session.id), { code: 'BRANCH_OUT_OF_SCOPE' });
+  gate.resolve();
+  const boards = await Promise.all(pending);
+  assert.equal(employees, 1);
+  assert.equal(products, 1);
+  assert.ok(boards.every(board => board === boards[0]));
+  await service.getBoard(ctx(), session.id);
+  assert.equal(employees, 2, 'board chi gop trong luc dang tinh');
+});
+
+test('singleflight order-status: gop, TTL 3 giay, refresh invalidates, loi cho thu lai', async () => {
+  const { db, session } = await fixture();
+  let clock = 0;
+  let calls = 0;
+  let failNext = false;
+  const gate = deferred();
+  const started = deferred();
+  const base = poolFor(db);
+  const pool = { ...base, query: async (sql, params) => {
+    if (sql.includes('FILTER (WHERE in_range)')) {
+      calls++;
+      if (failNext) { failNext = false; throw new Error('query failed'); }
+      if (calls === 1) { started.resolve(); await gate.promise; }
+    }
+    return base.query(sql, params);
+  } };
+  const service = createStockTakeService({ getDb: () => pool, now: () => clock, refreshTeamOrders: async () => ({ teamOrders: 1, cached: false }), announce() {} });
+  const pending = Array.from({ length: 8 }, () => service.getOrderStatus(ctx(), session.id));
+  await started.promise;
+  await assert.rejects(service.getOrderStatus(ctx(QL, ['saigon']), session.id), { code: 'BRANCH_OUT_OF_SCOPE' });
+  gate.resolve();
+  await Promise.all(pending);
+  assert.equal(calls, 1);
+  await service.getOrderStatus(ctx(), session.id);
+  assert.equal(calls, 1);
+  clock += 3001;
+  await service.getOrderStatus(ctx(), session.id);
+  assert.equal(calls, 2);
+  await service.refreshOrders(ctx(), session.id);
+  await service.getOrderStatus(ctx(), session.id);
+  assert.equal(calls, 3);
+  clock += 3001;
+  failNext = true;
+  await assert.rejects(service.getOrderStatus(ctx(), session.id), /query failed/);
+  await service.getOrderStatus(ctx(), session.id);
+  assert.equal(calls, 5);
+});
+
+test('singleflight cached: hai dot cung co so chia se truy van products dang cho', async () => {
+  const { db, service: setup, session } = await fixture();
+  const second = (await setup.createSession(ctx(), { branch: 'hanoi', name: 'Đợt hai', dateFrom: '2026-10-29', dateTo: '2026-10-29' })).session;
+  const gate = deferred();
+  const started = deferred();
+  const base = poolFor(db);
+  let products = 0;
+  const pool = { ...base, query: async (sql, params) => {
+    if (sql.includes('FROM products p')) { products++; started.resolve(); await gate.promise; }
+    return base.query(sql, params);
+  } };
+  const service = createStockTakeService({ getDb: () => pool });
+  const pending = [service.getBoard(ctx(), session.id), service.getBoard(ctx(), second.id)];
+  await started.promise;
+  gate.resolve();
+  await Promise.all(pending);
+  assert.equal(products, 1);
+});
+
+test('singleflight invalidation: phan hoi counterpart cu khong ghi lai cache sau commit', async () => {
+  const { db, service: setup, session } = await fixture();
+  const sg = (await setup.createSession(ctx(), { branch: 'saigon', name: 'SG', dateFrom: '2026-10-29', dateTo: '2026-10-29' })).session;
+  await setup.updateSession(ctx(), session.id, { counterpartSessionId: sg.id, version: session.version });
+  const gate = deferred();
+  const started = deferred();
+  const base = poolFor(db);
+  let blockOnce = true;
+  const pool = { ...base, query: async (sql, params) => {
+    const result = await base.query(sql, params);
+    if (blockOnce && sql.includes('FROM orders o') && sql.includes('JOIN order_details') && params[0] === 'saigon') {
+      blockOnce = false;
+      started.resolve();
+      await gate.promise;
+    }
+    return result;
+  } };
+  const service = createStockTakeService({ getDb: () => pool, announce() {} });
+  const stale = service.getBoard(ctx(), session.id);
+  await started.promise;
+  await service.saveLine(ctx(), sg.id, { orderId: 201, lineNo: 1, quantity: 9, version: null });
+  const fresh = await service.getBoard(ctx(), session.id);
+  assert.equal(rowOf(fresh, 'AAA1').otherDiff, 2);
+  gate.resolve();
+  await stale;
+  assert.equal(rowOf(await service.getBoard(ctx(), session.id), 'AAA1').otherDiff, 2, 'phan hoi cu khong hoi sinh counterpart cache');
 });

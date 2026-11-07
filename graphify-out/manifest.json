@@ -654,9 +654,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1794040172.4316413,
-    "seen": 1794040223.9811933,
-    "ast_hash": "70a5a7e4216e0795fdc9f33c7214b56e",
+    "mtime": 1794040757.3870249,
+    "seen": 1794040808.507076,
+    "ast_hash": "5d804db5a14c1c36e45d1bf4d0c97c78",
     "semantic_hash": ""
   },
   "design-system/tks-dashboard/MASTER.md": {
@@ -786,9 +786,9 @@
     "semantic_hash": "58e700daf0c14819a97499bd94f6f2e1"
   },
   "server/README.md": {
-    "mtime": 1794040172.4401352,
-    "seen": 1794040223.9811933,
-    "ast_hash": "108d2dc21544ced46739a4cff8ad0604",
+    "mtime": 1794040757.3896844,
+    "seen": 1794040808.5093627,
+    "ast_hash": "6370b2259a5f1920a1838b4fc8ba030b",
     "semantic_hash": ""
   },
   "server/kiotviet/API_ENDPOINTS.md": {
@@ -3306,9 +3306,9 @@
     "semantic_hash": ""
   },
   "CURRENT.md": {
-    "mtime": 1794040172.4421568,
-    "seen": 1794040223.9811933,
-    "ast_hash": "cd71816015952ff859c5a4d5be3a4eea",
+    "mtime": 1794040757.3833227,
+    "seen": 1794040808.507076,
+    "ast_hash": "1a4fe1eef7ddf61bc4968338a0127df9",
     "semantic_hash": ""
   },
   "MEMORY.md": {
@@ -6414,9 +6414,9 @@
     "semantic_hash": ""
   },
   "server/public/stocktake/stocktake.js": {
-    "mtime": 1794039422.0747018,
-    "seen": 1794039563.6649613,
-    "ast_hash": "b3f2db7c9cc5375c791e347a04682bb7",
+    "mtime": 1794040666.8975592,
+    "seen": 1794040808.507076,
+    "ast_hash": "5e9c1a7e7b380f1d0c48cdb097c18200",
     "semantic_hash": ""
   },
   "server/public/stocktake/stocktakePaste.js": {
@@ -6468,15 +6468,15 @@
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeService.js": {
-    "mtime": 1794015623.7431552,
-    "seen": 1794039563.6649613,
-    "ast_hash": "b1cadf832056fb99ddb091eb99d61ee0",
+    "mtime": 1794040722.8584158,
+    "seen": 1794040808.507076,
+    "ast_hash": "170f7a33faa9850a8418a42802a89e2d",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeService.test.js": {
-    "mtime": 1794015591.8452885,
-    "seen": 1794039563.6649613,
-    "ast_hash": "c3edb3ae89ed546370910eef0436578f",
+    "mtime": 1794040759.2552004,
+    "seen": 1794040808.507076,
+    "ast_hash": "0fa70a04d66856eb528052b02fdec3ed",
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeSheetImport.js": {
@@ -6516,9 +6516,9 @@
     "semantic_hash": ""
   },
   "server/public/stocktake/index.html": {
-    "mtime": 1794039422.3197086,
-    "seen": 1794039563.6660314,
-    "ast_hash": "4e3081487f81f1bed52a424a5a1172af",
+    "mtime": 1794040667.1203792,
+    "seen": 1794040808.5093627,
+    "ast_hash": "d298eaf4a4b4f3ecceb688dd397d6515",
     "semantic_hash": ""
   },
   "server/public/stocktake/stocktakeGrid.js": {
@@ -7302,9 +7302,9 @@
     "semantic_hash": ""
   },
   "server/stocktake/stocktakeInteractions.test.js": {
-    "mtime": 1794039716.7577991,
-    "seen": 1794039766.6878455,
-    "ast_hash": "1749b035898d8bece4ade98cdcc335f7",
+    "mtime": 1794040633.2584095,
+    "seen": 1794040808.507076,
+    "ast_hash": "be7538c626fc07cf8d440ac0b485cec6",
     "semantic_hash": ""
   },
   "docs/superpowers/plans/2026-11-07-stocktake-grid-interactions.md": {

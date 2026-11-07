@@ -1272,3 +1272,8 @@ Cập nhật gần nhất: 07/11/2026.
 
 Cập nhật gần nhất: 07/11/2026.
 07/11/2026 — Kiểm tra sau deploy: asset stocktake.js?v=20261107-5 đã chạy production; đợt HN tải 4.279 mã, 200 dòng đầu và không có lỗi console. Graphify update hoàn tất, không thay topology. Chỉ thay cấu hình vận hành/tài liệu, không thay mã ứng dụng trong lần sửa lỗi deploy này.
+
+07/11/2026 — Kiểm kê: điều tra tiếp việc không tải Excel. Log Render xác nhận POST export có lượt 30–40 giây; board tới 36 giây, order-status 27–33 giây và poolWaiting=279. File Excel mẫu và API test không lỗi serializer. Sửa frontend: khóa hai nút khi đang xuất, báo Đang tạo file, hiện lỗi mạng/HTTP/blob và mở lại nút để thử; stocktake.js v20261107-6, 22/22 test tương tác đạt, gồm hai ca đỏ trước/xanh sau sửa. Backend gộp truy vấn cùng bảng đang chạy, gộp cache miss sản phẩm/đối chiếu và giữ trạng thái đơn tối đa 3 giây; quyền vẫn kiểm từng request, commit ghi xóa pending để không trả lại dữ liệu đã lỗi thời cho request mới. Kiểm chứng: service 42/42, tương tác 22/22, exporter 6/6 đạt; hai subagent đã rà soát không có lỗi chặn. Localhost dùng service thật/dữ liệu thật theo đường chỉ đọc, hai nút xuất chạy không lỗi console; bảng SG 2.821 mã tạo workbook 310.164 byte trong 2.647 ms. Graphify đã cập nhật.
+
+Cập nhật gần nhất: 07/11/2026.
+07/11/2026 — Xác minh HTTP localhost: hai endpoint xuất trả 200, ExcelJS đọc lại thành công. File đối chiếu 2.822 dòng gồm tiêu đề × 23 cột (2.821 mã); file thống kê 2.042 dòng × 9 cột. Chỉ kiểm dữ liệu, không ghi production.

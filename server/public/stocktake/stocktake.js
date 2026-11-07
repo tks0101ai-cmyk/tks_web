@@ -77,6 +77,7 @@
   const ORDER_POLL_MS = 30000;
   const orders = { sessionId: null, data: null, checking: false, refreshed: null };
   const detail = { code: null };
+  let exporting = false;
   let user = null;
 
   // Chỉ làm tròn khi hiển thị; dữ liệu tính toán, sắp xếp và ô đang sửa giữ độ chính xác gốc.
@@ -2017,23 +2018,41 @@
       'Đọc tab KIỂM KÊ HN T10 (chỉ đọc) và lưu thành một đợt đã đóng. Chỉ nạp được một lần.'));
     $('stImportSgButton').addEventListener('click', importSheet('sg', 'Nạp KIỂM SG từ sheet?',
       'Đọc tab KIỂM SG (chỉ đọc) và lưu thành một đợt Sài Gòn đã đóng, tự đối chiếu với đợt T10 Hà Nội. Chỉ nạp được một lần.'));
-    $('stExportButton').addEventListener('click', async () => {
+    $('stExportButton').addEventListener('click', () => {
       if (!state.board) return;
       const codes = visibleRows().map(row => row.code);
-      const response = await fetch(API + '/sessions/' + state.sessionId + '/export', Object.assign({ credentials: 'same-origin' }, jsonOptions('POST', { codes })));
-      if (!response.ok) { notify('Không xuất được Excel.', true); return; }
-      await saveDownload(response, 'kiem-ke.xlsx');
+      exportFile($('stExportButton'), '/export', jsonOptions('POST', { codes }), 'kiem-ke.xlsx');
     });
-    $('stExportStatsButton').addEventListener('click', async () => {
-      if (!state.board) return;
-      const response = await fetch(API + '/sessions/' + state.sessionId + '/export-lines', { credentials: 'same-origin' });
+    $('stExportStatsButton').addEventListener('click', () => {
+      exportFile($('stExportStatsButton'), '/export-lines', {}, 'kiem-ke-thong-ke.xlsx');
+    });
+  }
+
+  async function exportFile(button, suffix, options, fallbackName) {
+    if (!state.board || exporting) return;
+    exporting = true;
+    const label = button.textContent;
+    const buttons = [$('stExportButton'), $('stExportStatsButton')];
+    buttons.forEach(node => { node.disabled = true; });
+    button.setAttribute('aria-busy', 'true');
+    button.textContent = 'Đang xuất…';
+    notify('Đang tạo file Excel, vui lòng chờ…');
+    try {
+      const response = await fetch(API + '/sessions/' + state.sessionId + suffix, Object.assign({ credentials: 'same-origin' }, options));
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        notify(payload.error || 'Không xuất được file thống kê.', true);
-        return;
+        throw new Error(payload.error || 'Không xuất được file Excel. Vui lòng thử lại.');
       }
-      await saveDownload(response, 'kiem-ke-thong-ke.xlsx');
-    });
+      await saveDownload(response, fallbackName);
+      notify('Đã bắt đầu tải file Excel.');
+    } catch (error) {
+      notify(error.message || 'Không tải được file Excel. Vui lòng thử lại.', true);
+    } finally {
+      exporting = false;
+      buttons.forEach(node => { node.disabled = false; });
+      button.removeAttribute('aria-busy');
+      button.textContent = label;
+    }
   }
 
   async function saveDownload(response, fallbackName) {

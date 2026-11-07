@@ -72,6 +72,40 @@ test('fixture: ve du dong va cot theo khoa', async t => {
   assert.ok(Object.keys(EDIT_COLUMNS).every(key => f.headCol(key) >= 0));
 });
 
+test('xuat Excel: khoa nut trong luc cho, chi gui mot lan va bao tai xong', async t => {
+  const f = await pageFixture(t);
+  let finish;
+  let requests = 0;
+  const originalFetch = f.w.fetch;
+  f.w.fetch = (url, options) => /\/export$/.test(url)
+    ? (requests++, new Promise(resolve => { finish = resolve; })) : originalFetch(url, options);
+  f.w.URL.createObjectURL = () => 'blob:test-file';
+  f.w.URL.revokeObjectURL = () => {};
+  let downloads = 0;
+  f.w.HTMLAnchorElement.prototype.click = function () { downloads++; };
+  const button = f.w.document.getElementById('stExportButton');
+  button.click();
+  button.click();
+  assert.equal(requests, 1);
+  assert.equal(button.disabled, true);
+  assert.match(f.w.document.getElementById('stNotice').textContent, /Đang/);
+  finish({ ok: true, blob: async () => new f.w.Blob(['excel']), headers: { get: () => null } });
+  await f.until(() => !button.disabled);
+  assert.equal(downloads, 1);
+  assert.match(f.w.document.getElementById('stNotice').textContent, /Đã/);
+});
+
+test('xuat Excel: loi mang duoc hien va mo lai nut de thu lai', async t => {
+  const f = await pageFixture(t);
+  const originalFetch = f.w.fetch;
+  f.w.fetch = (url, options) => /\/export$/.test(url) ? Promise.reject(new Error('Mất kết nối xuất file')) : originalFetch(url, options);
+  const button = f.w.document.getElementById('stExportButton');
+  button.click();
+  await f.until(() => f.w.document.getElementById('stNotice').dataset.error === 'true');
+  assert.match(f.w.document.getElementById('stNotice').textContent, /Mất kết nối xuất file/);
+  assert.equal(button.disabled, false);
+});
+
 test('bang van hien khi order-status chua tra ve; thong tin don cap nhat sau', async t => {
   let resolveStatus;
   const pendingStatus = new Promise(resolve => { resolveStatus = resolve; });

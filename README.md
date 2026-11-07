@@ -474,3 +474,7 @@ Cập nhật gần nhất: 07/11/2026.
 07/11/2026 — Sắp xếp nhiều cột trên các bảng nghiệp vụ: bấm thường chọn một cột; Shift + bấm thêm/đổi lớp, tăng → giảm → bỏ. Tiêu đề hiện mũi tên + ưu tiên 1/2/3. Bảng máy chủ sắp trước phân trang; xuất/in dùng cùng ưu tiên. Lưu cấu hình bảng local tương thích lựa chọn sort đơn cũ. Tiện ích mới server/shared/multiSort.js (+ multiSort.test.js) chuẩn hóa/kiểm whitelist và tạo ORDER BY; không migration.
 
 Cập nhật gần nhất: 07/11/2026.
+
+07/11/2026 — Kiểm kê: chống gửi lặp yêu cầu xuất Excel, báo tiến trình/lỗi tải file; gộp các truy vấn đọc trùng đang xử lý để giảm nghẽn pool, trạng thái đơn dùng cache tối đa 3 giây. Không migration.
+
+Cập nhật gần nhất: 07/11/2026.
