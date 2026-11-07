@@ -156,11 +156,10 @@
       // Hỏi số đơn TEAM trước khi tải bảng: đơn về giữa hai lần gọi thì lượt hỏi sau vẫn phát hiện được.
       const statusLoad = sessionIsLive(sessionId) ? fetchOrderStatus(sessionId) : Promise.resolve(null);
       const { response, payload } = await request(API + '/sessions/' + sessionId + '/board');
-      const orderStatus = await statusLoad;
       if (version !== state.loadVersion) return;
       if (!response.ok) throw new Error(payload.error || 'Không tải được bảng đối chiếu.');
       state.board = payload;
-      applyOrderStatus(sessionId, orderStatus);
+      if (orders.sessionId !== sessionId) applyOrderStatus(sessionId, null);
       state.canEdit = !!payload.canEdit;
       state.canClose = !!payload.canClose;
       $('stStatus').textContent = '';
@@ -168,6 +167,13 @@
       startLive(sessionId);
       render({ keepOrder: background });
       if (detail.code) renderDetail();
+      // Thong tin don la phan phu: API cham khong duoc chan bang da tai xong.
+      statusLoad.then(orderStatus => {
+        if (version !== state.loadVersion || sessionId !== state.sessionId || !orderStatus) return;
+        applyOrderStatus(sessionId, orderStatus);
+        renderSessionMeta(state.board.session);
+        renderOrdersNote(state.board.session);
+      });
     } catch (error) {
       if (version !== state.loadVersion) return;
       $('stStatus').textContent = error.message;
@@ -447,11 +453,7 @@
     return kept.concat(visibleRows().filter(row => !known.has(row.code)));
   }
 
-  function render({ keepOrder = false } = {}) {
-    const board = state.board;
-    const session = board && board.session;
-    if (session && session.branch !== state.headBranch) renderHead(session.branch);
-    $('stTable').dataset.editable = String(Boolean(editable())); // tiêu đề cột sửa được chỉ tô màu khi thật sự sửa được
+  function renderSessionMeta(session) {
     const orderStatus = currentOrderStatus(session);
     $('stSessionMeta').textContent = session
       ? dateVn(session.dateFrom) + (session.dateTo !== session.dateFrom ? ' – ' + dateVn(session.dateTo) : '')
@@ -461,6 +463,14 @@
         + (orders.refreshed && orders.refreshed.sessionId === session.id ? ' · Đơn Kiot cập nhật lúc ' + time(orders.refreshed.at).slice(0, 5) : '')
         + (session.reloadedAt ? ' · Nạp lại bởi ' + (session.reloadedByName || '—') + ' ' + time(session.reloadedAt) : '')
       : '';
+  }
+
+  function render({ keepOrder = false } = {}) {
+    const board = state.board;
+    const session = board && board.session;
+    if (session && session.branch !== state.headBranch) renderHead(session.branch);
+    $('stTable').dataset.editable = String(Boolean(editable())); // tiêu đề cột sửa được chỉ tô màu khi thật sự sửa được
+    renderSessionMeta(session);
     const active = Boolean(session && !session.cancelled);
     $('stEditDatesButton').hidden = !(active && session.status === 'open' && state.canEdit);
     $('stRefreshOrdersButton').hidden = !(active && session.status === 'open');

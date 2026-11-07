@@ -1263,3 +1263,7 @@ Bộ lọc đặt hàng có trạng thái, HR ID/tên legacy, NCC, VAT, ngày l�
 Cập nhật gần nhất: 07/11/2026.
 
 07/11/2026 — Chuẩn bị phát hành sort nhiều cột: commit b1eeb774, merge tks_web/main 02f5b6d8 tại 24f2eb98, giữ bản sửa CONT writer lock. Kiểm tra sau merge 14/14 đạt; cập nhật lại graphify. Đích push theo yêu cầu: origin/main và tks_web/main; deploy chưa xác minh.
+
+07/11/2026 — Kiểm kê: sửa đường tải bảng bị chặn bởi API phụ order-status. Tái hiện bằng kiểm thử giữ phản hồi order-status chưa hoàn tất: trước sửa bảng đứng ở Đang tải; sau sửa bảng hiển thị trước, số đơn/cảnh báo cập nhật sau, không dựng lại bảng hoặc mất ô đang nhập. Callback kiểm phiên bản tải và đợt hiện hành. Tăng asset stocktake.js lên 20261107-5. Trên tab production được người dùng gán, tải lại đã hiện 2.821 mã SG, 98 đơn TEAM và không có console error; chưa xác nhận nguyên nhân của lần treo trong ảnh bằng network log. Đo service chỉ đọc: SG khoảng 1 giây/2.821 mã, HN khoảng 0,5 giây/4.279 mã. Bản sửa chưa commit/push/deploy. Graphify đã cập nhật. Kiểm thử: 129 ca còn lại của module đạt ngoài sandbox; nhóm tương tác chạy lại 20/20 đạt. Lượt toàn module đầu ngoài sandbox có 1 ca hồi quy hết hạn 1,5 giây do tải CPU song song; tăng thời hạn chờ của kiểm thử lên 10 giây rồi chạy lại cả nhóm. Không thay thời gian chờ trên production. Trình duyệt không truy cập được máy chủ fixture localhost trong môi trường này, nên chưa kiểm bản sửa bằng trình duyệt thật.
+
+Cập nhật gần nhất: 07/11/2026.

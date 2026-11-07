@@ -72,6 +72,39 @@ test('fixture: ve du dong va cot theo khoa', async t => {
   assert.ok(Object.keys(EDIT_COLUMNS).every(key => f.headCol(key) >= 0));
 });
 
+test('bang van hien khi order-status chua tra ve; thong tin don cap nhat sau', async t => {
+  let resolveStatus;
+  const pendingStatus = new Promise(resolve => { resolveStatus = resolve; });
+  let timer;
+  try {
+    const f = await Promise.race([
+      pageFixture(t, { fetchHandler: url => /\/order-status$/.test(url) ? pendingStatus : null }),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Bang bi chan boi order-status')), 10000); })
+    ]);
+    assert.equal(f.tbody.rows.length, 3);
+    assert.equal(f.w.document.getElementById('stStatus').textContent, '');
+    resolveStatus({ inRange: 98, revision: '98', outOfRange: { count: 0 } });
+    await f.until(() => f.w.document.getElementById('stSessionMeta').textContent.includes('98'));
+    assert.match(f.w.document.getElementById('stSessionMeta').textContent, /98 đơn TEAM/);
+  } finally {
+    clearTimeout(timer);
+    resolveStatus({ inRange: 98, outOfRange: { count: 0 } });
+  }
+});
+
+test('loi tai bang hien ngay ca khi order-status con cho', async t => {
+  let resolveStatus;
+  const pendingStatus = new Promise(resolve => { resolveStatus = resolve; });
+  t.after(() => resolveStatus(null));
+  const f = await pageFixture(t, { fetchHandler: url => {
+    if (/\/order-status$/.test(url)) return pendingStatus;
+    if (/\/board$/.test(url)) throw new Error('Mất kết nối tải bảng');
+    return null;
+  } });
+  assert.equal(f.w.document.getElementById('stStatus').textContent, 'Mất kết nối tải bảng');
+  assert.equal(f.w.document.getElementById('stStatus').dataset.error, 'true');
+});
+
 test('keo chon o toi mep duoi: bang tu cuon, vung chon di theo, tha chuot thi dung', async t => {
   const f = await pageFixture(t, { rowCount: 60 });
   const { w, app, scroller } = f;
