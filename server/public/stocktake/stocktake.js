@@ -356,6 +356,7 @@
       const th = document.createElement('th');
       th.dataset.field = column.key;
       if (column.num) th.className = 'num';
+      if (Grid.EDIT_COLUMNS[column.key]) th.classList.add('st-th-edit');
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'sort-button';
@@ -450,6 +451,7 @@
     const board = state.board;
     const session = board && board.session;
     if (session && session.branch !== state.headBranch) renderHead(session.branch);
+    $('stTable').dataset.editable = String(Boolean(editable())); // tiêu đề cột sửa được chỉ tô màu khi thật sự sửa được
     const orderStatus = currentOrderStatus(session);
     $('stSessionMeta').textContent = session
       ? dateVn(session.dateFrom) + (session.dateTo !== session.dateFrom ? ' – ' + dateVn(session.dateTo) : '')

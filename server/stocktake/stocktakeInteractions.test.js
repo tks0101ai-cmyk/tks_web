@@ -130,3 +130,23 @@ test('keo nut dien toi mep duoi: bang cung tu cuon', async t => {
   assert.equal(scroller.scrollTop, stopped);
   assert.equal(f.posts.length, 0);
 });
+
+test('tieu de cot sua duoc co class st-th-edit va bang bao dang sua duoc', async t => {
+  const f = await pageFixture(t);
+  const marked = f.heads.filter(th => th.classList.contains('st-th-edit')).map(th => th.dataset.field).sort();
+  assert.deepEqual(marked, Object.keys(EDIT_COLUMNS).sort());
+  assert.equal(f.w.document.getElementById('stTable').dataset.editable, 'true');
+});
+
+test('dot da dong hoac tai khoan chi xem: bang khong bao sua duoc (tieu de khong to mau)', async t => {
+  for (const options of [{ status: 'closed' }, { canEdit: false }]) {
+    const f = await pageFixture(t, options);
+    assert.equal(f.w.document.getElementById('stTable').dataset.editable, 'false', JSON.stringify(options));
+  }
+});
+
+test('CSS: tieu de cot sua duoc dung nen ho phach, tieu de dang sap xep dam hon', () => {
+  const css = fs.readFileSync(path.join(root, 'stocktake.css'), 'utf8');
+  assert.match(css, /#stTable\[data-editable="true"\] thead th\.st-th-edit\{[^}]*background:#b45309/);
+  assert.match(css, /th\.st-th-edit\[data-sort-active="true"\]\{[^}]*background:#92400e/);
+});
