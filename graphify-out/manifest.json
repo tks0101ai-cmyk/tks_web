@@ -654,9 +654,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1794026374.6183848,
-    "seen": 1794039563.6649613,
-    "ast_hash": "7936f78c74b5f208e17dbd02c31d5180",
+    "mtime": 1794040172.4316413,
+    "seen": 1794040223.9811933,
+    "ast_hash": "70a5a7e4216e0795fdc9f33c7214b56e",
     "semantic_hash": ""
   },
   "design-system/tks-dashboard/MASTER.md": {
@@ -786,9 +786,9 @@
     "semantic_hash": "58e700daf0c14819a97499bd94f6f2e1"
   },
   "server/README.md": {
-    "mtime": 1794025930.1028419,
-    "seen": 1794039563.6660314,
-    "ast_hash": "b12e0b601d842fdddda65f3612cd0d6b",
+    "mtime": 1794040172.4401352,
+    "seen": 1794040223.9811933,
+    "ast_hash": "108d2dc21544ced46739a4cff8ad0604",
     "semantic_hash": ""
   },
   "server/kiotviet/API_ENDPOINTS.md": {
@@ -3306,9 +3306,9 @@
     "semantic_hash": ""
   },
   "CURRENT.md": {
-    "mtime": 1794039753.0341911,
-    "seen": 1794039766.6878455,
-    "ast_hash": "e3ba178a18857b9f895597deacf81b45",
+    "mtime": 1794040172.4421568,
+    "seen": 1794040223.9811933,
+    "ast_hash": "cd71816015952ff859c5a4d5be3a4eea",
     "semantic_hash": ""
   },
   "MEMORY.md": {

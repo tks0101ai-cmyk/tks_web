@@ -142,7 +142,7 @@ Mở `http://localhost:3000`.
 | `MEMORY_MONITOR` / `MEMORY_LOG_INTERVAL_MS` / `MEMORY_LIMIT_MB` | Log bộ nhớ định kỳ; mặc định bật, 60000 ms, trần cảnh báo 2048 MB (`MEMORY_MONITOR=false` để tắt) |
 | `XKIRO_API_KEY`, `XKIRO_BASE_URL`, `INVOICE_VISION_MODEL`, `INVOICE_VISION_FALLBACK_MODEL` | AI đọc ảnh hóa đơn ở tab Tạo QR (xKiro, chuẩn OpenAI). Thiếu key = tắt, trang báo nhập tay; mặc định model `qwen/qwen3.8-max:free`; `INVOICE_VISION_FALLBACK_MODEL` nhận nhiều model cách nhau dấu phẩy, thử lần lượt (mặc định `qwen/qwen3-vl-plus:free,google/gemini-3-flash` — model `:free` hay 429/503 lúc đông nên cuối danh sách là model trả phí rẻ) |
 | `VAT_REQUEST_STOCK_SHEET_ID`, `VAT_REQUEST_STOCK_GID`, `VAT_REQUEST_STOCK_COLUMN`, `VAT_REQUEST_MAPPING_SHEET_ID`, `VAT_REQUEST_MAPPING_GID` | Nguồn cột **Tồn VAT** của ORDER VAT: tab Gộp VAT (cột I `TỒN ĐẦU NGÀY`) + Khớp mã, đọc bằng service account (`*_SHEET_ID` = ID file, `*_GID` = sheetId của tab; file phải chia sẻ Viewer cho service account). **Nên bỏ trống** = tab Gộp VAT (sheetId `950697804`, cùng tab Nháp VAT / Tra cứu VAT dùng) + Khớp mã (`631827560`) của file VAT TKS; nếu Render còn đặt `39032` / `1192158065` (file trung gian "cúc cu test" cũ) thì xóa các biến này |
-| `PG_POOL_MAX` | Trần kết nối pool `pg` mỗi instance (mặc định 7; 2 × giá trị ≤ 15 của Supabase session pooler) |
+| `PG_POOL_MAX` | Trần kết nối pool `pg` mỗi tiến trình (mặc định mã nguồn 7; production: web 4, worker 2). Tính cả LISTEN và phiên bản cũ/mới khi deploy: 2 × (4 + 1) + 2 × 2 = 14 ≤ 15 |
 
 Xem [server/.env.example](server/.env.example) để biết đầy đủ cấu hình.
 
