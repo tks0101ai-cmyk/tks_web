@@ -17,6 +17,7 @@ async function pageFixture(t, { rowCount = 3, status = 'open', canEdit = true, f
   const w = dom.window;
   w.matchMedia = () => ({ matches: false });
   w.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  w.HTMLElement.prototype.scrollIntoView = function () {}; // jsdom khong co
   w.eval(fs.readFileSync(path.join(root, '../shared/table-controls.js'), 'utf8'));
   w.TKSNav = { authGuard: async () => ({}), renderTopSidebar() {} };
   const session = { id: 1, name: 'T11', branch: 'hanoi', status, cancelled: false, source: 'web' };
@@ -206,4 +207,41 @@ test('menu chuot phai dong khi bam ra ngoai hoac nhan Esc', async t => {
   f.cell(0, 'counted').dispatchEvent(f.mouse('contextmenu', { clientX: 10, clientY: 10 }));
   f.w.document.dispatchEvent(new f.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   assert.equal(f.w.document.querySelector('.st-context-menu'), null);
+});
+
+test('o nhap cot chu (Chi tiet ly do) la textarea tu gian theo noi dung', async t => {
+  const f = await pageFixture(t);
+  f.cell(0, 'reason').dispatchEvent(f.mouse('dblclick'));
+  const editor = f.scroller.querySelector('.st-editor');
+  assert.equal(editor.tagName, 'TEXTAREA');
+  Object.defineProperty(editor, 'scrollHeight', { value: 90, configurable: true });
+  editor.value = 'Lý do rất dài '.repeat(10);
+  editor.dispatchEvent(new f.w.Event('input', { bubbles: true }));
+  assert.equal(editor.style.height, '94px');
+});
+
+test('o nhap cot so (KK truoc sai) van la input mot dong', async t => {
+  const f = await pageFixture(t);
+  f.cell(0, 'prevDiff').dispatchEvent(f.mouse('dblclick'));
+  assert.equal(f.scroller.querySelector('.st-editor').tagName, 'INPUT');
+});
+
+test('textarea: Enter luu mot dong (xuong dong -> khoang trang), Esc huy', async t => {
+  const f = await pageFixture(t, { fetchHandler: url => /\/cells/.test(url)
+    ? { applied: [{ code: 'SP1', column: 'reasonText', after: 'dòng một dòng hai' }], conflicts: [], skipped: {}, notes: [], tags: [] } : null });
+  f.cell(0, 'reason').dispatchEvent(f.mouse('dblclick'));
+  let editor = f.scroller.querySelector('.st-editor');
+  editor.value = 'dòng một\ndòng hai';
+  editor.dispatchEvent(new f.w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  await f.sleep(30);
+  assert.equal(f.posts.length, 1);
+  assert.equal(f.posts[0].cells[0].value, 'dòng một dòng hai');
+  assert.equal(f.scroller.querySelector('.st-editor'), null);
+
+  f.cell(1, 'reason').dispatchEvent(f.mouse('dblclick'));
+  editor = f.scroller.querySelector('.st-editor');
+  editor.value = 'se bi huy';
+  editor.dispatchEvent(new f.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  await f.sleep(30);
+  assert.equal(f.posts.length, 1);
 });

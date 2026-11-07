@@ -999,14 +999,25 @@
     if (column === 'statusText') { openStatusMenu(td, row, initial); return; }
     const start = cellText(row, COLUMNS[pos.col].key);
     const box = boxIn(td);
-    const input = document.createElement('input');
+    // Cột chữ (Chi tiết lý do, Cụm SP...): textarea tự giãn để thấy hết chữ dài; cột số / giờ giữ ô một dòng.
+    const multiline = COLUMNS[pos.col].type === 'text';
+    const input = document.createElement(multiline ? 'textarea' : 'input');
     input.className = 'st-editor';
+    if (multiline) input.rows = 1;
     input.value = initial === undefined ? start : initial;
     Object.assign(input.style, { left: box.left + 'px', top: box.top + 'px', width: Math.max(box.width, 140) + 'px', height: Math.max(box.height, 30) + 'px' });
     Object.assign(editor, { input, code: row.code, column, start, expected: expectedOf(row, column), sessionId: state.sessionId });
     box.scroller.appendChild(input);
     input.focus({ preventScroll: true });
     input.setSelectionRange(input.value.length, input.value.length);
+    if (multiline) {
+      const fit = () => {
+        input.style.height = 'auto';
+        input.style.height = Math.max(input.scrollHeight + 4, box.height, 30) + 'px'; // +4: viền 2px mỗi cạnh (border-box)
+      };
+      input.addEventListener('input', fit);
+      fit();
+    }
     positionFill();
     input.addEventListener('keydown', event => {
       event.stopPropagation();
@@ -1097,7 +1108,7 @@
     editor.input = null;
     editor.options = null;
     // Danh sach Trang thai: gia tri = ten loai dang chon ("Chưa XL" = trong).
-    const value = options ? (options[index].key === 'pending' ? '' : options[index].label) : input.value;
+    const value = options ? (options[index].key === 'pending' ? '' : options[index].label) : input.value.replace(/[\r\n]+/g, ' ');
     input.remove();
     document.querySelector('.st-scroll').focus({ preventScroll: true });
     positionFill();
