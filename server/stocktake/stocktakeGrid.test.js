@@ -105,7 +105,7 @@ test('detail quantity: rounded while idle, exact while editing, focus/blur sends
   app.state.board = { session: { status: 'open' }, rows: [{ code: 'A', name: 'Mẫu', lines: [
     { orderId: 1, lineNo: 1, quantity: 1234.56, orderCode: 'DH1' }
   ] }] };
-  w.document.getElementById('stRows').innerHTML = '<tr data-code="A"><td>A</td></tr>';
+  w.document.getElementById('stRows').innerHTML = '<tr data-code="A"><td data-col="0">A</td></tr>';
   w.document.querySelector('#stRows td').dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true }));
   let input = w.document.querySelector('[data-line-field="quantity"]');
   assert.equal(input.value, '1,235');
@@ -343,7 +343,7 @@ test('detail header sorting shows priorities and sorts the complete detail list'
   w.fetch=async()=>({ok:true,json:async()=>({history:[]})});
   const lines=[{orderId:1,lineNo:1,team:'A',zone:'Z',quantity:2},{orderId:2,lineNo:1,team:'A',zone:'Z',quantity:8},{orderId:3,lineNo:1,team:'B',zone:'A',quantity:1}];
   app.state.canEdit=true;app.state.board={session:{status:'open'},rows:[{code:'A',name:'Mẫu',lines}]};
-  w.document.getElementById('stRows').innerHTML='<tr data-code="A"><td>A</td></tr>';
+  w.document.getElementById('stRows').innerHTML='<tr data-code="A"><td data-col="0">A</td></tr>';
   w.document.querySelector('#stRows td').dispatchEvent(new w.MouseEvent('dblclick',{bubbles:true}));
   const click=(key,shiftKey=false)=>w.document.querySelector('[data-line-sort="'+key+'"]').dispatchEvent(new w.MouseEvent('click',{bubbles:true,shiftKey}));
   click('team');click('quantity',true);click('quantity',true);
