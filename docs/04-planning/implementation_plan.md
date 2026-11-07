@@ -639,3 +639,15 @@ Giao diện: bảng báo trên trang nêu rõ chế độ — `CÁCH LY · …` 
 Kiểm thử: `purchaseOrders/purchaseOrdersIsolation.test.js` (7 ca: ghi thật nhưng không chạm dữ liệu chung, bật cờ thì nối vào, mọi đường ghi, cùng khóa với source gate, chặn khi nguồn là Sheet, `list` trả cả hai cờ, gate của Dự kiến hàng về), `productContainers/sync.test.js` (cách ly không làm dừng job Sheet).
 
 Bật/tắt bằng SQL, xem `server/purchaseOrders/ROLLOUT.md`.
+
+## 07/11/2026 — Kiểm kê: sắp xếp nhiều cột
+
+Thiết kế đã duyệt: bấm thường chọn một cột; Shift + bấm thêm lớp theo thứ tự chọn. Mỗi lớp tăng → giảm → bỏ; bỏ lớp giữa đánh lại số ưu tiên. Khi hòa mới xét lớp tiếp theo, ô trống luôn cuối mỗi lớp; hòa mọi lớp thì theo mã hàng. Giữ sắp xếp số, cờ đánh dấu và lọc/tìm kiếm hiện hành; số ưu tiên và hướng đọc được trên tiêu đề. Không thay schema/API.
+
+Kế hoạch: (1) thêm kiểm thử hồi quy trong `server/stocktake/stocktakeGrid.test.js`, chứng minh lỗi trước khi sửa; (2) đổi state/comparator/click handler/header trong `server/public/stocktake/stocktake.js`, thêm hướng dẫn và tăng phiên bản asset trong HTML; (3) chạy test kiểm kê và table-controls liên quan, cập nhật graphify, ghi kết quả vào CURRENT.md.
+
+Cập nhật gần nhất: 07/11/2026.
+
+07/11/2026 — Kiểm kê: số trên giao diện làm tròn đến số nguyên; ô số lượng khi sửa giữ đầy đủ phần thập phân. Tính toán/sắp xếp/lưu trữ và xuất Excel dùng giá trị gốc. Kiểm thử liên quan 76/76 đạt, kiểm Edge đạt; chưa deploy.
+
+Cập nhật gần nhất: 07/11/2026.
