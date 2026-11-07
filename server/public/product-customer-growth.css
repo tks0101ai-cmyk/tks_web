@@ -1,0 +1,60 @@
+/* Tab Hàng hóa — mục 4 "Hàng hóa 90 ngày": bảng Khách hàng theo sản phẩm (product-customer-growth.js). Dùng lại panel,
+   table-search-*, sort-button, pagination-controls, price-audit-page-size của trang; ở đây chỉ có thanh lọc, khung cuộn có viền,
+   thanh tỷ trọng và ba mức màu của cột Tăng trưởng (đỏ / cam / vàng). Màu đều là biến chung nên tự đổi theo Sáng/Tối. */
+.pcg-panel { min-width: 0; }
+.pcg-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 10px; }
+.pcg-filters .table-search-input-wrap { flex: 1 1 220px; max-width: 360px; min-width: 0; }
+.pcg-growth-filter { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; }
+.pcg-growth-filter select {
+  height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius-7, 8px);
+  background: var(--panel); color: var(--text); font: inherit;
+}
+.pcg-status { margin: 0 0 8px; min-height: 0; color: var(--muted); font-size: 11.5px; }
+.pcg-status:empty { display: none; }
+
+/* Khung cuộn riêng của bảng: trang không bao giờ tràn ngang, bảng rộng cuộn trong khung. */
+.pcg-scroll {
+  max-width: 100%; min-width: 0; max-height: 640px; overflow: auto;
+  border: 1px solid var(--border); border-radius: var(--radius-7, 8px); overscroll-behavior-x: contain;
+}
+.pcg-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.pcg-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-4, 4px); }
+.pcg-scroll.is-busy tbody { opacity: .55; transition: opacity .15s ease; }
+
+.pcg-table { border-collapse: separate; border-spacing: 0; }
+.pcg-table thead th {
+  position: sticky; top: 0; z-index: 3; white-space: normal; vertical-align: middle; text-align: center !important;
+  background: linear-gradient(var(--glass-head), var(--glass-head)), var(--panel);
+}
+.pcg-table.tks-controlled-table thead th { vertical-align: middle; }
+.pcg-table thead .sort-button { position: relative; justify-content: center; padding: 0 13px; }
+.pcg-table thead .sort-button > .sort-label { flex: 0 1 auto; text-align: center; }
+.pcg-table thead .sort-indicator { position: absolute; right: 0; top: 50%; width: 12px; transform: translateY(-50%); }
+.pcg-table tbody tr:hover td { background-color: var(--surface-hover); }
+.pcg-table td.col-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pcg-table td.name-cell { white-space: normal; overflow-wrap: anywhere; }
+.pcg-code { display: block; font-family: var(--font-data); font-size: 11.5px; color: var(--muted); }
+.pcg-name { display: block; line-height: 1.35; }
+
+/* % của SP: chữ + thanh ngang như bảng khách trong hộp chi tiết hàng hóa. */
+.pcg-share { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; width: 100%; }
+.pcg-bar { flex: 0 0 56px; height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
+.pcg-bar > i { display: block; height: 100%; background: var(--blue, var(--green)); border-radius: 3px; }
+
+/* Tăng trưởng: chỉ ô này đổi màu theo mức giảm, luôn kèm số %. Đỏ = giảm hết 100%, cam = giảm hơn 50%, vàng = giảm dưới 50%. Mới là nhãn trung tính. */
+.pcg-table td.pcg-growth { white-space: nowrap; }
+.pcg-table td.is-lost { color: var(--red); font-weight: 600; }
+.pcg-table td.is-check { color: var(--orange); font-weight: 600; }
+.pcg-table td.is-drop { color: var(--yellow); }
+.pcg-new { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--muted); background: var(--surface-hover); }
+
+.pcg-table td.pcg-note { text-align: left; white-space: normal; }
+.pcg-note-inner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pcg-error { color: var(--red); margin-right: 8px; }
+.pcg-retry { margin-left: 4px; }
+
+@media (max-width: 768px) {
+  .pcg-scroll { max-height: 70vh; }
+  .pcg-filters .table-search-input-wrap { max-width: none; flex-basis: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { .pcg-scroll.is-busy tbody { transition: none; } }

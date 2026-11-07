@@ -1,7 +1,8 @@
 /* Tab Hàng hóa — mục 4 "Hàng hóa 90 ngày" (API chỉ đọc /api/product-report/90d, quyền reports.products + reports.products.sales).
    Bảng tính sẵn lúc 02:00 (product_90d_report), web KHÔNG tính lại. 22 cột: Mã, Tên rồi 4 kỳ T.này | T.trc | T.trc nữa | 90 ngày,
-   mỗi kỳ 5 cột SL | DS | SL khách | Lượt mua | Top 3 khách. thead tĩnh trong index.html (2 tầng, khớp COLUMNS bên dưới —
-   test/frontend/product-90d-report.test.js khóa khớp). Tìm kiếm, sắp xếp, phân trang đều ở máy chủ trên TOÀN BỘ kết quả.
+   mỗi kỳ 5 cột SL | DS | SL khách | Lượt mua | Top 3 khách. Từ 06/11/2026 giao diện mục 4 là product-customer-growth.js; file này
+   KHÔNG còn được nạp trong index.html, chỉ còn được máy chủ require() (dashboard/exportService.js) cho xuất file cũ
+   products.product90d (các hàm thuần: formatValue, topCustomerLines...). Test khóa thead/độ rộng cột đã gỡ cùng giao diện cũ. Tìm kiếm, sắp xếp, phân trang đều ở máy chủ trên TOÀN BỘ kết quả.
    Ẩn/hiện cột + kéo độ rộng: shared/table-controls.js (data-table-sort="off": trang tự sắp xếp qua API).
    Phần đầu file là hàm thuần (không đụng DOM) — Node require() được để test. */
 (function () {
@@ -24,7 +25,7 @@
   ];
   // Độ rộng mặc định trên máy tính (tài khoản chưa lưu cấu hình) = bố cục người dùng đã chỉnh và lưu ngày 04/11/2026
   // (user_table_prefs, bảng dashboard-table-product-90d); cột chưa từng chỉnh lấy theo cùng mẫu của các kỳ khác.
-  // thead trong index.html phải ghi đúng các số này (test khóa khớp).
+  // Giao diện cũ này không còn được nạp (thead tương ứng đã gỡ khỏi index.html), không còn test khóa khớp độ rộng.
   const DESKTOP_WIDTHS = {
     product_code: 86, product_name: 188,
     qty_61_90d: 64, revenue_61_90d: 90, customer_count_61_90d: 82, invoice_count_61_90d: 71, top_customers_61_90d: 254,

@@ -63,7 +63,7 @@ test('Hàng hóa có 4 phần: Báo cáo hàng hóa, Dự kiến hàng về, Tă
   const titles = sectionTitles('products');
   assert.deepEqual(titles.map(s => s.step), ['1', '2', '3', '4']);
   assert.deepEqual(titles.map(s => s.title), ['Báo cáo hàng hóa', 'Dự kiến hàng về', 'Tăng trưởng mã hàng', 'Hàng hóa 90 ngày']);
-  ['productReportRows', 'expectedArrivalsRows', 'businessProductsRows', 'product90dRows'].forEach(id => assert.ok(view('products').querySelector('#' + id), id));
+  ['productReportRows', 'expectedArrivalsRows', 'businessProductsRows', 'pcgRows'].forEach(id => assert.ok(view('products').querySelector('#' + id), id));
   ['todayNewProductRows', 'newlyImportedRows', 'allProductRows', 'topSellingRows', 'inventoryValueRows'].forEach(id => {
     assert.equal(document.getElementById(id), null, id + ' da bi go cung cac muc cu cua tab Hang hoa');
   });

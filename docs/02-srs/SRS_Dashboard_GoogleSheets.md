@@ -1181,6 +1181,15 @@ Mã dùng chung: public/shared/purchase-calculations.js và purchase-freight.js;
 
 06/11/2026 — **Vòng đời đơn hàng: tìm theo hàng:** chế độ tìm "Theo hàng" (`mode=product`) trả các đơn chứa mã/tên hàng đã nhập (bỏ dấu, ≥ 2 ký tự), kết hợp được với mọi bộ lọc và xuất Excel. Không migration.
 
+## FR-PRODUCT-CUSTOMER-GROWTH — Hàng hóa 90 ngày: Khách hàng theo sản phẩm + Tăng trưởng (06/11/2026)
+
+Mục 4 tab Hàng hóa hiển thị bảng mỗi dòng một cặp sản phẩm × khách hàng của 90 ngày gần nhất (toàn công ty, hai cơ sở gộp theo mã hàng; khách gộp theo tên chuẩn hóa).
+
+- FR-PRODUCT-CUSTOMER-GROWTH.1 — Cột: Sản phẩm, Khách hàng, DS 90 ngày, T.này, T.trước, T.trước nữa, % của SP, Tăng trưởng. Ba kỳ là ba khoảng 30 ngày liên tiếp kết thúc ở ngày chốt (`customer_window_end`): T.này (−30..−1), T.trước (−60..−31), T.trước nữa (−90..−61). Kỳ chưa tính hiển thị "—", không coi là 0.
+- FR-PRODUCT-CUSTOMER-GROWTH.2 — Tăng trưởng = T.này ÷ trung bình(T.trước, T.trước nữa) − 1, chỉ tính được khi trung bình hai kỳ trước lớn hơn 0; ngưỡng so sánh dùng số thập phân chính xác. Ô Tăng trưởng chỉ hiện % (màu không thay thế số) với ba mức: **đỏ** khi giảm hết 100% (hai kỳ trước có doanh số, T.này ≤ 0, kể cả âm do trả hàng), **cam** khi giảm hơn 50% (−100% đến −50%), **vàng** khi giảm dưới 50% (−50% đến 0; đúng −50% là vàng); không có nhãn "Cần check". Khách có tổng hai kỳ trước ≤ 0 (kể cả âm do trả hàng) và T.này > 0 là **"Mới"**. Lý do: kỳ là 30 ngày cuốn chiếu nên T.này = 0 là tín hiệu mạnh nhất.
+- FR-PRODUCT-CUSTOMER-GROWTH.3 — Lọc theo tên/mã sản phẩm, tên khách (bỏ dấu) và nhóm: Tất cả, Giảm hết 100%, Giảm hơn 50%, Giảm dưới 50%, Đang tăng, Khách mới (các nhóm loại trừ nhau; muốn xem cả đỏ lẫn cam thì chọn lần lượt hai mục). Sắp xếp theo mọi cột; dòng không tính được tăng trưởng luôn ở cuối. Lọc, sắp xếp, phân trang áp trên toàn bộ kết quả; trạng thái hiển thị "N dòng khớp · A giảm hết 100% · B giảm hơn 50%" (A, B đếm trên toàn bộ kết quả đã lọc). Xuất file: cột "Trạng thái" và ghi chú đầu file dùng cùng các nhãn này.
+- FR-PRODUCT-CUSTOMER-GROWTH.4 — Quyền xem: `reports.products` + `reports.products.sales`. Quyền xuất: thêm `reports.export`; xuất Excel/HTML đúng bộ lọc đang chọn, tối đa 50.000 dòng (vượt thì báo thu hẹp bộ lọc, không cắt ngầm).
+- FR-PRODUCT-CUSTOMER-GROWTH.5 — Chỉ đọc dữ liệu đã tính sau mỗi lượt đồng bộ KiotViet; không migration, không thêm biến môi trường.
 
 07/11/2026 — Kiểm kê: chỉ gom đơn TEAM có `raw.statusValue = "Phiếu tạm"` ở cả hai cơ sở; số đếm, chi tiết, xuất thống kê, bộ đếm và cảnh báo ngoài khoảng ngày dùng cùng điều kiện. Đơn hủy/hoàn thành/trạng thái khác hoặc thiếu trạng thái bị loại, kể cả dòng đã sửa trên web. Đợt đã chốt giữ nguyên ảnh chụp lịch sử; không migration, chưa deploy.
 
