@@ -41,7 +41,8 @@ const SORT_SQL = Object.freeze({
   approvedOn: 'p.approved_on'
 });
 
-function orderSql(sort, dir) {
+function orderSql(sort, dir, sorts = []) {
+  if (sorts.length) return `ORDER BY ${require('../shared/multiSort').orderBy(sorts, SORT_SQL)}, p.approved_on DESC, p.id DESC`;
   const expr = Object.prototype.hasOwnProperty.call(SORT_SQL, sort) ? SORT_SQL[sort] : null;
   const tie = 'p.approved_on DESC, p.id DESC';
   return expr ? `ORDER BY ${expr} ${dir === 'desc' ? 'DESC' : 'ASC'} NULLS LAST, ${tie}` : `ORDER BY ${tie}`;
@@ -134,7 +135,7 @@ async function applyRecalc(client, scopes, now) {
 function createApprovedPriceRepository({ pool = getPool(), now = () => new Date() } = {}) {
   async function list(query, { all = false } = {}) {
     const params = [query.approver, query.from, query.to];
-    const order = orderSql(query.sort, query.dir);
+    const order = orderSql(query.sort, query.dir, query.sorts);
     if (query.q) {
       const candidates = (await pool.query(`${SELECT_SQL} ${WHERE_SQL} ${order}`, params)).rows.map(mapRow);
       const matcher = fuzzy.createMatcher(query.q);

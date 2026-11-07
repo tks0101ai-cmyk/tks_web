@@ -189,7 +189,8 @@ test('shared.css: --orange va --yellow co o ca khoi Toi lan khoi Sang (moi token
   assert.match(css, /--yellow:#A16207/);
   // index.html phai bust cache shared.css (server cache ?v= 1 gio) de trinh duyet/edge nhan token moi.
   assert.doesNotMatch(html, /shared\.css\?v=20261028-leave-btn/);
-  assert.match(html, /<link rel="stylesheet" href="\/shared\/shared\.css\?v=20261106-tiers">/);
+  // Chuoi phien ban doi theo cac dot nang phien ban chung (vd main nang dong loat 20261107-3): chi can ton tai va khac chuoi cu.
+  assert.match(html, /<link rel="stylesheet" href="\/shared\/shared\.css\?v=(?!20261028-leave-btn")[\w-]+">/);
 });
 
 // ---------- hanh vi bang (DOM toi thieu + table-controls that) ----------

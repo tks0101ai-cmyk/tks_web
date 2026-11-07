@@ -8,13 +8,18 @@ const fuzzySearch = require('../public/shared/fuzzy-search.js');
 const BALANCE_MONEY_FIELDS = new Set(['balance', 'balanceHanoi', 'balanceSaigon']);
 
 // Khớp renderBalances / sortedBalances trong public/cashbook/index.html.
-function filterAndSortBalances(rows, { q, group, sortField, sortDir }) {
+function filterAndSortBalances(rows, { q, group, sortField, sortDir, sorts }) {
   const query = typeof q === 'string' ? q : '';
   const wantedGroup = typeof group === 'string' ? group : '';
   let result = rows.filter((row) => !wantedGroup || (row.accountGroup || 'Khác') === wantedGroup);
   if (fuzzySearch.tokens(query).length) {
     result = fuzzySearch.filter(result, query, (row) =>
       [row.name, row.accountNo, row.description, row.accountGroup].join(' '));
+  }
+  if (sorts !== undefined) {
+    const layers = require('../shared/multiSort').normalizeSortsStrict(sorts, ['accountNo','name','accountGroup','balanceHanoi','balanceSaigon','balance']);
+    for (let i = layers.length - 1; i >= 0; i--) result = filterAndSortBalances(result, { sortField: layers[i].key, sortDir: layers[i].dir });
+    return result;
   }
   if (!sortField || !['asc', 'desc'].includes(sortDir)) return result;
   const value = (row) => {
@@ -98,7 +103,7 @@ function createCashbookRouter({ repository = createRepository() } = {}) {
     handle(async (req, res) => {
       const {
         view: which, format = 'xlsx', columns,
-        balanceQ, balanceGroup, balanceSortField, balanceSortDir,
+        balanceQ, balanceGroup, balanceSortField, balanceSortDir, balanceSorts,
         ...query
       } = req.query;
       selectedColumns(which, columns);
@@ -109,7 +114,7 @@ function createCashbookRouter({ repository = createRepository() } = {}) {
       if (which === 'balances') {
         // Bảng Số dư lọc/sắp ngay trên màn hình (từ khóa, nhóm, cột bấm): file xuất đúng các dòng đang hiện.
         rows = filterAndSortBalances((await repository.summary(f)).balances, {
-          q: balanceQ, group: balanceGroup, sortField: balanceSortField, sortDir: balanceSortDir,
+          q: balanceQ, group: balanceGroup, sortField: balanceSortField, sortDir: balanceSortDir, sorts: balanceSorts,
         });
       } else {
         const r = await repository[which](f, {

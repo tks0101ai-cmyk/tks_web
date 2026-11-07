@@ -10,8 +10,8 @@ const path = require('node:path');
 const { JSDOM } = require('jsdom');
 
 const NONE = '▲▼';
-const ASC = '▼';
-const DESC = '▲';
+const ASC = '▲';
+const DESC = '▼';
 
 function loadHtml(relativePath) {
   return fs.readFileSync(path.join(__dirname, '..', '..', 'public', relativePath), 'utf8');
@@ -50,10 +50,10 @@ test('cac bang dashboard: chua sap ▲▼, tang dan ▼, giam dan ▲, bam lan 3
   assert.equal(indicator.textContent, NONE);
   assert.equal(th.getAttribute('aria-sort'), 'none');
   button.click();
-  assert.equal(indicator.textContent, ASC);
+  assert.equal(indicator.textContent, ASC + ' 1');
   assert.equal(th.getAttribute('aria-sort'), 'ascending');
   button.click();
-  assert.equal(indicator.textContent, DESC);
+  assert.equal(indicator.textContent, DESC + ' 1');
   assert.equal(th.getAttribute('aria-sort'), 'descending');
   button.click();
   assert.equal(indicator.textContent, NONE);
@@ -70,9 +70,9 @@ test('bang nghi phep: cung quy uoc bieu tuong', () => {
 
   assert.equal(indicator.textContent, NONE);
   button.click();
-  assert.equal(indicator.textContent, ASC);
+  assert.equal(indicator.textContent, ASC + ' 1');
   button.click();
-  assert.equal(indicator.textContent, DESC);
+  assert.equal(indicator.textContent, DESC + ' 1');
 
   dom.window.close();
 });
@@ -85,10 +85,10 @@ test('bang nguoi dung: cung quy uoc bieu tuong, nhan nam trong .sort-label', () 
   assert.equal(icon.className, 'sort-indicator');
   assert.equal(th.querySelector('.sort-label').textContent, 'Họ và tên');
   dom.window.handleSort('hoTen');
-  assert.equal(icon.textContent, ASC);
+  assert.equal(icon.textContent, ASC + ' 1');
   assert.equal(th.getAttribute('aria-sort'), 'ascending');
   dom.window.handleSort('hoTen');
-  assert.equal(icon.textContent, DESC);
+  assert.equal(icon.textContent, DESC + ' 1');
   assert.equal(th.getAttribute('aria-sort'), 'descending');
   dom.window.handleSort('hoTen');
   assert.equal(icon.textContent, NONE);

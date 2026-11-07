@@ -59,18 +59,19 @@ function periodsFor(asOfDate) {
 }
 
 // Kiem tra q/sort/dir (dung chung trang man hinh va xuat file) roi dung phan tim kiem + ORDER BY. KHONG cham DB.
-function queryParts({ q, sort, dir }, add) {
+function queryParts({ q, sort, dir, sorts }, add) {
   if (typeof q !== 'string' || q.length > MAX_QUERY_LENGTH) throw invalid();
   if (sort !== undefined && (typeof sort !== 'string' || !SORT_SET.has(sort))) throw invalid();
   if (dir !== undefined && dir !== 'asc' && dir !== 'desc') throw invalid();
   const fuzzy = fuzzySqlParts("COALESCE(t.product_code,'') || ' ' || COALESCE(t.product_name,'')", q, add);
   // Co chu de tim ma khong chon cot sap xep -> xep theo do khop; con lai mac dinh theo ma hang tang dan.
-  const relevance = Boolean(fuzzy) && sort === undefined;
+  const layers = require('../shared/multiSort').normalizeSortsStrict(sorts, SORT_COLUMNS);
+  const relevance = Boolean(fuzzy) && sort === undefined && !layers.length;
   const sortColumn = sort === undefined ? 'product_code' : sort;
   const direction = dir === 'desc' ? 'DESC' : (dir === 'asc' ? 'ASC' : (sort !== undefined && NUMERIC_COLUMNS.includes(sort) ? 'DESC' : 'ASC'));
   // NULL luon cuoi o ca 2 chieu; hoa bang -> ma hang -> khoa ky thuat de thu tu on dinh giua cac trang.
   const orderBy = alias => [
-    relevance ? `${alias}.score DESC` : `${alias}.${sortColumn} ${direction} NULLS LAST`,
+    layers.length ? require('../shared/multiSort').orderBy(layers, Object.fromEntries(SORT_COLUMNS.map(key => [key, `${alias}.${key}`]))) : relevance ? `${alias}.score DESC` : `${alias}.${sortColumn} ${direction} NULLS LAST`,
     `${alias}.product_code ASC`, `${alias}.product_key ASC`
   ].join(', ');
   return { fuzzy, relevance, sortColumn, direction, orderBy };
@@ -114,10 +115,10 @@ function stateOf(head) {
   };
 }
 
-async function getProduct90dReport({ q = '', sort, dir, page, pageSize, pool } = {}) {
+async function getProduct90dReport({ q = '', sort, dir, sorts, page, pageSize, pool } = {}) {
   const values = [];
   const add = value => { values.push(value); return '$' + values.length; };
-  const { fuzzy, relevance, sortColumn, direction, orderBy } = queryParts({ q, sort, dir }, add);
+  const { fuzzy, relevance, sortColumn, direction, orderBy } = queryParts({ q, sort, dir, sorts }, add);
   page = integer(page, 1, 1000000);
   pageSize = integer(pageSize, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
   const pageParam = add(page), sizeParam = add(pageSize);
@@ -156,10 +157,10 @@ async function getProduct90dReport({ q = '', sort, dir, page, pageSize, pool } =
 // Co tran an toan (EXPORT_MAX_ROWS, mac dinh 50.000 ma — bang thuc te vai nghin ma): vuot -> loi 413 ro rang, khong cat ngam.
 const EXPORT_MAX_ROWS = 50000;
 
-async function getProduct90dReportForExport({ q = '', sort, dir, pool, maxRows = EXPORT_MAX_ROWS } = {}) {
+async function getProduct90dReportForExport({ q = '', sort, dir, sorts, pool, maxRows = EXPORT_MAX_ROWS } = {}) {
   const values = [];
   const add = value => { values.push(value); return '$' + values.length; };
-  const { fuzzy, relevance, sortColumn, direction, orderBy } = queryParts({ q, sort, dir }, add);
+  const { fuzzy, relevance, sortColumn, direction, orderBy } = queryParts({ q, sort, dir, sorts }, add);
   const limit = integer(maxRows, EXPORT_MAX_ROWS, EXPORT_MAX_ROWS);
   const limitParam = add(limit + 1);
   const sql = `${baseCtes(fuzzy)}

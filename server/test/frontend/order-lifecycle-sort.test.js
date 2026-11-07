@@ -50,6 +50,7 @@ async function renderLifecycleTable() {
     return { ok: true, json: async () => body };
   };
 
+  window.eval(fs.readFileSync(path.join(__dirname, '../../public/shared/table-controls.js'), 'utf8'));
   inlineScripts(html).forEach(script => window.eval(script));
   await settle();
   return dom;
@@ -77,7 +78,7 @@ test('nhan lan thu ba vao cung ten cot se bo sap xep va tra ve thu tu mac dinh',
   assert.deepEqual(visibleOrderCodes(document), ['B002', 'A001']);
   assert.equal(orderCodeHeader.classList.contains('sort-active'), false);
   // Ve mac dinh: tieu de "Thoi gian dat hang" bao ▼ (moi nhat truoc).
-  assert.equal(document.querySelector('th[data-sort="orderDate"]').classList.contains('sort-active'), true);
+  assert.equal(document.querySelector('th[data-sort="orderDate"]').getAttribute('aria-sort'), 'descending');
 
   dom.window.close();
 });

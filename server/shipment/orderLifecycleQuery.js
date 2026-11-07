@@ -154,8 +154,9 @@ function parseParams(input) {
     mode,
     q: typeof raw.q === 'string' ? raw.q.slice(0, 500) : '',
     // Khong chon cot -> mac dinh (don moi dat nhat truoc); chon cot ma khong co chieu -> tang dan.
+    ...(raw.sorts !== undefined ? { sorts: require('../shared/multiSort').normalizeSortsStrict(raw.sorts, SORT_KEYS) } : {}),
     sort: sort || DEFAULT_SORT.key,
-    sortExplicit: !!sort,
+    sortExplicit: !!sort || (raw.sorts !== undefined && require('../shared/multiSort').normalizeSortsStrict(raw.sorts, SORT_KEYS).length > 0),
     dir: dir === 'desc' ? -1 : (dir === 'asc' ? 1 : (sort ? 1 : DEFAULT_SORT.dir)),
     page: Number.isFinite(page) && page > 0 ? page : 1,
     pageSize: Number.isFinite(pageSize) && pageSize > 0 ? Math.min(pageSize, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE
@@ -207,8 +208,8 @@ const FOLDED = {
 };
 
 function compareValues(a, b, dir) {
-  const aEmpty = a === null || a === undefined;
-  const bEmpty = b === null || b === undefined;
+  const aEmpty = a === null || a === undefined || a === '';
+  const bEmpty = b === null || b === undefined || b === '';
   if (aEmpty || bEmpty) return aEmpty === bEmpty ? 0 : (aEmpty ? 1 : -1);
   if (a < b) return -1 * dir;
   if (a > b) return 1 * dir;
@@ -364,7 +365,12 @@ function distinctKiotStatuses(rows) {
 
 /** Loc roi sap xep TOAN BO danh sach (chua cat trang) — dung chung cho trang xem va xuat Excel. */
 function selectRows(rows, params) {
-  const sorted = sortRows(filterRows(rowsInBranch(rows, params.branch), params), params.sort, params.dir, params.sortValues);
+  let sorted = filterRows(rowsInBranch(rows, params.branch), params);
+  const layers = params.sorts?.length ? params.sorts : [{ key: params.sort, dir: params.dir === -1 ? 'desc' : 'asc' }];
+  for (let index = layers.length - 1; index >= 0; index--) {
+    const layer = layers[index];
+    sorted = sortRows(sorted, layer.key, layer.dir === 'desc' ? -1 : 1, params.sortValues);
+  }
   // Tim ten (gan dung) ma chua chon cot sap xep: khop nhieu tu / nguyen cum xep truoc, giu thu tu mac dinh khi bang diem.
   if (params.mode === 'code' || params.mode === 'product' || params.sortExplicit || !pickString(params.q)) return sorted;
   const matcher = fuzzy.createMatcher(params.q);
@@ -397,7 +403,7 @@ function createSelectionCache(limit = 6) {
       if (rows !== source) { source = rows; entries.clear(); }
       const key = JSON.stringify([
         params.branch, params.status, params.kiotStatus, params.warning, params.dateField, params.from, params.to,
-        params.mode, params.q, params.sort, params.dir, params.sortExplicit
+        params.mode, params.q, params.sort, params.dir, params.sortExplicit, params.sorts
       ]);
       if (entries.has(key)) {
         const hit = entries.get(key);

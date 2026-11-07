@@ -29,7 +29,7 @@
     columns: [], data: null, error: '', loading: false, seq: 0, loadedAt: 0, initialized: false,
     // Mặc định vào bảng: chỉ dòng Sai giá (chọn "Tất cả" = bỏ tham số status). Khớp option selected trong index.html.
     filters: { from: '', to: '', sale: '', status: DEFAULT_STATUS, decision: '', vat: '', freight: '', q: '' },
-    page: 1, pageSize: 50, sort: '', dir: 'asc', salesSearch: '',
+    page: 1, pageSize: 50, sort: '', dir: 'asc', sorts: [], salesSearch: '',
     editors: new Map() // rowKey -> { draft, saving, error }
   };
 
@@ -319,6 +319,7 @@
   function queryString(extra) {
     const params = new URLSearchParams();
     Object.keys(state.filters).forEach(k => { if (state.filters[k]) params.set(k, state.filters[k]); });
+    if (state.sorts.length) params.set('sorts', JSON.stringify(state.sorts));
     if (state.sort) { params.set('sort', state.sort); params.set('dir', state.dir); }
     Object.keys(extra || {}).forEach(k => params.set(k, extra[k]));
     return params.toString();
@@ -370,14 +371,7 @@
   // ---------- sắp xếp theo cột (ở máy chủ, trên toàn bộ tập đã lọc) ----------
   const SORT_GLYPH = { none: '▲▼', ascending: '▼', descending: '▲' };
   function paintSortHeaders() {
-    document.querySelectorAll('#priceAuditHead th.sortable').forEach(th => {
-      const active = state.sort === th.dataset.sort;
-      const mode = active ? (state.dir === 'desc' ? 'descending' : 'ascending') : 'none';
-      th.setAttribute('aria-sort', mode);
-      th.classList.toggle('sort-active', active);
-      const ind = th.querySelector('.sort-indicator');
-      if (ind && ind.textContent !== SORT_GLYPH[mode]) ind.textContent = SORT_GLYPH[mode];
-    });
+    window.TKSTables.syncSortHeaders(document.getElementById('priceAuditHead').closest('table'), state.sorts, th => th.dataset.sort);
   }
 
   function onSortClick(event) {
@@ -386,9 +380,9 @@
     const key = th.dataset.sort;
     if (!guardUnsaved()) return;
     // Lần 1 tăng dần, lần 2 giảm dần, lần 3 bỏ sắp xếp (thứ tự mặc định: dòng sai trước, mới nhất trước).
-    if (state.sort !== key) { state.sort = key; state.dir = 'asc'; }
-    else if (state.dir === 'asc') state.dir = 'desc';
-    else { state.sort = ''; state.dir = 'asc'; }
+    state.sorts = window.TKSTables.nextSorts(state.sorts, key, event.shiftKey);
+    state.sort = state.sorts[0]?.key || '';
+    state.dir = state.sorts[0]?.dir || 'asc';
     state.page = 1;
     paintSortHeaders();
     fetchPage();

@@ -478,22 +478,13 @@
     const action = state === 'asc' ? 'Sắp xếp giảm dần' : state === 'desc' ? 'Bỏ sắp xếp' : 'Sắp xếp tăng dần';
     return `<button type="button" class="sort-button" data-sort-field="${escapeHtml(field)}" title="${action} theo ${escapeHtml(label)}" aria-label="${action} theo cột ${escapeHtml(label)}"><span class="sort-label">${escapeHtml(label)}</span><span class="sort-indicator" aria-hidden="true">${SORT_GLYPH[state]}</span></button>`;
   }
-  const nextDir = (active, dir) => (!active ? 'asc' : dir === 'asc' ? 'desc' : '');
 
   // ---- Sap xep 2 cap nhu app cu (pandas sort_values kind="stable", o trong luon cuoi) ----
   const NO_SORT = '';
-
-  function compareValues(a, b) {
-    const emptyA = a === null || a === undefined || (typeof a === 'number' && Number.isNaN(a));
-    const emptyB = b === null || b === undefined || (typeof b === 'number' && Number.isNaN(b));
-    if (emptyA || emptyB) return emptyA === emptyB ? 0 : null; // null = o trong, xu ly rieng
-    if (typeof a === 'number' && typeof b === 'number') return a - b;
-    const x = String(a);
-    const y = String(b);
-    return x < y ? -1 : x > y ? 1 : 0;
-  }
+  let allocSorts = null;
 
   function sortKeys() {
+    if (allocSorts) return allocSorts.map(sort => ({ column: sort.key, dir: sort.dir }));
     const keys = [];
     const primary = $('vdSortPrimary').value;
     const secondary = $('vdSortSecondary').value;
@@ -513,18 +504,15 @@
       for (const key of keys) {
         const a = data.rows[i].values[key.idx];
         const b = data.rows[j].values[key.idx];
-        const result = compareValues(a, b);
-        if (result === null) {
-          const emptyA = a === null || a === undefined || Number.isNaN(a);
-          return emptyA ? 1 : -1; // o trong cuoi ca 2 chieu (na_position="last")
-        }
-        if (result) return key.dir === 'desc' ? -result : result;
+        const result = window.TKSTables.compareValues(a, b, key.dir);
+        if (result) return result;
       }
       return i - j;
     });
   }
 
   function renderSortOptions() {
+    allocSorts = null;
     const columns = state.alloc.columns;
     const options = `<option value="${NO_SORT}">(Không sắp xếp)</option>` + columns.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(headerLabel(c))}</option>`).join('');
     ['vdSortPrimary', 'vdSortSecondary'].forEach(id => {
@@ -543,16 +531,16 @@
       ? 'Đang sắp xếp theo cột đã chọn — các dòng cùng Mã hóa đơn có thể không còn liền kề.'
       : $('vdSortSecondary').value !== NO_SORT ? 'Chọn cột sắp xếp chính trước khi chọn cột sắp xếp phụ.' : '';
     // Tieu de bang the hien cot sap xep CHINH (dong bo voi o chon).
-    const primary = $('vdSortPrimary').value;
     document.querySelectorAll('#vdAllocTable thead th[data-column-key]').forEach((th, i) => {
       const column = data.columns[i];
       if (!column) return;
-      const dir = primary === column ? $('vdSortPrimaryDir').value : '';
+      const dir = keys.find(key => key.column === column)?.dir || '';
       const resizer = th.querySelector(':scope > .tks-column-resizer');
       th.innerHTML = sortButtonHtml(column, headerLabel(column), dir);
       if (resizer) th.appendChild(resizer);
       th.setAttribute('aria-sort', dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : 'none');
     });
+    window.TKSTables.syncSortHeaders($('vdAllocTable'), keys.map(key => ({key:key.column,dir:key.dir})), th => th.querySelector('[data-sort-field]')?.dataset.sortField);
     $('vdAllocRows').innerHTML = sortedAllocIndexes().map(index => {
       const row = data.rows[index];
       return '<tr data-index="' + index + '">' + row.values.map((value, i) => {
@@ -1330,15 +1318,16 @@
     if (window.TKSCellSelect) window.TKSCellSelect.init([$('vdAllocTable')]);
     $('vdRefreshSheets').addEventListener('click', refreshSheets);
     document.querySelectorAll('[data-input-mode]').forEach(b => b.addEventListener('click', () => selectMode(b.dataset.inputMode)));
-    ['vdSortPrimary', 'vdSortPrimaryDir', 'vdSortSecondary', 'vdSortSecondaryDir'].forEach(id => $(id).addEventListener('change', () => { if (state.alloc) renderAllocRows(); }));
+    ['vdSortPrimary', 'vdSortPrimaryDir', 'vdSortSecondary', 'vdSortSecondaryDir'].forEach(id => $(id).addEventListener('change', () => { allocSorts = null; if (state.alloc) renderAllocRows(); }));
     $('vdAllocTable').tHead.addEventListener('click', event => {
       const button = event.target.closest('[data-sort-field]');
       if (!button || !state.alloc) return;
       const column = button.dataset.sortField;
-      const active = $('vdSortPrimary').value === column;
-      const dir = nextDir(active, $('vdSortPrimaryDir').value);
-      $('vdSortPrimary').value = dir ? column : NO_SORT;
-      if (dir) $('vdSortPrimaryDir').value = dir;
+      allocSorts = window.TKSTables.nextSorts(sortKeys().map(key => ({key:key.column,dir:key.dir})), column, event.shiftKey);
+      $('vdSortPrimary').value = allocSorts[0]?.key || NO_SORT;
+      $('vdSortSecondary').value = allocSorts[1]?.key || NO_SORT;
+      if (allocSorts[0]) $('vdSortPrimaryDir').value = allocSorts[0].dir;
+      if (allocSorts[1]) $('vdSortSecondaryDir').value = allocSorts[1].dir;
       renderAllocRows();
     });
     $('vdRunCodes').addEventListener('click', runCodes);

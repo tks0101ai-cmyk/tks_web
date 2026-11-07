@@ -469,7 +469,8 @@ const SORT_SQL = Object.freeze({
 });
 
 // Sort theo cot: o trong (NULL) luon cuoi; hoa tiet cung gia tri giu thu tu mac dinh de phan trang on dinh.
-function orderSql(sort, dir, ranked = false) {
+function orderSql(sort, dir, ranked = false, sorts = []) {
+  if (sorts.length) return `ORDER BY ${require('../shared/multiSort').orderBy(sorts, SORT_SQL)}, l.sold_at DESC, l.branch, l.invoice_code, l.source_line_no`;
   const expr = Object.prototype.hasOwnProperty.call(SORT_SQL, sort) ? SORT_SQL[sort] : null;
   // Co tu khoa va chua chon cot sap xep: khop nhieu tu / nguyen cum len truoc, bang diem giu thu tu mac dinh.
   if (!expr) return ranked ? DEFAULT_ORDER_SQL.replace('ORDER BY ', 'ORDER BY m.score DESC, ') : DEFAULT_ORDER_SQL;
@@ -621,7 +622,7 @@ function normalizeQuery(query = {}) {
   const bool = v => (v === true || v === false ? v : null);
   return { branch: nil(query.branch), from: nil(query.from), to: nil(query.to), sale: nil(query.sale),
     status: nil(query.status), decision: nil(query.decision), vat: bool(query.vat), freight: bool(query.freight),
-    q: nil(typeof query.q === 'string' ? query.q.trim() : query.q), sort: nil(query.sort),
+    q: nil(typeof query.q === 'string' ? query.q.trim() : query.q), sort: nil(query.sort), sorts: query.sorts || [],
     dir: query.dir === 'desc' ? 'desc' : 'asc', page, pageSize };
 }
 
@@ -662,7 +663,7 @@ function createPriceAuditRepository({ pool = getPool() } = {}) {
     const params = [...baseParams, ...match];
     const [kpi, rows, sales, saleSummary, facets] = await Promise.all([
       pool.query(KPI_SQL, params),
-      pool.query(ROWS_SQL.replace('ORDER_PLACEHOLDER', orderSql(q.sort, q.dir, ranked)), [...params, q.pageSize, (q.page - 1) * q.pageSize]),
+      pool.query(ROWS_SQL.replace('ORDER_PLACEHOLDER', orderSql(q.sort, q.dir, ranked, q.sorts)), [...params, q.pageSize, (q.page - 1) * q.pageSize]),
       pool.query(SALES_SQL, [state.window_from, state.window_to]),
       pool.query(SALE_SUMMARY_SQL, params),
       pool.query(FACETS_SQL, params)

@@ -110,9 +110,8 @@
   function displayLines(){
     const entries=lines().map((l,i)=>({l,i}));
     if(state.manual)return entries.sort((a,b)=>manualRank(a.l)-manualRank(b.l)||a.i-b.i);
-    if(!state.sort)return entries;
-    const {column,dir}=state.sort;
-    const value=({l,i})=>{
+    if(!state.sorts?.length)return entries;
+    const value=({l,i},column)=>{
       if(column==='code')return l.productCode;
       if(column==='name')return l.productName;
       if(column==='note')return l.note;
@@ -122,18 +121,25 @@
       if(column==='stock')return rows.some(r=>R.quantity(r.available)===null)?null:rows.reduce((sum,r)=>sum+(R.quantity(r.available)||0),0);
       return rows.find(r=>(state.allocations[i]||[]).some(p=>p.id===r.id&&p.quantity>0))?.location||'';
     };
-    return entries.map(e=>({...e,value:value(e)})).sort((a,b)=>{
-      const empty=v=>v===null||v===undefined||v==='';
-      if(empty(a.value)!==empty(b.value))return empty(a.value)?1:-1;
-      const cmp=typeof a.value==='number'&&typeof b.value==='number'?a.value-b.value:String(a.value??'').localeCompare(String(b.value??''),'vi',{numeric:true,sensitivity:'base'});
-      return cmp*dir||a.i-b.i;
+    return entries.map(e=>({...e,values:state.sorts.map(sort=>value(e,sort.key))})).sort((a,b)=>{
+      for(let i=0;i<state.sorts.length;i++){
+        const x=a.values[i],y=b.values[i],empty=v=>v===null||v===undefined||v==='';
+        if(empty(x)||empty(y)){if(empty(x)===empty(y))continue;return empty(x)?1:-1;}
+        const cmp=typeof x==='number'&&typeof y==='number'?x-y:String(x).localeCompare(String(y),'vi',{numeric:true,sensitivity:'base'});
+        if(cmp)return cmp*(state.sorts[i].dir==='desc'?-1:1);
+      }
+      return a.i-b.i;
     });
   }
   function updateSortHeaders(){
     document.querySelectorAll('.picking-table th[data-column-key]').forEach(th=>{
-      const active=state.sort?.column===th.dataset.columnKey;
-      th.setAttribute('aria-sort',active?(state.sort.dir===1?'ascending':'descending'):'none');
-      th.querySelector('.picking-sort-indicator').textContent=active?(state.sort.dir===1?'↑':'↓'):'↕';
+      const index=(state.sorts||[]).findIndex(sort=>sort.key===th.dataset.columnKey),sort=state.sorts?.[index];
+      th.setAttribute('aria-sort',index===0?(sort.dir==='asc'?'ascending':'descending'):'none');
+      th.dataset.sortActive=String(!!sort);
+      th.querySelector('.picking-sort-indicator').textContent=sort?(sort.dir==='asc'?'▲':'▼')+(index+1):'▲▼';
+      const button=th.querySelector('button');
+      button.title=button.firstChild.textContent.trim()+(sort?', ưu tiên '+(index+1)+', '+(sort.dir==='asc'?'tăng dần':'giảm dần'):'')+'. Bấm để sắp xếp; Shift + bấm thêm lớp.';
+      button.setAttribute('aria-label',button.title);
     });
   }
   function allLocations(){
@@ -554,7 +560,7 @@
     // Warm static print resources while the user selects positions; printing retries failed preloads.
     window.PickingInvoice?.loadAssets?.().catch(()=>{});
     const epoch=++state.requestEpoch;
-    state.sort=null;state.manual=null;state.drag=null;state.listOrder=listOrder;state.reassignOf=null;state.reopened=false;state.order=null;state.needs={};state.removed=new Set();state.latest=null;state.assignment=null;state.allocations={};state.suggestions={};state.busy=false;state.needsSync=true;
+    state.sort=null;state.sorts=[];state.manual=null;state.drag=null;state.listOrder=listOrder;state.reassignOf=null;state.reopened=false;state.order=null;state.needs={};state.removed=new Set();state.latest=null;state.assignment=null;state.allocations={};state.suggestions={};state.busy=false;state.needsSync=true;
     state.canEditPositions=false;state.posEdit=null;state.touched=new Set();
     $('pickingTitle').textContent=listOrder.orderCode+' · '+(listOrder.branch==='SG'?'Sài Gòn':'Hà Nội');
     setStatus('Đang tải…');render();
@@ -802,7 +808,7 @@
     order.splice(order.indexOf(fromCode),1);
     order.splice(order.indexOf(toCode)+(after?1:0),0,fromCode);
     if(order.every((k,n)=>k===before[n]))return false;
-    state.manual=order;state.sort=null;return true;
+    state.manual=order;state.sort=null;state.sorts=[];return true;
   }
   const codeOfRow=row=>{const l=lines()[Number(row.dataset.line)];return l?key(l.productCode):'';};
   function dragCleanup(){
@@ -881,9 +887,14 @@
       button.append(document.createTextNode(th.textContent+' '));
       const indicator=document.createElement('span');indicator.className='picking-sort-indicator';indicator.setAttribute('aria-hidden','true');button.append(indicator);
       th.replaceChildren(button);
-      button.addEventListener('click',()=>{
+      button.addEventListener('click',event=>{
         const column=th.dataset.columnKey;
-        state.manual=null;state.sort={column,dir:state.sort?.column===column?-state.sort.dir:1};render();
+        const current=(state.sorts||[]).find(sort=>sort.key===column);
+        let next=event.shiftKey?(state.sorts||[]).map(sort=>({...sort})):current?[{...current}]:[];
+        if(!current)next.push({key:column,dir:'asc'});
+        else if(current.dir==='asc')next.find(sort=>sort.key===column).dir='desc';
+        else next=next.filter(sort=>sort.key!==column);
+        state.manual=null;state.sorts=next;state.sort=next[0]||null;render();
       });
     });
     $('pickingRows').addEventListener('pointerdown',onRowsPointerDown);

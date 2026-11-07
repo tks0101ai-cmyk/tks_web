@@ -983,9 +983,14 @@ test('sort lựa chọn theo chữ/số/vị trí, giữ phân bổ và in cả 
   try{
     await openPopup(page);
     const d=page.document,w=page.window;
-    const sort=async key=>{const button=d.querySelector('.picking-table th[data-column-key="'+key+'"] button');assert.ok(button,'có nút sort '+key);button.click();await settle();};
+    const sort=async (key,shiftKey=false)=>{const button=d.querySelector('.picking-table th[data-column-key="'+key+'"] button');assert.ok(button,'có nút sort '+key);button.dispatchEvent(new w.MouseEvent('click',{bubbles:true,shiftKey}));await settle();};
     const codes=()=>[...d.querySelectorAll('#pickingRows tr')].map(r=>r.cells[0].querySelector('.picking-code-text').textContent);
     const allocated=JSON.stringify(w.TKSPick._state.allocations);
+    await sort('stock');await sort('note',true);await sort('code',true);
+    assert.deepEqual(codes(),['A','C','B'],'cột sau chỉ phân hạng khi cột trước bằng nhau');
+    assert.equal(d.querySelector('[data-column-key="code"] .picking-sort-indicator').textContent,'▲3');
+    await sort('note',true);await sort('note',true);
+    assert.equal(d.querySelector('[data-column-key="code"] .picking-sort-indicator').textContent,'▲2');
     await sort('need');assert.deepEqual(codes(),['C','B','A']);
     await sort('need');assert.deepEqual(codes(),['A','B','C']);
     assert.equal(d.querySelector('.picking-table th[data-column-key="need"]').getAttribute('aria-sort'),'descending');

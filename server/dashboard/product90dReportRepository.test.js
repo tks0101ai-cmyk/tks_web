@@ -138,6 +138,13 @@ test('sap xep tren toan bo truoc phan trang, NULL luon cuoi o ca 2 chieu, tie-br
     assert.deepEqual(await codes({ sort: 'avg_price_1_90d', dir: 'asc' }), ['SP6', 'SP4', 'SP3', 'SP1', 'SP2', 'SP5']);
     // Hoa bang: qty_1_30d SP2=SP3=7 -> ma hang tang dan, SP5/SP6 mac dinh 0 nam giua (khong NULL).
     assert.deepEqual(await codes({ sort: 'qty_1_30d', dir: 'desc' }), ['SP2', 'SP3', 'SP4', 'SP5', 'SP6', 'SP1']);
+    const sorts = [{ key: 'qty_1_30d', dir: 'desc' }, { key: 'product_code', dir: 'desc' }];
+    assert.deepEqual(await codes({ sorts: JSON.stringify(sorts) }), ['SP3', 'SP2', 'SP4', 'SP6', 'SP5', 'SP1']);
+    const multiPage = await readMulti();
+    async function readMulti() { return getProduct90dReport({ pool: db, sorts, page: '2', pageSize: '1' }); }
+    assert.equal(multiPage.rows[0].product_code, 'SP2');
+    const multiExport = await getProduct90dReportForExport({ pool: db, sorts });
+    assert.deepEqual(multiExport.rows.map(r => r.product_code), ['SP3', 'SP2', 'SP4', 'SP6', 'SP5', 'SP1']);
     // Sap xep toan cuc roi moi cat trang.
     const p1 = await getProduct90dReport({ pool: db, sort: 'avg_price_1_90d', dir: 'desc', pageSize: '2', page: '1' });
     const p3 = await getProduct90dReport({ pool: db, sort: 'avg_price_1_90d', dir: 'desc', pageSize: '2', page: '3' });

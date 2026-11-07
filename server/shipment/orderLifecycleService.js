@@ -559,7 +559,7 @@ const PICK_SORT_RANK = { picking: 1, confirmed: 2, cancelled: 3 };
 
 /** Ban sao params kem gia tri sap xep pickStatus (neu dang sap theo cot nay va co ban do chi dinh); khong thi tra nguyen params. */
 function withPickSort(params, pickMap) {
-  if (params.sort !== 'pickStatus' || !pickMap) return params;
+  if ((params.sort !== 'pickStatus' && !params.sorts?.some(layer => layer.key === 'pickStatus')) || !pickMap) return params;
   return Object.assign({}, params, { sortValues: { pickStatus: row => PICK_SORT_RANK[pickMap.get(pickKey(row))] || 0 } });
 }
 
@@ -603,7 +603,7 @@ async function findPickingOrder(branch, orderCode, {kiot} = {}) {
 async function exportOrders(rawParams, { kiot, pickStatuses } = {}) {
   const params = await withProductKeys(query.parseParams(rawParams), kiot);
   const { rows } = await loadMergedRows(kiot);
-  if (pickStatuses && (params.pickStatus || params.sort === 'pickStatus')) {
+  if (pickStatuses && (params.pickStatus || (params.sort === 'pickStatus' || params.sorts?.some(layer => layer.key === 'pickStatus')))) {
     const pickMap = await pickStatuses();
     const source = params.pickStatus ? rows.filter(row => matchesPickFilter(pickMap.get(pickKey(row)), params.pickStatus)) : rows;
     return query.selectRows(source, withPickSort(params, pickMap));

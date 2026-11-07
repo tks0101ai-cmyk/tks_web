@@ -127,6 +127,7 @@ test('loc theo nguoi duyet / khoang ngay, sort moi cot hai chieu, phan trang va 
     await repo.create({ ...valid({ branch: 'saigon', customerId: '9', productId: '9', approver: 'Anh Duy', approvedOn: '2026-10-15', priceNoVat: '150' }) }, 'QL');
     const q = extra => rules.parseListQuery(extra);
     const ids = async extra => (await repo.list(q(extra))).rows.map(r => r.priceNoVat);
+    assert.deepEqual(await ids({sorts: JSON.stringify([{key:'approver',dir:'asc'},{key:'priceNoVat',dir:'desc'}])}), ['300','150','200','100']);
     assert.deepEqual(await ids({}), ['200', '150', '300', '100']); // mac dinh: ngay duyet moi nhat truoc, cung ngay -> id giam
     assert.equal((await repo.list(q({ approver: 'Anh Duy' }))).totalRows, 2);
     assert.deepEqual(await ids({ from: '2026-10-12', to: '2026-10-16' }), ['150', '300']);

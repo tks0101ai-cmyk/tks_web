@@ -130,6 +130,7 @@ async function setup(t, { hash = "", fetcher, captureTimers = false } = {}) {
   };
   const script = w.document.getElementById("cashbook-script");
   w.eval(require("node:fs").readFileSync(require("node:path").join(__dirname, "../../public/shared/fuzzy-search.js"), "utf8"));
+  w.eval(fs.readFileSync(path.join(__dirname, '../../public/shared/table-controls.js'), 'utf8'));
   if (script) w.eval(script.textContent);
   assert.ok(
     w.TKSCashbook,

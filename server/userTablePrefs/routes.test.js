@@ -42,6 +42,15 @@ test('sanitizePrefs giữ sắp xếp hợp lệ, bỏ qua null và từ chối 
   }
 });
 
+test('sanitizePrefs giữ nhiều lớp sắp xếp theo thứ tự, từ chối cột lặp và hướng sai', () => {
+  const sorts = [{ key: 'qty', dir: 'desc' }, { key: 'name', dir: 'asc' }];
+  assert.deepEqual(repo.sanitizePrefs({ columns: {}, sorts }), { columns: {}, sorts });
+  assert.deepEqual(repo.sanitizePrefs({ columns: {}, sorts: [] }), { columns: {}, sorts: [] });
+  for (const bad of [{}, [sorts[0], sorts[0]], [{ key: 'qty', dir: 'sideways' }], Array(201).fill(sorts[0])]) {
+    assert.throws(() => repo.sanitizePrefs({ columns: {}, sorts: bad }), { statusCode: 400 });
+  }
+});
+
 test('savePrefs ghi đè theo (tài khoản, bảng, chế độ) và listForUser cô lập tài khoản', async t => {
   const pool = await makePool(t);
   await repo.savePrefs(pool, 'u1', 'orders', 'desktop', { columns: { code: { width: 200 } } });

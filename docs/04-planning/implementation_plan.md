@@ -646,7 +646,7 @@ Kiến trúc đã triển khai: **repository → route → module giao diện �
 
 - [x] `dashboard/productCustomerGrowthRepository.js`: một câu SQL (CTE `s` trạng thái, `tot` tổng DS theo sản phẩm, `b` cặp sản phẩm × khách kèm `prior`, `g` thêm `growth` / `growth_state`) trên `product_report_customers` JOIN `product_report`; lọc tên sản phẩm/khách (`fuzzySqlParts`), nhóm tăng trưởng, sắp xếp whitelist, phân trang đều ở SQL. Không migration.
 - [x] Route `GET /api/product-report/customer-growth` (`routes.js`, quyền `reports.products` + `reports.products.sales`).
-- [x] Giao diện `public/product-customer-growth.js` + `.css`, section `#product90dSection` trong `index.html`: bảng 8 cột, table-controls (khóa lưu `dashboard-table-product-customer-growth`), Sáng/Tối, responsive; ô Tăng trưởng chỉ hiện % với lớp `is-lost` (đỏ, `--red`), `is-check` (cam, `--orange`), `is-drop` (vàng, `--yellow`) và `title` mô tả mức; nhãn "Cần check" đã bỏ (06/11/2026). Hai token `--orange`/`--yellow` thêm vào `shared/shared.css` (bản Tối và Sáng); `index.html` nạp `shared.css?v=20261106-tiers` và `product-customer-growth.js/.css?v=20261106-2`. Dropdown lọc 6 mục: Tất cả / Giảm hết 100% / Giảm hơn 50% / Giảm dưới 50% / Đang tăng / Khách mới.
+- [x] Giao diện `public/product-customer-growth.js` + `.css`, section `#product90dSection` trong `index.html`: bảng 8 cột, table-controls (khóa lưu `dashboard-table-product-customer-growth`), Sáng/Tối, responsive; ô Tăng trưởng chỉ hiện % với lớp `is-lost` (đỏ, `--red`), `is-check` (cam, `--orange`), `is-drop` (vàng, `--yellow`) và `title` mô tả mức; nhãn "Cần check" đã bỏ (06/11/2026). Hai token `--orange`/`--yellow` thêm vào `shared/shared.css` (bản Tối và Sáng); `index.html` nạp `shared.css?v=20261107-3` và `product-customer-growth.js/.css?v=20261107-3`. Dropdown lọc 6 mục: Tất cả / Giảm hết 100% / Giảm hơn 50% / Giảm dưới 50% / Đang tăng / Khách mới.
 - [x] Xuất Excel/HTML `products.productCustomerGrowth` (`exportService.js`): bộ lọc truyền qua `context`, kiểm tra lại bằng `validateFilters`, trần 50.000 dòng.
 - [x] Dọn giao diện cũ của mục 4 (bảng 26 cột, CSS, thead, test khóa khớp); `product-90d-report.js` giữ cho xuất file cũ `products.product90d`.
 
@@ -663,5 +663,15 @@ Kế hoạch: (1) thêm kiểm thử hồi quy trong `server/stocktake/stocktake
 Cập nhật gần nhất: 07/11/2026.
 
 07/11/2026 — Kiểm kê: số trên giao diện làm tròn đến số nguyên; ô số lượng khi sửa giữ đầy đủ phần thập phân. Tính toán/sắp xếp/lưu trữ và xuất Excel dùng giá trị gốc. Kiểm thử liên quan 76/76 đạt, kiểm Edge đạt; chưa deploy.
+
+Cập nhật gần nhất: 07/11/2026.
+
+## 07/11/2026 — Sắp xếp nhiều cột dùng chung
+
+Quy tắc đã được người dùng yêu cầu áp dụng cho mọi bảng: bấm thường chọn một cột; Shift + bấm thêm/đổi lớp theo thứ tự ưu tiên; mỗi lớp tăng → giảm → bỏ, đánh lại số 1/2/3 khi bỏ lớp. Tiêu đề hiển thị hướng và số ưu tiên, tên nút hỗ trợ đọc màn hình; ô trống cuối mỗi lớp. So sánh ngày/số theo giá trị gốc; chỉ xét lớp kế khi bằng nhau. Bỏ hết lớp trả lại thứ tự mặc định của từng bảng.
+
+Thiết kế triển khai: public/shared/table-controls.js cung cấp nextSorts / compareValues / syncSortHeaders và áp dụng cho các bảng chi tiết/sort local; cấu hình tài khoản user_table_prefs.prefs thêm mảng sorts, tương thích sort đơn cũ, không migration. server/shared/multiSort.js và multiSort.test.js chuẩn hóa/kiểm whitelist khóa và hướng, tạo ORDER BY chỉ từ biểu thức do máy chủ định nghĩa. Bảng phân trang sort toàn bộ kết quả trước LIMIT/OFFSET; luồng xuất/in dùng cùng ưu tiên hoặc thứ tự mã/ID đã được phân quyền.
+
+Kế hoạch kiểm chứng: (1) test hồi quy nhiều lớp, bằng nhau/NULL, chu kỳ/bỏ lớp và lưu-khôi phục; (2) tích hợp nhóm Dashboard/Nhân sự/Tài khoản, nhóm báo cáo phân trang, nhóm Thu mua/VAT/VT/Marketing và chi tiết kiểm kê; (3) chạy test toàn bộ liên quan, kiểm trình duyệt sáng/tối, cập nhật graphify và CURRENT. Không thay nguồn dữ liệu hoặc chạy migration.
 
 Cập nhật gần nhất: 07/11/2026.

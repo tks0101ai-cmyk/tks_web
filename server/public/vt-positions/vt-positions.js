@@ -27,14 +27,13 @@
     stock_out: 'Xuất kho'
   };
   const FIELD_LABELS = { code: 'Mã hàng', name: 'Tên hàng', notes: 'Ghi chú', arrivalDate: 'Ngày về', location: 'Vị trí', quantity: 'Số lượng' };
-  const collator = new Intl.Collator('vi', { numeric: true, sensitivity: 'base' });
   // Cập nhật thời gian thực: debounce tín hiệu SSE, chu kỳ tải bù khi SSE lỗi, thời gian nháy ô vừa đổi.
   const LIVE = { debounceMs: 300, fallbackMs: 60000, flashMs: 1600 };
   // Chữ ký nội dung của dòng/ô lúc dựng (không đọc lại từ DOM vì table-controls có thể thêm thuộc tính).
   const signatures = new WeakMap();
   const setText = (node, text) => { if (node.textContent !== text) node.textContent = text; };
   const QUANTITY_FORMAT = new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 });
-  const newState = () => ({ rows: [], query: '', page: 1, sortField: '', sortDirection: 'asc', loading: false, error: '', warnFilter: 'all', canEdit: null, canExport: false, canDeleteHistory: false });
+  const newState = () => ({ rows: [], query: '', page: 1, sorts: [], loading: false, error: '', warnFilter: 'all', canEdit: null, canExport: false, canDeleteHistory: false });
   const state = { hn: newState(), sg: newState() };
   let user, activeTab, allowedTabs, requestVersion = 0;
   let screenMode, visibleFields, columnPreferences = {}, canEditPermission = false;
@@ -93,25 +92,19 @@
   }
 
   function sortRows(rows, field, direction) {
-    if (!BASE_FIELDS.includes(field)) return rows;
-    const numeric = NUMERIC.includes(field) || field === 'updated';
+    const sorts = (Array.isArray(field) ? field : field ? [{ key: field, dir: direction }] : []).filter(sort => BASE_FIELDS.includes(sort.key));
+    if (!sorts.length) return rows;
     return rows.slice().sort((a, b) => {
-      const left = sortValue(a, field), right = sortValue(b, field);
-      if (left === null || right === null) return left === right ? 0 : left === null ? 1 : -1;
-      const result = numeric ? left - right : collator.compare(left, right);
-      return direction === 'desc' ? -result : result;
+      for (const sort of sorts) {
+        const result = window.TKSTables.compareValues(sortValue(a, sort.key), sortValue(b, sort.key), sort.dir);
+        if (result) return result;
+      }
+      return 0;
     });
   }
 
   function updateSortHeaders() {
-    const current = state[activeTab];
-    document.querySelectorAll('[data-sort-field]').forEach(button => {
-      const selected = current.sortField === button.dataset.sortField;
-      button.closest('th').setAttribute('aria-sort', selected ? current.sortDirection === 'asc' ? 'ascending' : 'descending' : 'none');
-      // Chưa sắp ▲▼ · tăng dần ▼ · giảm dần ▲ (như mọi bảng khác).
-      button.querySelector('.sort-indicator').textContent = selected ? current.sortDirection === 'asc' ? '▼' : '▲' : '▲▼';
-      button.title = selected ? current.sortDirection === 'asc' ? 'Sắp xếp giảm dần' : 'Về thứ tự gốc' : 'Sắp xếp tăng dần';
-    });
+    window.TKSTables.syncSortHeaders($('vtTable'), state[activeTab].sorts, th => th.querySelector('[data-sort-field]')?.dataset.sortField);
   }
 
   function renderColumns() {
@@ -160,7 +153,7 @@
       onVisibilityChange: hiddenKeys => {
         visibleFields = fields().filter(field => field === 'name' || !hiddenKeys.includes(field));
         columnPreferences[screenMode] = visibleFields.slice();
-        for (const current of Object.values(state)) if (!visibleFields.includes(current.sortField)) current.sortField = '';
+        for (const current of Object.values(state)) current.sorts = current.sorts.filter(sort => visibleFields.includes(sort.key));
         render();
       }
     });
@@ -171,7 +164,7 @@
     const saved = columnPreferences[screenMode];
     const base = Array.isArray(saved) ? fields().filter(field => field === 'name' || saved.includes(field)) : mobile ? MOBILE_FIELDS.slice() : BASE_FIELDS.slice();
     visibleFields = base;
-    for (const current of Object.values(state)) if (!visibleFields.includes(current.sortField)) current.sortField = '';
+    for (const current of Object.values(state)) current.sorts = current.sorts.filter(sort => visibleFields.includes(sort.key));
     renderColumns();
     enhanceColumns();
     if (activeTab) render();
@@ -348,7 +341,7 @@
     $('vtTable').dataset.editable = String(canEdit);
     $('vtImportButton').hidden = !canEdit;
     $('vtExportButton').hidden = state[activeTab].canExport !== true;
-    const rows = sortRows(filterRows(current.rows, current.query, current.warnFilter), current.sortField, current.sortDirection);
+    const rows = sortRows(filterRows(current.rows, current.query, current.warnFilter), current.sorts);
     updateSortHeaders();
     // Bộ lọc cảnh báo: số đếm tính trên toàn bộ dòng của cơ sở (không theo từ khóa tìm).
     const select = $('vtWarnFilter');
@@ -766,8 +759,7 @@
     importState.tab = activeTab;
     importState.warnFilter = 'all';
     importState.page = 0;
-    importState.sortField = '';
-    importState.sortDirection = 'asc';
+    importState.sorts = [];
     importState.inputRows = null;
     importState.errors = 0;
     importState.stale = false;
@@ -819,10 +811,8 @@
       icon.setAttribute('aria-hidden', 'true');
       button.append(label, icon);
       th.replaceChildren(button);
-      button.addEventListener('click', () => {
-        if (importState.sortField !== field) { importState.sortField = field; importState.sortDirection = 'asc'; }
-        else if (importState.sortDirection === 'asc') importState.sortDirection = 'desc';
-        else importState.sortField = '';
+      button.addEventListener('click', event => {
+        importState.sorts = window.TKSTables.nextSorts(importState.sorts || [], field, event.shiftKey);
         importState.page = 0;
         renderImportPreviewRows();
       });
@@ -836,12 +826,12 @@
       && (importState.warnFilter === 'all' || (importState.warnFilter === 'error' ? row.kind === 'error' : importWarning(row)))
       && (!needle || (window.TKSFuzzySearch ? window.TKSFuzzySearch.matches([row.code, row.name, row.notes, row.location, row.arrivalDate].join(' '), $('vtImportSearch').value) : normalizeSearch([row.code, row.name, row.notes, row.location, row.arrivalDate].join(' ')).includes(needle))))
       .sort((a, b) => {
-        const field = importState.sortField;
-        if (!field) return importPriority(b) - importPriority(a);
-        const left = importSortValue(a, field), right = importSortValue(b, field);
-        if (left === null || right === null) return left === right ? 0 : left === null ? 1 : -1;
-        const result = ['row', 'cartons', 'quantity'].includes(field) ? Number(left) - Number(right) : collator.compare(String(left), String(right));
-        return importState.sortDirection === 'desc' ? -result : result;
+        if (!importState.sorts?.length) return importPriority(b) - importPriority(a);
+        for (const sort of importState.sorts) {
+          const result = window.TKSTables.compareValues(importSortValue(a, sort.key), importSortValue(b, sort.key), sort.dir);
+          if (result) return result;
+        }
+        return 0;
       });
   }
 
@@ -962,12 +952,7 @@
 
   // Bảng "Các dòng sau khi chuẩn hóa": đúng giá trị sẽ được ghi (ghi chú đã chuẩn + cộng dồn, vị trí viết hoa không dấu cách).
   function renderImportPreviewRows() {
-    $('vtImportPreviewTable').querySelectorAll('[data-import-sort]').forEach(button => {
-      const selected = importState.sortField === button.dataset.importSort;
-      button.closest('th').setAttribute('aria-sort', selected ? importState.sortDirection === 'asc' ? 'ascending' : 'descending' : 'none');
-      button.querySelector('.sort-indicator').textContent = selected ? importState.sortDirection === 'asc' ? '▲' : '▼' : '▲▼';
-      button.title = selected ? importState.sortDirection === 'asc' ? 'Sắp xếp giảm dần' : 'Về thứ tự ưu tiên lỗi' : 'Sắp xếp tăng dần';
-    });
+    window.TKSTables.syncSortHeaders($('vtImportPreviewTable'), importState.sorts || [], th => th.querySelector('[data-import-sort]')?.dataset.importSort);
     const body = $('vtImportPreviewRows');
     body.replaceChildren();
     updateImportPaging();
@@ -1252,7 +1237,7 @@
     $('vtExportButton').disabled = true;
     try {
       const current = state[tab];
-      const rows = sortRows(filterRows(current.rows, current.query, current.warnFilter), current.sortField, current.sortDirection);
+      const rows = sortRows(filterRows(current.rows, current.query, current.warnFilter), current.sorts);
       const response = await fetch(API + '/export?branch=' + tab.toUpperCase(), {
         method: 'POST', credentials: 'same-origin', cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
@@ -1888,9 +1873,7 @@
       if (!button) return;
       const current = state[activeTab];
       const field = button.dataset.sortField;
-      if (current.sortField !== field) { current.sortField = field; current.sortDirection = 'asc'; }
-      else if (current.sortDirection === 'asc') current.sortDirection = 'desc';
-      else current.sortField = '';
+      current.sorts = window.TKSTables.nextSorts(current.sorts, field, event.shiftKey);
       current.page = 1;
       render();
       document.querySelector('.locations-scroll').scrollTop = 0;

@@ -993,4 +993,8 @@ API `GET /api/product-report/customer-growth` đọc `product_report_customers` 
 
 Không đổi schema cho thay đổi ba mức màu cột Tăng trưởng (06/11/2026): chỉ thêm nhóm `lost` trong biểu thức `CASE` của câu SQL đọc, không migration, không bảng/cột/index mới.
 
-Cập nhật gần nhất: 06/11/2026.
+## 07/11/2026 — Cấu hình sort nhiều cột (không migration)
+
+JSONB `user_table_prefs.prefs` hỗ trợ `sorts: [{key, dir}]` theo thứ tự ưu tiên, dir chỉ asc/desc, tối đa 200 khóa cột duy nhất, mỗi khóa 1–200 ký tự. Dữ liệu `sort: {key,dir}` cũ tiếp tục đọc được; client mới ưu tiên mảng sorts khi có. PUT vẫn thay thế cấu hình của đúng tài khoản/bảng/chế độ, không đổi bảng/cột/quyền. Mọi ORDER BY động khác dùng whitelist phía máy chủ qua shared/multiSort.js, không nhận biểu thức SQL từ truy vấn.
+
+Cập nhật gần nhất: 07/11/2026.

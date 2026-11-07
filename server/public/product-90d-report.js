@@ -167,6 +167,7 @@
       out.set('sort', p.sort);
       if (p.dir === 'asc' || p.dir === 'desc') out.set('dir', p.dir);
     }
+    if (Array.isArray(p.sorts) && p.sorts.length) out.set('sorts', JSON.stringify(p.sorts));
     const page = Number(p.page);
     if (Number.isInteger(page) && page >= 1) out.set('page', String(page));
     const size = Number(p.pageSize);
@@ -193,6 +194,7 @@
     const out = { tableSearch: { mode: 'normal', query: typeof s.q === 'string' ? s.q.trim().slice(0, 200) : '' } };
     const column = s.sort ? COLUMNS.find(function (c) { return c.key === s.sort && c.sortable; }) : null;
     if (column && (s.dir === 'asc' || s.dir === 'desc')) out.tableSort = { label: column.pickerLabel, direction: s.dir };
+    if (Array.isArray(s.sorts) && s.sorts.length) out.tableSorts = s.sorts.map(layer => ({ label: COLUMNS.find(c => c.key === layer.key).pickerLabel, direction: layer.dir }));
     return out;
   }
 
@@ -216,7 +218,7 @@
   const can = function (key) { return !!(window.TKSNav && typeof window.TKSNav.can === 'function' && window.TKSNav.can(key)); };
 
   function freshState() {
-    return { q: '', sort: '', dir: '', page: 1, pageSize: 50, data: null, error: '', loading: false, seq: 0,
+    return { q: '', sort: '', dir: '', sorts: [], page: 1, pageSize: 50, data: null, error: '', loading: false, seq: 0,
       controller: null, pending: null, loadedAt: 0, timer: null, composing: false };
   }
   let state = freshState();
@@ -308,6 +310,7 @@
         if (button.getAttribute('aria-label') !== aria) button.setAttribute('aria-label', aria);
       }
     });
+    window.TKSTables.syncSortHeaders($('product90dTable'), state.sorts, th => th.dataset.sort);
   }
 
   function renderBody() {
@@ -363,7 +366,7 @@
   function openExport() {
     if (typeof window.openExportDialog === 'function') window.openExportDialog('products.product90d');
   }
-  function exportState() { return exportContext({ q: state.q, sort: state.sort, dir: state.dir }); }
+  function exportState() { return exportContext({ q: state.q, sort: state.sort, dir: state.dir, sorts: state.sorts }); }
 
   function render() {
     if (!$('product90dRows')) return;
@@ -394,7 +397,7 @@
     state.loading = true;
     state.error = '';
     render();
-    const url = API + '?' + buildQuery({ q: state.q, sort: state.sort, dir: state.dir, page: state.page, pageSize: state.pageSize });
+    const url = API + '?' + buildQuery({ q: state.q, sort: state.sort, dir: state.dir, sorts: state.sorts, page: state.page, pageSize: state.pageSize });
     const options = { credentials: 'same-origin' };
     if (controller) options.signal = controller.signal;
     let request;
@@ -446,7 +449,8 @@
       : (event.target.matches && event.target.matches('th.sortable[data-sort]') ? event.target : null);
     if (!th) return;
     event.preventDefault();
-    const next = nextSort({ sort: state.sort, dir: state.dir }, th.dataset.sort);
+    state.sorts = window.TKSTables.nextSorts(state.sorts, th.dataset.sort, event.shiftKey);
+    const next = { sort: state.sorts[0]?.key || '', dir: state.sorts[0]?.dir || '' };
     state.sort = next.sort;
     state.dir = next.dir;
     state.page = 1;

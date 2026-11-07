@@ -261,9 +261,9 @@ router.get('/api/hr/leave-requests/summary/urgent-flags', ...authInternal, async
 
 router.post('/api/hr/leave-requests/export', ...authInternal, async (req, res) => {
   try {
-    const { status, employee, department, branch, from, to, sortField, sortDir, requestIds } = req.body || {};
+    const { status, employee, department, branch, from, to, sortField, sortDir, sorts, requestIds } = req.body || {};
     const { buffer, fileName, mime } = await buildLeaveRequestsWorkbook(
-      { status, employee, department, from, to, sortField, sortDir, requestIds },
+      { status, employee, department, from, to, sortField, sortDir, sorts, requestIds },
       resolveBranchScope(req, branch)
     );
     res.setHeader('Content-Type', mime);
@@ -554,9 +554,9 @@ router.get('/api/hr/leave-accounts',...authAbsence,async(req,res)=>{
 
 router.get('/api/hr/employees/export', ...authEmployees, async (req, res) => {
   try {
-    const { keyword, department, branch, status } = req.query || {};
+    const { keyword, department, branch, status, orderedIds } = req.query || {};
     const { buffer, fileName, mime } = await buildEmployeeDirectoryWorkbook(
-      { keyword, department, status, includeExtended: hasFeature(req.user, 'hr.employees.manage') },
+      { keyword, department, status, orderedIds, includeExtended: hasFeature(req.user, 'hr.employees.manage') },
       resolveBranchScope(req, branch)
     );
     res.setHeader('Content-Type', mime);

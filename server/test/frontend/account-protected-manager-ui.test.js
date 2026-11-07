@@ -194,7 +194,7 @@ test('shared account picker ignores stored choices, keeps session choices throug
     window.document.querySelector('.tks-columns-picker [data-action=close]').click();
     window.handleFilterUsers();
     assert.deepEqual(visible(),['hoTen','vaiTro','coSo','trangThai']);
-    assert.equal(window.document.getElementById('sort-hoTen').textContent, '▼', 'tang dan = ▼ (giam dan ▲, chua sap ▲▼)');
+    assert.equal(window.document.getElementById('sort-hoTen').textContent, '▲ 1', 'tang dan = ▼ (giam dan ▲, chua sap ▲▼)');
     assert.equal(window.localStorage.getItem('tks-account-export-fields'), '["username"]');
     assert.deepEqual(JSON.parse(window.localStorage.getItem('tks-account-table-columns:ql-1')), ['email', 'telegramId'],'Picker must not write persistent settings');
     const other = await loadPage({ isSeniorAdmin: true, userId: 'different-account' });

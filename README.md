@@ -191,7 +191,7 @@ server/
 │       ├── carton.test.js # Kiểm thử luật ghi chú thùng
 │       └── detail-panel.css # Khung xem chi tiết dùng chung (.dp-): chỉ số tổng quan, bảng 1 khung cuộn, tắt nút chọn cột
 ├── scripts/              # Script thủ công (migrate dữ liệu, cài đặt ban đầu)
-├── shared/               # Tiện ích dùng chung phía máy chủ: fuzzySearch.js (CommonJS, createMatcher — tìm gần đúng theo từ, cùng luật với public/shared/fuzzy-search.js) và fuzzySql.js (cùng luật trong SQL)
+├── shared/               # Tiện ích máy chủ: fuzzySearch.js, fuzzySql.js (tìm gần đúng); multiSort.js + multiSort.test.js (chuẩn hóa/kiểm whitelist nhiều lớp sort và ORDER BY an toàn)
 ├── userTablePrefs/       # Cấu hình bảng theo tài khoản: độ rộng cột và ẩn/hiện cột trên desktop/mobile, lưu lâu dài Postgres `user_table_prefs` (migration `0085`); API `/api/me/table-prefs`
 ├── sheets/               # Google Sheets client (Vòng đời, CÂN ĐO, Marketing, lưu ý `hrSheetsClient.js` là mã chết chờ xóa tay)
 ├── sheetSnapshots/       # Job đọc Google Sheets (chỉ còn CÂN ĐO sau khi gỡ Vị trí HN/SG ngày 30/10/2026) theo chu kỳ vào Postgres, ghi khác biệt; kiểm thử PGlite
@@ -463,7 +463,7 @@ Bật/tắt bằng SQL, xem `server/purchaseOrders/ROLLOUT.md`.
 
 Mục 4 "Hàng hóa 90 ngày" của tab Hàng hóa giờ hiển thị **một bảng duy nhất "Khách hàng theo sản phẩm"**: mỗi dòng là một cặp sản phẩm × khách của 90 ngày gần nhất, kèm DS 90 ngày, ba kỳ 30 ngày (T.này / T.trước / T.trước nữa), % của sản phẩm và cột **Tăng trưởng** = T.này ÷ trung bình(T.trước, T.trước nữa) − 1. Ô Tăng trưởng chỉ hiện % với **ba mức màu** (nhãn "Cần check" đã bỏ): đỏ khi giảm hết 100% (T.này ≤ 0 trong khi hai kỳ trước có doanh số), cam khi giảm hơn 50% (−100% đến −50%), vàng khi giảm dưới 50% (−50% đến 0); khách mới giữ nhãn "Mới". Lý do: kỳ là 30 ngày cuốn chiếu nên T.này = 0 là tín hiệu mạnh nhất, trước đó 53% dòng bị đỏ. Có thể lọc theo tên sản phẩm, tên khách và nhóm (Tất cả / Giảm hết 100% / Giảm hơn 50% / Giảm dưới 50% / Đang tăng / Khách mới), dòng trạng thái `N dòng khớp · A giảm hết 100% · B giảm hơn 50%`, sắp xếp và phân trang ở máy chủ trên toàn bộ kết quả, xuất Excel/HTML theo đúng bộ lọc đang chọn (`tableKey: products.productCustomerGrowth`).
 
-Module mới: `server/dashboard/productCustomerGrowthRepository.js` (một câu SQL đọc `product_report_customers` JOIN `product_report`), route `GET /api/product-report/customer-growth` trong `server/routes.js`, `server/public/product-customer-growth.js` + `.css`; hai token màu mới `--orange` và `--yellow` (bản Tối và Sáng) thêm vào `server/public/shared/shared.css`, `index.html` nạp `shared.css?v=20261106-tiers` và `product-customer-growth.js/.css?v=20261106-2`. Bảng 26 cột cũ của mục 4 (CSS và thead tương ứng) đã gỡ khỏi trang; `product-90d-report.js` chỉ còn được máy chủ dùng cho xuất file cũ `products.product90d`.
+Module mới: `server/dashboard/productCustomerGrowthRepository.js` (một câu SQL đọc `product_report_customers` JOIN `product_report`), route `GET /api/product-report/customer-growth` trong `server/routes.js`, `server/public/product-customer-growth.js` + `.css`; hai token màu mới `--orange` và `--yellow` (bản Tối và Sáng) thêm vào `server/public/shared/shared.css`, `index.html` nạp `shared.css?v=20261107-3` và `product-customer-growth.js/.css?v=20261107-3`. Bảng 26 cột cũ của mục 4 (CSS và thead tương ứng) đã gỡ khỏi trang; `product-90d-report.js` chỉ còn được máy chủ dùng cho xuất file cũ `products.product90d`.
 
 Không migration, không biến môi trường mới. Phần máy chủ cũ của mục 4 (API `/api/product-report/90d`, bảng tính sẵn `product_90d_report`, job 02:00) giữ nguyên, sẽ gỡ ở một đợt riêng. Kiểm thử: `dashboard/productCustomerGrowthRepository.test.js`, `productCustomerGrowthRoutes.test.js`, `exportProductCustomerGrowth.test.js`, `test/frontend/product-customer-growth.test.js`.
 
@@ -476,5 +476,9 @@ Cập nhật gần nhất: 07/11/2026.
 Cập nhật gần nhất: 07/11/2026.
 
 07/11/2026 — Kiểm kê: số trên giao diện làm tròn đến số nguyên; ô số lượng khi sửa giữ đầy đủ phần thập phân. Tính toán/sắp xếp/lưu trữ và xuất Excel dùng giá trị gốc. Kiểm thử liên quan 76/76 đạt, kiểm Edge đạt; chưa deploy.
+
+Cập nhật gần nhất: 07/11/2026.
+
+07/11/2026 — Sắp xếp nhiều cột trên các bảng nghiệp vụ: bấm thường chọn một cột; Shift + bấm thêm/đổi lớp, tăng → giảm → bỏ. Tiêu đề hiện mũi tên + ưu tiên 1/2/3. Bảng máy chủ sắp trước phân trang; xuất/in dùng cùng ưu tiên. Lưu cấu hình bảng local tương thích lựa chọn sort đơn cũ. Tiện ích mới server/shared/multiSort.js (+ multiSort.test.js) chuẩn hóa/kiểm whitelist và tạo ORDER BY; không migration.
 
 Cập nhật gần nhất: 07/11/2026.

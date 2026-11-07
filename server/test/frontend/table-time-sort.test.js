@@ -290,6 +290,12 @@ test('trang Tai khoan: thu tu mac dinh (ngayTao moi nhat truoc) theo THOI GIAN t
   assert.deepEqual(usernames(), ['thang10', 'thang9', 'thang2', 'namtruoc', 'khongngay']);
   window.handleSort('ngayTao');
   assert.deepEqual(usernames(), users.map(user => user.username));
+  window.handleSort('coSo');
+  window.handleSort('username', {shiftKey:true});
+  assert.deepEqual(usernames(), ['khongngay','namtruoc','thang2','thang9','thang10']);
+  assert.match(window.document.getElementById('sort-username').textContent, /2/);
+  window.handleSort('username', {shiftKey:true});
+  assert.deepEqual(usernames(), ['thang10','thang9','thang2','namtruoc','khongngay']);
   window.close();
 });
 
@@ -333,5 +339,34 @@ test('editable HR columns read current numbers, dates and selected labels', () =
   assert.equal(get(cell('<input type="date" value="2026-10-01">')).number,Date.UTC(2026,9,1));
   assert.equal(get(cell('<select><option>Z</option><option selected>A</option></select>')).text,'A');
   assert.equal(get(cell('<textarea>Ghi chú</textarea>')).text,'Ghi chú');
+  dom.window.close();
+});
+
+test('dashboard multi-sort resolves tied primary values across all filtered rows and keeps empty values last', () => {
+  const dom = createDashboard();
+  const w = dom.window;
+  const items = [{ code: 'z', when: 'B' }, { code: 'b', when: 'A' }, { code: 'a', when: 'A' }, { code: 'x', when: '' }];
+  const sorts = [{ columnIndex: 1, direction: 'asc' }, { columnIndex: 0, direction: 'desc' }];
+  assert.deepEqual(Array.from(w.sortItemsByRenderedColumn(items, plainDateRow, sorts), x => x.code), ['b', 'a', 'z', 'x']);
+  dom.window.close();
+});
+
+test('dashboard header Shift-click adds priorities and cycles only the selected level', () => {
+  const dom=createDashboard();
+  const w=dom.window,doc=w.document;
+  const body=doc.getElementById('endOfDayRows');
+  body.innerHTML='<tr><td>B</td><td>same</td></tr><tr><td>A</td><td>same</td></tr><tr><td>Z</td><td>later</td></tr>';
+  const buttons=body.closest('table').querySelectorAll('.sort-button');
+  buttons[1].click();
+  buttons[0].dispatchEvent(new w.MouseEvent('click',{bubbles:true,shiftKey:true}));
+  assert.match(buttons[1].querySelector('.sort-indicator').textContent,/1/);
+  assert.match(buttons[0].querySelector('.sort-indicator').textContent,/2/);
+  assert.deepEqual(Array.from(body.rows,row=>row.cells[0].textContent),['Z','A','B']);
+  buttons[0].dispatchEvent(new w.MouseEvent('click',{bubbles:true,shiftKey:true}));
+  assert.deepEqual(Array.from(body.rows,row=>row.cells[0].textContent),['Z','B','A']);
+  buttons[0].dispatchEvent(new w.MouseEvent('click',{bubbles:true,shiftKey:true}));
+  assert.equal(buttons[0].closest('th').getAttribute('aria-sort'),'none');
+  buttons[1].click(); buttons[1].click();
+  assert.deepEqual(Array.from(body.rows,row=>row.cells[0].textContent),['B','A','Z']);
   dom.window.close();
 });

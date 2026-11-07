@@ -41,3 +41,12 @@ test('exports disclose independent source, snapshot and incomplete coverage warn
  const ExcelJS=require('exceljs');const file=await createExportFile('monthly','rows','xlsx',r,r.rows);const book=new ExcelJS.Workbook();await book.xlsx.load(file.buffer);const provenance=book.getWorksheet('Nguồn và trạng thái');assert.ok(provenance);assert.equal(provenance.getCell('B2').value,'pancake-independent');assert.equal(provenance.getCell('B3').value,'snapshot-proof');
  const html=await createExportFile('monthly','rows','html',r,r.rows);assert.match(html.buffer.toString(),/pancake-independent/);assert.match(html.buffer.toString(),/Dữ liệu chưa đầy đủ/);
 });
+
+
+test('multi-level export sorting handles ties and blanks at each priority without changing source rows', () => {
+  const { tableRows } = require('./marketingReportExport');
+  const rows=[{page:'A',sale:'X',revenue:2},{page:'A',sale:'X',revenue:8},{page:'A',sale:null,revenue:99},{page:'B',sale:'X',revenue:1},{page:null,sale:'X',revenue:100}];
+  const sorts=[{key:'page',dir:'asc'},{key:'sale',dir:'desc'},{key:'revenue',dir:'desc'}];
+  assert.deepEqual(tableRows('rows',{rows},'',{sorts:JSON.stringify(sorts)}),[rows[1],rows[0],rows[2],rows[3],rows[4]]);
+  assert.equal(rows[0].revenue,2);
+});

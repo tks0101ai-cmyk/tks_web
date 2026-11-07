@@ -24,6 +24,14 @@
     var table = storedPrefs[key], prefs = table && table[mode], sort = prefs && prefs.sort;
     return sort && typeof sort.key === 'string' && (sort.dir === 'asc' || sort.dir === 'desc') ? { key: sort.key, dir: sort.dir } : null;
   }
+  function savedSorts(key, mode) {
+    var prefs = storedPrefs[key] && storedPrefs[key][mode];
+    if (prefs && Array.isArray(prefs.sorts)) return prefs.sorts.filter(function (sort) {
+      return sort && typeof sort.key === 'string' && (sort.dir === 'asc' || sort.dir === 'desc');
+    }).map(function (sort) { return { key: sort.key, dir: sort.dir }; });
+    var legacy = savedSort(key, mode);
+    return legacy ? [legacy] : [];
+  }
   function copyColumns(source) {
     var out = {};
     Object.keys(source).forEach(function (key) { out[key] = Object.assign({}, source[key]); });
@@ -57,6 +65,7 @@
     });
     var body = { columns: columns };
     if (session.sort && session.sort.key.length <= MAX_KEY_LENGTH) body.sort = { key: session.sort.key, dir: session.sort.dir };
+    if (session.sorts && session.sorts.length) body.sorts = session.sorts;
     var url = PREFS_URL + '/' + encodeURIComponent(session.key) + '/' + session.mode;
     try {
       fetch(url, { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -70,19 +79,53 @@
     sessions.forEach(function (session) {
       session.dirty = copyColumns(savedColumns(session.key, session.mode));
       session.sort = savedSort(session.key, session.mode);
+      session.sorts = savedSorts(session.key, session.mode);
       session.columns.forEach(function (column) { applySaved(session, column); if (column.locked) column.hidden = false; });
     });
     if (window.document && document.body) refreshAll();
   }
-  // Biểu tượng sắp xếp dùng chung cả hệ thống (xem "Tiêu đề cột sắp xếp được" trong shared.css):
-  // chưa sắp ▲▼ · tăng dần ▼ · giảm dần ▲.
-  var SORT_GLYPH = { none: '▲▼', ascending: '▼', descending: '▲' };
+  // Common priority stack for locally sorted and server-paginated pages.
+  function nextSorts(sorts, key, add) {
+    var current = (sorts || []).find(function (sort) { return sort.key === key; });
+    var next = add ? (sorts || []).map(function (sort) { return { key: sort.key, dir: sort.dir }; }) : current ? [{ key: key, dir: current.dir }] : [];
+    if (!current) next.push({ key: key, dir: 'asc' });
+    else if (current.dir === 'asc') next.find(function (sort) { return sort.key === key; }).dir = 'desc';
+    else next = next.filter(function (sort) { return sort.key !== key; });
+    return next;
+  }
+  function compareValues(a, b, dir) {
+    var emptyA = a === null || a === undefined || a === '' || (typeof a === 'number' && !Number.isFinite(a));
+    var emptyB = b === null || b === undefined || b === '' || (typeof b === 'number' && !Number.isFinite(b));
+    if (emptyA || emptyB) return emptyA === emptyB ? 0 : emptyA ? 1 : -1;
+    var result = typeof a === 'number' && typeof b === 'number' ? a - b
+      : String(a).localeCompare(String(b), 'vi', { numeric: true, sensitivity: 'base' });
+    return result * (dir === 'desc' ? -1 : 1);
+  }
+  function syncSortHeaders(table, sorts, keyOfHeader) {
+    if (!table) return;
+    Array.from(table.querySelectorAll('thead th')).forEach(function (th) {
+      var key = keyOfHeader ? keyOfHeader(th) : th.dataset.sort || th.dataset.field || th.dataset.columnKey;
+      if (key === undefined || key === null) return;
+      var index = (sorts || []).findIndex(function (sort) { return sort.key === key; });
+      var sort = sorts && sorts[index], button = th.querySelector('.sort-button'), mark = th.querySelector('.sort-indicator');
+      if (!button || !mark) return;
+      var text = sort ? (sort.dir === 'asc' ? '▲' : '▼') + (index + 1) : '▲▼';
+      if (mark.textContent !== text) mark.textContent = text;
+      th.setAttribute('aria-sort', index === 0 ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none');
+      th.dataset.sortActive = String(!!sort);
+      var label = th.querySelector('.sort-label');
+      var description = (label ? label.textContent.trim() : key) + (sort ? ', ưu tiên ' + (index + 1) + ', ' + (sort.dir === 'asc' ? 'tăng dần' : 'giảm dần') : '')
+        + '. Bấm để sắp xếp; Shift + bấm để thêm hoặc đổi lớp sắp xếp.';
+      button.title = description;
+      button.setAttribute('aria-label', description);
+    });
+  }
   var ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><line x1="9" y1="4" x2="9" y2="20"></line><line x1="15" y1="4" x2="15" y2="20"></line></svg>';
 
   function screenMode() { return window.innerWidth <= 600 ? 'mobile' : 'desktop'; }
   function labelOf(cell) {
     var copy = cell.cloneNode(true);
-    copy.querySelectorAll('.tks-column-resizer,.sort-indicator,.sort-ind,.sort,.locations-sort-icon').forEach(function (node) { node.remove(); });
+    copy.querySelectorAll('.tks-column-resizer,.sort-indicator,.picking-sort-indicator,.sort-ind,.sort,.locations-sort-icon').forEach(function (node) { node.remove(); });
     return copy.textContent.replace(/[↕▲▼↑↓]+$/g, '').replace(/\s+/g, ' ').trim();
   }
   function defaultWidth(key, label, cell) {
@@ -592,7 +635,8 @@
       return { empty: !label || label === '—', number: null, text: label };
     }
     if (!field && cell.hasAttribute('data-sort-value')) {
-      var given = Number(cell.getAttribute('data-sort-value'));
+      var raw = cell.getAttribute('data-sort-value').trim();
+      var given = raw === '' ? NaN : Number(raw);
       return { empty: !Number.isFinite(given), number: given, text: '' };
     }
     var text = cellText(cell);
@@ -606,23 +650,13 @@
   function sortableRows(ctrl) {
     var body = ctrl.table.tBodies[0], count = ctrl.head.leaves.length;
     return body ? Array.from(body.rows).filter(function (row) {
-      return row.cells.length === count && Array.from(row.cells).every(function (cell) { return (Number(cell.dataset.tksColspan) || cell.colSpan) === 1; });
+      return !row.hasAttribute('data-sort-fixed') && row.cells.length === count && Array.from(row.cells).every(function (cell) { return (Number(cell.dataset.tksColspan) || cell.colSpan) === 1; });
     }) : [];
   }
   function sortHeaderState(ctrl) {
-    ctrl.head.leaves.forEach(function (entry, index) {
-      var button = entry.cell.querySelector(':scope > .sort-button[data-tks-sort]');
-      if (!button) return;
-      var dir = ctrl.sort && ctrl.sort.index === index ? ctrl.sort.dir : '';
-      var state = dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : 'none';
-      var action = dir === 'asc' ? 'Sắp xếp giảm dần' : dir === 'desc' ? 'Bỏ sắp xếp' : 'Sắp xếp tăng dần';
-      var label = ctrl.columns[index] ? ctrl.columns[index].label : '';
-      var mark = button.querySelector('.sort-indicator');
-      entry.cell.setAttribute('aria-sort', state);
-      // Chỉ ghi khi đổi: ghi lại cùng chữ vẫn là 1 thay đổi DOM và sẽ kích hoạt MutationObserver vẽ lại vô hạn.
-      if (mark.textContent !== SORT_GLYPH[state]) mark.textContent = SORT_GLYPH[state];
-      button.title = action + ' theo ' + label;
-      button.setAttribute('aria-label', action + ' theo cột ' + label);
+    syncSortHeaders(ctrl.table, ctrl.sorts || [], function (th) {
+      if (!th.querySelector(':scope > .sort-button[data-tks-sort]')) return undefined;
+      return ctrl.head.leaves.findIndex(function (entry) { return entry.cell === th; });
     });
   }
   function applySort(ctrl) {
@@ -633,16 +667,22 @@
     if (movable.length < 2) return;
     // Thứ tự gốc (để "Bỏ sắp xếp" trả lại đúng như máy chủ gửi): đánh số 1 lần trước lần sắp đầu tiên.
     movable.forEach(function (row) { if (!row.dataset.tksOrder) row.dataset.tksOrder = String(ctrl.sortSeq = (ctrl.sortSeq || 0) + 1); });
-    var sort = ctrl.sort, factor = sort && sort.dir === 'desc' ? -1 : 1;
+    var sorts = ctrl.sorts || [];
     var keyed = movable.map(function (row) {
-      return { row: row, order: Number(row.dataset.tksOrder), value: sort ? sortValue(row.cells[sort.index]) : null };
+      return { row: row, order: Number(row.dataset.tksOrder), values: sorts.map(function (sort) { return sortValue(row.cells[sort.key]); }) };
     });
     keyed.sort(function (a, b) {
-      if (!sort) return a.order - b.order;
-      if (a.value.empty !== b.value.empty) return a.value.empty ? 1 : -1; // ô trống luôn xuống cuối, cả 2 chiều
-      var result = a.value.number !== null && b.value.number !== null ? a.value.number - b.value.number
-        : a.value.text.localeCompare(b.value.text, 'vi', { numeric: true, sensitivity: 'base' });
-      return result ? result * factor : a.order - b.order;
+      for (var i = 0; i < sorts.length; i++) {
+        var x = a.values[i], y = b.values[i];
+        if (x.empty || y.empty) {
+          if (x.empty === y.empty) continue;
+          return x.empty ? 1 : -1;
+        }
+        var result = x.number !== null && y.number !== null ? x.number - y.number
+          : x.text.localeCompare(y.text, 'vi', { numeric: true, sensitivity: 'base' });
+        if (result) return result * (sorts[i].dir === 'desc' ? -1 : 1);
+      }
+      return a.order - b.order;
     });
     var queue = keyed.map(function (item) { return item.row; }), next = 0;
     var ordered = all.map(function (row) { return movableSet.has(row) ? queue[next++] : row; });
@@ -651,24 +691,25 @@
     body.appendChild(fragment);
     ctrl.sortedRows = ordered;
   }
-  function cycleSort(ctrl, index) {
-    var current = ctrl.sort;
-    if (!current || current.index !== index) ctrl.sort = { index: index, dir: 'asc' };
-    else if (current.dir === 'asc') ctrl.sort = { index: index, dir: 'desc' };
-    else ctrl.sort = null;
+  function cycleSort(ctrl, index, add) {
+    ctrl.sorts = nextSorts(ctrl.sorts || [], index, add);
+    ctrl.sort = ctrl.sorts.length ? { index: ctrl.sorts[0].key, dir: ctrl.sorts[0].dir } : null;
     ctrl.sortByUser = true;
     ctrl.session.sort = ctrl.sort && ctrl.columns[ctrl.sort.index] ? { key: ctrl.columns[ctrl.sort.index].key, dir: ctrl.sort.dir } : null;
+    ctrl.session.sorts = ctrl.sorts.map(function (sort) { return { key: ctrl.columns[sort.key].key, dir: sort.dir }; });
     scheduleSave(ctrl.session);
     applySort(ctrl);
   }
   // Khôi phục sắp xếp đã lưu (theo khóa cột) trừ khi người dùng đã tự sắp xếp bảng này trong lần xem hiện tại.
   function restoreSort(ctrl) {
     if (ctrl.sortByUser) return;
-    var saved = ctrl.session.sort, signature = saved ? saved.key + '|' + saved.dir : '';
+    var saved = ctrl.session.sorts || [], signature = JSON.stringify(saved);
     if (ctrl.sortRestored === signature) return;
     ctrl.sortRestored = signature;
-    var index = saved ? ctrl.columns.findIndex(function (column) { return column.key === saved.key; }) : -1;
-    ctrl.sort = index >= 0 ? { index: index, dir: saved.dir } : null;
+    ctrl.sorts = saved.map(function (sort) {
+      return { key: ctrl.columns.findIndex(function (column) { return column.key === sort.key; }), dir: sort.dir };
+    }).filter(function (sort) { return sort.key >= 0; });
+    ctrl.sort = ctrl.sorts.length ? { index: ctrl.sorts[0].key, dir: ctrl.sorts[0].dir } : null;
   }
   function rowsChanged(ctrl) {
     var body = ctrl.table.tBodies[0], rows = body ? body.rows : [], previous = ctrl.sortedRows || [];
@@ -690,15 +731,16 @@
       button.append(label, mark);
       cell.insertBefore(button, cell.firstChild);
       cell.classList.add('sortable');
-      function toggle() {
+      function toggle(event) {
         var current = controllers.get(ctrl.table), position = current.head.leaves.findIndex(function (item) { return item.cell === cell; });
-        if (position >= 0) cycleSort(current, position);
+        if (position >= 0) cycleSort(current, position, event.shiftKey);
       }
-      button.addEventListener('click', function (event) { event.preventDefault(); toggle(); });
+      button.addEventListener('click', function (event) { event.preventDefault(); toggle(event); });
       // Bấm vào phần đệm của ô tiêu đề (ngoài nút) cũng sắp xếp, như các bảng chính.
-      cell.addEventListener('click', function (event) { if (event.target === cell) toggle(); });
+      cell.addEventListener('click', function (event) { if (event.target === cell) toggle(event); });
     });
-    if (ctrl.sort && ctrl.sort.index >= ctrl.head.leaves.length) ctrl.sort = null;
+    ctrl.sorts = (ctrl.sorts || []).filter(function (sort) { return sort.key < ctrl.head.leaves.length; });
+    ctrl.sort = ctrl.sorts.length ? { index: ctrl.sorts[0].key, dir: ctrl.sorts[0].dir } : null;
     if (ctrl.sort && rowsChanged(ctrl)) applySort(ctrl); // bảng giữ nguyên nhưng trang vẽ lại các dòng (vd lọc) → sắp lại
     else sortHeaderState(ctrl);
   }
@@ -716,7 +758,7 @@
     var key = ctrl.options.key || tableKey(table), mode = screenMode(), sessionKey = key + '\u001e' + mode;
     var session = sessions.get(sessionKey);
     if (!session) {
-      session = { columns: new Map(), fitted: false, key: key, mode: mode, dirty: copyColumns(savedColumns(key, mode)), sort: savedSort(key, mode) };
+      session = { columns: new Map(), fitted: false, key: key, mode: mode, dirty: copyColumns(savedColumns(key, mode)), sort: savedSort(key, mode), sorts: savedSorts(key, mode) };
       sessions.set(sessionKey, session);
     }
     ctrl.key = key; ctrl.mode = mode; ctrl.session = session; ctrl.head = head;
@@ -763,10 +805,12 @@
     return {
       key: ctrl.key, screenMode: ctrl.mode,
       sort: sorted ? { key: sorted.key, direction: ctrl.sort.dir } : null,
+      sorts: (ctrl.sorts || []).map(function (sort) { return { key: ctrl.columns[sort.key].key, dir: sort.dir }; }),
       columns: ctrl.columns.map(function (col) { return { key: col.key, label: col.label, width: col.width, hidden: col.hidden, locked: col.locked }; })
     };
   }
-  window.TKSTables = { enhance: enhance, refresh: refresh, refreshAll: refreshAll, getState: getState, loadPrefs: loadPrefs };
+  window.TKSTables = { enhance: enhance, refresh: refresh, refreshAll: refreshAll, getState: getState, loadPrefs: loadPrefs,
+    nextSorts: nextSorts, compareValues: compareValues, syncSortHeaders: syncSortHeaders };
   function fetchPrefs() {
     if (typeof fetch !== 'function' || !/^https?:$/.test(window.location.protocol)) return;
     // Trang chưa đăng nhập trả 401: bỏ qua, bảng dùng mặc định và không gửi lưu.

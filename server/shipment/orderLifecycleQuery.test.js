@@ -367,3 +367,16 @@ test('createSelectionCache: tìm theo hàng không dùng cache (tập khóa đ�
   assert.deepEqual(codes(cache.select(rows, params(new Set(['HN|dh001'])))), ['DH001']);
   assert.deepEqual(codes(cache.select(rows, params(new Set(['HN|dh002'])))), ['DH002']);
 });
+
+
+test('multiple sort levels apply before pagination, nulls last, cache distinguishes priority', () => {
+  const rows = [row('A',{saleName:'An',orderTotal:2}),row('B',{saleName:'An',orderTotal:5}),row('C',{saleName:'Binh',orderTotal:9}),row('D',{saleName:'An',orderTotal:null})];
+  const params = q.parseParams({sorts:JSON.stringify([{key:'saleName',dir:'asc'},{key:'orderTotal',dir:'desc'}])});
+  assert.deepEqual(codes(q.selectRows(rows,params)),['B','A','D','C']);
+  assert.deepEqual(codes(q.paginate(q.selectRows(rows,params),2,1).items),['A']);
+  const cache = q.createSelectionCache();
+  assert.deepEqual(codes(cache.select(rows,params)),['B','A','D','C']);
+  const changed = {...params, sorts:[{key:'orderTotal',dir:'desc'},{key:'saleName',dir:'asc'}]};
+  assert.deepEqual(codes(cache.select(rows,changed)),['C','B','A','D']);
+  assert.throws(() => q.parseParams({sorts:'[{"key":"secret","dir":"asc"}]'}), {statusCode:400});
+});

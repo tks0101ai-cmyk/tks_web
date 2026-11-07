@@ -11,8 +11,9 @@ const payload = (overrides={}) => ({ from:'2026-08-06',to:'2026-11-03',page:1,pa
 function setup() {
   const dom=new JSDOM('<section class="dp-section" id="history"></section>',{runScripts:'outside-only',url:'https://example.test'});
   const calls=[];
-  dom.window.fetch=url=>new Promise(resolve=>calls.push({url,resolve}));
-  dom.window.TKSTables={enhance:()=>{}};
+  dom.window.fetch=url=>String(url).startsWith('/api/me/') ? Promise.resolve({ok:true,json:async()=>({})}) : new Promise(resolve=>calls.push({url,resolve}));
+  dom.window.eval(fs.readFileSync(path.join(__dirname,'../../public/shared/table-controls.js'),'utf8'));
+
   dom.window.eval(fs.readFileSync(path.join(__dirname,'../../public/js/product-history.js'),'utf8'));
   const root=dom.window.document.getElementById('history');
   let current=true;
@@ -81,7 +82,24 @@ test('history separates draft totals and document column; sorts on server and ex
   p.root.querySelector('[data-action="export"]').click();
   assert.equal(p.exportKey,'products.productHistory');
   const state=JSON.parse(JSON.stringify(p.dom.window.TKSProductHistory.exportState()));
-  assert.deepEqual(state,{context:{productCode:'SP1',historyType:'order',historyQuery:''},tableSort:{label:'Số lượng',direction:'asc'},columns:{product_history:['time','quantity']}});
+  assert.deepEqual(state,{context:{productCode:'SP1',historyType:'order',historyQuery:''},tableSort:{label:'Số lượng',direction:'asc'},tableSorts:[{label:'Số lượng',direction:'asc'}],columns:{product_history:['time','quantity']}});
   p.close();assert.equal(p.dom.window.TKSProductHistory.exportState(),null);
+  p.dom.window.close();
+});
+
+
+test('history Shift-click preserves priority and exports every layer', async () => {
+  const p=setup();
+  p.dom.window.TKSNav={can:()=>true};
+  p.answer(0); await settle();
+  p.root.querySelector('[data-sort="quantity"] button').click();
+  p.answer(1); await settle();
+  p.root.querySelector('[data-sort="customerName"] button').dispatchEvent(new p.dom.window.MouseEvent('click',{bubbles:true,shiftKey:true}));
+  const params=new URL(p.calls[2].url,'https://x').searchParams;
+  assert.deepEqual(JSON.parse(params.get('sorts')),[{key:'quantity',dir:'asc'},{key:'customerName',dir:'asc'}]);
+  p.answer(2); await settle();
+  assert.equal(p.root.querySelector('[data-sort="customerName"] .sort-indicator').textContent,'▲2');
+  const state=JSON.parse(JSON.stringify(p.dom.window.TKSProductHistory.exportState()));
+  assert.deepEqual(state.tableSorts,[{label:'Số lượng',direction:'asc'},{label:'Khách hàng',direction:'asc'}]);
   p.dom.window.close();
 });

@@ -46,13 +46,13 @@
       setTimeout(unhide, 1200);
     })();
   </script>
-  <link rel="stylesheet" href="/shared/shared.css?v=20261106-tiers">
+  <link rel="stylesheet" href="/shared/shared.css?v=20261107-3">
   <script src="/shared/motion.js?v=20261024-1" defer></script>
   <link rel="stylesheet" href="/shared/search-clear.css?v=20261009-1">
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261016">
   <link rel="stylesheet" href="/shared/product-history.css?v=20261105-1">
   <link rel="stylesheet" href="/marketing-report.css?v=20261102-kpis">
-  <link rel="stylesheet" href="/product-customer-growth.css?v=20261106-2">
+  <link rel="stylesheet" href="/product-customer-growth.css?v=20261107-3">
   <link rel="stylesheet" href="/invoice-approved-prices.css?v=20261024-4">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -5473,7 +5473,7 @@
        và inline script luôn chạy trước script defer — cách đặt này giữ đúng thứ tự mà không chặn parser. -->
   <script src="/vendor/chart.umd.min.js"></script>
   <script src="/js/pagination.js"></script>
-  <script src="/js/product-history.js?v=20261105-1"></script>
+  <script src="/js/product-history.js?v=20261107-3"></script>
   <script src="/shared/fuzzy-search.js?v=20261021-1"></script>
   <script src="/js/table-explorer.js?v=20261021-1"></script>
   <script>
@@ -5494,7 +5494,7 @@
     })();
   </script>
   <script src="/shared/filter-links.js?v=20261029-1"></script>
-  <script src="/shared/table-controls.js?v=20261030-1"></script>
+  <script src="/shared/table-controls.js?v=20261107-3"></script>
   <script>
     // Bảng công nợ: mặc định ẩn cột Cảnh báo (người dùng vẫn bật lại được ở bộ chọn cột).
     (function () {
@@ -5512,10 +5512,10 @@
   <script src="/shared/table-align.js?v=20261017"></script>
   <script src="/shared/dateInput.js?v=20260912"></script>
   <script src="/shared/image-compress.js?v=20261022"></script>
-  <script src="/marketing-report.js?v=20261021-1"></script>
-  <script src="/invoice-price-audit.js?v=20261029-1"></script>
-  <script src="/invoice-approved-prices.js?v=20261024-6"></script>
-  <script src="/product-customer-growth.js?v=20261106-2"></script>
+  <script src="/marketing-report.js?v=20261107-3"></script>
+  <script src="/invoice-price-audit.js?v=20261107-3"></script>
+  <script src="/invoice-approved-prices.js?v=20261107-3"></script>
+  <script src="/product-customer-growth.js?v=20261107-3"></script>
 
   <script>
     // Toast thong bao inline — thay the window.alert() cho loi/canh bao (khong chan luong,
@@ -5773,7 +5773,7 @@
     }
 
     // Biểu tượng sắp xếp dùng chung mọi bảng: chưa sắp ▲▼ · tăng dần ▼ · giảm dần ▲ (vị trí/màu ở shared/shared.css).
-    const SORT_GLYPH = { none: '▲▼', ascending: '▼', descending: '▲' };
+    const SORT_GLYPH = { none: '▲▼', ascending: '▲', descending: '▼' };
 
     function initSortableTables() {
       document.querySelectorAll('table').forEach(initSortableTable);
@@ -5811,7 +5811,7 @@
         indicator.setAttribute('aria-hidden', 'true');
         indicator.textContent = SORT_GLYPH.none;
         button.append(labelSpan, indicator);
-        button.addEventListener('click', function () { setTableSort(tbody.id, columnIndex); });
+        button.addEventListener('click', function (event) { setTableSort(tbody.id, columnIndex, event); });
         th.replaceChildren(button);
       });
     }
@@ -5880,7 +5880,8 @@
         return { empty: !text || text === '—', number: null, text: text };
       }
       if (cell.hasAttribute('data-sort-value')) {
-        const numberValue = Number(cell.getAttribute('data-sort-value'));
+        const rawSortValue=cell.getAttribute('data-sort-value');
+        const numberValue = rawSortValue.trim()==='' ? NaN : Number(rawSortValue);
         return { empty: !Number.isFinite(numberValue), number: numberValue, text: '' };
       }
       const textValue = cell.textContent.replace(/\s+/g, ' ').trim();
@@ -5896,82 +5897,66 @@
     // dang xem (xem renderPaginatedRows()).
     function sortItemsByRenderedColumn(items, rowHtmlFn, columnIndex, direction) {
       if (!items.length) return items;
-      const scratch = document.createElement('tbody');
-      scratch.innerHTML = items.map(rowHtmlFn).join('');
-      const rows = Array.from(scratch.children);
-      return rows
-        .map(function (row, index) {
-          return { item: items[index], index: index, value: getTableSortValue(row.cells[columnIndex]) };
-        })
-        .sort(function (a, b) {
-          if (a.value.empty !== b.value.empty) return a.value.empty ? 1 : -1;
-          let comparison = 0;
-          if (a.value.number !== null && b.value.number !== null) {
-            comparison = a.value.number - b.value.number;
-          } else {
-            comparison = a.value.text.localeCompare(b.value.text, 'vi', { numeric: true, sensitivity: 'base' });
-          }
-          if (comparison === 0) return a.index - b.index;
-          return direction === 'asc' ? comparison : -comparison;
-        })
-        .map(function (entry) { return entry.item; });
+      const sorts=tableSortList(columnIndex,direction);
+      const scratch=document.createElement('tbody');
+      scratch.innerHTML=items.map(rowHtmlFn).join('');
+      return Array.from(scratch.children).map((row,index)=>({row,item:items[index],index}))
+        .sort((a,b)=>compareTableRows(a.row,b.row,sorts)||a.index-b.index).map(entry=>entry.item);
     }
 
+    function tableSortList(value, direction) {
+      return Array.isArray(value) ? value : value && typeof value === 'object' ? [value] : Number.isInteger(value) && value >= 0 ? [{columnIndex:value, direction:direction}] : [];
+    }
+    function nextTableSorts(current, columnIndex, add) {
+      const sorts = tableSortList(current).map(s => ({columnIndex:s.columnIndex, direction:s.direction}));
+      const active = sorts.find(s => s.columnIndex === columnIndex);
+      const next = active ? active.direction === 'asc' ? 'desc' : null : 'asc';
+      if (!add) return next ? [{columnIndex:columnIndex, direction:next}] : [];
+      if (active) { if (next) active.direction=next; else sorts.splice(sorts.indexOf(active),1); }
+      else sorts.push({columnIndex:columnIndex, direction:'asc'});
+      return sorts;
+    }
+    function compareTableValues(a, b, direction) {
+      if (a.empty !== b.empty) return a.empty ? 1 : -1;
+      if (a.empty) return 0;
+      const comparison = a.number !== null && b.number !== null ? a.number-b.number : a.text.localeCompare(b.text,'vi',{numeric:true,sensitivity:'base'});
+      return direction === 'desc' ? -comparison : comparison;
+    }
+    function compareTableRows(a, b, sorts) {
+      for (const sort of sorts) {
+        const comparison=compareTableValues(getTableSortValue(a.cells[sort.columnIndex]),getTableSortValue(b.cells[sort.columnIndex]),sort.direction);
+        if (comparison) return comparison;
+      }
+      return 0;
+    }
     function sortTableRows(tbodyId, columnIndex, direction) {
-      const tbody = document.getElementById(tbodyId);
+      const tbody=document.getElementById(tbodyId);
       if (!tbody) return;
-      const rows = Array.from(tbody.rows).filter(function (row) {
-        return row.cells.length > columnIndex && row.cells[0].colSpan === 1;
-      });
-      if (rows.length < 2) return;
-
-      rows.forEach(function (row, index) {
-        if (!row.hasAttribute('data-sort-original-index')) row.dataset.sortOriginalIndex = index;
-      });
-
-      // Sắp xếp lại bên trong một DocumentFragment, sau đó gắn lại một lần duy nhất. Việc
-      // gắn từng dòng trực tiếp vào <tbody> đang hiển thị sẽ làm gián đoạn layout một lần cho mỗi
-      // dòng — với TABLE_PAGE_SIZE là 100 và applyActiveTableSorts() chạy sau mỗi lần render bảng, chi phí sẽ tăng rất nhanh.
-      const fragment = document.createDocumentFragment();
-      rows
-        .map(function (row, originalIndex) {
-          return { row: row, originalIndex: originalIndex, value: getTableSortValue(row.cells[columnIndex]) };
-        })
-        .sort(function (a, b) {
-          if (a.value.empty !== b.value.empty) return a.value.empty ? 1 : -1;
-          let comparison = 0;
-          if (a.value.number !== null && b.value.number !== null) {
-            comparison = a.value.number - b.value.number;
-          } else {
-            comparison = a.value.text.localeCompare(b.value.text, 'vi', { numeric: true, sensitivity: 'base' });
-          }
-          if (comparison === 0) return a.originalIndex - b.originalIndex;
-          return direction === 'asc' ? comparison : -comparison;
-        })
-        .forEach(function (item) { fragment.appendChild(item.row); });
+      const sorts=tableSortList(columnIndex,direction);
+      const rows=Array.from(tbody.rows).filter(row => row.cells[0] && row.cells[0].colSpan===1 && sorts.every(sort => row.cells[sort.columnIndex]));
+      rows.forEach((row,index) => { if (!row.hasAttribute('data-sort-original-index')) row.dataset.sortOriginalIndex=index; });
+      rows.sort((a,b) => compareTableRows(a,b,sorts) || Number(a.dataset.sortOriginalIndex)-Number(b.dataset.sortOriginalIndex));
+      const fragment=document.createDocumentFragment();
+      rows.forEach(row => fragment.appendChild(row));
       tbody.appendChild(fragment);
     }
 
     function updateTableSortHeader(tbodyId, columnIndex, direction) {
-      const tbody = document.getElementById(tbodyId);
+      const tbody=document.getElementById(tbodyId);
       if (!tbody) return;
-      const headers = tbody.closest('table').querySelectorAll('thead th');
-      headers.forEach(function (th, index) {
-        const button = th.querySelector('.sort-button');
-        const indicator = th.querySelector('.sort-indicator');
-        const label = button ? button.firstElementChild.textContent : th.textContent.trim();
-        const isActive = index === columnIndex;
-        th.setAttribute('aria-sort', isActive ? (direction === 'asc' ? 'ascending' : 'descending') : 'none');
-        if (indicator) indicator.textContent = isActive ? (direction === 'asc' ? SORT_GLYPH.ascending : SORT_GLYPH.descending) : SORT_GLYPH.none;
-        if (button) {
-          const nextAction = isActive
-            ? (direction === 'asc' ? 'Sắp xếp giảm dần' : 'Bỏ sắp xếp')
-            : 'Sắp xếp tăng dần';
-          button.title = nextAction + ' theo ' + label + headerHintSuffix(th);
-          button.setAttribute('aria-label', nextAction + ' theo cột ' + label);
-        }
+      const sorts=tableSortList(state.tableSorts[tbodyId] || columnIndex,direction);
+      tbody.closest('table').querySelectorAll('thead th').forEach(function(th,index) {
+        const priority=sorts.findIndex(sort => sort.columnIndex===index);
+        const sort=sorts[priority];
+        th.setAttribute('aria-sort',priority===0 ? sort.direction==='asc' ? 'ascending' : 'descending' : 'none');
+        th.dataset.sortActive=String(!!sort);
+        const indicator=th.querySelector('.sort-indicator');
+        if (indicator) indicator.textContent=sort ? (sort.direction==='asc' ? SORT_GLYPH.ascending : SORT_GLYPH.descending)+' '+(priority+1) : SORT_GLYPH.none;
+        const button=th.querySelector('.sort-button');
+        if (button) { const label=button.firstElementChild.textContent; const action=sort ? sort.direction==='asc' ? 'Sắp xếp giảm dần' : 'Bỏ sắp xếp' : 'Sắp xếp tăng dần'; button.title=label+(sort?', ưu tiên '+(priority+1)+', '+(sort.direction==='asc'?'tăng dần':'giảm dần'):'')+' · '+action+' · Shift+bấm để thêm mức sắp xếp'; button.setAttribute('aria-label',button.title); }
       });
     }
+
 
     // Tim tableKey (vd 'allProducts') tuong ung voi mot tbodyId (vd 'allProductRows'),
     // dua vao map duoc ghi trong renderPaginatedRows(). Chi cac bang co phan trang
@@ -5989,48 +5974,16 @@
       debtAgingRows: { tableKey: 'debtAging', render: function () { renderDebtAgingTable(); } }
     };
 
-    function setTableSort(tbodyId, columnIndex) {
-      const current = state.tableSorts[tbodyId];
-      const tableKey = getTableKeyForTbody(tbodyId);
-      const selfSorted = SELF_SORTED_TABLES[tbodyId];
-      if (current && current.columnIndex === columnIndex && current.direction === 'desc') {
-        delete state.tableSorts[tbodyId];
-        if (selfSorted) {
-          state.tablePages[selfSorted.tableKey] = 1;
-          selfSorted.render();
-          updateTableSortHeader(tbodyId, -1, null);
-          return;
-        }
-        if (tableKey && typeof state.tableRenderers[tableKey] === 'function') {
-          state.tablePages[tableKey] = 1;
-          state.tableRenderers[tableKey]();
-          updateTableSortHeader(tbodyId, -1, null);
-          return;
-        }
-        restoreTableRowOrder(tbodyId);
-        updateTableSortHeader(tbodyId, -1, null);
-        return;
-      }
-      const direction = current && current.columnIndex === columnIndex ? 'desc' : 'asc';
-      state.tableSorts[tbodyId] = { columnIndex: columnIndex, direction: direction };
-      if (selfSorted) {
-        state.tablePages[selfSorted.tableKey] = 1;
-        selfSorted.render();
-        updateTableSortHeader(tbodyId, columnIndex, direction);
-        return;
-      }
-      if (tableKey && typeof state.tableRenderers[tableKey] === 'function') {
-        // Sap xep toan bo du lieu da loc (khong chi trang dang xem) roi ve trang 1 —
-        // xem sortItemsByRenderedColumn() va renderPaginatedRows(). Neu chi sort cac
-        // <tr> dang co san trong DOM (sortTableRows) thi ket qua se sai vi tbody luc
-        // nay chi chua dung 1 trang (TABLE_PAGE_SIZE dong) trong toan bo du lieu.
-        state.tablePages[tableKey] = 1;
-        state.tableRenderers[tableKey]();
-        updateTableSortHeader(tbodyId, columnIndex, direction);
-        return;
-      }
-      sortTableRows(tbodyId, columnIndex, direction);
-      updateTableSortHeader(tbodyId, columnIndex, direction);
+    function setTableSort(tbodyId, columnIndex, event) {
+      const sorts=nextTableSorts(state.tableSorts[tbodyId],columnIndex,!!(event && event.shiftKey));
+      if (sorts.length) state.tableSorts[tbodyId]=sorts; else delete state.tableSorts[tbodyId];
+      const tableKey=getTableKeyForTbody(tbodyId);
+      const selfSorted=SELF_SORTED_TABLES[tbodyId];
+      if (selfSorted) { state.tablePages[selfSorted.tableKey]=1; selfSorted.render(); }
+      else if (tableKey && typeof state.tableRenderers[tableKey]==='function') { state.tablePages[tableKey]=1; state.tableRenderers[tableKey](); }
+      else if (sorts.length) sortTableRows(tbodyId,sorts);
+      else restoreTableRowOrder(tbodyId);
+      updateTableSortHeader(tbodyId,sorts);
     }
 
     function restoreTableRowOrder(tbodyId) {
@@ -6052,7 +6005,7 @@
           updateTableSortHeader(tbodyId, sort.columnIndex, sort.direction);
           return;
         }
-        sortTableRows(tbodyId, sort.columnIndex, sort.direction);
+        sortTableRows(tbodyId, sort);
         updateTableSortHeader(tbodyId, sort.columnIndex, sort.direction);
       });
     }
@@ -7035,16 +6988,15 @@
     // Cột đang sắp xếp của bảng (tableSearchKey -> tbody) dưới dạng { label, direction } để server sắp file xuất giống màn hình.
     // Hai bảng công nợ tự sắp theo chỉ số cột nên gửi qua context (debtSort / debtAgingSort), không dùng hàm này.
     function currentExportSort(tableSearchKey) {
-      const tbodyId = (state.tableTableBodies || {})[tableSearchKey];
-      const sort = tbodyId ? state.tableSorts[tbodyId] : null;
-      const tbody = sort ? document.getElementById(tbodyId) : null;
-      const table = tbody ? tbody.closest('table') : null;
-      const th = table ? table.querySelectorAll('thead th')[sort.columnIndex] : null;
-      if (!th) return null;
-      const button = th.querySelector('.sort-button');
-      const label = (button && button.firstElementChild ? button.firstElementChild.textContent : th.textContent).trim();
-      return label ? { label: label, direction: sort.direction === 'desc' ? 'desc' : 'asc' } : null;
+      const tbodyId=(state.tableTableBodies||{})[tableSearchKey];
+      const tbody=tbodyId && document.getElementById(tbodyId);
+      if (!tbody) return null;
+      const headers=tbody.closest('table').querySelectorAll('thead th');
+      const sorts=tableSortList(state.tableSorts[tbodyId]).map(sort=>{const th=headers[sort.columnIndex];const label=th && th.querySelector('.sort-label');return {label:label?label.textContent.trim():th?th.textContent.trim():'',direction:sort.direction};}).filter(sort=>sort.label);
+      return sorts.length ? sorts : null;
     }
+
+    function exportDebtSort(value) { const sorts=tableSortList(value); return sorts.length===1 ? sorts[0] : sorts.length ? sorts : null; }
 
     function buildExportPayload(tableKey) {
       const payload = {
@@ -7056,14 +7008,14 @@
           debtSale: state.debtFilters.sale,
           debtSchedule: state.debtFilters.schedule,
           debtSearch: state.debtFilters.search,
-          debtSort: state.tableSorts.debtManagementRows || null,
+          debtSort: exportDebtSort(state.tableSorts.debtManagementRows),
           debtTeam: state.debtFilters.team,
           debtAgingTeam: state.debtAgingFilters.team,
           debtPenaltyTeam: state.debtPenaltyTeam,
           debtAgingSale: state.debtAgingFilters.sale,
           debtAgingSchedule: state.debtAgingFilters.schedule,
           debtAgingSearch: state.debtAgingFilters.search,
-          debtAgingSort: state.tableSorts.debtAgingRows || null,
+          debtAgingSort: exportDebtSort(state.tableSorts.debtAgingRows),
           debtRewardMonth: state.debtPenaltyBoard.selectedMonth || state.debtPenaltyBoard.month || null,
           customerProductCustomerCode: (state.customerProductReport.customer || {}).code || '',
           customerProductCustomerName: (state.customerProductReport.customer || {}).name || '',
@@ -7075,6 +7027,7 @@
         if (history) {
           Object.assign(payload.context, history.context);
           payload.columns = history.columns;
+          if (history.tableSorts) payload.tableSorts = history.tableSorts;
           if (history.tableSort) payload.tableSort = history.tableSort;
         }
         return payload;
@@ -8377,7 +8330,7 @@
       // moi trang chi co toi da TABLE_PAGE_SIZE dong trong tong so du lieu.
       const activeSort = state.tableSorts[ids.tbody];
       const sortedItems = (activeSort && !preSorted)
-        ? sortItemsByRenderedColumn(filtered.items, rowHtmlFn, activeSort.columnIndex, activeSort.direction)
+        ? sortItemsByRenderedColumn(filtered.items, rowHtmlFn, activeSort)
         : filtered.items;
 
       const result = paginate(sortedItems, state.tablePages[tableKey] || 1, TABLE_PAGE_SIZE);
@@ -8398,7 +8351,7 @@
       }
 
       if (activeSort) {
-        updateTableSortHeader(ids.tbody, activeSort.columnIndex, activeSort.direction);
+        updateTableSortHeader(ids.tbody, activeSort);
       }
 
       const pagination = document.getElementById(ids.pagination);
@@ -8449,7 +8402,7 @@
     }
 
     function productContainerQuantityCell(value) {
-      return '<td class="mono" data-sort-value="' + (value == null ? '-1' : escapeHtml(String(value))) + '">' +
+      return '<td class="mono" data-sort-value="' + (value == null ? '' : escapeHtml(String(value))) + '">' +
         (value == null ? '—' : fmtNumber(value)) + '</td>';
     }
 
@@ -8550,7 +8503,7 @@
         '<td class="pr-desc">' + (p.topCustomerName ? escapeHtml(p.topCustomerName) : '<span class="muted">—</span>') + '</td>' +
         (hasShare
           ? productReportLinkCell(p.topCustomerShare, 'customers', formatDebtRatio(p.topCustomerShare), 'Xem danh sách khách của ' + p.code, p.topCustomerShare)
-          : '<td class="mono" data-sort-value="-1">—</td>') +
+          : '<td class="mono">—</td>') +
         productReportNullableCell(p.priceHanoi, fmtNumber) + productReportNullableCell(p.priceSaigon, fmtNumber) +
         productReportDescriptionCell(p.descriptionHanoi) + productReportDescriptionCell(p.descriptionSaigon) +
         '</tr>';
@@ -8729,7 +8682,7 @@
     }
 
     function productDetailRowHtml(row) {
-      const share = row.share === null || row.share === undefined ? -1 : row.share;
+      const share = row.share === null || row.share === undefined ? '' : row.share;
       return '<tr><td class="name-cell">' + escapeHtml(row.customerName || 'Khách lẻ') + '</td>' +
         '<td class="mono" data-sort-value="' + row.revenue + '">' + fmtTableMoney(row.revenue) + '</td>' +
         '<td class="mono" data-sort-value="' + share + '">' + formatDebtRatio(row.share) + '</td></tr>';
@@ -8952,7 +8905,7 @@
         if (search.mode === 'codes') params.set('qmode', 'codes');
       }
       const sort = currentExportSort('expectedArrivals');
-      if (sort) { params.set('sortLabel', sort.label); params.set('sortDir', sort.direction); }
+      if (sort) { params.set('sorts', JSON.stringify(sort)); params.set('sortLabel', sort[0].label); params.set('sortDir', sort[0].direction); }
       return params.toString();
     }
 
@@ -9101,7 +9054,7 @@
             : '<td class="mono muted">' + escapeHtml(r.code) + '</td><td class="name-cell">' + escapeHtml(r.name) + '</td>';
         return '<tr class="doc-row" tabindex="0" title="Bấm để xem chi tiết" data-table-item-id="' + escapeHtml(r.key) + '">' + fixed +
           money(r.avg4) +
-          '<td class="mono" data-sort-value="' + (r.growth === null || r.growth === undefined ? -1 : r.growth) + '">' + businessGrowthHtml(r.growth) + '</td>' +
+          '<td class="mono" data-sort-value="' + (r.growth === null || r.growth === undefined ? '' : r.growth) + '">' + businessGrowthHtml(r.growth) + '</td>' +
           money(r.current) + months.map(m => money(r.series[m])).join('') + '</tr>';
       };
     }
@@ -9393,7 +9346,7 @@
         if (search.mode === 'codes') params.set('qmode', 'codes');
       }
       const sort = currentExportSort(BUSINESS_TABLE_KEYS[kind]);
-      if (sort) { params.set('sortLabel', sort.label); params.set('sortDir', sort.direction); }
+      if (sort) { params.set('sorts', JSON.stringify(sort)); params.set('sortLabel', sort[0].label); params.set('sortDir', sort[0].direction); }
       if (kind === 'sales') {
         const team = document.getElementById('businessSalesTeam').value;
         if (team) params.set('team', team);
@@ -10887,7 +10840,7 @@
     // khi có hàng trăm khách); thanh nhỏ so với khách lớn nhất.
     function productDetailRowHtml(row, index, maxRevenue) {
       const name = row.customerName || 'Khách lẻ';
-      const share = row.share === null || row.share === undefined ? -1 : row.share;
+      const share = row.share === null || row.share === undefined ? '' : row.share;
       const color = categoryColor(name, index, 0);
       const barWidth = maxRevenue > 0 ? Math.max(2, Math.min(100, Math.round(row.revenue / maxRevenue * 100))) : 0;
       return '<tr data-slice="' + index + '"><td class="dp-cell-main"><span class="dp-swatch" style="background:' + color + '"></span>' + escapeHtml(name) + '</td>' +
@@ -11975,32 +11928,17 @@
     }
 
     function sortDebtCustomers(customers) {
-      const sort = state.tableSorts.debtManagementRows;
-      if (!sort) return customers.slice();
-      const field = DEBT_SORT_FIELDS[sort.columnIndex];
-      if (!field) return customers.slice();
-      return customers.map(function (customer, index) { return { customer: customer, index: index }; })
-        .sort(function (left, right) {
-          let a = left.customer[field];
-          let b = right.customer[field];
-          if (field === 'branchLabel') {
-            a = debtBranchLabel(left.customer);
-            b = debtBranchLabel(right.customer);
-          }
-          if (field === 'alertCodes') {
-            a = (a || []).join(',');
-            b = (b || []).join(',');
-          }
-          const aEmpty = a === null || a === undefined || a === '';
-          const bEmpty = b === null || b === undefined || b === '';
-          if (aEmpty !== bEmpty) return aEmpty ? 1 : -1;
-          let comparison = 0;
-          if (typeof a === 'number' && typeof b === 'number') comparison = a - b;
-          else comparison = String(a).localeCompare(String(b), 'vi', { numeric: true, sensitivity: 'base' });
-          if (comparison === 0) comparison = left.index - right.index;
-          return sort.direction === 'asc' ? comparison : -comparison;
-        })
-        .map(function (entry) { return entry.customer; });
+      const sorts=tableSortList(state.tableSorts.debtManagementRows);
+      return customers.slice().sort(function(left,right) {
+        for (const sort of sorts) {
+          const field=DEBT_SORT_FIELDS[sort.columnIndex];
+          if (!field) continue;
+          function value(row) { let v=field==='branchLabel' ? debtBranchLabel(row) : row[field]; if (field==='alertCodes') v=(v||[]).join(','); return {empty:v==null||v==='',number:typeof v==='number'?v:null,text:String(v==null?'':v)}; }
+          const result=compareTableValues(value(left),value(right),sort.direction);
+          if (result) return result;
+        }
+        return 0;
+      });
     }
 
     // Lich TT la so ngay tuy y (1..90): bo loc lay tu cac gia tri dang co trong du lieu.
@@ -12220,23 +12158,17 @@
     }
 
     function sortDebtAgingCustomers(customers) {
-      const sort = state.tableSorts.debtAgingRows;
-      const field = sort && DEBT_AGING_SORT_FIELDS[sort.columnIndex];
-      if (!field) return customers.slice();
-      return customers.map(function (customer, index) { return { customer: customer, index: index }; })
-        .sort(function (left, right) {
-          const a = left.customer[field];
-          const b = right.customer[field];
-          const aEmpty = a === null || a === undefined || a === '';
-          const bEmpty = b === null || b === undefined || b === '';
-          if (aEmpty !== bEmpty) return aEmpty ? 1 : -1;
-          let comparison = 0;
-          if (typeof a === 'number' && typeof b === 'number') comparison = a - b;
-          else comparison = String(a).localeCompare(String(b), 'vi', { numeric: true, sensitivity: 'base' });
-          if (comparison === 0) comparison = left.index - right.index;
-          return sort.direction === 'asc' ? comparison : -comparison;
-        })
-        .map(function (entry) { return entry.customer; });
+      const sorts=tableSortList(state.tableSorts.debtAgingRows);
+      return customers.slice().sort(function(left,right) {
+        for (const sort of sorts) {
+          const field=DEBT_AGING_SORT_FIELDS[sort.columnIndex];
+          if (!field) continue;
+          function value(row) { let v=field==='branchLabel' ? debtBranchLabel(row) : row[field]; if (field==='alertCodes') v=(v||[]).join(','); return {empty:v==null||v==='',number:typeof v==='number'?v:null,text:String(v==null?'':v)}; }
+          const result=compareTableValues(value(left),value(right),sort.direction);
+          if (result) return result;
+        }
+        return 0;
+      });
     }
 
     function renderDebtAging() {

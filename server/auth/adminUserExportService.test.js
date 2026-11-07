@@ -55,3 +55,10 @@ test('lọc giống trang Tài khoản: cơ sở HN gồm cả "Cả hai", trạ
   assert.deepEqual((await load(['hoTen'], { q: 'binh zzz' })).rows.map(r => r[0]), []);
   assert.deepEqual((await load(['hoTen'], { role: 'Khách' })).rows.map(r => r[0]), ['Cường']);
 });
+
+test('ordered user export preserves all filtered rows and ignores unknown identifiers', async () => {
+  const { rows }=await load(['username'],{orderedIds:JSON.stringify(['cuong','binh','not-authorized'])});
+  assert.deepEqual(rows.map(row=>row[0]),['cuong','binh','an']);
+  const filtered=await load(['username'],{role:'Kế toán',orderedIds:JSON.stringify(['cuong','binh'])});
+  assert.deepEqual(filtered.rows.map(row=>row[0]),['binh']);
+});

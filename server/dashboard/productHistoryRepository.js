@@ -24,10 +24,12 @@ const SORT_SQL = Object.freeze({
   quantity: 'quantity'
 });
 
-async function readProductHistory({ code, q = '', type = 'all', sort = 'time', dir = 'desc', page, pageSize, pool, now = new Date() } = {}, exportAll = false) {
+async function readProductHistory({ code, q = '', type = 'all', sort = 'time', dir = 'desc', sorts, page, pageSize, pool, now = new Date() } = {}, exportAll = false) {
   if (typeof code !== 'string' || !code.trim() || code.length > 200 || typeof q !== 'string' || q.length > 500
     || !['all', 'invoice', 'return', 'order'].includes(type)
     || typeof sort !== 'string' || !Object.hasOwn(SORT_SQL, sort) || !['asc', 'desc'].includes(dir)) throw invalid();
+  const layers = require('../shared/multiSort').normalizeSortsStrict(sorts, Object.keys(SORT_SQL), sort, dir);
+  const ordering = require('../shared/multiSort').orderBy(layers.length ? layers : [{key: sort, dir}], SORT_SQL);
   page = integer(page, 1, 1000000);
   pageSize = integer(pageSize, 25, 100);
   const to = vnDateKey(now), from = addDaysToKey(to, -89);
@@ -95,7 +97,7 @@ async function readProductHistory({ code, q = '', type = 'all', sort = 'time', d
     SELECT branch, id::text AS "documentId", code AS "documentCode", type,
       to_char(time AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS') AS time,
       customer_name AS "customerName", quantity, NULL::numeric AS "unitCost"
-    FROM filtered ORDER BY ${SORT_SQL[sort]} ${dir.toUpperCase()}, branch, type, id DESC
+    FROM filtered ORDER BY ${ordering}, branch, type, id DESC
     ${exportAll ? '' : `LIMIT ${sizeParam}::int OFFSET (meta.page - 1) * ${sizeParam}::int`}
   ) paged), '[]'::jsonb) AS rows FROM meta`;
   const { rows: [result] } = await (pool || getPool()).query(sql, values);

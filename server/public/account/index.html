@@ -15,7 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="/shared/shared.css?v=20261028-leave-btn">
+<link rel="stylesheet" href="/shared/shared.css?v=20261107-3">
 <script src="/shared/motion.js?v=20261024-1" defer></script>
   <link rel="stylesheet" href="/shared/search-clear.css?v=20261009-1">
 <style>
@@ -650,11 +650,11 @@
               <table class="users-table fixed-table" id="usersTable" data-table-key="usersTable" data-columns-button="usersColumnsBtn">
                 <thead>
                   <tr>
-                    <th class="sortable" onclick="handleSort('hoTen')" style="width:260px" data-column-key="hoTen" data-column-locked="true" aria-sort="none"><button type="button" class="sort-button"><span class="sort-label">Họ và tên</span><span class="sort-indicator" id="sort-hoTen" aria-hidden="true">▲▼</span></button></th>
-                    <th class="sortable" onclick="handleSort('username')" style="width:240px" data-column-key="username" aria-sort="none"><button type="button" class="sort-button"><span class="sort-label">Tài khoản</span><span class="sort-indicator" id="sort-username" aria-hidden="true">▲▼</span></button></th>
-                    <th class="sortable" onclick="handleSort('vaiTro')" style="width:200px" data-column-key="vaiTro" aria-sort="none"><button type="button" class="sort-button"><span class="sort-label">Vai trò</span><span class="sort-indicator" id="sort-vaiTro" aria-hidden="true">▲▼</span></button></th>
-                    <th class="sortable" onclick="handleSort('coSo')" style="width:110px" data-column-key="coSo" aria-sort="none"><button type="button" class="sort-button"><span class="sort-label">Cơ sở</span><span class="sort-indicator" id="sort-coSo" aria-hidden="true">▲▼</span></button></th>
-                    <th class="sortable" onclick="handleSort('trangThai')" style="width:130px" data-column-key="trangThai" aria-sort="none"><button type="button" class="sort-button"><span class="sort-label">Trạng thái</span><span class="sort-indicator" id="sort-trangThai" aria-hidden="true">▲▼</span></button></th>
+                    <th class="sortable" onclick="handleSort('hoTen',event)" style="width:260px" data-column-key="hoTen" data-column-locked="true" aria-sort="none"><button type="button" class="sort-button"><span class="sort-label">Họ và tên</span><span class="sort-indicator" id="sort-hoTen" aria-hidden="true">▲▼</span></button></th>
+                    <th class="sortable" onclick="handleSort('username',event)" style="width:240px" data-column-key="username" aria-sort="none"><button type="button" class="sort-button"><span class="sort-label">Tài khoản</span><span class="sort-indicator" id="sort-username" aria-hidden="true">▲▼</span></button></th>
+                    <th class="sortable" onclick="handleSort('vaiTro',event)" style="width:200px" data-column-key="vaiTro" aria-sort="none"><button type="button" class="sort-button"><span class="sort-label">Vai trò</span><span class="sort-indicator" id="sort-vaiTro" aria-hidden="true">▲▼</span></button></th>
+                    <th class="sortable" onclick="handleSort('coSo',event)" style="width:110px" data-column-key="coSo" aria-sort="none"><button type="button" class="sort-button"><span class="sort-label">Cơ sở</span><span class="sort-indicator" id="sort-coSo" aria-hidden="true">▲▼</span></button></th>
+                    <th class="sortable" onclick="handleSort('trangThai',event)" style="width:130px" data-column-key="trangThai" aria-sort="none"><button type="button" class="sort-button"><span class="sort-label">Trạng thái</span><span class="sort-indicator" id="sort-trangThai" aria-hidden="true">▲▼</span></button></th>
                   </tr>
                 </thead>
                 <tbody id="usersTableBody">
@@ -695,7 +695,7 @@
 
           <div class="users-table-panel">
             <div class="users-table-scroll">
-              <table class="users-table fixed-table" id="historyTable" data-table-key="historyTable">
+              <table class="users-table fixed-table" id="historyTable" data-table-sort="local" data-table-key="historyTable">
                 <thead>
                   <tr>
                     <th style="width:150px" data-column-key="thoi-gian">Thời gian</th>
@@ -1042,7 +1042,7 @@
 
   <!-- Đặt ở cuối thẻ body thay vì trong <head>: script chặn phân tích cú pháp trong <head> sẽ làm dừng việc xử lý toàn bộ tài liệu. Không dùng `defer` vì script inline bên dưới dùng TKSNav ở cấp cao nhất, và script inline luôn chạy trước script defer. -->
   <script src="/shared/filter-links.js?v=20261029-1"></script>
-  <script src="/shared/table-controls.js?v=20261030-1"></script>
+  <script src="/shared/table-controls.js?v=20261107-3"></script>
   <script src="/shared/fuzzy-search.js?v=20261021"></script>
   <script src="/shared/search-clear.js?v=20261009-1"></script>
   <script src="/shared/shared-nav.js?v=20261105-kho"></script>
@@ -1103,8 +1103,9 @@
     let rawAdminUsers = [];
     let sortField = 'ngayTao';
     let sortAsc = false;
+    let userSorts = [{key:'ngayTao',dir:'desc'}];
     // Biểu tượng sắp xếp dùng chung mọi bảng (vị trí/màu ở shared/shared.css): chưa sắp ▲▼ · tăng dần ▼ · giảm dần ▲.
-    const SORT_GLYPH = { none: '▲▼', ascending: '▼', descending: '▲' };
+    const SORT_GLYPH = { none: '▲▼', ascending: '▲', descending: '▼' };
 
     function syncThemeControl(){
       const isLight = document.documentElement.dataset.theme === 'light';
@@ -1881,57 +1882,52 @@
         return matchRole && matchFac && matchStatus;
       });
 
-      // Sorting
-      if(sortField) filtered.sort((a, b) => {
-        // Cot thoi gian ("Ngay tao", dd/MM/yyyy): sap theo THOI GIAN that — so sanh chuoi se xep 30/09 sau 01/10.
-        // Tai khoan chua co ngay tao luon xuong cuoi, bat ke chieu sap xep.
-        if(sortField === 'ngayTao' || sortField === 'dangNhapGanNhat'){
-          const timeA = parseVnDateTime(a[sortField]);
-          const timeB = parseVnDateTime(b[sortField]);
-          if(timeA === null || timeB === null){
-            if(timeA === timeB) return 0;
-            return timeA === null ? 1 : -1;
-          }
-          return sortAsc ? timeA - timeB : timeB - timeA;
+      filtered.sort((a,b) => {
+        for (const sort of userSorts) {
+          const date=['ngayTao','dangNhapGanNhat'].includes(sort.key);
+          const av=date?parseVnDateTime(a[sort.key]):userColumnValue(a,sort.key);
+          const bv=date?parseVnDateTime(b[sort.key]):userColumnValue(b,sort.key);
+          const ae=av==null||av==='',be=bv==null||bv==='';
+          if(ae!==be) return ae?1:-1;
+          if(ae) continue;
+          const cmp=typeof av==='number'&&typeof bv==='number'?av-bv:String(av).localeCompare(String(bv),'vi',{numeric:true,sensitivity:'base'});
+          if(cmp) return sort.dir==='desc'?-cmp:cmp;
         }
-        let valA = userColumnValue(a, sortField);
-        let valB = userColumnValue(b, sortField);
-        if(typeof valA === 'string') valA = valA.toLowerCase();
-        if(typeof valB === 'string') valB = valB.toLowerCase();
-        if(valA < valB) return sortAsc ? -1 : 1;
-        if(valA > valB) return sortAsc ? 1 : -1;
         return 0;
       });
 
+      syncUserSortHeaders();
       currentFilteredUsers = filtered;
       // The chi so tinh lai theo tu khoa + bo loc tren toan bo dong da loc.
       renderKPIs(filtered);
       paginateUsersTable();
     }
 
-    function handleSort(field){
-      if(sortField === field){
-        if(sortAsc) sortAsc = false;
-        else { sortField = null; sortAsc = true; }
-      } else {
-        sortField = field;
-        sortAsc = true;
-      }
-
-      // Update sort indicators
-      userColumnCatalog.forEach(({ key: f }) => {
-        const icon = document.getElementById(`sort-${f}`);
-        if(icon){
-          const state = f === sortField ? (sortAsc ? 'ascending' : 'descending') : 'none';
-          icon.textContent = SORT_GLYPH[state];
-          const th = icon.closest('th');
-          if(th) th.setAttribute('aria-sort', state);
-          const button = th && th.querySelector('.sort-button');
-          if(button) button.title = state === 'ascending' ? 'Sắp xếp giảm dần' : state === 'descending' ? 'Bỏ sắp xếp' : 'Sắp xếp tăng dần';
-        }
-      });
-
+    function handleSort(field,event){
+      const current=userSorts.find(sort=>sort.key===field);
+      const next=current?current.dir==='asc'?'desc':null:'asc';
+      if(event && event.shiftKey){
+        if(current){if(next) current.dir=next;else userSorts=userSorts.filter(sort=>sort!==current);}
+        else userSorts.push({key:field,dir:'asc'});
+      }else userSorts=next?[{key:field,dir:next}]:[];
+      sortField=userSorts.length?userSorts[0].key:null;
+      sortAsc=userSorts.length?userSorts[0].dir==='asc':true;
+      syncUserSortHeaders();
+      userPaging.page=1;
       handleFilterUsers();
+    }
+    function syncUserSortHeaders(){
+      userColumnCatalog.forEach(({key})=>{
+        const icon=document.getElementById('sort-'+key);
+        if(!icon) return;
+        const priority=userSorts.findIndex(sort=>sort.key===key),sort=userSorts[priority];
+        const direction=sort?(sort.dir==='asc'?'ascending':'descending'):'none';
+        icon.textContent=SORT_GLYPH[direction]+(sort?' '+(priority+1):'');
+        icon.closest('th').setAttribute('aria-sort',priority===0?direction:'none');
+        icon.closest('th').dataset.sortActive=String(!!sort);
+        const button=icon.closest('th').querySelector('.sort-button');
+        if(button) { button.title=(sort?'Ưu tiên '+(priority+1)+', '+(sort.dir==='asc'?'tăng dần':'giảm dần'):'Sắp xếp tăng dần')+' · Shift+bấm để thêm mức sắp xếp'; button.setAttribute('aria-label',button.firstElementChild.textContent+' · '+button.title); }
+      });
     }
 
     function getRoleBadgeHtml(role){
@@ -1973,7 +1969,7 @@
       document.querySelector('#usersTable thead tr').innerHTML = userColumnCatalog.map(field => {
         const key = field.key;
         const sortState = sortField === key ? (sortAsc ? 'ascending' : 'descending') : 'none';
-        return `<th class="sortable" aria-sort="${sortState}" data-field="${escapeHtml(key)}" data-column-key="${escapeHtml(key)}" onclick="handleSort('${key}')" style="width:${key === 'hoTen' ? 260 : key === 'username' ? 240 : 180}px"><button type="button" class="sort-button"><span class="sort-label">${escapeHtml(key === 'username' ? 'Tài khoản' : field.label)}</span><span class="sort-indicator" id="sort-${key}" aria-hidden="true">${SORT_GLYPH[sortState]}</span></button></th>`;
+        return `<th class="sortable" aria-sort="${sortState}" data-field="${escapeHtml(key)}" data-column-key="${escapeHtml(key)}" onclick="handleSort('${key}',event)" style="width:${key === 'hoTen' ? 260 : key === 'username' ? 240 : 180}px"><button type="button" class="sort-button"><span class="sort-label">${escapeHtml(key === 'username' ? 'Tài khoản' : field.label)}</span><span class="sort-indicator" id="sort-${key}" aria-hidden="true">${SORT_GLYPH[sortState]}</span></button></th>`;
       }).join('');
       if(window.TKSTables) window.TKSTables.enhance(document.getElementById('usersTable'), {
         columns: userColumnCatalog.map(field => ({ key: field.key, label: field.key === 'username' ? 'Tài khoản' : field.label, hidden: !DEFAULT_USER_COLUMNS.includes(field.key), locked: field.key === 'hoTen' })),
@@ -2494,6 +2490,7 @@
         coSo: document.getElementById('userFacilityFilter').value,
         trangThai: document.getElementById('userStatusFilter').value
       });
+      params.set('orderedIds', JSON.stringify(currentFilteredUsers.map(u=>String(u.username))));
       btn.disabled = true;
       try{
         const res = await fetch('/api/admin/users/export?' + params.toString(), { credentials: 'same-origin' });

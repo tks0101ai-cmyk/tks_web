@@ -15,7 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Noto+Serif:wght@400;600;700&family=Roboto:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="/shared/shared.css?v=20261028-leave-btn">
+<link rel="stylesheet" href="/shared/shared.css?v=20261107-3">
 <script src="/shared/motion.js?v=20261024-1" defer></script>
   <link rel="stylesheet" href="/shared/search-clear.css?v=20261009-1">
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261016">
@@ -1913,7 +1913,7 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <script src="/shared/filter-links.js?v=20261029-1"></script>
-  <script src="/shared/table-controls.js?v=20261030-1"></script>
+  <script src="/shared/table-controls.js?v=20261107-3"></script>
   <script src="/shared/rte-table.js?v=20261026"></script>
   <script src="/shared/fuzzy-search.js?v=20261021"></script>
   <script src="/shared/search-clear.js?v=20261009-1"></script>
@@ -3740,7 +3740,7 @@
           <td data-sort-value="${leaveBoundaryToTimestamp(r.thoi_gian_bat_dau)}">${escapeHtml(r.thoi_gian_bat_dau) || '—'}<br>→ ${escapeHtml(r.thoi_gian_ket_thuc) || '—'}</td>
           <td data-sort-value="${r.tong_buoi_nghi || ''}">${r.tong_buoi_nghi || '—'} buổi (${fmtSoNgay(r.tong_ngay_nghi)} ngày)</td>
           <td>${escapeHtml(r.nguoi_ban_giao) || '—'}</td>
-          <td data-sort-value="${escapeHtml(r.trang_thai)}">${statusHtml}${r.timing_status ? `<br><span class="status-pill timing-label ${r.timing_status === 'Vi phạm' ? 'leave-violation' : r.timing_status === 'Xin muộn' ? 'leave-pending' : 'leave-approved'}">${escapeHtml(r.timing_status)}</span>` : ''}${r.routingWarning ? `<br><span class="urgent-badge">${escapeHtml(r.routingWarning)}</span>` : ''}</td>
+          <td data-sort-text="${escapeHtml(r.trang_thai)}">${statusHtml}${r.timing_status ? `<br><span class="status-pill timing-label ${r.timing_status === 'Vi phạm' ? 'leave-violation' : r.timing_status === 'Xin muộn' ? 'leave-pending' : 'leave-approved'}">${escapeHtml(r.timing_status)}</span>` : ''}${r.routingWarning ? `<br><span class="urgent-badge">${escapeHtml(r.routingWarning)}</span>` : ''}</td>
         </tr>`;
       }).join('');
       applyActiveTableSorts();
@@ -3864,7 +3864,7 @@
         const rowEl = document.getElementById(`leave-row-${requestId}`);
         if(rowEl){
           const statusCell = selectEl.closest('td');
-          if(statusCell) statusCell.setAttribute('data-sort-value', newStatus);
+          if(statusCell) statusCell.setAttribute('data-sort-text', newStatus);
         }
 
         renderStats(rawLeaveRequests);
@@ -4525,7 +4525,7 @@
       employeePaging.page = 1;
       if(employeeCanManage){
         tbody.innerHTML = filtered.map((e,index) => `<tr class="employee-row-clickable" data-employee-id="${escapeHtml(e.id)}">${EMPLOYEE_MANAGER_HEAD.map(c=>employeeCellHtml(c[1],e,index)).join('')}</tr>`).join('');
-      }else tbody.innerHTML = filtered.map(e => `<tr>
+      }else tbody.innerHTML = filtered.map(e => `<tr data-employee-export-id="${escapeHtml(e.id)}">
         <td class="emp-name-cell">${escapeHtml(e.hoTen) || '—'}</td>
         <td>${escapeHtml(e.boPhan) || '—'}</td>
         <td>${escapeHtml(e.coSo) || '—'}</td>
@@ -4827,7 +4827,7 @@
 
     // ---------- Sort bang (port tu server/public/index.html) ----------
     // Bieu tuong sap xep dung chung moi bang (vi tri/mau o shared/shared.css): chua sap ▲▼ · tang dan ▼ · giam dan ▲.
-    const SORT_GLYPH = { none: '▲▼', ascending: '▼', descending: '▲' };
+    const SORT_GLYPH = { none: '▲▼', ascending: '▲', descending: '▼' };
     function initSortableTables(){
       document.querySelectorAll('table').forEach(function (table) {
         const tbody = table.tBodies[0];
@@ -4853,7 +4853,7 @@
           indicator.setAttribute('aria-hidden', 'true');
           indicator.textContent = SORT_GLYPH.none;
           button.append(labelSpan, indicator);
-          button.addEventListener('click', function () { setTableSort(tbody.id, columnIndex); });
+          button.addEventListener('click', function (event) { setTableSort(tbody.id, columnIndex, event); });
           th.replaceChildren(button);
         });
       });
@@ -4892,81 +4892,77 @@
         }
         return { empty: false, number: number, text: text };
       }
+      if(cell.hasAttribute('data-sort-text')) { const text=cell.getAttribute('data-sort-text').trim(); return {empty:!text || text==='—',number:null,text:text}; }
       if(cell.hasAttribute('data-sort-value')){
-        const numberValue = Number(cell.getAttribute('data-sort-value'));
+        const rawSortValue=cell.getAttribute('data-sort-value');
+        const numberValue = rawSortValue.trim()==='' ? NaN : Number(rawSortValue);
         return { empty: !Number.isFinite(numberValue), number: numberValue, text: '' };
       }
       const textValue = cell.textContent.replace(/\s+/g, ' ').trim();
       return { empty: !textValue || textValue === '—', number: null, text: textValue };
     }
 
-    function sortTableRows(tbodyId, columnIndex, direction){
-      const tbody = document.getElementById(tbodyId);
-      if(!tbody) return;
-      const rows = Array.from(tbody.rows).filter(function (row) {
-        return row.cells.length > columnIndex && row.cells[0].colSpan === 1;
-      });
-      if(rows.length < 2) return;
-
-      rows.forEach(function (row, index) {
-        if(!row.hasAttribute('data-sort-original-index')) row.dataset.sortOriginalIndex = index;
-      });
-
-      rows
-        .map(function (row, originalIndex) {
-          return { row: row, originalIndex: originalIndex, value: getTableSortValue(row.cells[columnIndex]) };
-        })
-        .sort(function (a, b) {
-          if(a.value.empty !== b.value.empty) return a.value.empty ? 1 : -1;
-          let comparison = 0;
-          if(a.value.number !== null && b.value.number !== null){
-            comparison = a.value.number - b.value.number;
-          } else {
-            comparison = a.value.text.localeCompare(b.value.text, 'vi', { numeric: true, sensitivity: 'base' });
-          }
-          if(comparison === 0) return a.originalIndex - b.originalIndex;
-          return direction === 'asc' ? comparison : -comparison;
-        })
-        .forEach(function (item) { tbody.appendChild(item.row); });
+    function tableSortList(value, direction) {
+      return Array.isArray(value) ? value : value && typeof value === 'object' ? [value] : Number.isInteger(value) && value >= 0 ? [{columnIndex:value, direction:direction}] : [];
     }
-
-    function updateTableSortHeader(tbodyId, columnIndex, direction){
-      const tbody = document.getElementById(tbodyId);
-      if(!tbody) return;
-      const headers = tbody.closest('table').querySelectorAll('thead th');
-      headers.forEach(function (th, index) {
-        const button = th.querySelector('.sort-button');
-        const indicator = th.querySelector('.sort-indicator');
-        const label = button ? button.firstElementChild.textContent : th.textContent.trim();
-        const isActive = index === columnIndex;
-        th.setAttribute('aria-sort', isActive ? (direction === 'asc' ? 'ascending' : 'descending') : 'none');
-        if(indicator) indicator.textContent = isActive ? (direction === 'asc' ? SORT_GLYPH.ascending : SORT_GLYPH.descending) : SORT_GLYPH.none;
-        if(button){
-          const nextAction = isActive
-            ? (direction === 'asc' ? 'Sắp xếp giảm dần' : 'Bỏ sắp xếp')
-            : 'Sắp xếp tăng dần';
-          button.title = nextAction + ' theo ' + label;
-          button.setAttribute('aria-label', nextAction + ' theo cột ' + label);
-        }
-      });
+    function nextTableSorts(current, columnIndex, add) {
+      const sorts = tableSortList(current).map(s => ({columnIndex:s.columnIndex, direction:s.direction}));
+      const active = sorts.find(s => s.columnIndex === columnIndex);
+      const next = active ? active.direction === 'asc' ? 'desc' : null : 'asc';
+      if (!add) return next ? [{columnIndex:columnIndex, direction:next}] : [];
+      if (active) { if (next) active.direction=next; else sorts.splice(sorts.indexOf(active),1); }
+      else sorts.push({columnIndex:columnIndex, direction:'asc'});
+      return sorts;
     }
-
-    function setTableSort(tbodyId, columnIndex){
-      const current = state.tableSorts[tbodyId];
-      if(current && current.columnIndex === columnIndex && current.direction === 'desc'){
-        delete state.tableSorts[tbodyId];
-        restoreTableRowOrder(tbodyId);
-        updateTableSortHeader(tbodyId, -1, null);
-        if(tbodyId === 'leaveTableBody') { leavePaging.page = 1; paginateLeaveTable(); }
-        if(tbodyId === 'employeeDirectoryTableBody') { employeePaging.page = 1; paginateEmployeeDirectoryTable(); }
-        return;
+    function compareTableValues(a, b, direction) {
+      if (a.empty !== b.empty) return a.empty ? 1 : -1;
+      if (a.empty) return 0;
+      const comparison = a.number !== null && b.number !== null ? a.number-b.number : a.text.localeCompare(b.text,'vi',{numeric:true,sensitivity:'base'});
+      return direction === 'desc' ? -comparison : comparison;
+    }
+    function compareTableRows(a, b, sorts) {
+      for (const sort of sorts) {
+        const comparison=compareTableValues(getTableSortValue(a.cells[sort.columnIndex]),getTableSortValue(b.cells[sort.columnIndex]),sort.direction);
+        if (comparison) return comparison;
       }
-      const direction = current && current.columnIndex === columnIndex ? 'desc' : 'asc';
-      state.tableSorts[tbodyId] = { columnIndex: columnIndex, direction: direction };
-      sortTableRows(tbodyId, columnIndex, direction);
-      updateTableSortHeader(tbodyId, columnIndex, direction);
+      return 0;
+    }
+    function sortTableRows(tbodyId, columnIndex, direction) {
+      const tbody=document.getElementById(tbodyId);
+      if (!tbody) return;
+      const sorts=tableSortList(columnIndex,direction);
+      const rows=Array.from(tbody.rows).filter(row => row.cells[0] && row.cells[0].colSpan===1 && sorts.every(sort => row.cells[sort.columnIndex]));
+      rows.forEach((row,index) => { if (!row.hasAttribute('data-sort-original-index')) row.dataset.sortOriginalIndex=index; });
+      rows.sort((a,b) => compareTableRows(a,b,sorts) || Number(a.dataset.sortOriginalIndex)-Number(b.dataset.sortOriginalIndex));
+      const fragment=document.createDocumentFragment();
+      rows.forEach(row => fragment.appendChild(row));
+      tbody.appendChild(fragment);
+    }
+
+    function updateTableSortHeader(tbodyId, columnIndex, direction) {
+      const tbody=document.getElementById(tbodyId);
+      if (!tbody) return;
+      const sorts=tableSortList(state.tableSorts[tbodyId] || columnIndex,direction);
+      tbody.closest('table').querySelectorAll('thead th').forEach(function(th,index) {
+        const priority=sorts.findIndex(sort => sort.columnIndex===index);
+        const sort=sorts[priority];
+        th.setAttribute('aria-sort',priority===0 ? sort.direction==='asc' ? 'ascending' : 'descending' : 'none');
+        th.dataset.sortActive=String(!!sort);
+        const indicator=th.querySelector('.sort-indicator');
+        if (indicator) indicator.textContent=sort ? (sort.direction==='asc' ? SORT_GLYPH.ascending : SORT_GLYPH.descending)+' '+(priority+1) : SORT_GLYPH.none;
+        const button=th.querySelector('.sort-button');
+        if (button) { const label=button.firstElementChild.textContent; const action=sort ? sort.direction==='asc' ? 'Sắp xếp giảm dần' : 'Bỏ sắp xếp' : 'Sắp xếp tăng dần'; button.title=label+(sort?', ưu tiên '+(priority+1)+', '+(sort.direction==='asc'?'tăng dần':'giảm dần'):'')+' · '+action+' · Shift+bấm để thêm mức sắp xếp'; button.setAttribute('aria-label',button.title); }
+      });
+    }
+
+
+    function setTableSort(tbodyId, columnIndex, event) {
+      const sorts=nextTableSorts(state.tableSorts[tbodyId],columnIndex,!!(event && event.shiftKey));
+      if (sorts.length) state.tableSorts[tbodyId]=sorts; else delete state.tableSorts[tbodyId];
+      if (sorts.length) sortTableRows(tbodyId,sorts); else restoreTableRowOrder(tbodyId);
       if(tbodyId === 'leaveTableBody') { leavePaging.page = 1; paginateLeaveTable(); }
       if(tbodyId === 'employeeDirectoryTableBody') { employeePaging.page = 1; paginateEmployeeDirectoryTable(); }
+      updateTableSortHeader(tbodyId,sorts);
     }
 
     function restoreTableRowOrder(tbodyId){
@@ -4983,7 +4979,7 @@
     function applyActiveTableSorts(){
       Object.keys(state.tableSorts).forEach(function (tbodyId) {
         const sort = state.tableSorts[tbodyId];
-        sortTableRows(tbodyId, sort.columnIndex, sort.direction);
+        sortTableRows(tbodyId, sort);
         updateTableSortHeader(tbodyId, sort.columnIndex, sort.direction);
       });
       if(state.tableSorts['leaveTableBody']) paginateLeaveTable();
@@ -5007,6 +5003,7 @@
       if(fromDate && fromDate === toDate){
         payload.requestIds = visibleLeaveRequests(rawLeaveRequests).map(r => r.request_id).filter(Boolean);
       }
+      payload.sorts=tableSortList(leaveSort).map(sort=>({field:SORT_FIELD_BY_COLUMN[sort.columnIndex],dir:sort.direction})).filter(sort=>sort.field);
       if(leaveSort && SORT_FIELD_BY_COLUMN[leaveSort.columnIndex]){
         payload.sortField = SORT_FIELD_BY_COLUMN[leaveSort.columnIndex];
         payload.sortDir = leaveSort.direction;
@@ -5046,6 +5043,7 @@
       const btn = document.getElementById('btnExportEmployeeDirectory');
       const keyword = (document.getElementById('employeeDirectorySearchInput').value || '').trim();
       const params = new URLSearchParams({ keyword });
+      params.set('orderedIds',JSON.stringify(Array.from(document.querySelectorAll('#employeeDirectoryTableBody tr[data-employee-id],#employeeDirectoryTableBody tr[data-employee-export-id]')).map(row=>row.dataset.employeeId || row.dataset.employeeExportId)));
       const branch = selectedBranch('employeeBranchFilter');
       const department = document.getElementById('employeeDepartmentFilter').value;
       if(branch) params.set('branch', branch);

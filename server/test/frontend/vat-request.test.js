@@ -612,10 +612,10 @@ test('sap xep theo cot tren toan bo danh sach: tang dan -> giam dan -> ve thu tu
   header('quantity').click();
   assert.deepEqual(ids(), [3, 1, 2]);
   assert.equal(header('quantity').closest('th').getAttribute('aria-sort'), 'ascending');
-  assert.equal(header('quantity').querySelector('.sort-indicator').textContent, '▼');
+  assert.equal(header('quantity').querySelector('.sort-indicator').textContent, '▲1');
   header('quantity').click();
   assert.deepEqual(ids(), [2, 1, 3]);
-  assert.equal(header('quantity').querySelector('.sort-indicator').textContent, '▲');
+  assert.equal(header('quantity').querySelector('.sort-indicator').textContent, '▼1');
   header('quantity').click();
   assert.deepEqual(ids(), [1, 2, 3], 've thu tu goc');
   assert.equal(header('quantity').closest('th').getAttribute('aria-sort'), 'none');
@@ -1003,4 +1003,15 @@ test('thanh tab Ke toan: ORDER VAT dang chon, co Tra cuu VAT; khong con nut rien
   assert.deepEqual([...doc.querySelectorAll('#vrTabs a')].map(a => a.getAttribute('href')), ['/vat-draft/#tao-qr', '/vat-lookup/', '/vat-request/']);
   assert.equal(doc.querySelector('#vrTabs [aria-current="page"]').getAttribute('href'), '/vat-request/');
   assert.equal(doc.getElementById('vrLookupLink'), null);
+});
+
+test('Shift sorts VAT requests through three priorities, blanks last and removes one layer', async t => {
+  const rows=[row(1,{customerName:'A',quantity:3,unitPrice:2}),row(2,{customerName:'A',quantity:3,unitPrice:8}),row(3,{customerName:'A',quantity:null,unitPrice:99}),row(4,{customerName:'B',quantity:1,unitPrice:4})];
+  const {doc,window}=await setup(t,{vaiTro:'Nhân viên sale',responses:{'GET /':listResponse(rows)}});
+  const click=(key,shiftKey=false)=>doc.querySelector('#vrHeadRow [data-sort="'+key+'"]').dispatchEvent(new window.MouseEvent('click',{bubbles:true,shiftKey}));
+  click('customer');click('quantity',true);click('unitPrice',true);click('unitPrice',true);
+  assert.deepEqual([...doc.querySelectorAll('#vrRows tr[data-id]')].map(tr=>Number(tr.dataset.id)),[2,1,3,4]);
+  assert.equal(doc.querySelector('[data-sort="unitPrice"] .sort-indicator').textContent,'▼3');
+  click('quantity',true);click('quantity',true);
+  assert.equal(doc.querySelector('[data-sort="unitPrice"] .sort-indicator').textContent,'▼2');
 });

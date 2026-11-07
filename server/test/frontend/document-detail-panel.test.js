@@ -296,7 +296,7 @@ test('hop chi tiet co sort, keo do rong cot va nut "Cột hiển thị" o dau kh
   quantity.querySelector('.sort-button').click();
   assert.deepEqual(codes(), ['B2', 'A1', 'C3']);
   assert.equal(quantity.getAttribute('aria-sort'), 'descending');
-  assert.equal(quantity.querySelector('.sort-indicator').textContent, '▲');
+  assert.equal(quantity.querySelector('.sort-indicator').textContent, '▼1');
   quantity.querySelector('.sort-button').click();
   assert.deepEqual(codes(), ['A1', 'B2', 'C3']);
   assert.equal(quantity.querySelector('.sort-indicator').textContent, '▲▼');

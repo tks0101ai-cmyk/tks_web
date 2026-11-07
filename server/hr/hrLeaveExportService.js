@@ -31,24 +31,35 @@ const SORTABLE_FIELDS = new Set(repo.LEAVE_SCHEMA_FIELD_KEYS);
  * Sap xep lai mang ket qua theo dung cot/chieu dang duoc sort tren bang UI,
  * de file xuat ra khop voi thu tu nguoi dung dang xem.
  */
-function applySort(items, sortField, sortDir) {
-  if (!sortField || !SORTABLE_FIELDS.has(sortField)) return items;
-  const dir = sortDir === 'asc' ? 1 : -1;
-  const sorted = items.slice();
-  sorted.sort((a, b) => {
-    const av = a[sortField];
-    const bv = b[sortField];
-    const an = Number(av);
-    const bn = Number(bv);
-    let cmp;
-    if (Number.isFinite(an) && Number.isFinite(bn) && av !== '' && bv !== '') {
-      cmp = an - bn;
-    } else {
-      cmp = String(av || '').localeCompare(String(bv || ''), 'vi', { numeric: true, sensitivity: 'base' });
+function leaveSortValue(item, field) {
+  const value = item[field];
+  if (value == null || value === '') return null;
+  if (field === 'thoi_gian_gui') {
+    const stamp = new Date(value).getTime();
+    return Number.isFinite(stamp) ? stamp : null;
+  }
+  if (field === 'thoi_gian_bat_dau' || field === 'thoi_gian_ket_thuc') {
+    const match = String(value).match(/^(Sáng|Chiều)\s+(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    return match ? Date.UTC(Number(match[4]), Number(match[3])-1, Number(match[2])) + (match[1] === 'Chiều' ? 1 : 0) : null;
+  }
+  return value;
+}
+function applySort(items, sortField, sortDir, inputSorts) {
+  const sorts = (Array.isArray(inputSorts) ? inputSorts : [{ field: sortField, dir: sortDir }])
+    .filter(sort => SORTABLE_FIELDS.has(sort.field));
+  return items.slice().sort((a, b) => {
+    for (const sort of sorts) {
+      const av = leaveSortValue(a, sort.field), bv = leaveSortValue(b, sort.field);
+      const aEmpty = av == null, bEmpty = bv == null;
+      if (aEmpty !== bEmpty) return aEmpty ? 1 : -1;
+      if (aEmpty) continue;
+      const an = Number(av), bn = Number(bv);
+      const comparison = Number.isFinite(an) && Number.isFinite(bn) ? an-bn
+        : String(av).localeCompare(String(bv), 'vi', { numeric: true, sensitivity: 'base' });
+      if (comparison) return sort.dir === 'asc' ? comparison : -comparison;
     }
-    return cmp * dir;
+    return 0;
   });
-  return sorted;
 }
 
 function safeFileNamePart(str) {
@@ -75,7 +86,7 @@ async function buildLeaveRequestsWorkbook(filters, branch) {
     const wanted = new Set(filters.requestIds.map(String));
     found = found.filter(item => wanted.has(String(item.request_id)));
   }
-  const items = applySort(found, filters.sortField, filters.sortDir);
+  const items = applySort(found, filters.sortField, filters.sortDir, filters.sorts);
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'TOKOSI Dashboard';
