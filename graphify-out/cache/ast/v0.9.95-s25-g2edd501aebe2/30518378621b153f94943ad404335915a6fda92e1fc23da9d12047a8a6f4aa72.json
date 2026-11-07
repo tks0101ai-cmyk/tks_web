@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_server_db_migrations_0026_drop_suppliers_and_purchase_summary_sql", "label": "0026_drop_suppliers_and_purchase_summary.sql", "file_type": "code", "source_file": "server/db/migrations/0026_drop_suppliers_and_purchase_summary.sql", "source_location": null}], "edges": []}

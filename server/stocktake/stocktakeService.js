@@ -1,7 +1,7 @@
 'use strict';
 
 // Kiem ke (doi chieu), migration 0105. So dem tinh truc tiep tu don dat hang cua khach "TEAM..." trong khoang ngay
-// cua dot (ca don da huy) + phan sua tren web; ton/gia von la ton hien tai cua products. Dong dot -> chup ket qua.
+// cua dot (chi Phieu tam) + phan sua tren web; ton/gia von la ton hien tai cua products. Dong dot -> chup ket qua.
 // Moi lenh ghi: 1 giao dich, khoa dong + so version (lech -> 409 kem ban moi), ghi stocktake_history cung giao dich.
 const { getPool } = require('../db/pool');
 const { stripTelegramId } = require('../dashboard/saleName');
@@ -120,23 +120,25 @@ const TEAM_LINES_SQL = `
   JOIN order_details d ON d.branch = o.branch AND d.order_id = o.id
   LEFT JOIN products p ON p.branch = d.branch AND p.id = d.product_id
   WHERE o.branch = $1
+    AND o.raw->>'statusValue' = 'Phiếu tạm'
     AND o.order_date >= ($2::date)::timestamp AT TIME ZONE 'UTC'
     AND o.order_date < ($3::date + 1)::timestamp AT TIME ZONE 'UTC'
     AND ${TEAM_NAME_MATCH_SQL}
   ORDER BY o.id, d.line_no`;
 
-// Don TEAM trong khoang ngay + don TEAM chua huy cach khoang khong qua 14 ngay (bao cho nguoi dung biet chua tinh).
+// Don TEAM Phieu tam trong khoang ngay + don TEAM Phieu tam cach khoang khong qua 14 ngay (bao cho nguoi dung biet chua tinh).
 const ORDER_STATUS_SQL = `
   SELECT count(*) FILTER (WHERE in_range)::int AS in_range, max(synced_at) FILTER (WHERE in_range) AS max_synced,
-         count(*) FILTER (WHERE NOT in_range AND status <> 'Đã hủy')::int AS out_count,
-         (min(day) FILTER (WHERE NOT in_range AND status <> 'Đã hủy'))::text AS out_from,
-         (max(day) FILTER (WHERE NOT in_range AND status <> 'Đã hủy'))::text AS out_to
+         count(*) FILTER (WHERE NOT in_range)::int AS out_count,
+         (min(day) FILTER (WHERE NOT in_range))::text AS out_from,
+         (max(day) FILTER (WHERE NOT in_range))::text AS out_to
   FROM (
-    SELECT o.synced_at, COALESCE(o.raw->>'statusValue', '') AS status, (o.order_date AT TIME ZONE 'UTC')::date AS day,
+    SELECT o.synced_at, (o.order_date AT TIME ZONE 'UTC')::date AS day,
            o.order_date >= ($2::date)::timestamp AT TIME ZONE 'UTC' AND o.order_date < ($3::date + 1)::timestamp AT TIME ZONE 'UTC' AS in_range
     FROM orders o
     LEFT JOIN customers c ON c.branch = o.branch AND c.id = o.customer_id
     WHERE o.branch = $1
+      AND o.raw->>'statusValue' = 'Phiếu tạm'
       AND o.order_date >= ($2::date - 14)::timestamp AT TIME ZONE 'UTC'
       AND o.order_date < ($3::date + 15)::timestamp AT TIME ZONE 'UTC'
       AND ${TEAM_NAME_MATCH_SQL}

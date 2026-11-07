@@ -639,3 +639,8 @@ Lên list bằng mã và lấy lần lên list gần nhất; xếp/chuyển/tác
 05/11/2026 — Thu mua (giao diện): bảng Đặt hàng và Chỉ số cont phủ kín bề ngang với mọi số cột, cuộn ngang khi vượt khung; cột số không còn cắt chữ (đệm đủ, tính cả bề rộng tiêu đề). Ô Mã SP: một nhấn mở hộp xác nhận chọn cont rồi mới tách, hai nhấn xem lịch sử, bút chì hoặc F2 mới sửa mã; bỏ nút "Tách dòng". Cột ngày hiển thị ngày/tháng, bấm vào mở ô ngày đầy đủ. Bảng Chỉ số cont bỏ cột rỗng chứa nút "Sửa", còn 14 cột, nút đồng cỡ chữ. Form Thêm mã có gợi ý mã kèm tên và NCC, chọn xong tự điền. Sidebar Thu mua có mục con Đặt hàng / Lịch sử. Không migration, không đổi API.
 
 06/11/2026 — **Vòng đời đơn hàng:** thêm tìm kiếm theo mã/tên hàng để xem những đơn đang chứa một mặt hàng.
+
+
+07/11/2026 — Kiểm kê: chỉ gom đơn TEAM có `raw.statusValue = "Phiếu tạm"` ở cả hai cơ sở; số đếm, chi tiết, xuất thống kê, bộ đếm và cảnh báo ngoài khoảng ngày dùng cùng điều kiện. Đơn hủy/hoàn thành/trạng thái khác hoặc thiếu trạng thái bị loại, kể cả dòng đã sửa trên web. Đợt đã chốt giữ nguyên ảnh chụp lịch sử; không migration, chưa deploy.
+
+Cập nhật gần nhất: 07/11/2026.

@@ -1219,3 +1219,8 @@ Giao diện: bảng báo trên trang nêu rõ chế độ — `CÁCH LY · …` 
 Kiểm thử: `purchaseOrders/purchaseOrdersIsolation.test.js` (7 ca: ghi thật nhưng không chạm dữ liệu chung, bật cờ thì nối vào, mọi đường ghi, cùng khóa với source gate, chặn khi nguồn là Sheet, `list` trả cả hai cờ, gate của Dự kiến hàng về), `productContainers/sync.test.js` (cách ly không làm dừng job Sheet).
 
 Bật/tắt bằng SQL, xem `server/purchaseOrders/ROLLOUT.md`.
+
+
+07/11/2026 — Kiểm kê: chỉ gom đơn TEAM có `raw.statusValue = "Phiếu tạm"` ở cả hai cơ sở; số đếm, chi tiết, xuất thống kê, bộ đếm và cảnh báo ngoài khoảng ngày dùng cùng điều kiện. Đơn hủy/hoàn thành/trạng thái khác hoặc thiếu trạng thái bị loại, kể cả dòng đã sửa trên web. Đợt đã chốt giữ nguyên ảnh chụp lịch sử; không migration, chưa deploy.
+
+Cập nhật gần nhất: 07/11/2026.
