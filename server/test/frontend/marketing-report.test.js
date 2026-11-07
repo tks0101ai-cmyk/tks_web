@@ -36,7 +36,7 @@ test('Marketing sort cycles back to source order before pagination',async()=>{
     click('revenue'); assert.equal(state('revenue'),'ascending'); assert.equal(first(),'1');
     click('revenue'); assert.equal(state('revenue'),'descending'); assert.equal(first(),'101');
     click('revenue'); assert.equal(state('revenue'),'none'); assert.equal(first(),'101');
-    assert.equal(host._marketingState.sort,null);
+    assert.equal(host._marketingState.sorts.length,0);
     click('revenue'); assert.equal(state('revenue'),'ascending');
     click('sale'); assert.equal(state('sale'),'ascending'); assert.equal(state('revenue'),'none');
   } finally { p.dom.window.close(); }
@@ -316,4 +316,21 @@ test('Pancake independent dataset labels sources and preserves legacy selection 
  const select=p.doc.getElementById('marketing-monthly-dataset');select.value='legacy';select.dispatchEvent(new p.window.Event('change'));await settle();assert.equal(p.doc.querySelector('#marketing-monthly-rows .mini-filter-apply'),null);
  const phones=p.doc.getElementById('marketing-phones-dataset');phones.value='legacy';phones.dispatchEvent(new p.window.Event('change'));await settle();
  p.doc.querySelector('#marketing-phones-rows [data-detail-key]').click();await settle();const detail=p.urls.filter(u=>u.includes('/detail?')).at(-1);assert.equal(new URL(detail,'https://example.test').searchParams.get('dataset'),'legacy');p.dom.window.close();
+});
+
+
+test('Marketing retains three priorities, cycles a middle priority and sends all export sorts',async()=>{
+  const p=page();
+  try {
+    await p.window.TKSMarketing.load();
+    const host=p.doc.getElementById('marketing-monthly-rows');
+    const click=(key,shiftKey=false)=>host.querySelector('[data-sort="'+key+'"]').dispatchEvent(new p.window.MouseEvent('click',{bubbles:true,shiftKey}));
+    click('page'); click('sale',true); click('revenue',true); click('sale',true);
+    assert.equal(host.querySelector('[data-sort="page"] .sort-indicator').textContent,'▲1');
+    assert.equal(host.querySelector('[data-sort="sale"] .sort-indicator').textContent,'▼2');
+    assert.equal(host.querySelector('[data-sort="revenue"] .sort-indicator').textContent,'▲3');
+    click('sale',true);
+    assert.equal(host.querySelector('[data-sort="revenue"] .sort-indicator').textContent,'▲2');
+    assert.equal(host._marketingState.sorts.length,2);
+  } finally {p.dom.window.close();}
 });

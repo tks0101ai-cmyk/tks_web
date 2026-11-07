@@ -2166,3 +2166,16 @@ test('Excel and HTML export the filtered team and HTML displays team charts', as
     finally { opened.dom.window.close(); }
   }));
 });
+
+test('export label sort priorities compare later columns only on ties and keep null last descending', async () => {
+  const dataset=await exportService.__test__.buildExportDataset({
+    tableKey:'stockout.recentScan',
+    recentStockoutResult:{branch:'Cả hai',rows:[
+      {code:'A',name:'Tie',branch:'Hà Nội',daysOutOfStock:2,periods:[]},
+      {code:'B',name:'Tie',branch:'Hà Nội',daysOutOfStock:4,periods:[]},
+      {code:'C',name:'Other',branch:'Sài Gòn',daysOutOfStock:9,periods:[]}
+    ]},
+    tableSort:[{label:'Cơ sở',direction:'asc'},{label:'Mã hàng',direction:'desc'}]
+  });
+  assert.deepEqual(dataset.worksheets[0].rows.map(row=>row.code),['B','A','C']);
+});

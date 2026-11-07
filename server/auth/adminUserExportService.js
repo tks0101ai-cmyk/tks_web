@@ -91,6 +91,10 @@ async function buildUserWorkbook(users, filters, fieldKeys) {
   // Dang tim: khop nhieu tu / nguyen cum xep truoc (giong bang tren man hinh), con lai theo ten.
   const items = String((filters && filters.q) || '').trim() ? fuzzy.filter(byName, filters.q, userSearchText) : byName;
 
+  let requestedOrder;
+  try { requestedOrder=JSON.parse(filters.orderedIds || 'null'); } catch {}
+  if (Array.isArray(requestedOrder) && requestedOrder.length) { const order=new Map(requestedOrder.map((id,index)=>[String(id),index])); items.sort((a,b)=>(order.get(String(a.username))??Infinity)-(order.get(String(b.username))??Infinity)); }
+
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'TOKOSI Dashboard';
   workbook.created = new Date();

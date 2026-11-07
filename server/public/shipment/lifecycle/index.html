@@ -15,7 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Roboto:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="/shared/shared.css?v=20261028-leave-btn">
+<link rel="stylesheet" href="/shared/shared.css?v=20261107-3">
 <script src="/shared/motion.js?v=20261024-1" defer></script>
   <link rel="stylesheet" href="/shared/search-clear.css?v=20261009-1">
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261016">
@@ -710,7 +710,7 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- Dat o cuoi than <body> thay vi <head>: script chan phan tich cu phap trong <head> se lam dung viec xu ly toan bo tai lieu. Khong dung `defer` vi script inline ben duoi dung TKSNav o cap cao nhat, va script inline luon chay truoc script defer. -->
-  <script src="/shared/table-controls.js?v=20261030-1"></script>
+  <script src="/shared/table-controls.js?v=20261107-3"></script>
   <script src="/shared/fuzzy-search.js"></script>
   <script src="/shared/search-clear.js?v=20261009-1"></script>
   <script src="/shared/shared-nav.js?v=20261105-kho"></script>
@@ -720,7 +720,7 @@
   <script src="/shared/pick-rules.js?v=20261027-1"></script>
   <script src="/shipment/lifecycle/pick/invoice.js?v=20261103-redis-1"></script>
   <script src="/shipment/lifecycle/pick/print-tools.js?v=20261106-1"></script>
-  <script src="/shipment/lifecycle/pick/pick-assign.js?v=20261103-redis-1"></script>
+  <script src="/shipment/lifecycle/pick/pick-assign.js?v=20261107-3"></script>
 
   <script>
     const THEME_STORAGE_KEY = 'tks-dashboard-theme';
@@ -1748,6 +1748,7 @@
     let dateFilterFrom = ''; // 'YYYY-MM-DD' hoac '' (rong = khong gioi han)
     let dateFilterTo = '';
     let bulkSearchMode = 'customer'; // mac dinh tim theo ten khach
+    let sorts = [];
     let sortKey = null;
     let sortDir = 1; // 1 = tang dan, -1 = giam dan
     // Chua chon cot nao -> may chu sap theo thoi gian dat hang, moi nhat truoc (khop orderLifecycleQuery.DEFAULT_SORT).
@@ -1774,7 +1775,7 @@
 
     // null (o trong) luon nam cuoi bang, du sap tang hay giam dan.
     function compareSortValues(av, bv, dir){
-      const aEmpty = av === null || av === undefined, bEmpty = bv === null || bv === undefined;
+      const aEmpty = av === null || av === undefined || av === '', bEmpty = bv === null || bv === undefined || bv === '';
       if(aEmpty || bEmpty) return aEmpty === bEmpty ? 0 : (aEmpty ? 1 : -1);
       if(av < bv) return -1 * dir;
       if(av > bv) return 1 * dir;
@@ -1933,11 +1934,10 @@
       }
     }
     function syncSortHeaderUI(){
-      const effective = sortKey ? { key: sortKey, dir: sortDir } : DEFAULT_SORT;
-      bulkHeadRow.querySelectorAll('th.sortable').forEach(function(th){
-        paintSortHeader(th, th.dataset.sort === effective.key, effective.dir);
-      });
-      document.getElementById('bulkClearSort').hidden = !sortKey;
+      const effective = sorts.length ? sorts : [{ key: DEFAULT_SORT.key, dir: DEFAULT_SORT.dir === -1 ? 'desc' : 'asc' }];
+      window.TKSTables.syncSortHeaders(bulkHeadRow.closest('table'), effective, th => th.dataset.sort);
+      bulkHeadRow.querySelectorAll('th[data-sort]').forEach(th => th.classList.toggle('sort-active', effective.some(sort => sort.key === th.dataset.sort)));
+      document.getElementById('bulkClearSort').hidden = !sorts.length;
     }
     syncSortHeaderUI();
 
@@ -1945,21 +1945,15 @@
       const th = e.target.closest('th.sortable');
       if(!th) return;
       const key = th.dataset.sort;
-      if(sortKey !== key){
-        sortKey = key;
-        sortDir = 1;
-      } else if(sortDir === 1){
-        sortDir = -1;
-      } else {
-        sortKey = null; // lan thu ba: bo sap xep, tro ve mac dinh (don moi dat nhat truoc)
-        sortDir = 1;
-      }
+      sorts = window.TKSTables.nextSorts(sorts, key, e.shiftKey);
+      sortKey = sorts[0]?.key || null; sortDir = sorts[0]?.dir === 'desc' ? -1 : 1;
       syncSortHeaderUI();
       reloadBulk();
     });
 
     // Nut "Bo sap xep": cung ket qua voi bam lan thu ba tren tieu de cot, nhung nhin thay duoc.
     document.getElementById('bulkClearSort').addEventListener('click', function(){
+      sorts = [];
       sortKey = null;
       sortDir = 1;
       syncSortHeaderUI();
@@ -2168,7 +2162,7 @@
       }
       const query = bulkSearchInput.value.trim();
       if(query){ params.mode = bulkSearchMode; params.q = query; }
-      if(sortKey){ params.sort = sortKey; params.dir = sortDir === 1 ? 'asc' : 'desc'; }
+      if(sorts.length) { params.sorts = JSON.stringify(sorts); params.sort = sorts[0].key; params.dir = sorts[0].dir; }
       return params;
     }
 
@@ -2483,22 +2477,27 @@
       changedAt: function(e){ return parseDateTimeValue(e.changedAt); }
     };
 
+    let historySorts = [];
     function applyHistorySort(list){
-      if(!historySortKey) return list;
-      const accessor = HISTORY_SORT_ACCESSORS[historySortKey];
-      return list.slice().sort(function(a, b){ return compareSortValues(accessor(a), accessor(b), historySortDir); });
+      const layers = historySorts.length ? historySorts : [{ key: HISTORY_DEFAULT_SORT.key, dir: HISTORY_DEFAULT_SORT.dir === -1 ? 'desc' : 'asc' }];
+      return list.slice().sort(function(a,b){
+        for (const layer of layers) {
+          const accessor = HISTORY_SORT_ACCESSORS[layer.key];
+          const result = compareSortValues(accessor(a), accessor(b), layer.dir === 'desc' ? -1 : 1);
+          if(result) return result;
+        }
+        return 0;
+      });
     }
 
     function syncHistorySortHeaderUI(){
-      historyHeadRow.querySelectorAll('th.sortable').forEach(function(th){
-        paintSortHeader(th, th.dataset.sort === historySortKey, historySortDir);
-      });
-      document.getElementById('historyClearSort').hidden =
-        historySortKey === HISTORY_DEFAULT_SORT.key && historySortDir === HISTORY_DEFAULT_SORT.dir;
+      window.TKSTables.syncSortHeaders(historyHeadRow.closest('table'), historySorts, th => th.dataset.sort);
+      document.getElementById('historyClearSort').hidden = !historySorts.length;
     }
     syncHistorySortHeaderUI();
 
     function resetHistorySort(){
+      historySorts = [];
       historySortKey = HISTORY_DEFAULT_SORT.key;
       historySortDir = HISTORY_DEFAULT_SORT.dir;
       syncHistorySortHeaderUI();
@@ -2509,15 +2508,9 @@
       const th = e.target.closest('th.sortable');
       if(!th) return;
       const key = th.dataset.sort;
-      if(historySortKey !== key){
-        historySortKey = key;
-        historySortDir = 1;
-      } else if(historySortDir === 1){
-        historySortDir = -1;
-      } else {
-        resetHistorySort(); // lan thu ba: bo sap xep, ve mac dinh (cap nhat moi nhat truoc)
-        return;
-      }
+      historySorts = window.TKSTables.nextSorts(historySorts, key, e.shiftKey);
+      historySortKey = historySorts[0]?.key || HISTORY_DEFAULT_SORT.key;
+      historySortDir = historySorts[0]?.dir === 'asc' ? 1 : -1;
       syncHistorySortHeaderUI();
       applyHistoryFilters();
     });

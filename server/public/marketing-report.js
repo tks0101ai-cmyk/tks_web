@@ -197,7 +197,7 @@
   }
   function redrawCharts() { if (initialized && active()) Object.keys(sections).forEach(kind => { if (sections[kind].data) renderCharts(kind); }); }
   function mountTable(host, id, title, rows, columns, onOpen, exportInfo, onFilter) {
-    const saved = host._marketingState || { search:'', sort:null, direction:1, page:1 };
+    const saved = host._marketingState || { search:'', sorts:[], page:1 };
     host._marketingState = saved;
     host.innerHTML = '<div class="panel marketing-table"><div class="panel-head"><h2>'+escape(title)+'</h2><div class="panel-head-actions"><span class="drill-hint" data-count>—</span>'+(exportInfo?'<button class="export-button" type="button" id="'+id+'-export"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Xuất file</button>':'')+'</div><div class="table-search-tools"><div class="table-search-input-wrap"><input class="table-search-input" id="'+id+'-search" type="search" autocomplete="off" aria-label="Tìm trong '+escape(title)+'" placeholder="Tìm kiếm không dấu…" value="'+escape(saved.search)+'"></div>'+'</div></div><div class="table-wrap marketing-table-scroll"><table data-table-key="'+id+'"'+(id === 'marketing-costs-data-table' ? ' data-table-fit="contain"' : '')+' aria-label="'+escape(title)+'"><thead></thead><tbody></tbody></table></div><div class="pagination-controls marketing-pages" hidden><button type="button" id="'+id+'-first" aria-label="Trang đầu" title="Trang đầu">&lt;&lt;</button><button type="button" id="'+id+'-prev" aria-label="Trang trước" title="Trang trước">&lt;</button><span data-page-label></span><button type="button" id="'+id+'-next" aria-label="Trang sau" title="Trang sau">&gt;</button><button type="button" id="'+id+'-last" aria-label="Trang cuối" title="Trang cuối">&gt;&gt;</button></div></div>';
     const editing = !!exportInfo && exportInfo.kind === 'monthly' && exportInfo.table === 'rows' && !database() && canEdit();
@@ -214,9 +214,9 @@
       let found = window.TKSFuzzySearch
         ? window.TKSFuzzySearch.filter(rows, saved.search, rowText)
         : rows.filter(row => normalize(rowText(row)).includes(normalize(saved.search)));
-      if (saved.sort) found = found.slice().sort((a,b) => { const av=a[saved.sort], bv=b[saved.sort]; if(av==null) return 1; if(bv==null) return -1; return saved.direction * (typeof av === 'number' && typeof bv === 'number' ? av-bv : String(av).localeCompare(String(bv),'vi',{numeric:true})); });
+      if (saved.sorts.length) found = found.slice().sort((a,b) => { for (const sort of saved.sorts) { const diff=window.TKSTables.compareValues(a[sort.key],b[sort.key],sort.dir); if(diff)return diff; } return 0; });
       const pages = Math.max(1,Math.ceil(found.length/100)); saved.page = Math.min(saved.page,pages);
-      host.querySelector('thead').innerHTML = '<tr>'+visible.map(([key,label,type]) => '<th data-column-key="'+key+'" data-column-type="'+(type || 'text')+'" class="sortable'+(type?' col-num':'')+'" aria-sort="'+(saved.sort===key?(saved.direction===1?'ascending':'descending'):'none')+'"><button type="button" class="sort-button" id="'+id+'-sort-'+key+'" data-sort="'+key+'"><span class="sort-label">'+escape(label)+'</span><span class="sort-indicator" aria-hidden="true">'+(saved.sort===key?(saved.direction===1?'▼':'▲'):'▲▼')+'</span></button></th>').join('')+'</tr>';
+      host.querySelector('thead').innerHTML = '<tr>'+visible.map(([key,label,type]) => '<th data-column-key="'+key+'" data-column-type="'+(type || 'text')+'" class="sortable'+(type?' col-num':'')+'" aria-sort="'+'none'+'"><button type="button" class="sort-button" id="'+id+'-sort-'+key+'" data-sort="'+key+'"><span class="sort-label">'+escape(label)+'</span><span class="sort-indicator" aria-hidden="true">'+'▲▼'+'</span></button></th>').join('')+'</tr>';
       const slice = found.slice((saved.page-1)*100,saved.page*100);
       host.querySelector('tbody').innerHTML = slice.length ? slice.map((row,i) => '<tr'+(onOpen&&row.key?' class="marketing-row-link" tabindex="0" data-detail-key="'+escape(row.key)+'" data-index="'+i+'" title="Bấm hoặc nhấn Enter để xem chi tiết"':'')+'>'+visible.map(([key,,type]) => cellHtml(row,key,type,editing,slice.indexOf(row))).join('')+'</tr>').join('') : '<tr><td colspan="'+Math.max(1,visible.length)+'" class="table-note">Chưa có dữ liệu phù hợp.</td></tr>';
       host.querySelector('[data-count]').textContent = found.length + ' dòng';
@@ -225,14 +225,10 @@
       host.querySelector('[data-page-label]').textContent = 'Trang '+saved.page+'/'+pages;
       ['first','prev'].forEach(name => { host.querySelector('#'+id+'-'+name).disabled=saved.page<=1; });
       ['next','last'].forEach(name => { host.querySelector('#'+id+'-'+name).disabled=saved.page>=pages; });
+      window.TKSTables.syncSortHeaders(host.querySelector('table'), saved.sorts, th => th.dataset.columnKey);
       host.querySelectorAll('[data-sort]').forEach(button => {
-        const selected = saved.sort === button.dataset.sort;
-        button.title = selected ? (saved.direction === 1 ? 'Sắp xếp giảm dần' : 'Bỏ sắp xếp') : 'Sắp xếp tăng dần';
-        button.addEventListener('click', () => {
-          const key = button.dataset.sort;
-          if (saved.sort !== key) { saved.sort = key; saved.direction = 1; }
-          else if (saved.direction === 1) saved.direction = -1;
-          else { saved.sort = null; saved.direction = 1; }
+        button.addEventListener('click', event => {
+          saved.sorts = window.TKSTables.nextSorts(saved.sorts, button.dataset.sort, event.shiftKey);
           saved.page=1; draw();
         });
       });
@@ -247,7 +243,7 @@
       host.querySelectorAll('[data-index]').forEach(element => { const open = () => { element.focus(); onOpen(slice[Number(element.dataset.index)]); }; element.addEventListener('click',open); element.addEventListener('keydown',event => { if(event.key==='Enter'||event.key===' ') { event.preventDefault(); open(); } }); });
     }
     host.querySelector('input[type="search"]').addEventListener('input',event => { saved.search=event.target.value; saved.page=1; draw(); });
-    if (exportInfo) host.querySelector('#'+id+'-export').addEventListener('click', () => openExport(exportInfo.kind, exportInfo.table, saved.search, saved.sort ? { key: saved.sort, dir: saved.direction === 1 ? 'asc' : 'desc' } : null));
+    if (exportInfo) host.querySelector('#'+id+'-export').addEventListener('click', () => openExport(exportInfo.kind, exportInfo.table, saved.search, saved.sorts));
     host.querySelector('#'+id+'-first').addEventListener('click', () => { saved.page=1; draw(); });
     host.querySelector('#'+id+'-prev').addEventListener('click', () => { --saved.page; draw(); });
     host.querySelector('#'+id+'-next').addEventListener('click', () => { ++saved.page; draw(); });
@@ -287,7 +283,7 @@
     if (!window.TKSNav?.can('reports.export') || typeof startExportDialog !== 'function') return;
     const params = new URLSearchParams({ ...sections[kind].filters, kind, table });
     if (search && search.trim()) params.set('q', search.trim());
-    if (sort) { params.set('sortKey', sort.key); params.set('sortDir', sort.dir); }
+    if (sort?.length) { params.set('sorts', JSON.stringify(sort)); params.set('sortKey', sort[0].key); params.set('sortDir', sort[0].dir); }
     return startExportDialog({ kind, table, query: params.toString() }, EXPORT_SOURCE);
   }
   async function openDetail(kind,key,source,refresh,nested) {

@@ -164,16 +164,16 @@
     updated: line => (line.edit ? line.edit.updatedByName : '')
   });
   function sortLines(lines, key, dir) {
-    const read = LINE_SORT[key];
-    if (!read || !dir) return [...lines];
-    const factor = dir === 'desc' ? -1 : 1;
+    const sorts = (Array.isArray(key) ? key : dir ? [{ key, dir }] : []).filter(sort => LINE_SORT[sort.key]);
     const blank = value => value === null || value === undefined || value === '';
     return [...lines].sort((a, b) => {
-      const x = read(a);
-      const y = read(b);
-      if (blank(x) || blank(y)) return blank(x) === blank(y) ? 0 : blank(x) ? 1 : -1;
-      const diff = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'vi', { numeric: true });
-      return diff * factor;
+      for (const sort of sorts) {
+        const x = LINE_SORT[sort.key](a), y = LINE_SORT[sort.key](b);
+        if (blank(x) || blank(y)) { if (blank(x) !== blank(y)) return blank(x) ? 1 : -1; continue; }
+        const diff = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'vi', { numeric: true });
+        if (diff) return diff * (sort.dir === 'desc' ? -1 : 1);
+      }
+      return 0;
     });
   }
 

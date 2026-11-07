@@ -158,7 +158,7 @@ test('muc 4 nam ngay sau Tang truong ma hang, buoc "4", tieu de "Hàng hóa 90 n
   assert.equal(section.hidden, true);
   assert.equal(section.querySelector('.section-step').textContent.trim(), '4');
   assert.equal(section.querySelector('.section-head h2').firstChild.textContent.trim(), 'Hàng hóa 90 ngày');
-  assert.match(html, /<script src="\/product-90d-report\.js\?v=\d{8}-\d+"><\/script>/);
+  assert.match(html, /<script src="\/product-90d-report\.js\?v=[^"\s]+"><\/script>/);
   assert.match(html, /<link rel="stylesheet" href="\/product-90d-report\.css\?v=\d{8}-\d+">/);
   assert.ok(html.indexOf('/shared/table-controls.js') < html.indexOf('/product-90d-report.js'), 'table-controls phai nap truoc');
   // Khong co bo loc co so, khong co nut lam moi nguon.
@@ -289,6 +289,7 @@ function createWidget({ can = () => true } = {}) {
     if (options && options.signal) options.signal.addEventListener('abort', () => { call.aborted = true; });
   });
   w.eval(fs.readFileSync(path.join(publicDir, 'shared', 'table-controls.js'), 'utf8'));
+  if (!w.TKSTables) w.eval(fs.readFileSync(path.join(publicDir,'shared/table-controls.js'),'utf8'));
   w.eval(moduleSource);
   const $ = id => w.document.getElementById(id);
   const answer = (index, body, status = 200) => calls[index].resolve({ ok: status < 400, status, json: async () => body });
@@ -339,12 +340,12 @@ test('sap xep o may chu: ▲▼ -> ▼ tang -> ▲ giam -> bo; Top 3 khong sap x
     th.querySelector('.sort-button').click();
     assert.deepEqual([p.params(2).get('sort'), p.params(2).get('dir'), p.params(2).get('page')], ['revenue_1_90d', 'asc', '1']);
     assert.equal(th.getAttribute('aria-sort'), 'ascending');
-    assert.equal(th.querySelector('.sort-indicator').textContent, '▼');
+    assert.equal(th.querySelector('.sort-indicator').textContent, '▲1');
     p.answer(2, report([sampleRow('SP1')], { totalRows: 120 }));
     await settle();
     th.querySelector('.sort-button').click();
     assert.equal(p.params(3).get('dir'), 'desc');
-    assert.equal(th.querySelector('.sort-indicator').textContent, '▲');
+    assert.equal(th.querySelector('.sort-indicator').textContent, '▼1');
     th.querySelector('.sort-button').click();
     assert.equal(p.params(4).get('sort'), null);
     assert.equal(p.params(4).get('dir'), null);
@@ -369,19 +370,19 @@ test('nut sap xep bao hanh dong ke tiep; bam phan dem o tieu de cung sap xep; nu
     assert.equal(exportButton.hidden, false);
     const th = p.w.document.querySelector('th[data-column-key="revenue_1_30d"]');
     const button = th.querySelector('.sort-button');
-    assert.equal(button.title, 'Sắp xếp tăng dần theo T.này – DS');
-    assert.equal(button.getAttribute('aria-label'), 'Sắp xếp tăng dần theo cột T.này – DS');
+    assert.match(button.title, /Shift/);
+    assert.match(button.getAttribute('aria-label'), /Shift/);
     th.dispatchEvent(new p.w.MouseEvent('click', { bubbles: true })); // bam phan dem cua o (target = th)
     assert.equal(p.params(1).get('sort'), 'revenue_1_30d');
-    assert.equal(button.title, 'Sắp xếp giảm dần theo T.này – DS');
+    assert.match(button.title, /ưu tiên 1, tăng dần/);
     p.answer(1, report([sampleRow('SP1')]));
     await settle();
     button.click();
-    assert.equal(button.title, 'Bỏ sắp xếp theo T.này – DS');
+    assert.match(button.title, /ưu tiên 1, giảm dần/);
     p.answer(2, report([sampleRow('SP1')]));
     await settle();
     // Ngu canh xuat file = tu khoa dang ap dung + nhan cot dang sap xep.
-    assert.deepEqual(JSON.parse(JSON.stringify(p.w.TKSProduct90d.exportState())), { tableSearch: { mode: 'normal', query: '' }, tableSort: { label: 'T.này – DS', direction: 'desc' } });
+    assert.deepEqual(JSON.parse(JSON.stringify(p.w.TKSProduct90d.exportState())), { tableSearch: { mode: 'normal', query: '' }, tableSort: { label: 'T.này – DS', direction: 'desc' }, tableSorts: [{ label: 'T.này – DS', direction: 'desc' }] });
     const opened = [];
     p.w.openExportDialog = key => opened.push(key);
     p.w.TKSProduct90d.openExport();
@@ -555,6 +556,7 @@ function createPage(permissions) {
   const urls = [];
   w.fetch = url => { urls.push(String(url)); return new Promise(() => {}); };
   ['pagination.js', 'table-explorer.js'].forEach(file => w.eval(fs.readFileSync(path.join(publicDir, 'js', file), 'utf8')));
+  if (!w.TKSTables) w.eval(fs.readFileSync(path.join(publicDir,'shared/table-controls.js'),'utf8'));
   w.eval(moduleSource);
   [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(m => m[1]).filter(s => s.trim()).forEach(s => w.eval(s));
   return { dom, urls, $: id => w.document.getElementById(id) };
@@ -566,7 +568,7 @@ test('trang that: chi co Du kien hang ve -> muc 4 an, khong goi /api/product-rep
     await settle();
     assert.equal(page.$('product90dSection').hidden, true);
     assert.equal(page.urls.some(u => u.startsWith('/api/product-report/90d')), false);
-    assert.deepEqual(page.urls, ['/api/expected-arrivals']);
+    assert.deepEqual(page.urls.filter(url=>!url.startsWith('/api/me/')), ['/api/expected-arrivals']);
   } finally { /* khong close(): MutationObserver cua trang chay sau khi dong cua so se nem loi vo hai */ }
 });
 

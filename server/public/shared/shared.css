@@ -1718,7 +1718,7 @@ table thead th button[data-col] {
    <th class="sortable" aria-sort="none|ascending|descending">
      <button type="button" class="sort-button"><span class="sort-label">Nhãn</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button>
    </th>
-   Biểu tượng: chưa sắp ▲▼ · tăng dần ▼ · giảm dần ▲ (chữ trong JS của từng trang, màu/vị trí ở đây).
+   Biểu tượng: chưa sắp ▲▼ · tăng dần ▲1 · giảm dần ▼1; số biểu thị ưu tiên, Shift + bấm thêm lớp.
    Biểu tượng là 1 cột flex riêng, độ rộng cố định, dính MÉP PHẢI ô tiêu đề — KHÔNG nằm sau đuôi chữ:
    kéo hẹp cột thì nhãn tự xuống dòng còn biểu tượng đứng yên, đổi trạng thái sắp xếp cũng không làm nhãn nhảy dòng. */
 th.sortable { cursor: pointer; user-select: none; }
@@ -1781,13 +1781,16 @@ th.sortable { cursor: pointer; user-select: none; }
 
 th[aria-sort="ascending"] .sort-button,
 th[aria-sort="descending"] .sort-button,
+th[data-sort-active="true"] .sort-button,
+th[data-sort-active="true"] .sort-indicator,
 th[aria-sort="ascending"] .sort-indicator,
 th[aria-sort="descending"] .sort-indicator {
   color: var(--amber);
 }
 
 th[aria-sort="ascending"] .sort-indicator,
-th[aria-sort="descending"] .sort-indicator {
+th[aria-sort="descending"] .sort-indicator,
+th[data-sort-active="true"] .sort-indicator {
   opacity: 1;
 }
 

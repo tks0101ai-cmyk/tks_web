@@ -25,7 +25,7 @@ function assertTarget(tableKey, mode) {
   if (!MODES.includes(mode)) throw badRequest('Chế độ màn hình không hợp lệ.');
 }
 
-/** Chi giu {columns:{key:{width?,hidden?}}, sort?:{key,dir}} hop le; sai dinh dang -> 400. */
+/** Giữ cấu hình cột và thứ tự ưu tiên sort; vẫn đọc được sort đơn cũ. */
 function sanitizePrefs(input) {
   const source = input && typeof input === 'object' ? input.columns : null;
   if (!source || typeof source !== 'object' || Array.isArray(source)) throw badRequest('Cấu hình bảng không hợp lệ.');
@@ -56,6 +56,17 @@ function sanitizePrefs(input) {
       throw badRequest('Cấu hình sắp xếp không hợp lệ.');
     }
     prefs.sort = { key: sort.key, dir: sort.dir };
+  }
+  if (input.sorts !== undefined) {
+    if (!Array.isArray(input.sorts) || input.sorts.length > MAX_COLUMNS) throw badRequest('Cấu hình sắp xếp không hợp lệ.');
+    const seen = new Set();
+    prefs.sorts = input.sorts.map(item => {
+      if (!item || !validKey(item.key) || !['asc', 'desc'].includes(item.dir) || seen.has(item.key)) {
+        throw badRequest('Cấu hình sắp xếp không hợp lệ.');
+      }
+      seen.add(item.key);
+      return { key: item.key, dir: item.dir };
+    });
   }
   return prefs;
 }

@@ -1,6 +1,6 @@
 'use strict';
 const { getPool } = require('../db/pool');
-const { stripTelegramId } = require('../dashboard/saleName');
+const { stripTelegramId, saleNameSql } = require('../dashboard/saleName');
 const { buildWhere } = require('./cashbookFilters');
 const CONFIG = require('../config');
 // Mọi truy vấn đọc phiếu thu/chi qua view v_cash_book_transactions (migration 0070):
@@ -215,18 +215,49 @@ function createRepository(pool = getPool()) {
           OVER(ORDER BY t.trans_date,t.id,t.branch ROWS UNBOUNDED PRECEDING) running_balance
       FROM ${VIEW_NAME} t WHERE ${tw.sql} AND t.trans_date<=$${params.length}::timestamptz
     )`;
-    params.push(
-      exportLimit || f.pageSize,
-      exportLimit ? 0 : (f.page - 1) * f.pageSize,
-    );
+    // Sorting uses display expressions across all filtered rows inside SQL, before LIMIT.
+    // The small fund catalog supplies labels for merged HN/SG accounts as a bound JSON parameter.
+    const sortedCatalog = f.sorts?.length ? await funds() : null;
+    let sortSql = '';
+    if (f.sorts?.length) {
+      const labels = {};
+      for (const fund of sortedCatalog) for (const id of fund.accountIds.length ? fund.accountIds : [fund.fund]) {
+        labels[id] = fund.accountNo ? `${fund.accountNo} · ${fund.name}` : fund.name;
+      }
+      const sortingFund = f.sorts.some(layer => layer.key === 'fundName');
+      if (sortingFund) params.push(JSON.stringify(labels));
+      const fundLabel = sortingFund ? `COALESCE($${params.length}::jsonb->>c.fund_key, 'Tài khoản #' || c.account_id::text)` : 'c.fund_key';
+      const expressions = {
+        code: "NULLIF(c.code,'')", transDate: 'c.trans_date', docType: "CASE WHEN c.is_receipt THEN 'Thu' ELSE 'Chi' END",
+        group: "NULLIF(c.cash_group_name,'')", partnerName: "NULLIF(c.partner_name,'')", partnerPhone: "NULLIF(c.partner_phone,'')",
+        fundName: fundLabel, branch: 'c.branch',
+        creatorName: `COALESCE(NULLIF(${saleNameSql('creator.name')},''),c.created_by)`,
+        staffName: `COALESCE(NULLIF(${saleNameSql('c.user_name')},''),NULLIF(${saleNameSql('staff.name')},''),c.user_id::text)`,
+        amount: 'c.amount', runningBalance: 't.running_balance', status: "CASE WHEN c.status=1 THEN 'Đã hủy' ELSE 'Đã thanh toán' END", note: "NULLIF(c.description,'')"
+      };
+      sortSql = require('../shared/multiSort').orderBy(f.sorts, expressions);
+    }
+    params.push(exportLimit || f.pageSize, exportLimit ? 0 : (f.page - 1) * f.pageSize);
+    const sortedQuery = sortSql ? `WITH ${timeline}
+      SELECT c.branch,c.id,c.code,c.trans_date,c.is_receipt,c.amount,c.status,
+        c.account_id,c.user_id,c.description,c.fund_key,c.cash_group_name,
+        c.partner_name,c.partner_phone,c.created_by,c.user_name,
+        creator.name creator_name,staff.name staff_name,t.running_balance
+      FROM ${VIEW_NAME} c
+      LEFT JOIN timeline t ON t.branch=c.branch AND t.id=c.id
+      LEFT JOIN staff creator ON creator.branch=c.branch AND creator.id::text=c.created_by
+      LEFT JOIN staff staff ON staff.branch=c.branch AND staff.id=c.user_id
+      WHERE ${w.sql}
+      ORDER BY ${sortSql},c.trans_date DESC,c.id DESC,c.branch DESC
+      LIMIT $${params.length-1} OFFSET $${params.length}` : null;
     const [catalog, count, result] = await Promise.all([
-      funds(),
+      sortedCatalog || funds(),
       q(
         `SELECT COUNT(*) total FROM ${VIEW_NAME} c WHERE ${w.sql}`,
         w.params,
       ),
       q(
-        `WITH ${timeline}, page AS (
+        sortedQuery || `WITH ${timeline}, page AS (
           SELECT c.branch,c.id,c.code,c.trans_date,c.is_receipt,c.amount,c.status,
             c.account_id,c.user_id,c.description,c.fund_key,c.cash_group_name,
             c.partner_name,c.partner_phone,c.created_by,c.user_name${w.score ? `,${w.score} search_score` : ''}
@@ -256,8 +287,7 @@ function createRepository(pool = getPool()) {
       if (!fund) return `Tài khoản #${accountId}`;
       return fund.accountNo ? `${fund.accountNo} · ${fund.name}` : fund.name;
     };
-    return {
-      entries: result.rows.map((r) => ({
+    const mapped = result.rows.map((r) => ({
         id: String(r.id),
         branch: r.branch,
         code: r.code || '',
@@ -279,7 +309,9 @@ function createRepository(pool = getPool()) {
         runningBalance: numeric(r.running_balance),
         status: r.status === 1 ? 'cancelled' : 'paid',
         note: r.description || '',
-      })),
+      }));
+    return {
+      entries: mapped,
       total,
       page: f.page,
       pageSize: f.pageSize,

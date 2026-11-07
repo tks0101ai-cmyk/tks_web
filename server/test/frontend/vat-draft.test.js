@@ -403,7 +403,7 @@ test('bam tieu de bang ket qua: dong bo o "Sắp xếp chính"; so dung dau phay
   assert.deepEqual([...doc.querySelectorAll('#vdAllocRows tr')].map(tr => tr.children[13].textContent), ['10', '50', '150']);
   slButton().click();
   assert.equal(doc.getElementById('vdSortPrimaryDir').value, 'desc');
-  assert.equal(slButton().querySelector('.sort-indicator').textContent, '▲');
+  assert.equal(slButton().querySelector('.sort-indicator').textContent, '▼1');
   slButton().click();
   assert.equal(doc.getElementById('vdSortPrimary').value, '');
   assert.equal(doc.querySelector('#vdAllocRows tr td:nth-child(11)').textContent, '10,800');
@@ -449,4 +449,19 @@ test('chon o kieu Google Sheet: keo chuot chon vung, Shift+click noi, Ctrl+C che
   doc.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape' }));
   assert.equal(doc.querySelectorAll('td.vd-cell-sel').length, 0);
   assert.equal(doc.getElementById('vdDocListTable').dataset.cellSelect, undefined);
+});
+
+
+test('allocation headers support three priorities while keeping legacy dropdowns synchronized', async t => {
+  const { doc, window } = await setup(t);
+  await pasteAndRun(doc);
+  const click=(key,shiftKey=false)=>doc.querySelector('#vdAllocTable [data-sort-field="'+key+'"]').dispatchEvent(new window.MouseEvent('click',{bubbles:true,shiftKey}));
+  click('MÃ SP'); click('NGUỒN',true); click('SL',true); click('SL',true);
+  assert.equal(doc.querySelector('[data-sort-field="SL"] .sort-indicator').textContent,'▼3');
+  assert.equal(doc.getElementById('vdSortPrimary').value,'MÃ SP');
+  assert.equal(doc.getElementById('vdSortSecondary').value,'NGUỒN');
+  click('NGUỒN',true); click('NGUỒN',true);
+  assert.equal(doc.querySelector('[data-sort-field="SL"] .sort-indicator').textContent,'▼2');
+  click('SL');
+  assert.equal(doc.querySelector('[data-sort-field="MÃ SP"] .sort-indicator').textContent,'▲▼');
 });

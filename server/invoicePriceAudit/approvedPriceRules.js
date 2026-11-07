@@ -114,7 +114,7 @@ function parseListQuery(query = {}) {
   if (sort !== null && !SORT_KEYS.includes(sort)) throw bad('Cột sắp xếp không hợp lệ.', 'INVALID_SORT');
   const page = Math.max(1, Number.parseInt(query.page, 10) || 1);
   const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, Number.parseInt(query.pageSize, 10) || DEFAULT_PAGE_SIZE));
-  return { approver, from, to, q, sort, dir: query.dir === 'desc' ? 'desc' : 'asc', page, pageSize };
+  return { approver, from, to, q, ...(query.sorts !== undefined ? { sorts: require('../shared/multiSort').normalizeSortsStrict(query.sorts, SORT_KEYS) } : {}), sort, dir: query.dir === 'desc' ? 'desc' : 'asc', page, pageSize };
 }
 
 module.exports = {

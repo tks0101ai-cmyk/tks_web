@@ -51,6 +51,8 @@ async function renderTable() {
     const body = lifecycleResponse(String(url), ORDERS, { ok: true });
     return { ok: true, json: async () => body };
   };
+  window.MutationObserver = class { observe() {} disconnect() {} };
+  window.eval(fs.readFileSync(path.join(__dirname, '../../public/shared/table-controls.js'), 'utf8'));
   inlineScripts(html).forEach(script => window.eval(script));
   await settle();
   return dom;
@@ -70,7 +72,7 @@ const cell = (row, key) => row.querySelector(`[data-col="${key}"]`);
 test('bảng có đủ cột: Giá trị đơn + Giá trị có bán + Ghi chú (sau Khách hàng), Sale ra đơn, Trạng thái KiotViet, Trạng thái, Trạng thái bốc (người có quyền chỉ định), Cập nhật gần nhất và Cảnh báo', async () => {
   const dom = await renderTable();
   const { document } = dom.window;
-  const headers = [...document.querySelectorAll('#bulkHeadRow th')].map(th => th.textContent.replace(/[▲▼]/g, '').trim());
+  const headers = [...document.querySelectorAll('#bulkHeadRow th')].map(th => th.querySelector('.sort-label').textContent.trim());
   assert.deepEqual(headers, [
     'Mã đơn', 'Cơ sở', 'Thời gian đặt hàng', 'Sale', 'Khách hàng', 'Giá trị đơn', 'Giá trị có bán', 'Ghi chú', 'Sale ra đơn',
     'Trạng thái KiotViet', 'Trạng thái', 'Trạng thái bốc', 'Cập nhật gần nhất', 'Cảnh báo'

@@ -14,6 +14,8 @@ async function boardSortFixture(t) {
   });
   t.after(() => dom.window.close());
   const w = dom.window;
+  w.matchMedia = () => ({matches:false});
+  w.eval(fs.readFileSync(path.join(root, '../shared/table-controls.js'), 'utf8'));
   w.TKSNav = { authGuard: async () => ({}), renderTopSidebar() {} };
   w.fetch = async () => ({ ok: true, json: async () => ({ sessions: [] }) });
   for (const file of ['stocktakePaste.js', 'stocktakeSearch.js', 'stocktakeGrid.js', 'stocktakeStatus.js', 'stocktake.js']) {
@@ -327,4 +329,25 @@ test('trailingThrottle: goi lien tuc chi chay 1 lan moi khoang, co lan cuoi, huy
   gate.cancel();
   assert.equal(pending, null);
   assert.equal(runs, 2);
+});
+
+test('multi-column detail sorting applies every priority, keeps blanks last and is stable', () => {
+  const { sortLines } = require('../public/stocktake/stocktakeGrid');
+  const lines = [{team:'A',zone:'Z',quantity:2},{team:'A',zone:'Z',quantity:7},{team:'A',zone:'A',quantity:null},{team:'B',zone:null,quantity:9},{team:null,zone:'A',quantity:99}];
+  assert.deepEqual(sortLines(lines, [{key:'team',dir:'asc'},{key:'zone',dir:'desc'},{key:'quantity',dir:'desc'}]), [lines[1],lines[0],lines[2],lines[3],lines[4]]);
+});
+
+test('detail header sorting shows priorities and sorts the complete detail list', async t => {
+  const {w,app}=await boardSortFixture(t);
+  w.HTMLDialogElement.prototype.showModal=function(){this.open=true};
+  w.fetch=async()=>({ok:true,json:async()=>({history:[]})});
+  const lines=[{orderId:1,lineNo:1,team:'A',zone:'Z',quantity:2},{orderId:2,lineNo:1,team:'A',zone:'Z',quantity:8},{orderId:3,lineNo:1,team:'B',zone:'A',quantity:1}];
+  app.state.canEdit=true;app.state.board={session:{status:'open'},rows:[{code:'A',name:'Mẫu',lines}]};
+  w.document.getElementById('stRows').innerHTML='<tr data-code="A"><td>A</td></tr>';
+  w.document.querySelector('#stRows td').dispatchEvent(new w.MouseEvent('dblclick',{bubbles:true}));
+  const click=(key,shiftKey=false)=>w.document.querySelector('[data-line-sort="'+key+'"]').dispatchEvent(new w.MouseEvent('click',{bubbles:true,shiftKey}));
+  click('team');click('quantity',true);click('quantity',true);
+  assert.equal(w.document.querySelector('[data-line-sort="team"] .sort-indicator').textContent,'▲1');
+  assert.equal(w.document.querySelector('[data-line-sort="quantity"] .sort-indicator').textContent,'▼2');
+  assert.deepEqual([...w.document.querySelectorAll('[data-line-field="quantity"]')].map(input=>input.value),['8','2','1']);
 });

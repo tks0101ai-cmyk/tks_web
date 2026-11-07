@@ -192,7 +192,7 @@ router.get('/api/admin/users/export', ...authManage, async (req, res) => {
     const users = await localUserStore.getAllUsers();
     const { buffer, fileName, mime } = await userExport.buildUserWorkbook(
       users,
-      { q: str(req.query.q), role: str(req.query.role), coSo: str(req.query.coSo), trangThai: str(req.query.trangThai) },
+      { orderedIds: str(req.query.orderedIds), q: str(req.query.q), role: str(req.query.role), coSo: str(req.query.coSo), trangThai: str(req.query.trangThai) },
       fieldKeys
     );
     res.setHeader('Content-Type', mime);

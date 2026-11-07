@@ -664,23 +664,16 @@ function debtAutomaticAlert(customer) {
   return (customer.alertCodes || []).includes('overdue') ? 'Quá hạn' : '';
 }
 
-function sortDebtManagementRows(rows, sort, fieldOverride) {
-  const columnIndex = Number(sort && sort.columnIndex);
-  const direction = sort && sort.direction;
-  const field = fieldOverride || (Number.isInteger(columnIndex) ? DEBT_SORT_FIELDS[columnIndex] : '');
-  if (!field || !['asc', 'desc'].includes(direction)) return rows.slice();
-  return rows.map((row, index) => ({ row, index })).sort((left, right) => {
-    const a = left.row[field];
-    const b = right.row[field];
-    const aEmpty = a === null || a === undefined || a === '';
-    const bEmpty = b === null || b === undefined || b === '';
-    if (aEmpty !== bEmpty) return aEmpty ? 1 : -1;
-    let comparison = 0;
-    if (typeof a === 'number' && typeof b === 'number') comparison = a - b;
-    else comparison = String(a).localeCompare(String(b), 'vi', { numeric: true, sensitivity: 'base' });
-    if (comparison === 0) comparison = left.index - right.index;
-    return direction === 'asc' ? comparison : -comparison;
-  }).map(entry => entry.row);
+function compareExportValues(a,b,direction) {
+  const ae=a==null||a==='',be=b==null||b==='';
+  if(ae!==be) return ae?1:-1;
+  if(ae) return 0;
+  const cmp=typeof a==='number'&&typeof b==='number'?a-b:String(a).localeCompare(String(b),'vi',{numeric:true,sensitivity:'base'});
+  return direction==='desc'?-cmp:cmp;
+}
+function sortDebtManagementRows(rows, sort, fieldOverride, fields=DEBT_SORT_FIELDS) {
+  const sorts=(Array.isArray(sort)?sort:sort?[sort]:[]).map(item=>({field:fieldOverride||fields[Number(item.columnIndex)],direction:item.direction})).filter(item=>item.field&&['asc','desc'].includes(item.direction));
+  return rows.slice().sort((a,b)=>{for(const item of sorts){const result=compareExportValues(a[item.field],b[item.field],item.direction);if(result)return result;}return 0;});
 }
 
 // Cot "Cơ sở": khach gop hai co so liet ke tung co so (branchDetails), khong thi co so cua chinh dong.
@@ -816,11 +809,8 @@ function debtAgingRows(debtAging, context) {
     equivalentDays: customer.equivalentDays,
     remainingDays: customer.remainingDays
   }));
-  const sort = context.debtAgingSort;
-  const field = DEBT_AGING_SORT_FIELDS[Number(sort && sort.columnIndex)];
-  // Ngay het no sap theo khoa YYYY-MM-DD, khong theo chuoi dd/mm hien thi.
-  const sortField = field === 'payoffDay' ? 'payoffDayKey' : field;
-  return sortField ? sortDebtManagementRows(rows, sort, sortField) : rows;
+  const fields=DEBT_AGING_SORT_FIELDS.map(field=>field==='payoffDay'?'payoffDayKey':field);
+  return sortDebtManagementRows(rows,context.debtAgingSort,null,fields);
 }
 
 // Worksheet cua bang khong doc dashboard/Postgres (du lieu tu bao cao rieng hoac payload).
@@ -926,32 +916,17 @@ function normalizeSortLabel(value) {
 }
 
 function normalizeTableSort(tableSort) {
-  const raw = plainObject(tableSort);
+  const raw = plainObject(Array.isArray(tableSort) ? tableSort[0] : tableSort);
   const label = normalizeSortLabel(raw.label);
   if (!label) return null;
   return { label, direction: raw.direction === 'desc' ? 'desc' : 'asc' };
 }
 
 function sortWorksheetRows(worksheet, tableSort) {
-  const sort = normalizeTableSort(tableSort);
-  if (!sort) return worksheet;
-  const column = (worksheet.columns || []).find(item => normalizeSortLabel(item.label) === sort.label);
-  if (!column) return worksheet;
-  const entries = (worksheet.rows || []).map((row, index) => {
-    const value = row[column.key];
-    const text = normalizeText(value);
-    const number = text !== '' && typeof value !== 'boolean' && Number.isFinite(Number(value)) ? Number(value) : null;
-    return { row, index, text, number, empty: text === '' };
-  });
-  entries.sort((a, b) => {
-    if (a.empty !== b.empty) return a.empty ? 1 : -1;
-    const comparison = a.number !== null && b.number !== null
-      ? a.number - b.number
-      : a.text.localeCompare(b.text, 'vi', { numeric: true, sensitivity: 'base' });
-    if (comparison === 0) return a.index - b.index;
-    return sort.direction === 'asc' ? comparison : -comparison;
-  });
-  return { ...worksheet, rows: entries.map(entry => entry.row) };
+  const sorts=(Array.isArray(tableSort)?tableSort:[tableSort]).map(normalizeTableSort).filter(Boolean).map(sort=>({...sort,column:(worksheet.columns||[]).find(item=>normalizeSortLabel(item.label)===sort.label)})).filter(sort=>sort.column);
+  if(!sorts.length)return worksheet;
+  const value=(row,column)=>{const raw=row[column.key],text=normalizeText(raw);return text!==''&&typeof raw!=='boolean'&&Number.isFinite(Number(raw))?Number(raw):text;};
+  return {...worksheet,rows:(worksheet.rows||[]).slice().sort((a,b)=>{for(const sort of sorts){const result=compareExportValues(value(a,sort.column),value(b,sort.column),sort.direction);if(result)return result;}return 0;})};
 }
 
 function applyTableSearchToWorksheets(worksheets, tableSearch, tableSort) {
@@ -1044,7 +1019,7 @@ async function buildCustomerProductRevenueDataset(tableKey, description, payload
   return applyTableSearchToDataset({
     tableKey, title: TABLE_TITLES[tableKey], selectionMode: 'custom',
     worksheets: [{ ...worksheet, rows: pickAggregateRows(products, worksheet.columns) }]
-  }, null, payload.tableSort);
+  }, null, (payload.tableSorts || payload.tableSort));
 }
 
 /**
@@ -1062,7 +1037,7 @@ async function buildProductReportDataset(description, payload, signal) {
     tableKey: 'overview.productReport', title: TABLE_TITLES['overview.productReport'], selectionMode: 'custom',
     reportNotes: productContainerExportNotes(data.containerSync),
     worksheets: [{ ...worksheet, rows: pickAggregateRows(data.rows, worksheet.columns) }]
-  }, payload.tableSearch, payload.tableSort);
+  }, payload.tableSearch, (payload.tableSorts || payload.tableSort));
 }
 
 // Top 3 khach -> 1 dong / khach "Tên|62.2%|10300000" (bo khach SL = 0). DUNG CHUNG ham voi man hinh
@@ -1084,12 +1059,8 @@ function formatVnStamp(iso) {
 
 // Nhan cot client gui (nhan tinh "T.này – SL" hoac nhan co ngay) -> cot sap xep trong whitelist cua repository.
 function product90dSort(tableSort, columns) {
-  const sort = normalizeTableSort(tableSort);
-  if (!sort) return {};
-  const label = sort.label.replace(/\s*\(\d{2}\/\d{2}–\d{2}\/\d{2}\)/, '');
-  const column = columns.find(item => normalizeSortLabel(item.label) === label);
-  if (!column || !product90dReportRepository.SORT_COLUMNS.includes(column.key)) return {};
-  return { sort: column.key, dir: sort.direction };
+  const sorts=(Array.isArray(tableSort)?tableSort:[tableSort]).map(normalizeTableSort).filter(Boolean).map(sort=>{const label=sort.label.replace(/\s*\(\d{2}\/\d{2}–\d{2}\/\d{2}\)/,'');const column=columns.find(item=>normalizeSortLabel(item.label)===label);return column&&product90dReportRepository.SORT_COLUMNS.includes(column.key)?{key:column.key,dir:sort.direction}:null;}).filter(Boolean);
+  return sorts.length?{sort:sorts[0].key,dir:sorts[0].dir,...(sorts.length>1?{sorts}:{})}:{};
 }
 
 function product90dQuery(tableSearch) {
@@ -1104,7 +1075,7 @@ function product90dQuery(tableSearch) {
 async function buildProduct90dDataset(description, payload, signal) {
   const worksheet = description.worksheets[0];
   const q = product90dQuery(payload.tableSearch);
-  const data = await product90dReportRepository.getProduct90dReportForExport({ q, ...product90dSort(payload.tableSort, worksheet.columns) });
+  const data = await product90dReportRepository.getProduct90dReportForExport({ q, ...product90dSort((payload.tableSorts || payload.tableSort), worksheet.columns) });
   throwIfAborted(signal);
   if (!data.available) {
     throw exportError('Chưa nạp báo cáo Hàng hóa 90 ngày (báo cáo được tính sẵn lúc 02:00 hằng ngày), chưa có dữ liệu để xuất.', 404, 'EXPORT_NO_DATA');
@@ -1145,12 +1116,13 @@ async function buildProduct90dDataset(description, payload, signal) {
 async function buildProductHistoryDataset(description, payload, signal) {
   const context = description.context;
   const worksheet = description.worksheets[0];
-  const requested = normalizeTableSort(payload.tableSort);
+  const requested = normalizeTableSort((payload.tableSorts || payload.tableSort));
   const sortable = new Set(['time', 'type', 'documentCode', 'customerName', 'quantity']);
   const column = requested && worksheet.columns.find(item => normalizeSortLabel(item.label) === requested.label);
   const data = await productHistoryRepository.getProductHistoryForExport({
     code: normalizeText(context.productCode), q: normalizeText(context.historyQuery),
     type: normalizeText(context.historyType) || 'all',
+    ...((payload.tableSorts || Array.isArray(payload.tableSort)) ? {sorts:(payload.tableSorts || payload.tableSort).map(normalizeTableSort).filter(Boolean).map(sort=>{const col=worksheet.columns.find(item=>normalizeSortLabel(item.label)===sort.label);return col&&sortable.has(col.key)?{key:col.key,dir:sort.direction}:null;}).filter(Boolean)}:{}),
     sort: column && sortable.has(column.key) ? column.key : 'time',
     dir: column && sortable.has(column.key) ? requested.direction : 'desc', signal
   });
@@ -1329,7 +1301,7 @@ function describeExport(payload, branch, options = {}) {
       : tableKey === 'stockout.check90d'
         ? buildStockout90dResultDataset(description, request)
         : buildStockout30dResultDataset(description, request);
-    const filtered = applyTableSearchToDataset(dataset, request.tableSearch, request.tableSort);
+    const filtered = applyTableSearchToDataset(dataset, request.tableSearch, (request.tableSorts || request.tableSort));
     if (filtered.worksheets.every(worksheet => worksheet.rows.length === 0)) {
       throw exportError('Không có kết quả phù hợp bộ lọc để xuất.', 404, 'EXPORT_NO_DATA');
     }
@@ -1370,7 +1342,7 @@ async function buildExportDataset(payload, branch, options = {}) {
     const board = await require('../debtSchedule/debtRewardService').getDebtRewardService().readBoard({ month, branches });
     throwIfAborted(signal);
     if (!board.summary) throw exportError('Chưa có bản chốt công nợ để xuất thưởng/phạt.', 404, 'EXPORT_NO_DATA');
-    const dataset = await buildFixedDataset(tableKey, { dashboard: { debtReward: board }, branch, signal }, description.context, request.tableSearch, options.selection, request.tableSort);
+    const dataset = await buildFixedDataset(tableKey, { dashboard: { debtReward: board }, branch, signal }, description.context, request.tableSearch, options.selection, (request.tableSorts || request.tableSort));
     if (board.status !== 'finalized') {
       dataset.worksheets.forEach(worksheet => {
         worksheet.columns = worksheet.columns.map(column => column.key === 'reward' ? { ...column, label: 'Thưởng tạm tính' } : column);
@@ -1396,7 +1368,7 @@ async function buildExportDataset(payload, branch, options = {}) {
   }
   const dashboard = await dashboardData.getDashboardData(description.filters, branch);
   throwIfAborted(signal);
-  return buildFixedDataset(tableKey, { dashboard, branch, signal }, description.context, request.tableSearch, options.selection, request.tableSort);
+  return buildFixedDataset(tableKey, { dashboard, branch, signal }, description.context, request.tableSearch, options.selection, (request.tableSorts || request.tableSort));
 }
 
 function toFieldMeta(column) {

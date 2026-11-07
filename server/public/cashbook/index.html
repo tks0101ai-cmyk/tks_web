@@ -22,7 +22,7 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500;600;700&display=swap"
     />
-    <link rel="stylesheet" href="/shared/shared.css?v=20261028-leave-btn" />
+    <link rel="stylesheet" href="/shared/shared.css?v=20261107-3" />
     <script src="/shared/motion.js?v=20261024-1" defer></script>
   <link rel="stylesheet" href="/shared/search-clear.css?v=20261009-1">
     <style>
@@ -1380,7 +1380,7 @@
         </div>
       </div>
     </dialog>
-  <script src="/shared/table-controls.js?v=20261030-1"></script>
+  <script src="/shared/table-controls.js?v=20261107-3"></script>
   <script src="/shared/fuzzy-search.js?v=20261021-1"></script>
   <script src="/shared/search-clear.js?v=20261009-1"></script>
     <script src="/shared/shared-nav.js?v=20261105-kho"></script>
@@ -1522,8 +1522,7 @@
         const loaded = { balances: [] };
         let searchMode = "code";
         // Sắp xếp bảng số dư tại chỗ: bấm tiêu đề lần lượt tăng → giảm → bỏ.
-        let balanceSort = { field: null, dir: null };
-        const SORT_FIELDS = new Set(COLUMNS.balances);
+        let balanceSorts = [], entrySorts = [];
 
         // Giữ chuỗi thập phân từ backend, không làm tròn.
         function money(value, empty = "—") {
@@ -1633,11 +1632,9 @@
             const q = $("balancesSearch").value.trim(), group = $("balancesGroupFilter").value;
             if (q) params.set("balanceQ", q);
             if (group) params.set("balanceGroup", group);
-            if (balanceSort.field && balanceSort.dir) {
-              params.set("balanceSortField", balanceSort.field);
-              params.set("balanceSortDir", balanceSort.dir);
-            }
+            if (balanceSorts.length) { params.set("balanceSorts", JSON.stringify(balanceSorts)); params.set("balanceSortField",balanceSorts[0].key); params.set("balanceSortDir",balanceSorts[0].dir); }
           }
+          if (view === "entries" && entrySorts.length) params.set("sorts", JSON.stringify(entrySorts));
           return "/api/cashbook/export?" + params.toString();
         }
         async function request(url, options = {}) {
@@ -1694,8 +1691,9 @@
             th.scope = "col";
             th.dataset.field = field;
             const label = LABELS[field];
-            if (view === "balances" && SORT_FIELDS.has(field)) {
-              const active = balanceSort.field === field ? balanceSort.dir : null;
+            if (COLUMNS[view].includes(field)) {
+              const stack = view === "balances" ? balanceSorts : entrySorts;
+              const active = stack.find(layer => layer.key === field)?.dir || null;
               const button = document.createElement("button"),
                 text = document.createElement("span"),
                 mark = document.createElement("span");
@@ -1724,11 +1722,13 @@
             } else th.textContent = label;
             if (MONEY.has(field)) th.className = "money";
             th.style.width = WIDTHS[view][field] + "px";
+            th.dataset.sort = field;
             row.appendChild(th);
           }
           $(view + "Table")
             .querySelector("thead")
             .replaceChildren(row);
+          window.TKSTables.syncSortHeaders($(view + "Table"), view === "balances" ? balanceSorts : entrySorts, th => th.dataset.field);
         }
         function tableRows(view, rows, emptyText) {
           const body = $(view + "Body");
@@ -1816,34 +1816,15 @@
         }
         // Bảng số dư ít dòng: lọc và sắp xếp ngay trên dữ liệu đã tải.
         function sortedBalances(rows) {
-          const { field, dir } = balanceSort;
-          if (!field) return rows;
-          const value = (row) =>
-            MONEY.has(field)
-              ? row[field] == null
-                ? null
-                : Number(row[field])
-              : String(field === "accountNo" ? row.accountNo || row.name || ""
-                : field === "accountGroup" ? row.accountGroup || "Khác"
-                : row[field] || "");
-          const sign = dir === "asc" ? 1 : -1;
-          return rows
-            .map((row, index) => ({ row, index, v: value(row) }))
-            .sort((a, b) => {
-              // Ô trống luôn xếp cuối, bất kể chiều sắp.
-              const emptyA = a.v == null || a.v === "",
-                emptyB = b.v == null || b.v === "";
-              if (emptyA !== emptyB) return emptyA ? 1 : -1;
-              const c =
-                typeof a.v === "number"
-                  ? a.v - b.v
-                  : String(a.v).localeCompare(String(b.v), "vi", {
-                      numeric: true,
-                      sensitivity: "base",
-                    });
-              return c ? sign * c : a.index - b.index;
-            })
-            .map((entry) => entry.row);
+          const value = (row, field) => MONEY.has(field) ? row[field] == null ? null : Number(row[field])
+            : field === "accountNo" ? row.accountNo || row.name || "" : field === "accountGroup" ? row.accountGroup || "Khác" : row[field];
+          return rows.slice().sort((a,b) => {
+            for (const layer of balanceSorts) {
+              const c = window.TKSTables.compareValues(value(a,layer.key),value(b,layer.key),layer.dir);
+              if (c) return c;
+            }
+            return 0;
+          });
         }
         function syncBalanceGroups() {
           const select = $("balancesGroupFilter"), selected = select.value;
@@ -2092,7 +2073,7 @@
                   base +
                   "&page=" +
                   pages.entries +
-                  "&pageSize=100",
+                  "&pageSize=100" + (entrySorts.length ? "&sorts=" + encodeURIComponent(JSON.stringify(entrySorts)) : ""),
                 signal,
               ),
             ]);
@@ -2516,19 +2497,19 @@
             const sort = event.target.closest("[data-sort]");
             if (!sort) return;
             const field = sort.dataset.sort;
-            const dir =
-              balanceSort.field !== field
-                ? "asc"
-                : balanceSort.dir === "asc"
-                  ? "desc"
-                  : null;
-            balanceSort = { field: dir ? field : null, dir };
+            balanceSorts = window.TKSTables.nextSorts(balanceSorts, field, event.shiftKey);
             header("balances");
             renderBalances();
             const again = $("balancesTable").querySelector(
               '[data-sort="' + field + '"]',
             );
             if (again) again.focus();
+          });
+          $("entriesTable").addEventListener("click", event => {
+            const th = event.target.closest("th[data-sort]");
+            if (!th) return;
+            entrySorts = window.TKSTables.nextSorts(entrySorts, th.dataset.sort, event.shiftKey);
+            pages.entries = 1; header("entries"); load();
           });
           $("balancesBody").addEventListener("click", (event) => {
             const row = event.target.closest("tr[data-fund]");

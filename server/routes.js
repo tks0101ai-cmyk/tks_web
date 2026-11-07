@@ -400,7 +400,7 @@ router.get('/api/product-report/containers', async (req, res) => {
 router.get('/api/product-report/history', requireFeature('reports.products.sales'), async (req, res) => {
   try {
     const { code, q, type, page, pageSize, sort, dir } = req.query;
-    const data = await getProductHistory({ code, q, type, page, pageSize, ...(sort !== undefined ? { sort } : {}), ...(dir !== undefined ? { dir } : {}) });
+    const data = await getProductHistory({ code, q, type, page, pageSize, ...(req.query.sorts !== undefined ? { sorts: req.query.sorts } : {}), ...(sort !== undefined ? { sort } : {}), ...(dir !== undefined ? { dir } : {}) });
     const canViewCost = hasFeature(req.user, 'reports.products.price');
     const rows = data.rows.map(row => {
       const copy = { ...row };
@@ -437,7 +437,7 @@ router.get('/api/product-report/customers', requireFeature('reports.products.sal
 router.get('/api/product-report/90d', requireFeature('reports.products.sales'), async (req, res) => {
   try {
     const { q, sort, dir, page, pageSize } = req.query;
-    res.status(200).json(await getProduct90dReport({ q, sort, dir, page, pageSize }));
+    res.status(200).json(await getProduct90dReport({ q, sort, dir, ...(req.query.sorts !== undefined ? { sorts: req.query.sorts } : {}), page, pageSize }));
   } catch (err) {
     if (!err.statusCode || err.statusCode >= 500) console.error('product-report/90d:', err.message);
     res.status(err.statusCode === 400 ? 400 : 500).json({

@@ -326,7 +326,7 @@ test('mặc định sắp theo "Thời gian đặt hàng" mới nhất trước 
   assert.equal(lastListParams(page).has('sort'), false);
   const header = headerNamed(page.document, 'orderDate');
   assert.ok(header.classList.contains('sort-active'));
-  assert.equal(header.querySelector('.sort-indicator').textContent, '▲', 'giam dan = ▲ (tang dan ▼, chua sap ▲▼)');
+  assert.equal(header.querySelector('.sort-indicator').textContent, '▼1', 'giam dan = ▲ (tang dan ▼, chua sap ▲▼)');
   assert.equal(header.getAttribute('aria-sort'), 'descending');
   assert.equal(headerNamed(page.document, 'orderCode').querySelector('.sort-indicator').textContent, '▲▼');
   page.dom.window.close();
@@ -637,7 +637,7 @@ test('xuất Excel gửi BỘ LỌC + cách sắp xếp đang áp dụng (không
   await settle();
   document.getElementById('bulkExportBtn').click();
   await settle();
-  assert.deepEqual(exportBody, { kiotStatus: 'Hoàn thành', sort: 'orderCode', dir: 'desc' });
+  assert.deepEqual(exportBody, { kiotStatus: 'Hoàn thành', sorts: JSON.stringify([{key:'orderCode',dir:'desc'}]), sort: 'orderCode', dir: 'desc' });
   assert.equal('codes' in exportBody, false);
   assert.equal('page' in exportBody, false);
   page.dom.window.close();
@@ -740,7 +740,7 @@ test('đơn không còn Phiếu tạm: bảng hàng hóa không có tồn/có b�
 
 test('cột "Thời gian đặt hàng" nằm cạnh Mã đơn trên bảng; đơn không có thời gian đặt hiện "—"', async () => {
   const page = await renderPage({ orders: [kiotOnlyOrder('DH1'), sheetOrder('DH2')] });
-  const heads = [...page.document.querySelectorAll('#bulkHeadRow th')].map(th => th.textContent.replace(/[▲▼]/g, '').trim());
+  const heads = [...page.document.querySelectorAll('#bulkHeadRow th')].map(th => th.querySelector('.sort-label').textContent.trim());
   assert.deepEqual(heads.slice(0, 3), ['Mã đơn', 'Cơ sở', 'Thời gian đặt hàng']);
   const rows = rowsOf(page.document);
   assert.equal(cellOf(rows[0], 'orderDate').textContent, '01/10/2026 13:14');
@@ -1134,11 +1134,11 @@ test('hộp chi tiết CÓ sort, thanh kéo độ rộng cột và nút "Cột h
   assert.deepEqual(codes(), ['A', 'B', 'VATDA44']);
   amount.querySelector('.sort-button').click();
   assert.deepEqual(codes(), ['VATDA44', 'B', 'A']);
-  assert.equal(amount.querySelector('.sort-indicator').textContent, '▼');
+  assert.equal(amount.querySelector('.sort-indicator').textContent, '▲1');
   assert.equal(amount.getAttribute('aria-sort'), 'ascending');
   amount.querySelector('.sort-button').click();
   assert.deepEqual(codes(), ['A', 'B', 'VATDA44']);
-  assert.equal(amount.querySelector('.sort-indicator').textContent, '▲');
+  assert.equal(amount.querySelector('.sort-indicator').textContent, '▼1');
   amount.querySelector('.sort-button').click();
   assert.deepEqual(codes(), ['A', 'B', 'VATDA44']);
   assert.equal(amount.querySelector('.sort-indicator').textContent, '▲▼');

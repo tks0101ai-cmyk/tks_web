@@ -125,6 +125,8 @@ function createPage({ permissions = [VIEW, MANAGE, 'reports.export', 'reports.in
   };
 
   w.eval(fs.readFileSync(path.join(publicDir, 'js', 'pagination.js'), 'utf8'));
+  w.MutationObserver = class { observe() {} disconnect() {} }; // These fixtures exercise report requests, not table auto-discovery.
+  w.eval(fs.readFileSync(path.join(publicDir, 'shared/table-controls.js'), 'utf8'));
   w.eval(js);
   [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(m => m[1]).filter(s => s.trim()).forEach(s => w.eval(s));
   w.showToast = (message, type) => toasts.push([message, type]); // sau script inline (nó tự định nghĩa showToast)
@@ -226,12 +228,12 @@ test('sort mọi cột ở máy chủ: lần 1 tăng dần ▼, lần 2 giảm d
   await settle();
   assert.match(gets(page).at(-1).href, /sort=priceWithVat&dir=asc/);
   assert.equal(th.getAttribute('aria-sort'), 'ascending');
-  assert.equal(th.querySelector('.sort-indicator').textContent, '▼');
+  assert.equal(th.querySelector('.sort-indicator').textContent, '▲1');
   assert.equal(texts(rows(page)[0])[5], '25,850');
   th.querySelector('button').click();
   await settle();
   assert.match(gets(page).at(-1).href, /dir=desc/);
-  assert.equal(th.querySelector('.sort-indicator').textContent, '▲');
+  assert.equal(th.querySelector('.sort-indicator').textContent, '▼1');
   assert.equal(texts(rows(page)[0])[5], '50,000');
   th.querySelector('button').click();
   await settle();

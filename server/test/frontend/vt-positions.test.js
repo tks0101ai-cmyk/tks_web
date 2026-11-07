@@ -750,3 +750,15 @@ test('Lịch sử: hành động Xuất kho có nhãn, lọc được và hiện
   action.dispatchEvent(new window.Event('change'));
   assert.equal(doc.querySelectorAll('#vtHistoryRows tr').length, 2);
 });
+
+test('Shift adds sort priorities across all VT rows and cycles only that priority', async t => {
+  const { window, doc } = await setup(t, { data: { HN: [row(1,{location:'A',quantity:2}),row(2,{location:'A',quantity:8}),row(3,{location:'B',quantity:1})], SG: [] } });
+  const click = (field, shiftKey=false) => doc.querySelector('[data-sort-field="'+field+'"]').dispatchEvent(new window.MouseEvent('click',{bubbles:true,shiftKey}));
+  click('location'); click('quantity',true); click('quantity',true);
+  assert.equal(doc.querySelector('[data-sort-field="location"] .sort-indicator').textContent, '▲1');
+  assert.equal(doc.querySelector('[data-sort-field="quantity"] .sort-indicator').textContent, '▼2');
+  const sorted = window.TKSVtPositions.sortRows([row(1,{location:'A',quantity:2}),row(2,{location:'A',quantity:8}),row(3,{location:'B',quantity:1})], [{key:'location',dir:'asc'},{key:'quantity',dir:'desc'}]);
+  assert.deepEqual(Array.from(sorted, r=>r.id), [2,1,3]);
+  click('quantity',true);
+  assert.equal(doc.querySelector('[data-sort-field="quantity"] .sort-indicator').textContent, '▲▼');
+});

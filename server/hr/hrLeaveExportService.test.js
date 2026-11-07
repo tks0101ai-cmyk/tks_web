@@ -86,3 +86,17 @@ test('buildLeaveRequestsWorkbook: nhiều cơ sở dùng tiền tố TKS_, có c
     repo.getLeaveRequests = original;
   }
 });
+
+test('leave export follows multiple priority levels, calendar sessions and null-last in descending', async () => {
+  await withFakeLeaveRequests([
+    {request_id:'B',ho_ten:'Same',thoi_gian_bat_dau:'Sáng 30/09/2026'},
+    {request_id:'A',ho_ten:'Same',thoi_gian_bat_dau:'Chiều 01/10/2026'},
+    {request_id:'C',ho_ten:'Same',thoi_gian_bat_dau:''}
+  ],async()=>{
+    const {buffer}=await buildLeaveRequestsWorkbook({sorts:[{field:'ho_ten',dir:'asc'},{field:'thoi_gian_bat_dau',dir:'desc'}]},BRANCHES.HANOI);
+    const workbook=new ExcelJS.Workbook();await workbook.xlsx.load(buffer);
+    const sheet=workbook.worksheets[0],header=sheet.getRow(1).values.slice(1);
+    const requestColumn=repo.LEAVE_SCHEMA_FIELD_KEYS.indexOf('request_id')+1;
+    assert.deepEqual([2,3,4].map(row=>sheet.getRow(row).getCell(requestColumn).value),['A','B','C']);
+  });
+});

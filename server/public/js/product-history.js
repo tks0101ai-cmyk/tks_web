@@ -10,7 +10,7 @@
   ];
   let currentExportState = () => null;
   function mount(root, options) {
-    let page = 1, generation = 0, timer, sort = '', dir = '', ready = false;
+    let page = 1, generation = 0, timer, sort = '', dir = '', sorts = [], ready = false;
     const active = () => root.isConnected && options.isCurrent();
     root.innerHTML = '<div class="dp-section-head"><h3 class="dp-section-title">Lịch sử giao dịch 90 ngày</h3>' +
       '<button class="dp-btn" data-action="export" type="button" hidden disabled>Xuất Excel</button></div>' +
@@ -28,6 +28,7 @@
         : Array.from(table.querySelectorAll('th')).filter(th => th.dataset.columnDefaultHidden !== 'true').map(th => th.dataset.columnKey);
       const column = columns.find(c => c[0] === sort);
       return { context: { productCode: options.code, historyType: select.value, historyQuery: input.value },
+        tableSorts: sorts.map(layer => ({label: columns.find(c => c[0] === layer.key)[1], direction: layer.dir})),
         ...(column ? { tableSort: { label: column[1], direction: dir } } : {}), columns: { product_history: visible } };
     };
     function render(data) {
@@ -61,6 +62,7 @@
       results.querySelector('[data-action="prev"]').disabled = page <= 1;
       results.querySelector('[data-action="next"]').disabled = page >= totalPages;
       if (window.TKSTables) window.TKSTables.enhance(results.querySelector('table'), { sort: false });
+      window.TKSTables.syncSortHeaders(results.querySelector('table'), sorts, th => th.dataset.sort);
       ready = true;
       exportButton.hidden = !canExport();
       exportButton.disabled = data.totalRows === 0;
@@ -76,7 +78,8 @@
       const request = ++generation;
       loading();
       const query = new URLSearchParams({ code: options.code, q: input.value, type: select.value, page: String(page), pageSize: '25' });
-      if (sort) { query.set('sort', sort); query.set('dir', dir); }
+      if (sorts.length) query.set('sorts', JSON.stringify(sorts));
+      if (sort) { query.set('sort',sort); query.set('dir',dir); }
       try {
         const response = await fetch('/api/product-report/history?' + query);
         if (!response.ok) throw new Error('history');
@@ -98,9 +101,8 @@
       const heading = event.target.closest('th[data-sort]');
       if (heading && (event.target.closest('button') || event.target === heading)) {
         const key = heading.dataset.sort;
-        if (sort !== key) { sort = key; dir = 'asc'; }
-        else if (dir === 'asc') dir = 'desc';
-        else { sort = ''; dir = ''; }
+        sorts = window.TKSTables.nextSorts(sorts, key, event.shiftKey);
+        sort = sorts[0]?.key || ''; dir = sorts[0]?.dir || '';
         page = 1; load(); return;
       }
       const button = event.target.closest('button[data-action]');

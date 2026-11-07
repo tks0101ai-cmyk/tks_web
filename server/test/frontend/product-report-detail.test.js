@@ -76,6 +76,10 @@ function createPage({ customers = code => customersPayload(code), history, meta,
     return new Promise(() => {});
   };
 
+  if (history) {
+    dom.window.MutationObserver = class { observe() {} disconnect() {} };
+    dom.window.eval(fs.readFileSync(path.join(publicDir, 'shared/table-controls.js'), 'utf8'));
+  }
   ['pagination.js', 'table-explorer.js'].forEach(file => {
     dom.window.eval(fs.readFileSync(path.join(publicDir, 'js', file), 'utf8'));
   });

@@ -1308,8 +1308,7 @@
     detail.code = code;
     setDetailError('');
     $('stConflict').hidden = true;
-    lineSort.key = null;
-    lineSort.dir = null;
+    lineSort = [];
     renderDetail();
     loadHistory();
     const dialog = $('stDetailDialog');
@@ -1327,7 +1326,7 @@
   }
 
   // ---------- Dòng đếm theo team / khu ----------
-  const lineSort = { key: null, dir: null };
+  let lineSort = [];
   const lineSaves = { queue: Promise.resolve(), versions: new Map(), timer: null };
   let drawingLines = false; // đang dựng lại bảng: ô cũ bị gỡ phát sinh blur, không được coi là người dùng rời ô
   const lineKey = line => (line.manual ? 'e' + line.edit.id : line.orderId + ':' + line.lineNo);
@@ -1400,10 +1399,19 @@
   }
 
   function syncLineSortHeader() {
-    document.querySelectorAll('#stLinesHead [data-line-sort]').forEach(button => {
-      const on = button.dataset.lineSort === lineSort.key && lineSort.dir;
-      button.closest('th').setAttribute('aria-sort', on ? (lineSort.dir === 'asc' ? 'ascending' : 'descending') : 'none');
+    $('stLinesHead').querySelectorAll('[data-line-sort]').forEach(button => {
+      if (button.querySelector('.sort-indicator')) return;
+      const label = document.createElement('span');
+      label.className = 'sort-label';
+      label.textContent = button.textContent;
+      const mark = document.createElement('span');
+      mark.className = 'sort-indicator';
+      mark.setAttribute('aria-hidden', 'true');
+      button.classList.remove('st-line-sort');
+      button.classList.add('sort-button');
+      button.replaceChildren(label, mark);
     });
+    window.TKSTables.syncSortHeaders($('stLinesHead').closest('table'), lineSort, th => th.querySelector('[data-line-sort]')?.dataset.lineSort);
   }
 
   function renderLines(row) {
@@ -1416,7 +1424,7 @@
     drawingLines = true;
     tbody.textContent = '';
     drawingLines = false;
-    for (const line of Grid.sortLines(row.lines, lineSort.key, lineSort.dir)) {
+    for (const line of Grid.sortLines(row.lines, lineSort)) {
       const tr = document.createElement('tr');
       if (line.removed) tr.classList.add('st-removed');
       if (line.edit || !line.manual) tr.dataset.lineKey = lineKey(line);
@@ -1556,9 +1564,7 @@
       const button = event.target.closest('[data-line-sort]');
       if (!button) return;
       const key = button.dataset.lineSort;
-      const next = lineSort.key !== key ? 'asc' : lineSort.dir === 'asc' ? 'desc' : null;
-      lineSort.key = next ? key : null;
-      lineSort.dir = next;
+      lineSort = window.TKSTables.nextSorts(lineSort, key, event.shiftKey);
       const row = rowOf(detail.code);
       if (row) renderLines(row);
     });

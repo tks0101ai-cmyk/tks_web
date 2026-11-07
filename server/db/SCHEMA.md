@@ -986,3 +986,9 @@ Migrations Thu mua được đổi sang 0110–0116 vì main đã dùng 0101–0
 Đọc cùng một `SELECT ... FOR UPDATE` với `source_mode` trong giao dịch ghi, nên không có lượt ghi nào nửa cách ly nửa nối vào hệ thống. `projection_owns_all` (`0116`) chỉ có nghĩa khi cờ này là `true`.
 
 Schema dùng thử `purchase_trial` (05/11/2026) đã bị gỡ khỏi mã nguồn ngày 06/11/2026 cùng `purchaseOrders/purchaseOrdersTrial.js` và API `/api/purchase-trial`. Không migration nào xóa schema đó: nó chỉ chứa dữ liệu mẫu và không còn nơi nào đọc. Xóa tay nếu muốn dọn, xem `server/purchaseOrders/ROLLOUT.md`.
+
+## 07/11/2026 — Cấu hình sort nhiều cột (không migration)
+
+JSONB `user_table_prefs.prefs` hỗ trợ `sorts: [{key, dir}]` theo thứ tự ưu tiên, dir chỉ asc/desc, tối đa 200 khóa cột duy nhất, mỗi khóa 1–200 ký tự. Dữ liệu `sort: {key,dir}` cũ tiếp tục đọc được; client mới ưu tiên mảng sorts khi có. PUT vẫn thay thế cấu hình của đúng tài khoản/bảng/chế độ, không đổi bảng/cột/quyền. Mọi ORDER BY động khác dùng whitelist phía máy chủ qua shared/multiSort.js, không nhận biểu thức SQL từ truy vấn.
+
+Cập nhật gần nhất: 07/11/2026.

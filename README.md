@@ -190,7 +190,7 @@ server/
 │       ├── carton.test.js # Kiểm thử luật ghi chú thùng
 │       └── detail-panel.css # Khung xem chi tiết dùng chung (.dp-): chỉ số tổng quan, bảng 1 khung cuộn, tắt nút chọn cột
 ├── scripts/              # Script thủ công (migrate dữ liệu, cài đặt ban đầu)
-├── shared/               # Tiện ích dùng chung phía máy chủ: fuzzySearch.js (CommonJS, createMatcher — tìm gần đúng theo từ, cùng luật với public/shared/fuzzy-search.js) và fuzzySql.js (cùng luật trong SQL)
+├── shared/               # Tiện ích máy chủ: fuzzySearch.js, fuzzySql.js (tìm gần đúng); multiSort.js + multiSort.test.js (chuẩn hóa/kiểm whitelist nhiều lớp sort và ORDER BY an toàn)
 ├── userTablePrefs/       # Cấu hình bảng theo tài khoản: độ rộng cột và ẩn/hiện cột trên desktop/mobile, lưu lâu dài Postgres `user_table_prefs` (migration `0085`); API `/api/me/table-prefs`
 ├── sheets/               # Google Sheets client (Vòng đời, CÂN ĐO, Marketing, lưu ý `hrSheetsClient.js` là mã chết chờ xóa tay)
 ├── sheetSnapshots/       # Job đọc Google Sheets (chỉ còn CÂN ĐO sau khi gỡ Vị trí HN/SG ngày 30/10/2026) theo chu kỳ vào Postgres, ghi khác biệt; kiểm thử PGlite
@@ -468,5 +468,9 @@ Cập nhật gần nhất: 07/11/2026.
 Cập nhật gần nhất: 07/11/2026.
 
 07/11/2026 — Kiểm kê: số trên giao diện làm tròn đến số nguyên; ô số lượng khi sửa giữ đầy đủ phần thập phân. Tính toán/sắp xếp/lưu trữ và xuất Excel dùng giá trị gốc. Kiểm thử liên quan 76/76 đạt, kiểm Edge đạt; chưa deploy.
+
+Cập nhật gần nhất: 07/11/2026.
+
+07/11/2026 — Sắp xếp nhiều cột trên các bảng nghiệp vụ: bấm thường chọn một cột; Shift + bấm thêm/đổi lớp, tăng → giảm → bỏ. Tiêu đề hiện mũi tên + ưu tiên 1/2/3. Bảng máy chủ sắp trước phân trang; xuất/in dùng cùng ưu tiên. Lưu cấu hình bảng local tương thích lựa chọn sort đơn cũ. Tiện ích mới server/shared/multiSort.js (+ multiSort.test.js) chuẩn hóa/kiểm whitelist và tạo ORDER BY; không migration.
 
 Cập nhật gần nhất: 07/11/2026.

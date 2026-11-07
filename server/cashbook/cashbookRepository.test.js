@@ -335,3 +335,18 @@ test('ghi chú / người nộp-nhận tìm gần đúng: bỏ dấu, 2 từ ph�
   assert.equal(s.kpis.totalReceipts, 10);
   assert.equal(s.kpis.totalPayments, 0);
 });
+
+
+test('entries sort all mapped rows by multiple columns before pagination and export', async () => {
+  const sorts = [{key:'branch',dir:'asc'},{key:'amount',dir:'desc'}];
+  const filters = f({sorts:JSON.stringify(sorts),pageSize:'1',page:'2'});
+  const page = await repo.entries(filters);
+  const exported = await repo.entries(filters,{exportLimit:20000});
+  assert.ok(exported.entries.length > 1);
+  assert.equal(page.entries[0].id, exported.entries[1].id);
+  assert.equal(page.entries[0].branch, exported.entries[1].branch);
+  for(let i=1;i<exported.entries.length;i++) {
+    const a=exported.entries[i-1], b=exported.entries[i];
+    assert.ok(a.branch < b.branch || (a.branch === b.branch && Number(a.amount) >= Number(b.amount)));
+  }
+});

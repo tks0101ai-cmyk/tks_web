@@ -117,6 +117,8 @@ function createPage({ permissions = ['reports.invoices', 'reports.invoices.price
   };
 
   ['pagination.js', 'table-explorer.js'].forEach(file => w.eval(fs.readFileSync(path.join(publicDir, 'js', file), 'utf8')));
+  w.MutationObserver = class { observe() {} disconnect() {} }; // These fixtures exercise report requests, not table auto-discovery.
+  w.eval(fs.readFileSync(path.join(publicDir, 'shared/table-controls.js'), 'utf8'));
   w.eval(auditJs);
   [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(m => m[1]).filter(s => s.trim()).forEach(s => w.eval(s));
   const doc = w.document;
@@ -435,11 +437,11 @@ test('bam tieu de cot: tang dan, giam dan, bo sap xep; gui sort/dir len may chu 
   assert.equal(last().get('sort'), 'invoiceCode');
   assert.equal(last().get('dir'), 'asc');
   assert.equal(th.getAttribute('aria-sort'), 'ascending');
-  assert.equal(th.querySelector('.sort-indicator').textContent, '▼');
+  assert.equal(th.querySelector('.sort-indicator').textContent, '▲1');
   th.querySelector('.sort-button').click();
   await settle();
   assert.equal(last().get('dir'), 'desc');
-  assert.equal(th.querySelector('.sort-indicator').textContent, '▲');
+  assert.equal(th.querySelector('.sort-indicator').textContent, '▼1');
   th.querySelector('.sort-button').click();
   await settle();
   assert.equal(last().get('sort'), null);
@@ -522,10 +524,10 @@ test('bang tien phat theo sale: tieu de cot sort theo quy uoc ▲▼ / ▼ / ▲
   assert.deepEqual(head().map(th => th.querySelector('.sort-indicator').textContent), ['▲▼', '▲▼', '▲▼']);
   head()[2].querySelector('.sort-button').click();
   assert.deepEqual(salesRowsText(page).map(r => r[0]), ['Lan', 'Minh Anh', 'Duy Thái - 1234567890']);
-  assert.equal(head()[2].querySelector('.sort-indicator').textContent, '▼');
+  assert.equal(head()[2].querySelector('.sort-indicator').textContent, '▲ 1');
   head()[2].querySelector('.sort-button').click();
   assert.deepEqual(salesRowsText(page).map(r => r[0]), ['Duy Thái - 1234567890', 'Minh Anh', 'Lan']);
-  assert.equal(head()[2].querySelector('.sort-indicator').textContent, '▲');
+  assert.equal(head()[2].querySelector('.sort-indicator').textContent, '▼ 1');
 });
 
 test('bang tien phat theo sale: nut Xuat file chi hien khi co reports.export va mo hop thoai kem bo loc + o tim kiem', async () => {

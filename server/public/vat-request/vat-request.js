@@ -19,7 +19,7 @@
     user: null, canProcess: false, isManager: false, viewerId: null, exporting: false,
     rows: [], metrics: {}, sales: [], statuses: [], stockStatus: null, truncated: false,
     preset: 'all', saleFilter: '', query: '', from: '', to: '',
-    groupByProduct: false, sortKey: '', sortDir: 'asc', page: 1, selected: new Set(), loading: false, error: '',
+    groupByProduct: false, sorts: [], page: 1, selected: new Set(), loading: false, error: '',
     editing: null, requestSeq: 0, grid: null, rowOrder: false,
     // statusSet: các chip trạng thái đang bật khi preset = 'custom'; keep: id dòng KT vừa sửa, giữ lại trên bảng
     // cho tới khi đổi bộ lọc; history: hoàn tác / làm lại (Ctrl+Z / Ctrl+Y), mất khi tải lại trang.
@@ -208,7 +208,7 @@
   const coarsePointer = window.matchMedia ? window.matchMedia('(pointer: coarse)') : null;
   function canDragRows() {
     const searching = !!(window.TKSFuzzySearch && TKSFuzzySearch.tokens(state.query).length);
-    return state.canProcess && state.rowOrder && !state.sortKey && !state.groupByProduct && !searching && !(coarsePointer && coarsePointer.matches);
+    return state.canProcess && state.rowOrder && !state.sorts.length && !state.groupByProduct && !searching && !(coarsePointer && coarsePointer.matches);
   }
 
   function pageRowIds() { return [...$('vrRows').querySelectorAll('tr[data-id]')].map(tr => Number(tr.dataset.id)); }
@@ -511,7 +511,6 @@
   }
 
   // ---------- Sắp xếp theo cột (toàn bộ danh sách) ----------
-  const collator = new Intl.Collator('vi', { numeric: true, sensitivity: 'base' });
   function sortValueOf(row, key) {
     const m = metricFor(row) || {};
     switch (key) {
@@ -538,32 +537,20 @@
     }
   }
   function compareBySort(a, b) {
-    if (!state.sortKey) return 0;
-    const x = sortValueOf(a, state.sortKey);
-    const y = sortValueOf(b, state.sortKey);
-    const emptyX = x === null || x === undefined || x === '';
-    const emptyY = y === null || y === undefined || y === '';
-    if (emptyX || emptyY) return emptyX === emptyY ? 0 : emptyX ? 1 : -1; // ô trống luôn nằm cuối
-    const result = typeof x === 'number' && typeof y === 'number' ? x - y : collator.compare(String(x), String(y));
-    return state.sortDir === 'desc' ? -result : result;
+    for (const sort of state.sorts) {
+      const result = window.TKSTables.compareValues(sortValueOf(a, sort.key), sortValueOf(b, sort.key), sort.dir);
+      if (result) return result;
+    }
+    return 0;
   }
-  // Bấm lần lượt: tăng dần → giảm dần → về thứ tự gốc (mới nhất trước).
-  function cycleSort(key) {
-    if (state.sortKey !== key) { state.sortKey = key; state.sortDir = 'asc'; }
-    else if (state.sortDir === 'asc') state.sortDir = 'desc';
-    else state.sortKey = '';
+  function cycleSort(key, add) {
+    state.sorts = window.TKSTables.nextSorts(state.sorts, key, add);
     state.page = 1;
     render();
     $('vrScroll').scrollTop = 0;
   }
-  // Chưa sắp ▲▼ · tăng dần ▼ · giảm dần ▲ (quy ước chung của hệ thống).
   function updateSortHeaders() {
-    document.querySelectorAll('#vrHeadRow [data-sort]').forEach(button => {
-      const active = state.sortKey === button.dataset.sort;
-      button.closest('th').setAttribute('aria-sort', active ? (state.sortDir === 'asc' ? 'ascending' : 'descending') : 'none');
-      button.querySelector('.sort-indicator').textContent = active ? (state.sortDir === 'asc' ? '▼' : '▲') : '▲▼';
-      button.title = active ? (state.sortDir === 'asc' ? 'Sắp xếp giảm dần' : 'Về thứ tự gốc') : 'Sắp xếp tăng dần';
-    });
+    window.TKSTables.syncSortHeaders($('vrHeadRow').closest('table'), state.sorts, th => th.querySelector('[data-sort]')?.dataset.sort);
   }
 
   // Tìm gần đúng ngay trên dòng đã tải (mã SP, tên SP, khách, ghi chú, sale); không gọi lại máy chủ.
@@ -576,7 +563,7 @@
     if (state.groupByProduct) {
       return source.slice().sort((a, b) => a.productKey.localeCompare(b.productKey, 'vi', { numeric: true }) || compareBySort(a, b) || (b.createdAt || '').localeCompare(a.createdAt || ''));
     }
-    if (!state.sortKey) return source;
+    if (!state.sorts.length) return source;
     return source.slice().sort((a, b) => compareBySort(a, b) || b.id - a.id);
   }
 
@@ -1227,7 +1214,7 @@
     });
     table.addEventListener('click', event => {
       const sort = event.target.closest('[data-sort]');
-      if (sort) { cycleSort(sort.dataset.sort); return; }
+      if (sort) { cycleSort(sort.dataset.sort, event.shiftKey); return; }
       const stock = event.target.closest('[data-stock]');
       if (stock) { openStock(stock.dataset.stock); return; }
       const button = event.target.closest('[data-action]');

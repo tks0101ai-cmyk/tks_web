@@ -652,3 +652,13 @@ Cập nhật gần nhất: 07/11/2026.
 07/11/2026 — Kiểm kê: số trên giao diện làm tròn đến số nguyên; ô số lượng khi sửa giữ đầy đủ phần thập phân. Tính toán/sắp xếp/lưu trữ và xuất Excel dùng giá trị gốc. Kiểm thử liên quan 76/76 đạt, kiểm Edge đạt; chưa deploy.
 
 Cập nhật gần nhất: 07/11/2026.
+
+## 07/11/2026 — Sắp xếp nhiều cột dùng chung
+
+Quy tắc đã được người dùng yêu cầu áp dụng cho mọi bảng: bấm thường chọn một cột; Shift + bấm thêm/đổi lớp theo thứ tự ưu tiên; mỗi lớp tăng → giảm → bỏ, đánh lại số 1/2/3 khi bỏ lớp. Tiêu đề hiển thị hướng và số ưu tiên, tên nút hỗ trợ đọc màn hình; ô trống cuối mỗi lớp. So sánh ngày/số theo giá trị gốc; chỉ xét lớp kế khi bằng nhau. Bỏ hết lớp trả lại thứ tự mặc định của từng bảng.
+
+Thiết kế triển khai: public/shared/table-controls.js cung cấp nextSorts / compareValues / syncSortHeaders và áp dụng cho các bảng chi tiết/sort local; cấu hình tài khoản user_table_prefs.prefs thêm mảng sorts, tương thích sort đơn cũ, không migration. server/shared/multiSort.js và multiSort.test.js chuẩn hóa/kiểm whitelist khóa và hướng, tạo ORDER BY chỉ từ biểu thức do máy chủ định nghĩa. Bảng phân trang sort toàn bộ kết quả trước LIMIT/OFFSET; luồng xuất/in dùng cùng ưu tiên hoặc thứ tự mã/ID đã được phân quyền.
+
+Kế hoạch kiểm chứng: (1) test hồi quy nhiều lớp, bằng nhau/NULL, chu kỳ/bỏ lớp và lưu-khôi phục; (2) tích hợp nhóm Dashboard/Nhân sự/Tài khoản, nhóm báo cáo phân trang, nhóm Thu mua/VAT/VT/Marketing và chi tiết kiểm kê; (3) chạy test toàn bộ liên quan, kiểm trình duyệt sáng/tối, cập nhật graphify và CURRENT. Không thay nguồn dữ liệu hoặc chạy migration.
+
+Cập nhật gần nhất: 07/11/2026.

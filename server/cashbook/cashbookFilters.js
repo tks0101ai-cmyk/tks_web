@@ -73,7 +73,7 @@ function parseFilters(query = {}, now = new Date()) {
     'code',
     'note',
     'page',
-    'pageSize',
+    'pageSize', 'sorts',
   ];
   for (const k of Object.keys(query))
     if (!keys.includes(k)) throw invalid(`Tham số ${k} không được hỗ trợ.`);
@@ -161,6 +161,7 @@ function parseFilters(query = {}, now = new Date()) {
     partnerPhone: text(query.partnerPhone, 'partnerPhone'),
     code: text(query.code, 'code'),
     note: text(query.note, 'note'),
+    ...(query.sorts !== undefined ? { sorts: require('../shared/multiSort').normalizeSortsStrict(query.sorts, ['code','transDate','docType','group','partnerName','partnerPhone','fundName','branch','creatorName','staffName','amount','runningBalance','status','note']) } : {}),
     page: integer(query.page, 'page', 1, 1000000),
     pageSize: integer(query.pageSize, 'pageSize', 100, 200),
   };

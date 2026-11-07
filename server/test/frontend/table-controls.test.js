@@ -5,6 +5,34 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
 const sourcePath = path.join(__dirname, '../../public/shared/table-controls.js');
+
+test('shared multi-sort: Shift cycles independent layers and header priorities; null ties continue', t => {
+  const ctx = setup(t, '<table class="dp-table"><thead><tr><th data-field="group">Nhóm</th><th data-field="qty">SL</th><th data-field="name">Tên</th></tr></thead><tbody><tr><td>X</td><td>2</td><td>B</td></tr><tr><td>X</td><td>2</td><td>A</td></tr><tr><td>X</td><td>10</td><td>C</td></tr><tr><td></td><td>2</td><td>Z</td></tr><tr><td></td><td>1</td><td>Y</td></tr></tbody></table>');
+  ctx.api.enhance(ctx.table);
+  const click = (i, shiftKey = false) => sortButton(ctx, i).dispatchEvent(new ctx.window.MouseEvent('click', { bubbles: true, shiftKey }));
+  click(0); click(1, true); click(2, true);
+  assert.deepEqual(colOf(ctx, 2), ['A', 'B', 'C', 'Y', 'Z']);
+  assert.equal(sortButton(ctx, 2).querySelector('.sort-indicator').textContent, '▲3');
+  click(1, true);
+  assert.deepEqual(colOf(ctx, 2), ['C', 'A', 'B', 'Z', 'Y']);
+  click(1, true);
+  assert.equal(sortButton(ctx, 2).querySelector('.sort-indicator').textContent, '▲2');
+  assert.equal(state(ctx).sorts.length, 2);
+  click(2);
+  assert.equal(state(ctx).sorts.length, 1);
+  assert.equal(ctx.api.compareValues(null, null, 'desc'), 0);
+  assert.equal(ctx.api.compareValues(null, 1, 'desc'), 1);
+});
+
+test('local sort keeps pinned rows fixed and blank numeric metadata last in both directions', t => {
+  const ctx = setup(t, '<table class="dp-table"><thead><tr><th>SL</th></tr></thead><tbody><tr data-sort-fixed><td>Chờ xếp</td></tr><tr><td data-sort-value="">—</td></tr><tr><td>2</td></tr><tr><td>1</td></tr></tbody></table>');
+  ctx.api.enhance(ctx.table);
+  const button = sortButton(ctx, 0);
+  button.click();
+  assert.deepEqual(Array.from(ctx.table.tBodies[0].rows, r => r.textContent), ['Chờ xếp', '1', '2', '—']);
+  button.click();
+  assert.deepEqual(Array.from(ctx.table.tBodies[0].rows, r => r.textContent), ['Chờ xếp', '2', '1', '—']);
+});
 const fixture = '<div class="table-wrap"><table id="orders"><thead><tr><th data-column-key="code" style="width:130px">Mã hàng</th><th data-column-key="name" style="width:240px">Tên hàng</th><th data-column-key="qty" style="width:112px">Số lượng</th></tr></thead><tbody><tr><td>A</td><td>Tên rất dài</td><td>12</td></tr><tr><td colspan="3">Tổng</td></tr></tbody><tfoot><tr><td colspan="2">Tổng cộng</td><td>12</td></tr></tfoot></table></div>';
 function setup(t, html = fixture) {
   const dom = new JSDOM(html, { url:'https://tables.test/', runScripts:'outside-only', pretendToBeVisual:true });
@@ -226,17 +254,17 @@ const dialogFixture = '<div class="dp-section"><div class="dp-section-head"><h3 
 const colOf = (ctx, index) => [...ctx.table.tBodies[0].rows].map(row => row.cells[index].textContent);
 const sortButton = (ctx, index) => ctx.table.tHead.rows[0].cells[index].querySelector('.sort-button');
 
-test('dialog table: header sort cycles asc → desc → original, ▲▼ / ▼ / ▲ glyphs and aria-sort', t => {
+test('dialog table: header sort cycles asc → desc → original, priority glyphs and aria-sort', t => {
   const ctx=setup(t,dialogFixture); assert.ok(ctx.api); ctx.api.enhance(ctx.table);
   const th=ctx.table.tHead.rows[0].cells[0], mark=()=>th.querySelector('.sort-indicator').textContent;
   assert.equal(mark(),'▲▼'); assert.equal(th.getAttribute('aria-sort'),'none');
   assert.ok(th.querySelector(':scope > .sort-button > .sort-label'),'label wrapped so the glyph is a separate flex column');
   assert.equal(ctx.table.tHead.rows[0].cells[3].querySelector('.sort-button'),null,'data-no-sort opts a column out');
   sortButton(ctx,0).click();
-  assert.deepEqual(colOf(ctx,0),['A1','B2','C3','D4']); assert.equal(mark(),'▼'); assert.equal(th.getAttribute('aria-sort'),'ascending');
+  assert.deepEqual(colOf(ctx,0),['A1','B2','C3','D4']); assert.equal(mark(),'▲1'); assert.equal(th.getAttribute('aria-sort'),'ascending');
   assert.deepEqual(state(ctx).sort,{key:'Mã hàng',direction:'asc'});
   sortButton(ctx,0).click();
-  assert.deepEqual(colOf(ctx,0),['D4','C3','B2','A1']); assert.equal(mark(),'▲'); assert.equal(th.getAttribute('aria-sort'),'descending');
+  assert.deepEqual(colOf(ctx,0),['D4','C3','B2','A1']); assert.equal(mark(),'▼1'); assert.equal(th.getAttribute('aria-sort'),'descending');
   sortButton(ctx,0).click();
   assert.deepEqual(colOf(ctx,0),['B2','A1','C3','D4']); assert.equal(mark(),'▲▼'); assert.equal(state(ctx).sort,null);
   assert.match(ctx.table.tFoot.textContent,/Cộng/,'footer total stays out of the sort');
@@ -476,6 +504,22 @@ test('clearing the sort is saved without a sort, and an unknown saved sort colum
   other.api.enhance(other.table);
   other.api.loadPrefs({ [state(other).key]: { desktop: { columns: {}, sort: { key: 'gone', dir: 'asc' } } } });
   assert.equal(state(other).sort, null);
+});
+
+test('local multi-sort persists and restores every priority by column key', t => {
+  const html = localSortFixture.replace('<tr><td>A</td>', '<tr><td>B</td><td>x</td><td>12</td></tr><tr><td>A</td>');
+  const ctx = prefsContext(t, html);
+  ctx.api.loadPrefs({});
+  sortHeader(ctx, 'Số lượng').click();
+  sortHeader(ctx, 'Mã hàng').dispatchEvent(new ctx.window.MouseEvent('click', { bubbles: true, shiftKey: true }));
+  ctx.flush();
+  const saved = ctx.puts[ctx.puts.length - 1].body;
+  assert.deepEqual(saved.sorts, [{ key: 'qty', dir: 'asc' }, { key: 'code', dir: 'asc' }]);
+  const fresh = setup(t, html);
+  fresh.api.enhance(fresh.table);
+  fresh.api.loadPrefs({ [state(ctx).key]: { desktop: saved } });
+  assert.deepEqual(state(fresh).sorts, saved.sorts);
+  assert.deepEqual(rowCodes(fresh), ['A', 'B']);
 });
 
 

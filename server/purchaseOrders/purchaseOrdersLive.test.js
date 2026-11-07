@@ -33,9 +33,10 @@ async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees
  w.PurchaseCalculations=require('../public/shared/purchase-calculations');w.PurchaseFreight=require('../public/shared/purchase-freight');w.PurchaseColumns=require('../public/shared/purchase-columns');w.PurchaseTasks=require('../public/shared/purchase-tasks');w.TKSNav={authGuard:async()=>({id:'buyer'})};
  w.EventSource=class{addEventListener(k,fn){listeners[k]=fn}close(){}};
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false};
- w.fetch=async(url,options={})=>{calls.push({url,options});if(url.endsWith('/employees'))return {ok:true,json:async()=>({rows:employees})};if(url.endsWith('/status')){const input=JSON.parse(options.body),container=current.containers.find(c=>String(c.id)===String(input.containerId));container.status=input.status;container.version++;return {ok:true,json:async()=>structuredClone(container)}}if(url.endsWith('/bulk')){const input=JSON.parse(options.body);return {ok:true,json:async()=>({results:input.rows.map(r=>({id:r.id,status:'updated'}))})}}if(options.method==='PATCH'){const input=JSON.parse(options.body);if(input.before.supplier!==undefined&&current.rows[0].supplier!==input.before.supplier)return {ok:false,status:409,json:async()=>({error:'Ô đã được người khác sửa.'})};current.rows[0]={...current.rows[0],...input.changes,version:current.rows[0].version+1};return {ok:true,json:async()=>current.rows[0]}}return {ok:true,json:async()=>structuredClone(current)}};
+ w.fetch=async(url,options={})=>{if(url.startsWith('/api/me/table-prefs'))return {ok:true,json:async()=>({tables:{}})};calls.push({url,options});if(url.endsWith('/employees'))return {ok:true,json:async()=>({rows:employees})};if(url.endsWith('/status')){const input=JSON.parse(options.body),container=current.containers.find(c=>String(c.id)===String(input.containerId));container.status=input.status;container.version++;return {ok:true,json:async()=>structuredClone(container)}}if(url.endsWith('/bulk')){const input=JSON.parse(options.body);return {ok:true,json:async()=>({results:input.rows.map(r=>({id:r.id,status:'updated'}))})}}if(options.method==='PATCH'){const input=JSON.parse(options.body);if(input.before.supplier!==undefined&&current.rows[0].supplier!==input.before.supplier)return {ok:false,status:409,json:async()=>({error:'Ô đã được người khác sửa.'})};current.rows[0]={...current.rows[0],...input.changes,version:current.rows[0].version+1};return {ok:true,json:async()=>current.rows[0]}}return {ok:true,json:async()=>structuredClone(current)}};
  if(saved)w.sessionStorage.setItem('purchase:buyer:v1',JSON.stringify(saved));if(savedOutbox)w.sessionStorage.setItem('purchase:buyer:v1:outbox',JSON.stringify(savedOutbox));
- if(onEnhance)w.TKSTables={enhance:onEnhance};
+ w.eval(fs.readFileSync(path.join(dir,'../../shared/table-controls.js'),'utf8'));
+ if(onEnhance)w.TKSTables.enhance=onEnhance;
  w.eval(fs.readFileSync(path.join(dir,'purchase.js'),'utf8'));await tick();await tick();
  const change=(selector,v)=>{const el=w.document.querySelector(selector);el.value=v;el.dispatchEvent(new w.Event('change',{bubbles:true}))};
  return {w,calls,listeners,change,get current(){return current}};
@@ -345,18 +346,18 @@ test('nut sap xep o tieu de xep toan bo dong da loc truoc khi cat trang va xoay 
  assert.equal(first(),'55','mac dinh xep theo id giam dan');
 
  head().querySelector('.sort-button').click();
- assert.equal(head().getAttribute('aria-sort'),'ascending');assert.equal(glyph(),'▼');
+ assert.equal(head().getAttribute('aria-sort'),'ascending');assert.equal(glyph(),'▲1');
  assert.equal(first(),'2','tang dan: so nho nhat o trang cuoi theo thu tu goc phai len dau trang 1');
  assert.equal(doc.querySelectorAll('#orderTable th[aria-sort="ascending"]').length,1,'chi mot cot duoc sap xep');
- assert.deepEqual(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).colSort,{k:'cartonCount',dir:'asc'});
+ assert.deepEqual(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).colSort,[{key:'cartonCount',dir:'asc'}]);
 
  head().querySelector('.sort-button').click();
- assert.equal(head().getAttribute('aria-sort'),'descending');assert.equal(glyph(),'▲');
+ assert.equal(head().getAttribute('aria-sort'),'descending');assert.equal(glyph(),'▼1');
  assert.equal(first(),'61');
 
  head().querySelector('.sort-button').click();
  assert.equal(head().getAttribute('aria-sort'),'none');assert.equal(first(),'55','nhan lan ba thi tra lai thu tu goc');
- assert.equal(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).colSort,null);
+ assert.deepEqual(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).colSort,[]);
 
  // Chon lai o Sap xep thi bo sap xep theo cot, khong de hai thu tu tranh nhau.
  head().querySelector('.sort-button').click();
@@ -470,4 +471,29 @@ test('initial order layout uses restored filters before table widths are cached'
  const td=p.w.document.querySelector('#orderTable td[data-field="productCode"]');assert.ok(td.querySelector('.code-cell > .code-label'));
  p.change('#filter','');p.listeners.changed();await tick();await tick();
  assert.equal(p.w.document.getElementById('filter').value,'','saved filter is consumed once, not restored over new choices');
+});
+
+
+test('purchase Shift sorting keeps three priorities and renumbers after removing the middle',async t=>{
+ const p=await page(t,{extraRows:[{id:'3',rowKey:'D00003',productCode:'ABC',supplier:'A',cartonCount:5},{id:'4',rowKey:'D00004',productCode:'ABC',supplier:'A',cartonCount:9}]}),doc=p.w.document;
+ const click=(key,shiftKey=false)=>doc.querySelector('#orderTable th[data-key="'+key+'"] .sort-button').dispatchEvent(new p.w.MouseEvent('click',{bubbles:true,shiftKey}));
+ click('supplier');click('productCode',true);click('cartonCount',true);click('cartonCount',true);
+ assert.equal(doc.querySelector('th[data-key="cartonCount"] .sort-indicator').textContent,'▼3');
+ assert.deepEqual([...doc.querySelectorAll('#orderTable tbody tr')].map(tr=>tr.dataset.id),['4','3','1']);
+ click('productCode',true);click('productCode',true);
+ assert.equal(doc.querySelector('th[data-key="cartonCount"] .sort-indicator').textContent,'▼2');
+ assert.deepEqual(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).colSort,[{key:'supplier',dir:'asc'},{key:'cartonCount',dir:'desc'}]);
+});
+
+test('container metrics use shared multi-sort while the waiting group stays pinned',async t=>{
+ const p=await page(t),doc=p.w.document;
+ const table=doc.querySelector('#containerTable table');
+ assert.equal(table.dataset.tableSort,'local');
+ const buttons=table.querySelectorAll('thead .sort-button');
+ assert.equal(buttons.length,14);
+ buttons[0].click();buttons[3].dispatchEvent(new p.w.MouseEvent('click',{bubbles:true,shiftKey:true}));
+ assert.equal(buttons[0].querySelector('.sort-indicator').textContent,'▲1');
+ assert.equal(buttons[3].querySelector('.sort-indicator').textContent,'▲2');
+ assert.equal(table.tBodies[0].rows[0].hasAttribute('data-sort-fixed'),true);
+ assert.ok(table.tBodies[0].rows[0].querySelector('[data-container-filter=""]'));
 });

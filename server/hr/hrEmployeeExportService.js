@@ -119,6 +119,10 @@ async function buildEmployeeDirectoryWorkbook(filters, branch) {
     items = fuzzy.filter(items, keyword, e => [e.hoTen, e.boPhan, e.chucVu, e.soDienThoai].filter(Boolean).join(' '));
   }
 
+  let requestedOrder;
+  try { requestedOrder=JSON.parse(filters.orderedIds || 'null'); } catch {}
+  if (Array.isArray(requestedOrder) && requestedOrder.length) { const order=new Map(requestedOrder.map((id,index)=>[String(id),index])); items.sort((a,b)=>(order.get(String(a.id))??Infinity)-(order.get(String(b.id))??Infinity)); }
+
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'TOKOSI Dashboard';
   workbook.created = new Date();
