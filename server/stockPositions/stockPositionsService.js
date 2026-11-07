@@ -653,13 +653,15 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
       }
       else updates.push({ sourceIndexes: entry.sourceIndexes, id: current.id, code: entry.code, name: nextName, notes: nextNotes, arrivalDate: nextDate, location: nextLocation, row, before: current });
     }
-    // Thay toan bo: dong hien co khong nam trong file bi xoa (ke ca dong trung ma + vi tri thua).
+    // Thay toan bo: chi ap cho cac MA co trong file - dong cua ma do ma vi tri khong con trong file bi xoa
+    // (ke ca dong trung ma + vi tri thua). Ma co trong DB nhung KHONG co trong file thi giu nguyen.
     // Dong dang duoc don Dang boc chi dinh thi giu lai (bao trong "bo qua"), khong xoa.
     const deletes = [];
     let keptHeld = 0;
     if (mode === 'replace' && entries.size > 0) {
+      const fileCodes = new Set([...entries.values()].map(entry => lower(entry.code)));
       for (const row of existing) {
-        if (touched.has(row.id)) continue;
+        if (touched.has(row.id) || !fileCodes.has(lower(row.code))) continue;
         const orders = holders.get(Number(row.id));
         if (!orders || !orders.length) { deletes.push(row); continue; }
         keptHeld += 1;

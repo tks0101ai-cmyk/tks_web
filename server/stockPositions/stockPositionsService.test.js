@@ -395,12 +395,13 @@ test('đơn Đang bốc giữ dòng VT: xóa tay / sửa-trừ về 0 bị chặ
     await assert.rejects(service.remove(ctx(), byCode.AAA1.id, byCode.AAA1.version), e => e.code === 'POSITION_HELD' && /DH1/u.test(e.message));
     await assert.rejects(service.deduct(ctx(), byCode.AAA1.id, { quantity: 300, version: byCode.AAA1.version }), e => e.code === 'POSITION_HELD');
     await assert.rejects(service.update(ctx(), byCode.AAA1.id, { notes: '', version: byCode.AAA1.version, confirmEmpty: true }), e => e.code === 'POSITION_HELD');
-    const buffer = workbook([['mã SP', 'GHI CHÚ', 'Ngày về', 'Vị trí'], ['ZZZ9', '1T x 5', '', 'Z1']]);
+    // File chứa cả 3 mã nhưng ở vị trí mới: dòng cũ của mã có trong file bị thay thế, trừ dòng AAA1 đang được giữ chỗ.
+    const buffer = workbook([['mã SP', 'GHI CHÚ', 'Ngày về', 'Vị trí'], ['AAA1', '1T x 5', '', 'Z1'], ['BBB2', '1T x 5', '', 'Z2'], ['CCC3', '1T x 5', '', 'Z3']]);
     const preview = await service.importFile(ctx(), 'HN', { mode: 'replace', buffer });
     assert.deepEqual([preview.counts.deleted, preview.counts.keptHeld], [2, 1]);
     assert.match(preview.rows.find(r => r.kind === 'skipped' && r.code === 'AAA1').message, /DH1/u);
     await service.importFile(ctx(), 'HN', { mode: 'replace', commit: true, buffer });
-    assert.deepEqual((await service.list(ctx(), 'HN')).rows.map(r => r.code).sort(), ['AAA1', 'ZZZ9']);
+    assert.deepEqual((await service.list(ctx(), 'HN')).rows.map(r => r.code + '@' + r.location).sort(), ['AAA1@A1', 'AAA1@Z1', 'BBB2@Z2', 'CCC3@Z3']);
   } finally { await db.close(); }
 });
 
@@ -416,19 +417,23 @@ test('import replace: xem truoc khong ghi, xac nhan thay toan bo (them/doi/xoa),
       [3, 'BBB2', '', '', 'H2', ''],                      // SL 0: bo qua => dong BBB2 cu bi xoa
       [4, '', '', '', '', '']
     ]);
+    // BBB2 chỉ có dòng SL 0 (bị bỏ qua) nên không có trong file => dòng BBB2 cũ giữ nguyên.
+    // AAA1 có trong file ở H1 nên dòng AAA1@H7 thừa trong DB bị xóa.
+    await service.create(ctx(), 'HN', { code: 'AAA1', notes: '1T x 5', arrivalDate: '1/10', location: 'H7' });
     const preview = await service.importFile(ctx(), 'HN', { mode: 'replace', buffer, fileName: 'vt.xlsx' });
     assert.deepEqual(preview.counts, { added: 1, updated: 0, deleted: 1, unchanged: 1, skippedEmpty: 1, keptHeld: 0, errors: 0 });
-    assert.deepEqual(preview.rows.map(r => [r.kind, r.code, r.notes, r.location, r.cartons, r.quantity]), [['add', 'ZZZ9', '3T x 20', 'H9', 3, 60], ['delete', 'BBB2', '1T x 10', 'H2', 1, 10], ['unchanged', 'AAA1', '5T x 100', 'H1', 5, 500], ['skipped', 'BBB2', '', 'H2', 0, 0]]);
-    assert.equal((await service.list(ctx(), 'HN')).rows.length, 2);
+    assert.deepEqual(preview.rows.map(r => [r.kind, r.code, r.notes, r.location, r.cartons, r.quantity]), [['add', 'ZZZ9', '3T x 20', 'H9', 3, 60], ['delete', 'AAA1', '1T x 5', 'H7', 1, 5], ['unchanged', 'AAA1', '5T x 100', 'H1', 5, 500], ['skipped', 'BBB2', '', 'H2', 0, 0]]);
+    assert.equal((await service.list(ctx(), 'HN')).rows.length, 3);
     const done = await service.importFile(ctx(), 'HN', { mode: 'replace', commit: true, buffer, fileName: 'vt.xlsx' });
     assert.equal(done.imported, true);
     const rows = (await service.list(ctx(), 'HN')).rows;
-    assert.deepEqual(rows.map(r => [r.code, r.notes, r.arrivalDate, r.location]), [['AAA1', '5T x 100', '1/10', 'H1'], ['ZZZ9', '3T x 20', 'KK 4.10', 'H9']]);
+    assert.deepEqual(rows.map(r => [r.code, r.notes, r.arrivalDate, r.location]), [['AAA1', '5T x 100', '1/10', 'H1'], ['BBB2', '1T x 10', '1/10', 'H2'], ['ZZZ9', '3T x 20', 'KK 4.10', 'H9']]);
     const history = (await service.history(ctx(), 'HN')).rows;
     const summary = history.find(h => h.action === 'import_replace');
     assert.equal(summary.summary.file, 'vt.xlsx');
     assert.equal(summary.summary.added, 1);
-    assert.ok(history.some(h => h.action === 'delete' && h.code === 'BBB2'));
+    assert.ok(history.some(h => h.action === 'delete' && h.code === 'AAA1' && h.location === 'H7'));
+    assert.ok(!history.some(h => h.action === 'delete' && h.code === 'BBB2'));
   } finally { await db.close(); }
 });
 
@@ -474,7 +479,7 @@ test('import loi: missing code blocks commit; free-form notes do not; Excel date
     assert.equal(preview.counts.errors, 0);
     assert.equal(preview.rows.find(row => row.row === 2).kind, 'skipped');
     assert.equal((await service.importFile(ctx(), 'HN', { mode: 'replace', commit: true, buffer: bad })).imported, true);
-    assert.equal((await service.list(ctx(), 'HN')).rows.length, 2);
+    assert.equal((await service.list(ctx(), 'HN')).rows.length, 3, 'AAA1, CCC3 và BBB2 (mã ngoài file giữ nguyên)');
 
     const sheet = XLSX.utils.aoa_to_sheet([HEADER, ['AAA1', '1T x 5', '', 'H1']]);
     sheet.C2 = { t: 'n', v: 46300, z: 'dd/mm/yyyy' }; // 2026-08-... theo serial Excel
