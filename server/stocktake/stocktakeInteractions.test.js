@@ -45,6 +45,8 @@ async function pageFixture(t, { rowCount = 3, status = 'open', canEdit = true, f
     w, app: w.TKSStocktake, posts, sleep, tbody, heads, headCol,
     scroller: w.document.querySelector('.st-scroll'),
     cell: (row, key) => tbody.rows[row].cells[headCol(key)],
+    // jsdom tinh style cham nen mot nhip ve vung chon co the mat >100ms: cho den khi dieu kien dung (toi da 2s).
+    until: async condition => { for (let i = 0; i < 100 && !condition(); i++) await sleep(20); },
     mouse: (type, init = {}) => new w.MouseEvent(type, Object.assign({ bubbles: true, cancelable: true }, init))
   };
 }
@@ -67,4 +69,64 @@ test('fixture: ve du dong va cot theo khoa', async t => {
   assert.equal(f.cell(0, 'code').textContent, 'SP1');
   assert.ok(f.headCol('reason') > f.headCol('code'));
   assert.ok(Object.keys(EDIT_COLUMNS).every(key => f.headCol(key) >= 0));
+});
+
+test('keo chon o toi mep duoi: bang tu cuon, vung chon di theo, tha chuot thi dung', async t => {
+  const f = await pageFixture(t, { rowCount: 60 });
+  const { w, app, scroller } = f;
+  scroller.getBoundingClientRect = () => ({ top: 0, bottom: 300, left: 0, right: 800 });
+  w.document.elementFromPoint = () => f.cell(25, 'counted');
+  f.cell(0, 'counted').dispatchEvent(f.mouse('mousedown', { clientX: 100, clientY: 100 }));
+  w.document.dispatchEvent(f.mouse('mousemove', { clientX: 100, clientY: 299, buttons: 1 }));
+  await f.until(() => scroller.scrollTop > 28);
+  assert.ok(scroller.scrollTop > 28, 'scrollTop=' + scroller.scrollTop);
+  assert.equal(app.selection.focus.row, 25);
+  assert.equal(app.selection.anchor.row, 0);
+  w.document.dispatchEvent(f.mouse('mouseup'));
+  const stopped = scroller.scrollTop;
+  await f.sleep(100);
+  assert.equal(scroller.scrollTop, stopped);
+});
+
+test('keo chon o giua khung: khong cuon', async t => {
+  const f = await pageFixture(t, { rowCount: 60 });
+  f.scroller.getBoundingClientRect = () => ({ top: 0, bottom: 300, left: 0, right: 800 });
+  f.cell(0, 'counted').dispatchEvent(f.mouse('mousedown', { clientX: 100, clientY: 100 }));
+  f.w.document.dispatchEvent(f.mouse('mousemove', { clientX: 100, clientY: 150, buttons: 1 }));
+  await f.sleep(100);
+  assert.equal(f.scroller.scrollTop, 0);
+  f.w.document.dispatchEvent(f.mouse('mouseup'));
+});
+
+test('nha chuot ngoai cua so (mousemove buttons=0) thi dung cuon', async t => {
+  const f = await pageFixture(t, { rowCount: 60 });
+  f.scroller.getBoundingClientRect = () => ({ top: 0, bottom: 300, left: 0, right: 800 });
+  f.cell(0, 'counted').dispatchEvent(f.mouse('mousedown', { clientX: 100, clientY: 100 }));
+  f.w.document.dispatchEvent(f.mouse('mousemove', { clientX: 100, clientY: 299, buttons: 1 }));
+  await f.sleep(80);
+  f.w.document.dispatchEvent(f.mouse('mousemove', { clientX: 100, clientY: 299, buttons: 0 }));
+  const stopped = f.scroller.scrollTop;
+  await f.sleep(100);
+  assert.equal(f.scroller.scrollTop, stopped);
+  assert.equal(f.app.selection.dragging, false);
+});
+
+test('keo nut dien toi mep duoi: bang cung tu cuon', async t => {
+  const f = await pageFixture(t, { rowCount: 60 });
+  const { w, scroller } = f;
+  scroller.getBoundingClientRect = () => ({ top: 0, bottom: 300, left: 0, right: 800 });
+  w.document.elementFromPoint = () => null; // to = null -> tha chuot khong ghi gi
+  f.cell(0, 'reason').dispatchEvent(f.mouse('mousedown', { clientX: 100, clientY: 100 }));
+  w.document.dispatchEvent(f.mouse('mouseup'));
+  const handle = w.document.querySelector('.st-fill');
+  assert.ok(handle, 'co nut dien');
+  handle.dispatchEvent(f.mouse('mousedown', { clientX: 100, clientY: 100 }));
+  w.document.dispatchEvent(f.mouse('mousemove', { clientX: 100, clientY: 299, buttons: 1 }));
+  await f.until(() => scroller.scrollTop > 28);
+  assert.ok(scroller.scrollTop > 28, 'scrollTop=' + scroller.scrollTop);
+  w.document.dispatchEvent(f.mouse('mouseup'));
+  const stopped = scroller.scrollTop;
+  await f.sleep(100);
+  assert.equal(scroller.scrollTop, stopped);
+  assert.equal(f.posts.length, 0);
 });
