@@ -64,6 +64,11 @@
 #stTable thead th .sort-button,#stTable thead th .sort-indicator{color:#fff}
 #stTable thead th[data-sort-active="true"]{background:#155e75}
 #stTable thead th[data-sort-active="true"] .sort-indicator{color:#a5f3fc}
+/* Cột sửa được (chỉ khi đợt còn sửa được): nền hổ phách + biểu tượng bút để phân biệt với cột chỉ đọc. */
+#stTable[data-editable="true"] thead th.st-th-edit{background:#b45309;border-bottom-color:#92400e}
+#stTable[data-editable="true"] thead th.st-th-edit[data-sort-active="true"]{background:#92400e}
+#stTable[data-editable="true"] thead th.st-th-edit[data-sort-active="true"] .sort-indicator{color:#fde68a}
+#stTable[data-editable="true"] thead th.st-th-edit .sort-label::before{content:"\270E\00a0";font-size:10px;opacity:.85}
 /* Danh sách liền mạch: cuộn trong khung cao gần hết màn hình, tiêu đề dính trên cùng. */
 .st-scroll{max-height:calc(100vh - 180px);min-height:320px}
 .st-sentinel td{padding:14px 16px;color:var(--muted);font-size:12px;text-align:center;cursor:default}
@@ -85,6 +90,7 @@
 .st-scroll{position:relative}
 .st-table td[data-editable]{cursor:cell}
 .st-editor{position:absolute;z-index:6;box-sizing:border-box;margin:0;padding:4px 6px;border:2px solid #06b6d4;border-radius:0;background:var(--panel);color:var(--text);font:13px var(--font-body);outline:none;box-shadow:0 4px 12px rgba(0,0,0,.25)}
+textarea.st-editor{display:block;resize:none;overflow-y:auto;max-height:min(240px,60vh);line-height:1.35;white-space:pre-wrap;overflow-wrap:anywhere}
 .st-fill{position:absolute;z-index:5;width:8px;height:8px;margin:0;padding:0;border:1px solid var(--panel);background:#06b6d4;cursor:crosshair}
 .st-fill[hidden]{display:none}
 .st-table td.st-fill-preview{outline:1px dashed #06b6d4;outline-offset:-2px}
@@ -205,3 +211,8 @@
 .st-line-sort::after{content:"▲▼";font-size:8px;letter-spacing:-1px;opacity:.45}
 th[aria-sort="ascending"] .st-line-sort::after{content:"▲";opacity:1}
 th[aria-sort="descending"] .st-line-sort::after{content:"▼";opacity:1}
+
+/* Menu chuột phải trên dòng bảng. */
+.st-context-menu{position:fixed;z-index:40;min-width:160px;padding:4px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel);box-shadow:0 6px 18px rgba(0,0,0,.25)}
+.st-context-menu button{display:block;width:100%;padding:8px 12px;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--text);font:13px var(--font-body);text-align:left;cursor:pointer}
+.st-context-menu button:hover,.st-context-menu button:focus-visible{background:var(--panel-2);outline:none}

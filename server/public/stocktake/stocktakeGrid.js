@@ -217,5 +217,13 @@
     });
   }
 
-  return { EDIT_COLUMNS, parseClipboard, planPaste, planPasteByCode, planFill, moveIndex, matchesFilter, summarizeCells, waitForConfirm, sortLines, trailingThrottle };
+  // Khoang can cuon (px) khi keo chuot: pointer o trong [low + edge, high - edge] thi 0; di vao vung nguong thi tang dan,
+  // ra ngoai khung thi dat tran `max`. Am = len / trai, duong = xuong / phai.
+  function edgeScrollDelta(pointer, low, high, { edge = 40, max = 28 } = {}) {
+    if (pointer < low + edge) return -Math.min(max, Math.ceil(((low + edge - pointer) / edge) * max));
+    if (pointer > high - edge) return Math.min(max, Math.ceil(((pointer - (high - edge)) / edge) * max));
+    return 0;
+  }
+
+  return { EDIT_COLUMNS, parseClipboard, planPaste, planPasteByCode, planFill, moveIndex, matchesFilter, summarizeCells, waitForConfirm, sortLines, trailingThrottle, edgeScrollDelta };
 });

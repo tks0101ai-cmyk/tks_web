@@ -356,6 +356,7 @@
       const th = document.createElement('th');
       th.dataset.field = column.key;
       if (column.num) th.className = 'num';
+      if (Grid.EDIT_COLUMNS[column.key]) th.classList.add('st-th-edit');
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'sort-button';
@@ -450,6 +451,7 @@
     const board = state.board;
     const session = board && board.session;
     if (session && session.branch !== state.headBranch) renderHead(session.branch);
+    $('stTable').dataset.editable = String(Boolean(editable())); // tiêu đề cột sửa được chỉ tô màu khi thật sự sửa được
     const orderStatus = currentOrderStatus(session);
     $('stSessionMeta').textContent = session
       ? dateVn(session.dateFrom) + (session.dateTo !== session.dateFrom ? ' – ' + dateVn(session.dateTo) : '')
@@ -660,6 +662,62 @@
     }
     return lines.join('\n');
   }
+  // ---------- Cuộn tự động khi kéo (chọn ô / nút điền) ----------
+  const drag = { x: 0, y: 0, timer: null };
+  // Khung cuộn + mép trên thực sự dùng được (đã trừ hàng tiêu đề dính trên).
+  function scrollBox() {
+    const scroller = document.querySelector('.st-scroll');
+    const rect = scroller.getBoundingClientRect();
+    const head = scroller.querySelector('thead');
+    // Chỉ phần khung đang nằm trong cửa sổ mới chạm tới được bằng chuột (khung có thể dài hơn màn hình khi trang đang cuộn).
+    const box = { left: Math.max(rect.left, 0), right: Math.min(rect.right, window.innerWidth), bottom: Math.min(rect.bottom, window.innerHeight) };
+    return { scroller, box, top: Math.max(rect.top, 0) + (head ? head.getBoundingClientRect().height : 0) };
+  }
+  // Ô dưới con trỏ; con trỏ ra ngoài khung thì lấy ô sát mép trong (nội dung đang trôi dưới con trỏ đứng yên).
+  function cellUnderPointer() {
+    if (typeof document.elementFromPoint !== 'function') return null;
+    const { box, top } = scrollBox();
+    // Thanh cuộn nằm trong khung: không lấy ô ở đúng vị trí thanh cuộn (elementFromPoint trả về chính khung).
+    const scroller = document.querySelector('.st-scroll');
+    const barX = scroller.offsetWidth - scroller.clientWidth;
+    const barY = scroller.offsetHeight - scroller.clientHeight;
+    const x = Math.min(Math.max(drag.x, box.left + 1), box.right - barX - 1);
+    const y = Math.min(Math.max(drag.y, top + 1), box.bottom - barY - 1);
+    const hit = document.elementFromPoint(x, y);
+    return hit ? hit.closest('td[data-col]') : null;
+  }
+  // Mỗi nhịp: cập nhật đích của lượt kéo đang chạy (vùng chọn hoặc vùng điền) theo ô dưới con trỏ.
+  function dragTick() {
+    const td = selection.dragging || fill.active ? cellUnderPointer() : null;
+    if (!td) return;
+    const pos = cellPos(td);
+    if (selection.dragging) {
+      if (selection.focus && pos.row === selection.focus.row && pos.col === selection.focus.col) return;
+      selection.focus = pos;
+      paintSelection();
+    } else {
+      fill.to = pos.row;
+      paintFillPreview();
+    }
+  }
+  function startEdgeScroll(onTick) {
+    stopEdgeScroll();
+    drag.timer = setInterval(() => {
+      const { scroller, box, top } = scrollBox();
+      const dy = Grid.edgeScrollDelta(drag.y, top, box.bottom);
+      const dx = Grid.edgeScrollDelta(drag.x, box.left, box.right);
+      if (dy) scroller.scrollTop += dy;
+      if (dx) scroller.scrollLeft += dx;
+      // Dòng chưa vẽ: vẽ thêm ngay khi gần cuối, không chờ bộ quan sát.
+      if (dy > 0 && view.drawn < view.rows.length && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 600) drawMore(CHUNK);
+      onTick();
+    }, 30);
+  }
+  function stopEdgeScroll() {
+    clearInterval(drag.timer);
+    drag.timer = null;
+  }
+
   function bindSelection() {
     const tbody = $('stRows');
     tbody.addEventListener('mousedown', event => {
@@ -671,6 +729,9 @@
       if (event.shiftKey && selection.anchor) selection.focus = pos;
       else selection.anchor = selection.focus = pos;
       selection.dragging = true;
+      drag.x = event.clientX;
+      drag.y = event.clientY;
+      startEdgeScroll(dragTick);
       document.querySelector('.st-scroll').focus({ preventScroll: true });
       paintSelection();
     });
@@ -688,8 +749,13 @@
       selection.focus = pos;
       paintSelection();
     });
-    document.addEventListener('mouseup', () => { selection.dragging = false; endFill(); });
-    document.addEventListener('mousemove', event => { if (fill.active) fill.lastY = event.clientY; });
+    document.addEventListener('mouseup', () => { selection.dragging = false; stopEdgeScroll(); endFill(); });
+    document.addEventListener('mousemove', event => {
+      drag.x = event.clientX;
+      drag.y = event.clientY;
+      // Nhả chuột ngoài cửa sổ trình duyệt thì không có mouseup: dừng kéo khi không còn giữ nút trái.
+      if (selection.dragging && !(event.buttons & 1)) { selection.dragging = false; stopEdgeScroll(); }
+    });
     document.addEventListener('copy', event => {
       const active = document.activeElement;
       if (!selectionRect() || (active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) || document.querySelector('dialog[open]')) return;
@@ -939,14 +1005,25 @@
     if (column === 'statusText') { openStatusMenu(td, row, initial); return; }
     const start = cellText(row, COLUMNS[pos.col].key);
     const box = boxIn(td);
-    const input = document.createElement('input');
+    // Cột chữ (Chi tiết lý do, Cụm SP...): textarea tự giãn để thấy hết chữ dài; cột số / giờ giữ ô một dòng.
+    const multiline = COLUMNS[pos.col].type === 'text';
+    const input = document.createElement(multiline ? 'textarea' : 'input');
     input.className = 'st-editor';
+    if (multiline) input.rows = 1;
     input.value = initial === undefined ? start : initial;
     Object.assign(input.style, { left: box.left + 'px', top: box.top + 'px', width: Math.max(box.width, 140) + 'px', height: Math.max(box.height, 30) + 'px' });
     Object.assign(editor, { input, code: row.code, column, start, expected: expectedOf(row, column), sessionId: state.sessionId });
     box.scroller.appendChild(input);
     input.focus({ preventScroll: true });
     input.setSelectionRange(input.value.length, input.value.length);
+    if (multiline) {
+      const fit = () => {
+        input.style.height = 'auto';
+        input.style.height = Math.max(input.scrollHeight + 4, box.height, 30) + 'px'; // +4: viền 2px mỗi cạnh (border-box)
+      };
+      input.addEventListener('input', fit);
+      fit();
+    }
     positionFill();
     input.addEventListener('keydown', event => {
       event.stopPropagation();
@@ -1037,7 +1114,7 @@
     editor.input = null;
     editor.options = null;
     // Danh sach Trang thai: gia tri = ten loai dang chon ("Chưa XL" = trong).
-    const value = options ? (options[index].key === 'pending' ? '' : options[index].label) : input.value;
+    const value = options ? (options[index].key === 'pending' ? '' : options[index].label) : input.value.replace(/[\r\n]+/g, ' ');
     input.remove();
     document.querySelector('.st-scroll').focus({ preventScroll: true });
     positionFill();
@@ -1064,7 +1141,7 @@
   }
 
   // ---------- Kéo nút góc (fill handle) ----------
-  const fill = { handle: null, active: false, rect: null, to: null, painted: [], scrollTimer: null, lastY: 0 };
+  const fill = { handle: null, active: false, rect: null, to: null, painted: [] };
   function fillHandle() {
     if (!fill.handle) {
       fill.handle = document.createElement('button');
@@ -1106,19 +1183,15 @@
     if (!canWrite()) return;
     // preventDefault chan blur nen tu luu o nhap dang mo truoc khi doc gia tri nguon (sendCells va bang dong bo truoc await).
     if (editor.input) closeEditor(true);
-    Object.assign(fill, { active: true, rect: selectionRect(), to: null, lastY: event.clientY });
+    Object.assign(fill, { active: true, rect: selectionRect(), to: null });
+    drag.x = event.clientX;
+    drag.y = event.clientY;
     fill.handle.hidden = true;
-    // Gan mep tren / duoi khung cuon thi tu cuon (dong chua ve se ve khi cuon toi canh).
-    const scroller = document.querySelector('.st-scroll');
-    fill.scrollTimer = setInterval(() => {
-      const box = scroller.getBoundingClientRect();
-      if (fill.lastY > box.bottom - 30) scroller.scrollTop += 24;
-      else if (fill.lastY < box.top + 50) scroller.scrollTop -= 24;
-    }, 50);
+    startEdgeScroll(dragTick); // gần mép khung thì tự cuộn; dòng chưa vẽ được vẽ thêm khi cuộn tới
   }
   async function endFill() {
     if (!fill.active) return;
-    clearInterval(fill.scrollTimer);
+    stopEdgeScroll();
     fill.active = false;
     const { rect, to } = fill;
     fill.to = null;
@@ -1548,11 +1621,55 @@
     }
   }
 
+  // Menu chuột phải trên dòng: một mục "Chi tiết sản phẩm".
+  function bindContextMenu() {
+    let menu = null;
+    const close = () => { if (menu) { menu.remove(); menu = null; } };
+    $('stRows').addEventListener('contextmenu', event => {
+      const td = event.target.closest('td[data-col]');
+      const tr = td && td.parentElement;
+      if (!tr || !tr.dataset.code) return;
+      event.preventDefault();
+      close();
+      if (editor.input) closeEditor(!editor.options);
+      selection.anchor = selection.focus = cellPos(td);
+      paintSelection();
+      const code = tr.dataset.code;
+      menu = document.createElement('div');
+      menu.className = 'st-context-menu';
+      menu.setAttribute('role', 'menu');
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.setAttribute('role', 'menuitem');
+      item.textContent = 'Chi tiết sản phẩm';
+      item.addEventListener('click', () => { close(); openDetail(code); });
+      menu.appendChild(item);
+      document.body.appendChild(menu);
+      // Giữ menu trong khung nhìn (đảo sang trái / lên trên khi sát mép).
+      const width = menu.offsetWidth || 160;
+      const height = menu.offsetHeight || 40;
+      menu.style.left = Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8)) + 'px';
+      menu.style.top = Math.max(8, Math.min(event.clientY, window.innerHeight - height - 8)) + 'px';
+      item.focus();
+    });
+    document.addEventListener('mousedown', event => { if (menu && !menu.contains(event.target)) close(); });
+    document.addEventListener('keydown', event => { if (menu && event.key === 'Escape') { event.preventDefault(); close(); } });
+    window.addEventListener('resize', close);
+    document.querySelector('.st-scroll').addEventListener('scroll', close);
+  }
+
   function bindDetail() {
-    // Nhấp một lần = chọn ô (như sheet); nhấp đúp = mở chi tiết mã.
+    // Nhấp một lần = chọn ô (như sheet). Nhấp đúp: ô Mã hàng = mở chi tiết mã; ô sửa được = mở ô nhập (như F2); ô khác = không làm gì.
     $('stRows').addEventListener('dblclick', event => {
-      const tr = event.target.closest('tr[data-code]');
-      if (tr) openDetail(tr.dataset.code);
+      const td = event.target.closest('td[data-col]');
+      const tr = td && td.parentElement;
+      if (!tr || !tr.dataset.code) return;
+      const col = Number(td.dataset.col);
+      if (COLUMNS[col] && COLUMNS[col].key === 'code') { openDetail(tr.dataset.code); return; }
+      if (!editColumnOf(col)) return;
+      selection.anchor = selection.focus = cellPos(td);
+      paintSelection();
+      openEditor();
     });
     $('stDetailDialog').addEventListener('close', () => { detail.code = null; });
     $('stConflictReload').addEventListener('click', async () => {
@@ -1986,6 +2103,7 @@
     bindTable();
     bindDetail();
     bindSelection();
+    bindContextMenu();
     window.addEventListener('pagehide', stopLive);
     setInterval(pollOrderStatus, ORDER_POLL_MS);
     document.addEventListener('visibilitychange', () => {
@@ -2002,5 +2120,5 @@
     }
   }
 
-  window.TKSStocktake = { init, visibleRows, cellText, sortRows, state };
+  window.TKSStocktake = { init, visibleRows, cellText, sortRows, state, selection };
 })();
