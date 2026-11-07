@@ -98,7 +98,12 @@ async function refreshOnce(pool, { log }) {
   try {
     await client.query('BEGIN');
     // Same writer lock as the cont sync and canonical purchase transactions.
-    await client.query('SELECT pg_advisory_xact_lock($1)', [20531015]);
+    const writerLock = await client.query('SELECT pg_try_advisory_xact_lock($1) AS locked', [20531015]);
+    // Return promptly while CONT or purchase transactions own the writer lock.
+    if (writerLock.rows[0]?.locked !== true) {
+      await client.query('ROLLBACK');
+      return { status: 'busy', rows: 0, written: 0, deleted: 0, changed: false };
+    }
     const lock = await client.query('SELECT pg_try_advisory_xact_lock($1) AS locked', [LOCK_KEY]);
     if (!lock.rows[0] || lock.rows[0].locked !== true) {
       await client.query('ROLLBACK');
