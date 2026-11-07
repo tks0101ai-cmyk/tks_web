@@ -667,16 +667,22 @@
   // Khung cuộn + mép trên thực sự dùng được (đã trừ hàng tiêu đề dính trên).
   function scrollBox() {
     const scroller = document.querySelector('.st-scroll');
-    const box = scroller.getBoundingClientRect();
+    const rect = scroller.getBoundingClientRect();
     const head = scroller.querySelector('thead');
-    return { scroller, box, top: box.top + (head ? head.getBoundingClientRect().height : 0) };
+    // Chỉ phần khung đang nằm trong cửa sổ mới chạm tới được bằng chuột (khung có thể dài hơn màn hình khi trang đang cuộn).
+    const box = { left: Math.max(rect.left, 0), right: Math.min(rect.right, window.innerWidth), bottom: Math.min(rect.bottom, window.innerHeight) };
+    return { scroller, box, top: Math.max(rect.top, 0) + (head ? head.getBoundingClientRect().height : 0) };
   }
   // Ô dưới con trỏ; con trỏ ra ngoài khung thì lấy ô sát mép trong (nội dung đang trôi dưới con trỏ đứng yên).
   function cellUnderPointer() {
     if (typeof document.elementFromPoint !== 'function') return null;
     const { box, top } = scrollBox();
-    const x = Math.min(Math.max(drag.x, box.left + 1), box.right - 1);
-    const y = Math.min(Math.max(drag.y, top + 1), box.bottom - 1);
+    // Thanh cuộn nằm trong khung: không lấy ô ở đúng vị trí thanh cuộn (elementFromPoint trả về chính khung).
+    const scroller = document.querySelector('.st-scroll');
+    const barX = scroller.offsetWidth - scroller.clientWidth;
+    const barY = scroller.offsetHeight - scroller.clientHeight;
+    const x = Math.min(Math.max(drag.x, box.left + 1), box.right - barX - 1);
+    const y = Math.min(Math.max(drag.y, top + 1), box.bottom - barY - 1);
     const hit = document.elementFromPoint(x, y);
     return hit ? hit.closest('td[data-col]') : null;
   }
