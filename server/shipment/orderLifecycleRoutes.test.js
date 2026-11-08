@@ -68,7 +68,7 @@ test.beforeEach(() => {
   kiotRepository.kiotOrders.readOrderDetail = async ({ branch, code }) => ({ code, branch, phieuTam: true, lines: [] });
   service.exportOrders = async () => ([{ orderCode: 'HD001', branch: 'HN', summary: { label: 'Đã giao' } }]);
   service.overrideStatus = async () => ({ orderCode: 'HD001', branch: 'HN', summary: { code: 'CANCELLED', isOverride: true } });
-  service.listHistory = async () => ([{ historyId: 'OVR-1', orderCode: 'HD001', statusCode: 'CANCELLED' }]);
+  service.queryHistory = async () => { const rows = [{ historyId: 'OVR-1', orderCode: 'HD001', statusCode: 'CANCELLED' }]; return { rows, history: rows, totalRows: 1, page: 1, pageSize: 100, total: 1 }; };
 });
 
 // 2026-10-03: Tra cuu theo ma + Lich su GAN vao Vong doi don hang -> Khach (khong co lifecycle) bi 403.
@@ -152,7 +152,9 @@ test('GET /api/shipment/lifecycle/history KHÔNG bị route /:orderCode nuốt m
   const req = reqAs('Quản lý');
   const res = fakeRes();
   await callRoute('get', '/history', req, res);
-  assert.deepEqual(Object.keys(res.body), ['history']);
+  assert.deepEqual(res.body.rows, res.body.history);
+  assert.equal(res.body.totalRows, 1);
+  assert.equal(res.body.page, 1);
 });
 
 test('GET /api/shipment/lifecycle trả 1 TRANG đơn (gộp đơn Kiot mọi trạng thái): truyền nguyên query + kiot repository, trả đúng phần phân trang và trạng thái nguồn `kiot`', async () => {
@@ -540,3 +542,17 @@ test('GET /containers precedes the dynamic order-code route', () => {
   const paths = router.stack.filter(layer => layer.route?.methods.get).map(layer => layer.route.path);
   assert.ok(paths.indexOf('/containers') < paths.indexOf('/:orderCode'));
 });
+
+ test('history route forwards full query and handles invalid sorts as 400', async () => {
+  const query = { page: '3', pageSize: '50', branch: 'SG', q: 'An', sorts: '[{"key":"changedBy","dir":"asc"}]' };
+  let received;
+  service.queryHistory = async params => { received = params; return { rows: [], totalRows: 0, page: 1, pageSize: 50 }; };
+  const res = fakeRes();
+  await callRoute('get', '/history', reqAs('Quản lý', {}, query), res);
+  assert.equal(received, query);
+  service.queryHistory = async () => { throw Object.assign(new Error('Invalid sort'), { statusCode: 400, code: 'INVALID_SORT' }); };
+  const invalid = fakeRes();
+  await callRoute('get', '/history', reqAs('Quản lý'), invalid);
+  assert.equal(invalid.statusCode, 400);
+  assert.equal(invalid.body.code, 'INVALID_SORT');
+ });

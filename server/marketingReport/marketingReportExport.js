@@ -7,6 +7,7 @@
 const ExcelJS = require('exceljs');
 const { HEADER_FONT, frozenNoGridlinesView, applyFullTableBorder } = require('../excelTableStyle');
 const fuzzy = require('../shared/fuzzySearch');
+const { normalizeSorts } = require('../shared/multiSort');
 const { renderHtmlReport } = require('../dashboard/exportHtmlReport');
 
 const MAX_EXPORT_ROWS = 20000;
@@ -19,6 +20,7 @@ const ROW_COLUMNS = {
   phones: [['phone', 'SĐT'], ['page', 'Page'], ['firstEmployee', 'Nhân viên lần đầu'], ['currentEmployee', 'Nhân viên hiện tại'], ['repeatEmployee', 'Nhân viên chào lại'], ['firstAt', 'Ngày lần đầu'], ['currentAt', 'Ngày hiện tại'], ['repeatAt', 'Ngày chào lại']],
   costs: [['page', 'Page'], ['date', 'Ngày'], ['adCost', 'Chi phí ADS', 'number'], ['totalCost', 'Chi phí gồm phí thuê/VAT', 'number'], ['totalLabel', 'Nhãn chi phí nguồn'], ['messages', 'Mess', 'number'], ['costPerMessage', 'Chi phí/mess', 'number'], ['phones', 'SĐT', 'number'], ['costPerPhone', 'Chi phí/SĐT', 'number']]
 };
+const PHONE_SOURCE_KEYS = ['phone','page','employeeRaw','sourceCreatedAt','observedAt','sourceCreatedText','creditedDate','origin','sourceOrder','workbookId','tab','rowNumber','factId','runId','sourceKey'];
 const SUMMARY_COLUMNS = [['label', 'Đối tượng'], ['page', 'Page'], ['employee', 'Nhân viên'], ['count', 'Số dòng', 'number'], ['revenue', 'Doanh số', 'number'], ['first', 'Lần đầu', 'number'], ['repeat', 'Chào lại', 'number'], ['equivalent', 'Quy đổi', 'number'], ['closed', 'Khách chốt', 'number'], ['rate', 'Tỷ lệ chốt', 'percent'], ['totalCost', 'Tổng chi phí', 'number'], ['messages', 'Mess', 'number'], ['phones', 'SĐT', 'number']];
 
 function invalid(message, code) {
@@ -38,15 +40,24 @@ function tableRows(table, result, q, sort = {}) {
   // Tim gan dung cung luat voi bang tren man hinh (marketing-report.js): bo dau, nhieu tu, khop nhieu tu xep truoc.
   const found = String(q || '').trim() ? fuzzy.filter(rows, q, row => Object.values(row).join(' ')) : rows;
   // Sap xep theo cot dang bam tren man hinh (cung quy tac so sanh voi draw() cua marketing-report.js).
-  let sorts = sort.sorts;
-  if (typeof sorts === 'string') { try { sorts = JSON.parse(sorts); } catch { sorts = []; } }
-  if (!Array.isArray(sorts)) sorts = [{ key: sort.sortKey, dir: sort.sortDir }];
-  sorts = sorts.filter(item => item && typeof item.key === 'string' && ['asc', 'desc'].includes(item.dir)).slice(0, 50);
+  const columns = table === 'summary' ? SUMMARY_COLUMNS : ROW_COLUMNS[result.kind];
+  const allowed = columns ? columns.map(([key]) => key)
+    : result.kind === 'phone-source' ? PHONE_SOURCE_KEYS
+    : !result.kind ? Object.values(ROW_COLUMNS).flat().map(([key]) => key) : [];
+  const sorts = normalizeSorts(sort.sorts, allowed, sort.sortKey, sort.sortDir);
   if (!sorts.length) return found;
   const blank = value => value == null || value === '' || (typeof value === 'number' && Number.isNaN(value));
   return found.slice().sort((a, b) => {
     for (const {key, dir} of sorts) {
-      const av = a[key], bv = b[key];
+      const rawA = a[key], rawB = b[key];
+      const dateValue = value => {
+        const text=String(value), match=text.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?(?:\s|$)/);
+        if(match)return Date.UTC(Number(match[3]||2000),Number(match[2])-1,Number(match[1]));
+        const parsed=Date.parse(text); return Number.isFinite(parsed)?parsed:value;
+      };
+      const dateKey=/At$|^date$|Date$/.test(key);
+      const av = dateKey && rawA != null && rawA !== '' ? dateValue(rawA) : rawA;
+      const bv = dateKey && rawB != null && rawB !== '' ? dateValue(rawB) : rawB;
       if (blank(av) || blank(bv)) { if (blank(av) !== blank(bv)) return blank(av) ? 1 : -1; continue; }
       const result = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv), 'vi', { numeric: true, sensitivity: 'base' });
       if (result) return (dir === 'desc' ? -1 : 1) * result;
@@ -153,4 +164,44 @@ async function createExportFile(kind, table, format, result, rows, columnKeys) {
   };
 }
 
-module.exports = { createExportFile, tableRows, exportFieldsFor, resolveColumnKeys, MAX_EXPORT_ROWS };
+function searchKpis(kind, items, found) {
+  const total = key => found.reduce((sum, row) => sum + (Number(row[key]) || 0), 0);
+  const distinct = key => new Set(found.map(row => row[key]).filter(value => value != null && value !== '')).size;
+  return (items || []).map(card => {
+    if (card.value == null) return card;
+    const label = String(card.label || '');
+    let value = card.value;
+    if (kind === 'monthly') {
+      if (/Doanh số/.test(label)) { if (found.some(row => typeof row.revenue === 'number')) value = total('revenue'); }
+      else if (/Khách chốt/.test(label)) value = found.length;
+      else if (/Số nhân viên/.test(label)) value = distinct('sale');
+    } else if (kind === 'receipt-check') {
+      const first = total('first'), repeat = total('repeat'), closed = total('closed'), equivalent = first + repeat / 5;
+      if (/lần đầu/.test(label)) value = first;
+      else if (/chào lại/.test(label)) value = repeat;
+      else if (/Quy đổi/.test(label)) value = equivalent;
+      else if (/Khách chốt/.test(label)) value = closed;
+      else if (/Tỷ lệ/.test(label)) value = equivalent ? closed / equivalent : null;
+    } else if (kind === 'phones') {
+      if (/Dòng SĐT/.test(label)) value = found.length;
+      else if (/^Page/.test(label)) value = distinct('page');
+    } else if (kind === 'costs') {
+      if (/Tổng chi phí/.test(label)) value = total('totalCost');
+      else if (/mess/i.test(label)) value = total('messages');
+      else if (/SĐT/.test(label)) value = total('phones');
+    }
+    return Object.assign({}, card, { value });
+  });
+}
+// Business filters and source snapshots remain complete; only the HTTP row transport is paged.
+function pageResult(result, query = {}) {
+  const found = tableRows('rows', result, query.q, query);
+  const integer = (value, fallback) => /^\d+$/.test(String(value)) && Number.isSafeInteger(Number(value)) && Number(value) > 0 ? Number(value) : fallback;
+  const pageSize = Math.min(500, integer(query.pageSize, 100));
+  const totalRows = found.length;
+  const page = Math.min(integer(query.pageNumber, 1), Math.max(1, Math.ceil(totalRows / pageSize)));
+  return { ...result, rows: found.slice((page - 1) * pageSize, page * pageSize), totalRows, page, pageSize,
+    kpis: String(query.q || '').trim() ? searchKpis(result.kind, result.kpis, found) : result.kpis };
+}
+
+module.exports = { pageResult, createExportFile, tableRows, exportFieldsFor, resolveColumnKeys, MAX_EXPORT_ROWS };

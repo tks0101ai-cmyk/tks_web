@@ -17,6 +17,22 @@ const supplierReturnImportService = require('./supplierReturnImportService');
 const { persistStockoutDays } = require('./stockoutDaysStore');
 
 const jobStore = createJobStore();
+const { wantsPage, pageRows, sortRows, searchRows } = require('../../shared/tablePage');
+
+// Page only the completed scan snapshot. Export and legacy callers keep the full job.
+function resultPage(result, query = {}, recent = false) {
+  if (!wantsPage(query)) return result;
+  const catalog = Object.fromEntries(['code','name','lastOutOfStockDate','daysOutOfStock','stockoutCount','totalStockoutDays','currentOnHand','branch'].map(key => [key, row => row[key]]));
+  catalog.avgStockoutDays = row => row.stockoutCount ? row.totalStockoutDays / row.stockoutCount : 0;
+  catalog.periods = row => (row.periods || []).map(period => [period.fromDate,period.toDate,period.days].join(' ')).join(' ');
+  const allRows = result.rows || [];
+  const text = value => value == null ? '' : typeof value === 'object' ? Object.values(value).map(text).join(' ') : String(value);
+  const found = searchRows(allRows, query, { code: row => row.code, searchText: text });
+  const defaultSort = [{key: recent ? 'daysOutOfStock' : 'totalStockoutDays',dir:'desc'}];
+  const sorted = sortRows(found.rows, query.sorts === undefined ? defaultSort : query.sorts, catalog);
+  return {...result,...pageRows(sorted,query),totalResultRows:allRows.length,search:found.search};
+}
+
 
 /**
  * Tham so quet cho tung co so VAT LY cua lua chon dang xem. "Cả hai" -> 2 bo
@@ -105,7 +121,7 @@ router.get('/api/products/stockout-recent/:jobId/result', (req, res) => {
   if (job.status === 'error') {
     return res.status(500).json({ error: job.error.message, code: job.error.code });
   }
-  res.status(200).json({ result: job.result });
+  res.status(200).json({ result: resultPage(job.result, req.query, true) });
 });
 
 router.post('/api/products/stockout-90d/scan', async (req, res) => {
@@ -151,7 +167,7 @@ router.get('/api/products/stockout-90d/:jobId/result', (req, res) => {
   if (job.status === 'error') {
     return res.status(500).json({ error: job.error.message, code: job.error.code });
   }
-  res.status(200).json({ result: job.result });
+  res.status(200).json({ result: resultPage(job.result, req.query) });
 });
 
 router.post('/api/products/stockout-30d/scan', async (req, res) => {
@@ -197,7 +213,7 @@ router.get('/api/products/stockout-30d/:jobId/result', (req, res) => {
   if (job.status === 'error') {
     return res.status(500).json({ error: job.error.message, code: job.error.code });
   }
-  res.status(200).json({ result: job.result });
+  res.status(200).json({ result: resultPage(job.result, req.query) });
 });
 
 // ==========================================

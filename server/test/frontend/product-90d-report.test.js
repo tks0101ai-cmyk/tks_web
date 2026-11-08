@@ -568,7 +568,7 @@ test('trang that: chi co Du kien hang ve -> muc 4 an, khong goi /api/product-rep
     await settle();
     assert.equal(page.$('product90dSection').hidden, true);
     assert.equal(page.urls.some(u => u.startsWith('/api/product-report/90d')), false);
-    assert.deepEqual(page.urls.filter(url=>!url.startsWith('/api/me/')), ['/api/expected-arrivals']);
+    assert.deepEqual(page.urls.filter(url=>!url.startsWith('/api/me/')), ['/api/expected-arrivals?page=1&pageSize=100']);
   } finally { /* khong close(): MutationObserver cua trang chay sau khi dong cua so se nem loi vo hai */ }
 });
 

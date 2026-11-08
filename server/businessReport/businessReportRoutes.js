@@ -14,6 +14,7 @@ const { nameKey, RETAIL_NAME, UNGROUPED_SALE, vnToday, PRICE_LEVEL_LABELS } = re
 const { createCustomerPriceLevelRepository } = require('./customerPriceLevelRepository');
 const { createCustomerProfileRepository } = require('./customerProfileRepository');
 const rules = require('./customerProfileRules');
+const { wantsPage, pageRows, searchRows } = require('../shared/tablePage');
 
 const BUILDERS = { sales: svc.buildSaleReport, customers: svc.buildCustomerReport, products: svc.buildProductReport };
 const CUSTOMER_NOTES = 'reports.business.customerNotes';
@@ -45,12 +46,37 @@ function createBusinessReportRouter({ repository = createRepository(), customerP
 
   for (const kind of Object.keys(BUILDERS)) {
     router.get(`/${kind}`, requireAuth, requireFeature(kind === 'products' ? 'reports.products.growth' : 'reports.business'), handle(async (req, res) => {
-      const report = BUILDERS[kind](await repository.snapshot());
-      res.json(kind === 'customers' ? await enrichCustomers(req, report) : report);
+      let report = BUILDERS[kind](await repository.snapshot());
+      if (kind === 'customers') {
+        if ((req.query.salesChannel || req.query.warehouseScale) && !hasFeature(req.user, CUSTOMER_NOTES)) {
+          throw fail(403, 'CUSTOMER_PROFILE_FORBIDDEN', 'Bạn không có quyền lọc thông tin chi tiết khách hàng.');
+        }
+        report = await enrichCustomers(req, report);
+      }
+      res.json(wantsPage(req.query) ? queryReport(kind, report, req.query) : report);
     }));
   }
 
   router.get('/overview', ...view, handle(async (req, res) => res.json(svc.buildOverview(await repository.snapshot()))));
+
+  function queryReport(kind, report, query) {
+    const all = report.rows;
+    const filtered = filterRows(kind, all, query);
+    const rows = sortRowsByLabel(kind, report, filtered, query);
+    const summary = Object.fromEntries(['avg4', 'current', 'normalized', 'prev'].map(key => [key, filtered.reduce((sum, row) => sum + (Number(row[key]) || 0), 0)]));
+    summary.growth = summary.prev > 0 ? summary.normalized / summary.prev * 100 : null;
+    const options = (param, valueOf) => [...new Set(filterRows(kind, all, { ...query, [param]: '' }).flatMap(valueOf).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'vi'));
+    const filters = {
+      sales: options('sale', row => row.saleName), teams: options('team', row => row.team),
+      levels: options('level', row => row.priceLevel),
+      salesChannels: report.withCustomerProfile ? options('salesChannel', row => (row.salesChannels || []).length ? row.salesChannels : ['none']) : [],
+      warehouseScales: report.withCustomerProfile ? options('warehouseScale', row => row.warehouseScale || 'none') : []
+    };
+    const search = kind === 'products' && query.qmode === 'codes'
+      ? searchRows(filterRows(kind, all, { ...query, q: '', qmode: '' }), query, { code: row => row.code }).search
+      : { requestedCodes: [], missingCodes: [] };
+    return { ...report, ...pageRows(rows, query), summary, filters, search };
+  }
 
   router.get('/detail', requireAuth, kindPermission, handle(async (req, res) => {
     const kind = String(req.query.kind || '');

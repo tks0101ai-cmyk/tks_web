@@ -100,8 +100,8 @@ router.get('/', ...authBulk, async (req, res) => {
 
 router.get('/history', ...authHistory, async (req, res) => {
   try {
-    const history = await service.listHistory();
-    res.status(200).json({ history });
+    const result = await service.queryHistory(req.query);
+    res.status(200).json(result);
   } catch (err) {
     handleError(res, err, 'GET /api/shipment/lifecycle/history');
   }

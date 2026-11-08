@@ -334,3 +334,61 @@ test('Marketing retains three priorities, cycles a middle priority and sends all
     assert.equal(host._marketingState.sorts.length,2);
   } finally {p.dom.window.close();}
 });
+
+
+test('server Marketing paging/search/sort uses whole-result envelopes, debounces input and ignores stale success and errors',async()=>{
+  const delayed=new Map(), monthly=[];
+  const p=page(async url=>{
+    const parsed=new URL(url,'https://example.test');
+    if(parsed.pathname!=='/api/marketing-report/monthly')return;
+    const q=parsed.searchParams.get('q')||'', pageNumber=Number(parsed.searchParams.get('pageNumber')||1);
+    monthly.push(parsed.searchParams);
+    if(q.startsWith('slow'))return new Promise(resolve=>delayed.set(q,resolve));
+    return {ok:true,status:200,json:async()=>({kind:'monthly',rows:[{key:'remote:'+pageNumber,customer:q||'Remote '+pageNumber,sale:'Lan',revenue:7}],totalRows:q?1:205,page:q?1:pageNumber,pageSize:100,snapshotId:'snap-'+q,kpis:[{label:'Khách chốt',value:q?1:205}],charts:[],filters:{pages:['HN']},warnings:[]})};
+  });
+  const pause=()=>new Promise(resolve=>setTimeout(resolve,300));
+  try {
+    await p.window.TKSMarketing.load();
+    const host=p.doc.getElementById('marketing-monthly-rows');
+    assert.equal(host.querySelectorAll('tbody tr').length,1);
+    assert.match(host.querySelector('[data-count]').textContent,/205/);
+    assert.match(p.doc.getElementById('marketing-monthly-kpis').textContent,/205/);
+    host.querySelector('#marketing-monthly-data-table-next').click();await settle();
+    assert.equal(monthly.at(-1).get('pageNumber'),'2');assert.match(host.querySelector('tbody').textContent,/Remote 2/);
+    host.querySelector('[data-sort="revenue"]').click();await settle();
+    assert.equal(monthly.at(-1).get('pageNumber'),'1');assert.deepEqual(JSON.parse(monthly.at(-1).get('sorts')),[{key:'revenue',dir:'asc'}]);
+    const type=value=>{const search=host.querySelector('input[type="search"]');search.focus();search.value=value;search.dispatchEvent(new p.window.Event('input'));};
+    const before=monthly.length;
+    type('s');type('sl');type('slow-success');
+    assert.equal(monthly.length,before);await pause();assert.equal(monthly.length,before+1);
+    type('latest');
+    delayed.get('slow-success')({ok:true,status:200,json:async()=>({rows:[{customer:'STALE SUCCESS'}],totalRows:99,page:1,pageSize:100,kpis:[]})});
+    await settle();assert.doesNotMatch(host.querySelector('tbody').textContent,/STALE/);
+    await pause();assert.match(host.querySelector('tbody').textContent,/latest/);assert.match(p.doc.getElementById('marketing-monthly-kpis').textContent,/1/);
+    assert.equal(p.doc.activeElement.id,'marketing-monthly-data-table-search');
+    type('slow-error');await pause();type('newest');await pause();
+    delayed.get('slow-error')({ok:false,status:401,json:async()=>({error:'STALE ERROR'})});await settle();
+    assert.match(host.querySelector('tbody').textContent,/newest/);assert.doesNotMatch(p.doc.getElementById('marketing-monthly-status').textContent,/STALE ERROR/);
+    assert.equal(p.doc.getElementById('marketing-monthly').getAttribute('aria-busy'),'false');
+    assert.equal(p.window.location.pathname,'/reports/');
+    assert.equal(monthly.at(-1).get('q'),'newest');assert.equal(monthly.at(-1).get('pageSize'),'100');
+  } finally {p.dom.window.close();}
+});
+
+test('server detail groups retain page/search state and snapshot while paging independently',async()=>{
+  const calls=[];
+  const p=page(async url=>{
+    const parsed=new URL(url,'https://example.test');if(parsed.pathname!=='/api/marketing-report/detail')return;
+    calls.push(parsed.searchParams);const queries=JSON.parse(parsed.searchParams.get('groupQueries')||'{}');
+    return {ok:true,status:200,json:async()=>({title:'Detail',snapshotId:'snapshot-1',kpis:[{label:'Full detail',value:205}],groups:[{kind:'phones',title:'Phones',rows:[{key:'record',phone:'0900000000'}],totalRows:205,page:queries[0]?.pageNumber||1,pageSize:100},{kind:'monthly',title:'Monthly',rows:[{customer:'Full customer'}],totalRows:1,page:1,pageSize:100}]})};
+  });
+  try{
+    await p.window.TKSMarketing.load();p.doc.querySelector('#marketing-phones-rows tr[data-detail-key]').click();await settle();
+    p.doc.querySelector('#marketing-detail-group-0 #marketing-detail-phones-0-next').click();await settle();
+    assert.equal(calls.at(-1).get('snapshotId'),'snapshot-1');
+    const states=JSON.parse(calls.at(-1).get('groupQueries'));
+    assert.equal(states[0].pageNumber,2);assert.equal(states[1].pageNumber,1);
+    assert.match(p.doc.querySelector('#marketing-detail-group-0 [data-page-label]').textContent,/2\/3/);
+    assert.match(p.doc.getElementById('marketingDetailBody').textContent,/205/);
+  }finally{p.dom.window.close();}
+});

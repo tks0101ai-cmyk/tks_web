@@ -9,6 +9,7 @@ const { resolveBranch } = require('../branch/branchMiddleware');
 const { STATUSES, createVatRequestService } = require('./service');
 const { createVatRequestSuggestions } = require('./suggestions');
 const { createVatRequestWorkbook } = require('./export');
+const { wantsPage } = require('../shared/tablePage');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -23,7 +24,10 @@ function readFilters(query = {}) {
     from: DATE_RE.test(pick(query.from)) ? pick(query.from) : null,
     to: DATE_RE.test(pick(query.to)) ? pick(query.to) : null,
     // Dong KT vua sua (giu lai tren bang du khong con khop bo loc); toi da 500 id.
-    keep: [...new Set(String(query.keep || '').split(',').map(Number).filter(id => Number.isInteger(id) && id > 0))].slice(0, 500)
+    keep: [...new Set(String(query.keep || '').split(',').map(Number).filter(id => Number.isInteger(id) && id > 0))].slice(0, 500),
+    // Chi khi client gui page/pageSize (client cu khong gui -> tra du danh sach nhu truoc). Sap xep duoc loc
+    // whitelist o service theo quyen; page / pageSize duoc kep o tablePage.pageRows.
+    ...(wantsPage(query) ? { paging: { page: query.page, pageSize: query.pageSize, sorts: query.sorts, group: query.group === 'product' } } : {})
   };
 }
 

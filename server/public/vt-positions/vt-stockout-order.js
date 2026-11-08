@@ -9,6 +9,7 @@
   const POLL_MS = 15000;
   const NUMBER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 });
   const state = { hooks: null, branch: '', order: null, canEdit: false, view: 'current', history: [], moreBefore: null, detail: null, returnView: 'list', search: '',
+    historyPage: 1, historyTotal: 0, historySeq: 0, historyTimer: null, historyController: null, serverPaged: false,
     adding: false, editing: false, busy: false, timer: null, suggestions: [], suggestSeq: 0, suggestTimer: null, loadSeq: 0 };
 
   const $ = id => document.getElementById(id);
@@ -44,12 +45,29 @@
     render();
   }
   async function loadHistory(append) {
-    const before = append && state.moreBefore ? '&before=' + state.moreBefore : '';
-    const { response, payload } = await call(API + '?branch=' + state.branch + before);
+    clearTimeout(state.historyTimer); state.historyTimer = null;
+    if (state.historyController) state.historyController.abort();
+    state.historyController = new AbortController();
+    const seq = ++state.historySeq;
+    const nextPage = append ? state.historyPage + 1 : 1;
+    const params = new URLSearchParams({ branch: state.branch, page: String(nextPage), pageSize: '50', q: state.search });
+    const { response, payload } = await call(API + '?' + params, { signal: state.historyController.signal });
+    if (seq !== state.historySeq) return;
     if (!response.ok) { setError(payload.error || 'Không tải được lịch sử đơn.'); return; }
-    state.history = append ? state.history.concat(payload.orders) : payload.orders;
-    state.moreBefore = payload.orders.length >= 50 ? payload.orders[payload.orders.length - 1].id : null;
+    state.history = append ? [...new Map(state.history.concat(payload.orders || []).map(order => [order.id, order])).values()] : payload.orders || [];
+    state.serverPaged = Number.isFinite(payload.totalRows);
+    state.historyPage = Number(payload.page) || nextPage;
+    state.historyTotal = Number(payload.totalRows) || 0;
+    state.moreBefore = state.serverPaged ? (state.historyPage * 50 < state.historyTotal ? state.historyPage : null) : payload.orders.length >= 50 ? payload.orders[payload.orders.length - 1].id : null;
+    setError('');
     render();
+  }
+  function queryHistory() {
+    ++state.historySeq;
+    if (state.historyController) state.historyController.abort();
+    clearTimeout(state.historyTimer);
+    if (!state.serverPaged) renderList();
+    state.historyTimer = setTimeout(() => loadHistory(false), 300);
   }
   async function loadDetail(id) {
     const { response, payload } = await call(API + '/' + encodeURIComponent(id));
@@ -273,7 +291,7 @@
     const matches = item => !term || [item.code, item.createdByName, item.confirmedByName].some(value => String(value || '').toLowerCase().includes(term));
     // Đơn tạm tự được tạo khi mở hộp; chưa có dòng nào thì chưa phải một đơn nên không đưa vào danh sách (vẫn mở được ở tab Đơn tạm).
     const draftOrder = state.order && state.order.status === 'draft' && state.order.lines.length && matches(state.order) ? state.order : null;
-    const done = state.history.filter(matches);
+    const done = state.serverPaged ? state.history : state.history.filter(matches);
     if (draftOrder) body.appendChild(listRow(draftOrder, true));
     done.forEach(item => body.appendChild(listRow(item, false)));
     if (!draftOrder && !done.length) {
@@ -283,7 +301,7 @@
       tr.appendChild(td);
       body.appendChild(tr);
     }
-    $('vtOrderListNote').textContent = (draftOrder ? '1 đơn tạm · ' : '') + done.length + ' đơn đã chốt' + (state.moreBefore !== null ? ' (còn nữa, bấm Tải thêm)' : '');
+    $('vtOrderListNote').textContent = (draftOrder ? '1 đơn tạm · ' : '') + (state.serverPaged ? state.historyTotal : done.length) + ' đơn đã chốt' + (state.moreBefore !== null ? ' (còn nữa, bấm Tải thêm)' : '');
     $('vtOrderMore').hidden = state.moreBefore === null;
   }
 
@@ -534,6 +552,9 @@
 
   async function open() {
     state.branch = state.hooks.branch();
+    state.search = ''; $('vtOrderSearch').value = '';
+    ++state.historySeq; clearTimeout(state.historyTimer); if (state.historyController) state.historyController.abort();
+    state.history = []; state.moreBefore = null;
     state.view = 'current';
     state.adding = false;
     state.editing = false;
@@ -568,7 +589,7 @@
     button.addEventListener('click', open);
     document.querySelectorAll('[data-order-view]').forEach(tab => tab.addEventListener('click', () => setView(tab.dataset.orderView)));
     $('vtOrderBack').addEventListener('click', () => { if (state.returnView === 'current') setView('current'); else if (state.history.length) { state.view = 'list'; render(); } else setView('list'); });
-    $('vtOrderSearch').addEventListener('input', event => { state.search = event.target.value; if (state.view === 'list') renderList(); });
+    $('vtOrderSearch').addEventListener('input', event => { state.search = event.target.value; if (state.view === 'list') queryHistory(); });
     $('vtOrderConfirm').addEventListener('click', confirmOrder);
     $('vtOrderAudit').addEventListener('toggle', event => { if (event.target.open) loadAudit(); });
     $('vtOrderMore').addEventListener('click', () => loadHistory(true));

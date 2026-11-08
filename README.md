@@ -463,6 +463,8 @@ Bật/tắt bằng SQL, xem `server/purchaseOrders/ROLLOUT.md`.
 
 Cập nhật gần nhất: 07/11/2026.
 
+08/11/2026 — **Phân trang phía máy chủ (chưa commit/deploy):** lọc/tìm/sắp xếp nhiều cột trước khi phân trang cho các bảng danh sách bền (hàng về, lịch sử, báo cáo đọc, Marketing, dứt hàng, Tra cứu VAT, ORDER VAT, danh sách thao tác Công nợ); hợp đồng `rows,totalRows,page,pageSize`, máy chủ cũ vẫn chạy chế độ tương thích. Màn tính toán/thao tác cần đủ dòng (đơn mua, kiểm kê, nhân sự…) giữ nguyên. Không migration/biến môi trường mới. Chi tiết: `server/README.md`.
+
 07/11/2026 — Kiểm kê: bảng đối chiếu hỗ trợ sắp xếp nhiều cột. Bấm tiêu đề để chọn một cột; Shift + bấm để thêm/đổi lớp, tăng → giảm → bỏ. Tiêu đề hiển thị hướng và số ưu tiên; hòa mới xét cột kế tiếp, ô trống luôn cuối. Sắp xếp toàn bộ kết quả sau lọc/tìm kiếm trước khi vẽ; xuất Excel đối chiếu giữ thứ tự mã đang hiển thị. Không đổi schema/API.
 
 Cập nhật gần nhất: 07/11/2026.

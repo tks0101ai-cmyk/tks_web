@@ -72,6 +72,26 @@ function mapRow(row) {
   };
 }
 
+function queryDebtAging(data, query = {}) {
+  const { pageRows, sortRows, searchRows, rowText, scalarCatalog } = require('../shared/tablePage');
+  const all = data.customers || [];
+  const filter = (skip = '') => searchRows(all.filter(row =>
+    (skip === 'team' || !query.team || row.saleTeam === query.team) &&
+    (skip === 'sale' || !query.sale || row.sale === query.sale) &&
+    (skip === 'schedule' || !query.schedule || row.paymentSchedule === query.schedule)), query,
+  { searchText: rowText, code: row => row.customerCode }).rows;
+  const rows = filter();
+  const catalog = scalarCatalog(all);
+  const aliases = { 'co-so': 'branch', 'khach-hang': 'customerName', 'sale-team': 'saleTeam', 'lich-tt': 'scheduleDays', 'no-hien-tai': 'currentDebt', 'no-qua-han': 'overdueDebt', 'ngay-het-no': 'payoffDay', 'ngay-no-tuong-duong': 'equivalentDays', 'con-han': 'remainingDays' };
+  for (const [key, field] of Object.entries(aliases)) catalog[key] = row => row[field];
+  const page = pageRows(sortRows(rows, query.sorts, catalog), query);
+  const options = (skip, key) => [...new Set(filter(skip).map(row => row[key]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'vi', { numeric: true }));
+  return { ...data, ...page, customers: page.rows,
+    summary: { currentDebt: rows.reduce((sum, row) => sum + (Number(row.currentDebt) || 0), 0), overdueDebt: rows.reduce((sum, row) => sum + (Number(row.overdueDebt) || 0), 0) },
+    filters: { teams: options('team', 'saleTeam'), sales: options('sale', 'sale'), schedules: options('schedule', 'paymentSchedule') },
+    search: { requestedCodes: [], missingCodes: [] } };
+}
+
 function createDebtAgingRepository({ pool = getPool(), now = Date.now } = {}) {
   const cache = new Map(); // branchesKey -> { expiresAt, data }
 
@@ -127,4 +147,4 @@ function getDebtAgingRepository() {
   return defaultRepository;
 }
 
-module.exports = { createDebtAgingRepository, getDebtAgingRepository, INVOICE_LIST_LIMIT };
+module.exports = { createDebtAgingRepository, getDebtAgingRepository, queryDebtAging, INVOICE_LIST_LIMIT };

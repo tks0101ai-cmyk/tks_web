@@ -16,6 +16,8 @@ const { hasFeature } = require('../auth/featureRegistry');
 const repository = require('./repository');
 const { nearestContainer, latestArrived } = require('./etaParser');
 const { createStockSource, lookupStock, findSheetProduct, suggestSheetProducts } = require('./stockSource');
+const { normalizeSorts } = require('../shared/multiSort');
+const { pageRows } = require('../shared/tablePage');
 
 const STATUS_LABELS = Object.freeze({
   pending: 'Chờ KT xử lý',
@@ -50,6 +52,60 @@ const MAX_TEXT = 1000;
 // Form nhieu dong: toi da 200 dong / lan gui (giong form Apps Script cu); chong gui trung 6 gio.
 const MAX_BATCH_ROWS = 200;
 const SUBMISSION_TTL_MS = 6 * 60 * 60 * 1000;
+
+// Phan trang danh sach (slice 6): sap xep / gop theo ma tren TOAN BO ket qua khop bo loc roi moi cat trang.
+// Gia tri sap xep giong het sortValueOf o vat-request.js; 5 cot so lieu chi KT (quyen xu ly) moi sap duoc.
+const nullable = value => (value === null || value === undefined || value === '' ? null : value);
+const SORT_VALUES = Object.freeze({
+  createdAt: row => nullable(row.createdAt),
+  sale: row => nullable(row.createdByName),
+  customer: row => nullable(row.customerName),
+  productCode: row => nullable(row.productCode),
+  productName: row => nullable(row.productName),
+  quantity: row => row.quantity,
+  unitPrice: row => row.unitPrice,
+  total: row => row.totalAmount,
+  fullVat: row => (row.fullVat ? 1 : 0),
+  saleNote: row => nullable(row.saleNote),
+  status: row => { const index = STATUSES.indexOf(row.status); return index < 0 ? null : index; },
+  accountantNote: row => nullable(row.accountantNote),
+  arrivalDate: row => nullable(row.arrivalDate),
+  vatStock: (row, m) => (m.vatStock ? m.vatStock.total : null),
+  pendingQty: (row, m) => m.pendingInsertQty ?? null,
+  incomingContainer: (row, m) => nullable(m.incomingContainer),
+  containerStatus: (row, m) => nullable(m.containerStatus),
+  containerEta: (row, m) => (m.containerEta ? (m.nearestArrivalDate ? 'a' + m.nearestArrivalDate : 'b' + m.containerEta) : null)
+});
+const METRIC_SORTS = new Set(['vatStock', 'pendingQty', 'incomingContainer', 'containerStatus', 'containerEta']);
+const SALE_SORT_KEYS = Object.keys(SORT_VALUES).filter(key => !METRIC_SORTS.has(key));
+
+// Giong TKSTables.compareValues: o trong luon xuong cuoi (khong dao theo chieu), so so voi so, con lai so chu 'vi' numeric.
+function compareSortValues(a, b, dir) {
+  const emptyA = a === null || a === undefined || a === '' || (typeof a === 'number' && !Number.isFinite(a));
+  const emptyB = b === null || b === undefined || b === '' || (typeof b === 'number' && !Number.isFinite(b));
+  if (emptyA || emptyB) return emptyA === emptyB ? 0 : emptyA ? 1 : -1;
+  const result = typeof a === 'number' && typeof b === 'number' ? a - b
+    : String(a).localeCompare(String(b), 'vi', { numeric: true, sensitivity: 'base' });
+  return result * (dir === 'desc' ? -1 : 1);
+}
+
+/** Khong sap / khong gop: giu thu tu may chu (sort_rank hoac diem tim). Tie-break cuoi = id giam dan (on dinh). */
+function orderListRows(rows, { sorts, group }, metrics) {
+  const metricOf = row => metrics[row.productKey] || {};
+  const bySort = (a, b) => {
+    for (const { key, dir } of sorts) {
+      const result = compareSortValues(SORT_VALUES[key](a, metricOf(a)), SORT_VALUES[key](b, metricOf(b)), dir);
+      if (result) return result;
+    }
+    return 0;
+  };
+  if (group) {
+    return rows.slice().sort((a, b) => String(a.productKey || '').localeCompare(String(b.productKey || ''), 'vi', { numeric: true })
+      || bySort(a, b) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')) || b.id - a.id);
+  }
+  if (!sorts.length) return rows;
+  return rows.slice().sort((a, b) => bySort(a, b) || b.id - a.id);
+}
 
 function httpError(statusCode, message, code, extra = {}) {
   return Object.assign(new Error(message), { statusCode, code }, extra);
@@ -273,21 +329,50 @@ function createVatRequestService({ pool = getPool(), stockSource = createStockSo
     return { metrics, stockStatus: stock.status };
   }
 
+  /**
+   * filters.paging = { page, pageSize, sorts, group } (route chi dat khi client gui page/pageSize): loc + tim +
+   * sap / gop tren TOAN BO dong khop (toi da LIST_LIMIT, nhu truoc) roi moi cat trang. Tra them totalRows / page /
+   * pageSize / sorts da nhan / groupCounts (so yeu cau cua tung ma tren toan ket qua). metrics chi gom ma tren trang;
+   * so lieu luon tinh tu nguon day du phia may chu (khong tu cac dong cua trang). Khong co paging -> tra du nhu cu.
+   */
   async function list(user, filters = {}) {
     const { rows, truncated, rowOrder } = await repository.listRequests(pool, filters);
-    const [{ metrics, stockStatus }, sales] = await Promise.all([
-      metricsFor(user, rows.map(row => row.product_key)),
-      repository.listCreators(pool)
-    ]);
-    return {
-      rows: rows.map(row => serializeRow(row, user)),
+    const common = sales => ({
       truncated,
       rowOrder: rowOrder !== false, // false = chua ap migration 0079, giao dien an tay nam keo dong
-      metrics,
-      stockStatus,
       sales,
       statuses: STATUSES.map(value => ({ value, label: STATUS_LABELS[value], locksSale: LOCKED_STATUSES.has(value) })),
       viewer: { id: user.id, canProcess: canProcess(user), isManager: isManager(user) }
+    });
+    if (!filters.paging) {
+      const [{ metrics, stockStatus }, sales] = await Promise.all([
+        metricsFor(user, rows.map(row => row.product_key)),
+        repository.listCreators(pool)
+      ]);
+      return { rows: rows.map(row => serializeRow(row, user)), metrics, stockStatus, ...common(sales) };
+    }
+    const paging = filters.paging;
+    const sorts = normalizeSorts(paging.sorts, canProcess(user) ? Object.keys(SORT_VALUES) : SALE_SORT_KEYS);
+    const group = paging.group === true && canProcess(user);
+    const serialized = rows.map(row => serializeRow(row, user));
+    // Sap theo cot so lieu can so lieu cua MOI dong khop; con lai chi doc so lieu cho cac ma tren trang.
+    const needAll = sorts.some(sort => METRIC_SORTS.has(sort.key));
+    const all = needAll ? await metricsFor(user, serialized.map(row => row.productKey)) : null;
+    const ordered = orderListRows(serialized, { sorts, group }, all ? all.metrics : {});
+    const page = pageRows(ordered, { page: paging.page, pageSize: paging.pageSize });
+    const pageKeys = [...new Set(page.rows.map(row => row.productKey).filter(Boolean))];
+    const { metrics, stockStatus } = all
+      ? { metrics: Object.fromEntries(pageKeys.filter(key => all.metrics[key]).map(key => [key, all.metrics[key]])), stockStatus: all.stockStatus }
+      : await metricsFor(user, pageKeys);
+    let groupCounts;
+    if (group) {
+      const wanted = new Set(pageKeys);
+      groupCounts = {};
+      for (const row of ordered) if (wanted.has(row.productKey)) groupCounts[row.productKey] = (groupCounts[row.productKey] || 0) + 1;
+    }
+    return {
+      ...page, sorts, group, ...(groupCounts ? { groupCounts } : {}),
+      metrics, stockStatus, ...common(await repository.listCreators(pool))
     };
   }
 
@@ -340,7 +425,8 @@ function createVatRequestService({ pool = getPool(), stockSource = createStockSo
   // Xuat Excel: chi KT (quyen xu ly) va quan ly; cung bo loc voi list() nen khop dung man hinh.
   async function exportList(user, filters = {}) {
     if (!canProcess(user) && !isManager(user)) throw httpError(403, 'Chỉ kế toán hoặc quản lý được xuất Excel ORDER VAT.', 'FEATURE_FORBIDDEN');
-    return list(user, filters);
+    // Luon xuat TOAN BO ket qua cua bo loc (khong cat trang du client co gui page).
+    return list(user, { ...filters, paging: null });
   }
 
   async function get(user, id) {

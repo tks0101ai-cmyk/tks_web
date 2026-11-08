@@ -10,6 +10,7 @@ const { renderHtmlReport } = require('../dashboard/exportHtmlReport');
 const { monthLabel } = require('./businessMonths');
 const fuzzy = require('../shared/fuzzySearch');
 const { filterTableItems } = require('../public/js/table-explorer');
+const { sortRows } = require('../shared/tablePage');
 
 const MAX_EXPORT_ROWS = 20000;
 const KINDS = ['sales', 'customers', 'products'];
@@ -73,6 +74,18 @@ function filterRows(kind, rows, query = {}) {
 // Sắp xếp theo cột đang bấm trên màn hình: client gửi nhãn cột (tiêu đề <th>) + chiều (sortLabel / sortDir).
 // Không có cột khớp nhãn thì giữ nguyên thứ tự.
 function sortRowsByLabel(kind, report, rows, query = {}) {
+  if (query.sorts !== undefined) {
+    const catalog = {};
+    // Only columns returned by this report can influence ordering. Dates stay ISO, numbers stay raw.
+    for (const column of columnsFor(kind, report)) {
+      if (EXPORT_ONLY_PROFILE_FIELDS.has(column.key)) continue;
+      catalog[column.key] = row => column.month ? Number((row.series || {})[column.month] || 0) : row[column.key];
+    }
+    const aliases = { customer: 'name', product: 'name', productCode: 'code', sale: 'saleName', customerCount: 'activeCustomers', average4Months: 'avg4' };
+    for (const [alias, key] of Object.entries(aliases)) if (catalog[key]) catalog[alias] = catalog[key];
+    for (const month of report.months) catalog['month-' + month.slice(0, 7)] = row => Number((row.series || {})[month] || 0);
+    return sortRows(rows, query.sorts, catalog);
+  }
   const label = String(query.sortLabel || '').trim().toLocaleLowerCase('vi-VN');
   if (!label || !['asc', 'desc'].includes(query.sortDir)) return rows;
   const column = columnsFor(kind, report).find(c => c.label.trim().toLocaleLowerCase('vi-VN') === label);

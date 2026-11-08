@@ -33,13 +33,14 @@
   const signatures = new WeakMap();
   const setText = (node, text) => { if (node.textContent !== text) node.textContent = text; };
   const QUANTITY_FORMAT = new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 });
-  const newState = () => ({ rows: [], query: '', page: 1, sorts: [], loading: false, error: '', warnFilter: 'all', canEdit: null, canExport: false, canDeleteHistory: false });
+  const newState = () => ({ rows: [], serverPaged: false, totalRows: 0, summary: null, warningCounts: {}, query: '', page: 1, sorts: [], loading: false, error: '', warnFilter: 'all', canEdit: null, canExport: false, canDeleteHistory: false });
   const state = { hn: newState(), sg: newState() };
   let user, activeTab, allowedTabs, requestVersion = 0;
+  let queryTimer = null, queryController = null;
   let screenMode, visibleFields, columnPreferences = {}, canEditPermission = false;
   const importState = { busy: false };
   const stockOutState = { busy: false };
-  const history = { rows: [], nextBefore: null, branch: '', version: 0 };
+  const history = { page: 1, pageSize: 200, totalRows: 0, serverPaged: false, timer: null, controller: null, rows: [], nextBefore: null, branch: '', version: 0 };
   // Hộp chi tiết một dòng: row = bản đang mở (để lấy version), version chống tải lịch sử cũ ghi đè.
   const detail = { id: null, tab: '', row: null, fresh: null, rows: [], nextBefore: null, version: 0, busy: false };
 
@@ -317,7 +318,7 @@
 
   // Cập nhật nhãn/số đếm của bộ lọc cảnh báo tại chỗ (giữ node <option> để danh sách đang mở không bị đóng).
   function syncWarnOptions(select, current) {
-    const wanted = new Set([...Object.keys(WARNING_LABELS), ...current.rows.flatMap(warningsOf)]);
+    const wanted = new Set([...Object.keys(WARNING_LABELS), ...Object.keys(current.warningCounts || {}), ...current.rows.flatMap(warningsOf)]);
     if (current.warnFilter.startsWith('type:')) wanted.add(current.warnFilter.slice(5));
     const existing = new Map();
     select.querySelectorAll('option[data-warning-type]').forEach(option => existing.set(option.dataset.warningType, option));
@@ -330,7 +331,7 @@
         option.dataset.warningType = code;
         select.appendChild(option);
       }
-      setText(option, warningLabel(code) + ' (' + formatNumber(current.rows.filter(row => warningsOf(row).includes(code)).length) + ')');
+      setText(option, warningLabel(code) + ' (' + formatNumber(current.serverPaged ? current.warningCounts[code] || 0 : current.rows.filter(row => warningsOf(row).includes(code)).length) + ')');
     });
   }
 
@@ -341,24 +342,25 @@
     $('vtTable').dataset.editable = String(canEdit);
     $('vtImportButton').hidden = !canEdit;
     $('vtExportButton').hidden = state[activeTab].canExport !== true;
-    const rows = sortRows(filterRows(current.rows, current.query, current.warnFilter), current.sorts);
+    const rows = current.serverPaged ? current.rows : sortRows(filterRows(current.rows, current.query, current.warnFilter), current.sorts);
     updateSortHeaders();
     // Bộ lọc cảnh báo: số đếm tính trên toàn bộ dòng của cơ sở (không theo từ khóa tìm).
     const select = $('vtWarnFilter');
-    const warned = current.rows.filter(row => warningsOf(row).length > 0).length;
+    const warned = current.serverPaged ? current.summary.warned : current.rows.filter(row => warningsOf(row).length > 0).length;
     setText(select.querySelector('option[value="warn"]'), 'Cảnh báo (' + formatNumber(warned) + ')');
-    setText(select.querySelector('option[value="valid"]'), 'Hợp lệ (' + formatNumber(current.rows.length - warned) + ')');
+    setText(select.querySelector('option[value="valid"]'), 'Hợp lệ (' + formatNumber(current.serverPaged ? current.summary.valid : current.rows.length - warned) + ')');
     syncWarnOptions(select, current);
     if (select.value !== current.warnFilter) select.value = current.warnFilter;
     select.parentElement.dataset.filter = current.warnFilter;
     select.disabled = current.loading || !!current.error;
-    const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+    const totalRows = current.serverPaged ? current.totalRows : rows.length;
+    const pageCount = Math.max(1, Math.ceil(totalRows / pageSize));
     if (!current.loading && !current.error) current.page = Math.min(current.page, pageCount);
     const start = (current.page - 1) * pageSize;
     const body = $('vtRows');
     const search = $('vtSearch');
     if (search.value !== current.query) search.value = current.query;
-    search.disabled = current.loading || !!current.error;
+    search.disabled = false;
     $('vtTable').setAttribute('aria-busy', String(current.loading));
     const status = $('vtStatus');
     status.dataset.error = String(!!current.error);
@@ -368,10 +370,10 @@
     $('vtPager').hidden = !ready;
     if (!ready) { body.replaceChildren(); return; }
 
-    const changed = reconcileRows(body, rows.slice(start, start + pageSize), options.background === true);
+    const changed = reconcileRows(body, current.serverPaged ? rows : rows.slice(start, start + pageSize), options.background === true);
     // Cập nhật nền mà không đổi gì thì khỏi áp lại cấu hình bảng.
     if (window.TKSTables && (changed || options.background !== true)) window.TKSTables.refresh($('vtTable'));
-    $('vtCount').textContent = `${formatNumber(start + 1)}–${formatNumber(Math.min(start + pageSize, rows.length))} / ${formatNumber(rows.length)} dòng`;
+    $('vtCount').textContent = `${formatNumber(start + 1)}–${formatNumber(Math.min(start + pageSize, totalRows))} / ${formatNumber(totalRows)} dòng`;
     $('vtPage').textContent = `Trang ${current.page} / ${pageCount}`;
     if ($('vtPageSize').value !== String(pageSize)) $('vtPageSize').value = String(pageSize);
     $('vtPrevious').disabled = current.page === 1;
@@ -1237,11 +1239,11 @@
     $('vtExportButton').disabled = true;
     try {
       const current = state[tab];
-      const rows = sortRows(filterRows(current.rows, current.query, current.warnFilter), current.sorts);
+      const rows = current.serverPaged ? current.rows : sortRows(filterRows(current.rows, current.query, current.warnFilter), current.sorts);
       const response = await fetch(API + '/export?branch=' + tab.toUpperCase(), {
         method: 'POST', credentials: 'same-origin', cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: rows.map(row => row.id) })
+        body: JSON.stringify(current.serverPaged ? { query: { q: current.query, warnFilter: current.warnFilter, sorts: current.sorts } } : { ids: rows.map(row => row.id) })
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -1293,9 +1295,9 @@
   function renderHistory() {
     const search = $('vtHistorySearch').value;
     const action = $('vtHistoryAction').value;
-    let rows = history.rows.filter(entry => !action || entry.action === action);
+    let rows = history.serverPaged ? history.rows : history.rows.filter(entry => !action || entry.action === action);
     const text = entry => [entry.actorName, entry.code, entry.location, ACTION_LABELS[entry.action], FIELD_LABELS[entry.field] || entry.field, historyValue(entry, 'old'), historyValue(entry, 'new')].join(' ');
-    if (search.trim()) rows = window.TKSFuzzySearch ? window.TKSFuzzySearch.filter(rows, search, text) : rows.filter(entry => normalizeSearch(text(entry)).includes(normalizeSearch(search)));
+    if (!history.serverPaged && search.trim()) rows = window.TKSFuzzySearch ? window.TKSFuzzySearch.filter(rows, search, text) : rows.filter(entry => normalizeSearch(text(entry)).includes(normalizeSearch(search)));
     const body = $('vtHistoryRows');
     body.replaceChildren();
     if (!rows.length) {
@@ -1326,8 +1328,8 @@
       body.appendChild(tr);
     });
     const more = history.nextBefore !== null && history.nextBefore !== undefined;
-    const count = rows.length === history.rows.length ? String(history.rows.length) : rows.length + '/' + history.rows.length;
-    $('vtHistorySubtitle').textContent = `${count} thay đổi${more ? ' đã tải' : ''}`;
+    const count = history.serverPaged ? String(history.totalRows) : rows.length === history.rows.length ? String(history.rows.length) : rows.length + '/' + history.rows.length;
+    $('vtHistorySubtitle').textContent = `${count} thay đổi${more ? ' · ' + history.rows.length + ' đã tải' : ''}`;
     $('vtHistoryMore').hidden = !more;
     $('vtHistoryExport').hidden = state[history.branch.toLowerCase()].canExport !== true;
     $('vtHistoryPurge').hidden = state[history.branch.toLowerCase()].canDeleteHistory !== true;
@@ -1469,14 +1471,37 @@
   }
 
   async function loadHistory(append) {
+    clearTimeout(history.timer); history.timer = null;
+    if (history.controller) history.controller.abort();
+    history.controller = new AbortController();
     const version = ++history.version;
-    const before = append && history.nextBefore ? '&before=' + encodeURIComponent(history.nextBefore) : '';
-    const { response, payload } = await request(API + '/history?branch=' + history.branch + '&limit=200' + before);
-    if (version !== history.version) return;
-    if (!response.ok) { $('vtHistorySubtitle').textContent = payload.error || 'Không tải được lịch sử.'; return; }
-    history.rows = append ? history.rows.concat(payload.rows || []) : (payload.rows || []);
-    history.nextBefore = payload.nextBefore ?? null;
-    renderHistory();
+    const nextPage = append ? history.page + 1 : 1;
+    const params = new URLSearchParams({ branch: history.branch, page: String(nextPage), pageSize: String(history.pageSize),
+      q: $('vtHistorySearch').value.trim(), action: $('vtHistoryAction').value });
+    if (append && history.legacy && history.nextBefore) { params.delete('page'); params.set('limit', '200'); params.set('before', String(history.nextBefore)); }
+    $('vtHistorySubtitle').textContent = 'Đang tải…';
+    try {
+      const { response, payload } = await request(API + '/history?' + params, { signal: history.controller.signal });
+      if (version !== history.version) return;
+      if (!response.ok) { $('vtHistorySubtitle').textContent = payload.error || 'Không tải được lịch sử.'; return; }
+      history.rows = append ? [...new Map(history.rows.concat(payload.rows || []).map(row => [row.id, row])).values()] : (payload.rows || []);
+      history.serverPaged = Number.isFinite(payload.totalRows);
+      history.legacy = !history.serverPaged;
+      history.page = Number(payload.page) || nextPage;
+      history.totalRows = Number(payload.totalRows) || 0;
+      history.nextBefore = history.serverPaged ? (history.page * history.pageSize < history.totalRows ? history.page : null) : payload.nextBefore ?? null;
+      renderHistory();
+    } catch (error) {
+      if (version === history.version && error.name !== 'AbortError') $('vtHistorySubtitle').textContent = 'Không tải được lịch sử.';
+    }
+  }
+  function queryHistory(debounce) {
+    ++history.version;
+    if (history.controller) history.controller.abort();
+    clearTimeout(history.timer);
+    if (history.legacy) { renderHistory(); return; }
+    if (debounce) history.timer = setTimeout(() => loadHistory(false), 300);
+    else loadHistory(false);
   }
 
   function openHistory() {
@@ -1497,8 +1522,34 @@
     loadHistory(false);
   }
 
+  function listUrl(tab) {
+    const current = state[tab];
+    return API + '?' + new URLSearchParams({ branch: tab.toUpperCase(), page: String(current.page), pageSize: String(pageSize), q: current.query, warnFilter: current.warnFilter, sorts: JSON.stringify(current.sorts) });
+  }
+  function acceptList(current, payload) {
+    current.rows = payload.rows;
+    current.serverPaged = Number.isFinite(payload.totalRows);
+    current.legacy = !current.serverPaged;
+    if (current.serverPaged) {
+      current.page = payload.page; current.totalRows = payload.totalRows;
+      current.summary = payload.summary || { totalRows: payload.totalRows, warned: 0, valid: payload.totalRows };
+      current.warningCounts = payload.warningCounts || {};
+    }
+  }
+  function queryPage(debounce = false) {
+    ++requestVersion;
+    if (queryController) queryController.abort();
+    clearTimeout(queryTimer);
+    if (state[activeTab].legacy) { render(); return; } // máy chủ cũ trả đủ danh sách: lọc/sắp xếp tại chỗ, không tải lại
+    if (debounce) queryTimer = setTimeout(() => { queryTimer = null; selectTab(activeTab, true); }, 300);
+    else { queryTimer = null; selectTab(activeTab, true); }
+  }
+
   // ---------- Tải dữ liệu theo tab ----------
-  async function selectTab(requested) {
+  async function selectTab(requested, queryOnly = false) {
+    clearTimeout(queryTimer); queryTimer = null;
+    if (queryController) queryController.abort();
+    queryController = new AbortController();
     activeTab = allowedTabs.includes(requested) ? requested : allowedTabs[0];
     if (window.location.hash !== '#' + activeTab) window.history.replaceState(null, '', '#' + activeTab);
     const tab = activeTab;
@@ -1511,17 +1562,17 @@
     $('vtTableTitle').textContent = 'VT ' + (tab === 'hn' ? 'Hà Nội' : 'Sài Gòn');
     window.TKSNav.renderTopSidebar($('sidebar'), 'stockLocations', user);
     const current = state[tab];
-    current.rows = [];
+    if (!queryOnly) current.rows = [];
     current.loading = true;
     current.error = '';
     const version = ++requestVersion;
     render();
     try {
-      const { response, payload } = await request(API + '?branch=' + tab.toUpperCase());
+      const { response, payload } = await request(listUrl(tab), { signal: queryController.signal });
       if (version !== requestVersion) return;
       if (!response.ok) throw new Error(payload.error || 'Không tải được vị trí hàng.');
       if (payload.branch !== tab.toUpperCase() || !Array.isArray(payload.rows)) throw new Error('Dữ liệu vị trí hàng không hợp lệ.');
-      current.rows = payload.rows;
+      acceptList(current, payload);
       current.canEdit = typeof payload.canEdit === 'boolean' ? payload.canEdit : null;
       current.canExport = payload.canExport === true;
       current.canDeleteHistory = payload.canDeleteHistory === true;
@@ -1537,16 +1588,16 @@
   // Một yêu cầu tại một thời điểm; tín hiệu đến lúc đang tải thì tải thêm một lần sau khi xong.
   const live = { busy: false, pending: false };
   async function refreshInBackground(tab) {
-    if (!tab || tab !== activeTab) return;
+    if (!tab || tab !== activeTab || queryTimer || state[tab].loading) return;
     if (live.busy) { live.pending = true; return; }
     live.busy = true;
     const version = requestVersion;
     try {
-      const { response, payload } = await request(API + '?branch=' + tab.toUpperCase());
+      const { response, payload } = await request(listUrl(tab));
       if (version !== requestVersion || tab !== activeTab) return;
       if (!response.ok || payload.branch !== tab.toUpperCase() || !Array.isArray(payload.rows)) return;
       const current = state[tab];
-      current.rows = payload.rows;
+      acceptList(current, payload);
       current.error = '';
       current.canEdit = typeof payload.canEdit === 'boolean' ? payload.canEdit : null;
       current.canExport = payload.canExport === true;
@@ -1677,8 +1728,8 @@
     $('vtOrderDialog').addEventListener('cancel', event => { if (stockOutState.busy) event.preventDefault(); });
     $('vtExportButton').addEventListener('click', exportExcel);
     $('vtHistoryButton').addEventListener('click', openHistory);
-    $('vtHistorySearch').addEventListener('input', renderHistory);
-    $('vtHistoryAction').addEventListener('change', renderHistory);
+    $('vtHistorySearch').addEventListener('input', () => queryHistory(true));
+    $('vtHistoryAction').addEventListener('change', () => queryHistory(false));
     $('vtHistoryMore').addEventListener('click', () => loadHistory(true));
     $('vtHistoryExport').addEventListener('click', exportHistory);
     $('vtHistoryPurge').addEventListener('click', openPurge);
@@ -1875,7 +1926,7 @@
       const field = button.dataset.sortField;
       current.sorts = window.TKSTables.nextSorts(current.sorts, field, event.shiftKey);
       current.page = 1;
-      render();
+      queryPage();
       document.querySelector('.locations-scroll').scrollTop = 0;
     });
     $('vtWarnFilter').addEventListener('change', event => {
@@ -1883,29 +1934,29 @@
       const current = state[activeTab];
       current.warnFilter = value === 'warn' || value === 'valid' || value.startsWith('type:') ? value : 'all';
       current.page = 1;
-      render();
+      queryPage();
     });
     $('vtSearch').addEventListener('input', event => {
       state[activeTab].query = event.target.value;
       state[activeTab].page = 1;
-      render();
+      queryPage(true);
     });
     $('vtPageSize').addEventListener('change', event => {
       const size = Number(event.target.value);
       if (![50, 100, 200].includes(size)) return;
       pageSize = size;
       for (const current of Object.values(state)) current.page = 1;
-      render();
+      queryPage();
       document.querySelector('.locations-scroll').scrollTop = 0;
     });
     ['First', 'Previous', 'Next', 'Last'].forEach(direction => {
       $('vt' + direction).addEventListener('click', () => {
         const current = state[activeTab];
-        const pageCount = Math.max(1, Math.ceil(filterRows(current.rows, current.query, current.warnFilter).length / pageSize));
+        const pageCount = Math.max(1, Math.ceil((current.serverPaged ? current.totalRows : filterRows(current.rows, current.query, current.warnFilter).length) / pageSize));
         if (direction === 'First') current.page = 1;
         else if (direction === 'Last') current.page = pageCount;
         else current.page = Math.max(1, Math.min(pageCount, current.page + (direction === 'Previous' ? -1 : 1)));
-        render();
+        queryPage();
         document.querySelector('.locations-scroll').scrollTop = 0;
       });
     });

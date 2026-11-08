@@ -111,3 +111,17 @@ test('POST /refresh ep tai lai; Sheets loi sau do -> tra ban cu danh dau stale',
   assert.equal(res.body.stale, true);
   assert.equal(res.body.products, 1);
 });
+
+
+test('modern search envelopes retain metadata/input cap and cached source, with permission checks before reading',async()=>{
+  const readValues=fakeReadValues(),source=createLookupSource({readValues});
+  const body={q:'TALEWS',vatPage:99,vatPageSize:100,vatSorts:[{key:'tonCoTheNhap',dir:'desc'}],incomingPage:99,incomingPageSize:100,incomingSorts:[{key:'soLuong',dir:'desc'}]};
+  const first=await request('/search',{method:'POST',body,source});assert.equal(first.status,200);assert.equal(first.body.vat.page,1);assert.equal(first.body.vat.pageSize,100);assert.equal(first.body.vat.totalRows,1);assert.equal(first.body.incoming.page,1);assert.equal(first.body.incoming.totalRows,1);
+  await request('/search',{method:'POST',body:{...body,vatPage:1},source});assert.equal(readValues.calls.length,3);
+  assert.equal(first.body.meta.stale,false);assert.deepEqual(first.body.queries,['TALEWS']);
+  let reads=0;const deniedSource={get:async()=>{reads++;throw new Error('must not read');}};
+  for(const user of [null,userFor(ROLES.KHACH),userFor(ROLES.NHAN_VIEN_SALE,{'accounting.vatLookup':false})]){
+    const denied=await request('/search',{method:'POST',body,source:deniedSource,user});assert.ok([401,403].includes(denied.status));
+  }
+  assert.equal(reads,0);
+});

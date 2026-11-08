@@ -255,3 +255,107 @@ test('management team dropdown combines with sale filter and exports selected gr
     assert.equal(dom.window.buildExportPayload('debt.management').context.debtTeam, 'Team B');
   } finally { dom.window.close(); }
 });
+
+function serverDebtPayload(extra = {}) {
+  const payload = scheduleDebtPayload();
+  return {
+    ...payload, rows: payload.customers, totalRows: 205, page: 1, pageSize: 100,
+    summary: { customerCount: 205 }, filters: { teams: ['Chưa có team', 'Team A'], sales: ['Lan', 'Minh'], schedules: ['7', '15'] },
+    search: { requestedCodes: [], missingCodes: [] }, ...extra
+  };
+}
+
+function deferredFetch(dom) {
+  const calls = [];
+  dom.window.fetch = (url, options) => new Promise((resolve, reject) => {
+    const call = { url: String(url), options, resolve, reject };
+    calls.push(call);
+    if (options && options.signal) options.signal.addEventListener('abort', () => reject(new dom.window.DOMException('aborted', 'AbortError')));
+  });
+  return calls;
+}
+
+const flush = async () => { for (let i = 0; i < 10; i++) await new Promise(setImmediate); };
+const respond = (call, debtManagement) => call.resolve({ ok: true, status: 200, json: async () => ({ debtManagement, kpi: {}, filters: {} }) });
+const dashboardCalls = calls => calls.filter(call => call.url.startsWith('/api/dashboard?'));
+const paramsOf = call => new URL(call.url, 'https://tokosi.example').searchParams;
+
+test('máy chủ phân trang: tổng/trang/bộ lọc lấy từ máy chủ, sort/lọc/tìm gửi lên API, bỏ kết quả cũ', async () => {
+  const dom = createDashboard(serverDebtPayload());
+  const document = dom.window.document;
+  try {
+    assert.equal(document.getElementById('tagDebtManagement').textContent, '205', 'tổng theo toàn bộ kết quả, không phải số dòng trang');
+    assert.equal(document.getElementById('debtManagementPageLabel').textContent, 'Trang 1/3');
+    assert.deepEqual([...document.getElementById('debtSaleFilter').options].map(o => o.value), ['', 'Lan', 'Minh'], 'facet từ máy chủ, có cả sale không nằm trong trang');
+    assert.deepEqual([...document.getElementById('debtScheduleFilter').options].map(o => o.textContent), ['Tất cả lịch', '7 ngày', '15 ngày']);
+
+    const calls = deferredFetch(dom);
+    document.querySelectorAll('[data-debt-management-table] thead th')[5].querySelector('button').click();
+    let request = dashboardCalls(calls).at(-1);
+    assert.ok(request, 'sort gọi máy chủ');
+    assert.equal(paramsOf(request).get('view'), 'debt');
+    assert.equal(paramsOf(request).get('page'), '1');
+    assert.deepEqual(JSON.parse(paramsOf(request).get('sorts')).map(sort => sort.key), ['currentDebt']);
+
+    document.getElementById('debtStatusFilter').value = 'Đã xử lý';
+    document.getElementById('debtSaleFilter').value = 'Minh';
+    dom.window.handleDebtFilterChange();
+    request = dashboardCalls(calls).at(-1);
+    assert.equal(paramsOf(request).get('debtStatus'), 'Đã xử lý');
+    assert.equal(paramsOf(request).get('debtSale'), 'Minh');
+    assert.equal(paramsOf(request).get('debtQueue'), null, 'Tất cả không gửi');
+
+    const before = dashboardCalls(calls).length;
+    const stale = dashboardCalls(calls).at(-1);
+    const search = document.getElementById('debtManagementSearch');
+    search.value = 'Khách Z';
+    dom.window.handleDebtFilterChange({ type: 'input' }); // oninput="handleDebtFilterChange(event)"
+    assert.equal(dashboardCalls(calls).length, before, 'gõ phím chưa gọi ngay (debounce)');
+    respond(stale, serverDebtPayload({ totalRows: 999 }));
+    await flush();
+    assert.equal(document.getElementById('tagDebtManagement').textContent, '205', 'kết quả của truy vấn cũ bị bỏ qua');
+    await new Promise(resolve => setTimeout(resolve, 350));
+    request = dashboardCalls(calls).at(-1);
+    assert.equal(dashboardCalls(calls).length, before + 1);
+    assert.equal(paramsOf(request).get('q'), 'Khách Z');
+    const page = serverDebtPayload({ totalRows: 1, page: 1 });
+    page.customers = page.rows = [page.customers[1]];
+    respond(request, page);
+    await flush();
+    assert.equal(document.getElementById('tagDebtManagement').textContent, '1');
+    assert.deepEqual([...document.querySelectorAll('#debtManagementRows tr[data-customer-key]')].map(tr => tr.dataset.customerKey), ['hanoi:2']);
+    assert.equal(calls.filter(call => call.url.includes('/penalty-board') || call.url.includes('/aging')).length, 0, 'đổi bảng không tải lại thưởng/phạt + tuổi nợ');
+  } finally { dom.window.close(); }
+});
+
+test('máy chủ phân trang: sửa trạng thái gửi kèm chu kỳ, cập nhật dòng ngay rồi tải lại trang (KPI không tự cộng trên trang)', async () => {
+  const dom = createDashboard(serverDebtPayload());
+  const document = dom.window.document;
+  try {
+    const calls = deferredFetch(dom);
+    const select = document.querySelector('#debtManagementRows tr[data-customer-key="hanoi:1"] .debt-status-select');
+    select.value = 'Đã xử lý';
+    const done = dom.window.handleDebtStatusChange(select);
+    const patch = calls.find(call => call.url === '/api/debt-management/status');
+    assert.deepEqual(JSON.parse(patch.options.body), { branch: 'hanoi', customerId: '1', cycleDate: '2026-10-13', status: 'Đã xử lý' });
+    patch.resolve({ ok: true, status: 200, json: async () => ({ status: 'Đã xử lý', updatedBy: 'QL' }) });
+    await done;
+    assert.equal(document.querySelector('#debtManagementRows tr[data-customer-key="hanoi:1"] .debt-status-select').value, 'Đã xử lý');
+    assert.equal(document.getElementById('dm-action-count').textContent, '1', 'không đếm lại KPI chỉ trên trang đang xem');
+    const reload = dashboardCalls(calls).at(-1);
+    assert.ok(reload, 'tải lại trang từ máy chủ');
+    assert.equal(paramsOf(reload).get('view'), 'debt');
+  } finally { dom.window.close(); }
+});
+
+test('máy chủ cũ (không có totalRows): quay về lọc/phân trang tại trình duyệt', () => {
+  const dom = createDashboard(scheduleDebtPayload());
+  try {
+    const calls = deferredFetch(dom);
+    dom.window.document.getElementById('debtStatusFilter').value = 'Đã xử lý';
+    dom.window.handleDebtFilterChange();
+    assert.equal(dashboardCalls(calls).length, 0, 'lọc tại chỗ, không gọi máy chủ');
+    assert.deepEqual([...dom.window.document.querySelectorAll('#debtManagementRows tr[data-customer-key]')].map(tr => tr.dataset.customerKey), ['hanoi:2']);
+    assert.equal(dom.window.document.getElementById('tagDebtManagement').textContent, '1', 'tổng đếm tại trình duyệt');
+  } finally { dom.window.close(); }
+});

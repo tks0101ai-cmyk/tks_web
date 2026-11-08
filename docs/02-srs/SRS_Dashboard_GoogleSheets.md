@@ -1202,4 +1202,8 @@ Thiết kế triển khai: public/shared/table-controls.js cung cấp nextSorts 
 
 Kế hoạch kiểm chứng: (1) test hồi quy nhiều lớp, bằng nhau/NULL, chu kỳ/bỏ lớp và lưu-khôi phục; (2) tích hợp nhóm Dashboard/Nhân sự/Tài khoản, nhóm báo cáo phân trang, nhóm Thu mua/VAT/VT/Marketing và chi tiết kiểm kê; (3) chạy test toàn bộ liên quan, kiểm trình duyệt sáng/tối, cập nhật graphify và CURRENT. Không thay nguồn dữ liệu hoặc chạy migration.
 
-Cập nhật gần nhất: 07/11/2026.
+## 08/11/2026 — Phân trang bảng phía máy chủ
+
+Yêu cầu: bảng danh sách bền phải lọc, tìm kiếm và sắp xếp nhiều cột trên toàn bộ kết quả được phép xem rồi mới phân trang; số tổng, KPI, bộ lọc liên kết và file xuất theo toàn bộ kết quả, không theo trang đang hiển thị. Quyền, cơ sở, trường ẩn giữ nguyên. Bản nháp/lựa chọn gắn theo id/phiên bản, không mất khi đổi trang; yêu cầu cũ bị bỏ qua. Màn cần đủ dòng để tính hoặc thao tác (đơn mua, kiểm kê, đơn xuất kho VT, nhân sự/nghỉ phép) không phân trang phía máy chủ. Máy chủ cũ trả đủ danh sách vẫn được hỗ trợ.
+
+Cập nhật gần nhất: 08/11/2026.

@@ -3,15 +3,16 @@ const CONFIG = require('./config');
 const {
   getDashboardData,
   searchCustomerDirectory,
-  getCustomerProductRevenueReport
+  getCustomerProductRevenueReport, queryTransactionsReport, queryCustomerProductReport
 } = require('./dashboard/dashboardData');
 
 const router = express.Router();
 
 const { getExportFields, createExport, buildExportErrorBody } = require('./dashboard/exportService');
 const {
-  getProductReport, getProductReportCustomers, getProductReportVersion, PRODUCT_REPORT_PRICE_KEYS, PRODUCT_REPORT_SALES_KEYS
+  getProductReport, queryProductReport, getProductReportCustomers, getProductReportVersion, PRODUCT_REPORT_PRICE_KEYS, PRODUCT_REPORT_SALES_KEYS
 } = require('./dashboard/productReportRepository');
+const { wantsPage } = require('./shared/tablePage');
 const containerRepository = require('./productContainers/repository');
 const { getProductHistory } = require('./dashboard/productHistoryRepository');
 const { getProduct90dReport } = require('./dashboard/product90dReportRepository');
@@ -236,7 +237,15 @@ router.get('/api/dashboard', async (req, res) => {
     const data = await getDashboardData(filters, req.branch, req.user, allowedViews ? { views: allowedViews } : undefined);
     // Object tra ve co the den tu cache dung chung — filterDashboardForUser()
     // dung object MOI, khong sua data tai cho (xem dashboardPermissionFilter.js).
-    res.status(200).json(filterDashboardForUser(data, req.user.permissions));
+    const authorized = filterDashboardForUser(data, req.user.permissions);
+    if (wantsPage(req.query) && authorized.invoices && authorized.invoices.transactionsReport) {
+      authorized.invoices = { ...authorized.invoices, transactionsReport: queryTransactionsReport(authorized.invoices.transactionsReport, req.query) };
+    }
+    // Tab Cong no: bang "Danh sach thao tac" loc/tim/sap xep/phan trang tren may chu; KPI, chu ky (cycleDate) va quyen sua giu nguyen.
+    if (wantsPage(req.query) && authorized.debtManagement) {
+      authorized.debtManagement = require('./debtSchedule/debtManagementQuery').queryDebtManagement(authorized.debtManagement, req.query);
+    }
+    res.status(200).json(authorized);
   } catch (err) {
     const googleStatus = err?.response?.status;
     const googleMessage = err?.response?.data?.error?.message || err?.response?.data;
@@ -319,7 +328,7 @@ router.get('/api/customer-product-revenue', async (req, res) => {
       req.query.name,
       req.branch
     );
-    res.status(200).json(data);
+    res.status(200).json(wantsPage(req.query) ? queryCustomerProductReport(data, req.query) : data);
   } catch (err) {
     const googleStatus = err?.response?.status;
     console.error('=== LOI /api/customer-product-revenue ===');
@@ -346,6 +355,7 @@ router.get('/api/product-report', async (req, res) => {
       ...(hasFeature(req.user, 'reports.products.price') ? [] : PRODUCT_REPORT_PRICE_KEYS),
       ...(hasFeature(req.user, 'reports.products.sales') ? [] : PRODUCT_REPORT_SALES_KEYS)
     ];
+    if (wantsPage(req.query)) return res.status(200).json(queryProductReport(data, req.query, hiddenKeys));
     if (hiddenKeys.length) {
       data.rows = data.rows.map((row) => {
         const copy = { ...row };

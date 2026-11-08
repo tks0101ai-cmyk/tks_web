@@ -72,7 +72,7 @@ test('mo trang: doc truoc sheet (khong hien dong nguon / nut Cap nhat), o tim ki
 test('tim kiem: gui nguyen noi dung o tim kiem, ve bang Hang VAT co san voi badge va so dinh dang en-US', async t => {
   const { window, doc, calls } = await setup(t);
   await submit(window, doc, 'TALEWS');
-  assert.deepEqual(calls.at(-1), { key: 'POST /search', body: { q: 'TALEWS' } });
+  assert.deepEqual(calls.at(-1), { key: 'POST /search', body: { q: 'TALEWS',vatPage:1,vatPageSize:100,vatSorts:[],incomingPage:1,incomingPageSize:100,incomingSorts:[] } });
   const table = doc.querySelector('#vlResults table');
   assert.equal(table.dataset.tableKey, 'vat-lookup-vat-v2');
   const cells = [...table.querySelectorAll('tbody td')].map(td => td.textContent.trim());
@@ -162,4 +162,49 @@ test('nut Cot hien thi o hang tab, an khi chua co bang; khong con dong tom tat k
   assert.ok(columns.classList.contains('tks-columns-button'), 'table-controls gan nut vao #vlColumns');
   assert.equal(doc.querySelector('#vlResults .tks-table-tools'), null, 'khong tao them hang cong cu tren bang');
   assert.doesNotMatch(doc.querySelector('.vl-panel').textContent, /Tìm thấy 1 sản phẩm/);
+});
+
+
+test('remote VAT tables page independently, send full input/multi-sort, keep total badges and shared column preferences',async t=>{
+  const {window,doc,calls}=await setup(t,{responses:{'POST /search':body=>{
+    const result=searchResponse();
+    result.vat={...result.vat,total:640,totalRows:640,page:body.vatPage,pageSize:100};
+    result.incoming={...result.incoming,total:630,totalRows:630,page:body.incomingPage,pageSize:100,extraKeys:['Late column']};
+    return {status:200,data:result};
+  }}});
+  await submit(window,doc,'TALEWS\nOTHER');
+  assert.equal(doc.getElementById('vlCountVat').textContent,'640');assert.equal(doc.getElementById('vlCountIncoming').textContent,'630');
+  assert.equal(doc.querySelector('#vlResults table').hasAttribute('data-table-sort'),false);
+  doc.querySelector('#vlResults [aria-label="Trang sau"]').click();await tick();await tick();
+  assert.equal(calls.at(-1).body.vatPage,2);assert.equal(calls.at(-1).body.incomingPage,1);assert.equal(calls.at(-1).body.q,'TALEWS\nOTHER');
+  doc.querySelector('#vlResults [data-sort="tonCoTheNhap"]').click();await tick();await tick();
+  assert.deepEqual(calls.at(-1).body.vatSorts,[{key:'tonCoTheNhap',dir:'asc'}]);assert.equal(calls.at(-1).body.vatPage,1);
+  doc.querySelector('#vlResults [data-sort="maKiot"]').dispatchEvent(new window.MouseEvent('click',{bubbles:true,shiftKey:true}));await tick();await tick();
+  assert.deepEqual(calls.at(-1).body.vatSorts,[{key:'tonCoTheNhap',dir:'asc'},{key:'maKiot',dir:'asc'}]);
+  const before=calls.length;doc.getElementById('vlTabIncoming').click();assert.equal(calls.length,before);
+  assert.match(doc.querySelector('#vlResults table thead').textContent,/Late column/);
+  doc.querySelector('#vlResults [aria-label="Trang cuối"]').click();await tick();await tick();
+  assert.equal(calls.at(-1).body.incomingPage,7);assert.equal(calls.at(-1).body.vatPage,1);
+  assert.equal(doc.getElementById('vlQuery').value,'TALEWS\nOTHER');assert.ok(doc.getElementById('vlColumns').classList.contains('tks-columns-button'));
+});
+
+test('typing VAT input debounces requests and clearing/new searches discard stale success and errors',async t=>{
+  const {window,doc}=await setup(t), requests=[], delayed=new Map();
+  const original=window.fetch;
+  window.fetch=async(url,options)=>{
+    if(!url.endsWith('/search'))return original(url,options);
+    const body=JSON.parse(options.body);requests.push({body,signal:options.signal});
+    if(body.q.startsWith('slow'))return new Promise(resolve=>delayed.set(body.q,resolve));
+    return {ok:true,status:200,json:async()=>searchResponse({queries:[body.q],vat:{total:1,totalRows:1,page:1,pageSize:100,rows:[{maKiot:body.q,tonDauNgay:1,tonCoTheNhap:1}]}})};
+  };
+  const input=doc.getElementById('vlQuery'),type=value=>{input.value=value;input.dispatchEvent(new window.Event('input',{bubbles:true}));};
+  const pause=()=>new Promise(resolve=>setTimeout(resolve,300));
+  type('s');type('sl');type('slow-success');assert.equal(requests.length,0);await pause();assert.equal(requests.length,1);
+  type('');assert.equal(requests[0].signal.aborted,true);assert.match(doc.getElementById('vlResults').textContent,/Nhập mã Kiot/);
+  delayed.get('slow-success')({ok:true,status:200,json:async()=>searchResponse()});await tick();assert.match(doc.getElementById('vlResults').textContent,/Nhập mã Kiot/);assert.equal(doc.getElementById('vlSubmit').disabled,false);
+  type('slow-error');await pause();type('latest');await pause();
+  assert.match(doc.querySelector('#vlResults tbody').textContent,/latest/);
+  delayed.get('slow-error')({ok:false,status:503,json:async()=>({error:'STALE ERROR'})});await tick();
+  assert.doesNotMatch(doc.getElementById('vlResults').textContent,/STALE ERROR/);assert.match(doc.querySelector('#vlResults tbody').textContent,/latest/);
+  assert.equal(requests.at(-1).body.vatPage,1);assert.equal(doc.getElementById('vlSubmit').disabled,false);
 });

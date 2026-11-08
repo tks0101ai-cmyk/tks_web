@@ -55,7 +55,7 @@ function createStockPositionsRouter(dependencies = {}) {
   const idOf = req => Number(req.params.id);
 
   router.get('/api/stock-positions', handle(async (req, res) => {
-    const result = await svc().list(ctxOf(req), req.query.branch);
+    const result = await svc().list(ctxOf(req), req.query.branch, req.query);
     res.json({ ...result, canEdit: hasFeature(req.user, 'stockLocationsV2.edit'), canExport: hasFeature(req.user, 'stockLocationsV2.export'), canDeleteHistory: hasFeature(req.user, 'stockLocationsV2.historyDelete') });
   }));
   // SSE: bao "bang vi tri co so X vua doi" (khong keo du lieu) de trinh duyet tu tai nen; client lay du lieu bang GET list
@@ -98,12 +98,15 @@ function createStockPositionsRouter(dependencies = {}) {
   router.route('/api/stock-positions/export').get(requireFeature('stockLocationsV2.export'), exportPositions).post(requireFeature('stockLocationsV2.export'), express.json({ limit: '8mb' }), exportPositions);
   async function exportPositions(req, res, next) {
     return handle(async (req, res) => {
-    const { branch, rows } = await svc().list(ctxOf(req), req.query.branch);
+    const query = req.method === 'POST' && req.body?.query ? req.body.query : req.query;
+    const { branch, rows } = await svc().list(ctxOf(req), req.query.branch, { ...query, allResults: true });
     let exportRows = rows;
     if (req.method === 'POST') {
-      if (!Array.isArray(req.body?.ids)) return res.status(400).json({ error: 'Danh sách dòng xuất không hợp lệ.' });
-      const byId = new Map(rows.map(row => [String(row.id), row]));
-      exportRows = [...new Set(req.body.ids.map(String))].map(id => byId.get(id)).filter(Boolean);
+      if (!req.body?.query && !Array.isArray(req.body?.ids)) return res.status(400).json({ error: 'Danh sách dòng xuất không hợp lệ.' });
+      if (Array.isArray(req.body.ids)) {
+        const byId = new Map(rows.map(row => [String(row.id), row]));
+        exportRows = [...new Set(req.body.ids.map(String))].map(id => byId.get(id)).filter(Boolean);
+      }
     }
     const file = await createStockPositionsWorkbook({ branch, rows: exportRows });
     res.set('Content-Type', file.mimeType);
@@ -113,7 +116,7 @@ function createStockPositionsRouter(dependencies = {}) {
   }
   // Phai dat truoc '/:id'.
   router.get('/api/stock-positions/history', handle(async (req, res) => {
-    res.json(await svc().history(ctxOf(req), req.query.branch, { limit: req.query.limit, before: req.query.before, positionId: req.query.positionId }));
+    res.json(await svc().history(ctxOf(req), req.query.branch, req.query));
   }));
   // Xuat Excel Lich su cap nhat cua co so (loc theo hanh dong + tu khoa nhu hop tren man hinh); quyen stockLocationsV2.export.
   router.get('/api/stock-positions/history/export', requireFeature('stockLocationsV2.export'), handle(async (req, res) => {
@@ -194,7 +197,7 @@ function createStockPositionsRouter(dependencies = {}) {
     res.json(await orders().removeLine(ctxOf(req), intParam(req.params.lineId), version));
   }));
   router.get(BASE, handle(async (req, res) => {
-    res.json(await orders().list(ctxOf(req), req.query.branch, { limit: req.query.limit, before: req.query.before }));
+    res.json(await orders().list(ctxOf(req), req.query.branch, req.query));
   }));
   router.get(BASE + '/:id/events', handle(async (req, res) => {
     res.json(await orders().events(ctxOf(req), intParam(req.params.id), { limit: req.query.limit }));

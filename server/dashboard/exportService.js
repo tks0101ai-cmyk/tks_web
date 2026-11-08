@@ -730,18 +730,11 @@ function debtManagementRows(debtManagement, context, aggregate = false) {
   const schedule = normalizeText(context.debtSchedule);
   // Loc va sap xep LUON tren hang cua man hinh (o "Ca hai" la hang da gop theo khach), giong duong
   // co so vat ly; chi sau do moi tach thanh cac dong theo co so de xuat.
-  const customers = Array.isArray(debt.customers) ? debt.customers : [];
-  const candidates = customers.filter(customer => {
-    if (queue === 'needsAction' && !customer.needsAction) return false;
-    if (queue === 'currentDebt' && !(Number(customer.currentDebt) > 0)) return false;
-    if (queue === 'overdue' && !(Number(customer.overdueDebt) > 0)) return false;
-    if (context.debtTeam && (customer.saleTeam || 'Chưa có team') !== context.debtTeam) return false;
-    if (sale && customer.sale !== sale) return false;
-    if (schedule && customer.paymentSchedule !== schedule) return false;
-    if (context.debtStatus && customer.workflowStatus !== context.debtStatus) return false;
-    return true;
+  // Cung bo loc voi bang phan trang tren may chu (debtManagementQuery) de file khop dung ket qua dang xem.
+  const retained = require('../debtSchedule/debtManagementQuery').filterDebtCustomers(debt.customers, {
+    queue, team: normalizeText(context.debtTeam), sale, schedule,
+    status: normalizeText(context.debtStatus), q: normalizeText(context.debtSearch)
   });
-  const retained = searchRawItems(candidates, context.debtSearch);
   const toRow = customer => ({
     customerName: customer.customerName,
     branch: normalizeText(customer.branch) || debtBranchLabel(customer),
@@ -917,13 +910,14 @@ function normalizeSortLabel(value) {
 
 function normalizeTableSort(tableSort) {
   const raw = plainObject(Array.isArray(tableSort) ? tableSort[0] : tableSort);
+  if (typeof raw.key === 'string' && ['asc', 'desc'].includes(raw.dir)) return { key: raw.key, label: '', direction: raw.dir };
   const label = normalizeSortLabel(raw.label);
   if (!label) return null;
   return { label, direction: raw.direction === 'desc' ? 'desc' : 'asc' };
 }
 
 function sortWorksheetRows(worksheet, tableSort) {
-  const sorts=(Array.isArray(tableSort)?tableSort:[tableSort]).map(normalizeTableSort).filter(Boolean).map(sort=>({...sort,column:(worksheet.columns||[]).find(item=>normalizeSortLabel(item.label)===sort.label)})).filter(sort=>sort.column);
+  const sorts=(Array.isArray(tableSort)?tableSort:[tableSort]).map(normalizeTableSort).filter(Boolean).map(sort=>({...sort,column:(worksheet.columns||[]).find(item=>sort.key ? item.key===sort.key : normalizeSortLabel(item.label)===sort.label)})).filter(sort=>sort.column);
   if(!sorts.length)return worksheet;
   const value=(row,column)=>{const raw=row[column.key],text=normalizeText(raw);return text!==''&&typeof raw!=='boolean'&&Number.isFinite(Number(raw))?Number(raw):text;};
   return {...worksheet,rows:(worksheet.rows||[]).slice().sort((a,b)=>{for(const sort of sorts){const result=compareExportValues(value(a,sort.column),value(b,sort.column),sort.direction);if(result)return result;}return 0;})};
@@ -1033,11 +1027,20 @@ async function buildProductReportDataset(description, payload, signal) {
   if (!data.rows.length) throw exportError('Chưa có dữ liệu báo cáo hàng hóa để xuất.', 404, 'EXPORT_NO_DATA');
 
   const worksheet = description.worksheets[0];
+  const allowedKeys = new Set(worksheet.columns.map(column => column.key));
+  const hiddenKeys = [...PRODUCT_REPORT_PRICE_KEYS, ...PRODUCT_REPORT_SALES_KEYS].filter(key => !allowedKeys.has(key));
+  const sorts = payload.tableSorts || payload.tableSort;
+  const canonical = (Array.isArray(sorts) ? sorts : [sorts]).filter(sort => sort && typeof sort.key === 'string');
+  const filtered = productReportRepository.queryProductReport(data, {
+    q: payload.tableSearch && payload.tableSearch.query,
+    qmode: payload.tableSearch && payload.tableSearch.mode === 'codes' ? 'codes' : '',
+    sorts: canonical
+  }, hiddenKeys, { exportAll: true });
   return applyTableSearchToDataset({
     tableKey: 'overview.productReport', title: TABLE_TITLES['overview.productReport'], selectionMode: 'custom',
     reportNotes: productContainerExportNotes(data.containerSync),
-    worksheets: [{ ...worksheet, rows: pickAggregateRows(data.rows, worksheet.columns) }]
-  }, payload.tableSearch, (payload.tableSorts || payload.tableSort));
+    worksheets: [{ ...worksheet, rows: pickAggregateRows(filtered.rows, worksheet.columns) }]
+  }, null, canonical.length ? null : sorts);
 }
 
 // Top 3 khach -> 1 dong / khach "Tên|62.2%|10300000" (bo khach SL = 0). DUNG CHUNG ham voi man hinh
@@ -1059,7 +1062,7 @@ function formatVnStamp(iso) {
 
 // Nhan cot client gui (nhan tinh "T.này – SL" hoac nhan co ngay) -> cot sap xep trong whitelist cua repository.
 function product90dSort(tableSort, columns) {
-  const sorts=(Array.isArray(tableSort)?tableSort:[tableSort]).map(normalizeTableSort).filter(Boolean).map(sort=>{const label=sort.label.replace(/\s*\(\d{2}\/\d{2}–\d{2}\/\d{2}\)/,'');const column=columns.find(item=>normalizeSortLabel(item.label)===label);return column&&product90dReportRepository.SORT_COLUMNS.includes(column.key)?{key:column.key,dir:sort.direction}:null;}).filter(Boolean);
+  const sorts=(Array.isArray(tableSort)?tableSort:[tableSort]).map(normalizeTableSort).filter(Boolean).map(sort=>{const label=sort.label.replace(/\s*\(\d{2}\/\d{2}–\d{2}\/\d{2}\)/,'');const column=columns.find(item=>sort.key ? item.key===sort.key : normalizeSortLabel(item.label)===label);return column&&product90dReportRepository.SORT_COLUMNS.includes(column.key)?{key:column.key,dir:sort.direction}:null;}).filter(Boolean);
   return sorts.length?{sort:sorts[0].key,dir:sorts[0].dir,...(sorts.length>1?{sorts}:{})}:{};
 }
 
@@ -1368,6 +1371,17 @@ async function buildExportDataset(payload, branch, options = {}) {
   }
   const dashboard = await dashboardData.getDashboardData(description.filters, branch);
   throwIfAborted(signal);
+  if (tableKey === 'overview.transactions') {
+    const sorts = request.tableSorts || request.tableSort;
+    const canonical = (Array.isArray(sorts) ? sorts : [sorts]).filter(sort => sort && typeof sort.key === 'string');
+    const report = ((dashboard.invoices || {}).transactionsReport || {});
+    const queried = dashboardData.queryTransactionsReport(report, {
+      q: request.tableSearch && request.tableSearch.query,
+      qmode: request.tableSearch && request.tableSearch.mode === 'codes' ? 'codes' : '', sorts: canonical
+    }, { exportAll: true });
+    const scoped = { ...dashboard, invoices: { ...dashboard.invoices, transactionsReport: queried } };
+    return buildFixedDataset(tableKey, { dashboard: scoped, branch, signal }, description.context, {}, options.selection, canonical.length ? null : sorts);
+  }
   return buildFixedDataset(tableKey, { dashboard, branch, signal }, description.context, request.tableSearch, options.selection, (request.tableSorts || request.tableSort));
 }
 

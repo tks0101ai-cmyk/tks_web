@@ -69,13 +69,13 @@ test('Overview boot does not fetch the product report; switching repeatedly dedu
   const page = createPage('Quản lý');
   try {
     await settle();
-    assert.equal(page.urls.includes('/api/product-report'), false);
+    assert.equal(page.urls.some(url => url.split('?')[0] === '/api/product-report'), false);
     assert.equal(page.urls.filter(url => url.startsWith('/api/inventory-value-history')).length, 1);
     for (let i = 0; i < 3; i++) {
       page.dom.window.eval("switchView('products'); switchView('overview')");
     }
     await settle();
-    assert.equal(page.urls.filter(url => url === '/api/product-report').length, 1);
+    assert.equal(page.urls.filter(url => url.split('?')[0] === '/api/product-report').length, 1);
     assert.equal(page.urls.filter(url => url.startsWith('/api/inventory-value-history')).length, 1);
   } finally { page.dom.window.close(); }
 });
@@ -84,7 +84,7 @@ test('Direct products boot only fetches its sources; overview auxiliaries wait f
   const page = createPage('Quản lý', [], 'products');
   try {
     await settle();
-    assert.equal(page.urls.filter(url => url === '/api/product-report').length, 1);
+    assert.equal(page.urls.filter(url => url.split('?')[0] === '/api/product-report').length, 1);
     assert.equal(page.urls.some(url => url.startsWith('/api/inventory-value-history')), false);
     assert.equal(page.urls.some(url => url.includes('/supplier-returns/import-status')), false);
     page.dom.window.eval("switchView('overview')");
@@ -100,7 +100,7 @@ test('Loaded history is reused and missing report permissions prevent requests',
     await settle();
     page.dom.window.eval("switchView('products'); switchView('overview'); switchView('overview')");
     await settle();
-    assert.equal(page.urls.includes('/api/product-report'), false);
+    assert.equal(page.urls.some(url => url.split('?')[0] === '/api/product-report'), false);
     assert.equal(page.urls.filter(url => url.startsWith('/api/inventory-value-history')).length, 1);
   } finally { page.dom.window.close(); }
   const restricted = createPage('Quản lý', ['reports.overview'], 'products');

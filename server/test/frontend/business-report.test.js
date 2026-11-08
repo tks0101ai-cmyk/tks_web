@@ -21,7 +21,7 @@ const publicDir = path.join(__dirname, '..', '..', 'public');
 const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8');
 const settle = async () => { for (let i = 0; i < 10; i++) await new Promise(r => setImmediate(r)); };
 
-function createPage({ can = () => true, notReady = false, hash = '#business', customerRows, saveLevel } = {}) {
+function createPage({ can = () => true, notReady = false, hash = '#business', customerRows, saveLevel, remote } = {}) {
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://tokosi.example/reports/' + hash });
   dom.window.HTMLCanvasElement.prototype.getContext = () => ({});
   const charts = [];
@@ -45,6 +45,8 @@ function createPage({ can = () => true, notReady = false, hash = '#business', cu
     const href = String(url);
     urls.push({ href, opts });
     const ok = body => Promise.resolve({ ok: true, status: 200, json: async () => body });
+    const base = href.split('?')[0];
+    if (remote && /^\/api\/business-report\/(sales|customers|products)$/.test(base)) return remote(href, opts);
     if (href.startsWith('/api/business-report/') && notReady && !href.startsWith('/api/business-report/export')) {
       return Promise.resolve({
         ok: false, status: 503,
@@ -56,10 +58,10 @@ function createPage({ can = () => true, notReady = false, hash = '#business', cu
       return ok({ saleName: sent.saleName, team: sent.teamName || 'Chưa có team' });
     }
     if (href === '/api/business-report/customer-meta') return ok({ customers: {} });
-    if (href === '/api/business-report/sales') return ok(svc.buildSaleReport(snap));
+    if (base === '/api/business-report/sales') return ok(svc.buildSaleReport(snap));
     if (href === '/api/business-report/customer-price-level' && saveLevel) return saveLevel(JSON.parse(opts.body));
-    if (href === '/api/business-report/customers') { const report = svc.buildCustomerReport(snap); if (customerRows) report.rows = customerRows(report.rows); return ok(report); }
-    if (href === '/api/business-report/products') return ok(svc.buildProductReport(snap));
+    if (base === '/api/business-report/customers') { const report = svc.buildCustomerReport(snap); if (customerRows) report.rows = customerRows(report.rows); return ok(report); }
+    if (base === '/api/business-report/products') return ok(svc.buildProductReport(snap));
     if (href === '/api/business-report/overview') return ok(svc.buildOverview(snap));
     if (href.startsWith('/api/business-report/detail?kind=sale')) return ok(svc.buildDetail('sale', 'Khang', snap, {}));
     if (href.startsWith('/api/business-report/detail?kind=customer')) {
@@ -101,7 +103,29 @@ const headerTexts = (page, tbodyId) => [...page.$(tbodyId).closest('table').quer
   .map(th => th.textContent.replace(/[↕▲▼]/g, '').trim());
 const rowsOf = (page, tbodyId) => [...page.$(tbodyId).querySelectorAll('tr.doc-row')];
 const rowById = (page, tbodyId, id) => rowsOf(page, tbodyId).find(tr => tr.dataset.tableItemId === id);
-const businessUrls = page => page.urls.map(u => u.href).filter(h => h.startsWith('/api/business-report/'));
+const businessUrls = page => page.urls.map(u => u.href.replace(/(\/api\/business-report\/(?:sales|customers|products))\?.*/, '$1')).filter(h => h.startsWith('/api/business-report/'));
+
+test('server business tables render full summary and catalogs while requesting pages and raw-key sorts', async () => {
+  const calls = [];
+  const page = createPage({remote: async href => {
+    const q = new URLSearchParams(href.split('?')[1]); calls.push(href);
+    const kind = href.split('?')[0].split('/').pop(), report = BUILDERS[kind](serviceSnapshot());
+    return {ok:true,status:200,json:async()=>({...report,rows:report.rows.slice(0,1),totalRows:205,page:Number(q.get('page')||1),pageSize:100,
+      summary:{avg4:999,current:123,prev:100,normalized:50,growth:50},
+      filters:{sales:['REMOTE SALE'],teams:['REMOTE TEAM'],levels:['Lớn'],salesChannels:[],warehouseScales:[]}})};
+  }});
+  page.run("switchView('business')"); await settle();
+  assert.ok(calls.every(href=>new URLSearchParams(href.split('?')[1]).get('pageSize')==='100'));
+  assert.equal(page.$('tagBusinessSales').textContent, '205');
+  assert.match(page.$('businessSalesKpis').textContent, /999/);
+  assert.ok([...page.$('businessCustomersSale').options].some(o=>o.value==='REMOTE SALE'));
+  page.$('businessSalesNextPage').click(); await settle();
+  assert.match(page.$('businessSalesPageLabel').textContent, /2\/3/);
+  page.run("setTableSort('businessSalesRows', 3, {shiftKey:false})"); await settle();
+  const last = new URLSearchParams(calls.at(-1).split('?')[1]);
+  assert.equal(last.get('page'),'1');
+  assert.deepEqual(JSON.parse(last.get('sorts')),[{key:'average4Months',dir:'asc'}]);
+});
 
 test('sub-nav co tab "Khách hàng" (thay tab Khach hang cu) va #view-business co 4 muc (1 = Bao cao doanh thu theo khach, chuyen tu Tong quan; Tang truong ma hang da chuyen sang tab Hang hoa)', () => {
   const page = createPage();

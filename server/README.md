@@ -227,7 +227,7 @@ Thay Google Form + sheet ORDER VAT 1. Module `vatRequests/` (`service.js` giữ 
 
 | Method | Endpoint | Mô tả |
 |---|---|---|
-| GET | `/api/vat-requests?status=pending,3,4&createdBy&product&q&from&to&keep=id,…` | Danh sách (≤ 5.000 dòng, mới trước) + `metrics` O/P/Q/R theo `product_key`, `sales`, `statuses`, `stockStatus`, `viewer`; mỗi dòng kèm `isLockedForSale`, `canEditSale`, `canDelete` |
+| GET | `/api/vat-requests?status=pending,3,4&createdBy&product&q&from&to&keep=id,…[&page&pageSize&sorts&group=product]` | Danh sách (≤ 5.000 dòng khớp, mới trước; có `page`/`pageSize` thì lọc/tìm/sắp xếp/nhóm toàn bộ rồi mới cắt trang, trả thêm `totalRows`, `page`, `pageSize`, `sorts`, `group`, `groupCounts`; cột số liệu Kế toán chỉ sắp xếp được khi có `accounting.vatRequestProcess`; xuất Excel luôn đủ kết quả) + `metrics` O/P/Q/R theo `product_key`, `sales`, `statuses`, `stockStatus`, `viewer`; mỗi dòng kèm `isLockedForSale`, `canEditSale`, `canDelete` |
 | POST | `/api/vat-requests` | Tạo (status `pending`, người tạo lấy từ phiên đăng nhập, mã SP phải có trong `product_report`) |
 | PATCH | `/api/vat-requests/:id` | Sửa theo whitelist + khóa, body có `version` |
 | PATCH | `/api/vat-requests/position/ranks` | KT: `{ ranks: { id: 'numeric' } }` (≤ 500) đặt lại đúng hạng — dùng cho hoàn tác / làm lại kéo dòng (hạng cũ / mới lấy từ `/position`, nay trả `{ ok, before, after }`) |
@@ -1245,4 +1245,12 @@ Cập nhật gần nhất: 07/11/2026.
 
 07/11/2026 — Kiểm kê: GET board và đường xuất dùng chung phép tính đang chạy của cùng đợt; cache sản phẩm/đối chiếu gộp truy vấn đang chờ. GET order-status giữ kết quả tối đa 3 giây, luôn kiểm phạm vi từng request; commit ghi/refresh xóa cache liên quan, phản hồi cũ không ghi lại cache đã bị xóa. Frontend khóa nút xuất trong lúc chờ và báo lỗi HTTP/mạng/blob. Không đổi API/schema.
 
-Cập nhật gần nhất: 07/11/2026.
+## Phân trang phía máy chủ cho bảng danh sách (08/11/2026)
+
+Hợp đồng chung: `page`, `pageSize` (≤ 500), `q`/`qmode`, `sorts` (JSON `[{key,dir}]`, whitelist + so sánh ổn định, NULL cuối); phản hồi `rows`, `totalRows`, `page` (kẹp trang cuối, rỗng = 1), `pageSize`, `summary`/`filters` tính trên toàn bộ kết quả. Không có `page`/`pageSize` thì trả đủ danh sách như cũ (client cũ/xuất file). `shared/tablePage.js` dùng cho snapshot dựng sẵn; bảng SQL lọc trước `LIMIT`.
+
+Đã áp dụng: Dự kiến hàng về, lịch sử tài khoản/vòng đời/VT, VT, tuổi nợ, giao dịch, tăng trưởng, chi tiết khách–hàng, Báo cáo hàng hóa, Marketing, kết quả dứt hàng, Tra cứu VAT, ORDER VAT, **Danh sách thao tác tab Công nợ** (`GET /api/dashboard?view=debt&page&pageSize&q&sorts&debtQueue&debtTeam&debtSale&debtSchedule&debtStatus`, mô-đun `debtSchedule/debtManagementQuery.js`; KPI/`cycleDate`/quyền không đổi, xuất khớp bộ lọc).
+
+Cố ý KHÔNG phân trang (cần đủ dòng để tính/thao tác): nhân sự, nghỉ phép, tài liệu quy định, danh sách tài khoản (bounded, phân trang ở trình duyệt), bảng thưởng/phạt công nợ, đơn mua hàng (cước/cont/chuyển–tách), kiểm kê (bảng của một phiên), đơn xuất kho VT và import VT. Không có migration; chưa chạy EXPLAIN/staging, chưa thêm index.
+
+Cập nhật gần nhất: 08/11/2026.

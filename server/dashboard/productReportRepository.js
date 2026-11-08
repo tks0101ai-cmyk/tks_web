@@ -11,6 +11,19 @@ const { readContainerSummary, getContainerMeta } = require('../productContainers
 const { normalizeCode } = require('../productContainers/parser');
 const { readInTransitByCode } = require('./inTransitSource');
 const { readTransferRequestByCode } = require('./transferRequestSource');
+const { pageRows, sortRows, searchRows, rowText, scalarCatalog } = require('../shared/tablePage');
+
+function queryProductReport(data, query = {}, hiddenKeys = [], { exportAll = false } = {}) {
+  const authorized = data.rows.map(row => Object.fromEntries(Object.entries(row).filter(([key]) => !hiddenKeys.includes(key))));
+  const { rows, search } = searchRows(authorized, query, { searchText: rowText, code: row => row.code });
+  const sorted = sortRows(rows, query.sorts, scalarCatalog(authorized));
+  const summary = {};
+  for (const row of rows) for (const [key, value] of Object.entries(row)) {
+    if (typeof value === 'number' && Number.isFinite(value)) summary[key] = (summary[key] || 0) + value;
+  }
+  summary.outOfStock = rows.filter(row => (Number(row.availableToSell) || 0) <= 0).length;
+  return { ...data, ...(exportAll ? { rows: sorted, totalRows: sorted.length } : pageRows(sorted, query)), summary, filters: {}, search };
+}
 
 // NULL = dong chua duoc tinh lai sau migration 0057 -> null (giao dien hien "—"), khong gia thanh 0.
 function nullableNumber(value) {
@@ -320,6 +333,7 @@ async function getProductReportCustomers({ code, pool = getPool() } = {}) {
 }
 
 module.exports = {
+  queryProductReport,
   getProductReport, getProductReportCustomers, getProductReportVersion, createProductReportReader,
   PRODUCT_REPORT_PRICE_KEYS, PRODUCT_REPORT_SALES_KEYS,
   __test__: { mapRow, daysToOrder, daysOfCover }

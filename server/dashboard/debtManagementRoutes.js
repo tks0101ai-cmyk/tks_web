@@ -180,7 +180,8 @@ router.get('/api/debt-management/penalty-board', requireAuth, requireFeature('re
 router.get('/api/debt-management/aging', requireAuth, requireFeature('reports.debt'),
   branchMiddleware.resolveBranch, async (req, res) => {
     try {
-      return res.json(await require('../debtSchedule/debtScheduleService').buildDebtAging(branchCodesFor(req)));
+      const data = await require('../debtSchedule/debtScheduleService').buildDebtAging(branchCodesFor(req));
+      return res.json(require('../shared/tablePage').wantsPage(req.query) ? require('../debtSchedule/debtAgingRepository').queryDebtAging(data, req.query) : data);
     } catch (error) {
       return sendError(res, error, 'Không thể tải bảng tuổi nợ lúc này.', 'DEBT_AGING_UNAVAILABLE');
     }

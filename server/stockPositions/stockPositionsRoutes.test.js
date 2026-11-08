@@ -128,8 +128,8 @@ test('GET /history chuyển positionId (và limit/before) tới service', async 
   const { base, calls } = await start(t);
   await fetch(base + '/history?branch=SG&limit=50&before=9&positionId=12');
   await fetch(base + '/history?branch=HN');
-  assert.deepEqual(calls[0], ['history', 'SG', { limit: '50', before: '9', positionId: '12' }]);
-  assert.deepEqual(calls[1], ['history', 'HN', { limit: undefined, before: undefined, positionId: undefined }]);
+  assert.deepEqual(calls[0], ['history', 'SG', { branch: 'SG', limit: '50', before: '9', positionId: '12' }]);
+  assert.deepEqual(calls[1], ['history', 'HN', { branch: 'HN' }]);
 });
 
 test('Route ghi chuyển đúng tham số tới service', async t => {

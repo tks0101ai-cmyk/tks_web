@@ -655,6 +655,34 @@ async function listHistory() {
   }));
 }
 
+// Filter the existing Sheets history snapshot; retain its source and branch provenance.
+async function queryHistory(options = {}) {
+  const fuzzy = require('../shared/fuzzySearch');
+  const { normalizeSortsStrict } = require('../shared/multiSort');
+  const sorts = normalizeSortsStrict(options.sorts, ['orderCode', 'statusLabel', 'changedBy', 'changedAt']);
+  const layers = sorts.length ? sorts : [{ key: 'changedAt', dir: 'desc' }];
+  const snapshot = await listHistory();
+  const matcher = fuzzy.createMatcher(String(options.q || '').trim());
+  const filtered = snapshot.map((row, index) => ({ row, index, score: matcher.score(fuzzy.fold([row.orderCode, row.changedBy, row.note].join(' '))) }))
+    .filter(({ row, score }) => score && (!options.branch || row.branch === options.branch) && (!options.status || row.statusCode === options.status));
+  filtered.sort((a, b) => {
+    for (const { key, dir } of layers) {
+      const value = row => key === 'changedAt' ? query.parseDateTimeValue(row[key]) : row[key];
+      const av = value(a.row), bv = value(b.row);
+      const emptyA = av == null || av === '', emptyB = bv == null || bv === '';
+      if (emptyA || emptyB) { if (emptyA !== emptyB) return emptyA ? 1 : -1; else continue; }
+      const difference = key === 'changedAt' ? av - bv : String(av).localeCompare(String(bv), 'vi', { numeric: true, sensitivity: 'base' });
+      if (difference) return difference * (dir === 'desc' ? -1 : 1);
+    }
+    return a.index - b.index;
+  });
+  const pageSize = Math.min(200, Math.max(1, parseInt(options.pageSize, 10) || 100));
+  const totalRows = filtered.length;
+  const page = Math.min(Math.max(1, parseInt(options.page, 10) || 1), Math.max(1, Math.ceil(totalRows / pageSize)));
+  const rows = filtered.slice((page - 1) * pageSize, page * pageSize).map(entry => entry.row);
+  return { rows, history: rows, totalRows, page, pageSize, total: snapshot.length };
+}
+
 /**
  * Ghi de trang thai thu cong (Quan ly/Ke toan). Validate ma don co that (nam
  * trong 2 tab DonHang_HN/SG) truoc khi ghi — tranh tao lich su cho ma khong
@@ -703,6 +731,6 @@ async function overrideStatus(orderCode, { code, changedBy, changedByRole, note 
 module.exports = {
   STATUS, STATUS_LABEL, STATUS_RANK,
   computeStatus, computeEffectiveStatus, WARNING, WARNING_LABEL, computeWarnings, workingMsBetween, parseSheetTimeMs, findOrder, listAllOrders, queryOrders,
-  exportOrders, overrideStatus, listHistory, findMergedOrder, findPickingOrder,
+  exportOrders, overrideStatus, listHistory, queryHistory, findMergedOrder, findPickingOrder,
   mergeRows, pickAccountingKiotOrder
 };

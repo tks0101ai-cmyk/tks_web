@@ -8,6 +8,29 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret';
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+test('transaction and customer product pages retain full filtered totals/chart data', () => {
+  const { queryTransactionsReport, queryCustomerProductReport } = require('./dashboardData');
+  const transactions = Array.from({ length: 205 }, (_, i) => ({ code: 'HD' + i, customer: 'Áo đỏ', revenue: i + .5, quantity: 1, quantityKnown: true, paid: i, discount: 0, status: i === 0 ? 'Đã hủy' : 'Hoàn thành', timeMs: i }));
+  const result = queryTransactionsReport({ transactions }, { page: 2, pageSize: 100, sorts: [{ key: 'revenue', dir: 'desc' }], q: 'ao do' });
+  assert.equal(result.totalRows, 205);
+  assert.equal(result.transactions[0].code, 'HD104');
+  assert.equal(result.summary.revenue, 21012);
+  assert.equal(result.summary.cancelledCount, 1);
+  const products = transactions.map(row => ({ code: row.code, name: 'Áo', revenue: row.revenue, quantity: 1, revenueByDay: [{ date: '2026-11-01', revenue: row.revenue }] }));
+  const detail = queryCustomerProductReport({ products, totalRevenueByDay: [], customer: { name: 'X' } }, { page: 2, pageSize: 100, sorts: [{ key: 'revenue', dir: 'desc' }] });
+  assert.equal(detail.products.length, 100);
+  assert.equal(detail.chartProducts.length, 205);
+  assert.equal(detail.totalRevenue, 21012.5);
+  assert.equal(detail.rows[0].code, 'HD104');
+  assert.equal(detail.chartProducts[0].revenueByDay, undefined);
+  assert.equal(detail.summary.purchasedCount, 205);
+  const chosen = queryCustomerProductReport({ products }, { productCode: 'HD4', q: 'missing' });
+  assert.equal(chosen.totalRows, 0);
+  assert.equal(chosen.chartProducts.length, 1);
+  assert.equal(chosen.productOptions.length, 205);
+  assert.deepEqual(chosen.selectedRevenueByDay, products[4].revenueByDay);
+});
+
 // Require lai module tu dau cho moi test de cac cache module-level (let o
 // dashboardData.js) khong bi ro ri giua cac test.
 //

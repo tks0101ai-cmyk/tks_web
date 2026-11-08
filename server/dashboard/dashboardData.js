@@ -1141,6 +1141,38 @@ function invoiceIdentity(branch, code) {
   return `${String(branch || '').trim()}\u0000${String(code || '').trim()}`;
 }
 
+function queryTransactionsReport(report, query = {}, { exportAll = false } = {}) {
+  const { pageRows, sortRows, searchRows, rowText, scalarCatalog } = require('../shared/tablePage');
+  const all = report.transactions || [];
+  const { rows, search } = searchRows(all, query, { searchText: rowText, code: row => row.code });
+  const complete = rows.filter(row => row.status === 'Hoàn thành');
+  const total = key => complete.reduce((sum, row) => sum + (Number(row[key]) || 0), 0);
+  const summary = { transactionCount: complete.length, cancelledCount: rows.length - complete.length,
+    quantity: total('quantity'), quantityKnown: complete.length > 0 && complete.every(row => row.quantityKnown),
+    revenue: total('revenue'), discount: total('discount'), paid: total('paid') };
+  const sorted = sortRows(rows, query.sorts, scalarCatalog(all));
+  const page = exportAll ? { rows: sorted, totalRows: sorted.length } : pageRows(sorted, query);
+  return { ...report, ...page, transactions: page.rows, summary, search, filters: {}, totalInRange: rows.length,
+    topTransactions: complete.slice().sort((a, b) => b.revenue - a.revenue).slice(0, TOP_REPORT_TRANSACTIONS) };
+}
+
+function queryCustomerProductReport(report, query = {}) {
+  const { pageRows, sortRows, searchRows, rowText, scalarCatalog } = require('../shared/tablePage');
+  const all = report.products || [];
+  const productCode = String(query.productCode || '').trim().toLocaleLowerCase('vi-VN');
+  const selected = productCode ? all.filter(row => String(row.code || '').trim().toLocaleLowerCase('vi-VN') === productCode) : all;
+  const { rows, search } = searchRows(selected, query, { searchText: rowText, code: row => row.code });
+  const sorted = sortRows(rows, query.sorts, scalarCatalog(all));
+  const sum = key => rows.reduce((total, row) => total + (Number(row[key]) || 0), 0);
+  const summary = { revenue: sum('revenue'), quantity: sum('quantity'), month1Revenue: sum('month1Revenue'), month2Revenue: sum('month2Revenue'), month3Revenue: sum('month3Revenue'), purchasedCount: rows.filter(row => Number(row.quantity) > 0).length };
+  const page = pageRows(sorted, query);
+  return { ...report, ...page, products: page.rows,
+    chartProducts: selected.map(({ code, name, revenue }) => ({ code, name, revenue })),
+    productOptions: all.map(({ code, name }) => ({ code, name })),
+    selectedRevenueByDay: productCode && selected[0] ? selected[0].revenueByDay || [] : null,
+    summary, search, filters: {}, totalRevenue: summary.revenue, totalQuantity: summary.quantity };
+}
+
 function buildTransactionsReport(range, invoiceRecords, invoiceQuantityMap, includeBranch = true) {
   const singleDay = isSingleDayRange(range);
   const inRangeRecords = invoiceRecords.filter(r => isWithinRange(r._dt, range));
@@ -1815,6 +1847,7 @@ async function prewarmDashboardCaches({ log } = {}) {
 }
 
 module.exports = {
+  queryTransactionsReport, queryCustomerProductReport,
   getDashboardData,
   getCustomerDirectory,
   searchCustomerDirectory,

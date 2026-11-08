@@ -13,6 +13,7 @@ const assert = require('node:assert/strict');
 // routes.js destructure getDashboardData luc nap -> phai thay TRUOC khi require routes.
 const dashboardData = require('../dashboard/dashboardData');
 const calls = [];
+let nextDebtManagement = null;
 dashboardData.getDashboardData = async (filters, branch, viewer, options) => {
   calls.push({ filters, branch, viewer, options });
   return {
@@ -20,7 +21,7 @@ dashboardData.getDashboardData = async (filters, branch, viewer, options) => {
     filters: { invoices: { label: '30 ngày' } },
     kpi: {},
     invoices: { periodRevenue: 1 },
-    debtManagement: { available: true }
+    debtManagement: nextDebtManagement || { available: true }
   };
 };
 
@@ -119,4 +120,28 @@ test('view bo trong hoac chi khoang trang = ca 5 tab', async () => {
 
   assert.equal(res.statusCode, 200);
   assert.equal(calls[0].options, undefined);
+});
+
+test('view=debt co page: bang cong no loc/sap xep/phan trang tren may chu, giu KPI/chu ky, khong sua object cache', async () => {
+  const customers = Array.from({ length: 130 }, (_, i) => ({ customerKey: 'k' + i, customerName: 'Khách ' + i, sale: i % 2 ? 'Lan' : 'Minh', currentDebt: i, overdueDebt: 0, workflowStatus: 'Chưa xử lý', paymentSchedule: '7' }));
+  nextDebtManagement = { available: true, cycleDate: '2026-11-08', kpi: { actionCustomerCount: 9 }, customers };
+  try {
+    const res = fakeRes();
+    await dashboardHandler()(request({ view: 'debt', page: '2', pageSize: '50', debtSale: 'Lan', sorts: JSON.stringify([{ key: 'currentDebt', dir: 'desc' }]) }), res);
+    const debt = res.body.debtManagement;
+    assert.equal(debt.totalRows, 65);
+    assert.equal(debt.page, 2);
+    assert.equal(debt.customers.length, 15);
+    assert.equal(debt.customers[0].currentDebt, 29, 'trang 2 cua ket qua Lan sap giam dan');
+    assert.equal(debt.cycleDate, '2026-11-08');
+    assert.deepEqual(debt.kpi, { actionCustomerCount: 9 });
+    assert.equal(nextDebtManagement.customers.length, 130, 'object cache khong bi cat');
+    const full = fakeRes();
+    await dashboardHandler()(request({ view: 'debt' }), full);
+    assert.equal(full.body.debtManagement.customers.length, 130, 'khong co page = payload day du nhu cu (client cu)');
+    assert.equal(full.body.debtManagement.totalRows, undefined);
+    const denied = fakeRes();
+    await dashboardHandler()(request({ page: '1', pageSize: '50' }, ['reports.invoices']), denied);
+    assert.equal(denied.body.debtManagement, undefined, 'khong co quyen cong no thi khong co bang');
+  } finally { nextDebtManagement = null; }
 });

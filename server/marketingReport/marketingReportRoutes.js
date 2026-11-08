@@ -2,7 +2,7 @@
 const express = require('express');
 const { requireAuth, requireFeature, requireRole } = require('../auth/authMiddleware');
 const { createMarketingReportService } = require('./marketingReportService');
-const { createExportFile, tableRows, exportFieldsFor, resolveColumnKeys } = require('./marketingReportExport');
+const { createExportFile, pageResult, tableRows, exportFieldsFor, resolveColumnKeys } = require('./marketingReportExport');
 
 function createMarketingReportRouter({service=createMarketingReportService()}={}) {
   const router=express.Router();
@@ -26,17 +26,22 @@ function createMarketingReportRouter({service=createMarketingReportService()}={}
   router.post('/monthly/rows',manager,requireFeature('reports.marketing.edit'),express.json({limit:'16kb'}),handle(req=>dbMethod('createRow')(req.body,actor(req))));
   router.put('/monthly/rows/:id',manager,requireFeature('reports.marketing.edit'),express.json({limit:'16kb'}),handle(req=>dbMethod('updateMonthlyRow')(req.params.id,req.body,actor(req))));
   router.get('/monthly/rows/:id/audit',manager,handle(req=>dbMethod('audit')(req.params.id)));
-  for(const kind of ['monthly','receipt-check','phones','costs'])router.get('/'+kind,handle(req=>service.report(kind,req.query)));
+  for(const kind of ['monthly','receipt-check','phones','costs'])router.get('/'+kind,handle(async req=>pageResult(await service.report(kind,req.query),req.query)));
   // Ghi ngược Khách mới / Ghi chú vào Google Sheets: cần thêm quyền reports.marketing.edit.
   router.put('/monthly/row',manager,requireFeature('reports.marketing.edit'),express.json({limit:'8kb'}),handle(req=>service.updateRow(req.body)));
-  router.get('/detail',handle(req=>service.detail(req.query)));
+  router.get('/detail',handle(async req=>{
+    const result=await service.detail(req.query);
+    let queries={};
+    try { if(typeof req.query.groupQueries==='string' && req.query.groupQueries.length<=24000) queries=JSON.parse(req.query.groupQueries); } catch (_) {}
+    return {...result,groups:(result.groups||[]).map((group,index)=>({...group,...pageResult({...group,kind:group.kind||req.query.kind},queries?.[index]||{})}))};
+  }));
   // Xuất bảng ra Excel/HTML: cần đồng thời reports.marketing (router.use ở trên) và reports.export.
   const exportContext=async req=>{
     const kind=String(req.query.kind||''),table=String(req.query.table||'');
     if(!['monthly','receipt-check','phones','costs'].includes(kind)||!['summary','rows'].includes(table)){
       const e=new Error('Bảng xuất không hợp lệ.');e.statusCode=400;e.code='MARKETING_EXPORT_INVALID';throw e;
     }
-    const {kind:_k,table:_t,q,columns,format,sortKey,sortDir,sorts,...filters}=req.query;
+    const {kind:_k,table:_t,q,columns,format,sortKey,sortDir,sorts,pageNumber,pageSize,...filters}=req.query;
     const result=await service.report(kind,filters);
     return {kind,table,result,rows:tableRows(table,result,q,{sortKey,sortDir,sorts})};
   };

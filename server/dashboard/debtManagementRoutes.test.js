@@ -1,6 +1,8 @@
 'use strict';
 process.env.GOOGLE_SERVICE_ACCOUNT_JSON = process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '{}';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret';
+// Schedule-route tests must never start the background refresh against the developer DB.
+process.env.SUPABASE_DB_URL = '';
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -14,6 +16,22 @@ function fakeRes() {
   res.cookie = (...args) => { res.cookies.push(args); return res; };
   return res;
 }
+
+test('aging opt-in pages full filtered snapshot and returns linked facets/full debt totals', async () => {
+  const service = require('../debtSchedule/debtScheduleService');
+  const original = service.buildDebtAging;
+  service.buildDebtAging = async () => ({ available: true, asOfDay: '2026-11-08', customers: Array.from({ length: 205 }, (_, i) => ({ customerName: 'Khách ' + i, sale: i % 2 ? 'A' : 'B', saleTeam: 'T', paymentSchedule: '30', currentDebt: i + .5 })) });
+  try {
+    const res = fakeRes();
+    await routeStack('/api/debt-management/aging', 'get').at(-1)({ query: { page: 2, pageSize: 100, sorts: [{ key: 'currentDebt', dir: 'desc' }] } }, res);
+    assert.equal(res.body.totalRows, 205);
+    assert.equal(res.body.customers.length, 100);
+    assert.equal(res.body.customers[0].currentDebt, 104.5);
+    assert.equal(res.body.summary.currentDebt, 21012.5);
+    assert.deepEqual(res.body.filters.sales, ['A', 'B']);
+    assert.deepEqual(res.body.rows, res.body.customers);
+  } finally { service.buildDebtAging = original; }
+});
 
 function routeStack(path, method = 'patch') {
   const layer = router.stack.find(item => item.route?.path === path && item.route.methods[method]);

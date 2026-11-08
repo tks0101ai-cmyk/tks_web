@@ -128,3 +128,10 @@ test('PATCH /position goi service.move voi ca body (dat truoc /:id nen khong bi 
     assert.deepEqual(moved, { ids: [12, 3], belowId: 5 });
   });
 });
+
+test('readFilters: chi xin phan trang khi co page/pageSize; sorts / group chuyen nguyen cho service whitelist', () => {
+  assert.equal(Object.hasOwn(readFilters({ q: 'abc' }), 'paging'), false);
+  assert.deepEqual(readFilters({ page: '2', pageSize: '50', sorts: '[{"key":"quantity","dir":"desc"}]', group: 'product' }).paging,
+    { page: '2', pageSize: '50', sorts: '[{"key":"quantity","dir":"desc"}]', group: true });
+  assert.equal(readFilters({ page: '1', group: 'x' }).paging.group, false);
+});

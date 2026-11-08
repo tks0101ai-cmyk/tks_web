@@ -63,8 +63,8 @@ function createPage({ customers = code => customersPayload(code), history, meta,
       const payload = history(new URL(href, 'https://tokosi.example').searchParams);
       return Promise.resolve(payload).then(body => ({ ok: !(body instanceof Error), status: body instanceof Error ? 500 : 200, json: async () => body }));
     }
-    if (href === '/api/product-report') {
-      return Promise.resolve({ ok: true, status: 200, json: async () => report ? report() : ({ rows: PRODUCTS, computedAt: '2026-09-29T00:15:00.000Z' }) });
+    if (href.split('?')[0] === '/api/product-report') {
+      return Promise.resolve({ ok: true, status: 200, json: async () => report ? report(new URL(href, 'https://tokosi.example').searchParams) : ({ rows: PRODUCTS, computedAt: '2026-09-29T00:15:00.000Z' }) });
     }
     if (href === '/api/product-report/containers/meta' && meta) return Promise.resolve({ ok: true, json: async () => ({ containerSync: meta(), reportVersion: reportVersion ? reportVersion() : null }) });
     if (href.startsWith('/api/product-report/customers?code=')) {
@@ -95,6 +95,22 @@ function createPage({ customers = code => customersPayload(code), history, meta,
 const pieCharts = page => page.charts.filter(chart => chart.config.type === 'doughnut' && !chart.destroyed);
 const rowOf = (page, code) => [...page.$('productReportRows').querySelectorAll('tr.doc-row')].find(tr => tr.dataset.tableItemId === code);
 const modalText = page => page.$('docModalBody').textContent.replace(/\s+/g, ' ');
+
+test('server product pages render full KPI summary and send raw sort fields before fetching the next page', async t => {
+  const page = createPage({report: q=>({rows:[PRODUCTS[0]],totalRows:205,page:Number(q.get('page')),pageSize:100,
+    summary:{revenue90d:9999,qtySold30d:800,outOfStock:77},filters:{}})});
+  t.after(()=>page.dom.window.close());
+  page.run("switchView('products')"); await settle();
+  assert.equal(page.$('tagProductReportRows').textContent,'205');
+  assert.match(page.$('productReportKpis').textContent,/9,999/);
+  assert.match(page.$('productReportKpis').textContent,/77/);
+  page.$('productReportNextPage').click(); await settle();
+  assert.match(page.$('productReportPageLabel').textContent,/2\/3/);
+  page.run("setTableSort('productReportRows',19,{shiftKey:false})"); await settle();
+  const q = new URL(page.urls.filter(u=>u.startsWith('/api/product-report?')).at(-1),'https://tokosi.example').searchParams;
+  assert.equal(q.get('page'),'1');
+  assert.deepEqual(JSON.parse(q.get('sorts')),[{key:'daysToOrder',dir:'asc'}]);
+});
 
 // 35 cột theo thứ tự sheet BC CHUNG: [data-column-key, nhãn trên tiêu đề]. Thứ tự này = thứ tự file Excel (PRODUCT_REPORT_COLUMNS ở exportService.js).
 const COLUMNS = [
@@ -716,7 +732,7 @@ test('metadata thay doi moi tai lai bang va giu tim kiem, sort, trang; an view k
   let version = 'v1';
   const page = createPage({ meta: () => ({ ...READY_SYNC, version }), report: () => ({ rows: PRODUCTS.map(p => ({ ...p, unloadedQty: version === 'v1' ? 10 : 20, loadedQty: 0 })), containerSync: { ...READY_SYNC, version } }) });
   await settle();
-  const calls = () => page.urls.filter(url => url === '/api/product-report').length;
+  const calls = () => page.urls.filter(url => url.split('?')[0] === '/api/product-report').length;
   const initialCalls = calls();
   page.run("document.querySelectorAll('.view').forEach(el => el.classList.remove('active')); document.getElementById('productReportRows').closest('.view').classList.add('active'); window.__reportTestState.view = document.getElementById('productReportRows').closest('.view').id.replace('view-', '');");
   await page.run('refreshProductContainerMeta()'); await settle();
@@ -773,7 +789,7 @@ test('reportVersion cua bao cao doi (CONT khong doi) => tai lai bang; cung versi
     report: () => ({ rows: PRODUCTS, containerSync: READY_SYNC, reportVersion: 'r1' })
   });
   await settle();
-  const calls = () => page.urls.filter(url => url === '/api/product-report').length;
+  const calls = () => page.urls.filter(url => url.split('?')[0] === '/api/product-report').length;
   const initialCalls = calls();
   page.run("document.querySelectorAll('.view').forEach(el => el.classList.remove('active')); document.getElementById('productReportRows').closest('.view').classList.add('active'); window.__reportTestState.view = document.getElementById('productReportRows').closest('.view').id.replace('view-', '');");
   await page.run('refreshProductContainerMeta()'); await settle();
@@ -787,7 +803,7 @@ test('reportVersion cua bao cao doi (CONT khong doi) => tai lai bang; cung versi
 test('chua co che do tang dan (reportVersion = null) thi khong tai lai chi vi reportVersion', async () => {
   const page = createPage({ meta: () => READY_SYNC, reportVersion: () => null, report: () => ({ rows: PRODUCTS, containerSync: READY_SYNC }) });
   await settle();
-  const calls = () => page.urls.filter(url => url === '/api/product-report').length;
+  const calls = () => page.urls.filter(url => url.split('?')[0] === '/api/product-report').length;
   const initialCalls = calls();
   page.run("document.querySelectorAll('.view').forEach(el => el.classList.remove('active')); document.getElementById('productReportRows').closest('.view').classList.add('active'); window.__reportTestState.view = document.getElementById('productReportRows').closest('.view').id.replace('view-', '');");
   await page.run('refreshProductContainerMeta()'); await settle();

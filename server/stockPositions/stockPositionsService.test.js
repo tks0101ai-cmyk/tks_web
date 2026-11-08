@@ -1132,3 +1132,44 @@ test('hộp Chỉ định: allowRow / branch / create gộp ghi lịch sử theo
     assert.equal((await plain.service.update(ctx(), row.id, { notes: '1T x 1', version: row.version }, { checkHeld: true })).row.notes, '1T x 1');
   } finally { await plain.db.close(); }
 });
+
+test('list opt-in pagination filters full shaped snapshot and keeps warning facets and complete legacy data', async () => {
+  const { db, service } = await fixture();
+  try {
+    await db.exec(`INSERT INTO stock_positions (branch, code, notes, location)
+      SELECT 'HN', 'AAA1', n || 'Tx10', 'K' || n FROM generate_series(1,205) n;
+      INSERT INTO stock_positions (branch, code, notes, location) VALUES ('HN','BAD','không đọc','Z');`);
+    const result = await service.list(ctx(), 'HN', { page: 2, pageSize: 50, sorts: '[{"key":"quantity","dir":"desc"}]' });
+    assert.equal(result.totalRows, 206);
+    assert.equal(result.rows.length, 50);
+    assert.equal(result.rows[0].quantity, 1550);
+    assert.equal(result.summary.totalRows, 206);
+    assert.equal(result.summary.warned, 1);
+    assert.equal(result.warningCounts.unknowncode, 1);
+    const hit = await service.list(ctx(), 'HN', { page: 99, pageSize: 50, q: 'K205' });
+    assert.equal(hit.page, 1);
+    assert.equal(hit.totalRows, 1);
+    assert.equal(hit.rows[0].location, 'K205');
+    const warned = await service.list(ctx(), 'HN', { page: 1, warnFilter: 'warn' });
+    assert.deepEqual(warned.rows.map(row => row.code), ['BAD']);
+    assert.equal((await service.list(ctx(), 'HN')).rows.length, 206);
+    await assert.rejects(service.list(ctx(), 'HN', { page: 1, sorts: '[{"key":"injected","dir":"asc"}]' }), { code: 'INVALID_SORT' });
+    await assert.rejects(service.list(ctx(['SG']), 'HN', { page: 1 }), { statusCode: 403 });
+  } finally { await db.close(); }
+});
+
+test('history query finds old matching records before cursor/page limit and exports the same scope', async () => {
+  const { db, service } = await fixture();
+  try {
+    await db.exec(`INSERT INTO stock_position_history (branch,code,location,action,field,old_value,new_value,actor_name)
+      SELECT 'HN', 'AAA1', 'K'||n, 'edit', 'notes', '1Tx10', '2Tx10', CASE WHEN n=1 THEN 'Nguyễn An' ELSE 'Bình' END FROM generate_series(1,205) n;`);
+    const result = await service.history(ctx(), 'HN', { page: 99, pageSize: 50, q: 'Nguyen An', action: 'edit' });
+    assert.equal(result.totalRows, 1);
+    assert.equal(result.page, 1);
+    assert.equal(result.rows[0].actorName, 'Nguyễn An');
+    assert.equal((await service.history(ctx(), 'HN', { limit: 5, q: 'Nguyen An' })).rows.length, 1);
+    const sorted = await service.history(ctx(), 'HN', { page: 2, pageSize: 50, sorts: '[{"key":"location","dir":"asc"}]' });
+    assert.equal(sorted.rows[0].location, 'K51');
+    assert.deepEqual((await service.historyAll(ctx(), 'HN', { q: 'Nguyen An', action: 'edit' })).rows.map(row=>row.id), result.rows.map(row=>row.id));
+  } finally { await db.close(); }
+});
