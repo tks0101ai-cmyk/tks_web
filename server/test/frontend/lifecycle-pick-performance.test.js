@@ -41,8 +41,9 @@ test('printing and saving stay blocked until fresh shared form succeeds, includi
     d.getElementById('pickingPrintBtn').onclick();
     assert.equal(d.getElementById('pickingPrintFrame'),null);
     release({ok:false});await showing;
-    assert.equal(d.getElementById('pickingPrintBtn').disabled,true);
-    assert.equal(d.getElementById('pickingSavePrint').disabled,true);
+    // Từ 3451ffc: form chung lỗi không khóa In/Lưu HTML (phiếu giữ mẫu mặc định, có thông báo đỏ).
+    assert.equal(d.getElementById('pickingPrintBtn').disabled,false);
+    assert.equal(d.getElementById('pickingSavePrint').disabled,false);
     w.fetch=async()=>({ok:true,json:async()=>({layout:null,version:0})});
     assert.equal(await w.PickingPrint.prepare(),true);
     assert.equal(d.getElementById('pickingPrintBtn').disabled,false);
