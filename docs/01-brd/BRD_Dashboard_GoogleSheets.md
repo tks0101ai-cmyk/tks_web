@@ -665,4 +665,6 @@ Kế hoạch kiểm chứng: (1) test hồi quy nhiều lớp, bằng nhau/NULL,
 
 Mục tiêu nghiệp vụ: bảng nhiều dòng tải nhanh hơn nhưng người dùng vẫn tìm, sắp xếp và xuất được trên toàn bộ dữ liệu được phép xem; các màn tính toán/thao tác (đặt hàng, kiểm kê, xuất kho) giữ đủ dữ liệu để không sai số.
 
+- Chọn vùng ô kiểu Excel (08/11/2026): người dùng bôi đen khối ô (và nhiều khối bằng Ctrl) trên mọi bảng để xem ngay tổng / trung bình / đếm và chép sang Excel mà không phải xuất file; không đổi dữ liệu.
+
 Cập nhật gần nhất: 08/11/2026.

@@ -8,7 +8,7 @@
   const SUGGEST_API = '/api/stock-positions/code-suggestions';
   const POLL_MS = 15000;
   const NUMBER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 });
-  const state = { hooks: null, branch: '', order: null, canEdit: false, view: 'current', history: [], moreBefore: null, detail: null, returnView: 'list', search: '',
+  const state = { hooks: null, branch: '', order: null, canEdit: false, canExport: false, view: 'current', history: [], moreBefore: null, detail: null, returnView: 'list', search: '',
     historyPage: 1, historyTotal: 0, historySeq: 0, historyTimer: null, historyController: null, serverPaged: false,
     adding: false, editing: false, busy: false, timer: null, suggestions: [], suggestSeq: 0, suggestTimer: null, loadSeq: 0 };
 
@@ -42,6 +42,7 @@
     if (!response.ok) { if (!quiet) setError(payload.error || 'Không tải được đơn xuất kho.'); return; }
     state.order = payload.order;
     state.canEdit = payload.canEdit === true;
+    state.canExport = payload.canExport === true;
     render();
   }
   async function loadHistory(append) {
@@ -73,6 +74,7 @@
     const { response, payload } = await call(API + '/' + encodeURIComponent(id));
     if (!response.ok) { setError(payload.error || 'Không tải được đơn.'); return false; }
     state.detail = payload.order;
+    state.canExport = payload.canExport === true;
     return true;
   }
 
@@ -325,6 +327,8 @@
     $('vtOrderConfirm').disabled = state.busy || !order || !order.lines.length;
     $('vtOrderImport').hidden = !(view === 'current' && editable);
     $('vtOrderTemplate').hidden = $('vtOrderImport').hidden;
+    const exportable = view === 'detail' ? state.detail : (view === 'current' ? order : null);
+    $('vtOrderExport').hidden = !(state.canExport && exportable && exportable.lines.length);
     $('vtOrderHint').textContent = !state.canEdit
       ? 'Bạn chỉ xem được đơn. Người có quyền sửa VT mới thêm dòng và chốt đơn.'
       : 'Đơn tạm dùng chung: ghi hàng đã bốc thật (gõ theo tên). Tồn VT chỉ bị trừ khi bấm Chốt đơn; dòng nào trừ quá tồn sẽ thành số âm.';
@@ -539,6 +543,38 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  // Xuất Excel đơn đang xem (đơn tạm ở tab Đơn tạm, đơn đã chốt ở màn chi tiết); tải qua fetch để giữ cookie đăng nhập.
+  async function exportOrder() {
+    const order = state.view === 'detail' ? state.detail : state.order;
+    const button = $('vtOrderExport');
+    if (!order || button.disabled) return;
+    button.disabled = true;
+    setError('');
+    try {
+      const response = await fetch(API + '/' + encodeURIComponent(order.id) + '/export', { credentials: 'same-origin', cache: 'no-store' });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        setError(payload.error || 'Không xuất được file Excel.');
+        return;
+      }
+      const blob = await response.blob();
+      const disposition = String((response.headers && response.headers.get && response.headers.get('Content-Disposition')) || '');
+      const named = /filename\s*=\s*"?([^";]+)"?/i.exec(disposition);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = named ? named[1].trim() : 'don-xuat-kho-' + order.code + '.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setError('Không xuất được file Excel.');
+    } finally {
+      button.disabled = false;
+    }
+  }
+
   function startPolling() {
     stopPolling();
     state.timer = setInterval(() => {
@@ -596,6 +632,7 @@
     $('vtOrderImport').addEventListener('click', () => $('vtOrderFile').click());
     $('vtOrderFile').addEventListener('change', event => { const file = event.target.files && event.target.files[0]; event.target.value = ''; importFile(file); });
     $('vtOrderTemplate').addEventListener('click', downloadTemplate);
+    $('vtOrderExport').addEventListener('click', exportOrder);
     $('vtOrderDialog').addEventListener('close', () => { stopPolling(); state.adding = false; state.editing = false; });
   }
 

@@ -92,3 +92,19 @@ body.tks-table-resizing, body.tks-table-resizing * { cursor:col-resize !importan
 .tks-columns-list input:disabled + span { color:var(--muted,#64748b); }
 @media(max-width:600px) { .tks-columns-list { grid-template-columns:1fr; } .tks-columns-button { min-height:40px; } .dp-section-head > .tks-columns-button { min-height:34px; } }
 @media print { .tks-table-tools,.tks-columns-button,.tks-columns-overlay,table.tks-controlled-table .tks-column-resizer { display:none !important; } }
+/* Chọn vùng ô kiểu Excel (table-controls.js): lớp phủ xanh lơ trong suốt nên giữ nguyên màu nền/trạng thái của ô, cả Sáng và Tối. */
+table td.tks-cell-selected, table th.tks-cell-selected {
+  background-image:linear-gradient(rgba(6,182,212,.30),rgba(6,182,212,.30)) !important;
+  box-shadow:inset 0 0 0 1px #06b6d4;
+}
+body.tks-selecting, body.tks-selecting * { user-select:none !important; cursor:cell !important; }
+.tks-sel-sum {
+  position:fixed; right:20px; bottom:16px; z-index:10001; display:flex; flex-wrap:wrap; gap:4px 18px; max-width:calc(100vw - 40px);
+  padding:8px 14px; border:1px solid var(--border,var(--line,#cbd5e1)); border-radius:8px;
+  background:var(--panel,var(--surface,#fff)); color:var(--muted,#64748b); box-shadow:0 6px 18px rgba(0,0,0,.25);
+  font:12px var(--font-body,system-ui,sans-serif); pointer-events:none;
+}
+.tks-sel-sum[hidden] { display:none !important; }
+.tks-sel-sum b { color:var(--text,var(--ink,#17202b)); font:600 13px var(--font-data,var(--font-body,system-ui,sans-serif)); font-variant-numeric:tabular-nums; }
+@media (max-width:600px) { .tks-sel-sum { left:12px; right:12px; bottom:12px; justify-content:space-between; } }
+@media print { .tks-sel-sum { display:none !important; } table td.tks-cell-selected, table th.tks-cell-selected { background-image:none !important; box-shadow:none; } }

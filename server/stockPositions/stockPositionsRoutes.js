@@ -12,6 +12,7 @@ const service = require('./stockPositionsService');
 const ordersService = require('./stockOutOrdersService');
 const { events: defaultEvents, CHANGED } = require('./stockPositionsEvents');
 const { createStockPositionsWorkbook, createStockPositionsHistoryWorkbook } = require('./stockPositionsExport');
+const { createStockOutOrderWorkbook } = require('./stockOutOrdersExport');
 
 const IMPORT_MAX_BYTES = 8 * 1024 * 1024;
 const IMPORT_EXTENSIONS = /\.(xlsx|xls|csv)$/iu;
@@ -175,7 +176,7 @@ function createStockPositionsRouter(dependencies = {}) {
   const intParam = value => Number(value);
   router.get(BASE + '/current', handle(async (req, res) => {
     const canEdit = hasFeature(req.user, 'stockLocationsV2.edit');
-    res.json({ ...(await orders().getCurrent(ctxOf(req), req.query.branch, { create: canEdit })), canEdit });
+    res.json({ ...(await orders().getCurrent(ctxOf(req), req.query.branch, { create: canEdit })), canEdit, canExport: hasFeature(req.user, 'stockLocationsV2.export') });
   }));
   router.post(BASE + '/:id/lines', edit, handle(async (req, res) => {
     res.status(201).json(await orders().addLine(ctxOf(req), intParam(req.params.id), req.body || {}));
@@ -202,8 +203,16 @@ function createStockPositionsRouter(dependencies = {}) {
   router.get(BASE + '/:id/events', handle(async (req, res) => {
     res.json(await orders().events(ctxOf(req), intParam(req.params.id), { limit: req.query.limit }));
   }));
+  // Xuat Excel mot don (don tam hoac da chot); quyen stockLocationsV2.export. Dat truoc '/:id' de '/:id/export' khong bi nuot.
+  router.get(BASE + '/:id/export', requireFeature('stockLocationsV2.export'), handle(async (req, res) => {
+    const { order } = await orders().get(ctxOf(req), intParam(req.params.id));
+    const file = await createStockOutOrderWorkbook({ order });
+    res.set('Content-Type', file.mimeType);
+    res.set('Content-Disposition', `attachment; filename="${file.fileName}"`);
+    res.send(file.buffer);
+  }));
   router.get(BASE + '/:id', handle(async (req, res) => {
-    res.json(await orders().get(ctxOf(req), intParam(req.params.id)));
+    res.json({ ...(await orders().get(ctxOf(req), intParam(req.params.id))), canExport: hasFeature(req.user, 'stockLocationsV2.export') });
   }));
   router.post('/api/stock-positions', edit, handle(async (req, res) => {
     const result = await svc().create(ctxOf(req), req.query.branch, req.body || {});

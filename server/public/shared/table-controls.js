@@ -793,6 +793,7 @@
     document.querySelectorAll('table').forEach(function (table) { enhance(table); });
     if (drag && !drag.handle.isConnected) finishDrag();
     if (active && !active.table.isConnected) closePicker();
+    validateSelection(); // trang vẽ lại bảng / lọc / sắp xếp dòng: vùng chọn cũ không còn đúng ô nên bỏ
   }
   function schedule() {
     if (!window.document || !document.body) return;
@@ -810,7 +811,9 @@
     };
   }
   window.TKSTables = { enhance: enhance, refresh: refresh, refreshAll: refreshAll, getState: getState, loadPrefs: loadPrefs,
-    nextSorts: nextSorts, compareValues: compareValues, syncSortHeaders: syncSortHeaders };
+    nextSorts: nextSorts, compareValues: compareValues, syncSortHeaders: syncSortHeaders,
+    getSelection: function () { return sel ? { table: sel.table, cells: Array.from(sel.painted), regions: sel.rects.length } : null; },
+    clearSelection: clearSelection };
   function fetchPrefs() {
     if (typeof fetch !== 'function' || !/^https?:$/.test(window.location.protocol)) return;
     // Trang chưa đăng nhập trả 401: bỏ qua, bảng dùng mặc định và không gửi lưu.
@@ -868,19 +871,321 @@
     if (next.select) next.select();
   }
 
+  // ---- Chọn vùng ô kiểu Excel cho MỌI bảng (trừ data-table-select="off", vd bảng Kiểm kê có bộ chọn riêng) ----
+  // Kéo chuột qua nhiều ô = chọn khối hàng × cột; Shift+bấm nối dài khối; Ctrl/⌘+kéo (hoặc +bấm) thêm khối khác;
+  // thanh góc dưới phải hiện Tổng · Trung bình · Đếm của các ô đang chọn (từ 2 ô); Ctrl+C chép dạng TSV dán sang Excel/Sheets;
+  // Ctrl+A chọn cả bảng; Esc / bấm ra ngoài bảng bỏ chọn. Kéo trong MỘT ô vẫn là bôi đen chữ như thường.
+  var SELECT_SKIP = 'a[href],button,input,select,textarea,label,summary,[contenteditable]:not([contenteditable="false"]),[role="button"],[role="combobox"],[role="menuitem"],[draggable="true"],.tks-column-resizer,[data-no-cell-select]';
+  var sel = null, gesture = null, selFrame = 0, selTimer = 0, suppressClick = false, selBar = null, selNoteTimer = 0;
+  var selNumber = typeof Intl !== 'undefined' ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 }) : null;
+
+  function selectableTable(table) {
+    return !!table && !table.closest('[data-table-select="off"],#ruleDocTextBody,.rte-editor');
+  }
+  // Dòng thân bảng đang hiện (không tính tiêu đề / chân bảng); chỉ số dòng trong danh sách này là toạ độ hàng của vùng chọn.
+  function bodyRows(table) {
+    var rows = [];
+    Array.from(table.tBodies).forEach(function (body) {
+      Array.from(body.rows).forEach(function (row) {
+        if (!row.hidden && !row.classList.contains('tks-row-hidden') && row.style.display !== 'none') rows.push(row);
+      });
+    });
+    return rows;
+  }
+  function indexRows(rows) {
+    var map = new Map();
+    rows.forEach(function (row, index) { map.set(row, index); });
+    return map;
+  }
+  function sameRows(a, b) {
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+  function cellHidden(cell) {
+    return cell.hidden || cell.classList.contains('tks-column-hidden') || cell.style.display === 'none';
+  }
+  // Ô (của đúng bảng đang chọn) chứa node; ô của bảng lồng bên trong thì leo lên ô ngoài cùng của bảng này.
+  function cellFrom(node, state) {
+    var element = node && (node.nodeType === 1 ? node : node.parentElement);
+    var cell = element && element.closest('td,th');
+    while (cell && cell.closest('table') !== state.table) {
+      var up = cell.parentElement;
+      cell = up && up.closest('td,th');
+    }
+    return cell && state.rowIndex.has(cell.parentElement) ? cell : null;
+  }
+  function positionOf(cell, state) { return { row: state.rowIndex.get(cell.parentElement), col: cell.cellIndex }; }
+  function rectBetween(a, b) {
+    return { r1: Math.min(a.row, b.row), r2: Math.max(a.row, b.row), c1: Math.min(a.col, b.col), c2: Math.max(a.col, b.col) };
+  }
+  function isSingle(rect, pos) { return rect.r1 === rect.r2 && rect.c1 === rect.c2 && rect.r1 === pos.row && rect.c1 === pos.col; }
+
+  function clearSelection() {
+    if (selFrame) { (window.cancelAnimationFrame || clearTimeout)(selFrame); selFrame = 0; }
+    if (!sel) return;
+    sel.painted.forEach(function (cell) { cell.classList.remove('tks-cell-selected'); });
+    sel = null;
+    if (selBar) selBar.hidden = true;
+  }
+  function validateSelection() {
+    if (!sel || gesture) return;
+    if (!sel.table.isConnected || !sameRows(sel.rows, bodyRows(sel.table))) clearSelection();
+  }
+  function sumBarFor(table) {
+    var parent = table.closest('dialog[open]') || document.body;
+    if (!selBar) {
+      selBar = document.createElement('div');
+      selBar.className = 'tks-sel-sum'; selBar.setAttribute('role', 'status'); selBar.setAttribute('aria-live', 'polite'); selBar.hidden = true;
+    }
+    if (selBar.parentElement !== parent) parent.appendChild(selBar);
+    return selBar;
+  }
+  function formatSelNumber(value) { return selNumber ? selNumber.format(value) : String(value); }
+  function selCellText(cell) {
+    var text = cellText(cell);
+    return text === '—' || text === '-' ? '' : text;
+  }
+  // Số của ô cho thanh tổng: chỉ đọc chữ đang hiển thị; ô tỷ lệ % không cộng (cộng tỷ lệ không có nghĩa), ngày/mã dài không phải số.
+  function selNumberOf(text) {
+    return /%\s*$/.test(text) ? null : parseNumberText(text);
+  }
+  function renderSum() {
+    if (!sel) return;
+    var bar = sumBarFor(sel.table);
+    if (selNoteTimer) return; // đang hiện thông báo "Đã sao chép"
+    if (sel.painted.size < 2) { bar.hidden = true; return; }
+    var count = 0, numbers = 0, total = 0;
+    sel.painted.forEach(function (cell) {
+      var text = selCellText(cell);
+      if (!text) return;
+      count++;
+      var value = selNumberOf(text);
+      if (value !== null) { numbers++; total += value; }
+    });
+    bar.textContent = '';
+    function part(label, value) {
+      var item = document.createElement('span'), strong = document.createElement('b');
+      strong.textContent = value; item.append(label + ': ', strong); bar.appendChild(item);
+    }
+    if (numbers) { part('Tổng', formatSelNumber(total)); part('Trung bình', formatSelNumber(total / numbers)); }
+    part('Đếm', formatSelNumber(count));
+    bar.hidden = false;
+  }
+  function renderSelection() {
+    selFrame = 0;
+    if (!sel) return;
+    var next = new Set();
+    sel.rects.forEach(function (rect) {
+      for (var r = rect.r1; r <= rect.r2; r++) {
+        var row = sel.rows[r];
+        if (!row) continue;
+        for (var c = rect.c1; c <= rect.c2; c++) {
+          var cell = row.cells[c];
+          if (cell && !cellHidden(cell)) next.add(cell);
+        }
+      }
+    });
+    sel.painted.forEach(function (cell) { if (!next.has(cell)) cell.classList.remove('tks-cell-selected'); });
+    next.forEach(function (cell) { if (!sel.painted.has(cell)) cell.classList.add('tks-cell-selected'); });
+    sel.painted = next;
+    renderSum();
+  }
+  function scheduleSelection() {
+    if (!selFrame) selFrame = (window.requestAnimationFrame || window.setTimeout)(renderSelection);
+  }
+  function selectionText() {
+    if (!sel) return '';
+    var blocks = [];
+    sel.rects.forEach(function (rect) {
+      var lines = [];
+      for (var r = rect.r1; r <= rect.r2; r++) {
+        var row = sel.rows[r], cells = [];
+        if (!row) continue;
+        for (var c = rect.c1; c <= rect.c2; c++) {
+          var cell = row.cells[c];
+          if (cell && !cellHidden(cell)) cells.push(selCellText(cell).replace(/[\t\r\n]+/g, ' '));
+        }
+        if (cells.length) lines.push(cells.join('\t'));
+      }
+      if (lines.length) blocks.push(lines.join('\n'));
+    });
+    return blocks.join('\n');
+  }
+
+  // Khung cuộn gần nhất của bảng (null = cuộn cả trang).
+  function scrollParentOf(element) {
+    for (var node = element.parentElement; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
+      var style = window.getComputedStyle(node);
+      if (/(auto|scroll)/.test(style.overflowY + style.overflowX) && (node.scrollHeight > node.clientHeight + 1 || node.scrollWidth > node.clientWidth + 1)) return node;
+    }
+    return null;
+  }
+  function edgeDelta(pointer, low, high) {
+    var edge = 40, max = 28;
+    if (pointer < low + edge) return -Math.min(max, Math.ceil(((low + edge - pointer) / edge) * max));
+    if (pointer > high - edge) return Math.min(max, Math.ceil(((pointer - (high - edge)) / edge) * max));
+    return 0;
+  }
+  function moveFocus(pos) {
+    if (!gesture || !sel || !pos) return;
+    if (gesture.focus && gesture.focus.row === pos.row && gesture.focus.col === pos.col) return;
+    if (!gesture.claimed) {
+      if (pos.row === gesture.anchor.row && pos.col === gesture.anchor.col) return; // vẫn trong ô đầu: để bôi đen chữ như thường
+      claimGesture();
+    }
+    gesture.focus = pos;
+    sel.rects[sel.rects.length - 1] = rectBetween(gesture.anchor, pos);
+    scheduleSelection();
+  }
+  // Con trỏ đã sang ô khác: từ đây là chọn vùng — bỏ bôi đen chữ của trình duyệt, khoá bôi đen mới, bật tự cuộn ở mép khung.
+  function claimGesture() {
+    gesture.claimed = true;
+    var native = window.getSelection && window.getSelection();
+    if (native && native.removeAllRanges) native.removeAllRanges();
+    document.body.classList.add('tks-selecting');
+    gesture.scroller = scrollParentOf(gesture.table);
+    if (!selTimer) selTimer = setInterval(selectionTick, 30);
+  }
+  function selectionTick() {
+    if (!gesture || !gesture.claimed || !sel) return;
+    var scroller = gesture.scroller, viewW = window.innerWidth, viewH = window.innerHeight, box, barX, barY;
+    if (scroller) {
+      var rect = scroller.getBoundingClientRect();
+      box = { left: Math.max(rect.left, 0), right: Math.min(rect.right, viewW), top: Math.max(rect.top, 0), bottom: Math.min(rect.bottom, viewH) };
+      barX = scroller.offsetWidth - scroller.clientWidth; barY = scroller.offsetHeight - scroller.clientHeight;
+    } else {
+      box = { left: 0, right: viewW, top: 0, bottom: viewH };
+      barX = viewW - document.documentElement.clientWidth; barY = viewH - document.documentElement.clientHeight;
+    }
+    box.right -= Math.max(0, barX); box.bottom -= Math.max(0, barY);
+    var top = box.top, head = gesture.table.tHead;
+    if (head) {
+      // Hàng tiêu đề đang dính ở mép trên thì phần dùng được bắt đầu dưới nó.
+      var headBox = head.getBoundingClientRect();
+      if (headBox.height && headBox.top <= box.top + 1 && headBox.bottom > box.top) top = headBox.bottom;
+    }
+    var dy = edgeDelta(gesture.y, top, box.bottom), dx = edgeDelta(gesture.x, box.left, box.right);
+    if (dy || dx) {
+      if (scroller) { scroller.scrollTop += dy; scroller.scrollLeft += dx; } else window.scrollBy(dx, dy);
+    }
+    if (typeof document.elementFromPoint !== 'function') return;
+    var x = Math.min(Math.max(gesture.x, box.left + 1), box.right - 1), y = Math.min(Math.max(gesture.y, top + 1), box.bottom - 1);
+    var cell = cellFrom(document.elementFromPoint(x, y), sel);
+    if (cell) moveFocus(positionOf(cell, sel));
+  }
+  function endGesture() {
+    if (!gesture) return;
+    var done = gesture;
+    gesture = null;
+    clearInterval(selTimer); selTimer = 0;
+    document.body.classList.remove('tks-selecting');
+    if (done.claimed) {
+      // Cú kéo qua nhiều ô không được kích hoạt thao tác "bấm dòng" của trang (mở chi tiết, v.v.).
+      suppressClick = true; setTimeout(function () { suppressClick = false; }, 0);
+    } else if (done.toggleAt && sel) {
+      // Ctrl+bấm lên ô đã chọn riêng lẻ: bỏ chọn ô đó.
+      sel.rects = sel.rects.filter(function (rect) { return !isSingle(rect, done.toggleAt); });
+      if (!sel.rects.length) { clearSelection(); return; }
+    }
+    if (sel) renderSelection();
+  }
+
+  function onSelectionDown(event) {
+    if (event.button !== 0) return;
+    var target = event.target && (event.target.nodeType === 1 ? event.target : event.target.parentElement);
+    if (!target || target.closest('.tks-sel-sum')) return;
+    var table = target.closest('table');
+    if (!selectableTable(table) || target.closest(SELECT_SKIP)) { clearSelection(); return; }
+    var rows = bodyRows(table), state = { table: table, rows: rows, rowIndex: indexRows(rows) };
+    var cell = cellFrom(target, state);
+    if (!cell) { clearSelection(); return; }
+    var pos = positionOf(cell, state);
+    if (sel && (sel.table !== table || !sameRows(sel.rows, rows))) clearSelection();
+    var additive = event.ctrlKey || event.metaKey, extend = event.shiftKey && sel && sel.anchor;
+    var toggleAt = null;
+    if (extend) {
+      event.preventDefault(); // Shift+bấm không bôi đen chữ giữa hai ô
+      sel.rects[sel.rects.length - 1] = rectBetween(sel.anchor, pos);
+    } else if (additive) {
+      event.preventDefault();
+      if (!sel) sel = { table: table, rows: rows, rowIndex: state.rowIndex, rects: [], painted: new Set(), anchor: null };
+      if (sel.rects.some(function (rect) { return isSingle(rect, pos); })) toggleAt = pos;
+      sel.anchor = pos; sel.rects.push(rectBetween(pos, pos));
+    } else {
+      clearSelection();
+      sel = { table: table, rows: rows, rowIndex: state.rowIndex, rects: [rectBetween(pos, pos)], painted: new Set(), anchor: pos };
+    }
+    gesture = { table: table, anchor: sel.anchor, focus: pos, claimed: false, x: event.clientX, y: event.clientY, toggleAt: toggleAt };
+    if (extend) claimGesture();
+    renderSelection();
+  }
+  function onSelectionMove(event) {
+    if (!gesture || !sel) return;
+    if (!(event.buttons & 1)) { endGesture(); return; } // nhả chuột ngoài cửa sổ: không có mouseup
+    gesture.x = event.clientX; gesture.y = event.clientY;
+    var cell = cellFrom(event.target, sel);
+    if (cell) moveFocus(positionOf(cell, sel));
+  }
+  function onSelectionKey(event) {
+    if (!sel) return;
+    if (event.key === 'Escape') { clearSelection(); return; }
+    if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey || String(event.key).toLowerCase() !== 'a') return;
+    var active = document.activeElement;
+    if (active && (/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) || active.isContentEditable)) return;
+    event.preventDefault();
+    var cols = 0;
+    sel.rows.forEach(function (row) { cols = Math.max(cols, row.cells.length); });
+    if (!sel.rows.length || !cols) return;
+    sel.rects = [{ r1: 0, r2: sel.rows.length - 1, c1: 0, c2: cols - 1 }];
+    sel.anchor = { row: 0, col: 0 };
+    renderSelection();
+  }
+  function onSelectionCopy(event) {
+    if (!sel || !sel.painted.size || !event.clipboardData) return;
+    var active = document.activeElement;
+    if (active && (/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) || active.isContentEditable)) return;
+    // Mới chọn 1 ô mà người dùng đang bôi đen chữ trong ô đó: để trình duyệt chép đúng đoạn chữ.
+    if (sel.painted.size < 2 && window.getSelection && String(window.getSelection())) return;
+    event.clipboardData.setData('text/plain', selectionText());
+    event.preventDefault();
+    var bar = sumBarFor(sel.table), note = 'Đã sao chép ' + formatSelNumber(sel.painted.size) + ' ô';
+    clearTimeout(selNoteTimer);
+    bar.textContent = note; bar.hidden = false;
+    selNoteTimer = setTimeout(function () { selNoteTimer = 0; renderSum(); }, 1800);
+  }
+  function installSelection() {
+    document.addEventListener('mousedown', onSelectionDown, true);
+    document.addEventListener('mousemove', onSelectionMove, true);
+    document.addEventListener('mouseup', endGesture, true);
+    document.addEventListener('selectstart', function (event) { if (gesture && gesture.claimed) event.preventDefault(); }, true);
+    document.addEventListener('click', function (event) {
+      if (!suppressClick) return;
+      suppressClick = false; event.stopPropagation(); event.preventDefault();
+    }, true);
+    document.addEventListener('keydown', onSelectionKey);
+    document.addEventListener('copy', onSelectionCopy);
+    window.addEventListener('blur', endGesture);
+  }
+
   function start() {
     if (!window.document || !document.body) return;
     document.addEventListener('keydown', onGridKeydown);
+    installSelection();
     refreshAll();
     fetchPrefs();
     new MutationObserver(function (records) {
       if (records.some(function (record) {
         var target = record.target.nodeType === 1 ? record.target : record.target.parentElement;
-        if (!target || target.closest('.tks-columns-overlay,.tks-table-tools,colgroup,.tks-column-resizer')) return false;
-        if (record.type === 'attributes') return !target.closest('table.tks-controlled-table');
+        if (!target || target.closest('.tks-columns-overlay,.tks-table-tools,colgroup,.tks-column-resizer,.tks-sel-sum')) return false;
+        if (record.type === 'attributes') {
+          // Tô / bỏ tô ô đang chọn (tks-cell-selected, tks-selecting) là việc của chính ta: không dựng lại cả trang vì nó.
+          if (record.attributeName === 'class' && /tks-cell-selected|tks-selecting/.test((record.oldValue || '') + ' ' + target.className)) return false;
+          return !target.closest('table.tks-controlled-table');
+        }
         return true;
       })) schedule();
-    }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['hidden', 'class', 'style', 'open'] });
+    }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeOldValue: true, attributeFilter: ['hidden', 'class', 'style', 'open'] });
     window.addEventListener('resize', schedule);
     if (document.fonts) document.fonts.ready.then(schedule);
   }
