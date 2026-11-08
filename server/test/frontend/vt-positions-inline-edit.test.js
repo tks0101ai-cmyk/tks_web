@@ -265,3 +265,81 @@ test('làm mới nền (render background) không ghi đè ô đang gõ', async 
   assert.match(ui.cellOf(2, 'arrivalDate').textContent, /1\/11/, 'các ô khác vẫn được vá');
   assert.equal(ui.patches().length, 0);
 });
+
+// ---- Chọn vùng ô rồi Delete / dán từ Excel (table-controls 'tks:cells-edit') ----
+function selectCells(ui, from, to) {
+  const fire = (type, target, buttons) => target.dispatchEvent(new ui.window.MouseEvent(type, { bubbles: true, cancelable: true, button: 0, buttons }));
+  fire('mousedown', ui.cellOf(...from), 1);
+  fire('mousemove', ui.cellOf(...to), 1);
+  fire('mouseup', ui.cellOf(...to), 0);
+}
+function pasteText(ui, text) {
+  const event = new ui.window.Event('paste', { bubbles: true, cancelable: true });
+  event.clipboardData = { getData: () => text };
+  ui.doc.dispatchEvent(event);
+  return event;
+}
+const pressKey = (ui, key) => ui.doc.dispatchEvent(new ui.window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+
+test('dán khối từ Excel vào Ghi chú + Ngày về: mỗi dòng đúng một PATCH gộp, kèm version', async t => {
+  const ui = await setup(t);
+  selectCells(ui, [1, 'notes'], [2, 'arrivalDate']);
+  pasteText(ui, '5T x 50\t1/11\n3T x 10\t2/11');
+  await settle();
+  const patches = ui.patches();
+  assert.equal(patches.length, 2);
+  assert.deepEqual(patches.map(p => [p.path.split('/').pop(), p.body]), [
+    ['1', { version: 3, notes: '5T x 50', arrivalDate: '1/11' }],
+    ['2', { version: 3, notes: '3T x 10', arrivalDate: '2/11' }]
+  ]);
+  assert.match(ui.cellOf(2, 'notes').textContent, /3T x 10/);
+});
+
+test('dán vào Vị trí được chuẩn hóa; ô không đổi thì không PATCH; cột Mã/SL bị bỏ qua', async t => {
+  const ui = await setup(t);
+  selectCells(ui, [1, 'location'], [3, 'location']);
+  pasteText(ui, 'a 05\nK2\nb 07');
+  await settle();
+  assert.deepEqual(ui.patches().map(p => [p.path.split('/').pop(), p.body.location]), [['1', 'A05'], ['3', 'B07']]); // K2 đã là vị trí hiện tại
+  const before = ui.patches().length;
+  selectCells(ui, [1, 'code'], [1, 'code']);
+  pasteText(ui, 'ZZZ');
+  await settle();
+  assert.equal(ui.patches().length, before);
+});
+
+test('Delete trên cột Vị trí/Ngày về xóa giá trị qua PATCH ""', async t => {
+  const ui = await setup(t, { data: { rows: [row(1, { arrivalDate: '1/11' }), row(2, { arrivalDate: '2/11' })] } });
+  selectCells(ui, [1, 'arrivalDate'], [2, 'arrivalDate']);
+  pressKey(ui, 'Delete');
+  await settle();
+  assert.deepEqual(ui.patches().map(p => p.body.arrivalDate), ['', '']);
+});
+
+test('Delete trên Ghi chú hỏi MỘT lần; đồng ý → PATCH confirmEmpty cho mọi dòng, từ chối → không PATCH', async t => {
+  const ui = await setup(t);
+  selectCells(ui, [1, 'notes'], [2, 'notes']);
+  pressKey(ui, 'Delete');
+  await settle();
+  assert.equal(ui.patches().length, 0, 'chưa gửi khi chưa xác nhận');
+  assert.equal(ui.doc.getElementById('vtConfirmDialog').hasAttribute('open'), true);
+  ui.doc.getElementById('vtConfirmCancel').click();
+  await settle();
+  assert.equal(ui.patches().length, 0);
+
+  selectCells(ui, [1, 'notes'], [2, 'notes']);
+  pressKey(ui, 'Delete');
+  await settle();
+  ui.doc.getElementById('vtConfirmOk').click();
+  await sleep(80);
+  assert.deepEqual(ui.patches().map(p => [p.body.notes, p.body.confirmEmpty]), [['', true], ['', true]]);
+});
+
+test('chỉ xem (không có quyền sửa): dán / Delete không gửi gì', async t => {
+  const ui = await setup(t, { canEdit: false });
+  selectCells(ui, [1, 'notes'], [2, 'location']);
+  pasteText(ui, 'x');
+  pressKey(ui, 'Delete');
+  await settle();
+  assert.equal(ui.patches().length, 0);
+});

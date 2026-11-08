@@ -230,6 +230,7 @@
     fields().forEach(field => {
       const td = document.createElement('td');
       td.dataset.field = field;
+      if (DETAIL_FIELDS.includes(field) && editable()) td.dataset.cellEditable = '';
       if (field === 'quantity' || field === 'available' || field === 'kiotQuantity') {
         td.textContent = formatNumber(row[field]);
         // Có thể bốc = SL kho − phần các đơn Đang bốc đang giữ chỗ; tooltip nói rõ phần giữ chỗ.
@@ -364,6 +365,10 @@
     $('vtTable').setAttribute('aria-busy', String(current.loading));
     const status = $('vtStatus');
     status.dataset.error = String(!!current.error);
+    // Đổi trang/tìm/lọc/sắp xếp: giữ bảng cũ (làm mờ) tới khi dữ liệu mới về, không xóa trắng bảng.
+    const stale = current.loading && !current.error && current.serverPaged && current.rows.length > 0 && body.children.length > 0;
+    $('vtTable').classList.toggle('is-stale', stale);
+    if (stale) { status.textContent = ''; return; }
     status.textContent = current.loading ? 'Đang tải vị trí hàng…' : current.error ||
       (current.rows.length === 0 ? 'Chưa có dữ liệu vị trí hàng.' : rows.length === 0 ? (current.warnFilter === 'warn' ? 'Không có dòng cảnh báo.' : current.warnFilter === 'valid' ? 'Không có dòng hợp lệ.' : 'Không tìm thấy hàng phù hợp.') : '');
     const ready = !current.loading && !current.error && rows.length > 0;
@@ -391,6 +396,7 @@
   const jsonOptions = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
   function applyResult(tab, payload) {
+    clearListCache();
     const rows = state[tab].rows;
     if (payload.deleted) { state[tab].rows = rows.filter(row => String(row.id) !== String(payload.id)); return; }
     if (!payload.row) return;
@@ -1522,9 +1528,39 @@
     loadHistory(false);
   }
 
-  function listUrl(tab) {
+  function listUrl(tab, page) {
     const current = state[tab];
-    return API + '?' + new URLSearchParams({ branch: tab.toUpperCase(), page: String(current.page), pageSize: String(pageSize), q: current.query, warnFilter: current.warnFilter, sorts: JSON.stringify(current.sorts) });
+    return API + '?' + new URLSearchParams({ branch: tab.toUpperCase(), page: String(page || current.page), pageSize: String(pageSize), q: current.query, warnFilter: current.warnFilter, sorts: JSON.stringify(current.sorts) });
+  }
+
+  // Bộ nhớ đệm các trang đã tải (khóa = URL gồm trang/tìm/lọc/sắp xếp). Hết hạn sau CACHE_TTL_MS và bị xóa khi dữ liệu có thể đã đổi
+  // (tải lại đầy đủ, tín hiệu SSE, sửa/xóa dòng); trang kế bên được tải trước ở nền để bấm Trước/Sau hiện ngay.
+  const CACHE_TTL_MS = 45000, PREFETCH_DELAY_MS = 400;
+  const listCache = new Map();
+  let cacheGeneration = 0, prefetchTimer = null;
+  const clearListCache = () => { listCache.clear(); cacheGeneration++; clearTimeout(prefetchTimer); };
+  function cacheGet(url) {
+    const entry = listCache.get(url);
+    if (entry && Date.now() - entry.time < CACHE_TTL_MS) return entry.payload;
+    listCache.delete(url);
+    return null;
+  }
+  const cachePut = (url, payload) => { listCache.set(url, { payload, time: Date.now() }); };
+  function prefetchNeighbours(tab) {
+    clearTimeout(prefetchTimer);
+    prefetchTimer = setTimeout(() => {
+      const current = state[tab];
+      if (tab !== activeTab || current.loading || !current.serverPaged) return;
+      const pageCount = Math.max(1, Math.ceil(current.totalRows / pageSize));
+      const generation = cacheGeneration;
+      [current.page + 1, current.page - 1].filter(page => page >= 1 && page <= pageCount).forEach(page => {
+        const url = listUrl(tab, page);
+        if (cacheGet(url)) return;
+        request(url).then(({ response, payload }) => {
+          if (generation === cacheGeneration && response.ok && payload.branch === tab.toUpperCase() && Array.isArray(payload.rows) && Number.isFinite(payload.totalRows)) cachePut(url, payload);
+        }).catch(() => {});
+      });
+    }, PREFETCH_DELAY_MS);
   }
   function acceptList(current, payload) {
     current.rows = payload.rows;
@@ -1562,16 +1598,19 @@
     $('vtTableTitle').textContent = 'VT ' + (tab === 'hn' ? 'Hà Nội' : 'Sài Gòn');
     window.TKSNav.renderTopSidebar($('sidebar'), 'stockLocations', user);
     const current = state[tab];
-    if (!queryOnly) current.rows = [];
-    current.loading = true;
+    if (!queryOnly) { current.rows = []; clearListCache(); }
+    const url = listUrl(tab);
+    const cached = queryOnly ? cacheGet(url) : null;
+    current.loading = !cached;
     current.error = '';
     const version = ++requestVersion;
-    render();
+    if (!cached) render();
     try {
-      const { response, payload } = await request(listUrl(tab), { signal: queryController.signal });
+      const { response, payload } = cached ? { response: { ok: true }, payload: cached } : await request(url, { signal: queryController.signal });
       if (version !== requestVersion) return;
       if (!response.ok) throw new Error(payload.error || 'Không tải được vị trí hàng.');
       if (payload.branch !== tab.toUpperCase() || !Array.isArray(payload.rows)) throw new Error('Dữ liệu vị trí hàng không hợp lệ.');
+      if (!cached && Number.isFinite(payload.totalRows)) cachePut(url, payload);
       acceptList(current, payload);
       current.canEdit = typeof payload.canEdit === 'boolean' ? payload.canEdit : null;
       current.canExport = payload.canExport === true;
@@ -1580,7 +1619,7 @@
       if (version !== requestVersion) return;
       current.error = error.message || 'Lỗi kết nối, vui lòng tải lại trang.';
     } finally {
-      if (version === requestVersion) { current.loading = false; render(); startLive(tab); }
+      if (version === requestVersion) { current.loading = false; render(); startLive(tab); if (!current.error) prefetchNeighbours(tab); }
     }
   }
 
@@ -1615,6 +1654,7 @@
   const feed = { source: null, debounce: null, fallback: null, opened: false, missed: false };
 
   function scheduleRefresh() {
+    clearListCache(); // có thay đổi từ máy chủ: các trang đã đệm có thể đã cũ
     clearTimeout(feed.debounce);
     feed.debounce = setTimeout(() => {
       if (document.hidden) { feed.missed = true; return; }
@@ -1845,6 +1885,45 @@
     startEdit(target); // lấy focus → ô cũ rời đi và tự lưu
   }
 
+  // Chọn vùng ô rồi Delete / dán từ Excel (table-controls.js bắn 'tks:cells-edit'): ghi vào các ô Ghi chú / Ngày về / Vị trí,
+  // mỗi dòng gửi MỘT lần cập nhật gộp mọi cột đổi, xếp hàng chung saveChain với ô nhập tại chỗ. Cột khác (Mã, SL…) bị bỏ qua.
+  // Xóa Ghi chú nghĩa là hết hàng → dòng bị xóa khỏi bảng, nên hỏi MỘT lần cho cả đợt.
+  function applyCellEdits(event) {
+    if (!editable()) return;
+    const tab = activeTab;
+    const patches = new Map();
+    event.detail.edits.forEach(edit => {
+      const td = edit.cell, field = td.dataset.field, id = td.parentElement && td.parentElement.dataset.id;
+      if (!id || !DETAIL_FIELDS.includes(field)) return;
+      const row = rowById(tab, id);
+      if (!row) return;
+      edit.handled = true;
+      const value = field === 'location' ? normalizeLocation(edit.value) : String(edit.value ?? '').trim();
+      if (value === String(row[field] ?? '').trim()) return;
+      if (!patches.has(id)) patches.set(id, { patch: {}, edits: [] });
+      const entry = patches.get(id);
+      entry.patch[field] = value;
+      entry.edits.push(edit);
+    });
+    if (!patches.size) return;
+    const emptied = Array.from(patches.values()).filter(entry => entry.patch.notes === '');
+    const job = saveChain.then(async () => {
+      let confirmEmpty = false;
+      if (emptied.length) {
+        confirmEmpty = await confirmBox('Xóa ghi chú ' + emptied.length + ' dòng nghĩa là hết hàng, các dòng này sẽ bị xóa khỏi bảng. Bạn có chắc chắn không?', 'Xóa ghi chú');
+        if (!confirmEmpty) emptied.forEach(entry => entry.edits.forEach(edit => { edit.cancelled = true; }));
+      }
+      for (const [id, entry] of patches) {
+        if (entry.patch.notes === '' && !confirmEmpty) continue;
+        const current = rowById(tab, id);
+        if (current) await patchRow(tab, current, entry.patch, confirmEmpty && entry.patch.notes === '', message => notify(message, true));
+      }
+      if (tab === activeTab) render();
+    }).catch(() => notify('Không lưu được thay đổi.', true));
+    saveChain = job;
+    event.detail.pending.push(job);
+  }
+
   // Bấm vào ô nhập liệu được → gõ ngay tại ô; bấm cột khác (hoặc Enter/Space trên dòng) → mở hộp chi tiết.
   // Đang bôi đen chữ để sao chép thì không làm gì.
   function bindTable() {
@@ -1859,6 +1938,7 @@
       const row = rowOf(tr);
       if (row) openDetail(row);
     });
+    body.addEventListener('tks:cells-edit', applyCellEdits);
     body.addEventListener('keydown', event => {
       if (event.target.tagName !== 'TR' || (event.key !== 'Enter' && event.key !== ' ')) return;
       event.preventDefault();

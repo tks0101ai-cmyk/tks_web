@@ -812,6 +812,7 @@
   }
   window.TKSTables = { enhance: enhance, refresh: refresh, refreshAll: refreshAll, getState: getState, loadPrefs: loadPrefs,
     nextSorts: nextSorts, compareValues: compareValues, syncSortHeaders: syncSortHeaders,
+    parseClipboardTable: parseClipboardTable,
     getSelection: function () { return sel ? { table: sel.table, cells: Array.from(sel.painted), regions: sel.rects.length } : null; },
     clearSelection: clearSelection };
   function fetchPrefs() {
@@ -1130,9 +1131,14 @@
   function onSelectionKey(event) {
     if (!sel) return;
     if (event.key === 'Escape') { clearSelection(); return; }
+    if ((event.key === 'Delete' || event.key === 'Backspace') && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && !event.isComposing) {
+      if (selectionFieldFocused()) return;
+      event.preventDefault();
+      editSelection('clear', null);
+      return;
+    }
     if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey || String(event.key).toLowerCase() !== 'a') return;
-    var active = document.activeElement;
-    if (active && (/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) || active.isContentEditable)) return;
+    if (selectionFieldFocused()) return;
     event.preventDefault();
     var cols = 0;
     sel.rows.forEach(function (row) { cols = Math.max(cols, row.cells.length); });
@@ -1143,16 +1149,165 @@
   }
   function onSelectionCopy(event) {
     if (!sel || !sel.painted.size || !event.clipboardData) return;
-    var active = document.activeElement;
-    if (active && (/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) || active.isContentEditable)) return;
+    if (selectionFieldFocused()) return;
     // Mới chọn 1 ô mà người dùng đang bôi đen chữ trong ô đó: để trình duyệt chép đúng đoạn chữ.
     if (sel.painted.size < 2 && window.getSelection && String(window.getSelection())) return;
     event.clipboardData.setData('text/plain', selectionText());
     event.preventDefault();
-    var bar = sumBarFor(sel.table), note = 'Đã sao chép ' + formatSelNumber(sel.painted.size) + ' ô';
+    selNote('Đã sao chép ' + formatSelNumber(sel.painted.size) + ' ô');
+  }
+  // Thông báo ngắn trên thanh Tổng/TB/Đếm (Đã sao chép / Đã dán / Đã xóa…); hết giờ thì trả thanh về số liệu.
+  function selNote(text, table) {
+    table = table || (sel && sel.table);
+    if (!table) return;
+    var bar = sumBarFor(table);
     clearTimeout(selNoteTimer);
-    bar.textContent = note; bar.hidden = false;
-    selNoteTimer = setTimeout(function () { selNoteTimer = 0; renderSum(); }, 1800);
+    bar.textContent = text; bar.hidden = false;
+    selNoteTimer = setTimeout(function () { selNoteTimer = 0; renderSum(); }, 2600);
+  }
+  function onSelectionCut(event) {
+    if (!sel || !sel.painted.size || !event.clipboardData || selectionFieldFocused()) return;
+    if (sel.painted.size < 2 && window.getSelection && String(window.getSelection())) return;
+    event.clipboardData.setData('text/plain', selectionText());
+    event.preventDefault();
+    editSelection('clear', null);
+  }
+  // ---- Xóa / Cắt / Dán vào vùng ô đang chọn (kiểu Excel) ----
+  // Delete·Backspace = xóa nội dung các ô; Ctrl+X = chép rồi xóa; Ctrl+V = dán khối TSV (Excel/Sheets) từ ô trên-trái của vùng chọn,
+  // dán 1 ô vào vùng nhiều ô thì điền đầy cả vùng. Ô chỉ-xem (chữ thuần) bị bỏ qua và được báo lại.
+  // Cách ghi giá trị: (1) bảng/trang tự xử lý qua sự kiện 'tks:cells-edit' (nổi bọt từ ô lên tr/tbody/table; detail = { action: 'clear'|'paste', table,
+  // edits: [{ cell, row, col, value, handled }] }; xử lý ô nào thì đặt edit.handled = true) — dùng cho ô sửa-tại-chỗ phải lưu về máy chủ;
+  // (2) ô còn lại có sẵn input / textarea / select / contenteditable thì ghi thẳng vào đó và bắn input + change để trang tự lưu.
+  // Ô đánh dấu data-cell-editable được tính là sửa được dù chưa có input (trang sẽ mở ô nhập khi cần).
+  var EDIT_CONFIRM_OVER = 20;
+  function selectionFieldFocused() {
+    var active = document.activeElement;
+    return !!(active && (/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) || active.isContentEditable));
+  }
+  function fieldOf(cell) {
+    var field = cell.querySelector('textarea, select, input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]):not([type=reset]):not([type=file]):not([type=image]), [contenteditable]:not([contenteditable="false"])');
+    if (!field || field.disabled || field.readOnly || field.hidden) return null;
+    return field;
+  }
+  function editableCell(cell) { return cell.hasAttribute('data-cell-editable') || !!fieldOf(cell); }
+
+  // TSV → mảng dòng × cột; hiểu ô bọc ngoặc kép của Excel (xuống dòng / tab / "" bên trong).
+  function parseClipboardTable(text) {
+    var source = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+    var rows = [], row = [], field = '', quoted = false;
+    for (var i = 0; i < source.length; i++) {
+      var ch = source.charAt(i);
+      if (quoted) {
+        if (ch === '"') { if (source.charAt(i + 1) === '"') { field += '"'; i++; } else quoted = false; } else field += ch;
+      } else if (ch === '"' && field === '') quoted = true;
+      else if (ch === '\t') { row.push(field); field = ''; }
+      else if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else field += ch;
+    }
+    if (field !== '' || row.length) { row.push(field); rows.push(row); }
+    return rows;
+  }
+  function setNativeValue(field, value) {
+    var proto = field.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement : window.HTMLInputElement;
+    var desc = proto && Object.getOwnPropertyDescriptor(proto.prototype, 'value');
+    if (desc && desc.set) desc.set.call(field, value); else field.value = value;
+  }
+  function fire(field, type) { field.dispatchEvent(new window.Event(type, { bubbles: true })); }
+  // Ghi value vào ô có sẵn trường nhập; trả true nếu ghi được (kể cả khi giá trị không đổi), false nếu không hợp lệ cho trường đó.
+  function writeField(field, value) {
+    if (field.tagName === 'SELECT') {
+      var text = String(value).trim().toLowerCase(), found = -1;
+      Array.from(field.options).forEach(function (option, index) {
+        if (found < 0 && (option.value.toLowerCase() === text || option.textContent.trim().toLowerCase() === text)) found = index;
+      });
+      if (found < 0 && text === '') found = Array.from(field.options).findIndex(function (option) { return option.value === ''; });
+      if (found < 0) return false;
+      if (field.selectedIndex === found) return true;
+      field.selectedIndex = found; fire(field, 'input'); fire(field, 'change');
+      return true;
+    }
+    if (field.tagName !== 'INPUT' && field.tagName !== 'TEXTAREA') { // contenteditable
+      if (field.textContent === value) return true;
+      field.textContent = value; fire(field, 'input'); fire(field, 'change');
+      return true;
+    }
+    var next = String(value);
+    if (field.type === 'number') {
+      next = next.trim().replace(/,/g, '');
+      if (next !== '' && !isFinite(Number(next))) return false;
+    } else if (field.maxLength > 0 && next.length > field.maxLength) next = next.slice(0, field.maxLength);
+    if (field.value === next) return true;
+    setNativeValue(field, next); fire(field, 'input'); fire(field, 'change');
+    return true;
+  }
+  function buildEdits(action, matrix) {
+    var edits = [], seen = new Set();
+    function add(r, c, value) {
+      var row = sel.rows[r], cell = row && row.cells[c];
+      if (!cell || cellHidden(cell) || seen.has(cell)) return;
+      seen.add(cell); edits.push({ cell: cell, row: r, col: c, value: value, handled: false });
+    }
+    function eachCell(visit) {
+      sel.rects.forEach(function (rect) {
+        for (var r = rect.r1; r <= rect.r2; r++) for (var c = rect.c1; c <= rect.c2; c++) visit(r, c);
+      });
+    }
+    if (action === 'clear') {
+      eachCell(function (r, c) { add(r, c, ''); });
+      return { edits: edits, extent: null };
+    }
+    var rect = sel.rects[sel.rects.length - 1], height = matrix.length, width = 0;
+    matrix.forEach(function (line) { width = Math.max(width, line.length); });
+    if (height === 1 && width === 1 && sel.painted.size > 1) {
+      // 1 giá trị dán vào vùng nhiều ô: điền đầy mọi ô đang chọn.
+      eachCell(function (r, c) { add(r, c, matrix[0][0]); });
+      return { edits: edits, extent: null };
+    }
+    for (var j = 0; j < height && rect.r1 + j < sel.rows.length; j++) {
+      var row = sel.rows[rect.r1 + j], visible = [];
+      for (var k = rect.c1; k < row.cells.length; k++) if (!cellHidden(row.cells[k])) visible.push(k);
+      for (var i = 0; i < matrix[j].length && i < visible.length; i++) add(rect.r1 + j, visible[i], matrix[j][i]);
+    }
+    var extent = null;
+    edits.forEach(function (edit) {
+      if (!extent) extent = { r1: edit.row, r2: edit.row, c1: edit.col, c2: edit.col };
+      extent.r1 = Math.min(extent.r1, edit.row); extent.r2 = Math.max(extent.r2, edit.row);
+      extent.c1 = Math.min(extent.c1, edit.col); extent.c2 = Math.max(extent.c2, edit.col);
+    });
+    return { edits: edits, extent: extent };
+  }
+  function editSelection(action, matrix) {
+    if (!sel || !sel.painted.size) return;
+    var built = buildEdits(action, matrix), edits = built.edits;
+    if (!edits.length) return;
+    var table = sel.table, verb = action === 'clear' ? 'Xóa' : 'Dán';
+    var likely = edits.filter(function (edit) { return editableCell(edit.cell); }).length;
+    if (!likely) { selNote('Bảng này chỉ để xem — các ô không sửa được.'); return; }
+    if (likely > EDIT_CONFIRM_OVER && typeof window.confirm === 'function'
+        && !window.confirm(verb + ' ' + formatSelNumber(likely) + ' ô? Thay đổi được lưu ngay và không hoàn tác được.')) return;
+    // detail.pending: trang đẩy Promise vào đây nếu việc lưu cần hỏi/đợi; edit.cancelled = true nếu người dùng từ chối giữa chừng.
+    var detail = { action: action, table: table, edits: edits, pending: [] };
+    edits[0].cell.dispatchEvent(new window.CustomEvent('tks:cells-edit', { bubbles: true, detail: detail }));
+    edits.forEach(function (edit) {
+      if (edit.handled) return;
+      var field = fieldOf(edit.cell);
+      if (field && writeField(field, edit.value)) edit.handled = true;
+    });
+    function finish() {
+      var done = 0, skipped = 0;
+      edits.forEach(function (edit) { if (edit.handled && !edit.cancelled) done++; else skipped++; });
+      if (built.extent && sel && sel.table === table) { sel.rects = [built.extent]; sel.anchor = { row: built.extent.r1, col: built.extent.c1 }; renderSelection(); }
+      selNote((done ? (action === 'clear' ? 'Đã xóa ' : 'Đã dán ') + formatSelNumber(done) + ' ô' : (action === 'clear' ? 'Không xóa được ô nào' : 'Không dán được ô nào'))
+        + (skipped ? ' · bỏ qua ' + formatSelNumber(skipped) + ' ô không sửa được' : ''), table);
+    }
+    if (detail.pending.length) Promise.all(detail.pending).then(finish, finish); else finish();
+  }
+  function onSelectionPaste(event) {
+    if (!sel || !sel.painted.size || !event.clipboardData || selectionFieldFocused()) return;
+    var text = event.clipboardData.getData('text/plain');
+    if (text === '' || text == null) return;
+    event.preventDefault();
+    editSelection('paste', parseClipboardTable(text));
   }
   function installSelection() {
     document.addEventListener('mousedown', onSelectionDown, true);
@@ -1165,6 +1320,8 @@
     }, true);
     document.addEventListener('keydown', onSelectionKey);
     document.addEventListener('copy', onSelectionCopy);
+    document.addEventListener('cut', onSelectionCut);
+    document.addEventListener('paste', onSelectionPaste);
     window.addEventListener('blur', endGesture);
   }
 

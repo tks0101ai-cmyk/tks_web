@@ -158,8 +158,33 @@ test('remote VT version conflict on page 2 reloads the same page and query, neve
  const patch = calls.find(call => call.method === 'PATCH');
  assert.equal(patch.path, '/api/stock-positions/101');
  assert.equal(JSON.parse(patch.options.body).version, 3);
- const reload = calls.filter(call => call.method === 'GET' && call.path === '/api/stock-positions').at(-1);
+ // Lần tải lại ngay sau PATCH (các GET tải trước trang kế bên đến muộn hơn nên không tính).
+ const reload = calls.slice(calls.indexOf(patch) + 1).find(call => call.method === 'GET' && call.path === '/api/stock-positions');
  assert.equal(reload.query.get('page'), '2');
  assert.equal(doc.querySelector('#vtRows tr').dataset.id, '101');
  assert.match(doc.getElementById('vtNotice')?.textContent || doc.body.textContent, /người khác sửa/);
+});
+
+test('remote VT keeps old rows while loading, prefetches neighbour pages and serves them from cache', async t => {
+ const rows = Array.from({ length: 205 }, (_, i) => row(i + 1));
+ let release;
+ const { doc, calls } = await setup(t, { data: { HN: rows, SG: [] }, handler: async (url, options, parsed) => {
+   if (parsed.pathname === '/api/stock-positions' && parsed.searchParams.get('page') === '3' && release) await new Promise(resolve => { release = resolve; });
+ } });
+ const listPages = () => calls.filter(call => call.method === 'GET' && call.path === '/api/stock-positions').map(call => call.query.get('page'));
+ // Sau khi tải xong trang 1, trang 2 được tải trước ở nền.
+ await new Promise(resolve => setTimeout(resolve, 500)); await settle();
+ assert.deepEqual(listPages(), ['1', '2']);
+ // Bấm Sau: trang 2 lấy từ bộ đệm, không gọi API thêm cho trang 2.
+ doc.getElementById('vtNext').click(); await settle();
+ assert.equal(doc.querySelector('#vtRows tr').dataset.id, '101');
+ assert.equal(listPages().filter(page => page === '2').length, 1);
+ // Trang 3 đang tải: bảng cũ vẫn còn (làm mờ), không bị xóa trắng.
+ release = () => {};
+ doc.getElementById('vtNext').click(); await settle();
+ assert.equal(doc.querySelector('#vtRows tr').dataset.id, '101', 'old rows stay while loading');
+ assert.ok(doc.getElementById('vtTable').classList.contains('is-stale'));
+ release(); await settle();
+ assert.equal(doc.querySelector('#vtRows tr').dataset.id, '201');
+ assert.ok(!doc.getElementById('vtTable').classList.contains('is-stale'));
 });
