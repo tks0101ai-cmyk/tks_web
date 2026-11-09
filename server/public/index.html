@@ -52,7 +52,7 @@
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261016">
   <link rel="stylesheet" href="/shared/product-history.css?v=20261105-1">
   <link rel="stylesheet" href="/marketing-report.css?v=20261102-kpis">
-  <link rel="stylesheet" href="/product-90d-report.css?v=20261104-9">
+  <link rel="stylesheet" href="/product-customer-growth.css?v=20261107-3">
   <link rel="stylesheet" href="/invoice-approved-prices.css?v=20261024-4">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -4507,76 +4507,71 @@
             </div>
           </section>
 
-          <!-- Hàng hóa 90 ngày: bảng tính sẵn lúc 02:00 (product_90d_report), API chỉ đọc /api/product-report/90d (reports.products.sales).
-               thead 2 tầng sinh từ COLUMNS của product-90d-report.js (test/frontend/product-90d-report.test.js khóa khớp); tìm/sắp xếp/phân trang ở máy chủ. -->
+          <!-- Hàng hóa 90 ngày: bảng Khách hàng theo sản phẩm (product-customer-growth.js), API chỉ đọc /api/product-report/customer-growth
+               (reports.products.sales). Mỗi dòng một cặp sản phẩm × khách + 3 kỳ 30 ngày + Tăng trưởng; lọc/sắp xếp/phân trang ở máy chủ.
+               thead 1 tầng khớp COLUMNS của module (test/frontend/product-customer-growth.test.js khóa khớp). -->
           <section class="section" id="product90dSection" hidden>
             <div class="section-head"><span class="section-step">4</span>
-              <h2>Hàng hóa 90 ngày <span class="section-note" id="product90dUpdatedAt">—</span></h2>
+              <h2>Hàng hóa 90 ngày <span class="section-note" id="pcgUpdatedAt">—</span></h2>
             </div>
             <div class="grid">
-              <div class="panel col-12 p90-panel">
+              <div class="panel col-12 pcg-panel">
                 <div class="panel-head">
-                  <h2>Doanh số 90 ngày theo mã hàng <span class="tag" id="tagProduct90dRows">—</span></h2>
+                  <h2>Khách hàng theo sản phẩm <span class="tag" id="pcgRowsTag">—</span></h2>
                   <div class="panel-head-actions">
-                    <button class="export-button" type="button" id="product90dExportButton" disabled
-                      onclick="openExportDialog('products.product90d')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Xuất file</button>
-                  </div>
-                  <div class="table-search-tools p90-search-tools" data-table-search="product90d">
-                    <div class="table-search-input-wrap">
-                      <input type="search" class="table-search-input" id="product90dSearch" autocomplete="off" maxlength="200" placeholder="Tìm mã hoặc tên hàng…" aria-label="Tìm mã hoặc tên hàng trong bảng Hàng hóa 90 ngày">
-                      <button type="button" class="table-search-clear" id="product90dSearchClear" aria-label="Xóa tìm kiếm Hàng hóa 90 ngày" hidden>×</button>
-                    </div>
+                    <button class="export-button" type="button" id="pcgExportButton" disabled
+                      onclick="openExportDialog('products.productCustomerGrowth')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Xuất file</button>
                   </div>
                 </div>
-                <p class="p90-status" id="product90dStatus" role="status" aria-live="polite"></p>
-                <div class="p90-scroll" id="product90dScroll">
-                  <table class="fixed-table p90-table" id="product90dTable" data-table-key="dashboard-table-product-90d" data-table-sort="off">
+                <div class="pcg-filters">
+                  <div class="table-search-input-wrap">
+                    <input type="search" class="table-search-input" id="pcgProductSearch" autocomplete="off" maxlength="200" placeholder="Tìm tên hoặc mã sản phẩm…" aria-label="Tìm theo tên hoặc mã sản phẩm trong bảng Khách hàng theo sản phẩm">
+                    <button type="button" class="table-search-clear" id="pcgProductClear" aria-label="Xóa tìm sản phẩm" hidden>×</button>
+                  </div>
+                  <div class="table-search-input-wrap">
+                    <input type="search" class="table-search-input" id="pcgCustomerSearch" autocomplete="off" maxlength="200" placeholder="Tìm tên khách hàng…" aria-label="Tìm theo tên khách hàng trong bảng Khách hàng theo sản phẩm">
+                    <button type="button" class="table-search-clear" id="pcgCustomerClear" aria-label="Xóa tìm khách hàng" hidden>×</button>
+                  </div>
+                  <label class="pcg-growth-filter"><span>Tăng trưởng</span>
+                    <select id="pcgGrowth" aria-label="Lọc theo nhóm tăng trưởng">
+                      <option value="all">Tất cả</option>
+                      <option value="lost">Giảm hết 100%</option>
+                      <option value="check">Giảm hơn 50%</option>
+                      <option value="drop">Giảm dưới 50%</option>
+                      <option value="up">Đang tăng</option>
+                      <option value="new">Khách mới</option>
+                    </select>
+                  </label>
+                </div>
+                <p class="pcg-status" id="pcgStatus" role="status" aria-live="polite"></p>
+                <div class="pcg-scroll" id="pcgScroll">
+                  <table class="fixed-table pcg-table" id="pcgTable" data-table-key="dashboard-table-product-customer-growth" data-table-sort="off">
                     <thead>
                       <tr>
-                        <th data-no-sort class="sortable p90-sticky p90-sticky-code" data-sort="product_code" aria-sort="none" style="width:86px" data-column-key="product_code" rowspan="2"><button type="button" class="sort-button" title="Sắp xếp theo Mã hàng"><span class="sort-label">Mã hàng</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
-                        <th data-no-sort class="sortable p90-sticky p90-sticky-name" data-sort="product_name" aria-sort="none" style="width:188px" data-column-key="product_name" rowspan="2"><button type="button" class="sort-button" title="Sắp xếp theo Tên hàng"><span class="sort-label">Tên hàng</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
-                        <th data-no-sort class="p90-group" colspan="5" data-period="1_30d" data-column-key="group_1_30d" style="width:618px" scope="colgroup"><span class="p90-group-inner"><span class="p90-group-label">T.này</span><span class="p90-group-range"></span></span></th>
-                        <th data-no-sort class="p90-group" colspan="5" data-period="31_60d" data-column-key="group_31_60d" style="width:600px" scope="colgroup"><span class="p90-group-inner"><span class="p90-group-label">T.trc</span><span class="p90-group-range"></span></span></th>
-                        <th data-no-sort class="p90-group" colspan="5" data-period="61_90d" data-column-key="group_61_90d" style="width:561px" scope="colgroup"><span class="p90-group-inner"><span class="p90-group-label">T.trc nữa</span><span class="p90-group-range"></span></span></th>
-                        <th data-no-sort class="p90-group" colspan="5" data-period="1_90d" data-column-key="group_1_90d" style="width:608px" scope="colgroup"><span class="p90-group-inner"><span class="p90-group-label">90 ngày</span><span class="p90-group-range"></span></span></th>
-                      </tr>
-                      <tr>
-                        <th data-no-sort class="sortable col-num p90-group-start" data-sort="qty_1_30d" aria-sort="none" style="width:66px" data-column-key="qty_1_30d"><button type="button" class="sort-button" title="Sắp xếp theo T.này – SL"><span class="sort-label">SL</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
-                        <th data-no-sort class="sortable col-num" data-sort="revenue_1_30d" aria-sort="none" style="width:96px" data-column-key="revenue_1_30d"><button type="button" class="sort-button" title="Sắp xếp theo T.này – DS"><span class="sort-label">DS</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
-                        <th data-no-sort class="sortable col-num" data-sort="customer_count_1_30d" aria-sort="none" style="width:85px" data-column-key="customer_count_1_30d"><button type="button" class="sort-button" title="Sắp xếp theo T.này – SL khách"><span class="sort-label">SL khách</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
-                        <th data-no-sort class="sortable col-num" data-sort="invoice_count_1_30d" aria-sort="none" style="width:74px" data-column-key="invoice_count_1_30d"><button type="button" class="sort-button" title="Sắp xếp theo T.này – Lượt mua"><span class="sort-label">Lượt mua</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
-                        <th data-no-sort class="p90-top-head" style="width:297px" data-column-key="top_customers_1_30d">Top 3 khách</th>
-                        <th data-no-sort class="sortable col-num p90-group-start" data-sort="qty_31_60d" aria-sort="none" style="width:64px" data-column-key="qty_31_60d"><button type="button" class="sort-button" title="Sắp xếp theo T.trc – SL"><span class="sort-label">SL</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
-                        <th data-no-sort class="sortable col-num" data-sort="revenue_31_60d" aria-sort="none" style="width:90px" data-column-key="revenue_31_60d"><button type="button" class="sort-button" title="Sắp xếp theo T.trc – DS"><span class="sort-label">DS</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
-                        <th data-no-sort class="sortable col-num" data-sort="customer_count_31_60d" aria-sort="none" style="width:85px" data-column-key="customer_count_31_60d"><button type="button" class="sort-button" title="Sắp xếp theo T.trc – SL khách"><span class="sort-label">SL khách</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
-                        <th data-no-sort class="sortable col-num" data-sort="invoice_count_31_60d" aria-sort="none" style="width:74px" data-column-key="invoice_count_31_60d"><button type="button" class="sort-button" title="Sắp xếp theo T.trc – Lượt mua"><span class="sort-label">Lượt mua</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
-                        <th data-no-sort class="p90-top-head" style="width:287px" data-column-key="top_customers_31_60d">Top 3 khách</th>
-                        <th data-no-sort class="sortable col-num p90-group-start" data-sort="qty_61_90d" aria-sort="none" style="width:64px" data-column-key="qty_61_90d"><button type="button" class="sort-button" title="Sắp xếp theo T.trc nữa – SL"><span class="sort-label">SL</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
-                        <th data-no-sort class="sortable col-num" data-sort="revenue_61_90d" aria-sort="none" style="width:90px" data-column-key="revenue_61_90d"><button type="button" class="sort-button" title="Sắp xếp theo T.trc nữa – DS"><span class="sort-label">DS</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
-                        <th data-no-sort class="sortable col-num" data-sort="customer_count_61_90d" aria-sort="none" style="width:82px" data-column-key="customer_count_61_90d"><button type="button" class="sort-button" title="Sắp xếp theo T.trc nữa – SL khách"><span class="sort-label">SL khách</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
-                        <th data-no-sort class="sortable col-num" data-sort="invoice_count_61_90d" aria-sort="none" style="width:71px" data-column-key="invoice_count_61_90d"><button type="button" class="sort-button" title="Sắp xếp theo T.trc nữa – Lượt mua"><span class="sort-label">Lượt mua</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
-                        <th data-no-sort class="p90-top-head" style="width:254px" data-column-key="top_customers_61_90d">Top 3 khách</th>
-                        <th data-no-sort class="sortable col-num p90-group-start" data-sort="qty_1_90d" aria-sort="none" style="width:64px" data-column-key="qty_1_90d"><button type="button" class="sort-button" title="Sắp xếp theo 90 ngày – SL"><span class="sort-label">SL</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
-                        <th data-no-sort class="sortable col-num" data-sort="revenue_1_90d" aria-sort="none" style="width:92px" data-column-key="revenue_1_90d"><button type="button" class="sort-button" title="Sắp xếp theo 90 ngày – DS"><span class="sort-label">DS</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
-                        <th data-no-sort class="sortable col-num" data-sort="customer_count_1_90d" aria-sort="none" style="width:87px" data-column-key="customer_count_1_90d"><button type="button" class="sort-button" title="Sắp xếp theo 90 ngày – SL khách"><span class="sort-label">SL khách</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
-                        <th data-no-sort class="sortable col-num" data-sort="invoice_count_1_90d" aria-sort="none" style="width:85px" data-column-key="invoice_count_1_90d"><button type="button" class="sort-button" title="Sắp xếp theo 90 ngày – Lượt mua"><span class="sort-label">Lượt mua</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
-                        <th data-no-sort class="p90-top-head" style="width:280px" data-column-key="top_customers_1_90d">Top 3 khách</th>
+                        <th data-no-sort class="sortable" data-sort="product_name" aria-sort="none" style="width:280px" data-column-key="product"><button type="button" class="sort-button" title="Sắp xếp theo Sản phẩm"><span class="sort-label">Sản phẩm</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
+                        <th data-no-sort class="sortable" data-sort="customer_name" aria-sort="none" style="width:240px" data-column-key="customer"><button type="button" class="sort-button" title="Sắp xếp theo Khách hàng"><span class="sort-label">Khách hàng</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
+                        <th data-no-sort class="sortable col-num" data-sort="revenue" aria-sort="none" style="width:130px" data-column-key="revenue"><button type="button" class="sort-button" title="Sắp xếp theo DS 90 ngày"><span class="sort-label">DS 90 ngày</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
+                        <th data-no-sort class="sortable col-num" data-sort="revenue_1_30d" aria-sort="none" style="width:120px" data-column-key="revenue_1_30d"><button type="button" class="sort-button" title="Sắp xếp theo T.này"><span class="sort-label">T.này</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
+                        <th data-no-sort class="sortable col-num" data-sort="revenue_31_60d" aria-sort="none" style="width:120px" data-column-key="revenue_31_60d"><button type="button" class="sort-button" title="Sắp xếp theo T.trước"><span class="sort-label">T.trước</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
+                        <th data-no-sort class="sortable col-num" data-sort="revenue_61_90d" aria-sort="none" style="width:130px" data-column-key="revenue_61_90d"><button type="button" class="sort-button" title="Sắp xếp theo T.trước nữa"><span class="sort-label">T.trước nữa</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
+                        <th data-no-sort class="sortable col-num" data-sort="share" aria-sort="none" style="width:150px" data-column-key="share"><button type="button" class="sort-button" title="Sắp xếp theo % của SP"><span class="sort-label">% của SP</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
+                        <th data-no-sort class="sortable col-num" data-sort="growth" aria-sort="none" style="width:170px" data-column-key="growth"><button type="button" class="sort-button" title="Sắp xếp theo Tăng trưởng"><span class="sort-label">Tăng trưởng</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
                       </tr>
                     </thead>
-                    <tbody id="product90dRows">
+                    <tbody id="pcgRows">
                       <tr>
-                        <td colspan="22" class="table-note">Đang tải...</td>
+                        <td colspan="8" class="table-note">Đang tải...</td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
-                <div class="pagination-controls" id="product90dPagination" hidden>
-                  <button type="button" id="product90dFirstPage" aria-label="Trang đầu" title="Trang đầu">&lt;&lt;</button>
-                  <button type="button" id="product90dPrevPage" aria-label="Trang trước" title="Trang trước">&lt;</button>
-                  <span id="product90dPageLabel">Trang 1/1</span>
-                  <button type="button" id="product90dNextPage" aria-label="Trang sau" title="Trang sau">&gt;</button>
-                  <button type="button" id="product90dLastPage" aria-label="Trang cuối" title="Trang cuối">&gt;&gt;</button>
-                  <select id="product90dPageSize" class="price-audit-page-size" aria-label="Số dòng mỗi trang">
+                <div class="pagination-controls" id="pcgPagination" hidden>
+                  <button type="button" id="pcgFirstPage" aria-label="Trang đầu" title="Trang đầu">&lt;&lt;</button>
+                  <button type="button" id="pcgPrevPage" aria-label="Trang trước" title="Trang trước">&lt;</button>
+                  <span id="pcgPageLabel">Trang 1/1</span>
+                  <button type="button" id="pcgNextPage" aria-label="Trang sau" title="Trang sau">&gt;</button>
+                  <button type="button" id="pcgLastPage" aria-label="Trang cuối" title="Trang cuối">&gt;&gt;</button>
+                  <select id="pcgPageSize" class="price-audit-page-size" aria-label="Số dòng mỗi trang">
                     <option value="25">25 dòng</option>
                     <option value="50" selected>50 dòng</option>
                     <option value="100">100 dòng</option>
@@ -5520,7 +5515,7 @@
   <script src="/marketing-report.js?v=20261107-3"></script>
   <script src="/invoice-price-audit.js?v=20261107-3"></script>
   <script src="/invoice-approved-prices.js?v=20261107-3"></script>
-  <script src="/product-90d-report.js?v=20261107-3"></script>
+  <script src="/product-customer-growth.js?v=20261107-3"></script>
 
   <script>
     // Toast thong bao inline — thay the window.alert() cho loi/canh bao (khong chan luong,
@@ -7119,12 +7114,12 @@
         }
         return payload;
       }
-      // Hàng hóa 90 ngày: tìm/sắp xếp ở máy chủ — gửi đúng từ khóa đang áp dụng + nhãn cột sắp xếp do product-90d-report.js giữ.
-      if (tableKey === 'products.product90d') {
-        const context = window.TKSProduct90d && typeof window.TKSProduct90d.exportState === 'function' ? window.TKSProduct90d.exportState() : null;
-        payload.tableSearch = context ? context.tableSearch : { mode: 'normal', query: '' };
-        if (context && context.tableSorts) payload.tableSorts = context.tableSorts;
-        if (context && context.tableSort) payload.tableSort = context.tableSort;
+      // Hàng hóa 90 ngày (bảng Khách hàng theo sản phẩm): lọc/sắp xếp ở máy chủ — gửi đúng bộ lọc đang áp dụng do
+      // product-customer-growth.js giữ (context.productQuery/customerQuery/growthGroup/sortKey/sortDir).
+      if (tableKey === 'products.productCustomerGrowth') {
+        const growth = window.TKSProductCustomerGrowth && typeof window.TKSProductCustomerGrowth.exportState === 'function'
+          ? window.TKSProductCustomerGrowth.exportState() : null;
+        if (growth) Object.assign(payload.context, growth.context);
         return payload;
       }
       const tableSearchKey = EXPORT_TABLE_SEARCH_KEYS[tableKey];
@@ -7627,8 +7622,9 @@
         applyProductsViewPermissions();
         loadProductGrowth();
         loadExpectedArrivals();
-        // Muc 4 "Hang hoa 90 ngay": API rieng /api/product-report/90d, tu kiem quyen (reports.products + .sales) truoc khi goi.
-        if (window.TKSProduct90d) window.TKSProduct90d.load(false);
+        // Muc 4 "Hang hoa 90 ngay" (bang Khach hang theo san pham): API rieng /api/product-report/customer-growth, tu kiem quyen
+        // (reports.products + .sales) truoc khi goi.
+        if (window.TKSProductCustomerGrowth) window.TKSProductCustomerGrowth.load(false);
       }
       if (view === 'overview' && allowedAtBoot('reports.overview')) {
         loadInventoryHistory(true);

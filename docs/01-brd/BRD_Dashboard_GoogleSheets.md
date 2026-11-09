@@ -640,6 +640,9 @@ Lên list bằng mã và lấy lần lên list gần nhất; xếp/chuyển/tác
 
 06/11/2026 — **Vòng đời đơn hàng:** thêm tìm kiếm theo mã/tên hàng để xem những đơn đang chứa một mặt hàng.
 
+## 06/11/2026 — Hàng hóa 90 ngày: Khách hàng theo sản phẩm + Tăng trưởng
+
+Mục 4 tab Hàng hóa chuyển sang bảng theo từng cặp sản phẩm × khách hàng để thấy ngay khách nào đang giảm mua. Mỗi dòng có doanh số 90 ngày, ba kỳ 30 ngày liên tiếp (T.này, T.trước, T.trước nữa), tỷ trọng trong sản phẩm và **Tăng trưởng** = T.này so với trung bình hai kỳ trước. Mức giảm được tô ba màu ngay trên con số % để sale ưu tiên gọi hỏi thăm: **đỏ** khi khách giảm hết 100% (hai kỳ trước có mua nhưng 30 ngày gần nhất không còn), **cam** khi giảm hơn 50%, **vàng** khi giảm dưới 50%; khách mới (hai kỳ trước chưa mua) được tách riêng. Nhãn "Cần check" cũ đã bỏ vì gom hơn một nửa số dòng vào một mức, khó ưu tiên. Người dùng lọc theo tên sản phẩm, tên khách và nhóm tăng trưởng (Tất cả / Giảm hết 100% / Giảm hơn 50% / Giảm dưới 50% / Đang tăng / Khách mới), sắp xếp theo mọi cột và xuất Excel/HTML đúng bộ lọc đang chọn (tối đa 50.000 dòng). Chỉ người có quyền xem Hàng hóa và doanh số hàng hóa (`reports.products` + `reports.products.sales`) mới xem được; xuất file cần thêm quyền xuất báo cáo. Dữ liệu cập nhật sau mỗi lượt đồng bộ KiotViet, không phát sinh chi phí vận hành mới.
 
 07/11/2026 — Kiểm kê: chỉ gom đơn TEAM có `raw.statusValue = "Phiếu tạm"` ở cả hai cơ sở; số đếm, chi tiết, xuất thống kê, bộ đếm và cảnh báo ngoài khoảng ngày dùng cùng điều kiện. Đơn hủy/hoàn thành/trạng thái khác hoặc thiếu trạng thái bị loại, kể cả dòng đã sửa trên web. Đợt đã chốt giữ nguyên ảnh chụp lịch sử; không migration, chưa deploy.
 

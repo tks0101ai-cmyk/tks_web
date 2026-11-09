@@ -460,7 +460,7 @@ function payloadFor(tableKey, extra = {}) {
 
 const ALL_STATIC_TABLES = exportService.__test__.TABLE_SPEC_KEYS;
 // Hàng hóa 90 ngày đòi cờ quyền tường minh (reports.products + reports.products.sales) — xem test riêng ở exportProduct90d.test.js.
-const accessFor = tableKey => (['products.product90d', 'products.productHistory'].includes(tableKey) ? { canViewProducts: true, canViewSales: true } : undefined);
+const accessFor = tableKey => (['products.product90d', 'products.productCustomerGrowth', 'products.productHistory'].includes(tableKey) ? { canViewProducts: true, canViewSales: true } : undefined);
 
 function fixedEnv(stubs, branch = 'Hà Nội') {
   return { dashboard: stubs.dashboard, branch };
@@ -660,8 +660,8 @@ test('cot o buoc lay truong == cot cua dataset o buoc xuat cho moi bang co dinh'
   });
   try {
     await withRewardService(async () => historicalRewardBoard(), () => withStubs({}, async () => {
-      // Hàng hóa 90 ngày cố ý đổi nhãn sang nhãn có ngày thật của kỳ trong file (khóa/kiểu giữ nguyên) — test riêng.
-      const payloads = ALL_STATIC_TABLES.filter(tableKey => !['products.product90d', 'products.productHistory'].includes(tableKey)).map(tableKey => payloadFor(tableKey));
+      // Hàng hóa 90 ngày và Khách hàng theo sản phẩm cũng cố ý đổi nhãn sang nhãn có ngày thật của kỳ trong file (khóa/kiểu giữ nguyên) — test riêng.
+      const payloads = ALL_STATIC_TABLES.filter(tableKey => !['products.product90d', 'products.productCustomerGrowth', 'products.productHistory'].includes(tableKey)).map(tableKey => payloadFor(tableKey));
       for (const payload of payloads) {
         const metadata = await exportService.getExportFields(payload, 'Hà Nội');
         const dataset = await exportService.__test__.buildExportDataset(payload, 'Hà Nội');
@@ -704,7 +704,8 @@ function assertStandardLabels(worksheets, where) {
       assert.equal(label, label.normalize('NFC').trim(), spot);
       assert.doesNotMatch(label, /\s{2,}/, spot);
       // Kỳ "90 ngày" của Hàng hóa 90 ngày bắt đầu bằng số đúng như tiêu đề nhóm trên màn hình.
-      assert.match(label, where === 'products.product90d' ? /^[\p{Lu}\p{N}]/u : /^\p{Lu}/u, `${spot}: phai viet hoa chu dau`);
+      // "% của SP" của Khách hàng theo sản phẩm bắt đầu bằng % đúng như nhãn cột trên màn hình.
+      assert.match(label, where === 'products.product90d' ? /^[\p{Lu}\p{N}]/u : where === 'products.productCustomerGrowth' ? /^[\p{Lu}%]/u : /^\p{Lu}/u, `${spot}: phai viet hoa chu dau`);
       // The requested Phạt/điểm column uses slash as division, valid in an Excel cell header.
       const debtRatioLabel = where === 'debt.penalty' && field.key === 'ratio' && label === 'Phạt/điểm';
       assert.doesNotMatch(label, debtRatioLabel ? /[\[\]:*?\\]/ : /[\[\]:*?/\\]/, `${spot}: ky tu khong hop le cho header`);
@@ -722,7 +723,9 @@ function assertStandardLabels(worksheets, where) {
           const requestedTransferLabel = where === 'overview.productReport' && field.key === 'inTransit' && label === 'Điều chuyển SG' && token.toUpperCase() === 'SG';
           // Hàng hóa 90 ngày giữ đúng nhãn cột của màn hình (SL, DS, Giá TB) theo yêu cầu; mô tả vẫn phải viết đầy đủ.
           const product90dScreenLabel = where === 'products.product90d' && part === 'label' && ['SL', 'DS', 'TB'].includes(token.toUpperCase());
-          assert.ok(!FORBIDDEN_ABBREVIATIONS.has(token.toUpperCase()) || inventoryBranchLabel || requestedTransferLabel || product90dScreenLabel, `${spot} ${part}: viet tat "${token}"`);
+          // Khách hàng theo sản phẩm giữ đúng nhãn cột của màn hình (DS, % của SP); mô tả vẫn phải viết đầy đủ.
+          const productCustomerGrowthScreenLabel = where === 'products.productCustomerGrowth' && part === 'label' && ['DS', 'SP'].includes(token.toUpperCase());
+          assert.ok(!FORBIDDEN_ABBREVIATIONS.has(token.toUpperCase()) || inventoryBranchLabel || requestedTransferLabel || product90dScreenLabel || productCustomerGrowthScreenLabel, `${spot} ${part}: viet tat "${token}"`);
         });
       });
       assert.ok(!labels.has(label), `${spot}: nhan trung trong worksheet`);

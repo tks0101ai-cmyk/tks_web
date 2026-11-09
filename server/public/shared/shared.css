@@ -26,6 +26,8 @@
   --primary-shadow:0 4px 14px 0 rgba(37,99,235,0.35);
 
   --amber:#F59E0B;
+  --orange:#FB923C;
+  --yellow:#FACC15;
   --green:#10B981;
   --red:#EF4444;
   --blue:#3B82F6;
@@ -167,6 +169,8 @@
   --primary-shadow:0 4px 14px 0 rgba(37,99,235,0.22);
 
   --amber:#D97706;
+  --orange:#C2410C;
+  --yellow:#A16207;
   --green:#059669;
   --red:#DC2626;
   --blue:#2563EB;
