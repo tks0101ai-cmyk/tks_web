@@ -658,6 +658,14 @@ test('cot o buoc lay truong == cot cua dataset o buoc xuat cho moi bang co dinh'
     }],
     computedAt: '2026-09-23T00:05:00.000Z'
   });
+  const poolModule = require('../db/pool');
+  const originalGetPool = poolModule.getPool;
+  // Chi tiết phạt đọc sổ phạt trực tiếp từ Postgres: giả lập 1 dòng đã chốt sổ.
+  poolModule.getPool = () => ({
+    query: async sql => (/FROM debt_penalty_daily/.test(sql)
+      ? { rows: [{ cycle_date: '2026-09-02', branch: 'hanoi', customer_code: 'KH1', customer_name: 'Khách A', sale: 'Chi', overdue_debt: '1', overdue_streak: 1, amount: '25000', status: '' }] }
+      : { rows: [] })
+  });
   try {
     await withRewardService(async () => historicalRewardBoard(), () => withStubs({}, async () => {
       // Hàng hóa 90 ngày và Khách hàng theo sản phẩm cũng cố ý đổi nhãn sang nhãn có ngày thật của kỳ trong file (khóa/kiểu giữ nguyên) — test riêng.
@@ -677,6 +685,7 @@ test('cot o buoc lay truong == cot cua dataset o buoc xuat cho moi bang co dinh'
       }
     }));
   } finally {
+    poolModule.getPool = originalGetPool;
     dashboardData.getCustomerProductRevenueReport = originals.report;
     productReportRepository.getProductReport = originals.productReport;
     debtScheduleService.buildDebtAging = originals.debtAging;
@@ -2032,6 +2041,75 @@ test('debt.penalty: workbook records global fund and coverage despite sale/branc
       assert.equal(notes.get('Ngày thiếu bản chốt'), '2026-09-03');
     });
   });
+});
+
+test('debt.penaltyDetail: xuat tung khach bi phat theo ngay (sheet Chi tiet phat), loc theo co so + nhom sale, khong gop khach 2 co so', async () => {
+  const poolModule = require('../db/pool');
+  const originalGetPool = poolModule.getPool;
+  const queries = [];
+  poolModule.getPool = () => ({
+    query: async (sql, params) => {
+      queries.push([sql, params]);
+      if (/FROM debt_penalty_daily/.test(sql)) {
+        return { rows: [
+          { cycle_date: '2026-09-18', branch: 'hanoi', customer_code: 'KH000037', customer_name: 'KMN Thuyên', sale: 'Chi', overdue_debt: '70247550', overdue_streak: 1, amount: '25000', status: 'Bỏ qua' },
+          { cycle_date: '2026-09-17', branch: 'hanoi', customer_code: 'KH000010', customer_name: 'Khách B', sale: 'Chi', overdue_debt: '5000000', overdue_streak: 2, amount: '50000', status: 'Chưa xử lý' },
+          { cycle_date: '2026-09-18', branch: 'hanoi', customer_code: 'KH000099', customer_name: 'Khách A', sale: 'An', overdue_debt: '1000000', overdue_streak: 1, amount: '25000', status: 'Bỏ qua' }
+        ] };
+      }
+      return { rows: [{ cycle_date: '2026-09-17' }, { cycle_date: '2026-09-18' }] };
+    }
+  });
+  try {
+    await withStubs({ onDashboard: () => { throw new Error('legacy dashboard loading'); } }, async () => {
+      await withRewardService(async options => {
+        assert.deepEqual(options, { month: '2026-09', branches: ['hanoi'] });
+        const board = historicalRewardBoard();
+        return { ...board, openCycleDate: null, rows: board.rows.map(row => ({ ...row, saleTeam: row.sale === 'An' ? 'Team 2' : 'Team 1' })) };
+      }, async () => {
+        const fields = await exportService.getExportFields({ tableKey: 'debt.penaltyDetail' }, 'Hà Nội');
+        assert.deepEqual(fields.worksheets[0].fields.filter(field => field.selected !== false).map(field => field.label),
+          ['Ngày', 'Kiot', 'Mã khách hàng', 'Tên khách hàng', 'Sale', 'Số tiền chậm', 'Phiên', 'Số tiền phạt', 'Trạng thái']);
+        const columns = { debt_penalty_detail: ['date', 'branch', 'customerCode', 'customerName', 'sale', 'overdueDebt', 'streak', 'amount', 'status'] };
+        const dataset = await exportService.getExportDataset({ tableKey: 'debt.penaltyDetail', context: { debtRewardMonth: '2026-09' }, columns }, 'Hà Nội');
+        assert.equal(dataset.worksheets[0].name, 'Chi tiết phạt');
+        // Sắp theo Sale rồi ngày; ngày dạng dd/mm/yyyy, cơ sở là nhãn tiếng Việt.
+        assert.deepEqual(dataset.worksheets[0].rows.map(row => [row.date, row.branch, row.customerCode, row.sale, row.overdueDebt, row.streak, row.amount, row.status]), [
+          ['18/09/2026', 'Hà Nội', 'KH000099', 'An', 1000000, 1, 25000, 'Bỏ qua'],
+          ['17/09/2026', 'Hà Nội', 'KH000010', 'Chi', 5000000, 2, 50000, 'Chưa xử lý'],
+          ['18/09/2026', 'Hà Nội', 'KH000037', 'Chi', 70247550, 1, 25000, 'Bỏ qua']
+        ]);
+        assert.match(dataset.meta.title, /2026-09/);
+        const filtered = await exportService.getExportDataset({ tableKey: 'debt.penaltyDetail', context: { debtRewardMonth: '2026-09', debtPenaltyTeam: 'Team 2' }, columns }, 'Hà Nội');
+        assert.deepEqual(filtered.worksheets[0].rows.map(row => row.sale), ['An']);
+        const file = await exportService.createExportWorkbook({ tableKey: 'debt.penaltyDetail', context: { debtRewardMonth: '2026-09' }, columns }, 'Hà Nội');
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(file.buffer);
+        assert.deepEqual(workbook.getWorksheet('Chi tiết phạt').getRow(1).values.slice(1), ['Ngày', 'Kiot', 'Mã khách hàng', 'Tên khách hàng', 'Sale', 'Số tiền chậm', 'Phiên', 'Số tiền phạt', 'Trạng thái']);
+        assert.equal(workbook.getWorksheet('Thông tin thưởng phạt'), undefined);
+      });
+    });
+    assert.deepEqual(queries[0][1].slice(2), [['hanoi']]);
+  } finally {
+    poolModule.getPool = originalGetPool;
+  }
+});
+
+test('debt.penaltyDetail: thang khong co khoan phat nao -> EXPORT_NO_DATA', async () => {
+  const poolModule = require('../db/pool');
+  const originalGetPool = poolModule.getPool;
+  poolModule.getPool = () => ({ query: async () => ({ rows: [] }) });
+  try {
+    await withStubs({}, async () => {
+      await withRewardService(async () => ({ ...historicalRewardBoard(), openCycleDate: null }), async () => {
+        await assert.rejects(
+          exportService.createExportWorkbook({ tableKey: 'debt.penaltyDetail', context: { debtRewardMonth: '2026-09' }, columns: { debt_penalty_detail: ['sale'] } }, 'Hà Nội'),
+          error => error.statusCode === 404 && error.code === 'EXPORT_NO_DATA');
+      });
+    });
+  } finally {
+    poolModule.getPool = originalGetPool;
+  }
 });
 
 test('debt.penalty: service errors propagate and release the export slot', async () => {

@@ -62,6 +62,7 @@ const TABLE_TITLES = Object.freeze({
   'products.productHistory': 'Lịch sử giao dịch hàng hóa',
   'debt.management': 'Quản lý công nợ',
   'debt.penalty': 'Thưởng/phạt sale theo công nợ',
+  'debt.penaltyDetail': 'Chi tiết phạt công nợ',
   'debt.aging': 'Tuổi nợ theo hóa đơn',
   'stockout.recentScan': 'Hàng đứt gần đây',
   'stockout.check90d': 'Kiểm tra đứt hàng 90 ngày',
@@ -261,6 +262,20 @@ const DEBT_PENALTY_COLUMNS = [
   aggregateColumn('status', 'Trạng thái', 'text', 'Thưởng tạm tính khi tháng đang mở; Đã chốt khi đã khóa kết quả tháng.'),
   aggregateColumn('rankReward', 'Thưởng theo hạng', 'number', 'Phần thưởng theo thứ hạng toàn hệ thống (VNĐ); tạm tính trong tháng, chính thức khi chốt tháng.', { selected: false }),
   aggregateColumn('pointsReward', 'Thưởng theo điểm', 'number', 'Phần thưởng phân bổ theo điểm (VNĐ); tạm tính trong tháng, chính thức khi chốt tháng.', { selected: false })
+];
+
+// Chi tiet phat theo khach/ngay (sheet "Chi tiết phạt" cua file thuong/phat cong no): 1 dong = 1 khach bi phat trong 1 chu ky.
+const DEBT_PENALTY_DETAIL_COLUMNS = [
+  aggregateColumn('date', 'Ngày', 'text', 'Ngày chu kỳ chốt công nợ 15:00 có phát sinh tiền phạt.'),
+  aggregateColumn('branch', 'Kiot', 'text', 'Cơ sở của khoản công nợ (Hà Nội hoặc Sài Gòn).'),
+  aggregateColumn('customerCode', 'Mã khách hàng', 'text', 'Mã khách hàng trên KiotViet.'),
+  aggregateColumn('customerName', 'Tên khách hàng', 'text', 'Tên khách hàng tại thời điểm chốt sổ.'),
+  aggregateColumn('sale', 'Sale', 'text', 'Sale phụ trách tại thời điểm chốt sổ (đóng băng theo ngày).'),
+  aggregateColumn('saleTeam', 'Nhóm sale', 'text', 'Nhóm hiện tại của Sale, dùng chung với tab Khách hàng.', { selected: false }),
+  aggregateColumn('overdueDebt', 'Số tiền chậm', 'number', 'Nợ quá hạn của khách tại bản chốt (VNĐ).'),
+  aggregateColumn('streak', 'Phiên', 'number', 'Số phiên chốt 15:00 liên tiếp khách có nợ quá hạn từ 400.000đ.'),
+  aggregateColumn('amount', 'Số tiền phạt', 'number', 'Tiền phạt của khách trong ngày (VNĐ): số Quản lý điền tay hoặc mức gợi ý theo quy chế.'),
+  aggregateColumn('status', 'Trạng thái', 'text', 'Trạng thái xử lý công nợ của khách tại bản chốt.')
 ];
 
 // Bang Tuoi no theo hoa don (muc 3 tab Cong no) — so song, khop cot man hinh.
@@ -886,6 +901,11 @@ const TABLE_SPECS = {
     rows: dashboard => debtPenaltyRows(dashboard.debtReward, context),
     summaryKeys: ['total', 'payablePenalty', 'reward']
   }),
+  'debt.penaltyDetail': () => aggregateTable({
+    key: 'debt_penalty_detail', name: 'Chi tiết phạt', columns: DEBT_PENALTY_DETAIL_COLUMNS,
+    rows: dashboard => dashboard.debtPenaltyDetail || [],
+    summaryKeys: ['amount', 'overdueDebt']
+  }),
   'debt.aging': context => aggregateTable({
     key: 'debt_aging', name: 'Tuổi nợ theo hóa đơn', columns: DEBT_AGING_COLUMNS,
     rows: dashboard => debtAgingRows(dashboard.debtAging, context)
@@ -947,7 +967,7 @@ function hasTableSearch(tableSearch) {
 }
 
 // Bảng mà ô tìm kiếm trên màn hình chỉ so khớp một số trường (bảng Thưởng/phạt chỉ tìm theo Sale).
-const WORKSHEET_SEARCH_KEYS = { debt_penalty: ['sale'] };
+const WORKSHEET_SEARCH_KEYS = { debt_penalty: ['sale'], debt_penalty_detail: ['sale'] };
 
 function filterWorksheetRows(worksheet, tableSearch) {
   if (!hasTableSearch(tableSearch)) return worksheet;
@@ -1361,7 +1381,7 @@ function describeExport(payload, branch, options = {}) {
   const filters = normalizeFilters(request.filters);
   const context = plainObject(request.context);
 
-  if (tableKey === 'debt.penalty' && context.debtRewardMonth !== undefined && context.debtRewardMonth !== '') {
+  if ((tableKey === 'debt.penalty' || tableKey === 'debt.penaltyDetail') && context.debtRewardMonth !== undefined && context.debtRewardMonth !== '') {
     if (typeof context.debtRewardMonth !== 'string' || !/^\d{4}-(?:0[1-9]|1[0-2])$/.test(context.debtRewardMonth)) {
       throw exportError('Tháng thưởng/phạt không hợp lệ (YYYY-MM).');
     }
@@ -1442,6 +1462,65 @@ function describeExport(payload, branch, options = {}) {
  * + readRowsByCodes() cho cot tho. `options.signal` huy giua chung, `options.selection`
  * (worksheetKey -> key cot) chi giu cot da chon.
  */
+const DEBT_BRANCH_LABELS = Object.freeze({ hanoi: 'Hà Nội', saigon: 'Sài Gòn' });
+
+/**
+ * Chi tiet phat theo khach/ngay cua mot thang (giong sheet "Chi tiết phạt"): so da chot (debt_penalty_daily) + chu ky
+ * dang mo (chua chot so) tinh bang chinh buildCustomerRow cua man hinh. KHONG gop khach trung ten giua 2 co so
+ * (bang thuong/phat chi tinh muc cao nhat); loc theo co so dang xem va nhom sale dang chon.
+ */
+async function buildDebtPenaltyDetailDataset(tableKey, description, request, branch, options) {
+  const signal = options.signal;
+  const branches = resolveBranchScope(branch || BRANCH_BOTH).map(branchLabelToCode).filter(Boolean);
+  const month = description.context.debtRewardMonth || undefined;
+  const board = await require('../debtSchedule/debtRewardService').getDebtRewardService().readBoard({ month, branches });
+  throwIfAborted(signal);
+  if (!board.month) throw exportError('Chưa có bản chốt công nợ để xuất chi tiết phạt.', 404, 'EXPORT_NO_DATA');
+  const start = `${board.month}-01`;
+  const monthNumber = Number(board.month.slice(5, 7));
+  const next = monthNumber === 12
+    ? `${Number(board.month.slice(0, 4)) + 1}-01-01`
+    : `${board.month.slice(0, 5)}${String(monthNumber + 1).padStart(2, '0')}-01`;
+  const pool = require('../db/pool').getPool();
+  const [{ rows: sealedRows }, { rows: sealedCycles }] = await Promise.all([
+    pool.query(`SELECT cycle_date::text AS cycle_date, branch, customer_code, customer_name, sale, overdue_debt, overdue_streak, amount, status
+      FROM debt_penalty_daily WHERE cycle_date >= $1::date AND cycle_date < $2::date AND branch = ANY($3::text[])`, [start, next, branches]),
+    pool.query('SELECT cycle_date::text AS cycle_date FROM debt_penalty_cycles WHERE cycle_date >= $1::date AND cycle_date < $2::date', [start, next])
+  ]);
+  throwIfAborted(signal);
+  let items = sealedRows.map(row => ({
+    cycleDate: row.cycle_date, branch: row.branch, customerCode: row.customer_code, customerName: row.customer_name,
+    sale: row.sale, overdueDebt: Number(row.overdue_debt) || 0, streak: Number(row.overdue_streak) || 0,
+    amount: Number(row.amount) || 0, status: row.status
+  }));
+  // Chu ky dang mo (chua chot so) chua co trong so: tinh truc tiep nhu bang thuong/phat de file khop man hinh.
+  if (board.status !== 'finalized' && board.openCycleDate && board.openCycleDate.slice(0, 7) === board.month
+    && !sealedCycles.some(row => row.cycle_date === board.openCycleDate)) {
+    const live = await require('../debtSchedule/debtPenaltyLedger').openCyclePenalties(board.openCycleDate);
+    throwIfAborted(signal);
+    items = items.concat(live.filter(customer => branches.includes(customer.branchCode)).map(customer => ({
+      cycleDate: board.openCycleDate, branch: customer.branchCode, customerCode: customer.customerCode, customerName: customer.customerName,
+      sale: customer.sale, overdueDebt: Number(customer.overdueDebt) || 0, streak: Number(customer.overdueStreak) || 0,
+      amount: Number(customer.penaltyAmount) || 0, status: customer.workflowStatus
+    })));
+  }
+  // Nhom sale hien tai cua tung Sale lay tu bang thuong/phat (cung nguon voi bo loc nhom sale tren man hinh).
+  const teamBySale = new Map(board.rows.map(row => [row.sale, row.saleTeam || 'Chưa có team']));
+  const team = normalizeText(description.context.debtPenaltyTeam);
+  const rows = items
+    .map(item => ({
+      ...item, date: formatDayKey(item.cycleDate), dateKey: item.cycleDate,
+      branch: DEBT_BRANCH_LABELS[item.branch] || item.branch, saleTeam: teamBySale.get(item.sale) || 'Chưa có team'
+    }))
+    .filter(item => !team || item.saleTeam === team)
+    .sort((a, b) => String(a.sale).localeCompare(String(b.sale), 'vi', { sensitivity: 'base' })
+      || a.dateKey.localeCompare(b.dateKey) || String(a.branch).localeCompare(String(b.branch), 'vi')
+      || String(a.customerCode).localeCompare(String(b.customerCode)));
+  if (!rows.length) throw exportError('Tháng này chưa có khoản phạt công nợ nào để xuất.', 404, 'EXPORT_NO_DATA');
+  const dataset = await buildFixedDataset(tableKey, { dashboard: { debtPenaltyDetail: rows }, branch, signal }, description.context, request.tableSearch, options.selection);
+  return { ...dataset, title: `${dataset.title} - tháng ${board.month}` };
+}
+
 async function buildExportDataset(payload, branch, options = {}) {
   const request = plainObject(payload);
   const signal = options.signal;
@@ -1476,6 +1555,7 @@ async function buildExportDataset(payload, branch, options = {}) {
     }
     return { ...dataset, debtReward: debtRewardMetadata(board) };
   }
+  if (tableKey === 'debt.penaltyDetail') return buildDebtPenaltyDetailDataset(tableKey, description, request, branch, options);
   if (tableKey === 'debt.aging') {
     const branches = resolveBranchScope(branch || BRANCH_BOTH).map(branchLabelToCode).filter(Boolean);
     const debtAging = await debtScheduleService.buildDebtAging(branches);

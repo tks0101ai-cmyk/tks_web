@@ -50,6 +50,11 @@ async function penalizedCustomers(repository, cycleDate) {
     .filter(customer => customer.penaltyAmount > 0);
 }
 
+/** Khach dang bi phat cua chu ky dang mo (chua chot so) — dung de xuat chi tiet phat. */
+async function openCyclePenalties(cycleDate, { repository = createDebtScheduleRepository({ pool: getPool() }) } = {}) {
+  return penalizedCustomers(repository, cycleDate);
+}
+
 /**
  * Chot so phat cua mot chu ky: xoa + ghi lai cac dong amount > 0 va danh dau, trong 1 transaction
  * (chay lai nhieu lan van ra cung ket qua).
@@ -141,4 +146,4 @@ if (require.main === module) {
   }).finally(() => getPool().end && getPool().end());
 }
 
-module.exports = { finalizePenaltyCycle, finalizePendingPenaltyCycles, finalizePenaltyBeforeReset, __sql__: { PENDING_SQL, INSERT_SQL } };
+module.exports = { openCyclePenalties, finalizePenaltyCycle, finalizePendingPenaltyCycles, finalizePenaltyBeforeReset, __sql__: { PENDING_SQL, INSERT_SQL } };

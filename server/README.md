@@ -667,7 +667,7 @@ Migration `0047_debt_schedule_report.sql`. Module `server/debtSchedule/`:
 |---|---|
 | `debtScheduleRules.js` | Quy tắc thuần: lịch TT (1–30, mặc định 1), cửa sổ ngày, nợ trong lịch, nợ quá hạn, cảnh báo, payload `debtManagement`. |
 | `debtCycleSnapshot.js` | Job chốt 15:00 VN (scheduler, kiểm tra mỗi phút, đồng bộ khách ngay trước khi chốt). Chạy tay: `node debtSchedule/debtCycleSnapshot.js` (chốt cho hôm nay; nên chạy sau 15:00). |
-| `debtPenaltyLedger.js` | Chốt sổ tiền phạt (migration 0051): khi có bản chốt 15:00 kế tiếp, ghi tiền phạt từng khách của chu kỳ cũ vào `debt_penalty_daily` (dùng đúng `buildCustomerRow`: "Đã xử lý" = 0 kể cả có số tay > số Quản lý điền > mức gợi ý). Scheduler tự gọi mỗi phút (bù chu kỳ sót); chạy tay để backfill: `node debtSchedule/debtPenaltyLedger.js`. |
+| `debtPenaltyLedger.js` | Chốt sổ tiền phạt (migration 0051): khi có bản chốt 15:00 kế tiếp, ghi tiền phạt từng khách của chu kỳ cũ vào `debt_penalty_daily` (dùng đúng `buildCustomerRow`: "Đã xử lý" = 0 kể cả có số tay > số Quản lý điền > mức gợi ý). Scheduler tự gọi mỗi phút (bù chu kỳ sót); chạy tay để backfill: `node debtSchedule/debtPenaltyLedger.js`. `openCyclePenalties(cycleDate)` trả khách đang bị phạt của chu kỳ đang mở, dùng cho xuất file `debt.penaltyDetail` (sheet "Chi tiết phạt": 1 dòng/khách/ngày, đọc `debt_penalty_daily` + chu kỳ mở). |
 | `debtScheduleRepository.js` | Đọc báo cáo (cache theo phiên bản), ghi phản hồi/trạng thái/lịch TT + lịch sử. |
 | `debtScheduleService.js` | Dựng tab Công nợ của `/api/dashboard?view=debt` theo quyền người xem. |
 | `debtAgingRules.js` | Quy tắc thuần bảng Tuổi nợ (17/10/2026): ngày hết nợ (trừ dần hóa đơn Hoàn thành mới → cũ, tối đa 30 ngày), ngày nợ tương đương, còn hạn, nợ quá hạn mốc hôm nay. |

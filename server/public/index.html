@@ -4997,7 +4997,7 @@
               <div class="panel debt-penalty-board">
                 <div class="panel-head">
                   <h2>Thưởng/phạt sale theo công nợ <span class="tag" id="tagDebtPenalty">—</span></h2>
-                  <div class="panel-head-actions"><button class="export-button" type="button" onclick="openExportDialog('debt.penalty')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Xuất file</button></div>
+                  <div class="panel-head-actions"><button class="export-button" type="button" onclick="openExportDialog('debt.penalty')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Xuất file</button><button class="export-button" type="button" onclick="openExportDialog('debt.penaltyDetail')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Xuất chi tiết phạt</button></div>
                 </div>
                 <div class="debt-reward-toolbar">
                   <label for="debtRewardMonth">Tháng thưởng/phạt</label>
@@ -7064,7 +7064,8 @@
       'overview.productReport': 'productReport',
       // Hai bảng công nợ còn lại (debt.management / debt.aging) gửi ô tìm kiếm qua context.debtSearch / debtAgingSearch
       // để server lọc trên dòng gốc giống màn hình, không lọc lần hai theo cột xuất.
-      'debt.penalty': 'debtPenalty'
+      'debt.penalty': 'debtPenalty',
+      'debt.penaltyDetail': 'debtPenalty'
     };
 
     // Cột đang sắp xếp của bảng (tableSearchKey -> tbody) dưới dạng { label, direction } để server sắp file xuất giống màn hình.
@@ -7129,7 +7130,7 @@
           mode: tableSearch.mode === 'codes' ? 'codes' : 'normal',
           query: tableSearch.query || ''
         };
-        if (tableKey !== 'debt.management' && tableKey !== 'debt.aging') {
+        if (tableKey !== 'debt.management' && tableKey !== 'debt.aging' && tableKey !== 'debt.penaltyDetail') {
           const tableSort = currentExportSort(tableSearchKey);
           if (tableSort) payload.tableSort = tableSort;
         }
