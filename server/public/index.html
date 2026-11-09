@@ -5499,7 +5499,7 @@
     })();
   </script>
   <script src="/shared/filter-links.js?v=20261029-1"></script>
-  <script src="/shared/table-controls.js?v=20261108-1"></script>
+  <script src="/shared/table-controls.js?v=20261108-2"></script>
   <script>
     // Bảng công nợ: mặc định ẩn cột Cảnh báo (người dùng vẫn bật lại được ở bộ chọn cột).
     (function () {
@@ -8510,7 +8510,7 @@
       [[ids.firstBtn, 1], [ids.prevBtn, page - 1], [ids.nextBtn, page + 1], [ids.lastBtn, pages]].forEach(function (entry, index) {
         const button = document.getElementById(entry[0]);
         button.disabled = index < 2 ? page <= 1 : page >= pages;
-        button.onclick = function () { state.tablePages[tableKey] = entry[1]; reload(); };
+        button.onclick = function () { state.tablePages[tableKey] = entry[1]; serverPageNavAt[tableKey] = Date.now(); reload(); };
       });
       updateTableSortHeader(ids.tbody, state.tableSorts[ids.tbody] || []);
       if (window.TKSTables) window.TKSTables.refresh(tbody.closest('table'));
@@ -8534,19 +8534,67 @@
       if (sorts.length) params.set('sorts',JSON.stringify(sorts));
       return params;
     }
+    // Bộ đệm trang cho bảng phân trang ở máy chủ: bấm Trước/Sau (hoặc trang đầu/cuối) lấy từ đệm nếu trang đã được tải trước,
+    // và sau mỗi lần tải xong thì tải ngầm trang liền trước/liền sau. Chỉ dùng khi chuyển trang (nút phân trang đánh dấu serverPageNavAt);
+    // mọi lần tải khác (đổi bộ lọc/tìm/sắp xếp, làm mới) xóa đệm của bảng đó nên không hiện số cũ. Hết hạn sau SERVER_PAGE_TTL_MS.
+    const SERVER_PAGE_TTL_MS = 45000, SERVER_PAGE_PREFETCH_DELAY_MS = 400, SERVER_PAGE_NAV_WINDOW_MS = 1500;
+    const serverPageCache = {}, serverPageNavAt = {}, serverPageGeneration = {}, serverPagePrefetchTimers = {};
+    function serverPageNavigating(key) { return Date.now() - (serverPageNavAt[key] || 0) < SERVER_PAGE_NAV_WINDOW_MS; }
+    function serverPageCacheClear(key) {
+      if (serverPageCache[key]) serverPageCache[key].clear();
+      serverPageGeneration[key] = (serverPageGeneration[key] || 0) + 1;
+      clearTimeout(serverPagePrefetchTimers[key]);
+    }
+    function serverPageCacheGet(key, url) {
+      const entries = serverPageCache[key], entry = entries && entries.get(url);
+      if (entry && Date.now() - entry.time < SERVER_PAGE_TTL_MS) return entry.data;
+      if (entries) entries.delete(url);
+      return null;
+    }
+    function serverPageCachePut(key, url, data) {
+      if (!data || !Number.isFinite(data.totalRows) || !(data.pageSize > 0)) return;
+      (serverPageCache[key] || (serverPageCache[key] = new Map())).set(url, {data:data,time:Date.now()});
+    }
+    function prefetchServerPages(key, url, data) {
+      if (!data || !Number.isFinite(data.totalRows) || !(data.pageSize > 0)) return;
+      const pages = Math.max(1, Math.ceil(data.totalRows / data.pageSize)), page = Number(data.page) || 1;
+      const generation = serverPageGeneration[key] || 0;
+      clearTimeout(serverPagePrefetchTimers[key]);
+      serverPagePrefetchTimers[key] = setTimeout(function () {
+        [page + 1, page - 1].forEach(function (target) {
+          if (target < 1 || target > pages) return;
+          const parsed = new URL(url, window.location.origin);
+          parsed.searchParams.set('page', String(target));
+          const next = parsed.pathname + parsed.search;
+          if (serverPageCacheGet(key, next)) return;
+          fetch(next, {credentials:'same-origin'})
+            .then(function (res) { return res.ok ? res.json() : null; })
+            .then(function (payload) { if (payload && generation === (serverPageGeneration[key] || 0)) serverPageCachePut(key, next, payload); })
+            .catch(function () { /* tải trước là việc phụ: lỗi thì lần bấm trang sẽ tải bình thường */ });
+        });
+      }, SERVER_PAGE_PREFETCH_DELAY_MS);
+    }
     function requestServerTable(key, url, apply, fail) {
       clearTimeout(serverTableTimers[key]);
       const prior = serverTableRequests[key];
       if (prior && prior.pending && !prior.obsolete && prior.url === url) return prior.promise;
       if (prior) { prior.obsolete=true; prior.controller.abort(); }
+      const navigating = serverPageNavigating(key);
+      if (!navigating) serverPageCacheClear(key);
+      const cached = navigating ? serverPageCacheGet(key, url) : null;
       const request = {url:url,controller:new AbortController(),pending:true,obsolete:false};
       serverTableRequests[key] = request;
       const bodyId = state.tableTableBodies[key];
       const body = bodyId && document.getElementById(bodyId);
       if (body) body.setAttribute('aria-busy','true');
-      request.promise = fetch(url,{credentials:'same-origin',signal:request.controller.signal})
-        .then(function (res) { if (!res.ok) throw new Error('HTTP '+res.status); return res.json(); })
-        .then(function (data) { if (!request.obsolete) apply(data); })
+      request.promise = (cached ? Promise.resolve(cached) : fetch(url,{credentials:'same-origin',signal:request.controller.signal})
+        .then(function (res) { if (!res.ok) throw new Error('HTTP '+res.status); return res.json(); }))
+        .then(function (data) {
+          if (request.obsolete) return;
+          if (!cached) serverPageCachePut(key, url, data);
+          apply(data);
+          prefetchServerPages(key, url, data);
+        })
         .catch(function (error) { if (!request.obsolete && error.name !== 'AbortError') fail(error); })
         .finally(function () { request.pending=false; if (!request.obsolete && body) body.setAttribute('aria-busy','false'); });
       return request.promise;
@@ -9069,16 +9117,22 @@
       expectedArrivals.loading = true;
       const body = document.getElementById('expectedArrivalsRows');
       body.setAttribute('aria-busy', 'true');
-      return expectedArrivals.promise = fetch('/api/expected-arrivals?' + signature, {signal: expectedArrivals.controller.signal})
+      // Chuyển trang: lấy từ bộ đệm nếu trang đã được tải trước (xem prefetchServerPages); mọi lần tải khác xóa đệm.
+      const pageUrl = '/api/expected-arrivals?' + signature;
+      const navigating = serverPageNavigating('expectedArrivals');
+      if (!navigating) serverPageCacheClear('expectedArrivals');
+      const cached = navigating ? serverPageCacheGet('expectedArrivals', pageUrl) : null;
+      return expectedArrivals.promise = (cached ? Promise.resolve(cached) : fetch(pageUrl, {signal: expectedArrivals.controller.signal})
         .then(function (res) {
           if (res.status === 401 && requestId === expectedArrivals.requestId) {
             window.location.href = '/login/?next=' + encodeURIComponent(window.location.pathname + window.location.search + window.location.hash);
           }
           if (!res.ok) throw new Error('HTTP ' + res.status);
           return res.json();
-        })
+        }))
         .then(function (data) {
           if (requestId !== expectedArrivals.requestId) return;
+          if (!cached) serverPageCachePut('expectedArrivals', pageUrl, data);
           expectedArrivals.rows = (data && data.rows) || [];
           expectedArrivals.pageData = Number.isFinite(data.totalRows) ? data : null;
           expectedArrivals.containers = (data && data.filters && data.filters.containers) || [];
@@ -9090,6 +9144,7 @@
           expectedArrivals.loaded = true;
           expectedArrivals.loadedAt = Date.now();
           renderExpectedArrivals();
+          prefetchServerPages('expectedArrivals', pageUrl, data);
         })
         .catch(function (err) {
           if (requestId !== expectedArrivals.requestId || err.name === 'AbortError') return;
@@ -12459,13 +12514,21 @@
       state.serverTableReloads.debtAging=loadDebtAging;
       const params = tablePageQuery('debtAging','debtAgingRows',DEBT_AGING_SORT_FIELDS);
       ['team','sale','schedule'].forEach(function (key) { if (state.debtAgingFilters[key]) params.set(key,state.debtAgingFilters[key]); });
-      return fetch('/api/debt-management/aging?' + params.toString(), { credentials: 'same-origin', signal: aging.controller ? aging.controller.signal : undefined })
+      // Chuyển trang: lấy từ bộ đệm nếu trang đã được tải trước (xem prefetchServerPages); mọi lần tải khác xóa đệm.
+      const agingUrl = '/api/debt-management/aging?' + params.toString();
+      const navigating = serverPageNavigating('debtAging');
+      if (!navigating) serverPageCacheClear('debtAging');
+      const cached = navigating ? serverPageCacheGet('debtAging', agingUrl) : null;
+      let loadedPayload = null;
+      return (cached ? Promise.resolve(cached) : fetch(agingUrl, { credentials: 'same-origin', signal: aging.controller ? aging.controller.signal : undefined })
         .then(function (res) {
           if (!res.ok) throw new Error('HTTP ' + res.status);
           return res.json();
-        })
+        }))
         .then(function (payload) {
           if (requestId !== aging.requestId) return;
+          if (!cached) serverPageCachePut('debtAging', agingUrl, payload);
+          loadedPayload = payload;
           aging.available = Boolean(payload.available);
           if (Number.isFinite(payload.totalRows)) state.serverTableData.debtAging = payload;
           else { delete state.serverTableData.debtAging; delete state.serverTableReloads.debtAging; }
@@ -12482,6 +12545,7 @@
           if (requestId !== aging.requestId) return;
           aging.loading = false;
           renderDebtAging();
+          if (loadedPayload) prefetchServerPages('debtAging', agingUrl, loadedPayload);
         });
     }
 

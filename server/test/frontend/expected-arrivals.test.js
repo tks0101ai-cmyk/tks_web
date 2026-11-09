@@ -858,3 +858,32 @@ test('server list detail loads all containers of the product independently of th
   assert.match(page.$('docModalSubtitle').textContent,/2 dòng hàng · 2 cont/);
   assert.match(page.$('docModalBody').textContent,/REMOTE CONT/);
 });
+
+test('server pages prefetch the next page and serve pager clicks from cache; other reloads bypass it', async t => {
+  const calls = [];
+  const page = createPage({ respond: async href => {
+    const q = paramsOf(href); calls.push(q);
+    const current = Number(q.get('page') || 1);
+    return { ok: true, status: 200, json: async () => ({ ...FULL_SAMPLE,
+      rows: [row({ productCode: 'P' + current, quantity: 3 })],
+      totalRows: 201, page: current, pageSize: 100,
+      filters: { sources: ['YIWU'], containers: ['REMOTE CONT'], statuses: ['2. Đã bốc'] }
+    }) };
+  } });
+  t.after(() => page.dom.window.close());
+  const pageCalls = () => calls.map(q => q.get('page'));
+  page.run("switchView('products')"); await settle();
+  // Sau khi tải xong trang 1, trang 2 được tải ngầm (có trễ ngắn).
+  await new Promise(r => setTimeout(r, 500)); await settle();
+  assert.deepEqual(pageCalls(), ['1', '2']);
+  // Bấm Sau: trang 2 lấy từ bộ đệm, không gọi API thêm cho trang 2, bảng đổi ngay.
+  page.$('expectedArrivalsNextPage').click(); await settle();
+  assert.equal(pageCalls().filter(p => p === '2').length, 1);
+  assert.match(page.$('expectedArrivalsRows').textContent, /P2/);
+  assert.equal(page.$('expectedArrivalsPageLabel').textContent, 'Trang 2/3');
+  // Đổi sắp xếp (không phải chuyển trang): xóa đệm và tải lại từ máy chủ.
+  const before = calls.length;
+  page.run("setTableSort('expectedArrivalsRows', 10, {shiftKey:false})"); await settle();
+  assert.ok(calls.length > before);
+  assert.equal(calls.at(-1).get('page'), '1');
+});

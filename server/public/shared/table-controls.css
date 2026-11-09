@@ -108,3 +108,7 @@ body.tks-selecting, body.tks-selecting * { user-select:none !important; cursor:c
 .tks-sel-sum b { color:var(--text,var(--ink,#17202b)); font:600 13px var(--font-data,var(--font-body,system-ui,sans-serif)); font-variant-numeric:tabular-nums; }
 @media (max-width:600px) { .tks-sel-sum { left:12px; right:12px; bottom:12px; justify-content:space-between; } }
 @media print { .tks-sel-sum { display:none !important; } table td.tks-cell-selected, table th.tks-cell-selected { background-image:none !important; box-shadow:none; } }
+
+/* Bảng tải lại trang/tìm/lọc/sắp xếp ở máy chủ: giữ dòng cũ, làm mờ nhẹ tới khi dữ liệu mới về (trễ 120ms nên tải nhanh không nháy). */
+tbody[aria-busy="true"], table[aria-busy="true"] > tbody { opacity:.5; transition:opacity .15s .12s; cursor:progress; }
+@media (prefers-reduced-motion: reduce) { tbody[aria-busy="true"], table[aria-busy="true"] > tbody { transition:none; } }

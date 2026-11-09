@@ -237,3 +237,264 @@ test('bảng data-table-select="off" giữ nguyên bộ xử lý riêng', async 
   ctx.mouse('mouseup', ctx.cell(0, 0));
   assert.equal(ctx.key('Delete').defaultPrevented, false);
 });
+
+// ---- Hoàn tác (Ctrl+Z) / Làm lại (Ctrl+Y, Ctrl+Shift+Z) ----
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+const undoKey = (ctx, init = {}, target) => ctx.key('z', { ctrlKey: true, ...init }, target);
+const redoKey = (ctx, init = {}, target) => ctx.key('y', { ctrlKey: true, ...init }, target);
+
+test('Delete rồi Ctrl+Z khôi phục input / textarea và bắn change; Ctrl+Y xóa lại', async t => {
+  const ctx = await setup(t, editable);
+  const fired = [];
+  ctx.table.addEventListener('change', e => fired.push(e.target.value));
+  ctx.drag([0, 1], [1, 2]);
+  ctx.key('Delete');
+  assert.equal(fired.length, 4);
+  const undo = undoKey(ctx);
+  assert.equal(undo.defaultPrevented, true);
+  assert.deepEqual([ctx.input(0, 1).value, ctx.input(0, 2).value, ctx.input(1, 1).value, ctx.input(1, 2).value], ['ten1', 'gc1', 'ten2', 'gc2']);
+  assert.equal(fired.length, 8); // mỗi ô bắn change khi hoàn tác
+  assert.match(ctx.bar().textContent, /Đã hoàn tác 4 ô/);
+  assert.equal(redoKey(ctx).defaultPrevented, true);
+  assert.deepEqual([ctx.input(0, 1).value, ctx.input(1, 2).value], ['', '']);
+  assert.match(ctx.bar().textContent, /Đã làm lại 4 ô/);
+  // Ctrl+Shift+Z cũng là làm lại: hoàn tác rồi làm lại bằng phím này
+  undoKey(ctx);
+  assert.equal(ctx.input(0, 1).value, 'ten1');
+  assert.equal(undoKey(ctx, { shiftKey: true }).defaultPrevented, true);
+  assert.equal(ctx.input(0, 1).value, '');
+});
+
+test('⌘+Z (metaKey) cũng hoàn tác', async t => {
+  const ctx = await setup(t, editable);
+  ctx.drag([0, 1], [0, 1]);
+  ctx.key('Delete');
+  assert.equal(ctx.key('z', { metaKey: true }).defaultPrevented, true);
+  assert.equal(ctx.input(0, 1).value, 'ten1');
+});
+
+test('hoàn tác không cần còn vùng chọn', async t => {
+  const ctx = await setup(t, editable);
+  ctx.drag([0, 1], [0, 1]);
+  ctx.key('Delete');
+  ctx.api.clearSelection();
+  assert.equal(ctx.api.getSelection(), null);
+  assert.equal(undoKey(ctx).defaultPrevented, true);
+  assert.equal(ctx.input(0, 1).value, 'ten1');
+});
+
+test('dán khối rồi hoàn tác trả đủ giá trị cũ; ô không đổi giá trị không vào lịch sử', async t => {
+  const ctx = await setup(t, editable);
+  ctx.drag([1, 1], [1, 1]);
+  ctx.paste('a\tgc2\nc\td'); // (1,2) đã là gc2 → không đổi; còn lại 3 ô đổi
+  assert.equal(ctx.input(1, 1).value, 'a');
+  assert.equal(ctx.input(2, 2).value, 'd');
+  undoKey(ctx);
+  assert.deepEqual([ctx.input(1, 1).value, ctx.input(1, 2).value, ctx.input(2, 1).value, ctx.input(2, 2).value], ['ten2', 'gc2', 'ten3', 'gc3']);
+  assert.match(ctx.bar().textContent, /Đã hoàn tác 3 ô$/);
+  redoKey(ctx);
+  assert.deepEqual([ctx.input(1, 1).value, ctx.input(2, 1).value, ctx.input(2, 2).value], ['a', 'c', 'd']);
+});
+
+test('Ctrl+X rồi Ctrl+Z khôi phục', async t => {
+  const ctx = await setup(t, editable);
+  ctx.drag([0, 1], [1, 1]);
+  ctx.cut();
+  assert.equal(ctx.input(0, 1).value, '');
+  undoKey(ctx);
+  assert.deepEqual([ctx.input(0, 1).value, ctx.input(1, 1).value], ['ten1', 'ten2']);
+});
+
+test('hoàn tác / làm lại select theo selectedIndex', async t => {
+  const html = '<table><thead><tr><th>Mã</th><th>TT</th></tr></thead><tbody>'
+    + '<tr><td>A</td><td><select><option value="">—</option><option value="ok">Đã duyệt</option><option value="no">Từ chối</option></select></td></tr></tbody></table>';
+  const ctx = await setup(t, html);
+  const select = ctx.cell(0, 1).querySelector('select');
+  select.selectedIndex = 2;
+  const changes = [];
+  select.addEventListener('change', () => changes.push(select.value));
+  ctx.drag([0, 1], [0, 1]);
+  ctx.paste('đã duyệt');
+  assert.equal(select.value, 'ok');
+  undoKey(ctx);
+  assert.equal(select.selectedIndex, 2);
+  redoKey(ctx);
+  assert.equal(select.value, 'ok');
+  assert.deepEqual(changes, ['ok', 'no', 'ok']);
+});
+
+test('ngăn xếp rỗng: Ctrl+Z / Ctrl+Y không preventDefault', async t => {
+  const ctx = await setup(t, editable);
+  assert.equal(undoKey(ctx).defaultPrevented, false);
+  assert.equal(redoKey(ctx).defaultPrevented, false);
+  ctx.drag([0, 1], [0, 1]);
+  ctx.key('Delete');
+  assert.equal(redoKey(ctx).defaultPrevented, false); // chưa hoàn tác gì thì chưa có gì để làm lại
+  undoKey(ctx);
+  assert.equal(undoKey(ctx).defaultPrevented, false); // đã hết mục
+});
+
+test('đang gõ trong ô nhập thì Ctrl+Z là của trình duyệt, lịch sử giữ nguyên', async t => {
+  const ctx = await setup(t, editable);
+  ctx.drag([0, 1], [0, 1]);
+  ctx.key('Delete');
+  ctx.input(2, 1).focus();
+  assert.equal(undoKey(ctx, {}, ctx.input(2, 1)).defaultPrevented, false);
+  assert.equal(ctx.input(0, 1).value, '');
+  ctx.input(2, 1).blur();
+  assert.equal(undoKey(ctx).defaultPrevented, true);
+  assert.equal(ctx.input(0, 1).value, 'ten1');
+});
+
+test('thao tác sửa mới xóa ngăn "làm lại"', async t => {
+  const ctx = await setup(t, editable);
+  ctx.drag([0, 1], [0, 1]);
+  ctx.key('Delete');
+  undoKey(ctx);
+  ctx.drag([1, 1], [1, 1]);
+  ctx.key('Delete');
+  assert.equal(redoKey(ctx).defaultPrevented, false);
+  assert.equal(ctx.input(0, 1).value, 'ten1');
+  undoKey(ctx);
+  assert.equal(ctx.input(1, 1).value, 'ten2');
+});
+
+test('hoàn tác nhiều lần đi ngược theo thứ tự thao tác', async t => {
+  const ctx = await setup(t, editable);
+  ctx.drag([0, 1], [0, 1]);
+  ctx.paste('p1');
+  ctx.paste('p2');
+  assert.equal(ctx.input(0, 1).value, 'p2');
+  undoKey(ctx);
+  assert.equal(ctx.input(0, 1).value, 'p1');
+  undoKey(ctx);
+  assert.equal(ctx.input(0, 1).value, 'ten1');
+});
+
+test('ô đã rời DOM hoặc bị khóa thì bỏ qua và báo; mọi ô bỏ qua thì giữ mục lại', async t => {
+  const ctx = await setup(t, editable);
+  ctx.drag([0, 1], [2, 1]);
+  ctx.key('Delete');
+  const gone = ctx.input(0, 1), locked = ctx.input(1, 1);
+  gone.remove();
+  locked.readOnly = true;
+  undoKey(ctx);
+  assert.equal(ctx.input(2, 1).value, 'ten3');
+  assert.equal(locked.value, '');
+  assert.match(ctx.bar().textContent, /Đã hoàn tác 1 ô · bỏ qua 2 ô không hoàn tác được/);
+
+  // mục thứ hai: mọi ô đều bỏ qua → mục ở lại ngăn hoàn tác
+  const ctx2 = await setup(t, editable);
+  ctx2.drag([0, 1], [0, 1]);
+  ctx2.key('Delete');
+  ctx2.input(0, 1).disabled = true;
+  assert.equal(undoKey(ctx2).defaultPrevented, true);
+  assert.match(ctx2.bar().textContent, /Không hoàn tác được ô nào · bỏ qua 1 ô/);
+  ctx2.input(0, 1).disabled = false;
+  undoKey(ctx2);
+  assert.equal(ctx2.input(0, 1).value, 'ten1');
+});
+
+test('bảng đã bị gỡ khỏi DOM: bỏ mục, phím không bị chặn', async t => {
+  const ctx = await setup(t, editable);
+  ctx.drag([0, 1], [0, 1]);
+  ctx.key('Delete');
+  ctx.table.remove();
+  assert.equal(undoKey(ctx).defaultPrevented, false);
+});
+
+test('edit do trang xử lý có revert / reapply (đồng bộ + bất đồng bộ) được hoàn tác và làm lại', async t => {
+  const html = '<table><thead><tr><th>Mã</th><th>Vị trí</th></tr></thead><tbody>'
+    + '<tr><td>A</td><td data-cell-editable>X1</td></tr><tr><td>B</td><td data-cell-editable>X2</td></tr><tr><td>C</td><td data-cell-editable>X3</td></tr></tbody></table>';
+  const ctx = await setup(t, html);
+  const calls = [];
+  ctx.table.tBodies[0].addEventListener('tks:cells-edit', event => {
+    event.detail.edits.forEach(edit => {
+      if (!edit.cell.hasAttribute('data-cell-editable')) return;
+      const old = edit.cell.textContent;
+      edit.handled = true;
+      edit.cell.textContent = edit.value;
+      if (edit.row === 2) return; // dòng này trang không cung cấp revert
+      edit.revert = edit.row === 0
+        ? () => { calls.push('revert0'); edit.cell.textContent = old; return true; }
+        : () => new Promise(resolve => setTimeout(() => { calls.push('revert1'); resolve(false); }, 5)); // xung đột phiên bản
+      edit.reapply = () => { calls.push('reapply' + edit.row); edit.cell.textContent = edit.value; return true; };
+    });
+  });
+  ctx.drag([0, 1], [2, 1]);
+  ctx.key('Delete');
+  assert.deepEqual([0, 1, 2].map(r => ctx.cell(r, 1).textContent), ['', '', '']);
+  undoKey(ctx);
+  await wait(30);
+  assert.deepEqual(calls, ['revert0', 'revert1']);
+  assert.equal(ctx.cell(0, 1).textContent, 'X1');
+  assert.equal(ctx.cell(1, 1).textContent, ''); // revert trả false → bỏ qua
+  assert.equal(ctx.cell(2, 1).textContent, ''); // không có revert → không vào lịch sử
+  assert.match(ctx.bar().textContent, /Đã hoàn tác 1 ô · bỏ qua 1 ô không hoàn tác được/);
+  redoKey(ctx);
+  await wait(30);
+  assert.equal(ctx.cell(0, 1).textContent, '');
+  assert.match(ctx.bar().textContent, /Đã làm lại 1 ô$/);
+  assert.deepEqual(calls, ['revert0', 'revert1', 'reapply0']);
+});
+
+test('revert ném lỗi hoặc reapply trả false thì tính là bỏ qua', async t => {
+  const html = '<table><thead><tr><th>A</th></tr></thead><tbody><tr><td data-cell-editable>X</td></tr></tbody></table>';
+  const ctx = await setup(t, html);
+  let mode = 'throw';
+  ctx.table.tBodies[0].addEventListener('tks:cells-edit', event => {
+    event.detail.edits.forEach(edit => {
+      edit.handled = true;
+      edit.revert = () => { if (mode === 'throw') throw new Error('boom'); return true; };
+      edit.reapply = () => false;
+    });
+  });
+  ctx.drag([0, 0], [0, 0]);
+  ctx.key('Delete');
+  undoKey(ctx);
+  assert.match(ctx.bar().textContent, /Không hoàn tác được ô nào · bỏ qua 1 ô/);
+  mode = 'ok';
+  undoKey(ctx); // mục còn nguyên → thử lại được
+  assert.match(ctx.bar().textContent, /Đã hoàn tác 1 ô$/);
+  redoKey(ctx);
+  assert.match(ctx.bar().textContent, /Không làm lại được ô nào · bỏ qua 1 ô không làm lại được/);
+});
+
+test('edit bị cancelled hoặc không có revert không vào lịch sử', async t => {
+  const html = '<table><thead><tr><th>A</th></tr></thead><tbody><tr><td data-cell-editable>X</td></tr><tr><td data-cell-editable>Y</td></tr></tbody></table>';
+  const ctx = await setup(t, html);
+  ctx.table.tBodies[0].addEventListener('tks:cells-edit', event => {
+    event.detail.edits.forEach(edit => {
+      edit.handled = true;
+      if (edit.row === 0) { edit.cancelled = true; edit.revert = () => true; }
+    });
+  });
+  ctx.drag([0, 0], [1, 0]);
+  ctx.key('Delete');
+  assert.equal(undoKey(ctx).defaultPrevented, false);
+});
+
+test('lịch sử giữ tối đa 50 mục, clearEditHistory xóa sạch', async t => {
+  const ctx = await setup(t, editable);
+  ctx.drag([0, 1], [0, 1]);
+  for (let i = 0; i < 55; i++) ctx.paste('v' + i);
+  let undone = 0;
+  while (undoKey(ctx).defaultPrevented) undone++;
+  assert.equal(undone, 50);
+  assert.equal(ctx.input(0, 1).value, 'v4'); // 5 mục đầu đã bị đẩy khỏi lịch sử
+  ctx.paste('z');
+  assert.equal(undoKey(ctx).defaultPrevented, true);
+  ctx.api.clearEditHistory();
+  assert.equal(undoKey(ctx).defaultPrevented, false);
+  assert.equal(redoKey(ctx).defaultPrevented, false);
+});
+
+test('bảng (hoặc vùng chứa) đặt data-cell-edit="off": vẫn chọn vùng nhưng Delete / Cắt / Dán chung bỏ qua', async t => {
+  const ctx = await setup(t, '<div data-cell-edit="off">' + editable + '</div>');
+  ctx.drag([0, 1], [1, 2]);
+  assert.equal(ctx.api.getSelection().cells.length, 4);
+  assert.equal(ctx.key('Delete').defaultPrevented, false);
+  assert.equal(ctx.paste('zzz').defaultPrevented, false);
+  assert.equal(ctx.cut().event.defaultPrevented, false);
+  assert.equal(ctx.input(0, 1).value, 'ten1');
+});

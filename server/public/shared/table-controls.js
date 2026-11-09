@@ -812,7 +812,7 @@
   }
   window.TKSTables = { enhance: enhance, refresh: refresh, refreshAll: refreshAll, getState: getState, loadPrefs: loadPrefs,
     nextSorts: nextSorts, compareValues: compareValues, syncSortHeaders: syncSortHeaders,
-    parseClipboardTable: parseClipboardTable,
+    parseClipboardTable: parseClipboardTable, clearEditHistory: clearEditHistory,
     getSelection: function () { return sel ? { table: sel.table, cells: Array.from(sel.painted), regions: sel.rects.length } : null; },
     clearSelection: clearSelection };
   function fetchPrefs() {
@@ -1129,10 +1129,15 @@
     if (cell) moveFocus(positionOf(cell, sel));
   }
   function onSelectionKey(event) {
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.isComposing && !event.defaultPrevented) {
+      var historyKey = String(event.key).toLowerCase();
+      var historyDir = historyKey === 'z' ? (event.shiftKey ? 'redo' : 'undo') : (historyKey === 'y' && !event.shiftKey ? 'redo' : '');
+      if (historyDir && !selectionFieldFocused() && runEditHistory(historyDir)) { event.preventDefault(); return; }
+    }
     if (!sel) return;
     if (event.key === 'Escape') { clearSelection(); return; }
     if ((event.key === 'Delete' || event.key === 'Backspace') && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && !event.isComposing) {
-      if (selectionFieldFocused()) return;
+      if (event.defaultPrevented || cellEditOff() || selectionFieldFocused()) return;
       event.preventDefault();
       editSelection('clear', null);
       return;
@@ -1166,7 +1171,7 @@
     selNoteTimer = setTimeout(function () { selNoteTimer = 0; renderSum(); }, 2600);
   }
   function onSelectionCut(event) {
-    if (!sel || !sel.painted.size || !event.clipboardData || selectionFieldFocused()) return;
+    if (event.defaultPrevented || !sel || !sel.painted.size || !event.clipboardData || cellEditOff() || selectionFieldFocused()) return;
     if (sel.painted.size < 2 && window.getSelection && String(window.getSelection())) return;
     event.clipboardData.setData('text/plain', selectionText());
     event.preventDefault();
@@ -1179,7 +1184,17 @@
   // edits: [{ cell, row, col, value, handled }] }; xử lý ô nào thì đặt edit.handled = true) — dùng cho ô sửa-tại-chỗ phải lưu về máy chủ;
   // (2) ô còn lại có sẵn input / textarea / select / contenteditable thì ghi thẳng vào đó và bắn input + change để trang tự lưu.
   // Ô đánh dấu data-cell-editable được tính là sửa được dù chưa có input (trang sẽ mở ô nhập khi cần).
+  // Hoàn tác / Làm lại: Ctrl/⌘+Z hoàn tác lần Xóa·Cắt·Dán gần nhất, Ctrl/⌘+Y hoặc Ctrl/⌘+Shift+Z làm lại (tối đa 50 lần, cấp module,
+  // không cần còn vùng chọn; đang gõ trong ô nhập thì phím là của trình duyệt; thao tác sửa mới xóa danh sách "làm lại").
+  // Ô ghi thẳng bởi bước (2) tự được nhớ giá trị trước/sau. Ô do trang xử lý (1) chỉ vào lịch sử nếu trang đặt thêm trên edit:
+  //   edit.revert()  → boolean | Promise<boolean>  trả ô về giá trị TRƯỚC khi sửa; false (hoặc ném lỗi) = không làm được → bị bỏ qua;
+  //   edit.reapply() → boolean | Promise<boolean>  áp lại đúng thao tác đó (cho Ctrl+Y), cùng quy ước kết quả.
+  // Edit không có revert thì không được hoàn tác. Bảng đã bị gỡ khỏi DOM thì mục lịch sử của nó bị bỏ.
   var EDIT_CONFIRM_OVER = 20;
+  var EDIT_HISTORY_MAX = 50;
+  var editUndo = [], editRedo = [], editHistoryBusy = false;
+  // Bảng có bộ sửa ô riêng (vd lưới Yêu cầu VAT) đặt data-cell-edit="off": Delete / Cắt / Dán chung bỏ qua, vẫn chọn vùng + Ctrl+C.
+  function cellEditOff() { return !!(sel && sel.table.closest('[data-cell-edit="off"]')); }
   function selectionFieldFocused() {
     var active = document.activeElement;
     return !!(active && (/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) || active.isContentEditable));
@@ -1240,6 +1255,64 @@
     setNativeValue(field, next); fire(field, 'input'); fire(field, 'change');
     return true;
   }
+  // Trạng thái của trường để hoàn tác: select = selectedIndex, input/textarea = value, contenteditable = textContent.
+  function fieldState(field) {
+    if (field.tagName === 'SELECT') return field.selectedIndex;
+    if (field.tagName === 'INPUT' || field.tagName === 'TEXTAREA') return field.value;
+    return field.textContent;
+  }
+  // Đặt lại trạng thái đã lưu (bắn input + change như writeField); false nếu trường đã rời DOM / bị khóa.
+  function applyFieldState(field, state) {
+    if (!field.isConnected || field.disabled || field.readOnly) return false;
+    if (field.tagName === 'SELECT') {
+      if (field.selectedIndex !== state) { field.selectedIndex = state; fire(field, 'input'); fire(field, 'change'); }
+      return true;
+    }
+    if (field.tagName !== 'INPUT' && field.tagName !== 'TEXTAREA') {
+      if (field.textContent !== state) { field.textContent = state; fire(field, 'input'); fire(field, 'change'); }
+      return true;
+    }
+    if (field.value !== state) { setNativeValue(field, state); fire(field, 'input'); fire(field, 'change'); }
+    return true;
+  }
+  function pushHistory(stack, entry) {
+    stack.push(entry);
+    while (stack.length > EDIT_HISTORY_MAX) stack.shift();
+  }
+  function clearEditHistory() { editUndo.length = 0; editRedo.length = 0; }
+  // Chạy mục trên cùng của ngăn undo/redo; trả true nếu có mục để chạy (để phím được preventDefault).
+  function runEditHistory(dir) {
+    var from = dir === 'undo' ? editUndo : editRedo, to = dir === 'undo' ? editRedo : editUndo;
+    while (from.length && !from[from.length - 1].table.isConnected) from.pop();
+    if (!from.length) return false;
+    if (editHistoryBusy) return true;
+    var entry = from.pop(), undo = dir === 'undo';
+    var items = undo ? entry.items.slice().reverse() : entry.items.slice();
+    var results = items.map(function (item) {
+      if (item.field) return applyFieldState(item.field, undo ? item.before : item.after);
+      var fn = undo ? item.edit.revert : item.edit.reapply;
+      if (typeof fn !== 'function') return false;
+      try { return fn.call(item.edit); } catch (error) { return false; }
+    });
+    function settle(oks) {
+      var kept = [], skipped = 0;
+      items.forEach(function (item, index) { if (oks[index]) kept.push(item); else skipped++; });
+      if (undo) kept.reverse();
+      if (kept.length) pushHistory(to, { table: entry.table, items: kept });
+      else pushHistory(from, entry); // không ô nào làm được: để mục lại
+      selNote((kept.length ? (undo ? 'Đã hoàn tác ' : 'Đã làm lại ') + formatSelNumber(kept.length) + ' ô' : (undo ? 'Không hoàn tác được ô nào' : 'Không làm lại được ô nào'))
+        + (skipped ? ' · bỏ qua ' + formatSelNumber(skipped) + (undo ? ' ô không hoàn tác được' : ' ô không làm lại được') : ''), entry.table);
+    }
+    if (!results.some(function (result) { return result && typeof result.then === 'function'; })) {
+      settle(results.map(function (result) { return result !== false; }));
+      return true;
+    }
+    editHistoryBusy = true;
+    Promise.all(results.map(function (result) {
+      return Promise.resolve(result).then(function (ok) { return ok !== false; }, function () { return false; });
+    })).then(function (oks) { editHistoryBusy = false; settle(oks); }, function () { editHistoryBusy = false; settle(items.map(function () { return false; })); });
+    return true;
+  }
   function buildEdits(action, matrix) {
     var edits = [], seen = new Set();
     function add(r, c, value) {
@@ -1284,16 +1357,29 @@
     var likely = edits.filter(function (edit) { return editableCell(edit.cell); }).length;
     if (!likely) { selNote('Bảng này chỉ để xem — các ô không sửa được.'); return; }
     if (likely > EDIT_CONFIRM_OVER && typeof window.confirm === 'function'
-        && !window.confirm(verb + ' ' + formatSelNumber(likely) + ' ô? Thay đổi được lưu ngay và không hoàn tác được.')) return;
+        && !window.confirm(verb + ' ' + formatSelNumber(likely) + ' ô? Thay đổi được lưu ngay.')) return;
     // detail.pending: trang đẩy Promise vào đây nếu việc lưu cần hỏi/đợi; edit.cancelled = true nếu người dùng từ chối giữa chừng.
     var detail = { action: action, table: table, edits: edits, pending: [] };
     edits[0].cell.dispatchEvent(new window.CustomEvent('tks:cells-edit', { bubbles: true, detail: detail }));
+    var autoWrites = new Map(); // edit → { field, before, after } cho ô ghi thẳng mà giá trị có đổi
     edits.forEach(function (edit) {
       if (edit.handled) return;
       var field = fieldOf(edit.cell);
-      if (field && writeField(field, edit.value)) edit.handled = true;
+      if (!field) return;
+      var before = fieldState(field);
+      if (!writeField(field, edit.value)) return;
+      edit.handled = true;
+      var after = fieldState(field);
+      if (after !== before) autoWrites.set(edit, { field: field, before: before, after: after });
     });
     function finish() {
+      var items = [];
+      edits.forEach(function (edit) {
+        if (edit.cancelled) return;
+        if (autoWrites.has(edit)) items.push(autoWrites.get(edit));
+        else if (edit.handled && typeof edit.revert === 'function') items.push({ edit: edit });
+      });
+      if (items.length) { pushHistory(editUndo, { table: table, items: items }); editRedo.length = 0; }
       var done = 0, skipped = 0;
       edits.forEach(function (edit) { if (edit.handled && !edit.cancelled) done++; else skipped++; });
       if (built.extent && sel && sel.table === table) { sel.rects = [built.extent]; sel.anchor = { row: built.extent.r1, col: built.extent.c1 }; renderSelection(); }
@@ -1303,7 +1389,7 @@
     if (detail.pending.length) Promise.all(detail.pending).then(finish, finish); else finish();
   }
   function onSelectionPaste(event) {
-    if (!sel || !sel.painted.size || !event.clipboardData || selectionFieldFocused()) return;
+    if (event.defaultPrevented || !sel || !sel.painted.size || !event.clipboardData || cellEditOff() || selectionFieldFocused()) return;
     var text = event.clipboardData.getData('text/plain');
     if (text === '' || text == null) return;
     event.preventDefault();

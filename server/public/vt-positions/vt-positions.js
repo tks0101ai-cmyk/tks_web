@@ -1900,23 +1900,143 @@
       edit.handled = true;
       const value = field === 'location' ? normalizeLocation(edit.value) : String(edit.value ?? '').trim();
       if (value === String(row[field] ?? '').trim()) return;
-      if (!patches.has(id)) patches.set(id, { patch: {}, edits: [] });
+      if (!patches.has(id)) {
+        patches.set(id, {
+          id: id,
+          targetId: id,
+          patch: {},
+          edits: [],
+          snapshot: Object.assign({}, row),
+          deleted: false,
+          wasEmptied: false
+        });
+      }
       const entry = patches.get(id);
       entry.patch[field] = value;
       entry.edits.push(edit);
     });
     if (!patches.size) return;
+
+    for (const entry of patches.values()) {
+      let pendingRevert = null, pendingReapply = null;
+      const doRevert = () => {
+        if (pendingRevert) return pendingRevert;
+        const job = saveChain.then(async () => {
+          try {
+            if (entry.deleted) {
+              const body = {
+                code: entry.snapshot.code,
+                notes: entry.snapshot.notes,
+                arrivalDate: entry.snapshot.arrivalDate || '',
+                location: entry.snapshot.location || ''
+              };
+              const { response, payload } = await request(API, jsonOptions('POST', body));
+              if (!response.ok) {
+                notify(payload.error || 'Không khôi phục được dòng đã xóa.', true);
+                return false;
+              }
+              entry.targetId = String(payload.row.id);
+              entry.deleted = false;
+              applyResult(tab, payload);
+              const undoBtn = $('vtNotice').querySelector('.vt-undo');
+              if (undoBtn) undoBtn.remove();
+              if (tab === activeTab) render();
+              return true;
+            }
+            const current = rowById(tab, entry.targetId);
+            if (!current) return false;
+            const fields = Object.keys(entry.patch);
+            const alreadyReverted = fields.every(f => String(current[f] ?? '').trim() === String(entry.snapshot[f] ?? '').trim());
+            if (alreadyReverted) return true;
+            const patch = { version: current.version };
+            fields.forEach(f => { patch[f] = entry.snapshot[f] ?? ''; });
+            const { response, payload } = await request(API + '/' + encodeURIComponent(current.id), jsonOptions('PATCH', patch));
+            if (!response.ok) {
+              handleFailure(payload);
+              return false;
+            }
+            applyResult(tab, payload);
+            if (tab === activeTab) render();
+            return true;
+          } finally {
+            pendingRevert = null;
+          }
+        }).catch(() => false);
+        saveChain = job.then(() => {}, () => {});
+        pendingRevert = job;
+        return pendingRevert;
+      };
+
+      const doReapply = () => {
+        if (pendingReapply) return pendingReapply;
+        const job = saveChain.then(async () => {
+          try {
+            if (entry.wasEmptied) {
+              const current = rowById(tab, entry.targetId);
+              if (!current) return false;
+              const { response, payload } = await request(API + '/' + encodeURIComponent(current.id), jsonOptions('PATCH', { version: current.version, notes: '', confirmEmpty: true }));
+              if (!response.ok) {
+                handleFailure(payload);
+                return false;
+              }
+              entry.deleted = true;
+              applyResult(tab, payload);
+              if (tab === activeTab) render();
+              return true;
+            }
+            const current = rowById(tab, entry.targetId);
+            if (!current) return false;
+            const fields = Object.keys(entry.patch);
+            const alreadyReapplied = fields.every(f => String(current[f] ?? '').trim() === String(entry.patch[f] ?? '').trim());
+            if (alreadyReapplied) return true;
+            const patch = Object.assign({ version: current.version }, entry.patch);
+            const { response, payload } = await request(API + '/' + encodeURIComponent(current.id), jsonOptions('PATCH', patch));
+            if (!response.ok) {
+              handleFailure(payload);
+              return false;
+            }
+            applyResult(tab, payload);
+            if (tab === activeTab) render();
+            return true;
+          } finally {
+            pendingReapply = null;
+          }
+        }).catch(() => false);
+        saveChain = job.then(() => {}, () => {});
+        pendingReapply = job;
+        return pendingReapply;
+      };
+
+      entry.edits.forEach(edit => {
+        edit.revert = doRevert;
+        edit.reapply = doReapply;
+      });
+    }
+
     const emptied = Array.from(patches.values()).filter(entry => entry.patch.notes === '');
     const job = saveChain.then(async () => {
       let confirmEmpty = false;
       if (emptied.length) {
         confirmEmpty = await confirmBox('Xóa ghi chú ' + emptied.length + ' dòng nghĩa là hết hàng, các dòng này sẽ bị xóa khỏi bảng. Bạn có chắc chắn không?', 'Xóa ghi chú');
-        if (!confirmEmpty) emptied.forEach(entry => entry.edits.forEach(edit => { edit.cancelled = true; }));
+        if (!confirmEmpty) {
+          emptied.forEach(entry => entry.edits.forEach(edit => {
+            edit.cancelled = true;
+            delete edit.revert;
+            delete edit.reapply;
+          }));
+        }
       }
       for (const [id, entry] of patches) {
         if (entry.patch.notes === '' && !confirmEmpty) continue;
         const current = rowById(tab, id);
-        if (current) await patchRow(tab, current, entry.patch, confirmEmpty && entry.patch.notes === '', message => notify(message, true));
+        if (current) {
+          const isDelete = confirmEmpty && entry.patch.notes === '';
+          if (isDelete) {
+            entry.wasEmptied = true;
+            entry.deleted = true;
+          }
+          await patchRow(tab, current, entry.patch, isDelete, message => notify(message, true));
+        }
       }
       if (tab === activeTab) render();
     }).catch(() => notify('Không lưu được thay đổi.', true));
