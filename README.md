@@ -214,6 +214,7 @@ server/
 ├── index.js
 ├── jobs.js               # Danh sách job nền (sync KiotViet, sheet, container, Pancake)
 ├── worker.js             # Tiến trình job nền riêng khi BACKGROUND_JOBS=worker
+├── redirect.js           # Chỉ dùng cho service Oregon sau khi chuyển web sang Singapore: không DB, 302/307 sang REDIRECT_TO, /health 200
 └── routes.js
 ```
 

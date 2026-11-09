@@ -361,6 +361,8 @@ npm test
 npm run dev
 ```
 
+Service Oregon sau khi chuyển web sang Singapore (chỉ dùng cho service này): Start Command `node redirect.js`, biến `REDIRECT_TO=https://app.<ten-miền>.com`. Không kết nối DB; GET/HEAD trả 302, phương thức khác 307 (giữ đường dẫn + query), `/health` trả 200. Mã: `redirect.js`, kiểm thử `redirect.test.js`.
+
 Các job đồng bộ:
 
 ```bash
