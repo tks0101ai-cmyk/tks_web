@@ -2310,6 +2310,30 @@
       loadBulkOrders();
     }
 
+    // May chu gioi han 4 GET dong thoi / nguoi dung / duong dan (429 TOO_MANY_INFLIGHT, giu slot den khi xu ly xong).
+    // Bam "Trang sau" lien tuc luc server cham co the bi 429: cho Retry-After giay (mac dinh 2, toi da 5) roi thu lai,
+    // toi da 2 lan, CHI khi day van la lan goi moi nhat; lan cu bi thay the thi tra ket qua 429 de .then ben duoi bo qua.
+    const BULK_429_RETRIES = 2;
+    function bulkRetryDelayMs(res){
+      const raw = res.headers && res.headers.get ? res.headers.get('Retry-After') : null;
+      const seconds = raw === null || raw === undefined || raw === '' ? NaN : Number(raw);
+      return (Number.isFinite(seconds) && seconds >= 0 ? Math.min(seconds, 5) : 2) * 1000;
+    }
+    function fetchBulkList(url, requestId){
+      let attempt = 0;
+      function run(){
+        return fetch(url, { credentials: 'same-origin' })
+          .then(function(res){ return res.json().then(function(body){ return { ok: res.ok, status: res.status, res: res, body: body }; }); })
+          .then(function(result){
+            if(result.status !== 429 || attempt >= BULK_429_RETRIES || requestId !== bulkRequestId) return result;
+            attempt++;
+            return new Promise(function(resolve){ setTimeout(resolve, bulkRetryDelayMs(result.res)); })
+              .then(function(){ return requestId === bulkRequestId ? run() : result; });
+          });
+      }
+      return run();
+    }
+
     function loadBulkOrders(silent){
       if(silent && bulkLoadInFlight) return;
       const requestId = ++bulkRequestId;
@@ -2321,8 +2345,7 @@
       const params = new URLSearchParams(bulkFilterParams());
       params.set('page', String(bulkPage));
       params.set('pageSize', String(BULK_PAGE_SIZE));
-      fetch('/api/shipment/lifecycle?' + params.toString(), { credentials: 'same-origin' })
-        .then(function(res){ return res.json().then(function(body){ return { ok: res.ok, body: body }; }); })
+      fetchBulkList('/api/shipment/lifecycle?' + params.toString(), requestId)
         .then(function(result){
           if(requestId !== bulkRequestId) return; // da co lan goi moi hon
           if(!result.ok){

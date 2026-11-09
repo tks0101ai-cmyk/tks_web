@@ -361,6 +361,8 @@ npm test
 npm run dev
 ```
 
+Service Oregon sau khi chuyển web sang Singapore (chỉ dùng cho service này): Start Command `node redirect.js`, biến `REDIRECT_TO=https://app.<ten-miền>.com`. Không kết nối DB; GET/HEAD trả 302, phương thức khác 307 (giữ đường dẫn + query), `/health` trả 200. Mã: `redirect.js`, kiểm thử `redirect.test.js`.
+
 Các job đồng bộ:
 
 ```bash
@@ -372,6 +374,7 @@ npm run invoices:price-audit -- --date 2026-10-20 --apply   # ghi thật
 npm run invoices:price-audit -- --recalc                    # tính lại theo dữ liệu hiện tại: chạy thử (không ghi)
 npm run vt:normalize-notes -- [--branch HN|SG] [--apply]   # VT: chuẩn hóa ghi chú thùng đã lưu (60 → 1T x 60, gộp cộng dồn); mặc định chạy thử
 npm run invoices:price-audit -- --recalc --apply            # ghi thật (một giao dịch, tất cả hoặc không)
+node scripts/renderPerfReport.js <serviceId> <soGio>   # tóm tắt poolWaiting, RSS theo giờ và [timing] theo endpoint từ log Render (chỉ đọc)
 ```
 
 `--recalc` (23/10/2026) tính lại **mọi dòng đã chụp trong cửa sổ 16 ngày** `[D-15, D]` theo dữ liệu nguồn hiện tại (level khách, bảng giá/mô tả sản phẩm, Cân đo/cước, VAT, ghi chú) và chụp luôn hóa đơn chưa quét trong cửa sổ (cùng logic job 23:00). `D` mặc định là ngày đã công bố gần nhất (`--date` để đổi). Chỉ ghi đè cột tính toán; **giữ nguyên** giải thích, Chốt, `version`, `captured_at`, khách/sale/mã hàng của dòng cũ; không đụng `invoice_price_audit_state`; dòng không còn trong nguồn (hóa đơn sửa/hủy) và dòng ngoài cửa sổ giữ nguyên. Mỗi dòng đổi kết quả/level ghi nhật ký `invoice_price_audit_changes` với `action='recalc'`, `actor='system:price-audit-recalc'`. Dry-run (mặc định) chạy trọn trong giao dịch rồi ROLLBACK và in JSON: `recomputedLines`, `resultChangedLines` (tách `changedByLevel` = level của dòng đổi, `changedByData` = còn lại), `statusFlippedLines`, `levelChangedLines`, `newInvoices`/`newLines`, `decidedStatusChanged` (dòng đã có Chốt mà Sai/Đúng đổi: chỉ liệt kê, không tự gỡ Chốt). Nguồn chưa sẵn sàng → `status:"failed"`, không ghi gì. Không dùng chung `--force`.
@@ -1003,11 +1006,15 @@ Redis/Valkey dùng cho SĐT sale (fresh 5 phút, last-good tối đa 30 phút, w
 
 Server-Timing cho `/api/shipment/pick/*`; browser measures `tokosi.pick.assets/render/layout/preview-ready/submit-ready` không chứa dữ liệu đơn. Monitor bổ sung eventLoopP95/Max, poolTotal/Idle/Waiting, cacheHit/Miss/Error/Bypass bên cạnh RSS/heap.
 
+Middleware `lib/inflightLimit.js` (gắn sau `cookieParser()` trong `index.js`, 09/11/2026, không migration): request GET tới `/api/product-report*`, `/api/stocktake/sessions/*`, `/api/shipment/lifecycle*`, `/api/shipment/pick*` tối đa 4 request đang chạy / người dùng (cookie `tks_auth`, không có thì theo IP) / đường dẫn đã chuẩn hóa (đoạn có chữ số → `:id`); vượt → 429 `{code:'TOO_MANY_INFLIGHT'}` kèm `Retry-After: 2`, log `[inflightLimit] 429`. Đường dẫn kết thúc bằng `/events` (SSE) không bị tính. Suất chỉ trả khi handler thật sự gọi `res.end`, kể cả khi client đã hủy (tối đa `holdAfterCloseMs` = 120 giây) vì truy vấn DB vẫn đang chạy. Bộ đếm nằm trong RAM tiến trình nên web phải chạy đúng 1 instance.
+
 Cấu trúc bổ sung:
 ```text
 server/lib/sharedCache.js                    # Redis client + cache-aside/generation/fallback
 server/lib/sharedCache.test.js               # timeout, expiry, invalidation, corruption
 server/lib/sharedCache.integration.test.js   # Redis thật qua REDIS_TEST_URL (TEST riêng)
+server/lib/inflightLimit.js                   # Middleware giới hạn GET đang chạy / người dùng / đường dẫn API nặng
+server/lib/inflightLimit.test.js              # 429, SSE /events bỏ qua, giữ suất khi client hủy
 server/scripts/benchmarkPicking.js           # benchmark offline PGlite, không production
 server/pickAssignments/sellerPhoneCache.test.js
 server/sheets/lifecycleSourceCache.test.js

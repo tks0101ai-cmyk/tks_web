@@ -199,11 +199,13 @@ function createManagerLeaveStore({ pool = getPool() } = {}) {
   }
 
   async function enqueueDelivery({ requestId, userId, chatId, version }) {
+    // Chi ghi khi phien ban tang: bot goi lai moi luot quet, ghi de vo dieu kien tung tao ~2 dong chet/giay.
     const { rows } = await pool.query(`INSERT INTO hr_leave_manager_messages
       (request_id, user_id, telegram_chat_id, desired_version) VALUES ($1, $2::uuid, $3, $4::bigint)
       ON CONFLICT (request_id, user_id, telegram_chat_id) DO UPDATE
-        SET desired_version = GREATEST(hr_leave_manager_messages.desired_version, EXCLUDED.desired_version),
-          updated_at = now() RETURNING *`, [requestId, userId, String(chatId), String(version)]);
+        SET desired_version = EXCLUDED.desired_version, updated_at = now()
+        WHERE hr_leave_manager_messages.desired_version < EXCLUDED.desired_version
+      RETURNING *`, [requestId, userId, String(chatId), String(version)]);
     return normalizeRow(rows[0]);
   }
 

@@ -55,7 +55,9 @@ function createManagerLeaveRuntime({
   botFactory = createManagerLeaveBot, buildMessage = buildManagerLeaveMessage,
   notifyDecision, authorization = createHrLeaveAuthorization({loadUsers:loadManagers}),
   webUrl = CONFIG.HR_MANAGER_TELEGRAM_WEB_URL, intervalMs = 5000, logger = console,
-  managersTtlMs = 5 * 60 * 1000, now = Date.now
+  managersTtlMs = 5 * 60 * 1000, now = Date.now,
+  // Don moi da di qua hang su kien (claimEvents); quet lai don cho chi de bu quan ly moi gan Telegram.
+  backlogIntervalMs = 10 * 60 * 1000
 } = {}) {
   // Danh sách quản lý chỉ dùng để định tuyến thẻ mới; cache 5 phút và chỉ nạp khi có việc.
   // Quyền duyệt thật (authorization.canDecide) vẫn đọc tươi, không qua cache này.
@@ -259,9 +261,10 @@ function createManagerLeaveRuntime({
     catch(error){logger.error('[Telegram manager] Inbox tạm dừng:',error.code || 'DB_UNAVAILABLE');}
     finally {inboxRunning=false;}
   }
+  let backlogAt = -Infinity;
   async function drainDeliveries() {
     if(deliveryRunning){deliveryRequested=true;return;} deliveryRunning=true;
-    try {await activate();do {deliveryRequested=false;if(store.claimCancellations)for(const job of await store.claimCancellations())await processCancellation(job);await seedBacklog(lazyManagers);await store.requeueStaleCards();for(const job of await store.claimEvents())await processEvent(job,lazyManagers);for(let i=0;i<20;i++){const [job]=await store.claimDeliveries(1);if(!job)break;await processDelivery(job);}}while(deliveryRequested);}
+    try {await activate();do {deliveryRequested=false;if(store.claimCancellations)for(const job of await store.claimCancellations())await processCancellation(job);if(now()-backlogAt>=backlogIntervalMs){await seedBacklog(lazyManagers);backlogAt=now();}await store.requeueStaleCards();for(const job of await store.claimEvents())await processEvent(job,lazyManagers);for(let i=0;i<20;i++){const [job]=await store.claimDeliveries(1);if(!job)break;await processDelivery(job);}}while(deliveryRequested);}
     catch(error){logger.error('[Telegram manager] Delivery tạm dừng:',error.code || 'DB_UNAVAILABLE');}
     finally {deliveryRunning=false;}
   }

@@ -176,7 +176,7 @@ server/
 ├── kiotviet/             # KiotViet API client và webhook receiver
 ├── kiotvietSync/         # Webhook, polling, backfill và rollup; businessCurrentMonthRefresh.js tính sẵn doanh số tháng hiện tại cho Báo cáo kinh doanh (0068)
 │   └── product90dReport.js  # Báo cáo 4 kỳ 90 ngày, chốt 02:00 VN; lệnh products:90d:refresh
-├── lib/                  # Thư viện tiện ích nội bộ (TTL cache, ...)
+├── lib/                  # Thư viện tiện ích nội bộ (TTL cache, inflightLimit.js giới hạn GET đang chạy, ...)
 ├── marketingReport/      # Báo cáo Marketing: đọc 3 workbook Google Sheets, đối chiếu doanh số KiotViet theo tên khách, cập nhật ngược Sheets, xuất Excel/HTML; tính sẵn trong DB (0069): marketingAdsSync.js (chi phí ADS), marketingSummaryRefresh.js (gộp SĐT Pancake), view v_marketing_customer_revenue (doanh số theo tên)
 ├── notifications/        # Chuông thông báo: notificationRepository.js (bảng `notifications`, 0093), notificationRoutes.js (/api/notifications), specialDayNotifier.js; testHelpers/notificationTestPool.js (PGlite cho test)
 ├── productContainers/    # Parser CONT, snapshot repository, đồng bộ Sheets chỉ đọc mỗi 10 phút (ghi khác biệt) và kiểm thử; bảng Dự kiến hàng về (20/10/2026): expectedRefresh.js (job dựng bảng tính sẵn), expectedRepository.js (đọc + cache theo version), expectedRoutes.js (/api/expected-arrivals), expectedExport.js (xuất Excel/HTML); từ 21/10/2026 route trả `fullAccess` và bỏ trường giá khi thiếu quyền `reports.overview.containers.full`, xuất file thêm cột giá theo quyền
@@ -214,6 +214,7 @@ server/
 ├── index.js
 ├── jobs.js               # Danh sách job nền (sync KiotViet, sheet, container, Pancake)
 ├── worker.js             # Tiến trình job nền riêng khi BACKGROUND_JOBS=worker
+├── redirect.js           # Chỉ dùng cho service Oregon sau khi chuyển web sang Singapore: không DB, 302/307 sang REDIRECT_TO, /health 200
 └── routes.js
 ```
 
@@ -297,6 +298,8 @@ Cấu trúc bổ sung:
 server/lib/sharedCache.js                    # Redis client + cache-aside/generation/fallback
 server/lib/sharedCache.test.js               # timeout, expiry, invalidation, corruption
 server/lib/sharedCache.integration.test.js   # Redis thật qua REDIS_TEST_URL (TEST riêng)
+server/lib/inflightLimit.js                   # Giới hạn GET đang chạy / người dùng / đường dẫn API nặng (429 TOO_MANY_INFLIGHT)
+server/lib/inflightLimit.test.js              # 429 ở request thứ 5, SSE /events bỏ qua, giữ suất khi client hủy
 server/scripts/benchmarkPicking.js           # benchmark offline PGlite, không production
 server/pickAssignments/sellerPhoneCache.test.js
 server/sheets/lifecycleSourceCache.test.js

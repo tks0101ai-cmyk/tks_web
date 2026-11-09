@@ -178,21 +178,33 @@
   }
 
   // Goi run nhieu nhat 1 lan moi gapMs, co lan cuoi de khong bo sot; goi lien tuc chi ton 1 lan chay.
+  // run tra Promise (tai bang): cho luot dang chay xong moi hen luot sau, khong de cac luot cham chong len nhau.
   function trailingThrottle(run, gapMs, { now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, minDelayMs = 400 } = {}) {
     let last = -Infinity;
     let timer = null;
+    let running = false;
+    let again = false;
+    function schedule() {
+      timer = setTimer(fire, Math.max(minDelayMs, gapMs - (now() - last)));
+    }
+    async function fire() {
+      timer = null;
+      running = true;
+      last = now();
+      try { await run(); } catch (error) { /* run tu bao loi tren trang */ }
+      running = false;
+      if (again) { again = false; schedule(); }
+    }
     return {
       trigger() {
+        if (running) { again = true; return; }
         if (timer !== null) return;
-        timer = setTimer(() => {
-          timer = null;
-          last = now();
-          run();
-        }, Math.max(minDelayMs, gapMs - (now() - last)));
+        schedule();
       },
       cancel() {
         if (timer !== null) clearTimer(timer);
         timer = null;
+        again = false;
       }
     };
   }

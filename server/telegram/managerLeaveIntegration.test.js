@@ -41,6 +41,7 @@ test('real DB complete workflow: scoped backlog, Telegram rejection, duplicate u
       telegram: { call: async (method, params) => { calls.push({ method, params }); if(method==='editMessageText' && String(params.message_id)===String(failListCardId))throw Object.assign(new Error('temporary network'),{code:'TELEGRAM_UNAVAILABLE'}); return { message_id: ++messageId }; } },
       getManager: async id => managers.find(m => m.telegramId === String(id)), loadManagers: async () => managers,
       notifyDecision: async record => notifications.push(record.request_id), webUrl: 'https://example.com',
+      backlogIntervalMs: 0, // test kiem backlog duoc quet lai moi luot khi pham vi quan ly doi
       logger: { error() {} }
     });
     let runtime = makeRuntime();
