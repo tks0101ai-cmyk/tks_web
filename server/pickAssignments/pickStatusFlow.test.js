@@ -127,6 +127,51 @@ test('assign reassign: loi o luot moi thi luot cu giu nguyen; Da boc khong in la
   } finally { await db.close(); }
 });
 
+const body2 = (allocations, extra = {}) => ({ branch: 'HN', orderCode: 'DH002', allocations, ...extra });
+
+test('candidates reopen: don Da boc het hang (dong VT bi xoa) -> xem truoc ton nhu da hoan thung, chi dinh lai chon duoc, luu tao lai dong VT', async () => {
+  const { db, service, notesOf } = await fixture({ orders: { DH002: order({ orderCode: 'DH002', lines: [lineOf('BBB2', 50)] }) } });
+  try {
+    const first = (await service.assign(ctx(), body2([{ productCode: 'BBB2', positionId: 3, qty: 50 }]))).assignment;
+    await service.confirm(ctx(), first.id, { version: 1 });
+    assert.equal(await notesOf(3), undefined, 'het hang -> dong VT bi xoa');
+    const plain = await service.candidates(ctx(), { branch: 'HN', orderCode: 'DH002' });
+    assert.deepEqual(plain.candidates.bbb2, [], 'khong reopen thi khong thay dong da xoa');
+    assert.equal(plain.reopen, undefined);
+
+    const view = await service.candidates(ctx(), { branch: 'HN', orderCode: 'DH002', reopen: true });
+    assert.equal(view.candidates.bbb2.length, 1);
+    const row = view.candidates.bbb2[0];
+    assert.deepEqual([row.positionId, row.location, row.notes, row.available, row.returned, row.recreated], [3, 'C03', '5T x 10', 50, 50, true]);
+    assert.deepEqual(view.reopen, { blocked: [], returned: 50 });
+    assert.equal(await notesOf(3), undefined, 'xem truoc khong ghi DB');
+
+    const second = (await service.assign(ctx(), body2([{ productCode: 'BBB2', positionId: 3, qty: 50 }], { reassign: true, version: first.version + 1 }))).assignment;
+    assert.equal(second.status, 'picking');
+    assert.equal(second.lines.length, 1);
+    const created = (await db.query(`SELECT id, notes FROM stock_positions WHERE code = 'BBB2'`)).rows;
+    assert.equal(created.length, 1);
+    assert.equal(created[0].notes, '5T x 10');
+    assert.equal(second.lines[0].positionId, Number(created[0].id), 'chi dinh moi tro toi dong VT vua tao lai');
+  } finally { await db.close(); }
+});
+
+test('candidates reopen: dong VT da bi xoa nhung vi tri nhap lai -> cong vao dong do, chi dinh doi sang id hien co', async () => {
+  const { db, service, notesOf } = await fixture({ orders: { DH002: order({ orderCode: 'DH002', lines: [lineOf('BBB2', 50)] }) } });
+  try {
+    const first = (await service.assign(ctx(), body2([{ productCode: 'BBB2', positionId: 3, qty: 50 }]))).assignment;
+    await service.confirm(ctx(), first.id, { version: 1 });
+    const again = (await db.query(`INSERT INTO stock_positions (branch, code, name, notes, location) VALUES ('HN', 'BBB2', 'Tên BBB2', '2T x 10', 'C03') RETURNING id`)).rows[0];
+    const view = await service.candidates(ctx(), { branch: 'HN', orderCode: 'DH002', reopen: true });
+    assert.equal(view.candidates.bbb2.length, 1);
+    assert.deepEqual([view.candidates.bbb2[0].positionId, view.candidates.bbb2[0].available, view.candidates.bbb2[0].returned], [Number(again.id), 70, 50]);
+    assert.equal(view.assignment.lines[0].positionId, Number(again.id), 'assignment.lines doi sang id dong hien co');
+    const second = (await service.assign(ctx(), body2([{ productCode: 'BBB2', positionId: Number(again.id), qty: 50 }], { reassign: true, version: first.version + 1 }))).assignment;
+    assert.equal(second.status, 'picking');
+    assert.equal(await notesOf(again.id), '7T x 10', 'cong tra so da nhat (5 thung) vao dong nhap lai');
+  } finally { await db.close(); }
+});
+
 test('setStatus: Dang boc -> Da boc tru thung dung 1 lan (bam lai khong tru nua); Dang boc -> Da huy; Da boc la cuoi', async () => {
   const { db, service, notesOf, pickCount } = await fixture({ orders: {
     DH001: order(),

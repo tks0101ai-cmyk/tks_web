@@ -642,11 +642,34 @@
     return true;
   }
   // Đã bốc → mở khóa để chỉ định lại. Chưa gọi máy chủ: chỉ khi lưu (reassign) thùng đã trừ mới được hoàn lại.
-  function reopenConfirmed(){
+  /* Tồn các vị trí (state.cand) phải hiện NHƯ THỂ thùng đã bốc được trả lại: máy chủ xem trước (candidates?reopen=1, không ghi DB) gồm cả dòng VT đã bị xóa
+     vì hết hàng. Nhờ đó chọn lại / sửa số lượng được ngay; khi lưu, reassign hoàn thùng thật theo đúng cách tính đó. */
+  async function reopenConfirmed(){
     const a=state.latest;if(!a||a.status!=='confirmed'||state.busy||state.needsSync)return;
     if(!window.confirm('Chỉ định lại đơn ĐÃ BỐC?'+String.fromCharCode(10)+'Khi lưu, số thùng đã trừ khỏi các vị trí sẽ được hoàn lại, rồi đơn được chỉ định mới (Đang bốc).'))return;
-    state.reopened=true;state.assignment=null;state.reassignOf=a;allocationsFromAssignment(a);
-    render();
+    const epoch=state.requestEpoch;
+    state.busy=true;render();
+    try{
+      const r=await api('GET',candidatesUrl(state.listOrder)+'&reopen=1');
+      if(!current(epoch))return;
+      const next=r.ok?r.data.assignment:null;
+      if(!r.ok||!r.data.order||!r.data.reopen||!next||next.status!=='confirmed'||next.id!==a.id||next.version!==a.version){
+        setStatus(r.ok&&!(next&&next.id===a.id&&next.version===a.version)?'Chỉ định của đơn vừa thay đổi ở nơi khác.':(r.data&&r.data.error)||'Không tải được tồn sau khi hoàn thùng.',true);
+        if(r.ok)await reloadCurrent(epoch,'Chỉ định của đơn vừa thay đổi ở nơi khác.',true);
+        return;
+      }
+      state.order=r.data.order;state.cand=r.data.candidates||{};state.canEditPositions=r.data.canEditPositions===true;state.posEdit=null;
+      state.latest=next;state.reopened=true;state.assignment=null;state.reassignOf=next;state.touched=new Set();
+      // Gợi ý của thuật toán trên tồn đã hoàn trả (để thẻ vị trí xếp đúng thứ tự ưu tiên), rồi hiện đúng phân bổ đã bốc trước đó.
+      if(state.order.eligible!==false)suggest();
+      allocationsFromAssignment(next);
+      const blocked=r.data.reopen.blocked||[];
+      setStatus(blocked.length?'Không hoàn thùng được: '+blocked.map(b=>b.productCode+' '+b.location+' '+b.message).join('; ')+'. Kiểm tra lại VT trước khi lưu.':'Đã cộng lại '+fmt(r.data.reopen.returned)+' đã bốc vào tồn để chọn lại (chỉ ghi vào VT khi bấm lưu).',blocked.length>0);
+    }catch(error){
+      if(current(epoch))setStatus('Không tải được tồn sau khi hoàn thùng. Thử lại.',true);
+    }finally{
+      if(current(epoch)){state.busy=false;render();}
+    }
   }
   /* Xuất Excel: chỉ định đang hiển thị trong hộp (kể cả chưa lưu), thứ tự dòng theo hộp (kéo-thả/sort). Mỗi (mã hàng, vị trí có SL > 0) 1 dòng;
      mã chưa có vị trí nào vẫn có 1 dòng với Vị trí/SL nhặt trống. Số thùng/quy cách ST tính riêng theo từng vị trí. */

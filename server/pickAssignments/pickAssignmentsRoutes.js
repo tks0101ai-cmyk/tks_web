@@ -36,6 +36,7 @@ function createPickAssignmentsRouter(dependencies = {}) {
     }
   };
   const query = req => ({ branch: req.query.branch, orderCode: req.query.order });
+  const candidatesQuery = req => ({ ...query(req), reopen: req.query.reopen === '1' || req.query.reopen === 'true' });
 
   // Form in chung, dùng cùng quyền với thao tác in/chỉ định.
   const layouts=dependencies.printLayouts || require('./printLayouts');
@@ -62,7 +63,7 @@ function createPickAssignmentsRouter(dependencies = {}) {
     res.send(file.buffer);
   }));
   router.get('/candidates', handle(async (req, res) => {
-    res.json({ ...await svc().candidates(ctxOf(req), query(req)), canEditPositions: canEditPositions(req.user) });
+    res.json({ ...await svc().candidates(ctxOf(req), candidatesQuery(req)), canEditPositions: canEditPositions(req.user) });
   }));
   // Them / sua ghi chu / xoa dong VT cua ma trong don. Dat TRUOC '/:id/...'.
   // POST body { branch, orderCode, productCode, location, notes } -> 201 { row, merged:false } | 200 { row, merged:true } (cong vao dong trung).

@@ -50,6 +50,29 @@ const CANDIDATES_SQL = `SELECT p.*, COALESCE(h.held, 0)::float8 AS held
               GROUP BY l.position_id) h ON h.position_id = p.id
  ORDER BY p.id`;
 
+/* Hoan thung da tru cua 1 dong chi dinh 'confirmed' (THUAN TUY, dung chung cho hoan that va xem truoc "Chi dinh lai"):
+   - dong VT con va ghi chu chua bi doi sau lan tru (= spec_after) -> khoi phuc dung chuoi cu spec_before;
+   - dong VT con nhung ghi chu da bi doi -> cong tra so da nhat (carton.restore), ghi chu khong doc duoc thi loi;
+   - dong VT da bi xoa (het hang): co dong cung ma + vi tri vua nhap lai (`same`) thi cong vao do, khong thi tao lai dong.
+   Tra { target, notes, exact } | { create: true, notes, snapshot } | { error }. */
+function planRevert(job, row, same) {
+  const picked = Number(job.picked_qty);
+  if (row) {
+    if (row.notes === job.spec_after) return { target: row, notes: job.spec_before, exact: true };
+    const spec = carton.parseSpec(row.notes);
+    if (!spec) return { error: 'có ghi chú sai định dạng nên không cộng trả được số đã nhặt' };
+    return { target: row, notes: carton.restore(spec, picked).text, exact: false };
+  }
+  if (same) {
+    const spec = carton.parseSpec(same.notes);
+    if (!spec) return { error: 'đã được nhập lại với ghi chú sai định dạng nên không cộng trả được' };
+    return { target: same, notes: carton.restore(spec, picked).text, exact: false, recreated: false };
+  }
+  // Chi khoi phuc nguyen chuoi cu khi chinh luot xac nhan nay da lam het hang (spec_after rong).
+  const notes = isEmptyNote(job.spec_after) ? job.spec_before : carton.restore(carton.parseSpec('') || { terms: [], loose: 0 }, picked).text;
+  return { create: true, notes, snapshot: job.position_snapshot || {} };
+}
+
 function quantityErrors(order) {
   const errors = [];
   const totals = new Map();
@@ -317,7 +340,36 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
 
   // Dong don (da gop theo ma) + cac vi tri ung vien kem ton kha dung, va chi dinh moi nhat cua don (neu co).
   // Don va chi dinh doc song song; ma chuan cua don khac ma gui (hiem) thi doc lai chi dinh theo ma chuan.
-  async function candidates(ctx, { branch, orderCode } = {}) {
+  /* XEM TRUOC "Chi dinh lai" don Da boc: ton vi tri nhu the thung da tru da duoc hoan lai (khong ghi gi vao DB; luc luu, assign
+     reassign hoan that bang cung planRevert). rows = dong stock_positions (kem held cua don KHAC) cua cac ma trong don; jobs = dong da tru.
+     Tra { rows (them dong da bi xoa), aliases Map(id cu -> id dong cung ma+vi tri hien co), blocked [{productCode, location, message}] }. */
+  function previewReturn(jobs, rows) {
+    const work = rows.map(row => ({ ...row, returned: 0 }));
+    const aliases = new Map();
+    const blocked = [];
+    for (const job of jobs) {
+      const row = work.find(item => Number(item.id) === Number(job.position_id)) || null;
+      const snapshot = job.position_snapshot || {};
+      const same = row ? null : work.find(item => !item.recreated && lower(item.code) === lower(snapshot.code || job.product_code)
+        && normalizeLocation(item.location) === normalizeLocation(snapshot.location ?? job.location)) || null;
+      const plan = planRevert(job, row, same);
+      if (plan.error) { blocked.push({ productCode: job.product_code, location: job.location, message: plan.error }); continue; }
+      const picked = Number(job.picked_qty) || 0;
+      if (plan.create) {
+        work.push({ id: job.position_id, code: snapshot.code || job.product_code, name: snapshot.name || '', location: snapshot.location ?? job.location,
+          notes: plan.notes, version: null, held: 0, returned: picked, recreated: true });
+        continue;
+      }
+      plan.target.notes = plan.notes;
+      plan.target.returned += picked;
+      if (same) aliases.set(Number(job.position_id), Number(same.id));
+    }
+    return { rows: work, aliases, blocked };
+  }
+
+  // reopen=true + chi dinh moi nhat la 'confirmed': tra ton NHU DA HOAN THUNG (xem previewReturn) + chi dinh voi positionId da doi
+  // sang dong hien co, kem reopen { blocked, returned }. Khong ghi DB.
+  async function candidates(ctx, { branch, orderCode, reopen = false } = {}) {
     assertBranch(branch);
     assertScope(ctx, branch);
     const code = cleanOrderCode(orderCode);
@@ -333,6 +385,17 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
     const rows = keys.length ? (await timedQuery(db, 'pickPositions', CANDIDATES_SQL, [branch, keys, codeKey(order.orderCode)])).rows : [];
     const byCode = {};
     for (const key of keys) byCode[key] = [];
+    if (reopen === true && assignment && assignment.status === STATUS.CONFIRMED) {
+      const jobs = (await db.query('SELECT * FROM order_pick_lines WHERE assignment_id = $1 AND picked_qty IS NOT NULL ORDER BY position_id', [assignment.id])).rows;
+      const view = previewReturn(jobs, rows);
+      for (const row of view.rows) {
+        const bucket = byCode[codeKey(row.code)] || (byCode[codeKey(row.code)] = []);
+        bucket.push({ ...shapeCandidate(row, Number(row.held) || 0), returned: row.returned, recreated: row.recreated === true });
+      }
+      for (const key of Object.keys(byCode)) byCode[key].sort((a, b) => a.positionId - b.positionId);
+      for (const line of assignment.lines) if (view.aliases.has(line.positionId)) line.positionId = view.aliases.get(line.positionId);
+      return { order: orderView(order, lines), candidates: byCode, assignment, reopen: { blocked: view.blocked, returned: view.rows.reduce((sum, row) => sum + row.returned, 0) } };
+    }
     for (const row of rows) byCode[codeKey(row.code)].push(shapeCandidate(row, Number(row.held) || 0));
     return { order: orderView(order, lines), candidates: byCode, assignment };
   }
@@ -502,7 +565,19 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
             throw fail(409, 'VERSION_CONFLICT', 'Chỉ định đã bị người khác thay đổi. Hãy tải lại.', { latest: await readAssignment(client, Number(active.id), {inTransaction:true}) });
           }
           const wasConfirmed = active.status === STATUS.CONFIRMED;
-          if (wasConfirmed) await revertConfirmed(client, { id: active.id, branch, order_code: order.orderCode }, actor);
+          if (wasConfirmed) {
+            const moved = await revertConfirmed(client, { id: active.id, branch, order_code: order.orderCode }, actor);
+            // Dong VT da bi xoa (het hang) duoc tao lai voi id moi: client chon theo id cu (xem truoc o candidates?reopen=1) -> doi sang id moi.
+            if (moved.size) {
+              for (const map of perLine) {
+                for (const [oldId, qty] of [...map]) {
+                  if (!moved.has(oldId)) continue;
+                  map.delete(oldId);
+                  map.set(moved.get(oldId), (map.get(moved.get(oldId)) || 0) + qty);
+                }
+              }
+            }
+          }
           await client.query(
             `UPDATE order_pick_assignments SET status = 'cancelled', version = version + 1, cancelled_by_user_id = $2, cancelled_by_name = $3, cancelled_at = now(), updated_at = now() WHERE id = $1`,
             [active.id, actor.id, actor.name]);
@@ -596,8 +671,8 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
 
   const stockChanged = (job, why) => fail(409, 'STOCK_CHANGED', `Vị trí ${job.location || '(không tên)'} của mã ${job.product_code} ${why}. Hãy kiểm tra Vị trí hàng rồi hủy nhặt và chỉ định lại.`);
 
-  // Hoan tac 1 dong da tru: khoi phuc dung chuoi cu neu ghi chu chua bi doi tiep, khong thi cong tra so da nhat; dong da bi
-  // tu xoa (het hang) duoc tao lai (hoac cong vao dong cung ma + vi tri vua duoc nhap lai).
+  // Hoan tac 1 dong da tru theo planRevert (xem tren). Tra [idCu, idMoi] khi dong VT bi xoa phai tao lai / cong vao dong khac
+  // (id doi) de assign doi lai vi tri trong phan bo cua client; con lai tra null.
   async function revertJob(client, head, actor, job, row) {
     const picked = Number(job.picked_qty);
     const summary = { orderCode: head.order_code, assignmentId: Number(head.id), restored: picked };
@@ -607,36 +682,40 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
         [target.id, notes, actor.id, actor.name]);
       await writeHistory(client, head.branch, actor, [{ positionId: target.id, code: target.code, location: target.location, action: 'pick_revert', field: 'notes', oldValue: target.notes, newValue: notes, summary: { ...summary, ...extra } }]);
     };
-    if (row) {
-      if (row.notes === job.spec_after) return update(row, job.spec_before, { exact: true });
-      const spec = carton.parseSpec(row.notes);
-      if (!spec) throw stockChanged(job, 'có ghi chú sai định dạng nên không cộng trả được số đã nhặt');
-      return update(row, carton.restore(spec, picked).text, { exact: false });
+    let same = null;
+    if (!row) {
+      const snapshot = job.position_snapshot || {};
+      same = (await client.query(
+        `SELECT ${ROW_COLUMNS} FROM stock_positions WHERE branch = $1 AND lower(btrim(code)) = $2
+           AND upper(regexp_replace(location, '\\s+', '', 'g')) = $3 ORDER BY id LIMIT 1 FOR UPDATE`,
+        [head.branch, lower(snapshot.code || job.product_code), normalizeLocation(snapshot.location ?? job.location)])).rows[0] || null;
     }
-    const snapshot = job.position_snapshot || {};
-    const same = (await client.query(
-      `SELECT ${ROW_COLUMNS} FROM stock_positions WHERE branch = $1 AND lower(btrim(code)) = $2
-         AND upper(regexp_replace(location, '\\s+', '', 'g')) = $3 ORDER BY id LIMIT 1 FOR UPDATE`,
-      [head.branch, lower(snapshot.code || job.product_code), normalizeLocation(snapshot.location ?? job.location)])).rows[0];
-    if (same) {
-      const spec = carton.parseSpec(same.notes);
-      if (!spec) throw stockChanged(job, 'đã được nhập lại với ghi chú sai định dạng nên không cộng trả được');
-      return update(same, carton.restore(spec, picked).text, { exact: false, recreated: false });
+    const plan = planRevert(job, row, same);
+    if (plan.error) throw stockChanged(job, plan.error);
+    if (plan.create) {
+      const snapshot = plan.snapshot;
+      const { rows } = await client.query(
+        `INSERT INTO stock_positions (branch, code, name, notes, arrival_date, location, updated_by_user_id, updated_by_name)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+        [head.branch, snapshot.code || job.product_code, snapshot.name || '', plan.notes, snapshot.arrivalDate || '', snapshot.location ?? job.location, actor.id, actor.name]);
+      await writeHistory(client, head.branch, actor, [{ positionId: rows[0].id, code: snapshot.code || job.product_code, location: snapshot.location ?? job.location, action: 'pick_revert', field: 'notes', oldValue: null, newValue: plan.notes, summary: { ...summary, recreated: true } }]);
+      return [Number(job.position_id), Number(rows[0].id)];
     }
-    // Chi khoi phuc nguyen chuoi cu khi chinh luot xac nhan nay da lam het hang (spec_after rong).
-    const notes = isEmptyNote(job.spec_after) ? job.spec_before : carton.restore(carton.parseSpec('') || { terms: [], loose: 0 }, picked).text;
-    const { rows } = await client.query(
-      `INSERT INTO stock_positions (branch, code, name, notes, arrival_date, location, updated_by_user_id, updated_by_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-      [head.branch, snapshot.code || job.product_code, snapshot.name || '', notes, snapshot.arrivalDate || '', snapshot.location ?? job.location, actor.id, actor.name]);
-    await writeHistory(client, head.branch, actor, [{ positionId: rows[0].id, code: snapshot.code || job.product_code, location: snapshot.location ?? job.location, action: 'pick_revert', field: 'notes', oldValue: null, newValue: notes, summary: { ...summary, recreated: true } }]);
+    await update(plan.target, plan.notes, plan.exact ? { exact: true } : same ? { exact: false, recreated: false } : { exact: false });
+    return same ? [Number(job.position_id), Number(same.id)] : null;
   }
 
   // Hoan toan bo thung da tru cua chi dinh 'confirmed' (dung trong giao dich cua assign reassign; da giu khoa co so).
+  // Tra Map(id vi tri cu -> id vi tri moi) cho cac dong VT da bi xoa roi duoc tao lai / cong vao dong khac.
   async function revertConfirmed(client, head, actor) {
     const jobs = (await client.query('SELECT * FROM order_pick_lines WHERE assignment_id = $1 AND picked_qty IS NOT NULL ORDER BY position_id', [head.id])).rows;
     const positions = await lockPositions(client, head.branch, jobs);
-    for (const job of jobs) await revertJob(client, head, actor, job, positions.get(Number(job.position_id)));
+    const moved = new Map();
+    for (const job of jobs) {
+      const change = await revertJob(client, head, actor, job, positions.get(Number(job.position_id)));
+      if (change) moved.set(change[0], change[1]);
+    }
+    return moved;
   }
 
   async function confirm(ctx, id, body = {}) {

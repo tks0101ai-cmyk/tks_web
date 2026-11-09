@@ -83,7 +83,12 @@ async function renderPage({ orders = [orderRow('DH1')], store = newStore(), perm
     const u = new URL(href, 'https://tokosi.example');
     if (isListUrl(href)) return json(lifecycleResponse(href, source.orders, { ok: true, stale: false, fetchedAt: null, count: 0 }));
     if (u.pathname === '/api/shipment/lifecycle/order-detail') return json({ detail: kiotDetail(u.searchParams.get('code')) });
-    if (u.pathname === '/api/shipment/pick/candidates') { store.candidateCalls++; return json({ order: store.order, candidates: store.candidates, assignment: store.assignment }); }
+    if (u.pathname === '/api/shipment/pick/candidates') {
+      store.candidateCalls++;
+      // reopen=1 (Chỉ định lại đơn Đã bốc): máy chủ trả tồn như đã hoàn thùng kèm reopen { blocked, returned }.
+      if (u.searchParams.get('reopen') === '1') { store.reopenCalls = (store.reopenCalls || 0) + 1; return json({ order: store.order, candidates: store.reopenCandidates || store.candidates, assignment: store.assignment, reopen: store.reopen || { blocked: [], returned: 0 } }); }
+      return json({ order: store.order, candidates: store.candidates, assignment: store.assignment });
+    }
     if (u.pathname.startsWith('/api/shipment/pick/print-layout/') && (options.method || 'GET') === 'GET') return json({layout:null,version:0});
     if (u.pathname === '/api/shipment/pick' && (options.method || 'GET') === 'GET') return json({ assignment: store.assignment });
     if (u.pathname === '/api/shipment/pick' && options.method === 'POST') {
@@ -566,9 +571,11 @@ test('Đã bốc: bấm Chỉ định lại (hỏi xác nhận) thì mở khóa;
   assert.equal(document.getElementById('pickingConfirm').disabled, true);
   window.confirm = () => false;
   await click(page, 'pickingReopen');
+  assert.equal(store.reopenCalls || 0, 0, 'từ chối thì không tải tồn xem trước');
   assert.equal(document.getElementById('pickingConfirm').disabled, true, 'từ chối thì vẫn khóa');
   window.confirm = () => true;
   await click(page, 'pickingReopen');
+  assert.equal(store.reopenCalls, 1, 'mở khóa tải tồn như đã hoàn thùng (candidates?reopen=1)');
   assert.equal(document.getElementById('pickingReopen').hidden, true);
   assert.equal(document.getElementById('pickingConfirm').disabled, false);
   assert.equal(text(page, 'pickingConfirm'), 'Chỉ định lại & In phiếu');
@@ -578,6 +585,31 @@ test('Đã bốc: bấm Chỉ định lại (hỏi xác nhận) thì mở khóa;
   assert.equal(store.posted[0].reassign, true);
   assert.equal(store.posted[0].version, 4);
   assert.equal(store.statusCalls.length, 0);
+  page.dom.window.close();
+});
+
+test('Đã bốc hết hàng (dòng VT đã bị xóa): Chỉ định lại tải tồn như đã hoàn thùng nên vị trí cũ chọn lại được và lưu được', async () => {
+  const store = newStore({
+    assignment: makeAssignment('confirmed', { version: 4 }),
+    candidates: { a: [position(12, 'B02', '2T x 25', 50)] }, // vị trí 11 đã bị xóa khi hết hàng
+    reopenCandidates: { a: [position(11, 'A07', '4T x 50', 200, { returned: 100, recreated: true }), position(12, 'B02', '2T x 25', 50)] },
+    reopen: { blocked: [], returned: 100 }
+  });
+  const page = await renderPage({ orders: [orderRow('DH1', { pickStatus: 'confirmed' })], store });
+  await openPopup(page);
+  const { document, window } = page;
+  assert.equal(document.querySelector('[data-location="11"]').disabled, true, 'chưa mở khóa: dòng VT đã xóa chỉ hiện để xem, không chọn được');
+  window.confirm = () => true;
+  await click(page, 'pickingReopen');
+  const button = document.querySelector('[data-location="11"]');
+  assert.ok(button && !button.disabled, 'vị trí cũ chọn lại được');
+  assert.equal(document.querySelector('[data-qty][data-qloc="11"]').value, '100', 'giữ phân bổ đã bốc');
+  assert.equal(document.getElementById('pickingConfirm').disabled, false);
+  assert.match(text(page, 'pickingStatus'), /Đã cộng lại 100/);
+  await click(page, 'pickingConfirm');
+  assert.equal(store.posted.length, 1);
+  assert.deepEqual(store.posted[0].allocations, [{ productCode: 'A', positionId: 11, qty: 100 }]);
+  assert.equal(store.posted[0].reassign, true);
   page.dom.window.close();
 });
 
