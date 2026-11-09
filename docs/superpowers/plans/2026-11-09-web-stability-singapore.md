@@ -266,7 +266,7 @@ Dashboard: Settings → Health & Alerts → Health Check Path = `/health`. Kiể
 
 - [ ] **Step 4: Xóa biến thừa**
 
-Dashboard → Environment: xóa `DATABASE_URL` trên cả web và worker; xóa `KIOTVIET_SYNC_ENABLED` trên **web** (giữ trên worker). Chọn "Save, rebuild and deploy" **ngoài giờ làm**, hoặc "Save only" để áp ở lần deploy kế tiếp.
+Dashboard → Environment: chỉ xóa `DATABASE_URL` trên cả web và worker. **CẢNH BÁO: KHÔNG xóa `KIOTVIET_SYNC_ENABLED` khỏi web** — web vẫn đọc biến này (`server/kiotviet/kiotvietWebhookRoutes.js` bật route webhook KiotViet; `server/cashbook/cashbookRepository.js` dùng cho trạng thái đồng bộ). Chọn "Save, rebuild and deploy" **ngoài giờ làm**, hoặc "Save only" để áp ở lần deploy kế tiếp.
 
 - [ ] **Step 5: Kiểm tra số liệu TVPAMS (chỉ đọc)**
 
@@ -946,7 +946,7 @@ const OVERRIDES = {
   HR_MANAGER_TELEGRAM_ENABLED: 'false', HR_LEAVE_DB_REALTIME_ENABLED: 'false', SPECIAL_DAYS_NOTIFY_ENABLED: 'false',
   VAT_REQUEST_NOTIFY_ENABLED: 'false', HR_LEAVE_BELL_NOTIFY_ENABLED: 'false', PICK_KIOT_RECONCILE_ENABLED: 'false'
 };
-const SKIP = new Set(['DATABASE_URL', 'KIOTVIET_SYNC_ENABLED']);
+const SKIP = new Set(['DATABASE_URL']);
 const api = (path, init = {}) => fetch('https://api.render.com/v1' + path, { ...init, headers: { Authorization: 'Bearer ' + process.env.RENDER_API_KEY, Accept: 'application/json', 'Content-Type': 'application/json' } });
 (async () => {
   if (!/^srv-/.test(target || '')) throw new Error('Thieu id service dich');
@@ -1027,4 +1027,4 @@ node -e "require('dotenv').config();fetch('https://api.render.com/v1/services/sr
 
 1 → 2 → (3, 4, 5, 7 song song được, mỗi task 1 PR) → 6 (cần 1) → 8 (cần 3, 4, 5, 7 đã deploy) → 9 → 10.
 
-Cập nhật gần nhất: 09/11/2026.
+Cập nhật gần nhất: 10/11/2026.

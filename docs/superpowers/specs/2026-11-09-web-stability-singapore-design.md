@@ -48,12 +48,12 @@ VPS là netcup Nuremberg (Đức). Đức ↔ Singapore cũng ~160–180 ms, kh�
 
 Ngoài phạm vi: chuyển DB, đổi Supavisor sang transaction mode, VPS/Docker, chạy nhiều instance web.
 
-## 3. Giai đoạn 0 — dọn nhanh (cấu hình + merge)
+## 3. Giai đoạn 0 — dọn nhanh (cấu hình + merge) — ĐÃ LÀM 09/11/2026
 
 1. **Render Build Filters** cho web và worker: `paths` = `server/**`; `ignoredPaths` = `server/**/*.md`, `server/**/*.test.js`, `server/test/**`. Đã xác minh: dù `rootDir=server`, commit chỉ sửa `graphify-out/` (ví dụ `ec2c5c8a`, `02e448ae`) vẫn deploy; commit chỉ sửa `server/README.md` (`329919e7`) hay test (`c08e183b`) cũng deploy. Commit có code vẫn tự deploy như cũ (giữ khả năng sửa nóng trong giờ).
    Thêm **Health Check Path** `/health` cho web (hiện để trống): Render chỉ chuyển lưu lượng sang bản mới khi bản mới trả lời được.
 2. Bản sửa `fix/rollup-stale-product-sales` (commit `1ea0f25a`) đã nằm trên `main`: chỉ kiểm lại TVPAMS = 150 − 1950 trong `daily_product_sales` (chỉ đọc).
-3. **Xóa biến thừa**: `DATABASE_URL` trên web và worker (trỏ Render Postgres đã xóa); `KIOTVIET_SYNC_ENABLED` trên web (không dùng khi `BACKGROUND_JOBS=worker`).
+3. **Xóa biến thừa**: chỉ `DATABASE_URL` trên web và worker (trỏ Render Postgres đã xóa). **Giữ `KIOTVIET_SYNC_ENABLED=true` trên web**: web vẫn đọc biến này — `server/kiotviet/kiotvietWebhookRoutes.js` dùng nó để bật các route webhook KiotViet, `server/cashbook/cashbookRepository.js` dùng nó cho trạng thái đồng bộ sổ quỹ. (Ban đầu spec định xóa biến này khỏi web; đã xóa nhầm và khôi phục ngay trước mọi deploy.)
 
 ## 4. Giai đoạn 1 — sửa code (mỗi mục 1 PR, viết test trước)
 
@@ -134,4 +134,4 @@ Hai webhook bên ngoài phải đăng ký lại: KiotViet (`/api/kiotviet/webhoo
 | Giới hạn tải chặn nhầm | Giới hạn GET đang chạy (4/người/đường dẫn), không theo số lượt/phút; theo dõi log `[inflightLimit]` tuần đầu |
 | Throttle mới làm Kiểm kê chậm cập nhật | Lượt kế chạy ngay khi lượt trước xong nếu đã quá `RELOAD_GAP_MS`; test hồi quy |
 
-Cập nhật gần nhất: 09/11/2026.
+Cập nhật gần nhất: 10/11/2026.
