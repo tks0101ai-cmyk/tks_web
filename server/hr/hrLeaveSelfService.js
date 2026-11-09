@@ -24,7 +24,16 @@ async function loadActiveProfile(userId, pool = getPool()) {
     return row;
   } catch { return null; }
 }
-function createHrLeaveSelfService({ loadProfile = loadActiveProfile, repo = leaveRepo, schedules=defaultSchedules, now = () => new Date() } = {}) {
+// Ghi đè nhãn theo tài khoản (bảng hr_leave_timing_overrides, migration 0120).
+// Chỉ phục vụ hiển thị "Dự kiến" cho khớp: nhãn lưu thật do trigger DB hr_leave_01_timing_override quyết định.
+// Fail-soft nếu chưa có bảng.
+async function hasTimingOverride(userId, pool) {
+  try {
+    const { rows } = await (pool || getPool()).query('SELECT 1 FROM hr_leave_timing_overrides WHERE user_id = $1', [userId]);
+    return rows.length > 0;
+  } catch { return false; }
+}
+function createHrLeaveSelfService({ loadProfile = loadActiveProfile, repo = leaveRepo, schedules=defaultSchedules, timingOverride = hasTimingOverride, now = () => new Date() } = {}) {
   async function context(user) {
     const row = user && user.id ? await loadProfile(user.id) : null;
     if (!row) return { eligible: false, profile: null };
@@ -44,6 +53,8 @@ function createHrLeaveSelfService({ loadProfile = loadActiveProfile, repo = leav
     // Work schedules are keyed by account regardless of HR linkage.
     const schedule=await schedules.getScheduleForUser(ctx.profile.userId,calendar.start_date);
     const timing=calculateTiming(calendar,schedule,submittedAt);
+    // Áp ghi đè nhãn theo tài khoản (nếu có).
+    if (timing.timingStatus === 'Xin muộn' && await timingOverride(ctx.profile.userId)) timing.timingStatus = 'Đúng hạn';
     return {ctx,calendar,timing,submittedAt};
   }
   async function preview(user,body={}) {return (await prepare(user,body,false)).timing;}

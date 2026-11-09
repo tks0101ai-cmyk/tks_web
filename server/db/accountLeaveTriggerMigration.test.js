@@ -210,3 +210,30 @@ test('hrLeaveWorkSchedulesRepository thật trên schema 0082: tài khoản, l�
     assert.equal((await repo.setSchedule('1', { date: '2030-02-02', morningStart: null, afternoonStart: null })).version, '2');
   } finally { await db.close(); }
 });
+
+test('0120: ghi đè nhãn thời hạn theo tài khoản', async () => {
+  const db = await fixture();
+  try {
+    await run(db, '0120_hr_leave_timing_overrides.sql');
+    await db.exec(`INSERT INTO hr_leave_timing_overrides(user_id) VALUES ('${U2}')`);
+    const vn = async offset => (await one(db, `SELECT to_char((now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date + ${offset}, 'YYYY-MM-DD') AS d`)).d;
+    const tomorrow = await vn(1); // quá hạn (hạn = hết ngày trước đó 1 ngày) nhưng chưa tới giờ bắt đầu → "Xin muộn"
+    const yesterday = await vn(-1); // đã qua giờ bắt đầu → "Vi phạm"
+    await db.exec(insert('L1', U1, { date: tomorrow }));
+    await db.exec(insert('L2', U2, { date: tomorrow }));
+    await db.exec(insert('V1', U1, { date: yesterday }));
+    await db.exec(insert('V2', U2, { date: yesterday }));
+    const st = async id => (await one(db, `SELECT timing_status FROM hr_leave_requests WHERE request_id='${id}'`)).timing_status;
+    assert.equal(await st('L1'), 'Xin muộn', 'tài khoản không có ghi đè');
+    assert.equal(await st('L2'), 'Đúng hạn', 'tài khoản có ghi đè');
+    assert.equal(await st('V1'), 'Vi phạm');
+    assert.equal(await st('V2'), 'Vi phạm', 'Vi phạm không bị ghi đè');
+    assert.equal((await one(db, "SELECT timing_status FROM hr_leave_submissions WHERE request_id='L2'")).timing_status, 'Đúng hạn', 'lịch sử ghi nhãn sau ghi đè');
+
+    // Sửa đơn (đổi lịch → revision tăng) vẫn áp ghi đè; UPDATE thường không đổi nhãn.
+    await db.exec(`UPDATE hr_leave_requests SET start_date='${await vn(2)}', end_date='${await vn(2)}' WHERE request_id='L2'`);
+    assert.equal(await st('L2'), 'Đúng hạn');
+    await db.exec("UPDATE hr_leave_requests SET ly_do='đổi lý do' WHERE request_id='L1'");
+    assert.equal(await st('L1'), 'Xin muộn');
+  } finally { await db.close(); }
+});

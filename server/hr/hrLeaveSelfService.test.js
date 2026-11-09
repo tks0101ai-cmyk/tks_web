@@ -135,3 +135,24 @@ test('đơn tự gửi luôn đọc lịch theo user_id, không đọc lịch th
  await instance.submit({id:'u-1'},body);
  assert.deepEqual(calls,[{id:'u-1',date:'2026-10-06'}]);
 });
+
+test('ghi đè nhãn thời hạn theo tài khoản (preview/submit)', async () => {
+  const make = (override, instant) => {
+    let persisted;
+    const instance = create({ loadProfile: async () => account, now: () => new Date(instant), timingOverride: async id => override && id === 'u-1',
+      schedules: { getScheduleForUser: async () => ({ morningStart: '07:45', afternoonStart: '12:30', version: '1' }) },
+      repo: { createLeaveRequest: async record => (persisted = record) } });
+    return { instance, record: () => persisted };
+  };
+  // Nghỉ 1 ngày 2026-10-06 (2 buổi): hạn hết 2026-10-04; gửi 2026-10-05 15:00 VN = quá hạn nhưng trước giờ bắt đầu → Xin muộn.
+  const late = '2026-10-05T08:00:00.000Z';
+  const one = { ...body, end_date: '2026-10-06' };
+  assert.equal((await make(false, late).instance.preview({ id: 'u-1' }, one)).timingStatus, 'Xin muộn');
+  const overridden = make(true, late);
+  assert.equal((await overridden.instance.preview({ id: 'u-1' }, one)).timingStatus, 'Đúng hạn');
+  await overridden.instance.submit({ id: 'u-1' }, one);
+  assert.equal(overridden.record().timing_status, 'Đúng hạn');
+  // 07:46 VN ngày nghỉ = sau giờ bắt đầu → Vi phạm.
+  const violation = make(true, '2026-10-06T00:46:00.000Z');
+  assert.equal((await violation.instance.preview({ id: 'u-1' }, one)).timingStatus, 'Vi phạm');
+});

@@ -7874,9 +7874,10 @@
                   const day = revenueByDay[items[0].dataIndex] || {};
                   const lines = [];
                   if (branchSeries.length > 1) lines.push('Tổng: ' + fmtMoney(Number(day.revenue) || 0));
-                  const returned = Number(day.returnAmount) || 0;
-                  if (returned > 0) {
-                    lines.push('Doanh thu bán: ' + fmtMoney(Number(day.grossRevenue) || 0), 'Trả hàng: -' + fmtMoney(returned));
+                  // Luon hien ca hai dong (ke ca ngay khong co tra hang) khi chuoi co du lieu ban/tra.
+                  if (day.grossRevenue !== undefined || day.returnAmount !== undefined) {
+                    const returned = Number(day.returnAmount) || 0;
+                    lines.push('Doanh thu bán: ' + fmtMoney(Number(day.grossRevenue) || 0), 'Trả hàng: ' + (returned > 0 ? '-' : '') + fmtMoney(returned));
                   }
                   return lines;
                 }
