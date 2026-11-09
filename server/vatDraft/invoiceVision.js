@@ -15,7 +15,8 @@ const PROMPT = [
   'KHÔNG đoán hay suy từ dòng khác (vd Mã số thuế): dòng nào không có hoặc không đọc rõ trong ảnh thì để null.'
 ].join('\n');
 
-const RETRYABLE = new Set([408, 429, 500, 502, 503, 504]);
+// 404 = model da bi nha cung cap go (xKiro tra "Model ... does not exist") -> thu model ke tiep.
+const RETRYABLE = new Set([404, 408, 429, 500, 502, 503, 504]);
 
 function unavailable(message) {
   const error = new Error(message);
@@ -57,6 +58,8 @@ function createInvoiceVisionClient({
         body: JSON.stringify({
           model: modelId,
           temperature: 0,
+          // Model suy luan cua OpenAI mac dinh "nghi" 20-40s truoc khi tra loi; doc chu khong can nghi.
+          ...(modelId.startsWith('openai/') ? { reasoning_effort: 'none' } : {}),
           messages: [
             { role: 'system', content: PROMPT },
             { role: 'user', content: [

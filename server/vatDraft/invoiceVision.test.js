@@ -61,6 +61,21 @@ test('nhieu model du phong (chuoi cach nhau dau phay) thu lan luot den khi co mo
   assert.deepEqual(calls.map(c => c.body.model), ['main', 'b1:free', 'b2']);
 });
 
+test('model chinh bi go (404 not found) -> bo qua, thu tiep model du phong', async () => {
+  const { impl, calls } = fakeFetch([reply('', 404), reply('', 404), reply('{"totalPayment":"5.000"}')]);
+  const client = createInvoiceVisionClient({ apiKey: 'k', model: 'gone1', fallbackModel: 'gone2,alive', fetchImpl: impl });
+  assert.deepEqual(await client.extractInvoice(IMAGE, 'image/png'), { totalPayment: '5.000' });
+  assert.deepEqual(calls.map(c => c.body.model), ['gone1', 'gone2', 'alive']);
+});
+
+test('model openai/* gui reasoning_effort=none, model khac thi khong', async () => {
+  const { impl, calls } = fakeFetch([reply('', 503), reply('{"totalPayment":"1.000"}')]);
+  const client = createInvoiceVisionClient({ apiKey: 'k', model: 'mistralai/m', fallbackModel: 'openai/gpt-x', fetchImpl: impl });
+  await client.extractInvoice(IMAGE, 'image/png');
+  assert.equal(calls[0].body.reasoning_effort, undefined);
+  assert.equal(calls[1].body.reasoning_effort, 'none');
+});
+
 test('loi khong thu lai (401) -> 503 ngay, khong goi du phong', async () => {
   const { impl, calls } = fakeFetch([reply('', 401)]);
   const client = createInvoiceVisionClient({ apiKey: 'k', model: 'main', fallbackModel: 'backup', fetchImpl: impl });
