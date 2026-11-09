@@ -570,13 +570,28 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
        FROM stock_position_history WHERE branch = $1 AND ($2::bigint IS NULL OR id < $2) AND ($4::bigint IS NULL OR position_id = $4)
        ORDER BY id DESC LIMIT $3`,
       [branch, Number.isInteger(beforeId) && beforeId > 0 ? beforeId : null, size, Number.isInteger(rowId) && rowId > 0 ? rowId : null]);
-    return {
+    const result = {
       rows: rows.map(r => ({
         id: Number(r.id), createdAt: isoOf(r.created_at), branch: r.branch, positionId: r.position_id === null ? null : Number(r.position_id),
         code: r.code, location: r.location, action: r.action, field: r.field, oldValue: r.old_value, newValue: r.new_value, summary: r.summary, actorName: r.actor_name
       })),
       nextBefore: rows.length === size ? Number(rows[rows.length - 1].id) : null
     };
+    // Đơn "Đang bốc" (giữ chỗ chưa trừ thùng) chưa có dòng lịch sử: trả riêng để hộp chi tiết hiện cùng các đơn đã bốc.
+    if (Number.isInteger(rowId) && rowId > 0 && !(Number.isInteger(beforeId) && beforeId > 0)) {
+      const held = await getDb().query(
+        `SELECT a.id, a.order_code, a.assigned_at, a.assigned_by_name, l.planned_qty, l.reserved_qty, l.st_text
+         FROM order_pick_lines l JOIN order_pick_assignments a ON a.id = l.assignment_id
+         WHERE a.branch = $1 AND a.status = 'picking' AND l.position_id = $2
+         ORDER BY a.assigned_at DESC, a.id DESC`, [branch, rowId])
+        .catch(error => { if (error && error.code === '42P01') return { rows: [] }; throw error; }); // DB cũ/test chưa có bảng chỉ định
+      result.holds = held.rows.map(r => ({
+        id: 'hold-' + r.id, createdAt: isoOf(r.assigned_at), branch, positionId: rowId, action: 'picking', field: 'notes',
+        oldValue: null, newValue: null, actorName: r.assigned_by_name || '',
+        summary: { orderCode: r.order_code, reserved: Number(r.reserved_qty), planned: Number(r.planned_qty), stText: r.st_text || '' }
+      }));
+    }
+    return result;
   }
 
 

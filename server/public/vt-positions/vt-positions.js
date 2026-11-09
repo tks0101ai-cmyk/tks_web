@@ -23,7 +23,7 @@
     seed: 'Nhập dữ liệu đầu', create: 'Thêm dòng', edit: 'Sửa', delete: 'Xóa dòng', auto_delete: 'Tự xóa (hết hàng)',
     deduct: 'Trừ SL', import_replace: 'Import thay toàn bộ', import_add: 'Import bổ sung',
     pick: 'Nhặt hàng (đơn)', pick_revert: 'Hoàn tác nhặt (đơn)',
-    ack: 'Đánh dấu Đã sửa', unack: 'Bỏ Đã sửa', history_purged: 'Xóa lịch sử',
+    picking: 'Đang bốc (đơn)', ack: 'Đánh dấu Đã sửa', unack: 'Bỏ Đã sửa', history_purged: 'Xóa lịch sử',
     stock_out: 'Xuất kho'
   };
   const FIELD_LABELS = { code: 'Mã hàng', name: 'Tên hàng', notes: 'Ghi chú', arrivalDate: 'Ngày về', location: 'Vị trí', quantity: 'Số lượng' };
@@ -558,7 +558,9 @@
   function renderDetailHistory(message) {
     const body = $('vtDetailHistoryRows');
     body.replaceChildren();
-    if (!detail.rows.length) {
+    const holds = detail.holds || [];
+    const shown = holds.concat(detail.rows);
+    if (!shown.length) {
       const tr = document.createElement('tr');
       const td = document.createElement('td');
       td.colSpan = 4;
@@ -567,7 +569,7 @@
       tr.appendChild(td);
       body.appendChild(tr);
     }
-    detail.rows.forEach(entry => {
+    shown.forEach(entry => {
       const tr = document.createElement('tr');
       const time = document.createElement('td');
       time.className = 'mono vt-hist-time';
@@ -583,7 +585,7 @@
       body.appendChild(tr);
     });
     const more = detail.nextBefore !== null && detail.nextBefore !== undefined;
-    $('vtDetailHistoryNote').textContent = detail.rows.length ? `${detail.rows.length} thay đổi${more ? ' đã tải' : ''}` : '';
+    $('vtDetailHistoryNote').textContent = shown.length ? `${shown.length} thay đổi${more ? ' đã tải' : ''}` : '';
     $('vtDetailHistoryMore').hidden = !more;
   }
 
@@ -594,6 +596,7 @@
     const { response, payload } = await request(API + '/history?branch=' + detail.tab.toUpperCase() + '&positionId=' + encodeURIComponent(id) + '&limit=50' + before);
     if (version !== detail.version || detail.id !== id) return;
     if (!response.ok) { renderDetailHistory(payload.error || 'Không tải được lịch sử.'); return; }
+    if (!append) detail.holds = Array.isArray(payload.holds) ? payload.holds : [];
     detail.rows = append ? detail.rows.concat(payload.rows || []) : (payload.rows || []);
     detail.nextBefore = payload.nextBefore ?? null;
     renderDetailHistory();
@@ -606,6 +609,7 @@
     detail.row = row;
     detail.fresh = null;
     detail.rows = [];
+    detail.holds = [];
     detail.nextBefore = null;
     $('vtDetailCode').textContent = String(row.code ?? '');
     $('vtDetailName').textContent = row.name ? String(row.name) : '';
@@ -1346,7 +1350,7 @@
   }
 
   // Nhãn hành động dạng pill: màu theo loại (có chữ nên không chỉ dựa vào màu).
-  const HISTORY_TONES = { edit: 'blue', create: 'green', import_add: 'green', delete: 'red', auto_delete: 'red', deduct: 'amber', pick: 'amber', pick_revert: 'blue', seed: 'neutral', import_replace: 'neutral', ack: 'green', unack: 'neutral', history_purged: 'red', stock_out: 'amber' };
+  const HISTORY_TONES = { edit: 'blue', create: 'green', import_add: 'green', delete: 'red', auto_delete: 'red', deduct: 'amber', pick: 'amber', picking: 'amber', pick_revert: 'blue', seed: 'neutral', import_replace: 'neutral', ack: 'green', unack: 'neutral', history_purged: 'red', stock_out: 'amber' };
   const HISTORY_ICONS = {
     blue: '<path d="M4 20h4L19 9l-4-4L4 16v4Z"></path>',
     green: '<path d="M12 5v14M5 12h14"></path>',
@@ -1368,6 +1372,11 @@
   function historyChange(entry) {
     const box = document.createDocumentFragment();
     const add = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; node.textContent = text; box.appendChild(node); return node; };
+    if (entry.action === 'picking' && entry.summary) {
+      const s = entry.summary;
+      add('span', 'vt-hist-summary', `Giữ ${s.reserved}${s.stText ? ' (' + s.stText + ')' : ''} · Đơn ${s.orderCode} · chưa trừ thùng`);
+      return box;
+    }
     if (entry.summary) {
       // Xuất kho và sửa VT từ hộp Chỉ định vị trí (source 'pick'): giữ cả giá trị cũ → mới của dòng, rồi tóm tắt (số lượng trừ · file · Chỉ định đơn X).
       if (entry.action === 'stock_out' || entry.summary.source === 'pick' || entry.summary.source === 'order') {
