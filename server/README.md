@@ -373,8 +373,8 @@ npm run invoices:price-audit              # Kiểm tra giá bán: chạy thử (
 npm run invoices:price-audit -- --date 2026-10-20 --apply   # ghi thật
 npm run invoices:price-audit -- --recalc                    # tính lại theo dữ liệu hiện tại: chạy thử (không ghi)
 npm run vt:normalize-notes -- [--branch HN|SG] [--apply]   # VT: chuẩn hóa ghi chú thùng đã lưu (60 → 1T x 60, gộp cộng dồn); mặc định chạy thử
-node scripts/renderPerfReport.js <serviceId> <soGio>   # tóm tắt poolWaiting, RSS theo giờ và [timing] theo endpoint từ log Render (chỉ đọc)
 npm run invoices:price-audit -- --recalc --apply            # ghi thật (một giao dịch, tất cả hoặc không)
+node scripts/renderPerfReport.js <serviceId> <soGio>   # tóm tắt poolWaiting, RSS theo giờ và [timing] theo endpoint từ log Render (chỉ đọc)
 ```
 
 `--recalc` (23/10/2026) tính lại **mọi dòng đã chụp trong cửa sổ 16 ngày** `[D-15, D]` theo dữ liệu nguồn hiện tại (level khách, bảng giá/mô tả sản phẩm, Cân đo/cước, VAT, ghi chú) và chụp luôn hóa đơn chưa quét trong cửa sổ (cùng logic job 23:00). `D` mặc định là ngày đã công bố gần nhất (`--date` để đổi). Chỉ ghi đè cột tính toán; **giữ nguyên** giải thích, Chốt, `version`, `captured_at`, khách/sale/mã hàng của dòng cũ; không đụng `invoice_price_audit_state`; dòng không còn trong nguồn (hóa đơn sửa/hủy) và dòng ngoài cửa sổ giữ nguyên. Mỗi dòng đổi kết quả/level ghi nhật ký `invoice_price_audit_changes` với `action='recalc'`, `actor='system:price-audit-recalc'`. Dry-run (mặc định) chạy trọn trong giao dịch rồi ROLLBACK và in JSON: `recomputedLines`, `resultChangedLines` (tách `changedByLevel` = level của dòng đổi, `changedByData` = còn lại), `statusFlippedLines`, `levelChangedLines`, `newInvoices`/`newLines`, `decidedStatusChanged` (dòng đã có Chốt mà Sai/Đúng đổi: chỉ liệt kê, không tự gỡ Chốt). Nguồn chưa sẵn sàng → `status:"failed"`, không ghi gì. Không dùng chung `--force`.

@@ -159,7 +159,10 @@
       const { response, payload } = await request(API + '/sessions/' + sessionId + '/board');
       if (version !== state.loadVersion) return;
       // May chu dang ban (gioi han request dang chay): tai nen thi hen lai 1 luot, khong hien loi.
-      if (response.status === 429 && background && live.reload) { live.reload.trigger(); return; }
+      if (response.status === 429 && background && live.reload) {
+        if (document.hidden) live.dirty = true; else live.reload.trigger();
+        return;
+      }
       if (!response.ok) throw new Error(payload.error || 'Không tải được bảng đối chiếu.');
       state.board = payload;
       if (orders.sessionId !== sessionId) applyOrderStatus(sessionId, null);

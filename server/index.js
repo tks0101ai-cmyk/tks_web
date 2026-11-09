@@ -46,8 +46,6 @@ app.use(express.json({ limit: '10mb', verify: captureWebhookRawBody }));
 app.use(webhookJsonErrorHandler);
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
-// Gioi han GET dang chay cung luc / nguoi dung / duong dan API nang (xem lib/inflightLimit.js).
-app.use(require('./lib/inflightLimit').createInflightLimit());
 
 // Ngan Cloudflare/Render cache response API — du lieu bao cao phai luon lay tu
 // Google Sheets moi nhat, khong duoc phep tra ban cache cu tu edge/CDN.
@@ -55,6 +53,9 @@ app.use('/api', (req, res, next) => {
   res.setHeader('Cache-Control', 'no-store');
   next();
 });
+// Dat SAU no-store de phan hoi 429 cung khong bi cache.
+// Gioi han GET dang chay cung luc / nguoi dung / duong dan API nang (xem lib/inflightLimit.js).
+app.use(require('./lib/inflightLimit').createInflightLimit());
 
 // API + auth routes TRUOC static (tranh express.static chop mat /api/*)
 app.use(routes);
