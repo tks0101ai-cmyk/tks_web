@@ -21,6 +21,16 @@ const lifecycleHtml = fs.readFileSync(path.join(publicDir, 'shipment', 'lifecycl
 
 const settle = async () => { for (let i = 0; i < 10; i++) await new Promise(resolve => setImmediate(resolve)); };
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+// Cho DIEU KIEN cu the (so lan goi, dong hien ra, thong bao) thay vi sleep co dinh: chuoi thu lai (setTimeout + nhieu buoc promise)
+// cham di khi may ban CPU nen sleep co dinh gay test chap chon.
+async function waitFor(check, { timeoutMs = 2000, stepMs = 5 } = {}) {
+  const end = Date.now() + timeoutMs;
+  while (!check()) {
+    if (Date.now() > end) throw new Error('waitFor timeout');
+    await sleep(stepMs);
+  }
+  await settle();
+}
 const TOO_MANY = 'Đang xử lý yêu cầu trước, vui lòng chờ.';
 
 function response429(retryAfter) {
@@ -62,7 +72,7 @@ test('Báo cáo hàng hóa: gặp 429 rồi 200 thì thử lại cùng URL, hi�
   const page = createReportPage(call => (call.n === 1 ? response429('0') : reportOk('SP-OK')));
   t.after(() => page.window.close());
   page.run("switchView('products')");
-  await sleep(50); await settle();
+  await waitFor(() => /SP-OK/.test(page.$('productReportRows').textContent));
   assert.equal(page.calls.length, 2, 'goi lai dung 1 lan');
   assert.equal(page.calls[0].href, page.calls[1].href, 'thu lai CUNG url');
   assert.match(page.$('productReportRows').textContent, /SP-OK/);
@@ -87,34 +97,34 @@ test('Báo cáo hàng hóa: hết 2 lượt thử lại vẫn 429 thì hiện th
   const page = createReportPage(() => (mode === 'ok' ? reportOk('SP-OLD') : response429('0')));
   t.after(() => page.window.close());
   page.run("switchView('products')");
-  await settle();
-  assert.match(page.$('productReportRows').textContent, /SP-OLD/);
+  await waitFor(() => /SP-OLD/.test(page.$('productReportRows').textContent));
   mode = '429';
   const before = page.calls.length;
   page.run("setTableSort('productReportRows',19,{shiftKey:false})");
-  await sleep(50); await settle();
+  await waitFor(() => page.$('tksToastStack').textContent.includes(TOO_MANY));
   assert.equal(page.calls.length - before, 3, '1 lan dau + toi da 2 lan thu lai');
-  assert.ok(page.$('tksToastStack').textContent.includes(TOO_MANY));
   assert.match(page.$('productReportRows').textContent, /SP-OLD/);
 });
 
 test('Báo cáo hàng hóa: yêu cầu đã bị thay thế (obsolete) không được thử lại', async t => {
-  let slowOnce = false;
+  let slowOnce = false, label = 'SP-INIT';
   const page = createReportPage(call => {
-    if (slowOnce) { slowOnce = false; return response429('0.3'); }
-    return reportOk('SP-NEW');
+    if (slowOnce) { slowOnce = false; return response429('1'); }
+    return reportOk(label);
   });
   t.after(() => page.window.close());
   page.run("switchView('products')");
-  await settle();
+  await waitFor(() => /SP-INIT/.test(page.$('productReportRows').textContent));
   const before = page.calls.length;
   slowOnce = true;
-  page.run("setTableSort('productReportRows',19,{shiftKey:false})"); // lan 1: 429 + cho 0,3s
-  await sleep(30); await settle();
-  assert.equal(page.calls.length - before, 1);
+  label = 'SP-NEW';
+  page.run("setTableSort('productReportRows',19,{shiftKey:false})"); // lan 1: 429 + cho 1s
+  await waitFor(() => page.calls.length - before === 1);
   const firstUrl = page.calls[before].href;
   page.run("setTableSort('productReportRows',19,{shiftKey:false})"); // doi sap xep -> thay the yeu cau dang cho
-  await sleep(450); await settle();
+  await waitFor(() => /SP-NEW/.test(page.$('productReportRows').textContent));
+  // Khang dinh PHU DINH (khong thu lai): sau khi dieu kien duong da dat, cho them qua moc 1s cua lan cho cu de chac chan no khong bi goi lai.
+  await sleep(1200); await settle();
   assert.equal(page.calls.filter(c => c.href === firstUrl).length, 1, 'URL cu khong bi goi lai sau khi bi thay the');
   assert.match(page.$('productReportRows').textContent, /SP-NEW/);
 });
@@ -169,7 +179,7 @@ const listCallsOf = page => page.calls.filter(call => isListUrl(call.url));
 test('Vòng đời: gặp 429 rồi 200 thì thử lại, bảng có dữ liệu và không hiện lỗi', async t => {
   const page = await renderLifecycle({ orders: [sheetOrder('A'), sheetOrder('B')], fetchImpl: (url, n) => (n === 1 ? response429('0') : null) });
   t.after(() => page.window.close());
-  await sleep(50); await settle();
+  await waitFor(() => listCallsOf(page).length >= 2 && codesOf(page.document).length === 2);
   assert.equal(listCallsOf(page).length, 2, 'goi lai dung 1 lan');
   assert.deepEqual(codesOf(page.document).sort(), ['A', 'B']);
   assert.equal(page.document.getElementById('bulkEmpty').hidden, true);
@@ -178,25 +188,27 @@ test('Vòng đời: gặp 429 rồi 200 thì thử lại, bảng có dữ liệu
 test('Vòng đời: hết 2 lượt thử lại vẫn 429 thì hiện thông báo của máy chủ', async t => {
   const page = await renderLifecycle({ orders: [sheetOrder('A')], fetchImpl: () => response429('0') });
   t.after(() => page.window.close());
-  await sleep(50); await settle();
+  await waitFor(() => page.document.getElementById('bulkEmpty').textContent === TOO_MANY);
   assert.equal(listCallsOf(page).length, 3, '1 lan dau + toi da 2 lan thu lai');
   assert.equal(page.document.getElementById('bulkEmpty').hidden, false);
-  assert.equal(page.document.getElementById('bulkEmpty').textContent, TOO_MANY);
 });
 
 test('Vòng đời: lần gọi đã bị thay thế bởi lần mới hơn không được thử lại', async t => {
   let slowOnce = false;
   const page = await renderLifecycle({
     orders: [sheetOrder('A')],
-    fetchImpl: () => { if (slowOnce) { slowOnce = false; return response429('0.3'); } return null; }
+    fetchImpl: () => { if (slowOnce) { slowOnce = false; return response429('1'); } return null; }
   });
   t.after(() => page.window.close());
+  await waitFor(() => codesOf(page.document).length === 1);
   const before = listCallsOf(page).length;
   slowOnce = true;
-  page.window.eval('loadBulkOrders()'); // lan 1: 429 + cho 0,3s
-  await sleep(30); await settle();
+  page.window.eval('loadBulkOrders()'); // lan 1: 429 + cho 1s
+  await waitFor(() => listCallsOf(page).length - before === 1);
   page.window.eval('loadBulkOrders()'); // lan 2 (moi nhat): 200
-  await sleep(450); await settle();
+  await waitFor(() => listCallsOf(page).length - before === 2);
+  // Khang dinh PHU DINH (khong thu lai): cho them qua moc 1s cua lan cho cu sau khi dieu kien duong da dat.
+  await sleep(1200); await settle();
   assert.equal(listCallsOf(page).length - before, 2, 'lan cu bi thay the khong goi lai');
   assert.deepEqual(codesOf(page.document), ['A']);
   assert.equal(page.document.getElementById('bulkEmpty').hidden, true);
