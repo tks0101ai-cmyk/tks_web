@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { summarizeHourly, summarizeTiming } = require('./renderPerfReport');
+const { summarizeHourly, summarizeTiming, fetchLogs } = require('./renderPerfReport');
 
 test('summarizeHourly: gom theo gio VN, lay poolWaiting lon nhat va RSS lon nhat', () => {
   const rows = summarizeHourly([
@@ -29,4 +29,29 @@ test('summarizeTiming: gop so trong duong dan thanh :id, bo query, bo dong trung
     { endpoint: 'GET /api/shipment/pick', count: 1, avgMs: 19297, maxMs: 19297, over5s: 1 },
     { endpoint: 'GET /api/stocktake/sessions/:id/board', count: 2, avgMs: 2000, maxMs: 3000, over5s: 0 }
   ]);
+});
+
+test('fetchLogs: canh bao khi het maxPages ma log cu hon van con', async () => {
+  let calls = 0;
+  const fakeFetch = async () => {
+    calls += 1;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        logs: [{ timestamp: '2026-11-09T02:00:00Z', message: '[timing] GET /api/x total=1ms' }],
+        hasMore: true,
+        nextEndTime: '2026-11-09T01:00:00Z'
+      })
+    };
+  };
+  const warnings = [];
+  const entries = await fetchLogs({
+    apiKey: 'test', serviceId: 'srv-test', text: '[timing]', hours: 24,
+    maxPages: 2, fetchImpl: fakeFetch, warn: msg => warnings.push(msg)
+  });
+  assert.equal(calls, 2);
+  assert.equal(entries.length, 2);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /Cắt bớt: đã đọc 2 dòng/);
 });

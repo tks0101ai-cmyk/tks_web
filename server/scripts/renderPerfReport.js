@@ -59,10 +59,11 @@ function summarizeTiming(entries) {
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-async function fetchLogs({ apiKey, serviceId, text, hours, maxPages = 40, fetchImpl = fetch }) {
+async function fetchLogs({ apiKey, serviceId, text, hours, maxPages = 40, fetchImpl = fetch, warn = console.warn }) {
   const entries = [];
   let end = new Date();
   const start = new Date(end.getTime() - hours * 3600 * 1000);
+  let hasMore = false;
   for (let page = 0; page < maxPages; page += 1) {
     const url = 'https://api.render.com/v1/logs?' + new URLSearchParams({
       ownerId: OWNER_ID, resource: serviceId, startTime: start.toISOString(), endTime: end.toISOString(),
@@ -77,10 +78,12 @@ async function fetchLogs({ apiKey, serviceId, text, hours, maxPages = 40, fetchI
     if (!response.ok) throw new Error('Render API ' + response.status + ': ' + (await response.text()).slice(0, 200));
     const body = await response.json();
     for (const log of body.logs || []) entries.push({ timestamp: log.timestamp, message: log.message });
-    if (!body.hasMore) break;
+    hasMore = Boolean(body.hasMore);
+    if (!hasMore) break;
     end = new Date(body.nextEndTime);
     await sleep(400);
   }
+  if (hasMore) warn('Cắt bớt: đã đọc ' + entries.length + ' dòng, còn log cũ hơn chưa lấy (tăng maxPages hoặc giảm số giờ).');
   return entries;
 }
 
