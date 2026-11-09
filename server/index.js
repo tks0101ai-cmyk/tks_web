@@ -53,6 +53,9 @@ app.use('/api', (req, res, next) => {
   res.setHeader('Cache-Control', 'no-store');
   next();
 });
+// Dat SAU no-store de phan hoi 429 cung khong bi cache.
+// Gioi han GET dang chay cung luc / nguoi dung / duong dan API nang (xem lib/inflightLimit.js).
+app.use(require('./lib/inflightLimit').createInflightLimit());
 
 // API + auth routes TRUOC static (tranh express.static chop mat /api/*)
 app.use(routes);

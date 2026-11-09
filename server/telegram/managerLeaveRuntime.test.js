@@ -125,7 +125,7 @@ test('managers are not loaded on idle ticks and are cached for the TTL when work
   const store = { activate: async () => new Date(0), claimUpdates: async () => [], requeueStaleCards: async () => {}, claimEvents: async () => [], claimDeliveries: async () => [], enqueueDelivery: async () => {} };
   const record = { request_id: 'NP-1', co_so: 'Hà Nội', bo_phan: 'Kho', loai_yeu_cau: 'Xin nghỉ phép', decision_version: '0' };
   const runtime = createManagerLeaveRuntime({ store, telegram: { call: async () => ({}) }, loadManagers: async () => { loads++; return [mgr]; },
-    leaveRepo: { getLeaveRequests: async () => pending }, now: () => clock, logger: { error() {} } });
+    leaveRepo: { getLeaveRequests: async () => pending }, now: () => clock, backlogIntervalMs: 0, logger: { error() {} } });
   await runtime.drain(); await runtime.drain();
   assert.equal(loads, 0, 'idle ticks must not touch the accounts table');
   pending = [record];
@@ -144,4 +144,20 @@ test('bot Telegram xét người duyệt chỉ từ app_users, không JOIN hr_em
   const resolver = source.slice(source.indexOf('async function resolveManagerFromDb'), source.indexOf('async function loadManagersFromDb'));
   assert.ok(resolver.includes('FROM app_users u'));
   assert.ok(!/hr_employees/.test(resolver));
+});
+
+test('seedBacklog chi chay lai sau backlogIntervalMs, khong chay moi nhip 5 giay', async () => {
+  let clock = 0, reads = 0;
+  const store = { activate: async () => new Date(0), claimUpdates: async () => [], requeueStaleCards: async () => {}, claimEvents: async () => [], claimDeliveries: async () => [], enqueueDelivery: async () => {} };
+  const runtime = createManagerLeaveRuntime({ store, telegram: { call: async () => ({}) }, loadManagers: async () => [],
+    leaveRepo: { getLeaveRequests: async () => { reads += 1; return []; } }, now: () => clock, logger: { error() {} } });
+  await runtime.drain();
+  assert.equal(reads, 2, 'lan dau doc 2 trang thai (Chua duyet, Vi pham)');
+  await runtime.drain();
+  clock = 10 * 60 * 1000 - 1;
+  await runtime.drain();
+  assert.equal(reads, 2, 'chua toi 10 phut thi khong quet lai');
+  clock = 10 * 60 * 1000;
+  await runtime.drain();
+  assert.equal(reads, 4);
 });

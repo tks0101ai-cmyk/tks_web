@@ -8570,6 +8570,41 @@
         });
       }, SERVER_PAGE_PREFETCH_DELAY_MS);
     }
+    // May chu gioi han 4 GET dong thoi / nguoi dung / duong dan va giu slot den khi xu ly xong du trinh duyet da huy,
+    // nen doi loc nhanh luc server cham co the nhan 429 (TOO_MANY_INFLIGHT). Cho Retry-After giay (mac dinh 2, toi da 5)
+    // roi thu lai CUNG url, toi da 2 lan; yeu cau da bi thay the (obsolete) thi khong thu lai va khong cho.
+    const SERVER_TABLE_429_RETRIES = 2;
+    function serverTableRetryDelayMs(res) {
+      const raw = res.headers && res.headers.get ? res.headers.get('Retry-After') : null;
+      const seconds = raw === null || raw === undefined || raw === '' ? NaN : Number(raw);
+      return (Number.isFinite(seconds) && seconds >= 0 ? Math.min(seconds, 5) : 2) * 1000;
+    }
+    function fetchServerTable(url, request) {
+      let attempt = 0;
+      function run() {
+        return fetch(url,{credentials:'same-origin',signal:request.controller.signal}).then(function (res) {
+          if (res.ok) return res.json();
+          if (res.status === 429 && attempt < SERVER_TABLE_429_RETRIES && !request.obsolete) {
+            attempt++;
+            return new Promise(function (resolve) {
+              const signal = request.controller.signal;
+              const timer = setTimeout(resolve, serverTableRetryDelayMs(res));
+              signal.addEventListener('abort', function () { clearTimeout(timer); resolve(); }, {once:true});
+            }).then(function () {
+              if (request.obsolete) { const aborted = new Error('Aborted'); aborted.name = 'AbortError'; throw aborted; }
+              return run();
+            });
+          }
+          if (res.status !== 429) throw new Error('HTTP '+res.status);
+          return res.json().catch(function () { return null; }).then(function (payload) {
+            const error = new Error(payload && payload.error ? payload.error : 'HTTP 429');
+            error.status = 429;
+            throw error;
+          });
+        });
+      }
+      return run();
+    }
     function requestServerTable(key, url, apply, fail) {
       clearTimeout(serverTableTimers[key]);
       const prior = serverTableRequests[key];
@@ -8583,8 +8618,7 @@
       const bodyId = state.tableTableBodies[key];
       const body = bodyId && document.getElementById(bodyId);
       if (body) body.setAttribute('aria-busy','true');
-      request.promise = (cached ? Promise.resolve(cached) : fetch(url,{credentials:'same-origin',signal:request.controller.signal})
-        .then(function (res) { if (!res.ok) throw new Error('HTTP '+res.status); return res.json(); }))
+      request.promise = (cached ? Promise.resolve(cached) : fetchServerTable(url, request))
         .then(function (data) {
           if (request.obsolete) return;
           if (!cached) serverPageCachePut(key, url, data);
@@ -8810,6 +8844,8 @@
           renderProductReport();
         }, function (err) {
           console.error('Không tải được báo cáo hàng hóa:', err);
+          // Het luot thu lai 429: bang giu dong cu nen bao cho nguoi dung biet de ho thu lai.
+          if (err && err.status === 429 && state.productReport.loaded) showToast(err.message, 'error');
           if (!state.productReport.loaded) {
             state.productReport.loaded = true;
             document.getElementById('productReportRows').innerHTML =

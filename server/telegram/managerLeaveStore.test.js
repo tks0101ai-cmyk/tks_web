@@ -303,3 +303,19 @@ test('event creation uses wall-clock time even inside a transaction started befo
 });
 
 test('list card message is persisted so its callbacks can use original-card validation',async()=>{const {db,store}=await fixture();try{await store.enqueueDelivery({requestId:'NP-TEST',userId:USER,chatId:CHAT,version:'0'});const [job]=await store.claimDeliveries();await store.finishDelivery(job,{messageId:'10',version:'0'});await store.recordDeliveryMessage({requestId:'NP-TEST',userId:USER,chatId:CHAT,version:'0',messageId:'55'});const delivery=await store.getDelivery('NP-TEST',USER,CHAT,'55');assert.equal(delivery.message_id,'55');assert.equal((await store.getDelivery('NP-TEST',USER,CHAT)).message_id,'10');}finally{await db.close();}});
+
+test('enqueueDelivery cung hoac thap phien ban thi khong ghi lai dong', async () => {
+  const { db, store } = await fixture();
+  try {
+    const xmin = async () => (await db.query('SELECT xmin::text AS x, desired_version::text AS v FROM hr_leave_manager_messages')).rows[0];
+    await store.enqueueDelivery({ requestId: 'NP-TEST', userId: USER, chatId: CHAT, version: '1' });
+    const before = await xmin();
+    await store.enqueueDelivery({ requestId: 'NP-TEST', userId: USER, chatId: CHAT, version: '1' });
+    await store.enqueueDelivery({ requestId: 'NP-TEST', userId: USER, chatId: CHAT, version: '0' });
+    assert.deepEqual(await xmin(), before, 'khong co phien ban dong moi');
+    await store.enqueueDelivery({ requestId: 'NP-TEST', userId: USER, chatId: CHAT, version: '2' });
+    const after = await xmin();
+    assert.notEqual(after.x, before.x);
+    assert.equal(after.v, '2');
+  } finally { await db.close(); }
+});

@@ -303,32 +303,78 @@ test('sortLines: so tu nhien, tang giam, bo sort giu thu tu goc, o trong cuoi', 
   assert.deepEqual(teams([a, b, c]), ['TEAM 10', 'TEAM 2', 'TEAM 1'], 'khong doi mang goc');
 });
 
-test('trailingThrottle: goi lien tuc chi chay 1 lan moi khoang, co lan cuoi, huy duoc', () => {
-  let clock = 0;
-  let pending = null;
+const flush = () => new Promise(resolve => setImmediate(resolve));
+
+function fakeTimers() {
+  const clock = { now: 0, pending: null };
+  return {
+    clock,
+    opts: {
+      now: () => clock.now,
+      setTimer: (fn, wait) => { clock.pending = { fn, at: clock.now + wait }; return clock.pending; },
+      clearTimer: () => { clock.pending = null; }
+    },
+    async advance() { clock.now = clock.pending.at; const { fn } = clock.pending; clock.pending = null; fn(); await flush(); }
+  };
+}
+
+test('trailingThrottle: goi lien tuc chi chay 1 lan moi khoang, co lan cuoi, huy duoc', async () => {
+  const t = fakeTimers();
   let runs = 0;
-  const gate = trailingThrottle(() => { runs += 1; }, 3000, {
-    now: () => clock,
-    setTimer: (fn, wait) => { pending = { fn, at: clock + wait }; return pending; },
-    clearTimer: () => { pending = null; }
-  });
-  const advance = () => { clock = pending.at; const { fn } = pending; pending = null; fn(); };
+  const gate = trailingThrottle(() => { runs += 1; }, 3000, t.opts);
   gate.trigger();
-  assert.equal(pending.at, 400, 'lan dau chi cho ngan');
+  assert.equal(t.clock.pending.at, 400, 'lan dau chi cho ngan');
   gate.trigger();
   gate.trigger();
-  advance();
+  await t.advance();
   assert.equal(runs, 1);
-  clock = 1000;
+  t.clock.now = 1000;
   gate.trigger();
-  assert.equal(pending.at, 3400, 'chua du 3 giay tu lan chay truoc');
+  assert.equal(t.clock.pending.at, 3400, 'chua du 3 giay tu lan chay truoc');
   gate.trigger();
-  advance();
+  await t.advance();
   assert.equal(runs, 2);
   gate.trigger();
   gate.cancel();
-  assert.equal(pending, null);
+  assert.equal(t.clock.pending, null);
   assert.equal(runs, 2);
+});
+
+test('trailingThrottle: run cham thi khong chong luot, tin hieu luc dang chay -> dung 1 luot sau', async () => {
+  const t = fakeTimers();
+  let runs = 0;
+  let finish = null;
+  const gate = trailingThrottle(() => { runs += 1; return new Promise(resolve => { finish = resolve; }); }, 3000, t.opts);
+  gate.trigger();
+  await t.advance();
+  assert.equal(runs, 1);
+  t.clock.now = 20000; // luot dau keo dai 20 giay
+  gate.trigger();
+  gate.trigger();
+  assert.equal(t.clock.pending, null, 'dang chay thi khong hen luot moi');
+  finish();
+  await flush();
+  assert.equal(t.clock.pending.at, 20400, 'xong luot cham -> hen ngay (da qua 3 giay)');
+  await t.advance();
+  assert.equal(runs, 2, 'chi 1 luot bu cho nhieu tin hieu');
+  finish();
+  await flush();
+  assert.equal(t.clock.pending, null, 'khong co tin hieu moi thi dung');
+});
+
+test('trailingThrottle: huy luc dang chay thi khong chay luot bu', async () => {
+  const t = fakeTimers();
+  let runs = 0;
+  let finish = null;
+  const gate = trailingThrottle(() => { runs += 1; return new Promise(resolve => { finish = resolve; }); }, 3000, t.opts);
+  gate.trigger();
+  await t.advance();
+  gate.trigger();
+  gate.cancel();
+  finish();
+  await flush();
+  assert.equal(t.clock.pending, null);
+  assert.equal(runs, 1);
 });
 
 test('multi-column detail sorting applies every priority, keeps blanks last and is stable', () => {
