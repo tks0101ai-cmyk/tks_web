@@ -1004,11 +1004,15 @@ Redis/Valkey dùng cho SĐT sale (fresh 5 phút, last-good tối đa 30 phút, w
 
 Server-Timing cho `/api/shipment/pick/*`; browser measures `tokosi.pick.assets/render/layout/preview-ready/submit-ready` không chứa dữ liệu đơn. Monitor bổ sung eventLoopP95/Max, poolTotal/Idle/Waiting, cacheHit/Miss/Error/Bypass bên cạnh RSS/heap.
 
+Middleware `lib/inflightLimit.js` (gắn sau `cookieParser()` trong `index.js`, 09/11/2026, không migration): request GET tới `/api/product-report*`, `/api/stocktake/sessions/*`, `/api/shipment/lifecycle*`, `/api/shipment/pick*` tối đa 4 request đang chạy / người dùng (cookie `tks_auth`, không có thì theo IP) / đường dẫn đã chuẩn hóa (đoạn có chữ số → `:id`); vượt → 429 `{code:'TOO_MANY_INFLIGHT'}` kèm `Retry-After: 2`, log `[inflightLimit] 429`. Đường dẫn kết thúc bằng `/events` (SSE) không bị tính. Suất chỉ trả khi handler thật sự gọi `res.end`, kể cả khi client đã hủy (tối đa `holdAfterCloseMs` = 120 giây) vì truy vấn DB vẫn đang chạy. Bộ đếm nằm trong RAM tiến trình nên web phải chạy đúng 1 instance.
+
 Cấu trúc bổ sung:
 ```text
 server/lib/sharedCache.js                    # Redis client + cache-aside/generation/fallback
 server/lib/sharedCache.test.js               # timeout, expiry, invalidation, corruption
 server/lib/sharedCache.integration.test.js   # Redis thật qua REDIS_TEST_URL (TEST riêng)
+server/lib/inflightLimit.js                   # Middleware giới hạn GET đang chạy / người dùng / đường dẫn API nặng
+server/lib/inflightLimit.test.js              # 429, SSE /events bỏ qua, giữ suất khi client hủy
 server/scripts/benchmarkPicking.js           # benchmark offline PGlite, không production
 server/pickAssignments/sellerPhoneCache.test.js
 server/sheets/lifecycleSourceCache.test.js

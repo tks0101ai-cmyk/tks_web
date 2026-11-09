@@ -46,6 +46,8 @@ app.use(express.json({ limit: '10mb', verify: captureWebhookRawBody }));
 app.use(webhookJsonErrorHandler);
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
+// Gioi han GET dang chay cung luc / nguoi dung / duong dan API nang (xem lib/inflightLimit.js).
+app.use(require('./lib/inflightLimit').createInflightLimit());
 
 // Ngan Cloudflare/Render cache response API — du lieu bao cao phai luon lay tu
 // Google Sheets moi nhat, khong duoc phep tra ban cache cu tu edge/CDN.
