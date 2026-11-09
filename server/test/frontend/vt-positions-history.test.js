@@ -144,11 +144,13 @@ test('cột Thay đổi: bỏ Đã sửa (warnings rỗng) không để trống;
   const entries = [
     { id: 3, createdAt: '2026-10-27T03:00:00Z', branch: 'HN', code: 'AAA', location: 'K1', action: 'unack', field: null, summary: { warnings: [] }, actorName: 'Lan' },
     { id: 2, createdAt: '2026-10-27T02:00:00Z', branch: 'HN', code: 'AAA', location: 'K1', action: 'pick', field: null, summary: { orderCode: 'DH1', assignmentId: 7, confirmedBy: 'Hà', picked: 12 }, actorName: 'Lan' },
-    { id: 1, createdAt: '2026-10-27T01:00:00Z', branch: 'HN', code: 'AAA', location: 'K1', action: 'pick', field: null, summary: { orderCode: 'DH2', assignmentId: 8, confirmedBy: '', picked: 5 }, actorName: 'Job' }
+    { id: 1, createdAt: '2026-10-27T01:00:00Z', branch: 'HN', code: 'AAA', location: 'K1', action: 'pick', field: null, summary: { orderCode: 'DH2', assignmentId: 8, confirmedBy: '', picked: 5 }, actorName: 'Job' },
+    { id: 0, createdAt: '2026-10-27T00:00:00Z', branch: 'HN', code: 'AAA', location: 'K1', action: 'pick_revert', field: 'notes', summary: { exact: true, restored: 40, orderCode: 'DH3', assignmentId: 9 }, actorName: 'Lan' }
   ];
   const ctx = await setup(t, { entries });
   await openHistory(ctx);
   const cells = [...ctx.doc.querySelectorAll('#vtHistoryRows .vt-hist-change')].map(td => td.textContent);
+  assert.equal(cells[3], 'Hoàn 40 · Đơn DH3');
   assert.notEqual(cells[0], '');
   assert.equal(cells[0], 'Không có cảnh báo');
   assert.equal(cells[1], 'Nhặt 12 · Xác nhận: Hà');

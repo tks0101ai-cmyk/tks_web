@@ -35,6 +35,10 @@ function summaryText(summary) {
   if (summary.deducted !== undefined) parts.push(`Trừ ${summary.deducted}`);
   if (summary.removed === true) parts.push('Hết hàng, đã xóa dòng');
   if (summary.picked !== undefined) parts.push(`Nhặt ${summary.picked}`);
+  // Hoàn tác nhặt (pick_revert): { orderCode, assignmentId, restored, exact?, recreated? }.
+  if (summary.restored !== undefined) parts.push(`Hoàn ${summary.restored}`);
+  if (summary.recreated === true) parts.push('Tạo lại dòng');
+  if (summary.restored !== undefined && summary.orderCode) parts.push(`Đơn ${summary.orderCode}`);
   if ('confirmedBy' in summary) parts.push(summary.confirmedBy ? `Xác nhận: ${summary.confirmedBy}` : 'Job Kiot');
   if (summary.fileName) parts.push(summary.fileName);
   if (!parts.length && Array.isArray(summary.warnings)) return 'Không có cảnh báo';

@@ -20,6 +20,9 @@ test('tóm tắt bỏ Đã sửa (warnings rỗng) không rỗng; tóm tắt nh�
   assert.equal(summaryText({ orderCode: 'DH1', assignmentId: 7, confirmedBy: 'Hà', picked: 12 }), 'Nhặt 12 · Xác nhận: Hà');
   assert.equal(summaryText({ orderCode: 'DH2', assignmentId: 8, confirmedBy: '', picked: 5 }), 'Nhặt 5 · Job Kiot');
   assert.equal(summaryText({ warnings: ['unreadable'] }), 'Sai định dạng');
+  // Hoàn tác nhặt hàng không được hiện JSON thô.
+  assert.equal(summaryText({ exact: true, restored: 40, orderCode: 'DH022714', assignmentId: 1756 }), 'Hoàn 40 · Đơn DH022714');
+  assert.equal(summaryText({ restored: 5, recreated: true, orderCode: 'DH1', assignmentId: 7 }), 'Hoàn 5 · Tạo lại dòng · Đơn DH1');
 });
 
 test('tóm tắt thao tác từ hộp Chỉ định vị trí: nêu mã đơn, giữ phần tóm tắt khác', () => {

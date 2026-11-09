@@ -1285,6 +1285,10 @@
       if (s.deducted !== undefined) parts.push('Trừ ' + s.deducted);
       if (s.removed === true) parts.push('Hết hàng, đã xóa dòng');
       if (s.picked !== undefined) parts.push('Nhặt ' + s.picked);
+      // Hoàn tác nhặt (pick_revert): { orderCode, assignmentId, restored, exact?, recreated? } (khớp stockPositionsHistoryLabels.js).
+      if (s.restored !== undefined) parts.push('Hoàn ' + s.restored);
+      if (s.recreated === true) parts.push('Tạo lại dòng');
+      if (s.restored !== undefined && s.orderCode) parts.push('Đơn ' + s.orderCode);
       if ('confirmedBy' in s) parts.push(s.confirmedBy ? 'Xác nhận: ' + s.confirmedBy : 'Job Kiot');
       if (s.fileName) parts.push(s.fileName);
       // Sửa/thêm/xóa VT ngay trong hộp Chỉ định vị trí của Vòng đời đơn hàng: ghi kèm mã đơn đang chỉ định.
