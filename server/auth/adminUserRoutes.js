@@ -706,10 +706,11 @@ router.get('/api/admin/audit-log', ...authView, async (req, res) => {
     const str = v => (typeof v === 'string' ? v : '');
     const result = await accountAuditLog.listEntries({
       q: str(req.query.q), action: str(req.query.action), targetId: str(req.query.targetId),
-      from: str(req.query.from), to: str(req.query.to), page: req.query.page, pageSize: req.query.pageSize
+      from: str(req.query.from), to: str(req.query.to), page: req.query.page, pageSize: req.query.pageSize, sorts: req.query.sorts
     });
     res.status(200).json(result);
   } catch (err) {
+    if (err.statusCode === 400) return res.status(400).json({ error: err.message, code: err.code });
     console.error('=== LOI GET /api/admin/audit-log ===', err);
     res.status(500).json({ error: 'Không tải được lịch sử chỉnh sửa.' });
   }

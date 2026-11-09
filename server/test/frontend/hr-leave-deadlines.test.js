@@ -17,7 +17,8 @@ function dates(w,start='2026-10-06',end='2026-10-07'){for(const [id,v]of Object.
 const event={preventDefault(){}};
 test('timing remains independent after approval and legacy violation is readable without a new violation decision',async()=>{const d=page();
   const w=d.window;
-  try{const row={request_id:'A',trang_thai:'Chưa duyệt',canManage:true,decision_version:1,timing_status:'Vi phạm'};
+  // Thống kê chỉ đếm đơn nghỉ từ hôm nay trở đi (4471d615): đơn mẫu phải có ngày nghỉ ở tương lai.
+  try{const row={request_id:'A',trang_thai:'Chưa duyệt',canManage:true,decision_version:1,timing_status:'Vi phạm',start_date:'2099-12-30',end_date:'2099-12-31'};
     w.fetch=async(url,o)=>response(o?.method==='PATCH'?{request:{...row,trang_thai:'Đã duyệt'}}:{requests:[row,{...row,request_id:'OLD',trang_thai:'Vi phạm',timing_status:null}],summary:[]});
     await w.loadLeaveRequests();
     assert.equal(w.document.querySelector('.timing-label').textContent,'Vi phạm');

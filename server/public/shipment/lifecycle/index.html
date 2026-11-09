@@ -455,7 +455,7 @@
     .lc-detail-row{ grid-template-columns:minmax(0, 1fr); gap:2px; }
   }
 </style>
-  <link rel="stylesheet" href="/shared/table-controls.css?v=20261016-1">
+  <link rel="stylesheet" href="/shared/table-controls.css?v=20261108-1">
 </head>
 <body>
   <div class="receipt-header">
@@ -672,6 +672,10 @@
                 <tbody id="historyBody"></tbody>
               </table>
             </div>
+            <div class="pagination-controls" id="historyPagination" hidden>
+              <button type="button" id="historyFirst">&lt;&lt;</button><button type="button" id="historyPrev">&lt;</button>
+              <span id="historyPageLabel"></span><button type="button" id="historyNext">&gt;</button><button type="button" id="historyLast">&gt;&gt;</button>
+            </div>
             <p class="bulk-empty" id="historyEmpty" hidden>Chưa có lịch sử cập nhật nào.</p>
           </section>
         </div>
@@ -710,7 +714,7 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- Dat o cuoi than <body> thay vi <head>: script chan phan tich cu phap trong <head> se lam dung viec xu ly toan bo tai lieu. Khong dung `defer` vi script inline ben duoi dung TKSNav o cap cao nhat, va script inline luon chay truoc script defer. -->
-  <script src="/shared/table-controls.js?v=20261107-3"></script>
+  <script src="/shared/table-controls.js?v=20261108-2"></script>
   <script src="/shared/fuzzy-search.js"></script>
   <script src="/shared/search-clear.js?v=20261009-1"></script>
   <script src="/shared/shared-nav.js?v=20261105-kho"></script>
@@ -2457,6 +2461,11 @@
     let historyActiveBranchFilter = '';
     let historyActiveStatusFilter = '';
     let allHistoryRows = [];
+    let historyPage = 1;
+    let historyPageSize = 100;
+    let historyTotalRows = 0;
+    let historyRequestSeq = 0;
+    let historyReloadTimer = null;
     // Sap xep mac dinh = moi nhat truoc — khop thu tu API da tra ve san.
     const HISTORY_DEFAULT_SORT = { key: 'changedAt', dir: -1 };
     let historySortKey = HISTORY_DEFAULT_SORT.key;
@@ -2470,26 +2479,7 @@
       return formatDisplayDateTime(value) || '—';
     }
 
-    const HISTORY_SORT_ACCESSORS = {
-      orderCode: function(e){ return normalizeSearchText(e.orderCode); },
-      statusLabel: function(e){ return normalizeSearchText(e.statusLabel); },
-      changedBy: function(e){ return normalizeSearchText(e.changedBy); },
-      changedAt: function(e){ return parseDateTimeValue(e.changedAt); }
-    };
-
     let historySorts = [];
-    function applyHistorySort(list){
-      const layers = historySorts.length ? historySorts : [{ key: HISTORY_DEFAULT_SORT.key, dir: HISTORY_DEFAULT_SORT.dir === -1 ? 'desc' : 'asc' }];
-      return list.slice().sort(function(a,b){
-        for (const layer of layers) {
-          const accessor = HISTORY_SORT_ACCESSORS[layer.key];
-          const result = compareSortValues(accessor(a), accessor(b), layer.dir === 'desc' ? -1 : 1);
-          if(result) return result;
-        }
-        return 0;
-      });
-    }
-
     function syncHistorySortHeaderUI(){
       window.TKSTables.syncSortHeaders(historyHeadRow.closest('table'), historySorts, th => th.dataset.sort);
       document.getElementById('historyClearSort').hidden = !historySorts.length;
@@ -2599,45 +2589,53 @@
     }
 
     function applyHistoryFilters(){
-      const query = historySearchInput.value;
-      let filtered = allHistoryRows;
-      if(normalizeSearchText(query)){
-        // Tim gan dung (shared/fuzzy-search.js): moi tu cua cau tim phai khop; khop nhieu tu xep truoc.
-        const fuzzy = window.TKSFuzzySearch;
-        const textOf = function(entry){ return [entry.orderCode, entry.changedBy, entry.note].join(' '); };
-        filtered = fuzzy ? fuzzy.filter(filtered, query, textOf) : filtered.filter(function(entry){
-          return normalizeSearchText(textOf(entry)).indexOf(normalizeSearchText(query)) !== -1;
-        });
-      }
-      if(historyActiveBranchFilter){
-        filtered = filtered.filter(function(entry){ return entry.branch === historyActiveBranchFilter; });
-      }
-      if(historyActiveStatusFilter){
-        filtered = filtered.filter(function(entry){ return entry.statusCode === historyActiveStatusFilter; });
-      }
-      filtered = applyHistorySort(filtered);
-      renderHistoryRows(filtered, allHistoryRows.length);
+      clearTimeout(historyReloadTimer);
+      historyReloadTimer = null;
+      historyPage = 1;
+      loadHistory(false);
+    }
+
+    function scheduleHistoryReload(){
+      ++historyRequestSeq;
+      clearTimeout(historyReloadTimer);
+      historyReloadTimer = setTimeout(applyHistoryFilters, 300);
     }
 
     let historyLoadInFlight = false;
     function loadHistory(silent){
-      if(historyLoadInFlight) return;
+      if(silent && (historyLoadInFlight || historyReloadTimer)) return;
+      const seq = ++historyRequestSeq;
       historyLoadInFlight = true;
       if(!silent) historyCount.textContent = 'Đang tải...';
-      fetch('/api/shipment/lifecycle/history', { credentials: 'same-origin' })
+      const params = new URLSearchParams({ page: String(historyPage), pageSize: String(historyPageSize),
+        q: historySearchInput.value.trim(), branch: historyActiveBranchFilter, status: historyActiveStatusFilter,
+        sorts: JSON.stringify(historySorts) });
+      fetch('/api/shipment/lifecycle/history?' + params.toString(), { credentials: 'same-origin' })
         .then(function(res){ return res.json().then(function(body){ return { ok: res.ok, body: body }; }); })
         .then(function(result){
+          if(seq !== historyRequestSeq) return;
           if(!result.ok){
             const handledByBranchBanner = TKSNav.handleBranchError(result.body);
             throw new Error(result.body.error || 'Không tải được lịch sử cập nhật.', { cause: { handledByBranchBanner } });
           }
           historyLoaded = true;
-          allHistoryRows = result.body.history || [];
-          applyHistoryFilters();
+          allHistoryRows = result.body.rows || result.body.history || [];
+          historyPage = Number(result.body.page) || 1;
+          historyPageSize = Number(result.body.pageSize) || 100;
+          historyTotalRows = Number(result.body.totalRows) || 0;
+          historyEmpty.textContent = 'Chưa có lịch sử cập nhật phù hợp.';
+          renderHistoryRows(allHistoryRows, historyTotalRows);
+          const pages = Math.max(1, Math.ceil(historyTotalRows / historyPageSize));
+          document.getElementById('historyPagination').hidden = historyTotalRows === 0;
+          document.getElementById('historyPageLabel').textContent = 'Trang ' + historyPage + '/' + pages;
+          document.getElementById('historyFirst').disabled = document.getElementById('historyPrev').disabled = historyPage <= 1;
+          document.getElementById('historyLast').disabled = document.getElementById('historyNext').disabled = historyPage >= pages;
         })
         .catch(function(err){
-          if(silent) return; // giu nguyen bang cu neu refresh nen loi tam thoi
+          if(seq !== historyRequestSeq || silent) return;
           allHistoryRows = [];
+          renderHistoryRows([], 0);
+          document.getElementById('historyPagination').hidden = true;
           historyCount.textContent = '';
           historyEmpty.hidden = false;
           const handledByBranchBanner = err.cause && err.cause.handledByBranchBanner;
@@ -2645,7 +2643,7 @@
             ? 'Xem thông báo phía trên để biết chi tiết.'
             : (err.message || 'Không tải được lịch sử cập nhật.');
         })
-        .finally(function(){ historyLoadInFlight = false; });
+        .finally(function(){ if(seq === historyRequestSeq) historyLoadInFlight = false; });
     }
 
     // Bo loc dang dropdown tuy bien (xem enhanceSelect). Dat SAU khi moi bien/handler da khai bao.
@@ -2654,7 +2652,7 @@
 
     historySearchForm.addEventListener('submit', function(e){ e.preventDefault(); applyHistoryFilters(); });
     // Loc cuc bo nen chay ngay moi lan go, ke ca khi xoa het tu khoa (hien lai day du).
-    historySearchInput.addEventListener('input', applyHistoryFilters);
+    historySearchInput.addEventListener('input', scheduleHistoryReload);
     historyStatusFilter.addEventListener('change', function(){
       historyActiveStatusFilter = historyStatusFilter.value;
       applyHistoryFilters();
@@ -2662,6 +2660,15 @@
     historyBranchFilter.addEventListener('change', function(){
       historyActiveBranchFilter = historyBranchFilter.value;
       applyHistoryFilters();
+    });
+
+    ['First', 'Prev', 'Next', 'Last'].forEach(function(action){
+      document.getElementById('history' + action).addEventListener('click', function(){
+        clearTimeout(historyReloadTimer); historyReloadTimer = null;
+        const pages = Math.max(1, Math.ceil(historyTotalRows / historyPageSize));
+        historyPage = action === 'First' ? 1 : action === 'Last' ? pages : Math.min(pages, Math.max(1, historyPage + (action === 'Next' ? 1 : -1)));
+        loadHistory(false);
+      });
     });
 
     // Tu dong lam moi giong Khu B — lich su cap nhat co the co them dong moi

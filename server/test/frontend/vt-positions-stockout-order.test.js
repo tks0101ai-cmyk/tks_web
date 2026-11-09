@@ -22,7 +22,7 @@ const line = (id, extra = {}) => ({
 });
 const draft = (lines, extra = {}) => ({ id: 7, branch: 'HN', code: 'XK-HN-00001', status: 'draft', version: 4, createdByName: 'Quản lý', createdAt: '2026-11-02T02:00:00.000Z', confirmedAt: null, confirmedByName: null, summary: null, lines, ...extra });
 
-async function setup(t, { order = draft([line(1)]), canEdit = true, handler, historyRows } = {}) {
+async function setup(t, { order = draft([line(1)]), canEdit = true, canExport = false, handler, historyRows } = {}) {
   const dom = new JSDOM(html, { url: 'https://tokosi.test/vt-positions/#hn', runScripts: 'outside-only' });
   t.after(() => dom.window.close());
   const window = dom.window;
@@ -44,7 +44,7 @@ async function setup(t, { order = draft([line(1)]), canEdit = true, handler, his
     const method = options.method || 'GET';
     calls.push({ method, path: parsed.pathname, query: parsed.searchParams, body: options.body && typeof options.body === 'string' ? JSON.parse(options.body) : options.body });
     if (method === 'GET' && parsed.pathname === '/api/stock-positions') return json({ branch: 'HN', canEdit, canExport: false, rows: [] });
-    if (method === 'GET' && parsed.pathname === '/api/stock-positions/stock-out-orders/current') return json({ order: current.order, canEdit });
+    if (method === 'GET' && parsed.pathname === '/api/stock-positions/stock-out-orders/current') return json({ order: current.order, canEdit, canExport });
     if (method === 'GET' && parsed.pathname === '/api/stock-positions/stock-out-orders' && historyRows) return json({ orders: historyRows });
     if (handler) { const answer = await handler(parsed, options, current); if (answer) return answer; }
     return json({ error: 'Không có mock', code: 'NO_MOCK' }, 500);
@@ -348,4 +348,35 @@ test('Lịch sử VT: dòng chốt đơn có nút "Xem đơn" mở chi tiết đ
   assert.equal(doc.getElementById('vtOrderDialog').hasAttribute('open'), true);
   assert.equal(doc.getElementById('vtOrderDetail').hidden, false);
   assert.match(doc.getElementById('vtOrderSubtitle').textContent, /XK-HN-00001/);
+});
+
+test('Xuất Excel đơn: nút chỉ hiện khi có quyền export và đơn có dòng; bấm gọi GET /:id/export rồi tải file', async t => {
+  const hidden = await setup(t, { canExport: false });
+  await openDialog(hidden.doc);
+  assert.equal(hidden.doc.getElementById('vtOrderExport').hidden, true);
+
+  const { window, doc, calls } = await setup(t, { canExport: true, handler: async parsed => {
+    if (parsed.pathname === '/api/stock-positions/stock-out-orders/7/export') {
+      return { ok: true, status: 200, headers: { get: () => 'attachment; filename="don-xuat-kho_xk-hn-00001_20261108_1000.xlsx"' }, blob: async () => new window.Blob(['x']) };
+    }
+    return null;
+  } });
+  window.URL.createObjectURL = () => 'blob:test';
+  window.URL.revokeObjectURL = () => {};
+  const downloads = [];
+  window.HTMLAnchorElement.prototype.click = function () { downloads.push(this.download); };
+  await openDialog(doc);
+  const button = doc.getElementById('vtOrderExport');
+  assert.equal(button.hidden, false);
+  button.click();
+  await settle();
+  assert.ok(calls.some(call => call.method === 'GET' && call.path === '/api/stock-positions/stock-out-orders/7/export'));
+  assert.deepEqual(downloads, ['don-xuat-kho_xk-hn-00001_20261108_1000.xlsx']);
+  assert.equal(button.disabled, false);
+});
+
+test('Xuất Excel đơn: đơn tạm chưa có dòng thì ẩn nút', async t => {
+  const { doc } = await setup(t, { canExport: true, order: draft([]) });
+  await openDialog(doc);
+  assert.equal(doc.getElementById('vtOrderExport').hidden, true);
 });

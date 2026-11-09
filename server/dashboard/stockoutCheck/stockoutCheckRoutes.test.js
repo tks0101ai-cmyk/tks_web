@@ -432,3 +432,24 @@ test('POST /api/products/stockout-recent/scan ở cơ sở vật lý: vẫn ch�
     recentStockoutScanService.runRecentStockoutScanJob = original;
   }
 });
+
+
+test('all completed stockout result APIs filter/sort the full snapshot before paging without changing export or scan metadata',async()=>{
+  for(const kind of ['stockout-recent','stockout-90d','stockout-30d']) {
+    const rows=Array.from({length:240},(_,i)=>({code:'SP'+String(i).padStart(3,'0'),name:i>=200?'Đặng An':'Hàng khác',branch:i%2?'Hà Nội':'Sài Gòn',daysOutOfStock:i,totalStockoutDays:i,stockoutCount:2,currentOnHand:i%7,periods:[{fromDate:'2026-11-01',toDate:'2026-11-08',days:8}]}));
+    const snapshot={rows,asOfDate:'2026-11-08',totalProductsScanned:1234,totalCandidates:400,sources:{invoices:'postgres'},warnings:['Test source warning']};
+    const jobId=router.jobStore.createJob();router.jobStore.setResult(jobId,snapshot);
+    const handler=getRouteHandler('get','/api/products/'+kind+'/:jobId/result');
+    async function read(query){const res=fakeRes();await handler({params:{jobId},query},res);assert.equal(res.statusCode,200);return res.body.result;}
+    const page=await read({page:'999',pageSize:'100'});
+    assert.equal(page.totalRows,240);assert.equal(page.page,3);assert.equal(page.rows.length,40);assert.equal(page.rows[0].code,'SP039');
+    assert.equal(page.totalProductsScanned,1234);assert.equal(page.totalCandidates,400);assert.deepEqual(page.sources,snapshot.sources);assert.deepEqual(page.warnings,snapshot.warnings);assert.equal(page.asOfDate,snapshot.asOfDate);
+    const found=await read({page:'2',pageSize:'10',q:'dang an',sorts:JSON.stringify([{key:'branch',dir:'asc'},{key:'daysOutOfStock',dir:'desc'}])});
+    assert.equal(found.totalRows,40);assert.equal(found.totalResultRows,240);assert.equal(found.rows.length,10);assert.equal(found.rows[0].code,'SP219');
+    const codes=await read({page:'99',qmode:'codes',q:'SP239 SP201 missing'});
+    assert.equal(codes.totalRows,2);assert.equal(codes.page,1);assert.deepEqual(codes.search.missingCodes,['missing']);assert.deepEqual(codes.rows.map(row=>row.code),['SP239','SP201']);
+    const dated=await read({page:'1',q:'2026-11-01'});assert.equal(dated.totalRows,240);
+    const empty=await read({page:'99',q:'notfound'});assert.equal(empty.totalRows,0);assert.equal(empty.page,1);
+    const legacy=await read({});assert.equal(legacy,snapshot);assert.equal(legacy.rows.length,240);assert.equal(router.jobStore.getJob(jobId).result,snapshot);assert.equal(snapshot.rows[0].code,'SP000');
+  }
+});

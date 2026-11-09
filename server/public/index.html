@@ -4028,7 +4028,7 @@
   /* Hộp chi tiết khách hàng: 5 chỉ số tổng quan nằm gọn trên 1 dòng (màn hẹp vẫn xuống dòng theo .dp-stats chung). */
   @media (min-width: 900px){ .dp-stats.business-summary.is-one-row{ grid-template-columns:repeat(5, minmax(0, 1fr)); } }
   </style>
-  <link rel="stylesheet" href="/shared/table-controls.css?v=20261016-1">
+  <link rel="stylesheet" href="/shared/table-controls.css?v=20261108-1">
 </head>
 
 <body>
@@ -5088,7 +5088,7 @@
                   </div>
                   <div class="debt-filter-field search-field">
                     <label for="debtManagementSearch">Tìm khách / sale</label>
-                    <input id="debtManagementSearch" type="search" autocomplete="off" placeholder="Nhập tên khách hoặc sale" oninput="handleDebtFilterChange()">
+                    <input id="debtManagementSearch" type="search" autocomplete="off" placeholder="Nhập tên khách hoặc sale" oninput="handleDebtFilterChange(event)">
                   </div>
                 </div>
                 <div class="debt-table-wrap">
@@ -5494,7 +5494,7 @@
     })();
   </script>
   <script src="/shared/filter-links.js?v=20261029-1"></script>
-  <script src="/shared/table-controls.js?v=20261107-3"></script>
+  <script src="/shared/table-controls.js?v=20261108-2"></script>
   <script>
     // Bảng công nợ: mặc định ẩn cột Cảnh báo (người dùng vẫn bật lại được ở bộ chọn cột).
     (function () {
@@ -5574,6 +5574,8 @@
       tableDatasets: {},
       tableRenderers: {},
       tableTableBodies: {},
+      serverTableReloads: {},
+      serverTableData: {},
       // Moi bang co bo loc thoi gian rieng (xem TABLE_DATE_FILTERS / TAB_FILTER_PREFIXES).
       filters: {
         invoices: { mode: 'days', days: 30 }
@@ -5978,6 +5980,12 @@
       const sorts=nextTableSorts(state.tableSorts[tbodyId],columnIndex,!!(event && event.shiftKey));
       if (sorts.length) state.tableSorts[tbodyId]=sorts; else delete state.tableSorts[tbodyId];
       const tableKey=getTableKeyForTbody(tbodyId);
+      if (tableKey && state.serverTableReloads[tableKey]) {
+        state.tablePages[tableKey]=1;
+        updateTableSortHeader(tbodyId,sorts);
+        state.serverTableReloads[tableKey]();
+        return;
+      }
       const selfSorted=SELF_SORTED_TABLES[tbodyId];
       if (selfSorted) { state.tablePages[selfSorted.tableKey]=1; selfSorted.render(); }
       else if (tableKey && typeof state.tableRenderers[tableKey]==='function') { state.tablePages[tableKey]=1; state.tableRenderers[tableKey](); }
@@ -6001,7 +6009,7 @@
     function applyActiveTableSorts() {
       Object.keys(state.tableSorts).forEach(function (tbodyId) {
         const sort = state.tableSorts[tbodyId];
-        if (SELF_SORTED_TABLES[tbodyId]) {
+        if (SELF_SORTED_TABLES[tbodyId] || state.serverTableReloads[getTableKeyForTbody(tbodyId)]) {
           updateTableSortHeader(tbodyId, sort.columnIndex, sort.direction);
           return;
         }
@@ -6078,6 +6086,113 @@
       note.textContent = warningText;
     }
 
+    function stockoutTableConfig(key) {
+      const recent=key==='recentStockout';
+      return {
+        endpoint:recent?'stockout-recent':key==='stockout90d'?'stockout-90d':'stockout-30d',
+        tbody:key+'ResultRows',
+        fields:recent?['code','name','lastOutOfStockDate','daysOutOfStock','periods','branch']:['code','name','stockoutCount','totalStockoutDays','avgStockoutDays','currentOnHand','periods','branch'],
+        render:recent?renderRecentStockoutResultTable:key==='stockout90d'?renderStockout90dResultTable:renderStockout30dResultTable,
+        save:recent?saveRecentStockoutState:key==='stockout90d'?saveStockout90dState:saveStockout30dState,
+        tag:recent?'tagRecentStockout':key==='stockout90d'?'tagStockout90d':'tagStockout30d'
+      };
+    }
+
+    function stockoutPageIds(key) {
+      const ids={tbody:key+'ResultRows',pagination:key+'Pagination',label:key+'PageLabel',firstBtn:key+'First',prevBtn:key+'Prev',nextBtn:key+'Next',lastBtn:key+'Last'};
+      if(!document.getElementById(ids.pagination)) {
+        document.getElementById(ids.tbody).closest('.scroll-list').insertAdjacentHTML('afterend',
+          '<div class="pagination-controls" id="'+ids.pagination+'" hidden><button type="button" id="'+ids.firstBtn+'" aria-label="Trang đầu">&lt;&lt;</button><button type="button" id="'+ids.prevBtn+'" aria-label="Trang trước">&lt;</button><span id="'+ids.label+'"></span><button type="button" id="'+ids.nextBtn+'" aria-label="Trang sau">&gt;</button><button type="button" id="'+ids.lastBtn+'" aria-label="Trang cuối">&gt;&gt;</button></div>');
+      }
+      return ids;
+    }
+
+    function invalidateStockoutPage(key) {
+      const pending=serverTableRequests[key];
+      if(pending){pending.obsolete=true;pending.controller.abort();}
+      clearTimeout(serverTableTimers[key]);
+      delete state.serverTableData[key];delete state.serverTableReloads[key];delete state.tableRenderers[key];
+      state.tablePages[key]=1;state.tableDatasets[key]=[];
+    }
+
+    function fetchStockoutPage(key,jobId) {
+      const config=stockoutTableConfig(key),scan=state[key];
+      if(!jobId)return Promise.resolve();
+      if(scan.resultJobId!==jobId)state.tablePages[key]=1;
+      scan.jobId=jobId;
+      state.tableTableBodies[key]=config.tbody;
+      state.serverTableReloads[key]=function(){return fetchStockoutPage(key,jobId);};
+      const params=tablePageQuery(key,config.tbody,config.fields);
+      return requestServerTable(key,'/api/products/'+config.endpoint+'/'+encodeURIComponent(jobId)+'/result?'+params.toString(),function(payload){
+        if(!hasCurrentStockoutResultShape(payload.result))throw new Error('Kết quả máy chủ chưa có dữ liệu các đợt đứt hàng và nguồn dữ liệu. Hãy khởi động lại máy chủ rồi kiểm tra lại.');
+        scan.result=payload.result;scan.resultJobId=jobId;
+        document.getElementById(key+'ErrorBox').hidden=true;
+        document.getElementById(key+'ProgressBox').hidden=true;
+        document.getElementById(key+'ScanButton').disabled=false;
+        config.render(payload.result);showStockoutSourceWarnings(payload.result,key+'RestoredNote');config.save();
+      },function(error){
+        document.getElementById(key+'ScanButton').disabled=false;
+        document.getElementById(key+'ProgressBox').hidden=true;
+        const box=document.getElementById(key+'ErrorBox');box.hidden=false;
+        box.textContent=error.message==='HTTP 404'?'Phiên kết quả đã hết hạn. Hãy quét lại để xem đủ dữ liệu.':error.message||'Không lấy được kết quả quét.';
+        if(error.message==='HTTP 404') {
+          invalidateStockoutPage(key);scan.result=null;scan.resultJobId=null;
+          document.getElementById(key+'ResultPanel').hidden=true;
+          document.getElementById(key+'ExportButton').disabled=true;
+          try{sessionStorage.removeItem(key+':lastState');}catch(_){}
+          renderStockoutKpis();
+        }
+      });
+    }
+
+    function renderStockoutPage(key,result) {
+      if(!Number.isFinite(result && result.totalRows))return false;
+      const config=stockoutTableConfig(key),tbody=document.getElementById(config.tbody);
+      document.getElementById(key+'ResultPanel').hidden=false;
+      state.serverTableData[key]=result;
+      const reload=function(){return fetchStockoutPage(key,state[key].resultJobId||state[key].jobId);};
+      ensureTableSearchControls(key,tbody);
+      syncTableSearchControls(key,result.search||{requestedCodes:[],missingCodes:[]},result.totalResultRows||result.totalRows);
+      renderServerPaginatedRows(key,stockoutPageIds(key),result,function(row){
+        const middle=key==='recentStockout'
+          ? '<td>'+escapeHtml(row.lastOutOfStockDate)+'</td><td>'+row.daysOutOfStock+'</td>'
+          : '<td>'+row.stockoutCount+'</td><td>'+row.totalStockoutDays+'</td><td>'+(row.stockoutCount?row.totalStockoutDays/row.stockoutCount:0).toFixed(2)+'</td><td>'+row.currentOnHand+'</td>';
+        return '<tr data-table-item-id="'+escapeHtml(productIdentity(row))+'"><td>'+escapeHtml(row.code)+'</td><td>'+escapeHtml(row.name)+'</td>'+middle+'<td>'+formatStockoutPeriods(row.periods)+'</td>'+stockoutBranchCell(row,result)+'</tr>';
+      },config.fields.length,reload);
+      state.tableRenderers[key]=function(){scheduleServerTable(key);};
+      const search=getTableSearchState(key);
+      document.getElementById(config.tag+'Rows').textContent=search.query.trim()?result.totalRows+'/'+result.totalResultRows:result.totalRows;
+      document.getElementById(config.tag+'Total').textContent=result.totalProductsScanned==null?'—':result.totalProductsScanned;
+      document.getElementById(key+'ExportButton').disabled=result.totalRows===0;
+      renderStockoutKpis();return true;
+    }
+
+    function restoreStockoutPage(key,saved) {
+      if(!Number.isFinite(saved.result && saved.result.totalRows))return false;
+      const config=stockoutTableConfig(key);
+      if(!saved.jobId) {
+        const error=document.getElementById(key+'ErrorBox');error.hidden=false;error.textContent='Phiên kết quả không còn thông tin quét. Hãy quét lại để xem đủ dữ liệu.';
+        try{sessionStorage.removeItem(key+':lastState');}catch(_){}
+        return true;
+      }
+      state[key].jobId=saved.jobId;state[key].resultJobId=saved.jobId;
+      state.tablePages[key]=saved.result.page||1;
+      if(saved.search)state.tableSearches[key]=saved.search;
+      if(saved.sorts)state.tableSorts[config.tbody]=saved.sorts;
+      fetchStockoutPage(key,saved.jobId);return true;
+    }
+
+    async function fullStockoutExportResult(key,result,request) {
+      if(!Number.isFinite(result && result.totalRows))return result;
+      const jobId=state[key].resultJobId;
+      if(!jobId)throw new Error('Phiên kết quả đã hết hạn. Hãy quét lại trước khi xuất.');
+      const response=await exportFetch('/api/products/'+stockoutTableConfig(key).endpoint+'/'+encodeURIComponent(jobId)+'/result',null,request);
+      if(!response.ok)throw new Error(response.status===404?'Phiên kết quả đã hết hạn. Hãy quét lại trước khi xuất.':'Không lấy được đầy đủ kết quả để xuất.');
+      const payload=await response.json();
+      if(!hasCurrentStockoutResultShape(payload.result)||Number.isFinite(payload.result.totalRows))throw new Error('Máy chủ chưa trả đầy đủ kết quả để xuất.');
+      return payload.result;
+    }
+
     function toggleStockoutPeriods(rowId) {
       const row = document.getElementById(rowId);
       if (row) row.hidden = !row.hidden;
@@ -6089,6 +6204,9 @@
       try {
         const payload = {
           schemaVersion: STOCKOUT_RESULT_SCHEMA_VERSION,
+          jobId: state.recentStockout.resultJobId || state.recentStockout.jobId,
+          search: getTableSearchState('recentStockout'),
+          sorts: state.tableSorts['recentStockoutResultRows'] || [],
           result: state.recentStockout.result,
           checkedAt: new Date().toISOString()
         };
@@ -6107,6 +6225,8 @@
         try { sessionStorage.removeItem('recentStockout:lastState'); } catch (err) { /* bỏ qua */ }
         return;
       }
+
+      if(restoreStockoutPage('recentStockout',saved))return;
 
       state.recentStockout.result = saved.result;
       renderRecentStockoutResultTable(saved.result);
@@ -6227,6 +6347,7 @@
     }
 
     async function startRecentStockoutScan() {
+      invalidateStockoutPage('recentStockout');
       const button = document.getElementById('recentStockoutScanButton');
       const errorBox = document.getElementById('recentStockoutErrorBox');
       const progressBox = document.getElementById('recentStockoutProgressBox');
@@ -6312,29 +6433,11 @@
     }
 
     async function fetchRecentStockoutResult(jobId) {
-      try {
-        const response = await fetch('/api/products/stockout-recent/' + encodeURIComponent(jobId) + '/result');
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || 'Không lấy được kết quả.');
-        if (!hasCurrentStockoutResultShape(payload.result)) {
-          throw new Error('Kết quả máy chủ chưa có dữ liệu các đợt đứt hàng và nguồn dữ liệu. Hãy khởi động lại máy chủ rồi kiểm tra lại.');
-        }
-
-        state.recentStockout.result = payload.result;
-        document.getElementById('recentStockoutProgressBox').hidden = true;
-        document.getElementById('recentStockoutScanButton').disabled = false;
-        renderRecentStockoutResultTable(payload.result);
-        showStockoutSourceWarnings(payload.result, 'recentStockoutRestoredNote');
-        saveRecentStockoutState();
-      } catch (err) {
-        document.getElementById('recentStockoutScanButton').disabled = false;
-        const errorBox = document.getElementById('recentStockoutErrorBox');
-        errorBox.hidden = false;
-        errorBox.textContent = err.message || 'Không lấy được kết quả quét hàng đứt gần đây.';
-      }
+      return fetchStockoutPage('recentStockout',jobId);
     }
 
     function renderRecentStockoutResultTable(result) {
+      if(renderStockoutPage('recentStockout',result))return;
       const panel = document.getElementById('recentStockoutResultPanel');
       if (panel) panel.hidden = false;
       const tbody = document.getElementById('recentStockoutResultRows');
@@ -6383,12 +6486,12 @@
       const card = function (label, result, accent, tableKey) {
         const rows = result && result.rows;
         const searchState = getTableSearchState(tableKey);
-        const shown = rows ? filterTableItems(rows, TABLE_EXPLORER_CONFIGS[tableKey], searchState).items.length : 0;
+        const shown = result && Number.isFinite(result.totalRows) ? result.totalRows : rows ? filterTableItems(rows, TABLE_EXPLORER_CONFIGS[tableKey], searchState).items.length : 0;
         const filtering = !!(rows && searchState.query.trim());
         return {
           label: label,
           value: rows ? fmtNumber(shown) : '—',
-          sub: rows ? 'mã · đã quét ' + fmtNumber(Number(result.totalProductsScanned || 0)) + ' mã' + (filtering ? ' · đang lọc từ ' + fmtNumber(rows.length) : '') : 'Chưa quét',
+          sub: rows ? 'mã · đã quét ' + fmtNumber(Number(result.totalProductsScanned || 0)) + ' mã' + (filtering ? ' · đang lọc từ ' + fmtNumber(Number.isFinite(result.totalResultRows)?result.totalResultRows:rows.length) : '') : 'Chưa quét',
           accent: accent
         };
       };
@@ -6400,6 +6503,7 @@
     }
 
     function clearRecentStockoutResult() {
+      invalidateStockoutPage('recentStockout');state.recentStockout.jobId=null;state.recentStockout.resultJobId=null;
       state.recentStockout.result = null;
       renderStockoutKpis();
       try { sessionStorage.removeItem('recentStockout:lastState'); } catch (err) { /* bỏ qua */ }
@@ -6419,7 +6523,9 @@
     }
 
     async function exportRecentStockoutResult() {
-      const result = state.recentStockout.result;
+      let result = state.recentStockout.result;
+      const exportSearch={mode:getTableSearchState('recentStockout').mode,query:getTableSearchState('recentStockout').query};
+      const exportSort=currentExportSort('recentStockout');
       const rows = (result && result.rows) || [];
       if (!rows.length) return;
       const button = document.getElementById('recentStockoutExportButton');
@@ -6428,14 +6534,12 @@
       // Co timeout + AbortController de nut khong bi ket o "Đang xuất…" khi may chu phan hoi qua cham.
       const request = createExportRequest(EXPORT_FILE_TIMEOUT_MS);
       try {
+        if(Number.isFinite(result && result.totalRows))result=await fullStockoutExportResult('recentStockout',result,request);
         const payload = {
           tableKey: 'stockout.recentScan',
           recentStockoutResult: result,
-          tableSearch: {
-            mode: getTableSearchState('recentStockout').mode,
-            query: getTableSearchState('recentStockout').query
-          },
-          tableSort: currentExportSort('recentStockout') || undefined,
+          tableSearch: exportSearch,
+          tableSort: exportSort || undefined,
           // Ket qua quet o "Cả hai" moi co cot nguon (theo ket qua da quet, khong
           // theo co so dang chon) — gui thua khoa nay o mot co so se bi tu choi.
           columns: {
@@ -6461,6 +6565,9 @@
       try {
         const payload = {
           schemaVersion: STOCKOUT_RESULT_SCHEMA_VERSION,
+          jobId: state.stockout90d.resultJobId || state.stockout90d.jobId,
+          search: getTableSearchState('stockout90d'),
+          sorts: state.tableSorts['stockout90dResultRows'] || [],
           result: state.stockout90d.result,
           checkedAt: new Date().toISOString()
         };
@@ -6480,6 +6587,8 @@
         return;
       }
 
+      if(restoreStockoutPage('stockout90d',saved))return;
+
       state.stockout90d.result = saved.result;
       renderStockout90dResultTable(saved.result);
 
@@ -6498,6 +6607,7 @@
     }
 
     async function startStockout90dScan() {
+      invalidateStockoutPage('stockout90d');
       const button = document.getElementById('stockout90dScanButton');
       const errorBox = document.getElementById('stockout90dErrorBox');
       const progressBox = document.getElementById('stockout90dProgressBox');
@@ -6583,29 +6693,11 @@
     }
 
     async function fetchStockout90dResult(jobId) {
-      try {
-        const response = await fetch('/api/products/stockout-90d/' + encodeURIComponent(jobId) + '/result');
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || 'Không lấy được kết quả.');
-        if (!hasCurrentStockoutResultShape(payload.result)) {
-          throw new Error('Kết quả máy chủ chưa có dữ liệu các đợt đứt hàng và nguồn dữ liệu. Hãy khởi động lại máy chủ rồi kiểm tra lại.');
-        }
-
-        state.stockout90d.result = payload.result;
-        document.getElementById('stockout90dProgressBox').hidden = true;
-        document.getElementById('stockout90dScanButton').disabled = false;
-        renderStockout90dResultTable(payload.result);
-        showStockoutSourceWarnings(payload.result, 'stockout90dRestoredNote');
-        saveStockout90dState();
-      } catch (err) {
-        document.getElementById('stockout90dScanButton').disabled = false;
-        const errorBox = document.getElementById('stockout90dErrorBox');
-        errorBox.hidden = false;
-        errorBox.textContent = err.message || 'Không lấy được kết quả kiểm tra đứt hàng 90 ngày.';
-      }
+      return fetchStockoutPage('stockout90d',jobId);
     }
 
     function renderStockout90dResultTable(result) {
+      if(renderStockoutPage('stockout90d',result))return;
       const panel = document.getElementById('stockout90dResultPanel');
       if (panel) panel.hidden = false;
       const tbody = document.getElementById('stockout90dResultRows');
@@ -6651,6 +6743,7 @@
     }
 
     function clearStockout90dResult() {
+      invalidateStockoutPage('stockout90d');state.stockout90d.jobId=null;state.stockout90d.resultJobId=null;
       state.stockout90d.result = null;
       renderStockoutKpis();
       try { sessionStorage.removeItem('stockout90d:lastState'); } catch (err) { /* bỏ qua */ }
@@ -6670,7 +6763,9 @@
     }
 
     async function exportStockout90dResult() {
-      const result = state.stockout90d.result;
+      let result = state.stockout90d.result;
+      const exportSearch={mode:getTableSearchState('stockout90d').mode,query:getTableSearchState('stockout90d').query};
+      const exportSort=currentExportSort('stockout90d');
       const rows = (result && result.rows) || [];
       if (!rows.length) return;
       const button = document.getElementById('stockout90dExportButton');
@@ -6679,14 +6774,12 @@
       // Co timeout + AbortController de nut khong bi ket o "Đang xuất…" khi may chu phan hoi qua cham.
       const request = createExportRequest(EXPORT_FILE_TIMEOUT_MS);
       try {
+        if(Number.isFinite(result && result.totalRows))result=await fullStockoutExportResult('stockout90d',result,request);
         const payload = {
           tableKey: 'stockout.check90d',
           stockout90dResult: result,
-          tableSearch: {
-            mode: getTableSearchState('stockout90d').mode,
-            query: getTableSearchState('stockout90d').query
-          },
-          tableSort: currentExportSort('stockout90d') || undefined,
+          tableSearch: exportSearch,
+          tableSort: exportSort || undefined,
           // Xem ghi chu tuong tu o exportRecentStockoutResult().
           columns: {
             stockout_90d_result: (isMergedStockoutResult(result) ? ['branch'] : [])
@@ -6711,6 +6804,9 @@
       try {
         const payload = {
           schemaVersion: STOCKOUT_RESULT_SCHEMA_VERSION,
+          jobId: state.stockout30d.resultJobId || state.stockout30d.jobId,
+          search: getTableSearchState('stockout30d'),
+          sorts: state.tableSorts['stockout30dResultRows'] || [],
           result: state.stockout30d.result,
           checkedAt: new Date().toISOString()
         };
@@ -6730,6 +6826,8 @@
         return;
       }
 
+      if(restoreStockoutPage('stockout30d',saved))return;
+
       state.stockout30d.result = saved.result;
       renderStockout30dResultTable(saved.result);
 
@@ -6748,6 +6846,7 @@
     }
 
     async function startStockout30dScan() {
+      invalidateStockoutPage('stockout30d');
       const button = document.getElementById('stockout30dScanButton');
       const errorBox = document.getElementById('stockout30dErrorBox');
       const progressBox = document.getElementById('stockout30dProgressBox');
@@ -6833,29 +6932,11 @@
     }
 
     async function fetchStockout30dResult(jobId) {
-      try {
-        const response = await fetch('/api/products/stockout-30d/' + encodeURIComponent(jobId) + '/result');
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || 'Không lấy được kết quả.');
-        if (!hasCurrentStockoutResultShape(payload.result)) {
-          throw new Error('Kết quả máy chủ chưa có dữ liệu các đợt đứt hàng và nguồn dữ liệu. Hãy khởi động lại máy chủ rồi kiểm tra lại.');
-        }
-
-        state.stockout30d.result = payload.result;
-        document.getElementById('stockout30dProgressBox').hidden = true;
-        document.getElementById('stockout30dScanButton').disabled = false;
-        renderStockout30dResultTable(payload.result);
-        showStockoutSourceWarnings(payload.result, 'stockout30dRestoredNote');
-        saveStockout30dState();
-      } catch (err) {
-        document.getElementById('stockout30dScanButton').disabled = false;
-        const errorBox = document.getElementById('stockout30dErrorBox');
-        errorBox.hidden = false;
-        errorBox.textContent = err.message || 'Không lấy được kết quả kiểm tra đứt hàng 30 ngày.';
-      }
+      return fetchStockoutPage('stockout30d',jobId);
     }
 
     function renderStockout30dResultTable(result) {
+      if(renderStockoutPage('stockout30d',result))return;
       const panel = document.getElementById('stockout30dResultPanel');
       if (panel) panel.hidden = false;
       const tbody = document.getElementById('stockout30dResultRows');
@@ -6901,6 +6982,7 @@
     }
 
     function clearStockout30dResult() {
+      invalidateStockoutPage('stockout30d');state.stockout30d.jobId=null;state.stockout30d.resultJobId=null;
       state.stockout30d.result = null;
       renderStockoutKpis();
       try { sessionStorage.removeItem('stockout30d:lastState'); } catch (err) { /* bỏ qua */ }
@@ -6920,7 +7002,9 @@
     }
 
     async function exportStockout30dResult() {
-      const result = state.stockout30d.result;
+      let result = state.stockout30d.result;
+      const exportSearch={mode:getTableSearchState('stockout30d').mode,query:getTableSearchState('stockout30d').query};
+      const exportSort=currentExportSort('stockout30d');
       const rows = (result && result.rows) || [];
       if (!rows.length) return;
       const button = document.getElementById('stockout30dExportButton');
@@ -6929,14 +7013,12 @@
       // Co timeout + AbortController de nut khong bi ket o "Đang xuất…" khi may chu phan hoi qua cham.
       const request = createExportRequest(EXPORT_FILE_TIMEOUT_MS);
       try {
+        if(Number.isFinite(result && result.totalRows))result=await fullStockoutExportResult('stockout30d',result,request);
         const payload = {
           tableKey: 'stockout.check30d',
           stockout30dResult: result,
-          tableSearch: {
-            mode: getTableSearchState('stockout30d').mode,
-            query: getTableSearchState('stockout30d').query
-          },
-          tableSort: currentExportSort('stockout30d') || undefined,
+          tableSearch: exportSearch,
+          tableSort: exportSort || undefined,
           // Xem ghi chu tuong tu o exportRecentStockoutResult().
           columns: {
             stockout_30d_result: (isMergedStockoutResult(result) ? ['branch'] : [])
@@ -8256,6 +8338,21 @@
     }
 
     function navigateChartToTable(tableKey, identity) {
+      if (tableKey === 'cpDetail' && state.serverTableData.cpDetail) {
+        const option = (state.customerProductReport.data.productOptions || []).find(function (p) { return String(p.code || p.name) === String(identity); });
+        if (!option) return false;
+        state.customerProductReport.productCode=option.code;
+        state.customerProductReport.productName=option.name;
+        state.tablePages.cpDetail=1;
+        getTableSearchState('cpDetail').query='';
+        document.getElementById('cpProductFilterInput').value=option.code+' - '+option.name;
+        document.getElementById('cpProductClearBtn').hidden=false;
+        loadCustomerProductReport(true).then(function () {
+          const row=Array.from(document.querySelectorAll('#cpDetailRows tr')).find(function (r) { return r.dataset.tableItemId === String(identity); });
+          if (row) { row.scrollIntoView({block:'center'}); row.classList.add('table-row-target'); }
+        });
+        return true;
+      }
       const config = TABLE_EXPLORER_CONFIGS[tableKey];
       const items = state.tableDatasets[tableKey] || [];
       if (!config || typeof config.identity !== 'function') return false;
@@ -8307,6 +8404,15 @@
      * co the khong khop 100% voi so sanh theo field goc cho cac cot dang badge/list).
      */
     function renderPaginatedRows(tableKey, ids, items, rowHtmlFn, emptyColspan, emptyMessage, preSorted) {
+      const remote = state.serverTableData[tableKey];
+      if (remote) {
+        const tbody = document.getElementById(ids.tbody);
+        ensureTableSearchControls(tableKey, tbody);
+        syncTableSearchControls(tableKey, remote.search || {requestedCodes:[],missingCodes:[]}, remote.totalRows);
+        renderServerPaginatedRows(tableKey, ids, remote, rowHtmlFn, emptyColspan, state.serverTableReloads[tableKey]);
+        state.tableRenderers[tableKey] = function () { scheduleServerTable(tableKey); };
+        return;
+      }
       const tbody = document.getElementById(ids.tbody);
       const config = TABLE_EXPLORER_CONFIGS[tableKey];
       const sourceItems = Array.isArray(items) ? items : [];
@@ -8382,6 +8488,112 @@
         state.tablePages[tableKey] = result.totalPages;
         rerenderTable(tableKey);
       };
+    }
+
+    // Server already filtered/sorted the full result. Only render its page; never sort these DOM rows again.
+    function renderServerPaginatedRows(tableKey, ids, data, rowHtml, colspan, reload) {
+      const tbody = document.getElementById(ids.tbody);
+      const rows = data.rows || [];
+      const page = data.page || 1;
+      const pages = Math.max(1, Math.ceil(data.totalRows / data.pageSize));
+      state.tablePages[tableKey] = page;
+      state.tableTableBodies[tableKey] = ids.tbody;
+      state.tableDatasets[tableKey] = rows;
+      state.serverTableReloads[tableKey] = reload;
+      tbody.innerHTML = rows.length ? rows.map(rowHtml).join('') : '<tr><td colspan="' + colspan + '" class="table-note">Không có dữ liệu khớp bộ lọc.</td></tr>';
+      document.getElementById(ids.pagination).hidden = pages <= 1;
+      document.getElementById(ids.label).textContent = 'Trang ' + page + '/' + pages;
+      [[ids.firstBtn, 1], [ids.prevBtn, page - 1], [ids.nextBtn, page + 1], [ids.lastBtn, pages]].forEach(function (entry, index) {
+        const button = document.getElementById(entry[0]);
+        button.disabled = index < 2 ? page <= 1 : page >= pages;
+        button.onclick = function () { state.tablePages[tableKey] = entry[1]; serverPageNavAt[tableKey] = Date.now(); reload(); };
+      });
+      updateTableSortHeader(ids.tbody, state.tableSorts[ids.tbody] || []);
+      if (window.TKSTables) window.TKSTables.refresh(tbody.closest('table'));
+    }
+
+    const serverTableRequests = {}, serverTableTimers = {};
+    function scheduleServerTable(key) {
+      clearTimeout(serverTableTimers[key]);
+      const request = serverTableRequests[key];
+      if (request) { request.obsolete = true; request.controller.abort(); }
+      serverTableTimers[key] = setTimeout(function () { state.serverTableReloads[key](); },280);
+    }
+    function tablePageQuery(key, tbodyId, fields) {
+      const search = getTableSearchState(key);
+      const params = new URLSearchParams({page:String(state.tablePages[key] || 1),pageSize:'100'});
+      if (search.query) { params.set('q',search.query); if (search.mode === 'codes') params.set('qmode','codes'); }
+      const head = document.getElementById(tbodyId).closest('table').tHead.rows[0];
+      const sorts = tableSortList(state.tableSorts[tbodyId]).map(function (sort) {
+        return {key:fields ? fields[sort.columnIndex] : head.cells[sort.columnIndex].dataset.columnKey,dir:sort.direction};
+      });
+      if (sorts.length) params.set('sorts',JSON.stringify(sorts));
+      return params;
+    }
+    // Bộ đệm trang cho bảng phân trang ở máy chủ: bấm Trước/Sau (hoặc trang đầu/cuối) lấy từ đệm nếu trang đã được tải trước,
+    // và sau mỗi lần tải xong thì tải ngầm trang liền trước/liền sau. Chỉ dùng khi chuyển trang (nút phân trang đánh dấu serverPageNavAt);
+    // mọi lần tải khác (đổi bộ lọc/tìm/sắp xếp, làm mới) xóa đệm của bảng đó nên không hiện số cũ. Hết hạn sau SERVER_PAGE_TTL_MS.
+    const SERVER_PAGE_TTL_MS = 45000, SERVER_PAGE_PREFETCH_DELAY_MS = 400, SERVER_PAGE_NAV_WINDOW_MS = 1500;
+    const serverPageCache = {}, serverPageNavAt = {}, serverPageGeneration = {}, serverPagePrefetchTimers = {};
+    function serverPageNavigating(key) { return Date.now() - (serverPageNavAt[key] || 0) < SERVER_PAGE_NAV_WINDOW_MS; }
+    function serverPageCacheClear(key) {
+      if (serverPageCache[key]) serverPageCache[key].clear();
+      serverPageGeneration[key] = (serverPageGeneration[key] || 0) + 1;
+      clearTimeout(serverPagePrefetchTimers[key]);
+    }
+    function serverPageCacheGet(key, url) {
+      const entries = serverPageCache[key], entry = entries && entries.get(url);
+      if (entry && Date.now() - entry.time < SERVER_PAGE_TTL_MS) return entry.data;
+      if (entries) entries.delete(url);
+      return null;
+    }
+    function serverPageCachePut(key, url, data) {
+      if (!data || !Number.isFinite(data.totalRows) || !(data.pageSize > 0)) return;
+      (serverPageCache[key] || (serverPageCache[key] = new Map())).set(url, {data:data,time:Date.now()});
+    }
+    function prefetchServerPages(key, url, data) {
+      if (!data || !Number.isFinite(data.totalRows) || !(data.pageSize > 0)) return;
+      const pages = Math.max(1, Math.ceil(data.totalRows / data.pageSize)), page = Number(data.page) || 1;
+      const generation = serverPageGeneration[key] || 0;
+      clearTimeout(serverPagePrefetchTimers[key]);
+      serverPagePrefetchTimers[key] = setTimeout(function () {
+        [page + 1, page - 1].forEach(function (target) {
+          if (target < 1 || target > pages) return;
+          const parsed = new URL(url, window.location.origin);
+          parsed.searchParams.set('page', String(target));
+          const next = parsed.pathname + parsed.search;
+          if (serverPageCacheGet(key, next)) return;
+          fetch(next, {credentials:'same-origin'})
+            .then(function (res) { return res.ok ? res.json() : null; })
+            .then(function (payload) { if (payload && generation === (serverPageGeneration[key] || 0)) serverPageCachePut(key, next, payload); })
+            .catch(function () { /* tải trước là việc phụ: lỗi thì lần bấm trang sẽ tải bình thường */ });
+        });
+      }, SERVER_PAGE_PREFETCH_DELAY_MS);
+    }
+    function requestServerTable(key, url, apply, fail) {
+      clearTimeout(serverTableTimers[key]);
+      const prior = serverTableRequests[key];
+      if (prior && prior.pending && !prior.obsolete && prior.url === url) return prior.promise;
+      if (prior) { prior.obsolete=true; prior.controller.abort(); }
+      const navigating = serverPageNavigating(key);
+      if (!navigating) serverPageCacheClear(key);
+      const cached = navigating ? serverPageCacheGet(key, url) : null;
+      const request = {url:url,controller:new AbortController(),pending:true,obsolete:false};
+      serverTableRequests[key] = request;
+      const bodyId = state.tableTableBodies[key];
+      const body = bodyId && document.getElementById(bodyId);
+      if (body) body.setAttribute('aria-busy','true');
+      request.promise = (cached ? Promise.resolve(cached) : fetch(url,{credentials:'same-origin',signal:request.controller.signal})
+        .then(function (res) { if (!res.ok) throw new Error('HTTP '+res.status); return res.json(); }))
+        .then(function (data) {
+          if (request.obsolete) return;
+          if (!cached) serverPageCachePut(key, url, data);
+          apply(data);
+          prefetchServerPages(key, url, data);
+        })
+        .catch(function (error) { if (!request.obsolete && error.name !== 'AbortError') fail(error); })
+        .finally(function () { request.pending=false; if (!request.obsolete && body) body.setAttribute('aria-busy','false'); });
+      return request.promise;
     }
 
     // ===== Tab Hàng hóa — "Báo cáo hàng hóa" (35 cột theo sheet BC CHUNG, nền là file HÀNG HÓA.xlsx) =====
@@ -8532,17 +8744,19 @@
       if (!context) return;
       const filtering = items.length !== context.total;
       const summary = context.summary || {};
+      const remote = state.serverTableData.endOfDay;
+      const count = remote ? remote.totalRows : items.length;
       const sum = key => items.reduce((total, item) => total + (Number(item[key]) || 0), 0);
-      const totals = filtering
+      const totals = remote ? remote.summary : filtering
         ? { quantity: sum('quantity'), revenue: sum('revenue'), discount: sum('discount'), paid: sum('paid') }
         : { quantity: summary.quantity, revenue: summary.revenue, discount: summary.discount, paid: summary.paid };
-      document.getElementById('end-day-table-count').textContent = items.length + ' giao dịch theo bộ lọc';
+      document.getElementById('end-day-table-count').textContent = count + ' giao dịch theo bộ lọc';
       document.getElementById('end-day-total-qty').textContent = summary.quantityKnown ? fmtNumber(Number(totals.quantity || 0)) : '—';
       document.getElementById('end-day-total-revenue').textContent = fmtMoney(totals.revenue);
       document.getElementById('end-day-total-discount').textContent = fmtMoney(totals.discount);
       document.getElementById('end-day-total-paid').textContent = fmtMoney(totals.paid);
       renderSectionKpis('transactionsKpis', [
-        { label: 'Số giao dịch', value: fmtNumber(items.length), sub: context.rangeLabel, accent: 'blue' },
+        { label: 'Số giao dịch', value: fmtNumber(count), sub: context.rangeLabel, accent: 'blue' },
         { label: 'Doanh thu', value: fmtMoney(totals.revenue), sub: context.rangeLabel, accent: 'green' },
         { label: 'Giảm giá', value: fmtMoney(totals.discount), sub: context.rangeLabel, accent: 'red' },
         { label: 'Thực thu', value: fmtMoney(totals.paid), sub: context.rangeLabel, accent: 'amber' }
@@ -8565,26 +8779,36 @@
         35,
         state.productReport.loaded ? 'Chưa có dữ liệu báo cáo hàng hóa.' : 'Đang tải...'
       );
+      const remote = state.serverTableData.productReport;
+      if (remote) {
+        const totals = remote.summary || {};
+        document.getElementById('tagProductReportRows').textContent = fmtNumber(remote.totalRows);
+        renderSectionKpis('productReportKpis', [
+          {label:'Số mã hàng',value:fmtNumber(remote.totalRows),accent:'amber'},
+          ...(productReportSalesAllowed() ? [{label:'Doanh số 90 ngày',value:fmtMoney(totals.revenue90d),accent:'green'}] : []),
+          {label:'Số lượng bán 30 ngày',value:fmtNumber(totals.qtySold30d),accent:'blue'},
+          {label:'Mã hết tồn có thể bán',value:fmtNumber(totals.outOfStock),accent:'red'}
+        ]);
+      }
     }
 
     function loadProductReport() {
       if (state.view !== 'products' || !allowedAtBoot('reports.products')) return Promise.resolve();
-      if (state.productReport.loading) return Promise.resolve();
       state.productReport.loading = true;
-      return fetch('/api/product-report')
-        .then(function (res) {
-          if (!res.ok) throw new Error('HTTP ' + res.status);
-          return res.json();
-        })
-        .then(function (data) {
+      state.tableTableBodies.productReport = 'productReportRows';
+      const fields = ['code','name','unloadedQty','loadedQty','availableValueHanoi','qtySold30dHanoi','stockHanoi','availableHanoi','transferRequest','inTransit','stockSaigon','availableSaigon','qtySold30dSaigon','availableValueSaigon','totalStock','availableToSell','qtySold30d','stockoutDaysHanoi','stockoutDaysSaigon','daysToOrder','daysSaigonTransit','daysHanoi','daysBothBranches','revenue90d','customerCount90d','orders90d','orders30d','ordersGrowth','topCustomerRevenue90d','topCustomerName','topCustomerShare','priceHanoi','priceSaigon','descriptionHanoi','descriptionSaigon'];
+      const params = tablePageQuery('productReport','productReportRows',fields);
+      state.serverTableReloads.productReport = loadProductReport;
+      return requestServerTable('productReport','/api/product-report?' + params.toString(), function (data) {
+          if (Number.isFinite(data.totalRows)) state.serverTableData.productReport = data;
+          else { delete state.serverTableData.productReport; delete state.serverTableReloads.productReport; }
           state.productReport.rows = (data && data.rows) || [];
           state.productReport.computedAt = data && data.computedAt;
           state.productReport.containerSync = data && data.containerSync;
           state.productReport.reportVersion = data && data.reportVersion != null ? data.reportVersion : null;
           state.productReport.loaded = true;
           renderProductReport();
-        })
-        .catch(function (err) {
+        }, function (err) {
           console.error('Không tải được báo cáo hàng hóa:', err);
           if (!state.productReport.loaded) {
             state.productReport.loaded = true;
@@ -8697,9 +8921,9 @@
 
     // ===== Tab Hàng hóa — "Dự kiến hàng về" (mục 2): toàn bộ dòng hàng của mọi cont, bảng DB tính sẵn từ sheet CONT =====
     // API riêng /api/expected-arrivals (quyền reports.products.expected — cả Kế toán / Mua hàng / Kho không có Báo cáo hàng hóa vẫn xem được).
-    // Máy chủ trả TOÀN BỘ dòng + danh sách Cont / Trạng thái; lọc Nguồn, Cont, Trạng thái, tìm kiếm và chỉ số làm ở trình duyệt.
+    // Danh sách phân trang ở SQL; hộp chi tiết đọc đủ cont của một mã bằng API riêng.
     // Bộ lọc Trạng thái theo ô B (statusLabel) còn cột hiển thị là B + C (scheduleLabel).
-    const expectedArrivals = { rows: [], containers: [], statuses: [], computedAt: null, fullAccess: false, otherNoteAccess: false, loaded: false, loading: false, loadedAt: 0 };
+    const expectedArrivals = { rows: [], containers: [], statuses: [], computedAt: null, fullAccess: false, otherNoteAccess: false, loaded: false, loading: false, loadedAt: 0, requestId: 0, timer: null, controller: null, pageData: null };
     const EXPECTED_ARRIVALS_IDS = {
       tbody: 'expectedArrivalsRows', pagination: 'expectedArrivalsPagination', firstBtn: 'expectedArrivalsFirstPage',
       prevBtn: 'expectedArrivalsPrevPage', nextBtn: 'expectedArrivalsNextPage', lastBtn: 'expectedArrivalsLastPage', label: 'expectedArrivalsPageLabel'
@@ -8827,6 +9051,26 @@
     }
 
     function renderExpectedArrivals() {
+      if (expectedArrivals.pageData) {
+        const data = expectedArrivals.pageData;
+        [['expectedArrivalsSource', 'Tất cả nguồn', expectedArrivals.fullAccess ? data.filters.sources : []],
+          ['expectedArrivalsContainer', 'Tất cả cont', data.filters.containers],
+          ['expectedArrivalsStatus', 'Tất cả trạng thái', data.filters.statuses]].forEach(function (entry) {
+          const select = document.getElementById(entry[0]), value = select.value;
+          fillBusinessSelect(entry[0], entry[1], entry[2] || []);
+          // A selected value may disappear at a later revision; keep it explicit until the user changes it.
+          if (value && !Array.from(select.options).some(function (o) { return o.value === value; })) select.add(new Option(value, value));
+          select.value = value;
+        });
+        const body = document.getElementById(EXPECTED_ARRIVALS_IDS.tbody);
+        ensureTableSearchControls('expectedArrivals', body);
+        syncTableSearchControls('expectedArrivals', data.search || {requestedCodes: [], missingCodes: []}, data.totalRows);
+        renderServerPaginatedRows('expectedArrivals', EXPECTED_ARRIVALS_IDS, data, expectedArrivalsRowHtml, 13, loadExpectedArrivals);
+        document.getElementById('tagExpectedArrivals').textContent = fmtNumber(data.totalRows);
+        document.getElementById('expectedArrivalsUpdatedAt').textContent = formatProductReportUpdatedAt(expectedArrivals.computedAt);
+        state.tableRenderers.expectedArrivals = scheduleExpectedArrivals;
+        return;
+      }
       syncExpectedArrivalsFilters();
       const rows = expectedArrivalsFilteredRows();
       renderPaginatedRows('expectedArrivals', EXPECTED_ARRIVALS_IDS, rows, expectedArrivalsRowHtml, 13,
@@ -8838,21 +9082,55 @@
       state.tableRenderers.expectedArrivals = renderExpectedArrivals;
     }
 
+    function scheduleExpectedArrivals() {
+      clearTimeout(expectedArrivals.timer);
+      ++expectedArrivals.requestId;
+      if (expectedArrivals.controller) expectedArrivals.controller.abort();
+      expectedArrivals.timer = setTimeout(loadExpectedArrivals, 280);
+    }
+
+    function expectedArrivalsSorts() {
+      const table = document.getElementById('expectedArrivalsRows').closest('table');
+      return (state.tableSorts.expectedArrivalsRows || []).map(function (sort) {
+        return {key: table.tHead.rows[0].cells[sort.columnIndex].dataset.columnKey, dir: sort.direction};
+      });
+    }
+
     function loadExpectedArrivals() {
       const allowed = hasFeature('reports.products.expected');
       document.getElementById('expectedArrivalsSection').hidden = !allowed;
-      if (!allowed || expectedArrivals.loading) return Promise.resolve();
+      if (!allowed) return Promise.resolve();
+      clearTimeout(expectedArrivals.timer);
+      const params = new URLSearchParams(expectedArrivalsExportQuery());
+      params.set('page', String(state.tablePages.expectedArrivals || 1));
+      params.set('pageSize', '100');
+      const signature = params.toString();
+      if (expectedArrivals.loading && expectedArrivals.signature === signature && expectedArrivals.controller && !expectedArrivals.controller.signal.aborted) return expectedArrivals.promise;
+      const requestId = ++expectedArrivals.requestId;
+      if (expectedArrivals.controller) expectedArrivals.controller.abort();
+      expectedArrivals.controller = new AbortController();
+      expectedArrivals.signature = signature;
       expectedArrivals.loading = true;
-      return fetch('/api/expected-arrivals')
+      const body = document.getElementById('expectedArrivalsRows');
+      body.setAttribute('aria-busy', 'true');
+      // Chuyển trang: lấy từ bộ đệm nếu trang đã được tải trước (xem prefetchServerPages); mọi lần tải khác xóa đệm.
+      const pageUrl = '/api/expected-arrivals?' + signature;
+      const navigating = serverPageNavigating('expectedArrivals');
+      if (!navigating) serverPageCacheClear('expectedArrivals');
+      const cached = navigating ? serverPageCacheGet('expectedArrivals', pageUrl) : null;
+      return expectedArrivals.promise = (cached ? Promise.resolve(cached) : fetch(pageUrl, {signal: expectedArrivals.controller.signal})
         .then(function (res) {
-          if (res.status === 401) {
+          if (res.status === 401 && requestId === expectedArrivals.requestId) {
             window.location.href = '/login/?next=' + encodeURIComponent(window.location.pathname + window.location.search + window.location.hash);
           }
           if (!res.ok) throw new Error('HTTP ' + res.status);
           return res.json();
-        })
+        }))
         .then(function (data) {
+          if (requestId !== expectedArrivals.requestId) return;
+          if (!cached) serverPageCachePut('expectedArrivals', pageUrl, data);
           expectedArrivals.rows = (data && data.rows) || [];
+          expectedArrivals.pageData = Number.isFinite(data.totalRows) ? data : null;
           expectedArrivals.containers = (data && data.filters && data.filters.containers) || [];
           expectedArrivals.statuses = (data && data.filters && data.filters.statuses) || [];
           expectedArrivals.computedAt = data && data.meta ? data.meta.computedAt : null;
@@ -8862,14 +9140,22 @@
           expectedArrivals.loaded = true;
           expectedArrivals.loadedAt = Date.now();
           renderExpectedArrivals();
+          prefetchServerPages('expectedArrivals', pageUrl, data);
         })
         .catch(function (err) {
+          if (requestId !== expectedArrivals.requestId || err.name === 'AbortError') return;
           console.error('Không tải được bảng dự kiến hàng về:', err);
           if (!expectedArrivals.loaded) {
             document.getElementById('expectedArrivalsRows').innerHTML =
               '<tr><td colspan="13" class="table-note">Không tải được bảng dự kiến hàng về.</td></tr>';
+          } else {
+            document.getElementById('expectedArrivalsUpdatedAt').textContent = 'Không tải được dữ liệu mới. Thử lại bằng cách đổi bộ lọc hoặc quay lại trang.';
           }
-        }).finally(function () { expectedArrivals.loading = false; });
+        }).finally(function () {
+          if (requestId !== expectedArrivals.requestId) return;
+          expectedArrivals.loading = false;
+          body.setAttribute('aria-busy', 'false');
+        });
     }
 
     // Quay lại tab / cửa sổ sau một lúc: tải lại nếu đang xem mục này và dữ liệu đã quá 60 giây.
@@ -8886,7 +9172,7 @@
     ['expectedArrivalsSource', 'expectedArrivalsContainer', 'expectedArrivalsStatus'].forEach(function (id) {
       document.getElementById(id).addEventListener('change', function () {
         state.tablePages.expectedArrivals = 1;
-        renderExpectedArrivals();
+        if (expectedArrivals.pageData) loadExpectedArrivals(); else renderExpectedArrivals();
       });
     });
 
@@ -8904,8 +9190,8 @@
         params.set('q', search.query.trim());
         if (search.mode === 'codes') params.set('qmode', 'codes');
       }
-      const sort = currentExportSort('expectedArrivals');
-      if (sort) { params.set('sorts', JSON.stringify(sort)); params.set('sortLabel', sort[0].label); params.set('sortDir', sort[0].direction); }
+      const sort = expectedArrivalsSorts();
+      if (sort.length) params.set('sorts', JSON.stringify(sort));
       return params.toString();
     }
 
@@ -9135,6 +9421,7 @@
     // Các ô lọc của bảng Khách ảnh hưởng lẫn nhau (xem shared/filter-links.js): chỉ còn giá trị có khách khi ghép với ô khác.
     function businessLinkCustomerFilters() {
       const data = state.business.data.customers;
+      if (data && Number.isFinite(data.totalRows)) return;
       if (!data || !window.TKSFilterLinks) return;
       const select = id => document.getElementById(id);
       const inactive = select('businessCustomersInactive').checked;
@@ -9215,6 +9502,17 @@
       const prefix = BUSINESS_TABLE_KEYS[kind];
       if (!data) return;
       renderBusinessHead(kind, data);
+      if (Number.isFinite(data.totalRows)) {
+        const ids = {tbody: prefix + 'Rows', pagination: prefix + 'Pagination', firstBtn: prefix + 'FirstPage', prevBtn: prefix + 'PrevPage', nextBtn: prefix + 'NextPage', lastBtn: prefix + 'LastPage', label: prefix + 'PageLabel'};
+        const body = document.getElementById(ids.tbody);
+        ensureTableSearchControls(prefix, body);
+        syncTableSearchControls(prefix, data.search || {requestedCodes:[],missingCodes:[]}, data.totalRows);
+        renderServerPaginatedRows(prefix, ids, data, businessRowHtml(kind, data), businessColumnCount(kind,data), function () { loadBusinessKind(kind); });
+        document.getElementById('tag' + prefix[0].toUpperCase() + prefix.slice(1)).textContent = fmtNumber(data.totalRows);
+        renderSectionKpis(prefix + 'Kpis', businessSummaryCards([data.summary || {}],data));
+        state.tableRenderers[prefix] = function () { scheduleBusinessKind(kind); };
+        return;
+      }
       const rows = kind === 'customers' ? businessFilteredCustomers() : kind === 'sales' ? businessFilteredSales() : data.rows;
       renderPaginatedRows(prefix, {
         tbody: prefix + 'Rows', pagination: prefix + 'Pagination', firstBtn: prefix + 'FirstPage', prevBtn: prefix + 'PrevPage',
@@ -9256,7 +9554,7 @@
       const customerData = state.business.data.customers;
       if (customerData) {
         businessFillNewCustomerOptions(customerData.newCustomerOptions);
-        const levels = Array.from(new Set(customerData.rows.map(r => r.priceLevel).filter(Boolean))).sort((a, b) => String(a).localeCompare(String(b), 'vi', { numeric: true }));
+        const levels = Number.isFinite(customerData.totalRows) ? customerData.filters.levels : Array.from(new Set(customerData.rows.map(r => r.priceLevel).filter(Boolean))).sort((a, b) => String(a).localeCompare(String(b), 'vi', { numeric: true }));
         fillBusinessSelect('businessCustomersLevel', 'Tất cả level', levels);
       }
       [['businessCustomersSalesChannel', 'Tất cả hình thức bán hàng', [['none', 'Chưa có']].concat(CP_CHANNELS)],
@@ -9273,8 +9571,8 @@
       BUSINESS_KINDS.forEach(renderBusinessTable);
       const sales = state.business.data.sales;
       if (sales) {
-        fillBusinessSelect('businessCustomersSale', 'Tất cả sale', sales.rows.map(r => r.saleName));
-        fillBusinessSelect('businessSalesTeam', 'Tất cả team', sales.teams || []);
+        fillBusinessSelect('businessCustomersSale', 'Tất cả sale', customerData && Number.isFinite(customerData.totalRows) ? customerData.filters.sales : Number.isFinite(sales.totalRows) ? sales.filters.sales : sales.rows.map(r => r.saleName));
+        fillBusinessSelect('businessSalesTeam', 'Tất cả team', Number.isFinite(sales.totalRows) ? sales.filters.teams : sales.teams || []);
         businessLinkCustomerFilters(); // ô Sale vừa được điền lại sau khi vẽ bảng
         document.getElementById('businessUpdatedAt').textContent = formatProductReportUpdatedAt(sales.computedAt);
       }
@@ -9311,6 +9609,7 @@
       }
       state.business.loading[scope] = true;
       Promise.all(kinds.map(function (kind) {
+        if (kind !== 'overview') return loadBusinessKind(kind, false);
         return fetch('/api/business-report/' + kind).then(function (res) {
           if (res.status === 401) {
             window.location.href = '/login/?next=' + encodeURIComponent(window.location.pathname + window.location.search + window.location.hash);
@@ -9325,16 +9624,56 @@
           });
         });
       })).then(function (payloads) {
-        kinds.forEach(function (kind, i) { state.business.data[kind] = payloads[i]; });
+        kinds.forEach(function (kind, i) { if (kind === 'overview') state.business.data[kind] = payloads[i]; });
         state.business.loadedAt[scope] = Date.now();
         state.business.loading[scope] = false;
         renderBusinessReport();
-        if (scope === 'business') loadBusinessCustomerMeta();
+        if (scope === 'business' && !Number.isFinite(state.business.data.customers && state.business.data.customers.totalRows)) loadBusinessCustomerMeta();
       }).catch(function (err) {
         state.business.loading[scope] = false;
         console.error('Không tải được báo cáo kinh doanh:', err);
         showBusinessLoadError(err, scope);
       });
+    }
+
+    const businessRequests = {}, businessTimers = {};
+    function scheduleBusinessKind(kind) {
+      clearTimeout(businessTimers[kind]);
+      const current = businessRequests[kind];
+      if (current) { current.obsolete = true; current.controller.abort(); }
+      businessTimers[kind] = setTimeout(function () { loadBusinessKind(kind); }, 280);
+    }
+    function loadBusinessKind(kind, render) {
+      clearTimeout(businessTimers[kind]);
+      const prefix = BUSINESS_TABLE_KEYS[kind];
+      const params = new URLSearchParams(businessExportQuery(kind));
+      params.delete('kind'); params.set('page', String(state.tablePages[prefix] || 1)); params.set('pageSize', '100');
+      const signature = params.toString(), prior = businessRequests[kind];
+      if (prior && !prior.obsolete && prior.pending && prior.signature === signature) return prior.promise;
+      if (prior) { prior.obsolete = true; prior.controller.abort(); }
+      const request = {signature:signature,controller:new AbortController(),pending:true,obsolete:false};
+      businessRequests[kind] = request;
+      const body = document.getElementById(prefix + 'Rows'); body.setAttribute('aria-busy','true');
+      request.promise = fetch('/api/business-report/' + kind + '?' + signature, {signal:request.controller.signal})
+        .then(function (res) {
+          return res.json().then(function (data) {
+            if (!res.ok) { const error = new Error(data.error || 'HTTP ' + res.status); error.code=data.code; throw error; }
+            return data;
+          });
+        }).then(function (data) {
+          if (request.obsolete) return;
+          state.business.data[kind] = data;
+          if (render !== false) renderBusinessReport();
+          return data;
+        }).catch(function (error) {
+          if (request.obsolete || error.name === 'AbortError') return;
+          if (render === false) throw error;
+          showBusinessLoadError(error, kind === 'products' ? 'products' : 'business');
+        }).finally(function () {
+          request.pending=false;
+          if (!request.obsolete) body.setAttribute('aria-busy','false');
+        });
+      return request.promise;
     }
 
     // Bộ lọc đang áp trên bảng -> tham số URL cho API xuất riêng (danh sách trường + file dùng chung).
@@ -9345,8 +9684,10 @@
         params.set('q', search.query.trim());
         if (search.mode === 'codes') params.set('qmode', 'codes');
       }
-      const sort = currentExportSort(BUSINESS_TABLE_KEYS[kind]);
-      if (sort) { params.set('sorts', JSON.stringify(sort)); params.set('sortLabel', sort[0].label); params.set('sortDir', sort[0].direction); }
+      const tbody = BUSINESS_TABLE_KEYS[kind] + 'Rows';
+      const heads = document.getElementById(tbody).closest('table').tHead;
+      const sort = (state.tableSorts[tbody] || []).map(function (s) { return {key:heads.rows[0].cells[s.columnIndex].dataset.columnKey,dir:s.direction}; });
+      if (sort.length) params.set('sorts', JSON.stringify(sort));
       if (kind === 'sales') {
         const team = document.getElementById('businessSalesTeam').value;
         if (team) params.set('team', team);
@@ -9540,7 +9881,8 @@
     [['businessCustomersSale', 'customers'], ['businessCustomersLevel', 'customers'], ['businessCustomersSalesChannel', 'customers'], ['businessCustomersScale', 'customers'], ['businessCustomersInactive', 'customers'], ['businessSalesTeam', 'sales']].forEach(function (entry) {
       document.getElementById(entry[0]).addEventListener('change', function () {
         state.tablePages[BUSINESS_TABLE_KEYS[entry[1]]] = 1;
-        renderBusinessTable(entry[1]);
+        if (Number.isFinite(state.business.data[entry[1]] && state.business.data[entry[1]].totalRows)) loadBusinessKind(entry[1]);
+        else renderBusinessTable(entry[1]);
       });
     });
 
@@ -9599,6 +9941,7 @@
     function businessApplyCustomerMeta() {
       const data = state.business.data.customers;
       if (!data || !businessCanNotes()) return;
+      if (Number.isFinite(data.totalRows)) return;
       const map = state.business.customerMeta || {};
       data.rows.forEach(function (r) {
         const meta = map[r.key];
@@ -10963,23 +11306,24 @@
     }
 
     // Nhãn thẻ trạng thái n: lấy từ statusLabel của 1 dòng bất kỳ có status n (bỏ ngày dự kiến nếu máy chủ để lẫn vào), không có thì "Trạng thái n".
-    function expectedArrivalStatusText(status) {
-      const found = expectedArrivals.rows.find(function (r) { return Number(r.status) === status && r.statusLabel; });
+    function expectedArrivalStatusText(status, sourceRows) {
+      const found = (sourceRows || expectedArrivals.rows).find(function (r) { return Number(r.status) === status && r.statusLabel; });
       if (!found) return 'Trạng thái ' + status;
       const label = String(found.statusLabel).replace(/\s+\d{1,2}[\/-]\d{1,2}(?:[\/-]\d{2,4})?(?:\s*[-–]\s*\d{1,2}[\/-]\d{1,2}(?:[\/-]\d{2,4})?)?\s*$/, '').trim();
       return label || 'Trạng thái ' + status;
     }
 
     // Gom dữ liệu hộp từ các dòng đã tải: mọi CONT cùng mã SP (so khớp lower/trim) + tổng số lượng theo trạng thái 1–5 (0 nếu trống).
-    function expectedArrivalDetailData(item) {
+    function expectedArrivalDetailData(item, sourceRows) {
+      const allRows = sourceRows || expectedArrivals.rows;
       const key = expectedArrivalCodeKey(item.productCode);
       const rows = key
-        ? expectedArrivals.rows.filter(function (r) { return expectedArrivalCodeKey(r.productCode) === key; })
-        : expectedArrivals.rows.filter(function (r) { return r.sheetName === item.sheetName && r.sourceRow === item.sourceRow; });
+        ? allRows.filter(function (r) { return expectedArrivalCodeKey(r.productCode) === key; })
+        : allRows.filter(function (r) { return r.sheetName === item.sheetName && r.sourceRow === item.sourceRow; });
       // Trạng thái 4 và 5 cũ đã gộp thành "4.Đã về": dòng còn mang số 5 (chưa sửa ở sheet) dồn vào thẻ 4.
       const statuses = [1, 2, 3, 4].map(function (status) {
         const matching = rows.filter(function (r) { return status === 4 ? Number(r.status) >= 4 : Number(r.status) === status; });
-        return { status: status, label: expectedArrivalStatusText(status), lines: matching.length, quantity: sumBy(matching, function (r) { return r.quantity; }) };
+        return { status: status, label: expectedArrivalStatusText(status, allRows), lines: matching.length, quantity: sumBy(matching, function (r) { return r.quantity; }) };
       });
       const containers = new Set(rows.map(function (r) { return r.sheetName + '\u0000' + r.containerName; })).size;
       return { code: item.productCode, rows: rows, statuses: statuses, containers: containers, full: expectedArrivals.fullAccess === true };
@@ -11221,6 +11565,20 @@
       const kind = DOC_DETAIL_KINDS[docDetail.tableKey];
       const item = docDetail.item;
       const requestId = ++docDetail.requestId;
+      if (docDetail.tableKey === 'expectedArrival' && expectedArrivals.pageData && item.productCode) {
+        renderDocumentDetail('loading');
+        fetch('/api/expected-arrivals/detail?code=' + encodeURIComponent(item.productCode))
+          .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
+          .then(function (data) {
+            if (requestId !== docDetail.requestId) return;
+            expectedArrivals.otherNoteAccess = data.otherNoteAccess === true;
+            expectedArrivals.fullAccess = data.fullAccess === true;
+            renderDocumentDetail('ready', expectedArrivalDetailData(item, data.rows || []));
+          }).catch(function () {
+            if (requestId === docDetail.requestId) renderDocumentDetail('error', null, kind.failure);
+          });
+        return;
+      }
       if (kind.local) {
         renderDocumentDetail('ready', kind.local(item));
         return;
@@ -11488,6 +11846,9 @@
       document.getElementById('cpCustomerSearchInput').value = result.name || result.code;
       document.getElementById('cpCustomerClearBtn').hidden = false;
       state.customerProductReport.customer = { code: result.code, name: result.name || result.code };
+      state.customerProductReport.data=null;
+      delete state.serverTableData.cpDetail;
+      state.tablePages.cpDetail=1;
       state.customerProductReport.productCode = '';
       state.customerProductReport.productName = '';
       getTableSearchState('cpDetail').query = '';
@@ -11495,6 +11856,10 @@
     }
 
     function clearCustomerProductSelection() {
+      const request = serverTableRequests.cpDetail;
+      if (request) { request.obsolete=true; request.controller.abort(); }
+      clearTimeout(serverTableTimers.cpDetail);
+      delete state.serverTableData.cpDetail;
       cancelCustomerProductSearchRequest();
       hideCustomerProductSuggestions();
       state.customerProductReport.customer = null;
@@ -11541,6 +11906,7 @@
       if (document.visibilityState === 'hidden') return Promise.resolve(false);
       const view = content.closest('.view');
       if (view && !view.classList.contains('active')) return Promise.resolve(false);
+      if (state.serverTableData.cpDetail) return loadCustomerProductReport(true);
       const requested = report.customer;
       const comparable = function (data) {
         const copy = Object.assign({}, data);
@@ -11563,33 +11929,39 @@
         .catch(function () { return false; });
     }
 
-    async function loadCustomerProductReport() {
+    async function loadCustomerProductReport(quiet) {
       const customer = state.customerProductReport.customer;
       if (!customer) return;
       const emptyState = document.getElementById('cpEmptyState');
-      emptyState.hidden = false;
-      emptyState.textContent = 'Đang tải dữ liệu khách hàng…';
-      document.getElementById('cpContent').hidden = true;
-      try {
-        const response = await fetch('/api/customer-product-revenue?code=' + encodeURIComponent(customer.code) + '&name=' + encodeURIComponent(customer.name));
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        const data = await response.json();
+      if (!quiet && !state.customerProductReport.data) {
+        emptyState.hidden = false;
+        emptyState.textContent = 'Đang tải dữ liệu khách hàng…';
+        document.getElementById('cpContent').hidden = true;
+      }
+      state.tableTableBodies.cpDetail='cpDetailRows';
+      state.serverTableReloads.cpDetail=function () { return loadCustomerProductReport(true); };
+      const params=tablePageQuery('cpDetail','cpDetailRows',['name','quantity','revenue','month1Revenue','month2Revenue','month3Revenue']);
+      params.set('code',customer.code); params.set('name',customer.name);
+      if (state.customerProductReport.productCode) { params.set('productCode',state.customerProductReport.productCode); params.delete('q'); }
+      return requestServerTable('cpDetail','/api/customer-product-revenue?' + params.toString(),function (data) {
+        if (state.customerProductReport.customer !== customer) return;
+        if (Number.isFinite(data.totalRows)) state.serverTableData.cpDetail=data;
         state.customerProductReport.data = data;
         emptyState.hidden = true;
         document.getElementById('cpContent').hidden = false;
         document.getElementById('cpSelectedCustomerName').textContent = data.customer.name;
         document.getElementById('cpWindowHint').textContent = customerProductWindowHint(data);
         renderCustomerProductReport();
-      } catch (err) {
-        document.getElementById('cpContent').hidden = true;
-        emptyState.hidden = false;
-        emptyState.textContent = 'Không tải được báo cáo doanh thu của khách này. Vui lòng thử lại.';
-      }
+      },function () {
+        if (state.customerProductReport.data) showToast('Không tải được dữ liệu khách mới. Vui lòng thử lại.','error');
+        else { document.getElementById('cpContent').hidden = true; emptyState.hidden=false; emptyState.textContent='Không tải được báo cáo doanh thu của khách này. Vui lòng thử lại.'; }
+      });
     }
 
     function customerProductFilteredList() {
       const data = state.customerProductReport.data;
       if (!data) return [];
+      if (Number.isFinite(data.totalRows)) return data.products;
       const productCode = state.customerProductReport.productCode;
       if (productCode) return data.products.filter(function (p) { return p.code === productCode; });
       return filterTableItems(
@@ -11606,16 +11978,16 @@
       const productCode = state.customerProductReport.productCode;
 
       const revenueByDay = productCode
-        ? ((filtered[0] || {}).revenueByDay || [])
+        ? (data.selectedRevenueByDay || (filtered[0] || {}).revenueByDay || [])
         : (data.totalRevenueByDay || []);
       renderRevenueChart('chartCustomerProductRevenue', 'cpRevenue', revenueByDay, true);
 
-      const barList = productCode ? filtered : data.products;
+      const barList = productCode ? filtered : (data.chartProducts || data.products);
       const hint = document.getElementById('cpBarChartHint');
       if (hint) {
         hint.textContent = productCode
           ? '1 sản phẩm đang lọc'
-          : fmtNumber(Number(data.products.length || 0)) + ' sản phẩm';
+          : fmtNumber(Number((data.chartProducts || data.products).length || 0)) + ' sản phẩm';
       }
       const barInner = document.getElementById('cpBarChartInner');
       if (barList.length) {
@@ -11632,12 +12004,12 @@
         destroyChart('cpBar');
       }
 
-      document.getElementById('cpDetailCount').textContent = filtered.length;
+      document.getElementById('cpDetailCount').textContent = Number.isFinite(data.totalRows) ? data.totalRows : filtered.length;
       const cpScope = productCode ? (state.customerProductReport.productName || productCode) : 'Tất cả sản phẩm';
       renderSectionKpis('cpKpis', [
-        { label: 'Doanh số thực tế 90 ngày', value: fmtMoney(sumBy(filtered, p => p.revenue)), sub: cpScope + ' · đã trừ trả hàng', accent: 'green' },
-        { label: 'Số lượng mua thực tế', value: fmtNumber(sumBy(filtered, p => p.quantity)), sub: cpScope + ' · đã trừ trả hàng', accent: 'blue' },
-        { label: 'Số sản phẩm đã mua', value: fmtNumber(filtered.filter(p => Number(p.quantity) > 0).length), sub: cpScope, accent: 'amber' }
+        { label: 'Doanh số thực tế 90 ngày', value: fmtMoney(data.summary ? data.summary.revenue : sumBy(filtered, p => p.revenue)), sub: cpScope + ' · đã trừ trả hàng', accent: 'green' },
+        { label: 'Số lượng mua thực tế', value: fmtNumber(data.summary ? data.summary.quantity : sumBy(filtered, p => p.quantity)), sub: cpScope + ' · đã trừ trả hàng', accent: 'blue' },
+        { label: 'Số sản phẩm đã mua', value: fmtNumber(data.summary ? data.summary.purchasedCount : filtered.filter(p => Number(p.quantity) > 0).length), sub: cpScope, accent: 'amber' }
       ]);
       renderPaginatedRows(
         'cpDetail',
@@ -11668,7 +12040,7 @@
       if (!data) return [];
       const normalizedQuery = query ? normalizeSearchQuery(query).toLocaleLowerCase('vi-VN') : '';
       const all = [{ code: '', name: 'Tất cả sản phẩm' }].concat(
-        data.products.map(function (p) { return { code: p.code, name: p.name }; })
+        (data.productOptions || data.products).map(function (p) { return { code: p.code, name: p.name }; })
       );
       if (!normalizedQuery) return all;
       return fuzzyFilter(all, normalizedQuery, function (p) { return p.code + ' ' + p.name; });
@@ -11697,7 +12069,7 @@
       state.customerProductReport.productPicker.activeIndex = -1;
       document.getElementById('cpProductClearBtn').hidden = !input.value;
       renderCustomerProductFilterSuggestions(customerProductFilterOptions(input.value));
-      renderCustomerProductReport();
+      if (state.serverTableData.cpDetail) scheduleServerTable('cpDetail'); else renderCustomerProductReport();
     }
 
     function handleCustomerProductFilterKeydown(event) {
@@ -11732,7 +12104,8 @@
       const input = document.getElementById('cpProductFilterInput');
       input.value = option.code ? (option.code + ' - ' + option.name) : '';
       document.getElementById('cpProductClearBtn').hidden = !option.code;
-      renderCustomerProductReport();
+      state.tablePages.cpDetail=1;
+      if (state.serverTableData.cpDetail) loadCustomerProductReport(true); else renderCustomerProductReport();
     }
 
     function clearCustomerProductFilter() {
@@ -11743,7 +12116,8 @@
       const input = document.getElementById('cpProductFilterInput');
       input.value = '';
       document.getElementById('cpProductClearBtn').hidden = true;
-      renderCustomerProductReport();
+      state.tablePages.cpDetail=1;
+      if (state.serverTableData.cpDetail) loadCustomerProductReport(true); else renderCustomerProductReport();
     }
 
     function renderView(view) {
@@ -11776,6 +12150,10 @@
         const report = invoiceData.transactionsReport || { date: '—', transactions: [], topTransactions: [], summary: {} };
         const summary = report.summary || {};
         const transactions = report.transactions || [];
+        if (Number.isFinite(report.totalRows)) {
+          state.serverTableData.endOfDay=report;
+          state.serverTableReloads.endOfDay=function () { return loadData(state.days,false,'invoices'); };
+        }
         // Tổng/chỉ số do renderTransactionsKpis vẽ (afterRender của bảng): khi có từ khóa thì cộng lại theo các giao dịch đã lọc.
         transactionsSummaryContext = { summary: summary, rangeLabel: invoiceRangeLabel, total: transactions.length };
         renderPaginatedRows(
@@ -11797,11 +12175,16 @@
           10,
           'Chưa có giao dịch trong khoảng đã chọn'
         );
+        if (state.serverTableData.endOfDay) renderTransactionsKpis(transactions);
       }
       else if (view === 'debt') {
+        const tableOnly = state.debtRenderTableOnly === true;
+        state.debtRenderTableOnly = false;
         renderDebtManagement();
-        loadDebtPenaltyBoard();
-        loadDebtAging();
+        if (!tableOnly) {
+          loadDebtPenaltyBoard();
+          loadDebtAging();
+        }
       }
       applyActiveTableSorts();
     }
@@ -11980,7 +12363,7 @@
       if (select.value !== selected) state.debtFilters.sale = '';
     }
 
-    function handleDebtFilterChange() {
+    function handleDebtFilterChange(event) {
       state.debtFilters.status = document.getElementById('debtStatusFilter').value;
       state.debtFilters.team = document.getElementById('debtTeamFilter').value;
       state.debtFilters.queue = document.getElementById('debtQueueFilter').value;
@@ -11989,14 +12372,72 @@
       state.debtFilters.search = document.getElementById('debtManagementSearch').value;
       getTableSearchState('debtManagement').query = state.debtFilters.search;
       state.tablePages.debtManagement = 1;
+      if (isDebtManagementServerPaged()) {
+        if (event && event.type === 'input') scheduleDebtManagementReload();
+        else { clearTimeout(state.debtSearchTimer); reloadDebtManagementTable(); }
+        return;
+      }
       renderDebtManagementTable();
+    }
+
+    // Danh sach thao tac cong no phan trang tren may chu (2026-11-08): /api/dashboard?view=debt gui kem
+    // page/pageSize/sorts/q + debtQueue/debtTeam/debtSale/debtSchedule/debtStatus. May chu cu (khong co
+    // totalRows) -> quay ve loc/sap xep/phan trang tai trinh duyet nhu truoc.
+    function debtManagementQuery() {
+      const tbody = document.getElementById('debtManagementRows');
+      if (!tbody || !tbody.closest('table') || !tbody.closest('table').tHead) return '';
+      getTableSearchState('debtManagement').query = state.debtFilters.search;
+      const params = tablePageQuery('debtManagement', 'debtManagementRows', DEBT_SORT_FIELDS);
+      [['debtQueue', 'queue'], ['debtTeam', 'team'], ['debtSale', 'sale'], ['debtSchedule', 'schedule'], ['debtStatus', 'status']].forEach(function (entry) {
+        const value = state.debtFilters[entry[1]];
+        if (value && !(entry[1] === 'queue' && value === 'all')) params.set(entry[0], value);
+      });
+      return params.toString();
+    }
+
+    function isDebtManagementServerPaged() {
+      return !!state.serverTableData.debtManagement;
+    }
+
+    // Chi tai lai bang (khong tai lai bang thuong/phat + tuoi no) khi doi trang/bo loc/sap xep.
+    function reloadDebtManagementTable() {
+      state.debtTableOnlyReload = true;
+      loadData(undefined, false, 'debt');
+    }
+
+    // Go phim o tim kiem: huy ngay request cu (ket qua/loi cua no bi bo qua) roi cho 280ms moi tai.
+    function scheduleDebtManagementReload() {
+      const previous = dashboardRequests.debt;
+      if (previous && previous.controller) previous.controller.abort();
+      clearTimeout(state.debtSearchTimer);
+      state.debtSearchTimer = setTimeout(reloadDebtManagementTable, 280);
+    }
+
+    function fillDebtFilterSelect(id, allLabel, values, selected, labelOf) {
+      const select = document.getElementById(id);
+      const list = (values || []).slice();
+      if (selected && !list.includes(selected)) list.unshift(selected);
+      select.innerHTML = '<option value="">' + escapeHtml(allLabel) + '</option>' + list.map(function (value) {
+        return '<option value="' + escapeHtml(value) + '">' + escapeHtml(labelOf ? labelOf(value) : value) + '</option>';
+      }).join('');
+      select.value = selected || '';
     }
 
     function renderDebtManagementTable() {
       const debt = state.data && state.data.debtManagement;
-      const sorted = sortDebtCustomers(getFilteredDebtCustomers());
+      if (debt && Number.isFinite(debt.totalRows)) {
+        debt.customers = debt.rows || debt.customers || [];
+        debt.rows = debt.customers; // 1 mang duy nhat: sua tai cho (phan hoi/trang thai) hien ngay tren dong.
+        state.serverTableData.debtManagement = debt;
+        state.serverTableReloads.debtManagement = reloadDebtManagementTable;
+      } else {
+        delete state.serverTableData.debtManagement;
+        delete state.serverTableReloads.debtManagement;
+      }
+      const remote = state.serverTableData.debtManagement;
+      const sorted = remote ? remote.customers : sortDebtCustomers(getFilteredDebtCustomers());
       state.debtVisibleCustomers = sorted;
-      document.getElementById('tagDebtManagement').textContent = sorted.length;
+      document.getElementById('tagDebtManagement').textContent = remote ? remote.totalRows : sorted.length;
       renderPaginatedRows(
         'debtManagement',
         { tbody: 'debtManagementRows', pagination: 'debtManagementPagination', firstBtn: 'debtManagementFirstPage', prevBtn: 'debtManagementPrevPage', nextBtn: 'debtManagementNextPage', lastBtn: 'debtManagementLastPage', label: 'debtManagementPageLabel' },
@@ -12065,14 +12506,28 @@
       aging.controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
       aging.loading = true;
       if (!aging.loaded) renderDebtAging();
-      return fetch('/api/debt-management/aging', { credentials: 'same-origin', signal: aging.controller ? aging.controller.signal : undefined })
+      state.tableTableBodies.debtAging='debtAgingRows';
+      state.serverTableReloads.debtAging=loadDebtAging;
+      const params = tablePageQuery('debtAging','debtAgingRows',DEBT_AGING_SORT_FIELDS);
+      ['team','sale','schedule'].forEach(function (key) { if (state.debtAgingFilters[key]) params.set(key,state.debtAgingFilters[key]); });
+      // Chuyển trang: lấy từ bộ đệm nếu trang đã được tải trước (xem prefetchServerPages); mọi lần tải khác xóa đệm.
+      const agingUrl = '/api/debt-management/aging?' + params.toString();
+      const navigating = serverPageNavigating('debtAging');
+      if (!navigating) serverPageCacheClear('debtAging');
+      const cached = navigating ? serverPageCacheGet('debtAging', agingUrl) : null;
+      let loadedPayload = null;
+      return (cached ? Promise.resolve(cached) : fetch(agingUrl, { credentials: 'same-origin', signal: aging.controller ? aging.controller.signal : undefined })
         .then(function (res) {
           if (!res.ok) throw new Error('HTTP ' + res.status);
           return res.json();
-        })
+        }))
         .then(function (payload) {
           if (requestId !== aging.requestId) return;
+          if (!cached) serverPageCachePut('debtAging', agingUrl, payload);
+          loadedPayload = payload;
           aging.available = Boolean(payload.available);
+          if (Number.isFinite(payload.totalRows)) state.serverTableData.debtAging = payload;
+          else { delete state.serverTableData.debtAging; delete state.serverTableReloads.debtAging; }
           aging.customers = Array.isArray(payload.customers) ? payload.customers : [];
           aging.refreshedAt = payload.refreshedAt || null;
           aging.loaded = true;
@@ -12086,6 +12541,7 @@
           if (requestId !== aging.requestId) return;
           aging.loading = false;
           renderDebtAging();
+          if (loadedPayload) prefetchServerPages('debtAging', agingUrl, loadedPayload);
         });
     }
 
@@ -12126,7 +12582,7 @@
       document.getElementById('debtAgingSearch').value = filters.search;
     }
 
-    function handleDebtAgingFilterChange() {
+    function handleDebtAgingFilterChange(event) {
       const filters = state.debtAgingFilters;
       filters.team = document.getElementById('debtAgingTeamFilter').value;
       filters.sale = document.getElementById('debtAgingSaleFilter').value;
@@ -12134,10 +12590,18 @@
       filters.search = document.getElementById('debtAgingSearch').value;
       getTableSearchState('debtAging').query = filters.search;
       state.tablePages.debtAging = 1;
-      renderDebtAgingTable();
+      if (state.serverTableData.debtAging) {
+        if (event && event.type === 'input') {
+          ++state.debtAging.requestId;
+          if (state.debtAging.controller) state.debtAging.controller.abort();
+          clearTimeout(state.debtAging.searchTimer);
+          state.debtAging.searchTimer=setTimeout(loadDebtAging,280);
+        } else loadDebtAging();
+      } else renderDebtAgingTable();
     }
 
     function getFilteredDebtAgingCustomers() {
+      if (state.serverTableData.debtAging) return state.debtAging.customers;
       const filters = state.debtAgingFilters;
       const query = normalizeDebtSearch(filters.search);
       // Nhóm sale / Sale / Lịch TT ảnh hưởng lẫn nhau (shared/filter-links.js), cùng ô tìm kiếm.
@@ -12181,15 +12645,20 @@
       document.getElementById('debtAgingSourceLabel').textContent = aging.refreshedAt
         ? 'tính lúc ' + formatDebtRefreshTime(aging.refreshedAt) + ' theo lần đồng bộ KiotViet mới nhất · không chờ chốt 15:00'
         : 'số tính sẵn theo lần đồng bộ KiotViet mới nhất · không chờ chốt 15:00';
-      populateDebtTeamFilter('debtAgingTeamFilter', aging.customers, state.debtAgingFilters);
-      populateDebtAgingFilters(aging.customers);
+      const remote = state.serverTableData.debtAging;
+      if (remote) {
+        [['debtAgingTeamFilter','Tất cả team',remote.filters.teams],['debtAgingSaleFilter','Tất cả sale',remote.filters.sales],['debtAgingScheduleFilter','Tất cả lịch',remote.filters.schedules]].forEach(function (entry) { fillBusinessSelect(entry[0],entry[1],entry[2] || []); });
+      } else {
+        populateDebtTeamFilter('debtAgingTeamFilter', aging.customers, state.debtAgingFilters);
+        populateDebtAgingFilters(aging.customers);
+      }
       renderDebtAgingTable();
     }
 
     function renderDebtAgingTable() {
       const aging = state.debtAging;
       const sorted = sortDebtAgingCustomers(getFilteredDebtAgingCustomers());
-      document.getElementById('tagDebtAging').textContent = aging.loaded ? sorted.length : '—';
+      document.getElementById('tagDebtAging').textContent = aging.loaded ? (state.serverTableData.debtAging ? state.serverTableData.debtAging.totalRows : sorted.length) : '—';
       renderPaginatedRows(
         'debtAging',
         { tbody: 'debtAgingRows', pagination: 'debtAgingPagination', firstBtn: 'debtAgingFirstPage', prevBtn: 'debtAgingPrevPage', nextBtn: 'debtAgingNextPage', lastBtn: 'debtAgingLastPage', label: 'debtAgingPageLabel' },
@@ -12443,9 +12912,16 @@
       document.getElementById('dm-overdue-ratio').textContent = debt && debt.available ? formatDebtRatio(kpi.overdueToSalesRatio) : '—';
 
       const customers = (debt && debt.customers) || [];
-      populateDebtTeamFilter('debtTeamFilter', customers, state.debtFilters);
-      populateDebtSaleFilter(customers);
-      populateDebtScheduleFilter(customers);
+      if (debt && Number.isFinite(debt.totalRows) && debt.filters) {
+        // Lua chon lien ket do may chu tinh tren TOAN BO ket qua loc (khong phai trang dang xem).
+        fillDebtFilterSelect('debtTeamFilter', 'Tất cả nhóm sale', debt.filters.teams, state.debtFilters.team);
+        fillDebtFilterSelect('debtSaleFilter', 'Tất cả sale', debt.filters.sales, state.debtFilters.sale);
+        fillDebtFilterSelect('debtScheduleFilter', 'Tất cả lịch', (debt.filters.schedules || []).map(String), state.debtFilters.schedule, function (value) { return value + ' ngày'; });
+      } else {
+        populateDebtTeamFilter('debtTeamFilter', customers, state.debtFilters);
+        populateDebtSaleFilter(customers);
+        populateDebtScheduleFilter(customers);
+      }
       document.getElementById('debtQueueFilter').value = state.debtFilters.queue;
       document.getElementById('debtStatusFilter').value = state.debtFilters.status;
       document.getElementById('debtScheduleFilter').value = state.debtFilters.schedule;
@@ -12483,8 +12959,14 @@
           customer.updatedAt = payload.updatedAt || new Date().toISOString();
           customer.needsAction = (customer.alertCodes || []).length > 0 && !['Đã xử lý', 'Bỏ qua'].includes(customer.workflowStatus);
           state.debtFlashCustomerKey = customer.customerKey;
-          recalculateDebtActionKpi();
-          renderDebtManagement();
+          if (isDebtManagementServerPaged()) {
+            // KPI/hang cho/bo loc trang thai tinh tren toan bo khach: ve ngay dong vua sua, roi lay lai trang tu may chu.
+            renderDebtManagementTable();
+            reloadDebtManagementTable();
+          } else {
+            recalculateDebtActionKpi();
+            renderDebtManagement();
+          }
           window.setTimeout(function () {
             state.debtFlashCustomerKey = '';
             const row = document.querySelector('#debtManagementRows tr[data-customer-key="' + customer.customerKey + '"]');
@@ -12810,6 +13292,8 @@
       if (view !== 'debt') parts.push('days=' + encodeURIComponent(days));
       const filterQuery = buildMiniFilterQuery(VIEW_FILTER_SOURCES[view] || []);
       if (filterQuery) parts.push(filterQuery);
+      if (view === 'invoices') parts.push(tablePageQuery('endOfDay','endOfDayRows',['code','timeMs','customer','employee','quantity','revenue','discount','paid','status','branch']).toString());
+      if (view === 'debt') { const debtQuery = debtManagementQuery(); if (debtQuery) parts.push(debtQuery); }
       return parts.join('&');
     }
 
@@ -12913,6 +13397,9 @@
       if (previous && previous.controller) previous.controller.abort();
       const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
       const request = { seq: ++dashboardRequestSeq, controller: controller, sig: sig, pending: true };
+      // Doi trang/bo loc bang cong no: chi ve lai bang, khong tai lai bang thuong/phat + tuoi no.
+      request.debtTableOnly = targetView === 'debt' && state.debtTableOnlyReload === true;
+      state.debtTableOnlyReload = false;
       dashboardRequests[targetView] = request;
       const epochAtRequest = state.dataEpoch;
       // Tinh moc "vua tai" tu luc BAT DAU goi: SSE mo xong trong luc lan tai dau con dang bay
@@ -12972,6 +13459,7 @@
           if (isActiveView && (changed || isManualRefresh)) {
             try {
               state.chartAnimation = !!isManualRefresh;
+              state.debtRenderTableOnly = request.debtTableOnly;
               renderView(state.view);
               state.chartAnimation = true;
             } catch (err) {
@@ -12980,7 +13468,7 @@
             }
           }
           // Điểm/hạng có thể đổi khi doanh thu tháng đổi, dù payload công nợ giống nhau.
-          if (isActiveView && targetView === 'debt' && !changed && !isManualRefresh) {
+          if (isActiveView && targetView === 'debt' && !changed && !isManualRefresh && !request.debtTableOnly) {
             loadDebtPenaltyBoard();
             loadDebtAging();
           }

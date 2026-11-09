@@ -170,3 +170,20 @@ test('Khớp mã goc (file VAT TKS): cot K "Tên trước (Giá đầu - Giá cu
   const result = m.search(built, ['NOGOP']);
   assert.deepEqual(result.vat.rows.map(r => [r.maKiot, r.maVat, r.tenVat]), [['NOGOP', 'VAT90009', 'Ấm (72,300 - 78,700) (VAT)']]);
 });
+
+
+test('modern VAT/incoming pages sort the full derived result before the old 500-row cap and retain complete extra columns',()=>{
+  const built=model(),product=built.products.find(row=>row.maKiot==='ONLYGOP');
+  product.vatLines=Array.from({length:640},(_,i)=>({maVat:'V'+i,tenVat:'VAT '+i,tenHang:'Hàng '+i,dvt:'Cái',tongThueMat:i%2?'8.5%':'8.12%',tonDauNgay:i+0.25,tonCoTheNhap:i+0.75}));
+  built.dkVeByMaKiot.set(product.maKiotNorm,Array.from({length:630},(_,i)=>({cont:'CONT '+i,maKiot:product.maKiot,maKiotNorm:product.maKiotNorm,tenKiot:product.tenKiot,trangThaiSo:1,trangThaiRaw:'1. Đang chờ khai',soLuong:i+0.5,soLuongRaw:String(i+0.5),extra:i===629?{'Cột cuối':'Late value'}:{}})));
+  const legacy=m.search(built,['ONLYGOP']);assert.equal(legacy.vat.total,640);assert.equal(legacy.vat.rows.length,500);assert.equal(legacy.incoming.rows.length,500);
+  const query={vatPage:2,vatPageSize:100,vatSorts:[{key:'tonCoTheNhap',dir:'desc'}],incomingPage:7,incomingPageSize:100,incomingSorts:[{key:'soLuong',dir:'desc'}]};
+  const result=m.search(built,['ONLYGOP'],query);
+  assert.equal(result.productCount,1);assert.equal(result.vat.totalRows,640);assert.equal(result.vat.total,640);assert.equal(result.vat.page,2);assert.equal(result.vat.rows[0].tonCoTheNhap,539.75);
+  assert.equal(result.incoming.totalRows,630);assert.equal(result.incoming.page,7);assert.equal(result.incoming.rows.length,30);assert.equal(result.incoming.rows[0].soLuong,29.5);assert.deepEqual(result.incoming.extraKeys,['Cột cuối']);
+  const clamped=m.search(built,['ONLYGOP'],{vatPage:999,vatPageSize:500,incomingPage:999,incomingPageSize:200});assert.equal(clamped.vat.pageSize,200);assert.equal(clamped.vat.page,4);assert.equal(clamped.vat.rows.length,40);assert.equal(clamped.incoming.page,4);
+  const multi=m.search(built,['ONLYGOP'],{vatPage:1,vatPageSize:1,vatSorts:[{key:'tongThueMat',dir:'desc'},{key:'tonCoTheNhap',dir:'desc'}]});assert.equal(multi.vat.rows[0].tonCoTheNhap,639.75);
+  const empty=m.search(built,['notfound'],{vatPage:999,incomingPage:999});assert.equal(empty.vat.page,1);assert.equal(empty.incoming.page,1);assert.equal(empty.vat.totalRows,0);
+  const single=m.search(built,['ONLYGOP'],{vatPage:1});assert.equal(single.incoming.pageSize,100);assert.equal(single.incoming.rows.length,100);
+  assert.equal(product.vatLines[0].tonCoTheNhap,0.75);
+});

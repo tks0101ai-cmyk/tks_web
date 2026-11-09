@@ -70,8 +70,9 @@
     if (!cards.length) return '';
     return '<div class="dp-stats">' + cards.map(k => '<div class="dp-stat"><div class="dp-stat-label">' + escape(k.label) + '</div><div class="dp-stat-value">' + escape(format(k.value,k.format || k.type)) + '</div></div>').join('') + '</div>';
   }
-  async function request(path, params) {
+  async function request(path, params, isCurrent = () => true) {
     const response = await fetch('/api/marketing-report/' + path + '?' + params.toString(), { credentials:'same-origin' });
+    if(!isCurrent())throw new Error('Yêu cầu đã được thay thế.');
     if (response.status === 401) { window.location.href = '/login/?next=' + encodeURIComponent(location.pathname + location.hash); throw new Error('Phiên đăng nhập đã hết hạn.'); }
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || payload.message || 'Không đọc được nguồn báo cáo.');
@@ -109,7 +110,7 @@
     if(metadata?.dataset==='pancake-independent'&&['monthly','phones','receipt-check'].includes(kind))html+='<div class="debt-filter-field"><label for="marketing-'+kind+'-dataset">Tập dữ liệu</label><select id="marketing-'+kind+'-dataset" data-filter="dataset"><option value="">Pancake độc lập</option><option value="legacy"'+(section.filters.dataset==='legacy'?' selected':'')+'>Lịch sử cũ (có nguồn Sheets)</option></select></div>';
     html += def.filters.map(name => '<div class="debt-filter-field"><label for="marketing-' + kind + '-filter-' + name + '">' + filterLabels[name] + '</label><select id="marketing-' + kind + '-filter-' + name + '" data-filter="' + name + '"><option value="">Tất cả</option>' + [...new Set([...(section.data?.filters?.[filterKeys[name]] || []), section.filters[name]])].filter(Boolean).map(value => '<option value="'+escape(value)+'"'+(section.filters[name]===value?' selected':'')+'>'+escape(value)+'</option>').join('')+'</select></div>').join('');
     host.innerHTML = html;
-    host.querySelectorAll('select, input[data-filter]').forEach(select => select.addEventListener('change', () => { section.filters[select.dataset.filter] = select.value; loadSection(kind, true); }));
+    host.querySelectorAll('select, input[data-filter]').forEach(select => select.addEventListener('change', () => { section.filters[select.dataset.filter] = select.value; const state=document.getElementById('marketing-'+kind+'-rows')._marketingState; if(state)state.page=1; loadSection(kind, true); }));
   }
   async function load(force) {
     if (!window.TKSNav?.can('reports.marketing')) return;
@@ -123,25 +124,34 @@
     }
     await Promise.allSettled(Object.keys(definitions).map(kind => loadSection(kind,force)));
   }
-  async function loadSection(kind, force) {
+  async function loadSection(kind, force, refreshSource = true) {
     const section = sections[kind];
     if (!force && (section.pending || Date.now()-section.loadedAt < 300000)) return;
     const seq = ++section.seq, params = new URLSearchParams(section.filters);
-    if (force) params.set('refresh','1');
+    const state=document.getElementById('marketing-'+kind+'-rows')._marketingState;
+    params.set('pageNumber', String(state?.page || 1)); params.set('pageSize','100');
+    if(state)clearTimeout(state.timer);
+    if(state?.search) params.set('q',state.search);
+    if(state?.sorts?.length) params.set('sorts',JSON.stringify(state.sorts));
+    if (force && refreshSource) params.set('refresh','1');
     const status = document.getElementById('marketing-' + kind + '-status');
     section.pending = true;
     status.textContent = section.data ? 'Đang làm mới · Dữ liệu đọc lúc ' + time(section.data.computedAt) : (database() && kind !== 'costs' ? 'Đang đọc dữ liệu đồng bộ…' : 'Đang đọc Google Sheets…');
     document.getElementById('marketing-' + kind).setAttribute('aria-busy','true');
     try {
-      const data = await request(kind,params);
+      const data = await request(kind,params,()=>seq===section.seq);
       if (seq !== section.seq) return;
       section.data = data; section.loadedAt = Date.now();
+      if(state && Number.isFinite(data.page))state.page=data.page;
       renderSection(kind);
     } catch(error) { if (seq === section.seq) status.textContent = error.message + (section.data ? ' · Giữ dữ liệu đọc lúc ' + time(section.data.computedAt) : ' · Bấm Làm mới để thử lại.'); }
     finally { if (seq === section.seq) { section.pending = false; document.getElementById('marketing-' + kind).setAttribute('aria-busy','false'); } }
   }
   function renderSection(kind) {
     const data = sections[kind].data;
+    const previousSearch=document.activeElement;
+    const restoreSearch=previousSearch?.id==='marketing-'+kind+'-data-table-search';
+    const cursor=restoreSearch ? previousSearch.selectionStart : null;
     renderFilters(kind);
     document.getElementById('marketing-' + kind + '-status').textContent = 'Đọc nguồn lúc ' + time(data.computedAt) + (data.dataset==='pancake-independent'?' · Pancake độc lập':data.dataset==='legacy-db'?' · Lịch sử cũ, có nguồn Sheets':'');
     document.getElementById('marketing-' + kind + '-warnings').textContent = [...(data.warnings || []), ...(database() && kind !== 'costs' && definitions[kind].monthKey && Array.isArray(metadata?.periods) && !metadata.periods.some(period => Number(period.year) === Number(sections[kind].filters.year) && Number(period.month) === Number(sections[kind].filters.month)) ? ['Chưa có dữ liệu cho tháng/năm đã chọn.'] : [])].join(' · ');
@@ -151,6 +161,7 @@
       // Thẻ chỉ số tính lại theo từ khóa tìm trong bảng, trên toàn bộ dòng đã lọc; xóa từ khóa thì về số của máy chủ.
       document.getElementById('marketing-' + kind + '-kpis').innerHTML = kpis(active ? localKpis(kind, data.kpis, found) : data.kpis);
     });
+    if(restoreSearch) { const input=document.getElementById('marketing-'+kind+'-data-table-search'); input.focus(); if(cursor!=null)input.setSelectionRange?.(cursor,cursor); }
     if (kind === 'monthly' && canManage() && sections.monthly.filters.dataset!=='legacy') { const button = document.createElement('button'); button.type='button'; button.className='mini-filter-apply'; button.textContent='Thêm khách chốt'; button.addEventListener('click', () => openMonthly()); document.querySelector('#marketing-monthly-rows .panel-head-actions').prepend(button); }
     // Thanh lọc nằm cạnh tên bảng (mountTable dựng lại bảng nên phải gắn lại sau mỗi lần vẽ).
     document.querySelector('#marketing-' + kind + '-rows .panel-head')?.insertBefore(sections[kind].filtersEl, document.querySelector('#marketing-' + kind + '-rows .panel-head-actions'));
@@ -196,8 +207,10 @@
     chartInstances.set(kind,instances);
   }
   function redrawCharts() { if (initialized && active()) Object.keys(sections).forEach(kind => { if (sections[kind].data) renderCharts(kind); }); }
-  function mountTable(host, id, title, rows, columns, onOpen, exportInfo, onFilter) {
+  function mountTable(host, id, title, rows, columns, onOpen, exportInfo, onFilter, remoteControl) {
     const saved = host._marketingState || { search:'', sorts:[], page:1 };
+    const remote=remoteControl?.data || (exportInfo && Number.isFinite(sections[exportInfo.kind].data?.totalRows) ? sections[exportInfo.kind].data : null);
+    const reload = () => { clearTimeout(saved.timer); if(remoteControl)remoteControl.load(); else if(remote)loadSection(exportInfo.kind,true,false); else draw(); };
     host._marketingState = saved;
     host.innerHTML = '<div class="panel marketing-table"><div class="panel-head"><h2>'+escape(title)+'</h2><div class="panel-head-actions"><span class="drill-hint" data-count>—</span>'+(exportInfo?'<button class="export-button" type="button" id="'+id+'-export"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Xuất file</button>':'')+'</div><div class="table-search-tools"><div class="table-search-input-wrap"><input class="table-search-input" id="'+id+'-search" type="search" autocomplete="off" aria-label="Tìm trong '+escape(title)+'" placeholder="Tìm kiếm không dấu…" value="'+escape(saved.search)+'"></div>'+'</div></div><div class="table-wrap marketing-table-scroll"><table data-table-key="'+id+'"'+(id === 'marketing-costs-data-table' ? ' data-table-fit="contain"' : '')+' aria-label="'+escape(title)+'"><thead></thead><tbody></tbody></table></div><div class="pagination-controls marketing-pages" hidden><button type="button" id="'+id+'-first" aria-label="Trang đầu" title="Trang đầu">&lt;&lt;</button><button type="button" id="'+id+'-prev" aria-label="Trang trước" title="Trang trước">&lt;</button><span data-page-label></span><button type="button" id="'+id+'-next" aria-label="Trang sau" title="Trang sau">&gt;</button><button type="button" id="'+id+'-last" aria-label="Trang cuối" title="Trang cuối">&gt;&gt;</button></div></div>';
     const editing = !!exportInfo && exportInfo.kind === 'monthly' && exportInfo.table === 'rows' && !database() && canEdit();
@@ -211,16 +224,16 @@
       const visible = columns;
       // Tìm gần đúng (bỏ dấu, nhiều từ); chuỗi rỗng = hiện đủ dòng. Khớp nhiều từ xếp trước khi chưa chọn cột sắp xếp.
       const rowText = row => Object.values(row).join(' ');
-      let found = window.TKSFuzzySearch
+      let found = remote ? rows : window.TKSFuzzySearch
         ? window.TKSFuzzySearch.filter(rows, saved.search, rowText)
         : rows.filter(row => normalize(rowText(row)).includes(normalize(saved.search)));
-      if (saved.sorts.length) found = found.slice().sort((a,b) => { for (const sort of saved.sorts) { const diff=window.TKSTables.compareValues(a[sort.key],b[sort.key],sort.dir); if(diff)return diff; } return 0; });
-      const pages = Math.max(1,Math.ceil(found.length/100)); saved.page = Math.min(saved.page,pages);
+      if (!remote && saved.sorts.length) found = found.slice().sort((a,b) => { for (const sort of saved.sorts) { const diff=window.TKSTables.compareValues(a[sort.key],b[sort.key],sort.dir); if(diff)return diff; } return 0; });
+      const pages = Math.max(1,Math.ceil((remote ? remote.totalRows : found.length)/(remote?.pageSize || 100))); saved.page = Math.min(saved.page,pages);
       host.querySelector('thead').innerHTML = '<tr>'+visible.map(([key,label,type]) => '<th data-column-key="'+key+'" data-column-type="'+(type || 'text')+'" class="sortable'+(type?' col-num':'')+'" aria-sort="'+'none'+'"><button type="button" class="sort-button" id="'+id+'-sort-'+key+'" data-sort="'+key+'"><span class="sort-label">'+escape(label)+'</span><span class="sort-indicator" aria-hidden="true">'+'▲▼'+'</span></button></th>').join('')+'</tr>';
-      const slice = found.slice((saved.page-1)*100,saved.page*100);
+      const slice = remote ? found : found.slice((saved.page-1)*100,saved.page*100);
       host.querySelector('tbody').innerHTML = slice.length ? slice.map((row,i) => '<tr'+(onOpen&&row.key?' class="marketing-row-link" tabindex="0" data-detail-key="'+escape(row.key)+'" data-index="'+i+'" title="Bấm hoặc nhấn Enter để xem chi tiết"':'')+'>'+visible.map(([key,,type]) => cellHtml(row,key,type,editing,slice.indexOf(row))).join('')+'</tr>').join('') : '<tr><td colspan="'+Math.max(1,visible.length)+'" class="table-note">Chưa có dữ liệu phù hợp.</td></tr>';
-      host.querySelector('[data-count]').textContent = found.length + ' dòng';
-      if (onFilter) onFilter(found, !!String(saved.search || '').trim());
+      host.querySelector('[data-count]').textContent = (remote ? remote.totalRows : found.length) + ' dòng';
+      if (onFilter && !remote) onFilter(found, !!String(saved.search || '').trim());
       host.querySelector('.marketing-pages').hidden = pages<=1;
       host.querySelector('[data-page-label]').textContent = 'Trang '+saved.page+'/'+pages;
       ['first','prev'].forEach(name => { host.querySelector('#'+id+'-'+name).disabled=saved.page<=1; });
@@ -229,7 +242,7 @@
       host.querySelectorAll('[data-sort]').forEach(button => {
         button.addEventListener('click', event => {
           saved.sorts = window.TKSTables.nextSorts(saved.sorts, button.dataset.sort, event.shiftKey);
-          saved.page=1; draw();
+          saved.page=1; reload();
         });
       });
       host.querySelectorAll('[data-edit]').forEach(input => {
@@ -242,12 +255,13 @@
       if (window.TKSTables) window.TKSTables.enhance(host.querySelector('table'), { key: id, columns: columns.map(([key, label]) => ({ key, label })) });
       host.querySelectorAll('[data-index]').forEach(element => { const open = () => { element.focus(); onOpen(slice[Number(element.dataset.index)]); }; element.addEventListener('click',open); element.addEventListener('keydown',event => { if(event.key==='Enter'||event.key===' ') { event.preventDefault(); open(); } }); });
     }
-    host.querySelector('input[type="search"]').addEventListener('input',event => { saved.search=event.target.value; saved.page=1; draw(); });
+    host.querySelector('input[type="search"]').addEventListener('input',event => { saved.search=event.target.value; saved.page=1;
+      if(remote) { if(remoteControl)++detailSeq; else ++sections[exportInfo.kind].seq; clearTimeout(saved.timer); saved.timer=setTimeout(reload,250); } else draw(); });
     if (exportInfo) host.querySelector('#'+id+'-export').addEventListener('click', () => openExport(exportInfo.kind, exportInfo.table, saved.search, saved.sorts));
-    host.querySelector('#'+id+'-first').addEventListener('click', () => { saved.page=1; draw(); });
-    host.querySelector('#'+id+'-prev').addEventListener('click', () => { --saved.page; draw(); });
-    host.querySelector('#'+id+'-next').addEventListener('click', () => { ++saved.page; draw(); });
-    host.querySelector('#'+id+'-last').addEventListener('click', () => { saved.page=Infinity; draw(); }); draw();
+    host.querySelector('#'+id+'-first').addEventListener('click', () => { saved.page=1; reload(); });
+    host.querySelector('#'+id+'-prev').addEventListener('click', () => { --saved.page; reload(); });
+    host.querySelector('#'+id+'-next').addEventListener('click', () => { ++saved.page; reload(); });
+    host.querySelector('#'+id+'-last').addEventListener('click', () => { saved.page=remote ? Math.max(1,Math.ceil(remote.totalRows/remote.pageSize)) : Infinity; reload(); }); draw();
   }
   function growEditor(input) { input.style.height = 'auto'; input.style.height = Math.max(30, input.scrollHeight) + 'px'; }
   // Sửa tại chỗ Khách mới / Ghi chú của BC tháng và ghi ngược Google Sheets.
@@ -286,35 +300,43 @@
     if (sort?.length) { params.set('sorts', JSON.stringify(sort)); params.set('sortKey', sort[0].key); params.set('sortDir', sort[0].dir); }
     return startExportDialog({ kind, table, query: params.toString() }, EXPORT_SOURCE);
   }
-  async function openDetail(kind,key,source,refresh,nested) {
+  async function openDetail(kind,key,source,refresh,nested,repaging) {
     const section=sections[kind], dialog=document.getElementById('marketingDetailDialog'), seq=++detailSeq;
-    if(!refresh) {
+    if(!refresh && !repaging) {
       detailContext={kind,key,filters:nested?{...detailContext.filters}:{...section.filters},snapshotId:nested?detailContext.snapshotId:section.data.snapshotId};
       if(!nested) opener=source;
     }
     const context=detailContext;
+    context.groupStates=context.groupStates||{};
     const params=new URLSearchParams({...context.filters,kind,key});
     if(!refresh && context.snapshotId) params.set('snapshotId',context.snapshotId);
     if(refresh) params.set('refresh','1');
+    params.set('groupQueries',JSON.stringify(Object.fromEntries(Object.entries(context.groupStates).map(([index,state])=>[index,{q:state.search,sorts:state.sorts,pageNumber:state.page,pageSize:100}]))));
     document.getElementById('marketingDetailTitle').textContent=definitions[kind].title+' · Chi tiết';
     document.getElementById('marketingDetailSubtitle').textContent='Phạm vi theo bộ lọc khi mở · '+(context.filters.month?'Tháng '+context.filters.month:'Toàn bộ');
     const body=document.getElementById('marketingDetailBody');
-    if(!refresh) body.innerHTML='<p role="status">Đang đọc chi tiết…</p>';
+    if(!refresh && !repaging) body.innerHTML='<p role="status">Đang đọc chi tiết…</p>';
     document.getElementById('marketingDetailStatus').textContent=refresh?'Đang cập nhật chi tiết…':'';
     if(!dialog.open) dialog.showModal();
     try {
-      const data=await request('detail',params);
+      const data=await request('detail',params,()=>seq===detailSeq && dialog.open);
       if(seq!==detailSeq||!dialog.open) return;
       context.snapshotId=data.snapshotId;
       document.getElementById('marketingDetailTitle').textContent=data.title || definitions[kind].title;
       document.getElementById('marketingDetailSubtitle').textContent=(data.subtitle || '')+' · Đọc nguồn lúc '+time(data.computedAt);
       document.getElementById('marketingDetailStatus').textContent='';
+      const activeSearch=body.contains(document.activeElement) && document.activeElement.matches('input[type="search"]') ? {id:document.activeElement.id,cursor:document.activeElement.selectionStart} : null;
       body.innerHTML='<div class="marketing-warnings" role="status">'+escape((data.warnings||[]).join(' · '))+'</div>'+(data.formula?'<p class="marketing-status">Công thức quy đổi nguồn: '+escape(data.formula)+'</p>':'')+detailStats(data.kpis)+ (data.groups||[]).map((group,i)=>'<div id="marketing-detail-group-'+i+'"></div>').join('');
       (data.groups||[]).forEach((group,i) => {
         const groupKind=definitions[group.kind]||detailDefinitions[group.kind]?group.kind:kind;
         const navigatePhone=kind==='phones' && groupKind==='phones' && (group.rows || []).some(row=>row.key!==key) ? row=>openDetail('phones',row.key,null,false,true) : null;
-        mountTable(document.getElementById('marketing-detail-group-'+i),'marketing-detail-'+groupKind+'-'+i,group.title,group.rows||[],(definitions[groupKind]||detailDefinitions[groupKind]).columns,navigatePhone);
+        const groupHost=document.getElementById('marketing-detail-group-'+i);
+        groupHost._marketingState=context.groupStates[i]||{search:'',sorts:[],page:1};
+        if(Number.isFinite(group.page))groupHost._marketingState.page=group.page;
+        context.groupStates[i]=groupHost._marketingState;
+        mountTable(groupHost,'marketing-detail-'+groupKind+'-'+i,group.title,group.rows||[],(definitions[groupKind]||detailDefinitions[groupKind]).columns,navigatePhone,null,null,Number.isFinite(group.totalRows)?{data:group,load:()=>{if(detailContext===context && dialog.open)openDetail(kind,key,null,false,false,true);}}:null);
       });
+      if(activeSearch) { const input=document.getElementById(activeSearch.id); input?.focus(); if(input && activeSearch.cursor!=null)input.setSelectionRange?.(activeSearch.cursor,activeSearch.cursor); }
     } catch(error) { if(seq===detailSeq&&dialog.open) document.getElementById('marketingDetailStatus').textContent=error.message+(refresh?' · Giữ chi tiết trước lần cập nhật.':''); }
   }
 

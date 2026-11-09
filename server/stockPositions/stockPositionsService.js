@@ -8,6 +8,13 @@ const carton = require('../public/shared/carton.js');
 const { stripTelegramId } = require('../dashboard/saleName');
 const { parseImportWorkbook } = require('./stockPositionsImport');
 const fuzzy = require('../shared/fuzzySearch');
+const tablePage = require('../shared/tablePage');
+const { normalizeSortsStrict } = require('../shared/multiSort');
+const POSITION_SORTS = Object.fromEntries(['code', 'name', 'quantity', 'available', 'kiotQuantity', 'notes', 'arrivalDate', 'location', 'updatedByName'].map(key => [key, row => row[key]]));
+POSITION_SORTS.updated = row => row.updatedAt ? Date.parse(row.updatedAt) : null;
+const HISTORY_SORTS = Object.fromEntries(['code', 'location', 'actorName', 'action', 'field'].map(key => [key, row => row[key]]));
+HISTORY_SORTS.createdAt = row => row.createdAt ? Date.parse(row.createdAt) : null;
+const historyEntry = r => ({ id: Number(r.id), createdAt: isoOf(r.created_at), branch: r.branch, positionId: r.position_id === null ? null : Number(r.position_id), code: r.code, location: r.location, action: r.action, field: r.field, oldValue: r.old_value, newValue: r.new_value, summary: r.summary, actorName: r.actor_name });
 const { ACTION_LABELS, FIELD_LABELS, summaryText } = require('./stockPositionsHistoryLabels');
 const { announceChanged } = require('./stockPositionsEvents');
 // Chi phu thuoc carton.js (khong vong require voi pickAssignmentsService).
@@ -323,14 +330,27 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
     return shape(row, product);
   }
 
-  async function list(ctx, branch) {
+  async function list(ctx, branch, options = {}) {
     assertBranch(branch);
     assertScope(ctx, branch);
     const db = getDb();
     const rows = (await db.query(`SELECT ${ROW_COLUMNS} FROM stock_positions WHERE branch = $1 ORDER BY id`, [branch])).rows;
     const products = await loadProducts(db, branch, rows.map(row => row.code));
     const held = await heldByPosition(db, branch, rows.map(row => Number(row.id)));
-    return { branch, rows: rows.map(row => shape(row, products.get(row.code), held.get(Number(row.id)) || 0)) };
+    const shaped = rows.map(row => shape(row, products.get(row.code), held.get(Number(row.id)) || 0));
+    if (!tablePage.wantsPage(options) && !options.allResults) return { branch, rows: shaped };
+    const sorts = normalizeSortsStrict(options.sorts, POSITION_SORTS);
+    const warningCounts = {};
+    shaped.forEach(row => row.warnings.forEach(code => { warningCounts[code] = (warningCounts[code] || 0) + 1; }));
+    const warned = shaped.filter(row => row.warnings.length > 0).length;
+    const summary = { totalRows: shaped.length, warned, valid: shaped.length - warned };
+    let filtered = shaped;
+    if (options.warnFilter === 'warn') filtered = filtered.filter(row => row.warnings.length > 0);
+    else if (options.warnFilter === 'valid') filtered = filtered.filter(row => row.warnings.length === 0);
+    else if (String(options.warnFilter || '').startsWith('type:')) filtered = filtered.filter(row => row.warnings.includes(options.warnFilter.slice(5)));
+    if (String(options.q || '').trim()) filtered = fuzzy.filter(filtered, options.q, row => [row.code, row.name, row.location].join(' '));
+    filtered = tablePage.sortRows(filtered, sorts, POSITION_SORTS);
+    return { branch, ...(options.allResults ? { rows: filtered, totalRows: filtered.length } : tablePage.pageRows(filtered, options)), summary, warningCounts };
   }
 
   // Goi y ma hang khi go o "Them dong": khop dau/giua ma (bo khoang trang, khong phan biet hoa thuong) hoac trong ten; ma bat dau bang tu khoa xep truoc.
@@ -520,7 +540,26 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
   }
 
   // positionId (tuy chon): chi lay lich su cua mot dong; gia tri khong phai so nguyen duong thi bo qua nhu `before`.
-  async function history(ctx, branch, { limit, before, positionId } = {}) {
+  async function historySnapshot(ctx, branch, options = {}) {
+    assertBranch(branch);
+    assertScope(ctx, branch);
+    const params = [branch];
+    const where = ['branch = $1'];
+    const add = (sql, value) => { params.push(value); where.push(sql.replace('?', '$' + params.length)); };
+    if (clean(options.action)) add('action = ?', clean(options.action));
+    const beforeId = Number.parseInt(options.before, 10), rowId = Number.parseInt(options.positionId, 10);
+    if (Number.isInteger(beforeId) && beforeId > 0) add('id < ?::bigint', beforeId);
+    if (Number.isInteger(rowId) && rowId > 0) add('position_id = ?::bigint', rowId);
+    const sorts = normalizeSortsStrict(options.sorts, HISTORY_SORTS);
+    const { rows } = await getDb().query(`SELECT id, created_at, branch, position_id, code, location, action, field, old_value, new_value, summary, actor_name
+      FROM stock_position_history WHERE ${where.join(' AND ')} ORDER BY id DESC`, params);
+    let entries = rows.map(historyEntry);
+    if (String(options.q || '').trim()) entries = fuzzy.filter(entries, options.q, entry => [entry.actorName, entry.code, entry.location, ACTION_LABELS[entry.action], FIELD_LABELS[entry.field] || entry.field,
+      entry.oldValue, entry.newValue, summaryText(entry.summary)].join(' '));
+    return tablePage.sortRows(entries, sorts, HISTORY_SORTS);
+  }
+
+  async function historyCursor(ctx, branch, { limit, before, positionId } = {}) {
     assertBranch(branch);
     assertScope(ctx, branch);
     const size = Math.min(HISTORY_MAX, Math.max(1, Number.parseInt(limit, 10) || 200));
@@ -540,29 +579,20 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
     };
   }
 
-  // Toan bo lich su cua co so (xuat Excel): loc hanh dong o SQL, loc tu khoa (khong dau, khong phan biet hoa/thuong) o day.
-  // Doc toi da HISTORY_EXPORT_MAX dong moi nhat; truncated=true neu con dong cu hon bi bo.
-  async function historyAll(ctx, branch, { action, q } = {}) {
-    assertBranch(branch);
-    assertScope(ctx, branch);
-    const actionCode = clean(action);
-    const params = [branch];
-    let where = 'branch = $1';
-    if (actionCode) { params.push(actionCode); where += ' AND action = $2'; }
-    params.push(HISTORY_EXPORT_MAX + 1);
-    const { rows } = await getDb().query(
-      `SELECT id, created_at, branch, position_id, code, location, action, field, old_value, new_value, summary, actor_name
-       FROM stock_position_history WHERE ${where} ORDER BY id DESC LIMIT $${params.length}`, params);
-    const truncated = rows.length > HISTORY_EXPORT_MAX;
-    const needle = String(q || '').trim();
-    const entries = rows.slice(0, HISTORY_EXPORT_MAX).map(r => ({
-      id: Number(r.id), createdAt: isoOf(r.created_at), branch: r.branch, positionId: r.position_id === null ? null : Number(r.position_id),
-      code: r.code, location: r.location, action: r.action, field: r.field, oldValue: r.old_value, newValue: r.new_value, summary: r.summary, actorName: r.actor_name
-    }));
-    // Moi tu cua tu khoa phai xuat hien (khong can lien nhau / dung thu tu).
-    const matches = entry => fuzzy.matches([entry.actorName, entry.code, entry.location, ACTION_LABELS[entry.action], FIELD_LABELS[entry.field] || entry.field,
-      entry.oldValue, entry.newValue, summaryText(entry.summary)].join(' '), needle);
-    return { rows: needle ? entries.filter(matches) : entries, truncated };
+
+  async function history(ctx, branch, options = {}) {
+    if (!tablePage.wantsPage(options) && !options.q && !options.action && options.sorts === undefined) return historyCursor(ctx, branch, options);
+    const entries = await historySnapshot(ctx, branch, options);
+    if (tablePage.wantsPage(options)) return { ...tablePage.pageRows(entries, options), nextBefore: null };
+    const size = Math.min(HISTORY_MAX, Math.max(1, Number.parseInt(options.limit, 10) || 200));
+    const rows = entries.slice(0, size);
+    return { rows, nextBefore: entries.length > size && rows.length ? rows[rows.length - 1].id : null };
+  }
+
+  // Filter the complete authorized history before the export safety cap.
+  async function historyAll(ctx, branch, options = {}) {
+    const rows = await historySnapshot(ctx, branch, options);
+    return { rows: rows.slice(0, HISTORY_EXPORT_MAX), truncated: rows.length > HISTORY_EXPORT_MAX };
   }
 
   // Xoa lich su cua MOT co so theo khoang ngay (gio VN, gom ca 2 dau; trong = khong gioi han). Trigger chi cho DELETE khi
@@ -653,13 +683,15 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
       }
       else updates.push({ sourceIndexes: entry.sourceIndexes, id: current.id, code: entry.code, name: nextName, notes: nextNotes, arrivalDate: nextDate, location: nextLocation, row, before: current });
     }
-    // Thay toan bo: dong hien co khong nam trong file bi xoa (ke ca dong trung ma + vi tri thua).
+    // Thay toan bo: chi ap cho cac MA co trong file - dong cua ma do ma vi tri khong con trong file bi xoa
+    // (ke ca dong trung ma + vi tri thua). Ma co trong DB nhung KHONG co trong file thi giu nguyen.
     // Dong dang duoc don Dang boc chi dinh thi giu lai (bao trong "bo qua"), khong xoa.
     const deletes = [];
     let keptHeld = 0;
     if (mode === 'replace' && entries.size > 0) {
+      const fileCodes = new Set([...entries.values()].map(entry => lower(entry.code)));
       for (const row of existing) {
-        if (touched.has(row.id)) continue;
+        if (touched.has(row.id) || !fileCodes.has(lower(row.code))) continue;
         const orders = holders.get(Number(row.id));
         if (!orders || !orders.length) { deletes.push(row); continue; }
         keptHeld += 1;

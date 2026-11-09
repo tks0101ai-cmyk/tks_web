@@ -433,6 +433,20 @@ Một số nút/pill dùng nền đặc màu amber hoặc green (không phải n
 - **Cột Số liệu & Mã:** Căn phải (`text-align: right;`), dùng `font-family: var(--font-data); font-variant-numeric: tabular-nums;`.
 - **Target tương tác:** Nút xem chi tiết, sao chép mã SKU, thao tác phải có kích thước tối thiểu 40×40px (desktop) và 44×44px (mobile).
 
+#### 5.5.1 Phân trang, lọc/tìm kiếm và sắp xếp phía máy chủ (08/11/2026)
+
+**Nguyên tắc cho bảng danh sách dữ liệu lớn:** API phải lọc/tìm kiếm và sắp xếp trên **toàn bộ tập kết quả được phép truy cập trước khi phân trang**. Không tải toàn bộ danh sách về trình duyệt chỉ để chia trang; không sắp xếp riêng các dòng của trang đang hiển thị. Đây là chuẩn cho triển khai mới và lộ trình chuyển đổi bảng hiện hữu, **không phải xác nhận mọi bảng đã chuyển xong**. Ngoại lệ nghiệp vụ phải được ghi rõ ở tài liệu trang theo quy tắc dưới đây.
+
+- **Hợp đồng đọc:** API trả `rows`, `totalRows` (sau lọc, trước phân trang), `page`, `pageSize` và metadata cần thiết như `summary`, `facets`, thời điểm/phiên bản dữ liệu. Máy chủ giới hạn kích thước trang, kẹp trang về phạm vi hợp lệ khi bộ lọc làm giảm số trang; tập rỗng trả `rows: []`, `totalRows: 0`, `page: 1`. Đọc trang và metadata trên cùng ảnh chụp dữ liệu hoặc revision nhất quán.
+- **Truy vấn và thứ tự:** giá trị lọc/tìm kiếm phải được tham số hóa; `ORDER BY` chỉ ghép biểu thức do máy chủ định nghĩa qua whitelist cột và chiều. Tái sử dụng `server/shared/multiSort.js`, giữ nhiều lớp sort, ô trống cuối, khóa ID ổn định làm điều kiện hòa và thứ tự mặc định khi bỏ hết sort. Tái sử dụng `server/shared/fuzzySql.js`/helper tìm kiếm chung, giữ cách tìm theo mã chính xác. Giữ NUMERIC và giá trị ngày/số gốc để tính/sort, không dùng chuỗi đã định dạng hay số làm tròn trên UI. Chỉ bổ sung index sau khi đo truy vấn thực bằng `EXPLAIN ANALYZE`.
+- **KPI, facets và xuất file:** summary/KPI của bộ lọc tính trên toàn bộ kết quả khớp, không cộng riêng `rows` của trang. Facets liên kết xét toàn bộ phạm vi được phép và các bộ lọc còn lại (bỏ chính facet đang tính). Chỉ số toàn cục, xếp hạng/quỹ thưởng hoặc biểu đồ có phạm vi riêng phải giữ nguyên phạm vi nghiệp vụ. Xuất file dùng cùng bộ lọc, sort và quyền như danh sách, lấy đủ kết quả mọi trang phía máy chủ; không xuất riêng dữ liệu đang có trong trình duyệt.
+- **Tương tác:** tìm ngay khi gõ qua `input`, debounce khoảng 250–300 ms; đổi bộ lọc/sort về trang đầu. Hủy request cũ bằng `AbortController` hoặc bỏ phản hồi cũ theo số thứ tự/chữ ký truy vấn, áp dụng cả metadata và lỗi. Hiển thị loading, rỗng và lỗi riêng; giữ dữ liệu tốt gần nhất khi tải nền lỗi, có thông báo thử lại và không để phản hồi cũ ghi đè trạng thái mới.
+- **Điều khiển bảng:** tiếp tục dùng `public/shared/table-controls.js` cho cột ẩn/hiện, độ rộng và cấu hình đã lưu theo tài khoản/bảng/chế độ. Bảng server-side tắt sort DOM cục bộ và nối tiêu đề/pager vào API; giữ Shift+bấm nhiều lớp, chỉ báo ưu tiên, bàn phím, Light/Dark và responsive. Không thêm framework frontend nặng.
+- **Quyền và phạm vi:** kiểm quyền tại API cho cả dữ liệu, tổng, facets, gợi ý, chi tiết và xuất file. Giữ tách cơ sở `hanoi`/`saigon`, quy tắc gộp hai cơ sở của từng báo cáo, ngày Việt Nam `Asia/Ho_Chi_Minh` và cột nhạy cảm theo quyền; không để metadata làm lộ dữ liệu ngoài phạm vi.
+- **Bảng chỉnh sửa/hàng loạt:** bản nháp và lựa chọn phải được lưu theo ID ổn định + version, độc lập trang/DOM; chuyển trang, lọc hoặc SSE không được xóa bản nháp, gửi lại thao tác đã thành công hay ghi đè ô đang sửa. Phân biệt rõ “chọn trang này”, “các ID đã chọn” và “toàn bộ kết quả đang lọc”. Máy chủ kiểm lại quyền, version/xung đột, số lượng và tập ID trước khi ghi; giữ transaction, idempotency/outbox và khôi phục lỗi theo hợp đồng nghiệp vụ. Khi cần toàn bộ dòng để tính thử hoặc thao tác, tách tập dữ liệu thao tác khỏi API danh sách; không tính tổng cont/phân bổ chỉ từ trang hiện tại.
+- **Ngoại lệ có giới hạn:** chi tiết một chứng từ, phân bổ VAT, bản nháp và xem trước import có thể giữ toàn bộ tập dòng nếu thuật toán, lựa chọn, chỉnh sửa hoặc in yêu cầu. Phải ghi rõ giới hạn và phạm vi; không áp dụng `LIMIT` làm mất dòng đầu vào hoặc thay thuật toán. Ngoại lệ này không miễn việc phân trang danh sách tra cứu lớn bên ngoài.
+- **Mẫu tham khảo và nghiệm thu:** dùng Hàng hóa 90 ngày/lịch sử hàng hóa cho SQL count + trang đã kẹp; Sổ quỹ cho lọc/sort/xuất. Vòng đời đơn hàng là mẫu hợp đồng server-side với dữ liệu hợp nhất và phân trang bằng JavaScript trên máy chủ, không phải mẫu SQL `LIMIT/OFFSET`. Kiểm thử bảng nhiều trang, bộ lọc thu hẹp, sort hòa/NULL, request đảo thứ tự, KPI/facets/xuất đủ dòng, quyền/cơ sở và giữ nháp trước khi chuyển từng bảng.
+
 ```css
 .data-table {
   width: 100%;
@@ -641,6 +655,8 @@ Chuẩn hoá bổ sung (đồng bộ với input, không tạo bo góc/breakpoin
 ```
 
 ### 5.13 Sortable Table Header (Cột Bảng Có Thể Sắp Xếp)
+
+Phạm vi dữ liệu và cách nối sort vào API tuân thủ §5.5.1; giao diện tiêu đề không được làm người dùng hiểu rằng đã sắp toàn bộ kết quả khi chỉ đổi thứ tự trang hiện tại.
 
 Xuất hiện độc lập ở `index.html` và `humanresources/index.html` — chuẩn hoá:
 
@@ -1001,4 +1017,4 @@ dùng chung, vì đã xuất hiện ở ≥ 2 trang với nội dung gần như 
 Việc hợp nhất giúp một lần sửa (VD: bỏ `backdrop-filter` khỏi modal) áp dụng ngay cho mọi trang thay
 vì phải sửa lặp lại 4 chỗ như hiện tại ở mục 12.1.
 
-Cập nhật gần nhất: 2026-10-30 (ghi chú trang Vị trí hàng đổi từ `stock-locations` sang `vt-positions`).
+Cập nhật gần nhất: 08/11/2026 (bổ sung §5.5.1 về phân trang/lọc/tìm kiếm/sort phía máy chủ và bảo toàn KPI, xuất file, bản nháp).

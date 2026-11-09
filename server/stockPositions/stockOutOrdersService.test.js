@@ -240,3 +240,19 @@ test('gợi ý theo tên: gõ không dấu vẫn ra tên có dấu', async () =>
     assert.deepEqual((await positions.suggestCodes(ctx(), 'SG', 'chong nang')).items.map(item => item.code), ['AAA1']);
   } finally { await db.close(); }
 });
+
+test('confirmed orders search/sort/page query covers all results and excludes the draft count', async () => {
+ const { db, orders } = await fixture();
+ try {
+   await db.exec(`INSERT INTO stock_out_orders(branch,code,status,confirmed_by_name,confirmed_at)
+    SELECT 'HN','XK-HN-'||lpad(n::text,5,'0'),'confirmed',CASE WHEN n=1 THEN 'Nguyễn An' ELSE 'Bình' END,now() FROM generate_series(1,105)n;
+    INSERT INTO stock_out_orders(branch,code,status) VALUES ('HN','XK-HN-99999','draft');`);
+   const found = await orders.list(ctx(),'HN',{page:99,pageSize:50,q:'Nguyen An'});
+   assert.equal(found.totalRows,1);assert.equal(found.page,1);assert.equal(found.orders[0].code,'XK-HN-00001');
+   const next = await orders.list(ctx(),'HN',{page:2,pageSize:50,sorts:[{key:'code',dir:'asc'}]});
+   assert.equal(next.totalRows,105);assert.equal(next.orders[0].code,'XK-HN-00051');
+   assert.equal(next.rows.length,50);
+   const cursor = await orders.list(ctx(),'HN',{limit:5,q:'Nguyen An'});assert.equal(cursor.orders.length,1);
+   await assert.rejects(orders.list(ctx(),'HN',{page:1,sorts:[{key:'bad',dir:'desc'}]}),{code:'INVALID_SORT'});
+ } finally {await db.close();}
+});

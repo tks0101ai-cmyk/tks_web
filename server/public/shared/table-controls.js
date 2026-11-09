@@ -793,6 +793,7 @@
     document.querySelectorAll('table').forEach(function (table) { enhance(table); });
     if (drag && !drag.handle.isConnected) finishDrag();
     if (active && !active.table.isConnected) closePicker();
+    validateSelection(); // trang vẽ lại bảng / lọc / sắp xếp dòng: vùng chọn cũ không còn đúng ô nên bỏ
   }
   function schedule() {
     if (!window.document || !document.body) return;
@@ -810,7 +811,10 @@
     };
   }
   window.TKSTables = { enhance: enhance, refresh: refresh, refreshAll: refreshAll, getState: getState, loadPrefs: loadPrefs,
-    nextSorts: nextSorts, compareValues: compareValues, syncSortHeaders: syncSortHeaders };
+    nextSorts: nextSorts, compareValues: compareValues, syncSortHeaders: syncSortHeaders,
+    parseClipboardTable: parseClipboardTable, clearEditHistory: clearEditHistory,
+    getSelection: function () { return sel ? { table: sel.table, cells: Array.from(sel.painted), regions: sel.rects.length } : null; },
+    clearSelection: clearSelection };
   function fetchPrefs() {
     if (typeof fetch !== 'function' || !/^https?:$/.test(window.location.protocol)) return;
     // Trang chưa đăng nhập trả 401: bỏ qua, bảng dùng mặc định và không gửi lưu.
@@ -868,19 +872,563 @@
     if (next.select) next.select();
   }
 
+  // ---- Chọn vùng ô kiểu Excel cho MỌI bảng (trừ data-table-select="off", vd bảng Kiểm kê có bộ chọn riêng) ----
+  // Kéo chuột qua nhiều ô = chọn khối hàng × cột; Shift+bấm nối dài khối; Ctrl/⌘+kéo (hoặc +bấm) thêm khối khác;
+  // thanh góc dưới phải hiện Tổng · Trung bình · Đếm của các ô đang chọn (từ 2 ô); Ctrl+C chép dạng TSV dán sang Excel/Sheets;
+  // Ctrl+A chọn cả bảng; Esc / bấm ra ngoài bảng bỏ chọn. Kéo trong MỘT ô vẫn là bôi đen chữ như thường.
+  var SELECT_SKIP = 'a[href],button,input,select,textarea,label,summary,[contenteditable]:not([contenteditable="false"]),[role="button"],[role="combobox"],[role="menuitem"],[draggable="true"],.tks-column-resizer,[data-no-cell-select]';
+  var sel = null, gesture = null, selFrame = 0, selTimer = 0, suppressClick = false, selBar = null, selNoteTimer = 0;
+  var selNumber = typeof Intl !== 'undefined' ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 }) : null;
+
+  function selectableTable(table) {
+    return !!table && !table.closest('[data-table-select="off"],#ruleDocTextBody,.rte-editor');
+  }
+  // Dòng thân bảng đang hiện (không tính tiêu đề / chân bảng); chỉ số dòng trong danh sách này là toạ độ hàng của vùng chọn.
+  function bodyRows(table) {
+    var rows = [];
+    Array.from(table.tBodies).forEach(function (body) {
+      Array.from(body.rows).forEach(function (row) {
+        if (!row.hidden && !row.classList.contains('tks-row-hidden') && row.style.display !== 'none') rows.push(row);
+      });
+    });
+    return rows;
+  }
+  function indexRows(rows) {
+    var map = new Map();
+    rows.forEach(function (row, index) { map.set(row, index); });
+    return map;
+  }
+  function sameRows(a, b) {
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  }
+  function cellHidden(cell) {
+    return cell.hidden || cell.classList.contains('tks-column-hidden') || cell.style.display === 'none';
+  }
+  // Ô (của đúng bảng đang chọn) chứa node; ô của bảng lồng bên trong thì leo lên ô ngoài cùng của bảng này.
+  function cellFrom(node, state) {
+    var element = node && (node.nodeType === 1 ? node : node.parentElement);
+    var cell = element && element.closest('td,th');
+    while (cell && cell.closest('table') !== state.table) {
+      var up = cell.parentElement;
+      cell = up && up.closest('td,th');
+    }
+    return cell && state.rowIndex.has(cell.parentElement) ? cell : null;
+  }
+  function positionOf(cell, state) { return { row: state.rowIndex.get(cell.parentElement), col: cell.cellIndex }; }
+  function rectBetween(a, b) {
+    return { r1: Math.min(a.row, b.row), r2: Math.max(a.row, b.row), c1: Math.min(a.col, b.col), c2: Math.max(a.col, b.col) };
+  }
+  function isSingle(rect, pos) { return rect.r1 === rect.r2 && rect.c1 === rect.c2 && rect.r1 === pos.row && rect.c1 === pos.col; }
+
+  function clearSelection() {
+    if (selFrame) { (window.cancelAnimationFrame || clearTimeout)(selFrame); selFrame = 0; }
+    if (!sel) return;
+    sel.painted.forEach(function (cell) { cell.classList.remove('tks-cell-selected'); });
+    sel = null;
+    if (selBar) selBar.hidden = true;
+  }
+  function validateSelection() {
+    if (!sel || gesture) return;
+    if (!sel.table.isConnected || !sameRows(sel.rows, bodyRows(sel.table))) clearSelection();
+  }
+  function sumBarFor(table) {
+    var parent = table.closest('dialog[open]') || document.body;
+    if (!selBar) {
+      selBar = document.createElement('div');
+      selBar.className = 'tks-sel-sum'; selBar.setAttribute('role', 'status'); selBar.setAttribute('aria-live', 'polite'); selBar.hidden = true;
+    }
+    if (selBar.parentElement !== parent) parent.appendChild(selBar);
+    return selBar;
+  }
+  function formatSelNumber(value) { return selNumber ? selNumber.format(value) : String(value); }
+  function selCellText(cell) {
+    var text = cellText(cell);
+    return text === '—' || text === '-' ? '' : text;
+  }
+  // Số của ô cho thanh tổng: chỉ đọc chữ đang hiển thị; ô tỷ lệ % không cộng (cộng tỷ lệ không có nghĩa), ngày/mã dài không phải số.
+  function selNumberOf(text) {
+    return /%\s*$/.test(text) ? null : parseNumberText(text);
+  }
+  function renderSum() {
+    if (!sel) return;
+    var bar = sumBarFor(sel.table);
+    if (selNoteTimer) return; // đang hiện thông báo "Đã sao chép"
+    if (sel.painted.size < 2) { bar.hidden = true; return; }
+    var count = 0, numbers = 0, total = 0;
+    sel.painted.forEach(function (cell) {
+      var text = selCellText(cell);
+      if (!text) return;
+      count++;
+      var value = selNumberOf(text);
+      if (value !== null) { numbers++; total += value; }
+    });
+    bar.textContent = '';
+    function part(label, value) {
+      var item = document.createElement('span'), strong = document.createElement('b');
+      strong.textContent = value; item.append(label + ': ', strong); bar.appendChild(item);
+    }
+    if (numbers) { part('Tổng', formatSelNumber(total)); part('Trung bình', formatSelNumber(total / numbers)); }
+    part('Đếm', formatSelNumber(count));
+    bar.hidden = false;
+  }
+  function renderSelection() {
+    selFrame = 0;
+    if (!sel) return;
+    var next = new Set();
+    sel.rects.forEach(function (rect) {
+      for (var r = rect.r1; r <= rect.r2; r++) {
+        var row = sel.rows[r];
+        if (!row) continue;
+        for (var c = rect.c1; c <= rect.c2; c++) {
+          var cell = row.cells[c];
+          if (cell && !cellHidden(cell)) next.add(cell);
+        }
+      }
+    });
+    sel.painted.forEach(function (cell) { if (!next.has(cell)) cell.classList.remove('tks-cell-selected'); });
+    next.forEach(function (cell) { if (!sel.painted.has(cell)) cell.classList.add('tks-cell-selected'); });
+    sel.painted = next;
+    renderSum();
+  }
+  function scheduleSelection() {
+    if (!selFrame) selFrame = (window.requestAnimationFrame || window.setTimeout)(renderSelection);
+  }
+  function selectionText() {
+    if (!sel) return '';
+    var blocks = [];
+    sel.rects.forEach(function (rect) {
+      var lines = [];
+      for (var r = rect.r1; r <= rect.r2; r++) {
+        var row = sel.rows[r], cells = [];
+        if (!row) continue;
+        for (var c = rect.c1; c <= rect.c2; c++) {
+          var cell = row.cells[c];
+          if (cell && !cellHidden(cell)) cells.push(selCellText(cell).replace(/[\t\r\n]+/g, ' '));
+        }
+        if (cells.length) lines.push(cells.join('\t'));
+      }
+      if (lines.length) blocks.push(lines.join('\n'));
+    });
+    return blocks.join('\n');
+  }
+
+  // Khung cuộn gần nhất của bảng (null = cuộn cả trang).
+  function scrollParentOf(element) {
+    for (var node = element.parentElement; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
+      var style = window.getComputedStyle(node);
+      if (/(auto|scroll)/.test(style.overflowY + style.overflowX) && (node.scrollHeight > node.clientHeight + 1 || node.scrollWidth > node.clientWidth + 1)) return node;
+    }
+    return null;
+  }
+  function edgeDelta(pointer, low, high) {
+    var edge = 40, max = 28;
+    if (pointer < low + edge) return -Math.min(max, Math.ceil(((low + edge - pointer) / edge) * max));
+    if (pointer > high - edge) return Math.min(max, Math.ceil(((pointer - (high - edge)) / edge) * max));
+    return 0;
+  }
+  function moveFocus(pos) {
+    if (!gesture || !sel || !pos) return;
+    if (gesture.focus && gesture.focus.row === pos.row && gesture.focus.col === pos.col) return;
+    if (!gesture.claimed) {
+      if (pos.row === gesture.anchor.row && pos.col === gesture.anchor.col) return; // vẫn trong ô đầu: để bôi đen chữ như thường
+      claimGesture();
+    }
+    gesture.focus = pos;
+    sel.rects[sel.rects.length - 1] = rectBetween(gesture.anchor, pos);
+    scheduleSelection();
+  }
+  // Con trỏ đã sang ô khác: từ đây là chọn vùng — bỏ bôi đen chữ của trình duyệt, khoá bôi đen mới, bật tự cuộn ở mép khung.
+  function claimGesture() {
+    gesture.claimed = true;
+    var native = window.getSelection && window.getSelection();
+    if (native && native.removeAllRanges) native.removeAllRanges();
+    document.body.classList.add('tks-selecting');
+    gesture.scroller = scrollParentOf(gesture.table);
+    if (!selTimer) selTimer = setInterval(selectionTick, 30);
+  }
+  function selectionTick() {
+    if (!gesture || !gesture.claimed || !sel) return;
+    var scroller = gesture.scroller, viewW = window.innerWidth, viewH = window.innerHeight, box, barX, barY;
+    if (scroller) {
+      var rect = scroller.getBoundingClientRect();
+      box = { left: Math.max(rect.left, 0), right: Math.min(rect.right, viewW), top: Math.max(rect.top, 0), bottom: Math.min(rect.bottom, viewH) };
+      barX = scroller.offsetWidth - scroller.clientWidth; barY = scroller.offsetHeight - scroller.clientHeight;
+    } else {
+      box = { left: 0, right: viewW, top: 0, bottom: viewH };
+      barX = viewW - document.documentElement.clientWidth; barY = viewH - document.documentElement.clientHeight;
+    }
+    box.right -= Math.max(0, barX); box.bottom -= Math.max(0, barY);
+    var top = box.top, head = gesture.table.tHead;
+    if (head) {
+      // Hàng tiêu đề đang dính ở mép trên thì phần dùng được bắt đầu dưới nó.
+      var headBox = head.getBoundingClientRect();
+      if (headBox.height && headBox.top <= box.top + 1 && headBox.bottom > box.top) top = headBox.bottom;
+    }
+    var dy = edgeDelta(gesture.y, top, box.bottom), dx = edgeDelta(gesture.x, box.left, box.right);
+    if (dy || dx) {
+      if (scroller) { scroller.scrollTop += dy; scroller.scrollLeft += dx; } else window.scrollBy(dx, dy);
+    }
+    if (typeof document.elementFromPoint !== 'function') return;
+    var x = Math.min(Math.max(gesture.x, box.left + 1), box.right - 1), y = Math.min(Math.max(gesture.y, top + 1), box.bottom - 1);
+    var cell = cellFrom(document.elementFromPoint(x, y), sel);
+    if (cell) moveFocus(positionOf(cell, sel));
+  }
+  function endGesture() {
+    if (!gesture) return;
+    var done = gesture;
+    gesture = null;
+    clearInterval(selTimer); selTimer = 0;
+    document.body.classList.remove('tks-selecting');
+    if (done.claimed) {
+      // Cú kéo qua nhiều ô không được kích hoạt thao tác "bấm dòng" của trang (mở chi tiết, v.v.).
+      suppressClick = true; setTimeout(function () { suppressClick = false; }, 0);
+    } else if (done.toggleAt && sel) {
+      // Ctrl+bấm lên ô đã chọn riêng lẻ: bỏ chọn ô đó.
+      sel.rects = sel.rects.filter(function (rect) { return !isSingle(rect, done.toggleAt); });
+      if (!sel.rects.length) { clearSelection(); return; }
+    }
+    if (sel) renderSelection();
+  }
+
+  function onSelectionDown(event) {
+    if (event.button !== 0) return;
+    var target = event.target && (event.target.nodeType === 1 ? event.target : event.target.parentElement);
+    if (!target || target.closest('.tks-sel-sum')) return;
+    var table = target.closest('table');
+    if (!selectableTable(table) || target.closest(SELECT_SKIP)) { clearSelection(); return; }
+    var rows = bodyRows(table), state = { table: table, rows: rows, rowIndex: indexRows(rows) };
+    var cell = cellFrom(target, state);
+    if (!cell) { clearSelection(); return; }
+    var pos = positionOf(cell, state);
+    if (sel && (sel.table !== table || !sameRows(sel.rows, rows))) clearSelection();
+    var additive = event.ctrlKey || event.metaKey, extend = event.shiftKey && sel && sel.anchor;
+    var toggleAt = null;
+    if (extend) {
+      event.preventDefault(); // Shift+bấm không bôi đen chữ giữa hai ô
+      sel.rects[sel.rects.length - 1] = rectBetween(sel.anchor, pos);
+    } else if (additive) {
+      event.preventDefault();
+      if (!sel) sel = { table: table, rows: rows, rowIndex: state.rowIndex, rects: [], painted: new Set(), anchor: null };
+      if (sel.rects.some(function (rect) { return isSingle(rect, pos); })) toggleAt = pos;
+      sel.anchor = pos; sel.rects.push(rectBetween(pos, pos));
+    } else {
+      clearSelection();
+      sel = { table: table, rows: rows, rowIndex: state.rowIndex, rects: [rectBetween(pos, pos)], painted: new Set(), anchor: pos };
+    }
+    gesture = { table: table, anchor: sel.anchor, focus: pos, claimed: false, x: event.clientX, y: event.clientY, toggleAt: toggleAt };
+    if (extend) claimGesture();
+    renderSelection();
+  }
+  function onSelectionMove(event) {
+    if (!gesture || !sel) return;
+    if (!(event.buttons & 1)) { endGesture(); return; } // nhả chuột ngoài cửa sổ: không có mouseup
+    gesture.x = event.clientX; gesture.y = event.clientY;
+    var cell = cellFrom(event.target, sel);
+    if (cell) moveFocus(positionOf(cell, sel));
+  }
+  function onSelectionKey(event) {
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.isComposing && !event.defaultPrevented) {
+      var historyKey = String(event.key).toLowerCase();
+      var historyDir = historyKey === 'z' ? (event.shiftKey ? 'redo' : 'undo') : (historyKey === 'y' && !event.shiftKey ? 'redo' : '');
+      if (historyDir && !selectionFieldFocused() && runEditHistory(historyDir)) { event.preventDefault(); return; }
+    }
+    if (!sel) return;
+    if (event.key === 'Escape') { clearSelection(); return; }
+    if ((event.key === 'Delete' || event.key === 'Backspace') && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && !event.isComposing) {
+      if (event.defaultPrevented || cellEditOff() || selectionFieldFocused()) return;
+      event.preventDefault();
+      editSelection('clear', null);
+      return;
+    }
+    if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey || String(event.key).toLowerCase() !== 'a') return;
+    if (selectionFieldFocused()) return;
+    event.preventDefault();
+    var cols = 0;
+    sel.rows.forEach(function (row) { cols = Math.max(cols, row.cells.length); });
+    if (!sel.rows.length || !cols) return;
+    sel.rects = [{ r1: 0, r2: sel.rows.length - 1, c1: 0, c2: cols - 1 }];
+    sel.anchor = { row: 0, col: 0 };
+    renderSelection();
+  }
+  function onSelectionCopy(event) {
+    if (!sel || !sel.painted.size || !event.clipboardData) return;
+    if (selectionFieldFocused()) return;
+    // Mới chọn 1 ô mà người dùng đang bôi đen chữ trong ô đó: để trình duyệt chép đúng đoạn chữ.
+    if (sel.painted.size < 2 && window.getSelection && String(window.getSelection())) return;
+    event.clipboardData.setData('text/plain', selectionText());
+    event.preventDefault();
+    selNote('Đã sao chép ' + formatSelNumber(sel.painted.size) + ' ô');
+  }
+  // Thông báo ngắn trên thanh Tổng/TB/Đếm (Đã sao chép / Đã dán / Đã xóa…); hết giờ thì trả thanh về số liệu.
+  function selNote(text, table) {
+    table = table || (sel && sel.table);
+    if (!table) return;
+    var bar = sumBarFor(table);
+    clearTimeout(selNoteTimer);
+    bar.textContent = text; bar.hidden = false;
+    selNoteTimer = setTimeout(function () { selNoteTimer = 0; renderSum(); }, 2600);
+  }
+  function onSelectionCut(event) {
+    if (event.defaultPrevented || !sel || !sel.painted.size || !event.clipboardData || cellEditOff() || selectionFieldFocused()) return;
+    if (sel.painted.size < 2 && window.getSelection && String(window.getSelection())) return;
+    event.clipboardData.setData('text/plain', selectionText());
+    event.preventDefault();
+    editSelection('clear', null);
+  }
+  // ---- Xóa / Cắt / Dán vào vùng ô đang chọn (kiểu Excel) ----
+  // Delete·Backspace = xóa nội dung các ô; Ctrl+X = chép rồi xóa; Ctrl+V = dán khối TSV (Excel/Sheets) từ ô trên-trái của vùng chọn,
+  // dán 1 ô vào vùng nhiều ô thì điền đầy cả vùng. Ô chỉ-xem (chữ thuần) bị bỏ qua và được báo lại.
+  // Cách ghi giá trị: (1) bảng/trang tự xử lý qua sự kiện 'tks:cells-edit' (nổi bọt từ ô lên tr/tbody/table; detail = { action: 'clear'|'paste', table,
+  // edits: [{ cell, row, col, value, handled }] }; xử lý ô nào thì đặt edit.handled = true) — dùng cho ô sửa-tại-chỗ phải lưu về máy chủ;
+  // (2) ô còn lại có sẵn input / textarea / select / contenteditable thì ghi thẳng vào đó và bắn input + change để trang tự lưu.
+  // Ô đánh dấu data-cell-editable được tính là sửa được dù chưa có input (trang sẽ mở ô nhập khi cần).
+  // Hoàn tác / Làm lại: Ctrl/⌘+Z hoàn tác lần Xóa·Cắt·Dán gần nhất, Ctrl/⌘+Y hoặc Ctrl/⌘+Shift+Z làm lại (tối đa 50 lần, cấp module,
+  // không cần còn vùng chọn; đang gõ trong ô nhập thì phím là của trình duyệt; thao tác sửa mới xóa danh sách "làm lại").
+  // Ô ghi thẳng bởi bước (2) tự được nhớ giá trị trước/sau. Ô do trang xử lý (1) chỉ vào lịch sử nếu trang đặt thêm trên edit:
+  //   edit.revert()  → boolean | Promise<boolean>  trả ô về giá trị TRƯỚC khi sửa; false (hoặc ném lỗi) = không làm được → bị bỏ qua;
+  //   edit.reapply() → boolean | Promise<boolean>  áp lại đúng thao tác đó (cho Ctrl+Y), cùng quy ước kết quả.
+  // Edit không có revert thì không được hoàn tác. Bảng đã bị gỡ khỏi DOM thì mục lịch sử của nó bị bỏ.
+  var EDIT_CONFIRM_OVER = 20;
+  var EDIT_HISTORY_MAX = 50;
+  var editUndo = [], editRedo = [], editHistoryBusy = false;
+  // Bảng có bộ sửa ô riêng (vd lưới Yêu cầu VAT) đặt data-cell-edit="off": Delete / Cắt / Dán chung bỏ qua, vẫn chọn vùng + Ctrl+C.
+  function cellEditOff() { return !!(sel && sel.table.closest('[data-cell-edit="off"]')); }
+  function selectionFieldFocused() {
+    var active = document.activeElement;
+    return !!(active && (/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) || active.isContentEditable));
+  }
+  function fieldOf(cell) {
+    var field = cell.querySelector('textarea, select, input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]):not([type=reset]):not([type=file]):not([type=image]), [contenteditable]:not([contenteditable="false"])');
+    if (!field || field.disabled || field.readOnly || field.hidden) return null;
+    return field;
+  }
+  function editableCell(cell) { return cell.hasAttribute('data-cell-editable') || !!fieldOf(cell); }
+
+  // TSV → mảng dòng × cột; hiểu ô bọc ngoặc kép của Excel (xuống dòng / tab / "" bên trong).
+  function parseClipboardTable(text) {
+    var source = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+    var rows = [], row = [], field = '', quoted = false;
+    for (var i = 0; i < source.length; i++) {
+      var ch = source.charAt(i);
+      if (quoted) {
+        if (ch === '"') { if (source.charAt(i + 1) === '"') { field += '"'; i++; } else quoted = false; } else field += ch;
+      } else if (ch === '"' && field === '') quoted = true;
+      else if (ch === '\t') { row.push(field); field = ''; }
+      else if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else field += ch;
+    }
+    if (field !== '' || row.length) { row.push(field); rows.push(row); }
+    return rows;
+  }
+  function setNativeValue(field, value) {
+    var proto = field.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement : window.HTMLInputElement;
+    var desc = proto && Object.getOwnPropertyDescriptor(proto.prototype, 'value');
+    if (desc && desc.set) desc.set.call(field, value); else field.value = value;
+  }
+  function fire(field, type) { field.dispatchEvent(new window.Event(type, { bubbles: true })); }
+  // Ghi value vào ô có sẵn trường nhập; trả true nếu ghi được (kể cả khi giá trị không đổi), false nếu không hợp lệ cho trường đó.
+  function writeField(field, value) {
+    if (field.tagName === 'SELECT') {
+      var text = String(value).trim().toLowerCase(), found = -1;
+      Array.from(field.options).forEach(function (option, index) {
+        if (found < 0 && (option.value.toLowerCase() === text || option.textContent.trim().toLowerCase() === text)) found = index;
+      });
+      if (found < 0 && text === '') found = Array.from(field.options).findIndex(function (option) { return option.value === ''; });
+      if (found < 0) return false;
+      if (field.selectedIndex === found) return true;
+      field.selectedIndex = found; fire(field, 'input'); fire(field, 'change');
+      return true;
+    }
+    if (field.tagName !== 'INPUT' && field.tagName !== 'TEXTAREA') { // contenteditable
+      if (field.textContent === value) return true;
+      field.textContent = value; fire(field, 'input'); fire(field, 'change');
+      return true;
+    }
+    var next = String(value);
+    if (field.type === 'number') {
+      next = next.trim().replace(/,/g, '');
+      if (next !== '' && !isFinite(Number(next))) return false;
+    } else if (field.maxLength > 0 && next.length > field.maxLength) next = next.slice(0, field.maxLength);
+    if (field.value === next) return true;
+    setNativeValue(field, next); fire(field, 'input'); fire(field, 'change');
+    return true;
+  }
+  // Trạng thái của trường để hoàn tác: select = selectedIndex, input/textarea = value, contenteditable = textContent.
+  function fieldState(field) {
+    if (field.tagName === 'SELECT') return field.selectedIndex;
+    if (field.tagName === 'INPUT' || field.tagName === 'TEXTAREA') return field.value;
+    return field.textContent;
+  }
+  // Đặt lại trạng thái đã lưu (bắn input + change như writeField); false nếu trường đã rời DOM / bị khóa.
+  function applyFieldState(field, state) {
+    if (!field.isConnected || field.disabled || field.readOnly) return false;
+    if (field.tagName === 'SELECT') {
+      if (field.selectedIndex !== state) { field.selectedIndex = state; fire(field, 'input'); fire(field, 'change'); }
+      return true;
+    }
+    if (field.tagName !== 'INPUT' && field.tagName !== 'TEXTAREA') {
+      if (field.textContent !== state) { field.textContent = state; fire(field, 'input'); fire(field, 'change'); }
+      return true;
+    }
+    if (field.value !== state) { setNativeValue(field, state); fire(field, 'input'); fire(field, 'change'); }
+    return true;
+  }
+  function pushHistory(stack, entry) {
+    stack.push(entry);
+    while (stack.length > EDIT_HISTORY_MAX) stack.shift();
+  }
+  function clearEditHistory() { editUndo.length = 0; editRedo.length = 0; }
+  // Chạy mục trên cùng của ngăn undo/redo; trả true nếu có mục để chạy (để phím được preventDefault).
+  function runEditHistory(dir) {
+    var from = dir === 'undo' ? editUndo : editRedo, to = dir === 'undo' ? editRedo : editUndo;
+    while (from.length && !from[from.length - 1].table.isConnected) from.pop();
+    if (!from.length) return false;
+    if (editHistoryBusy) return true;
+    var entry = from.pop(), undo = dir === 'undo';
+    var items = undo ? entry.items.slice().reverse() : entry.items.slice();
+    var results = items.map(function (item) {
+      if (item.field) return applyFieldState(item.field, undo ? item.before : item.after);
+      var fn = undo ? item.edit.revert : item.edit.reapply;
+      if (typeof fn !== 'function') return false;
+      try { return fn.call(item.edit); } catch (error) { return false; }
+    });
+    function settle(oks) {
+      var kept = [], skipped = 0;
+      items.forEach(function (item, index) { if (oks[index]) kept.push(item); else skipped++; });
+      if (undo) kept.reverse();
+      if (kept.length) pushHistory(to, { table: entry.table, items: kept });
+      else pushHistory(from, entry); // không ô nào làm được: để mục lại
+      selNote((kept.length ? (undo ? 'Đã hoàn tác ' : 'Đã làm lại ') + formatSelNumber(kept.length) + ' ô' : (undo ? 'Không hoàn tác được ô nào' : 'Không làm lại được ô nào'))
+        + (skipped ? ' · bỏ qua ' + formatSelNumber(skipped) + (undo ? ' ô không hoàn tác được' : ' ô không làm lại được') : ''), entry.table);
+    }
+    if (!results.some(function (result) { return result && typeof result.then === 'function'; })) {
+      settle(results.map(function (result) { return result !== false; }));
+      return true;
+    }
+    editHistoryBusy = true;
+    Promise.all(results.map(function (result) {
+      return Promise.resolve(result).then(function (ok) { return ok !== false; }, function () { return false; });
+    })).then(function (oks) { editHistoryBusy = false; settle(oks); }, function () { editHistoryBusy = false; settle(items.map(function () { return false; })); });
+    return true;
+  }
+  function buildEdits(action, matrix) {
+    var edits = [], seen = new Set();
+    function add(r, c, value) {
+      var row = sel.rows[r], cell = row && row.cells[c];
+      if (!cell || cellHidden(cell) || seen.has(cell)) return;
+      seen.add(cell); edits.push({ cell: cell, row: r, col: c, value: value, handled: false });
+    }
+    function eachCell(visit) {
+      sel.rects.forEach(function (rect) {
+        for (var r = rect.r1; r <= rect.r2; r++) for (var c = rect.c1; c <= rect.c2; c++) visit(r, c);
+      });
+    }
+    if (action === 'clear') {
+      eachCell(function (r, c) { add(r, c, ''); });
+      return { edits: edits, extent: null };
+    }
+    var rect = sel.rects[sel.rects.length - 1], height = matrix.length, width = 0;
+    matrix.forEach(function (line) { width = Math.max(width, line.length); });
+    if (height === 1 && width === 1 && sel.painted.size > 1) {
+      // 1 giá trị dán vào vùng nhiều ô: điền đầy mọi ô đang chọn.
+      eachCell(function (r, c) { add(r, c, matrix[0][0]); });
+      return { edits: edits, extent: null };
+    }
+    for (var j = 0; j < height && rect.r1 + j < sel.rows.length; j++) {
+      var row = sel.rows[rect.r1 + j], visible = [];
+      for (var k = rect.c1; k < row.cells.length; k++) if (!cellHidden(row.cells[k])) visible.push(k);
+      for (var i = 0; i < matrix[j].length && i < visible.length; i++) add(rect.r1 + j, visible[i], matrix[j][i]);
+    }
+    var extent = null;
+    edits.forEach(function (edit) {
+      if (!extent) extent = { r1: edit.row, r2: edit.row, c1: edit.col, c2: edit.col };
+      extent.r1 = Math.min(extent.r1, edit.row); extent.r2 = Math.max(extent.r2, edit.row);
+      extent.c1 = Math.min(extent.c1, edit.col); extent.c2 = Math.max(extent.c2, edit.col);
+    });
+    return { edits: edits, extent: extent };
+  }
+  function editSelection(action, matrix) {
+    if (!sel || !sel.painted.size) return;
+    var built = buildEdits(action, matrix), edits = built.edits;
+    if (!edits.length) return;
+    var table = sel.table, verb = action === 'clear' ? 'Xóa' : 'Dán';
+    var likely = edits.filter(function (edit) { return editableCell(edit.cell); }).length;
+    if (!likely) { selNote('Bảng này chỉ để xem — các ô không sửa được.'); return; }
+    if (likely > EDIT_CONFIRM_OVER && typeof window.confirm === 'function'
+        && !window.confirm(verb + ' ' + formatSelNumber(likely) + ' ô? Thay đổi được lưu ngay.')) return;
+    // detail.pending: trang đẩy Promise vào đây nếu việc lưu cần hỏi/đợi; edit.cancelled = true nếu người dùng từ chối giữa chừng.
+    var detail = { action: action, table: table, edits: edits, pending: [] };
+    edits[0].cell.dispatchEvent(new window.CustomEvent('tks:cells-edit', { bubbles: true, detail: detail }));
+    var autoWrites = new Map(); // edit → { field, before, after } cho ô ghi thẳng mà giá trị có đổi
+    edits.forEach(function (edit) {
+      if (edit.handled) return;
+      var field = fieldOf(edit.cell);
+      if (!field) return;
+      var before = fieldState(field);
+      if (!writeField(field, edit.value)) return;
+      edit.handled = true;
+      var after = fieldState(field);
+      if (after !== before) autoWrites.set(edit, { field: field, before: before, after: after });
+    });
+    function finish() {
+      var items = [];
+      edits.forEach(function (edit) {
+        if (edit.cancelled) return;
+        if (autoWrites.has(edit)) items.push(autoWrites.get(edit));
+        else if (edit.handled && typeof edit.revert === 'function') items.push({ edit: edit });
+      });
+      if (items.length) { pushHistory(editUndo, { table: table, items: items }); editRedo.length = 0; }
+      var done = 0, skipped = 0;
+      edits.forEach(function (edit) { if (edit.handled && !edit.cancelled) done++; else skipped++; });
+      if (built.extent && sel && sel.table === table) { sel.rects = [built.extent]; sel.anchor = { row: built.extent.r1, col: built.extent.c1 }; renderSelection(); }
+      selNote((done ? (action === 'clear' ? 'Đã xóa ' : 'Đã dán ') + formatSelNumber(done) + ' ô' : (action === 'clear' ? 'Không xóa được ô nào' : 'Không dán được ô nào'))
+        + (skipped ? ' · bỏ qua ' + formatSelNumber(skipped) + ' ô không sửa được' : ''), table);
+    }
+    if (detail.pending.length) Promise.all(detail.pending).then(finish, finish); else finish();
+  }
+  function onSelectionPaste(event) {
+    if (event.defaultPrevented || !sel || !sel.painted.size || !event.clipboardData || cellEditOff() || selectionFieldFocused()) return;
+    var text = event.clipboardData.getData('text/plain');
+    if (text === '' || text == null) return;
+    event.preventDefault();
+    editSelection('paste', parseClipboardTable(text));
+  }
+  function installSelection() {
+    document.addEventListener('mousedown', onSelectionDown, true);
+    document.addEventListener('mousemove', onSelectionMove, true);
+    document.addEventListener('mouseup', endGesture, true);
+    document.addEventListener('selectstart', function (event) { if (gesture && gesture.claimed) event.preventDefault(); }, true);
+    document.addEventListener('click', function (event) {
+      if (!suppressClick) return;
+      suppressClick = false; event.stopPropagation(); event.preventDefault();
+    }, true);
+    document.addEventListener('keydown', onSelectionKey);
+    document.addEventListener('copy', onSelectionCopy);
+    document.addEventListener('cut', onSelectionCut);
+    document.addEventListener('paste', onSelectionPaste);
+    window.addEventListener('blur', endGesture);
+  }
+
   function start() {
     if (!window.document || !document.body) return;
     document.addEventListener('keydown', onGridKeydown);
+    installSelection();
     refreshAll();
     fetchPrefs();
     new MutationObserver(function (records) {
       if (records.some(function (record) {
         var target = record.target.nodeType === 1 ? record.target : record.target.parentElement;
-        if (!target || target.closest('.tks-columns-overlay,.tks-table-tools,colgroup,.tks-column-resizer')) return false;
-        if (record.type === 'attributes') return !target.closest('table.tks-controlled-table');
+        if (!target || target.closest('.tks-columns-overlay,.tks-table-tools,colgroup,.tks-column-resizer,.tks-sel-sum')) return false;
+        if (record.type === 'attributes') {
+          // Tô / bỏ tô ô đang chọn (tks-cell-selected, tks-selecting) là việc của chính ta: không dựng lại cả trang vì nó.
+          if (record.attributeName === 'class' && /tks-cell-selected|tks-selecting/.test((record.oldValue || '') + ' ' + target.className)) return false;
+          return !target.closest('table.tks-controlled-table');
+        }
         return true;
       })) schedule();
-    }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['hidden', 'class', 'style', 'open'] });
+    }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeOldValue: true, attributeFilter: ['hidden', 'class', 'style', 'open'] });
     window.addEventListener('resize', schedule);
     if (document.fonts) document.fonts.ready.then(schedule);
   }

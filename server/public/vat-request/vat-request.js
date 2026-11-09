@@ -23,8 +23,14 @@
     editing: null, requestSeq: 0, grid: null, rowOrder: false,
     // statusSet: các chip trạng thái đang bật khi preset = 'custom'; keep: id dòng KT vừa sửa, giữ lại trên bảng
     // cho tới khi đổi bộ lọc; history: hoàn tác / làm lại (Ctrl+Z / Ctrl+Y), mất khi tải lại trang.
-    statusSet: new Set(), keep: new Set(), history: { undo: [], redo: [] }, saving: false
+    statusSet: new Set(), keep: new Set(), history: { undo: [], redo: [] }, saving: false,
+    // Phân trang ở máy chủ: serverPaged = lần tải gần nhất có totalRows (rows chỉ là trang đang xem, đã tìm /
+    // sắp / gộp trên toàn bộ kết quả); legacy = máy chủ cũ trả đủ danh sách -> lọc / sắp / chia trang tại chỗ như cũ.
+    serverPaged: false, legacy: false, totalRows: 0, groupCounts: {}, controller: null
   };
+  // Giá trị KT vừa sửa nhưng máy chủ chưa xác nhận (id -> { changes, count }): đổi trang / tìm / sắp trong lúc
+  // đang lưu thì trang mới vẫn hiện giá trị đang lưu, không bị bản cũ của máy chủ đè.
+  const pendingFields = new Map();
 
   // ---------- Tiện ích ----------
   function $(id) { return document.getElementById(id); }
@@ -56,7 +62,8 @@
       credentials: 'same-origin',
       cache: 'no-store',
       headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
-      body: options.body ? JSON.stringify(options.body) : undefined
+      body: options.body ? JSON.stringify(options.body) : undefined,
+      signal: options.signal
     });
     let data = null;
     try { data = await response.json(); } catch (error) { data = null; }
@@ -371,8 +378,18 @@
       const row = state.rows.find(r => r.id === id);
       if (row) Object.assign(row, changes, changes.status ? { statusLabel: statusLabel(changes.status) } : {});
       state.keep.add(id);
+      const pending = pendingFields.get(id) || { changes: {}, count: 0 };
+      Object.assign(pending.changes, changes);
+      pending.count++;
+      pendingFields.set(id, pending);
     }
     render();
+    const settle = () => {
+      for (const { id } of entries) {
+        const pending = pendingFields.get(id);
+        if (pending && --pending.count <= 0) pendingFields.delete(id);
+      }
+    };
     const send = async () => {
       try {
         // version lấy lúc gửi: lần lưu trước trong hàng đợi đã cập nhật; dòng không còn trên bảng thì hỏi máy chủ.
@@ -386,9 +403,12 @@
           const row = state.rows.find(r => r.id === updated.id);
           if (row) Object.assign(row, { version: updated.version, updatedAt: updated.updatedAt });
         }
+        settle();
         if (entries.some(({ changes }) => Object.hasOwn(changes, 'status'))) refreshMetrics(entries.map(e => e.id));
         return true;
       } catch (error) {
+        // Lưu hỏng: bỏ mọi giá trị đang chờ của các dòng này rồi lấy lại dữ liệu thật.
+        for (const { id } of entries) pendingFields.delete(id);
         await load(); // bảng đang hiện giá trị chưa lưu được -> lấy lại dữ liệu thật
         notify(error.message, error.status === 409 ? 'warn' : 'error');
         return false;
@@ -498,16 +518,19 @@
     });
   }
 
-  function groupHeaderHtml(key, rows, cols) {
+  function groupHeaderHtml(key, rows, cols, total) {
     const first = rows[0];
     const m = state.metrics[key];
-    const pick = state.canProcess ? `<input type="checkbox" data-select-group="${escapeHtml(key)}" aria-label="Chọn cả mã ${escapeHtml(first.productCode)}"> ` : '';
+    const count = Number.isFinite(total) ? total : rows.length;
+    // Ô chọn nhóm chỉ chọn các dòng ĐANG TẢI của mã (trang này khi máy chủ phân trang) — vùng chọn chỉ dùng để kéo dòng trên trang.
+    const scope = state.serverPaged ? ' trên trang này' : '';
+    const pick = state.canProcess ? `<input type="checkbox" data-select-group="${escapeHtml(key)}" aria-label="Chọn cả mã ${escapeHtml(first.productCode)}${scope}"> ` : '';
     // Số liệu tồn / hàng về chỉ KT thấy (sale không nhận metrics).
     const meta = state.canProcess && m
       ? ` · Tồn VAT ${m.vatStock ? fmtNumber(m.vatStock.total) : '—'} · Cần khai ${fmtNumber(m.pendingInsertQty || 0)} · Cont ${escapeHtml(m.incomingContainer || '—')} · Lịch ${escapeHtml([m.containerStatus, m.containerEta].filter(Boolean).join(' ') || '—')}`
       : '';
     return `<tr class="vr-group-row"><td colspan="${cols.length}">${pick}<strong>${escapeHtml(first.productCode)}</strong> — ${escapeHtml(first.productName)}` +
-      `<span class="vr-group-meta">${rows.length} yêu cầu${meta}</span></td></tr>`;
+      `<span class="vr-group-meta">${count} yêu cầu${meta}</span></td></tr>`;
   }
 
   // ---------- Sắp xếp theo cột (toàn bộ danh sách) ----------
@@ -546,7 +569,7 @@
   function cycleSort(key, add) {
     state.sorts = window.TKSTables.nextSorts(state.sorts, key, add);
     state.page = 1;
-    render();
+    requery();
     $('vrScroll').scrollTop = 0;
   }
   function updateSortHeaders() {
@@ -559,6 +582,7 @@
     return TKSFuzzySearch.filter(state.rows, state.query, r => [r.productCode, r.productName, r.customerName, r.customerCode, r.saleNote, r.accountantNote, r.createdByName].join(' '));
   }
   function visibleRows() {
+    if (state.serverPaged) return state.rows; // máy chủ đã tìm / sắp / gộp trên toàn bộ kết quả, đây là trang đang xem
     const source = searchedRows();
     if (state.groupByProduct) {
       return source.slice().sort((a, b) => a.productKey.localeCompare(b.productKey, 'vi', { numeric: true }) || compareBySort(a, b) || (b.createdAt || '').localeCompare(a.createdAt || ''));
@@ -570,15 +594,18 @@
   function render() {
     const cols = columns();
     const rows = visibleRows();
-    const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+    const totalRows = state.serverPaged ? state.totalRows : rows.length;
+    const pageCount = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
     state.page = Math.min(Math.max(1, state.page), pageCount);
     const start = (state.page - 1) * PAGE_SIZE;
-    const pageRows = rows.slice(start, start + PAGE_SIZE);
+    const pageRows = state.serverPaged ? rows : rows.slice(start, start + PAGE_SIZE);
     let html = '';
     if (state.groupByProduct) {
       let current = null;
       let bucket = [];
-      const flush = () => { if (bucket.length) html += groupHeaderHtml(current, rows.filter(r => r.productKey === current), cols) + bucket.join(''); bucket = []; };
+      // Số yêu cầu của mã lấy trên TOÀN BỘ kết quả (máy chủ đếm sẵn khi phân trang), không chỉ trang này.
+      const groupRows = key => rows.filter(r => r.productKey === key);
+      const flush = () => { if (bucket.length) html += groupHeaderHtml(current, groupRows(current), cols, state.serverPaged ? state.groupCounts[current] : undefined) + bucket.join(''); bucket = []; };
       for (const row of pageRows) {
         if (row.productKey !== current) { flush(); current = row.productKey; }
         bucket.push(rowHtml(row, cols));
@@ -596,10 +623,11 @@
       if (!state.rows.length) setStatus('Không có yêu cầu phù hợp.');
       else if (state.truncated) setStatus('Chỉ hiện 5,000 dòng mới nhất — hãy lọc thêm.', 'warn');
     }
-    const ready = !state.loading && rows.length > 0;
+    // Đang tải trang kế (máy chủ phân trang) vẫn giữ thanh trang để bấm tiếp không bị nhảy bố cục.
+    const ready = (!state.loading || state.serverPaged) && totalRows > 0;
     $('vrPager').hidden = !ready;
     if (ready) {
-      $('vrCount').textContent = `${start + 1}–${Math.min(start + PAGE_SIZE, rows.length)} / ${rows.length} dòng`;
+      $('vrCount').textContent = `${start + 1}–${Math.min(start + PAGE_SIZE, totalRows)} / ${totalRows} dòng`;
       $('vrPage').textContent = `Trang ${state.page} / ${pageCount}`;
       $('vrFirst').disabled = $('vrPrevious').disabled = state.page === 1;
       $('vrNext').disabled = $('vrLast').disabled = state.page === pageCount;
@@ -657,20 +685,59 @@
     if (state.from) params.set('from', state.from);
     if (state.to) params.set('to', state.to);
     if (options.withSearch && state.query) params.set('q', state.query);
+    // Danh sách: xin máy chủ phân trang (máy chủ cũ bỏ qua). Đã biết máy chủ cũ thì không gửi q để vẫn tìm tại chỗ
+    // trên đủ danh sách. File Excel không gửi trang: luôn là toàn bộ kết quả bộ lọc.
+    if (options.paged && !state.legacy) {
+      if (state.query) params.set('q', state.query);
+      params.set('page', String(state.page));
+      params.set('pageSize', String(PAGE_SIZE));
+      if (state.sorts.length) params.set('sorts', JSON.stringify(state.sorts));
+      if (state.groupByProduct) params.set('group', 'product');
+    }
     const text = params.toString();
     return text ? '?' + text : '';
   }
 
+  // Đổi tìm / sắp / gộp / trang: máy chủ phân trang -> tải lại đúng trang (gõ tìm thì chờ 300 ms); máy chủ cũ
+  // trả đủ danh sách -> chỉ vẽ lại tại chỗ như trước, không gọi máy chủ.
+  let queryTimer = null;
+  function requery(debounceInput = false) {
+    clearTimeout(queryTimer);
+    queryTimer = null;
+    if (state.legacy) { render(); return; }
+    if (!debounceInput) { load(); return; }
+    ++state.requestSeq; // kết quả của lần tải đang chạy (cũ) bị bỏ qua, kể cả lỗi
+    if (state.controller) state.controller.abort();
+    queryTimer = setTimeout(() => { queryTimer = null; load(); }, 300);
+  }
+
   async function load() {
+    clearTimeout(queryTimer);
+    queryTimer = null;
+    if (state.controller) state.controller.abort(); // bỏ lần tải cũ (kết quả lẫn lỗi của nó đều bị bỏ qua)
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    state.controller = controller;
     const seq = ++state.requestSeq;
     state.loading = true;
     state.error = '';
     setStatus('Đang tải yêu cầu…');
     render();
     try {
-      const data = await api('/' + filterQuery({ keep: true }));
+      const data = await api('/' + filterQuery({ keep: true, paged: true }), { signal: controller ? controller.signal : undefined });
       if (seq !== state.requestSeq) return;
+      state.serverPaged = Number.isFinite(data.totalRows);
+      state.legacy = !state.serverPaged;
       state.rows = data.rows || [];
+      if (state.serverPaged) {
+        state.totalRows = data.totalRows;
+        state.page = data.page || 1; // máy chủ đã kẹp trang (trang rỗng -> trang cuối còn dữ liệu)
+        state.groupCounts = data.groupCounts || {};
+        // Giá trị đang lưu dở vẫn hiện trên trang mới (máy chủ chưa xác nhận nên bản trả về có thể còn cũ).
+        for (const row of state.rows) {
+          const pending = pendingFields.get(row.id);
+          if (pending) Object.assign(row, pending.changes, pending.changes.status ? { statusLabel: statusLabel(pending.changes.status) } : {});
+        }
+      }
       state.metrics = data.metrics || {};
       state.sales = data.sales || [];
       state.statuses = data.statuses || state.statuses;
@@ -680,13 +747,17 @@
       state.isManager = !!(data.viewer && data.viewer.isManager);
       $('vrExport').hidden = !(state.canProcess || state.isManager);
       setStatus('');
-      const ids = new Set(state.rows.map(r => r.id));
-      state.selected = new Set([...state.selected].filter(id => ids.has(id)));
+      // Đủ danh sách: bỏ chọn dòng không còn. Phân trang: vùng chọn theo id, đổi trang không làm mất.
+      if (!state.serverPaged) {
+        const ids = new Set(state.rows.map(r => r.id));
+        state.selected = new Set([...state.selected].filter(id => ids.has(id)));
+      }
       renderStatusFilter();
       renderSaleFilter();
     } catch (error) {
-      if (seq !== state.requestSeq) return;
+      if (seq !== state.requestSeq || (error && error.name === 'AbortError')) return;
       state.rows = [];
+      state.totalRows = 0;
       state.error = error.message;
       setStatus('Không tải được danh sách: ' + error.message, 'error');
     } finally {
@@ -1163,12 +1234,19 @@
     $('vrFrom').addEventListener('change', event => { state.from = event.target.value; resetView(); load(); });
     $('vrTo').addEventListener('change', event => { state.to = event.target.value; resetView(); load(); });
     // Lọc tức thì trên dữ liệu đã tải; value rỗng (Backspace/cắt/nút X) cũng chạy và trả đủ dòng.
-    $('vrSearch').addEventListener('input', event => { state.query = event.target.value.trim(); state.page = 1; render(); });
+    // Máy chủ phân trang: tìm trên toàn bộ kết quả ở máy chủ (chờ 300 ms sau phím cuối).
+    $('vrSearch').addEventListener('input', event => {
+      const query = event.target.value.trim();
+      if (query === state.query) return;
+      state.query = query;
+      state.page = 1;
+      requery(true);
+    });
     $('vrGroupToggle').addEventListener('click', event => {
       state.groupByProduct = !state.groupByProduct;
       event.currentTarget.setAttribute('aria-pressed', String(state.groupByProduct));
       state.page = 1;
-      render();
+      requery();
     });
     $('vrReload').addEventListener('click', () => { state.keep.clear(); load(); });
     $('vrExport').addEventListener('click', exportExcel);
@@ -1177,11 +1255,12 @@
 
     ['First', 'Previous', 'Next', 'Last'].forEach(direction => {
       $('vr' + direction).addEventListener('click', () => {
-        const pageCount = Math.max(1, Math.ceil(state.rows.length / PAGE_SIZE));
+        const total = state.serverPaged ? state.totalRows : visibleRows().length;
+        const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
         if (direction === 'First') state.page = 1;
         else if (direction === 'Last') state.page = pageCount;
-        else state.page += direction === 'Previous' ? -1 : 1;
-        render();
+        else state.page = Math.min(pageCount, Math.max(1, state.page + (direction === 'Previous' ? -1 : 1)));
+        requery();
         document.querySelector('.vr-scroll').scrollTop = 0;
       });
     });
@@ -1208,7 +1287,7 @@
       }
       if (target.id === 'vrSelectPage') {
         const start = (state.page - 1) * PAGE_SIZE;
-        visibleRows().slice(start, start + PAGE_SIZE).forEach(r => target.checked ? state.selected.add(r.id) : state.selected.delete(r.id));
+        (state.serverPaged ? state.rows : visibleRows().slice(start, start + PAGE_SIZE)).forEach(r => target.checked ? state.selected.add(r.id) : state.selected.delete(r.id));
         render();
       }
     });

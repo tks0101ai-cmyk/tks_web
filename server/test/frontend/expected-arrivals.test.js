@@ -60,7 +60,7 @@ function createPage({ permissions = null, can = () => true, hash = '#products', 
     destroy() {}
   };
   dom.window.setInterval = () => 1;
-  dom.window.requestAnimationFrame = cb => cb();
+  dom.window.requestAnimationFrame = cb => dom.window.setTimeout(() => { if (dom.window.document) cb(); }, 0);
   dom.window.HTMLElement.prototype.scrollIntoView = function () {};
   dom.window.URL.createObjectURL = () => 'blob:test';
   dom.window.URL.revokeObjectURL = () => {};
@@ -81,11 +81,14 @@ function createPage({ permissions = null, can = () => true, hash = '#products', 
   }
 
   const urls = [];
-  dom.window.fetch = (url) => {
+  dom.window.fetch = (url, options) => {
     const href = String(url);
     urls.push(href);
     const ok = body => Promise.resolve({ ok: true, status: 200, json: async () => body });
-    if (href === '/api/expected-arrivals') return respond instanceof Error ? Promise.resolve({ ok: false, status: 500, json: async () => ({}) }) : ok(respond);
+    if (href === '/api/expected-arrivals' || href.startsWith('/api/expected-arrivals?') || href.startsWith('/api/expected-arrivals/detail?')) {
+      if (typeof respond === 'function') return respond(href, options);
+      return respond instanceof Error ? Promise.resolve({ ok: false, status: 500, json: async () => ({}) }) : ok(respond);
+    }
     if (href.startsWith('/api/expected-arrivals/export/fields')) return ok(FIELDS);
     if (href.startsWith('/api/expected-arrivals/export?')) {
       const params = new URLSearchParams(href.split('?')[1]);
@@ -165,7 +168,7 @@ test('vao tab Hang hoa: goi /api/expected-arrivals, ve du 4 dong, cot A = B+C, s
   const page = createPage();
   page.run("switchView('products')");
   await settle();
-  assert.equal(page.urls.filter(u => u === '/api/expected-arrivals').length, 1);
+  assert.equal(page.urls.filter(u => u.startsWith('/api/expected-arrivals?')).length, 1);
   assert.equal(page.$('expectedArrivalsSection').hidden, false);
   const rows = bodyRows(page);
   assert.equal(rows.length, 4);
@@ -285,7 +288,7 @@ test('chi co reports.products (khong co quyen moi): an muc moi, van tai Bao cao 
   await settle();
   assert.equal(page.$('expectedArrivalsSection').hidden, true);
   assert.equal(page.$('productReportSection').hidden, false);
-  assert.equal(page.urls.includes('/api/product-report'), true);
+  assert.equal(page.urls.some(url => url.split('?')[0] === '/api/product-report'), true);
 });
 
 // ---- Tai khoan CHI co reports.products.expected (Ke toan / NV mua hang / NV kho) tren trang that ----
@@ -301,7 +304,8 @@ test('chi co quyen moi: vao duoc tab Hang hoa, chi goi /api/expected-arrivals, c
   assert.equal(bodyRows(page).length, 4);
 
   // KHONG goi bat ky API nao khac (Bao cao hang hoa, ton kho, /api/dashboard, business-report, meta cont...) va khong mo SSE.
-  assert.deepEqual(page.urls, ['/api/expected-arrivals']);
+  assert.equal(page.urls.length, 1);
+  assert.ok(page.urls[0].startsWith('/api/expected-arrivals?'));
   assert.equal(page.dom.sseUrls, undefined, 'khong mo /api/dashboard/events');
 
   // Chi tab Hang hoa hien tren thanh tab con.
@@ -312,7 +316,8 @@ test('chi co quyen moi: vao duoc tab Hang hoa, chi goi /api/expected-arrivals, c
 test('chi co quyen moi, vao thang /reports/#products: cung chi goi API moi', async () => {
   const page = createPage({ real: true, permissions: ['reports.products.expected'], hash: '#products' });
   await settle();
-  assert.deepEqual(page.urls, ['/api/expected-arrivals']);
+  assert.equal(page.urls.length, 1);
+  assert.ok(page.urls[0].startsWith('/api/expected-arrivals?'));
   assert.equal(page.$('view-products').classList.contains('active'), true);
 });
 
@@ -320,7 +325,8 @@ test('chi co quyen moi, hash tro toi tab khong duoc xem (#debt): chuyen ve Hang 
   const page = createPage({ real: true, permissions: ['reports.products.expected'], hash: '#debt' });
   await settle();
   assert.equal(page.$('view-products').classList.contains('active'), true);
-  assert.deepEqual(page.urls, ['/api/expected-arrivals']);
+  assert.equal(page.urls.length, 1);
+  assert.ok(page.urls[0].startsWith('/api/expected-arrivals?'));
 });
 
 test('trang that co du quyen bao cao: van tai Bao cao hang hoa sau khi nap quyen (khong doi hanh vi cu)', async () => {
@@ -329,8 +335,8 @@ test('trang that co du quyen bao cao: van tai Bao cao hang hoa sau khi nap quyen
     permissions: ['reports.overview', 'reports.products', 'reports.products.expected', 'reports.business']
   });
   await settle();
-  assert.equal(page.urls.includes('/api/product-report'), true);
-  assert.equal(page.urls.includes('/api/expected-arrivals'), true);
+  assert.equal(page.urls.some(url => url.split('?')[0] === '/api/product-report'), true);
+  assert.equal(page.urls.some(u => u.startsWith('/api/expected-arrivals?')), true);
   assert.equal(page.$('productReportSection').hidden, false);
   assert.equal(page.$('expectedArrivalsSection').hidden, false);
 });
@@ -789,4 +795,95 @@ test('expected arrivals removes overview and summary; filters constrain each oth
   assert.equal(values('expectedArrivalsContainer').length, 4);
   setSelect(page, 'expectedArrivalsContainer', 'CONT 11-2A');
   assert.deepEqual(values('expectedArrivalsStatus'), ['', '1. Chưa bốc']);
+});
+
+test('server pages keep full-result count/facets and send paging/sorts instead of sorting the page', async t => {
+  const calls = [];
+  const page = createPage({ respond: async href => {
+    const q = paramsOf(href); calls.push(q);
+    const current = Number(q.get('page') || 1);
+    return { ok: true, status: 200, json: async () => ({ ...FULL_SAMPLE,
+      rows: [row({ productCode: current === 1 ? 'LAST' : 'FIRST', quantity: 3 })],
+      totalRows: 201, page: current, pageSize: 100,
+      filters: { sources: ['YIWU', 'CONT TKS1'], containers: ['REMOTE CONT'], statuses: ['2. Đã bốc'] }
+    }) };
+  } });
+  t.after(() => page.dom.window.close());
+  page.run("switchView('products')"); await settle();
+  assert.equal(calls[0].get('pageSize'), '100');
+  assert.equal(page.$('tagExpectedArrivals').textContent, '201');
+  assert.equal(bodyRows(page).length, 1);
+  assert.ok([...page.$('expectedArrivalsContainer').options].some(o => o.value === 'REMOTE CONT'));
+  page.$('expectedArrivalsNextPage').click(); await settle();
+  assert.equal(calls.at(-1).get('page'), '2');
+  assert.equal(page.$('expectedArrivalsPageLabel').textContent, 'Trang 2/3');
+  page.run("setTableSort('expectedArrivalsRows', 10, {shiftKey:false})"); await settle();
+  assert.equal(calls.at(-1).get('page'), '1');
+  assert.deepEqual(JSON.parse(calls.at(-1).get('sorts')), [{key:'tong-so-luong', dir:'asc'}]);
+  const exported = paramsOf('/?' + page.run('expectedArrivalsExportQuery()'));
+  assert.deepEqual(JSON.parse(exported.get('sorts')), [{key:'tong-so-luong', dir:'asc'}]);
+  assert.equal(exported.has('page'), false);
+});
+
+test('server search debounces and stale responses cannot replace rows or errors', async t => {
+  const pending = [];
+  const page = createPage({ respond: href => new Promise((resolve, reject) => pending.push({ href, resolve, reject })) });
+  t.after(() => page.dom.window.close());
+  const data = code => ({ ...FULL_SAMPLE, rows: [row({productCode:code})], totalRows:1, page:1, pageSize:100 });
+  const answer = (request, code) => request.resolve({ok:true,status:200,json:async()=>data(code)});
+  page.run("switchView('products')"); await settle();
+  answer(pending[0], 'INITIAL'); await settle();
+  page.run("handleTableSearchInput('expectedArrivals','old')");
+  page.run("handleTableSearchInput('expectedArrivals','new')");
+  assert.equal(pending.length, 1);
+  await new Promise(r => setTimeout(r, 330));
+  assert.equal(pending.length, 2);
+  assert.equal(paramsOf(pending[1].href).get('q'), 'new');
+  page.run("getTableSearchState('expectedArrivals').query = 'newest'; loadExpectedArrivals()"); await settle();
+  answer(pending[2], 'NEWEST'); await settle();
+  pending[1].reject(new Error('stale failure')); await settle();
+  assert.match(page.$('expectedArrivalsRows').textContent, /NEWEST/);
+  assert.equal(page.$('expectedArrivalsRows').getAttribute('aria-busy'), 'false');
+});
+
+test('server list detail loads all containers of the product independently of the current page', async t => {
+  const first = row({quantity:10}), second = row({quantity:25,sourceRow:90,containerName:'REMOTE CONT'});
+  const page = createPage({respond: async href => ({ok:true,status:200,json:async()=>href.includes('/detail?')
+    ? {...FULL_SAMPLE,rows:[first,second]}
+    : {...FULL_SAMPLE,rows:[first],totalRows:201,page:1,pageSize:100}})});
+  t.after(()=>page.dom.window.close());
+  page.run("switchView('products')"); await settle();
+  bodyRows(page)[0].click(); await settle();
+  assert.ok(page.urls.some(h=>h.startsWith('/api/expected-arrivals/detail?code=MCRY301')));
+  assert.match(page.$('docModalSubtitle').textContent,/2 dòng hàng · 2 cont/);
+  assert.match(page.$('docModalBody').textContent,/REMOTE CONT/);
+});
+
+test('server pages prefetch the next page and serve pager clicks from cache; other reloads bypass it', async t => {
+  const calls = [];
+  const page = createPage({ respond: async href => {
+    const q = paramsOf(href); calls.push(q);
+    const current = Number(q.get('page') || 1);
+    return { ok: true, status: 200, json: async () => ({ ...FULL_SAMPLE,
+      rows: [row({ productCode: 'P' + current, quantity: 3 })],
+      totalRows: 201, page: current, pageSize: 100,
+      filters: { sources: ['YIWU'], containers: ['REMOTE CONT'], statuses: ['2. Đã bốc'] }
+    }) };
+  } });
+  t.after(() => page.dom.window.close());
+  const pageCalls = () => calls.map(q => q.get('page'));
+  page.run("switchView('products')"); await settle();
+  // Sau khi tải xong trang 1, trang 2 được tải ngầm (có trễ ngắn).
+  await new Promise(r => setTimeout(r, 500)); await settle();
+  assert.deepEqual(pageCalls(), ['1', '2']);
+  // Bấm Sau: trang 2 lấy từ bộ đệm, không gọi API thêm cho trang 2, bảng đổi ngay.
+  page.$('expectedArrivalsNextPage').click(); await settle();
+  assert.equal(pageCalls().filter(p => p === '2').length, 1);
+  assert.match(page.$('expectedArrivalsRows').textContent, /P2/);
+  assert.equal(page.$('expectedArrivalsPageLabel').textContent, 'Trang 2/3');
+  // Đổi sắp xếp (không phải chuyển trang): xóa đệm và tải lại từ máy chủ.
+  const before = calls.length;
+  page.run("setTableSort('expectedArrivalsRows', 10, {shiftKey:false})"); await settle();
+  assert.ok(calls.length > before);
+  assert.equal(calls.at(-1).get('page'), '1');
 });

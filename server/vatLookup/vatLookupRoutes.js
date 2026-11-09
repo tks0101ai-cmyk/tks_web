@@ -55,7 +55,7 @@ function createVatLookupRouter({ source = createLookupSource() } = {}) {
     }
     const { queries, ignoredCount } = parseSearchQueries(text);
     const snapshot = await source.get();
-    res.json({ meta: meta(snapshot), queries, ignoredCount, ...search(snapshot, queries) });
+    res.json({ meta: meta(snapshot), queries, ignoredCount, ...search(snapshot, queries, req.body || {}) });
   }));
 
   return router;

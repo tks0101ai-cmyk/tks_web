@@ -373,7 +373,7 @@
     to{ transform:translateY(0); opacity:1; }
   }
 </style>
-  <link rel="stylesheet" href="/shared/table-controls.css?v=20261016-1">
+  <link rel="stylesheet" href="/shared/table-controls.css?v=20261108-1">
 </head>
 <body>
   <div class="receipt-header">
@@ -695,14 +695,14 @@
 
           <div class="users-table-panel">
             <div class="users-table-scroll">
-              <table class="users-table fixed-table" id="historyTable" data-table-sort="local" data-table-key="historyTable">
+              <table class="users-table fixed-table" id="historyTable" data-table-sort="server" data-table-key="historyTable">
                 <thead>
                   <tr>
-                    <th style="width:150px" data-column-key="thoi-gian">Thời gian</th>
-                    <th style="width:200px" data-column-key="nguoi-sua">Người sửa</th>
-                    <th style="width:200px" data-column-key="tai-khoan">Tài khoản</th>
-                    <th style="width:150px" data-column-key="thao-tac">Thao tác</th>
-                    <th style="width:420px" data-column-key="chi-tiet">Chi tiết</th>
+                    <th style="width:150px" data-column-key="thoi-gian" data-sort="createdAt" class="sortable"><button type="button" class="sort-button"><span class="sort-label">Thời gian</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
+                    <th style="width:200px" data-column-key="nguoi-sua" data-sort="actor" class="sortable"><button type="button" class="sort-button"><span class="sort-label">Người sửa</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
+                    <th style="width:200px" data-column-key="tai-khoan" data-sort="target" class="sortable"><button type="button" class="sort-button"><span class="sort-label">Tài khoản</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
+                    <th style="width:150px" data-column-key="thao-tac" data-sort="action" class="sortable"><button type="button" class="sort-button"><span class="sort-label">Thao tác</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
+                    <th style="width:420px" data-column-key="chi-tiet" data-sort="changes" class="sortable"><button type="button" class="sort-button"><span class="sort-label">Chi tiết</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button></th>
                   </tr>
                 </thead>
                 <tbody id="historyTableBody">
@@ -1042,7 +1042,7 @@
 
   <!-- Đặt ở cuối thẻ body thay vì trong <head>: script chặn phân tích cú pháp trong <head> sẽ làm dừng việc xử lý toàn bộ tài liệu. Không dùng `defer` vì script inline bên dưới dùng TKSNav ở cấp cao nhất, và script inline luôn chạy trước script defer. -->
   <script src="/shared/filter-links.js?v=20261029-1"></script>
-  <script src="/shared/table-controls.js?v=20261107-3"></script>
+  <script src="/shared/table-controls.js?v=20261108-2"></script>
   <script src="/shared/fuzzy-search.js?v=20261021"></script>
   <script src="/shared/search-clear.js?v=20261009-1"></script>
   <script src="/shared/shared-nav.js?v=20261105-kho"></script>
@@ -1675,18 +1675,29 @@
     let historyTotal = 0;
     let historyReloadTimer = null;
     let historyRequestSeq = 0;
+    let historySorts = [];
+    document.querySelector('#historyTable thead').addEventListener('click', function(event){
+      const th = event.target.closest('th[data-sort]');
+      if(!th || event.target.closest('.tks-column-resizer')) return;
+      historySorts = window.TKSTables.nextSorts(historySorts, th.dataset.sort, event.shiftKey);
+      window.TKSTables.syncSortHeaders(document.getElementById('historyTable'), historySorts);
+      reloadAuditHistory();
+    });
 
     function scheduleHistoryReload(){
+      ++historyRequestSeq;
       clearTimeout(historyReloadTimer);
       historyReloadTimer = setTimeout(reloadAuditHistory, 300);
     }
 
     function reloadAuditHistory(){
+      clearTimeout(historyReloadTimer);
       historyPage = 1;
       loadAuditHistory();
     }
 
     function changeHistoryPage(delta){
+      clearTimeout(historyReloadTimer);
       const lastPage = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
       historyPage = Math.min(lastPage, Math.max(1, historyPage + delta));
       loadAuditHistory();
@@ -1731,7 +1742,8 @@
     function renderAuditHistory(data){
       const body = document.getElementById('historyTableBody');
       const entries = (data && data.entries) || [];
-      historyTotal = Number(data && data.total) || 0;
+      historyTotal = Number(data && (data.totalRows ?? data.total)) || 0;
+      historyPage = Number(data && data.page) || 1;
       if(!entries.length){
         body.innerHTML = '<tr><td colspan="5" class="history-empty">Chưa có lịch sử chỉnh sửa phù hợp.</td></tr>';
       } else {
@@ -1763,6 +1775,10 @@
       if(action) params.set('action', action);
       if(from) params.set('from', from);
       if(to) params.set('to', to);
+      params.set('sorts', JSON.stringify(historySorts));
+      document.getElementById('historyPagerInfo').textContent = 'Đang tải...';
+      document.getElementById('historyPrevBtn').disabled = true;
+      document.getElementById('historyNextBtn').disabled = true;
       const seq = ++historyRequestSeq;
       fetch('/api/admin/audit-log?' + params.toString(), { credentials: 'same-origin' })
         .then(res => {
@@ -1772,6 +1788,7 @@
         .then(data => { if(seq === historyRequestSeq) renderAuditHistory(data); })
         .catch(err => {
           if(seq !== historyRequestSeq) return;
+          document.getElementById('historyPagerInfo').textContent = '';
           console.error('Lỗi tải lịch sử chỉnh sửa:', err);
           document.getElementById('historyTableBody').innerHTML =
             '<tr><td colspan="5" class="history-empty" style="color:var(--red);">Không có quyền truy cập hoặc lỗi kết nối.</td></tr>';

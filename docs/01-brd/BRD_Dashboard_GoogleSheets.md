@@ -664,4 +664,10 @@ Thiết kế triển khai: public/shared/table-controls.js cung cấp nextSorts 
 
 Kế hoạch kiểm chứng: (1) test hồi quy nhiều lớp, bằng nhau/NULL, chu kỳ/bỏ lớp và lưu-khôi phục; (2) tích hợp nhóm Dashboard/Nhân sự/Tài khoản, nhóm báo cáo phân trang, nhóm Thu mua/VAT/VT/Marketing và chi tiết kiểm kê; (3) chạy test toàn bộ liên quan, kiểm trình duyệt sáng/tối, cập nhật graphify và CURRENT. Không thay nguồn dữ liệu hoặc chạy migration.
 
-Cập nhật gần nhất: 07/11/2026.
+## 08/11/2026 — Bảng dữ liệu lớn
+
+Mục tiêu nghiệp vụ: bảng nhiều dòng tải nhanh hơn nhưng người dùng vẫn tìm, sắp xếp và xuất được trên toàn bộ dữ liệu được phép xem; các màn tính toán/thao tác (đặt hàng, kiểm kê, xuất kho) giữ đủ dữ liệu để không sai số.
+
+- Chọn vùng ô kiểu Excel (08/11/2026): người dùng bôi đen khối ô (và nhiều khối bằng Ctrl) trên mọi bảng để xem ngay tổng / trung bình / đếm và chép sang Excel mà không phải xuất file; không đổi dữ liệu. Cũng như Excel, người dùng có thể xóa (Delete), cắt (Ctrl+X) và dán khối từ Excel (Ctrl+V) lên các ô sửa được; riêng bảng VT Hà Nội / VT Sài Gòn lưu thẳng vào Ghi chú / Ngày về / Vị trí.
+
+Cập nhật gần nhất: 08/11/2026.

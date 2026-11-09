@@ -77,6 +77,7 @@
   const ORDER_POLL_MS = 30000;
   const orders = { sessionId: null, data: null, checking: false, refreshed: null };
   const detail = { code: null };
+  let exporting = false;
   let user = null;
 
   // Chỉ làm tròn khi hiển thị; dữ liệu tính toán, sắp xếp và ô đang sửa giữ độ chính xác gốc.
@@ -156,11 +157,10 @@
       // Hỏi số đơn TEAM trước khi tải bảng: đơn về giữa hai lần gọi thì lượt hỏi sau vẫn phát hiện được.
       const statusLoad = sessionIsLive(sessionId) ? fetchOrderStatus(sessionId) : Promise.resolve(null);
       const { response, payload } = await request(API + '/sessions/' + sessionId + '/board');
-      const orderStatus = await statusLoad;
       if (version !== state.loadVersion) return;
       if (!response.ok) throw new Error(payload.error || 'Không tải được bảng đối chiếu.');
       state.board = payload;
-      applyOrderStatus(sessionId, orderStatus);
+      if (orders.sessionId !== sessionId) applyOrderStatus(sessionId, null);
       state.canEdit = !!payload.canEdit;
       state.canClose = !!payload.canClose;
       $('stStatus').textContent = '';
@@ -168,6 +168,13 @@
       startLive(sessionId);
       render({ keepOrder: background });
       if (detail.code) renderDetail();
+      // Thong tin don la phan phu: API cham khong duoc chan bang da tai xong.
+      statusLoad.then(orderStatus => {
+        if (version !== state.loadVersion || sessionId !== state.sessionId || !orderStatus) return;
+        applyOrderStatus(sessionId, orderStatus);
+        renderSessionMeta(state.board.session);
+        renderOrdersNote(state.board.session);
+      });
     } catch (error) {
       if (version !== state.loadVersion) return;
       $('stStatus').textContent = error.message;
@@ -447,11 +454,7 @@
     return kept.concat(visibleRows().filter(row => !known.has(row.code)));
   }
 
-  function render({ keepOrder = false } = {}) {
-    const board = state.board;
-    const session = board && board.session;
-    if (session && session.branch !== state.headBranch) renderHead(session.branch);
-    $('stTable').dataset.editable = String(Boolean(editable())); // tiêu đề cột sửa được chỉ tô màu khi thật sự sửa được
+  function renderSessionMeta(session) {
     const orderStatus = currentOrderStatus(session);
     $('stSessionMeta').textContent = session
       ? dateVn(session.dateFrom) + (session.dateTo !== session.dateFrom ? ' – ' + dateVn(session.dateTo) : '')
@@ -461,6 +464,14 @@
         + (orders.refreshed && orders.refreshed.sessionId === session.id ? ' · Đơn Kiot cập nhật lúc ' + time(orders.refreshed.at).slice(0, 5) : '')
         + (session.reloadedAt ? ' · Nạp lại bởi ' + (session.reloadedByName || '—') + ' ' + time(session.reloadedAt) : '')
       : '';
+  }
+
+  function render({ keepOrder = false } = {}) {
+    const board = state.board;
+    const session = board && board.session;
+    if (session && session.branch !== state.headBranch) renderHead(session.branch);
+    $('stTable').dataset.editable = String(Boolean(editable())); // tiêu đề cột sửa được chỉ tô màu khi thật sự sửa được
+    renderSessionMeta(session);
     const active = Boolean(session && !session.cancelled);
     $('stEditDatesButton').hidden = !(active && session.status === 'open' && state.canEdit);
     $('stRefreshOrdersButton').hidden = !(active && session.status === 'open');
@@ -2007,23 +2018,41 @@
       'Đọc tab KIỂM KÊ HN T10 (chỉ đọc) và lưu thành một đợt đã đóng. Chỉ nạp được một lần.'));
     $('stImportSgButton').addEventListener('click', importSheet('sg', 'Nạp KIỂM SG từ sheet?',
       'Đọc tab KIỂM SG (chỉ đọc) và lưu thành một đợt Sài Gòn đã đóng, tự đối chiếu với đợt T10 Hà Nội. Chỉ nạp được một lần.'));
-    $('stExportButton').addEventListener('click', async () => {
+    $('stExportButton').addEventListener('click', () => {
       if (!state.board) return;
       const codes = visibleRows().map(row => row.code);
-      const response = await fetch(API + '/sessions/' + state.sessionId + '/export', Object.assign({ credentials: 'same-origin' }, jsonOptions('POST', { codes })));
-      if (!response.ok) { notify('Không xuất được Excel.', true); return; }
-      await saveDownload(response, 'kiem-ke.xlsx');
+      exportFile($('stExportButton'), '/export', jsonOptions('POST', { codes }), 'kiem-ke.xlsx');
     });
-    $('stExportStatsButton').addEventListener('click', async () => {
-      if (!state.board) return;
-      const response = await fetch(API + '/sessions/' + state.sessionId + '/export-lines', { credentials: 'same-origin' });
+    $('stExportStatsButton').addEventListener('click', () => {
+      exportFile($('stExportStatsButton'), '/export-lines', {}, 'kiem-ke-thong-ke.xlsx');
+    });
+  }
+
+  async function exportFile(button, suffix, options, fallbackName) {
+    if (!state.board || exporting) return;
+    exporting = true;
+    const label = button.textContent;
+    const buttons = [$('stExportButton'), $('stExportStatsButton')];
+    buttons.forEach(node => { node.disabled = true; });
+    button.setAttribute('aria-busy', 'true');
+    button.textContent = 'Đang xuất…';
+    notify('Đang tạo file Excel, vui lòng chờ…');
+    try {
+      const response = await fetch(API + '/sessions/' + state.sessionId + suffix, Object.assign({ credentials: 'same-origin' }, options));
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        notify(payload.error || 'Không xuất được file thống kê.', true);
-        return;
+        throw new Error(payload.error || 'Không xuất được file Excel. Vui lòng thử lại.');
       }
-      await saveDownload(response, 'kiem-ke-thong-ke.xlsx');
-    });
+      await saveDownload(response, fallbackName);
+      notify('Đã bắt đầu tải file Excel.');
+    } catch (error) {
+      notify(error.message || 'Không tải được file Excel. Vui lòng thử lại.', true);
+    } finally {
+      exporting = false;
+      buttons.forEach(node => { node.disabled = false; });
+      button.removeAttribute('aria-busy');
+      button.textContent = label;
+    }
   }
 
   async function saveDownload(response, fallbackName) {

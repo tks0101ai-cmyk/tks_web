@@ -32,24 +32,43 @@ function createExpectedArrivalsRouter({ repository = expectedRepository } = {}) 
   };
 
   router.get('/', ...guard, handle('Không lấy được bảng Dự kiến hàng về.', async (req, res) => {
-    const data = await repository.getExpected();
     const fullAccess = canSeePrices(req);
     const otherNoteAccess = canSeeOtherNote(req);
+    if (repository.queryExpected && (req.query.page !== undefined || req.query.pageSize !== undefined)) {
+      const data = await repository.queryExpected(req.query, { fullAccess, otherNoteAccess });
+      return res.status(200).json({ ...data, fullAccess, otherNoteAccess });
+    }
+    const data = await repository.getExpected();
     res.status(200).json({ ...data, rows: stripOtherNote(stripPriceFields(data.rows, fullAccess), otherNoteAccess), fullAccess, otherNoteAccess });
   }));
 
-  const loadFiltered = async req => {
+  router.get('/detail', ...guard, handle('Không lấy được chi tiết hàng dự kiến.', async (req, res) => {
     const data = await repository.getExpected();
     const fullAccess = canSeePrices(req);
     const otherNoteAccess = canSeeOtherNote(req);
+    const code = String(req.query.code || '').trim().toLocaleLowerCase('vi-VN');
+    // Redact the complete reader before selecting a product, preserving global anonymous source IDs.
+    const rows = stripOtherNote(stripPriceFields(data.rows, fullAccess), otherNoteAccess)
+      .filter(row => code && String(row.productCode || '').trim().toLocaleLowerCase('vi-VN') === code);
+    res.json({ rows, meta: data.meta, fullAccess, otherNoteAccess });
+  }));
+
+  const loadFiltered = async (req, countOnly = false) => {
+    const fullAccess = canSeePrices(req);
+    const otherNoteAccess = canSeeOtherNote(req);
+    if (repository.queryExpected) {
+      const data = await repository.queryExpected(req.query, { fullAccess, otherNoteAccess, exportAll: true, countOnly });
+      return { data, fullAccess, otherNoteAccess, rows: data.rows };
+    }
+    const data = await repository.getExpected();
     const stripped = stripPriceFields(filterRows(stripOtherNote(data.rows, otherNoteAccess), fullAccess ? req.query : { ...req.query, source: '' }), fullAccess);
     return { data, fullAccess, otherNoteAccess, rows: sortRowsByLabel(stripped, req.query, { fullAccess, otherNoteAccess }) };
   };
 
   // Danh sach truong cho hop thoai "Xuat file" dung chung (cung dang /api/business-report/export/fields).
   router.get('/export/fields', ...guard, handle('Không lấy được danh sách trường xuất.', async (req, res) => {
-    const { rows, fullAccess, otherNoteAccess } = await loadFiltered(req);
-    res.json(exportFieldsFor(rows, { fullAccess, otherNoteAccess }));
+    const { data, rows, fullAccess, otherNoteAccess } = await loadFiltered(req, true);
+    res.json(exportFieldsFor({ length: data.totalRows === undefined ? rows.length : data.totalRows }, { fullAccess, otherNoteAccess }));
   }));
 
   router.get('/export', ...guard, handle('Không xuất được bảng Dự kiến hàng về.', async (req, res) => {

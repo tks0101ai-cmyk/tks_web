@@ -6,6 +6,22 @@ const {
   getProductReport, getProductReportCustomers, PRODUCT_REPORT_PRICE_KEYS, __test__
 } = require('./productReportRepository');
 
+test('derived product query pages after search/sort, full sums and hidden field restrictions', () => {
+  const { queryProductReport } = require('./productReportRepository');
+  const data = { computedAt: 'stamp', rows: Array.from({ length: 205 }, (_, i) => ({ code: 'P' + i, name: 'Áo đỏ', availableToSell: i + .5, revenue90d: 999 })) };
+  const page = queryProductReport(data, { page: 2, pageSize: 100, sorts: [{ key: 'availableToSell', dir: 'desc' }], q: 'ao do' }, ['revenue90d']);
+  assert.equal(page.totalRows, 205);
+  assert.equal(page.rows[0].code, 'P104');
+  assert.equal(page.summary.availableToSell, 21012.5);
+  assert.equal('revenue90d' in page.summary, false);
+  assert.equal('revenue90d' in page.rows[0], false);
+  assert.equal(queryProductReport(data, { q: '999' }, ['revenue90d']).totalRows, 0);
+  assert.equal(data.rows[0].revenue90d, 999);
+  const codes = queryProductReport(data, { qmode: 'codes', q: 'P1 P201 absent', pageSize: 1 });
+  assert.equal(codes.totalRows, 2);
+  assert.deepEqual(codes.search.missingCodes, ['absent']);
+});
+
 test('getProductReport chi giu ma dang kinh doanh o it nhat mot co so, ke ca het ton/chua ban', async () => {
   const { PGlite } = require('@electric-sql/pglite');
   const fs = require('node:fs');

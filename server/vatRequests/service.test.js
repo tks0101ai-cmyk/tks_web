@@ -686,3 +686,62 @@ test('sheet loi: ma chi co trong sheet bi bao khong tim thay, ma KiotViet van or
     assert.deepEqual((await service.suggestProducts('cbb')), []);
   } finally { await db.close(); }
 });
+
+test('phan trang (slice 6): sap / gop / tim tren TOAN BO ket qua roi moi cat trang; so lieu tu nguon day du; Excel khong cat trang', async () => {
+  const { db, service } = await fixture();
+  try {
+    const ids = [];
+    // q10 xoan, q20 daquan, q30 xoan, q40 daquan, q50 xoan
+    for (let i = 0; i < 5; i++) ids.push((await service.create(SALE, { ...NEW_REQUEST, quantity: (i + 1) * 10, productCode: i % 2 ? '26daquan' : '014xoan' })).id);
+    await setStatus(db, ids[0], '3'); // SLG can khai cua 014xoan = 10, dong nay khong nam tren trang dang xem
+    await db.query(`UPDATE vat_requests SET arrival_date = '2026-11-01' WHERE id = $1`, [ids[1]]);
+    const all = (await service.list(KT)).rows.map(r => r.id);
+    assert.equal((await service.list(KT)).totalRows, undefined, 'khong xin trang -> tra du nhu cu');
+
+    const pageOf = async (paging, user = KT, filters = {}) => service.list(user, { ...filters, paging: { pageSize: '2', ...paging } });
+    const pages = [];
+    for (const page of ['1', '2', '3']) pages.push(...(await pageOf({ page })).rows.map(r => r.id));
+    assert.deepEqual(pages, all, 'noi cac trang = dung thu tu danh sach day du');
+    const last = await pageOf({ page: '99' });
+    assert.deepEqual([last.page, last.totalRows, last.pageSize, last.rows.map(r => r.id)], [3, 5, 2, [all[4]]], 'kep ve trang cuoi');
+    const empty = await pageOf({ page: '4' }, KT, { statuses: ['2'] });
+    assert.deepEqual([empty.page, empty.totalRows, empty.rows], [1, 0, []]);
+
+    const byQty = await pageOf({ page: '1', sorts: JSON.stringify([{ key: 'quantity', dir: 'desc' }]) });
+    assert.deepEqual(byQty.rows.map(r => r.quantity), [50, 40]);
+    assert.deepEqual(byQty.sorts, [{ key: 'quantity', dir: 'desc' }]);
+    // Ngay ve: co ngay len truoc, o trong cuoi; bang nhau -> id giam dan (on dinh giua cac trang).
+    const byArrival = await pageOf({ page: '1', pageSize: '5', sorts: JSON.stringify([{ key: 'arrivalDate', dir: 'desc' }]) });
+    assert.deepEqual(byArrival.rows.map(r => r.id), [ids[1], ids[4], ids[3], ids[2], ids[0]]);
+    // Cot so lieu: sale khong sap duoc (bo qua), KT sap duoc tren so lieu cua moi dong khop.
+    assert.deepEqual((await pageOf({ page: '1', sorts: JSON.stringify([{ key: 'pendingQty', dir: 'desc' }]) }, SALE)).sorts, []);
+    const byPending = await pageOf({ page: '1', pageSize: '3', sorts: JSON.stringify([{ key: 'pendingQty', dir: 'desc' }, { key: 'quantity', dir: 'asc' }]) });
+    assert.deepEqual(byPending.rows.map(r => r.id), [ids[0], ids[2], ids[4]], 'xoan (can khai 10) truoc daquan (0)');
+
+    // So lieu chi gom ma tren trang nhung tinh tu du lieu day du (dong trang thai 3 o trang khac van duoc cong).
+    const top = await pageOf({ page: '1', pageSize: '1', sorts: JSON.stringify([{ key: 'quantity', dir: 'desc' }]) });
+    assert.deepEqual(top.rows.map(r => r.id), [ids[4]]);
+    assert.deepEqual(Object.keys(top.metrics), ['014xoan']);
+    assert.equal(top.metrics['014xoan'].pendingInsertQty, 10);
+
+    // Gop theo ma: dem so yeu cau cua ma tren toan ket qua, khong chi trang nay; sale khong gop duoc.
+    const grouped = await pageOf({ page: '1', group: true });
+    assert.equal(grouped.group, true);
+    assert.deepEqual(grouped.rows.map(r => r.productKey), ['014xoan', '014xoan']);
+    assert.deepEqual(grouped.groupCounts, { '014xoan': 3 });
+    assert.equal((await pageOf({ page: '1', group: true }, SALE)).group, false);
+
+    // Tim tren toan bo ket qua truoc khi cat trang.
+    const found = await pageOf({ page: '1' }, KT, { q: 'quang' });
+    assert.deepEqual([found.totalRows, found.rows.map(r => r.productKey)], [2, ['26daquan', '26daquan']]);
+
+    // Dong lay tu trang khac van giu version rieng: version cu -> 409, khong ghi.
+    await assert.rejects(service.bulkUpdate(KT, { items: [{ id: ids[0], version: 1, changes: { accountantNote: 'x' } }] }),
+      { statusCode: 409, code: 'VERSION_CONFLICT' });
+
+    // Excel luon la toan bo ket qua bo loc, ke ca khi client lo gui trang.
+    const exported = await service.exportList(KT, { paging: { page: '2', pageSize: '2' } });
+    assert.equal(exported.rows.length, 5);
+    assert.equal(exported.totalRows, undefined);
+  } finally { await db.close(); }
+});

@@ -39,6 +39,40 @@ async function request(path, { permissions = ['reports.business', 'reports.produ
   }
 }
 
+test('paged business products filter/sort full snapshot, full KPI, codes, clamp and export parity', async () => {
+  const snap = serviceSnapshot();
+  snap.products = Array.from({ length: 205 }, (_, i) => ({ month: snap.currentMonth, productCode: 'P' + i, productName: 'Áo đỏ', netRevenue: i + .5 }));
+  const repo = { snapshot: async () => snap };
+  const params = new URLSearchParams({ page: 2, pageSize: 100, q: 'ao do', sorts: JSON.stringify([{ key: 'current', dir: 'desc' }]) });
+  const result = await request('/products?' + params, { repo });
+  assert.equal(result.status, 200);
+  assert.equal(result.data.totalRows, 205);
+  assert.equal(result.data.rows.length, 100);
+  assert.equal(result.data.rows[0].code, 'P104');
+  assert.equal(result.data.summary.current, 21012.5);
+  const codes = await request('/products?pageSize=1&qmode=codes&q=P1,P204,missing', { repo });
+  assert.equal(codes.data.totalRows, 2);
+  assert.deepEqual(codes.data.search.missingCodes, ['missing']);
+  const empty = await request('/products?page=999&q=absent', { repo });
+  assert.equal(empty.data.page, 1);
+  assert.equal(empty.data.totalRows, 0);
+  params.set('kind', 'products'); params.set('columns', 'code,current');
+  const exported = await request('/export?' + params, { repo, permissions: ['reports.products.growth', 'reports.export'] });
+  const workbook = new ExcelJS.Workbook(); await workbook.xlsx.load(exported.data);
+  assert.equal(workbook.worksheets[0].rowCount, 206);
+  assert.equal(workbook.worksheets[0].getCell('A2').value, 'P204');
+});
+
+test('paged customers enrich before level filtering and linked catalogs preserve full sales', async () => {
+  const result = await request('/customers?pageSize=1&level=' + encodeURIComponent('Lớn') + '&sale=Khang');
+  assert.equal(result.status, 200);
+  assert.equal(result.data.rows.length, 1);
+  assert.ok(result.data.totalRows > 1);
+  assert.ok(result.data.filters.sales.includes('Khang'));
+  assert.equal(result.data.rows[0].priceLevel, 'Lớn');
+  assert.equal('editors' in result.data.rows[0], false);
+});
+
 test('GET /sales, /customers, /products: quyen theo tung muc', async () => {
   const ok = await request('/sales');
   assert.equal(ok.status, 200);

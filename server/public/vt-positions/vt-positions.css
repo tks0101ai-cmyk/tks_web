@@ -58,6 +58,8 @@
 .vt-badge.is-ack{border-color:color-mix(in srgb,var(--green,#2e9e5b) 60%,transparent);background:color-mix(in srgb,var(--green,#2e9e5b) 12%,transparent);color:var(--green,#2e9e5b)}
 .vt-badge-icon{width:12px;height:12px;flex:none}
 .vt-table tbody tr.vt-row{cursor:pointer}
+/* Đang tải trang/tìm/lọc mới: giữ bảng cũ nhưng làm mờ để không bị giật trắng. */
+.vt-table.is-stale tbody{opacity:.5;transition:opacity .15s .12s;cursor:progress}
 /* Ô nhập trực tiếp: trông y như chữ thường (không nền, viền, bóng, đổi màu); bấm vào chỉ hiện con trỏ nhập. */
 .vt-table[data-editable="true"] td[data-field="notes"],.vt-table[data-editable="true"] td[data-field="arrivalDate"],.vt-table[data-editable="true"] td[data-field="location"]{cursor:text}
 .vt-table input.vt-inline{display:block;width:100%;min-width:0;margin:0;padding:0;border:0;border-radius:0;outline:0;box-shadow:none;background:transparent;color:inherit;font:inherit;letter-spacing:inherit;line-height:inherit;height:auto;appearance:none;-webkit-appearance:none}

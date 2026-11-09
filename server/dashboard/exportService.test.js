@@ -15,6 +15,31 @@ const productReportRepository = require('./productReportRepository');
 const catalog = require('./exportFieldCatalog');
 const exportService = require('./exportService');
 
+test('canonical product export sorts/searches full authorized dataset before column selection', async () => {
+  const original = productReportRepository.getProductReport;
+  productReportRepository.getProductReport = async () => ({ rows: Array.from({ length: 205 }, (_, i) => ({ code: 'P' + i, name: 'Áo', qtySold30d: i + .5, priceHanoi: 999 })), containerSync: { available: false } });
+  try {
+    const request = { tableKey: 'overview.productReport', columns: { product_report: ['code'] }, tableSorts: [{ key: 'qtySold30d', dir: 'desc' }], tableSearch: { query: 'ao' } };
+    const data = await exportService.getExportDataset(request);
+    assert.equal(data.worksheets[0].rows.length, 205);
+    assert.equal(data.worksheets[0].rows[0].code, 'P204');
+    const secret = await exportService.getExportDataset({ ...request, tableSearch: { query: '999' } });
+    assert.equal(secret.worksheets[0].rows.length, 0);
+    const hiddenSort = await exportService.getExportDataset({ ...request, tableSorts: [{ key: 'priceHanoi', dir: 'desc' }] });
+    assert.equal(hiddenSort.worksheets[0].rows[0].code, 'P0');
+  } finally { productReportRepository.getProductReport = original; }
+});
+
+test('canonical transaction export uses raw timestamp and full search before selecting fields', async () => {
+  const transactions = Array.from({ length: 205 }, (_, i) => ({ code: 'HD' + i, customer: 'Khách A', timeMs: 205 - i, status: 'Hoàn thành' }));
+  const rowsBySheet = { [CONFIG.SHEET_INVOICES]: transactions.map(row => sourceRow('invoices', { ma_hoa_don: row.code, khach_hang: row.customer })) };
+  await withStubs({ dashboard: { invoices: { transactionsReport: { transactions } } }, rowsBySheet }, async () => {
+    const dataset = await exportService.getExportDataset({ tableKey: 'overview.transactions', columns: { transactions: ['ma_hoa_don'] }, tableSorts: [{ key: 'timeMs', dir: 'asc' }], tableSearch: { query: 'khach a' } }, 'Hà Nội');
+    assert.equal(dataset.worksheets[0].rows.length, 205);
+    assert.equal(dataset.worksheets[0].rows[0].ma_hoa_don, 'HD204');
+  });
+});
+
 // 35 cột Báo cáo hàng hóa theo ĐÚNG thứ tự sheet BC CHUNG (= thứ tự cột bảng trên màn hình): [khóa, nhãn, kiểu].
 const PRODUCT_REPORT_SPEC = [
   ['code', 'Mã sản phẩm', 'text'], ['name', 'Tên sản phẩm', 'general'],

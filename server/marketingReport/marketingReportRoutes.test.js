@@ -120,3 +120,22 @@ test('writing Khách mới/Ghi chú needs reports.marketing.edit and only that r
 });
 
 test('Marketing cannot write even with edit feature enabled',async()=>{for(const path of ['/monthly/row','/monthly/rows/1','/aliases']){const r=await request(path,{role:'Marketing',permissions:['reports.marketing','reports.marketing.edit'],method:'PUT',body:{version:'1'}});assert.equal(r.status,403);assert.equal(r.calls.length,0);}const r=await request('/monthly/rows',{role:'Marketing',permissions:['reports.marketing','reports.marketing.edit'],method:'POST',body:{}});assert.equal(r.status,403);});
+
+
+test('row API separates social page from pagination and export always reads the full filtered snapshot',async()=>{
+  const rows=Array.from({length:230},(_,i)=>({key:'r'+i,customer:i>=100?'Đặng An':'Khác',revenue:i,sale:'Lan',page:'HN'}));
+  const calls=[];
+  const service={report:async(kind,query)=>{calls.push({...query});return {kind,rows,kpis:[{label:'Khách chốt',value:230}],summaryRows:[],filters:{pages:['HN']}};}};
+  const page=await request('/monthly?page=HN&pageNumber=2&pageSize=10&q=dang%20an&sorts='+encodeURIComponent(JSON.stringify([{key:'revenue',dir:'desc'}])),{service});
+  assert.equal(page.status,200);assert.equal(page.data.totalRows,130);assert.equal(page.data.page,2);assert.equal(page.data.rows[0].revenue,219);assert.equal(page.data.kpis[0].value,130);assert.equal(calls[0].page,'HN');
+  const exported=await request('/export/fields?kind=monthly&table=rows&page=HN&pageNumber=2&pageSize=10&q=dang%20an',{permissions:['reports.marketing','reports.export'],service});
+  assert.equal(exported.status,200);assert.equal(exported.data.worksheets[0].rowCount,130);assert.equal(calls[1].page,'HN');assert.equal(calls[1].pageNumber,undefined);assert.equal(calls[1].pageSize,undefined);
+});
+
+test('detail groups page independently while reconciliation and KPI retain full source scope',async()=>{
+  const groups=[{kind:'phones',rows:Array.from({length:220},(_,i)=>({key:'p'+i,phone:'0'+i}))},{kind:'monthly',rows:Array.from({length:150},(_,i)=>({customer:'Khách '+i,revenue:i}))}];
+  const query=encodeURIComponent(JSON.stringify({0:{pageNumber:9,pageSize:100},1:{q:'Khách 149'}}));
+  const result=await request('/detail?kind=phones&groupQueries='+query,{service:{detail:async()=>({groups,kpis:[{label:'Dòng chi tiết',value:220}],reconciliation:{found:{rows:220}}})}});
+  assert.equal(result.status,200);assert.equal(result.data.groups[0].page,3);assert.equal(result.data.groups[0].totalRows,220);assert.equal(result.data.groups[0].rows.length,20);
+  assert.equal(result.data.groups[1].page,1);assert.equal(result.data.groups[1].totalRows,1);assert.equal(result.data.kpis[0].value,220);assert.equal(result.data.reconciliation.found.rows,220);
+});

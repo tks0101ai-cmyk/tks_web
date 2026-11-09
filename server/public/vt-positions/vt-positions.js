@@ -33,13 +33,14 @@
   const signatures = new WeakMap();
   const setText = (node, text) => { if (node.textContent !== text) node.textContent = text; };
   const QUANTITY_FORMAT = new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 });
-  const newState = () => ({ rows: [], query: '', page: 1, sorts: [], loading: false, error: '', warnFilter: 'all', canEdit: null, canExport: false, canDeleteHistory: false });
+  const newState = () => ({ rows: [], serverPaged: false, totalRows: 0, summary: null, warningCounts: {}, query: '', page: 1, sorts: [], loading: false, error: '', warnFilter: 'all', canEdit: null, canExport: false, canDeleteHistory: false });
   const state = { hn: newState(), sg: newState() };
   let user, activeTab, allowedTabs, requestVersion = 0;
+  let queryTimer = null, queryController = null;
   let screenMode, visibleFields, columnPreferences = {}, canEditPermission = false;
   const importState = { busy: false };
   const stockOutState = { busy: false };
-  const history = { rows: [], nextBefore: null, branch: '', version: 0 };
+  const history = { page: 1, pageSize: 200, totalRows: 0, serverPaged: false, timer: null, controller: null, rows: [], nextBefore: null, branch: '', version: 0 };
   // Hộp chi tiết một dòng: row = bản đang mở (để lấy version), version chống tải lịch sử cũ ghi đè.
   const detail = { id: null, tab: '', row: null, fresh: null, rows: [], nextBefore: null, version: 0, busy: false };
 
@@ -229,6 +230,7 @@
     fields().forEach(field => {
       const td = document.createElement('td');
       td.dataset.field = field;
+      if (DETAIL_FIELDS.includes(field) && editable()) td.dataset.cellEditable = '';
       if (field === 'quantity' || field === 'available' || field === 'kiotQuantity') {
         td.textContent = formatNumber(row[field]);
         // Có thể bốc = SL kho − phần các đơn Đang bốc đang giữ chỗ; tooltip nói rõ phần giữ chỗ.
@@ -317,7 +319,7 @@
 
   // Cập nhật nhãn/số đếm của bộ lọc cảnh báo tại chỗ (giữ node <option> để danh sách đang mở không bị đóng).
   function syncWarnOptions(select, current) {
-    const wanted = new Set([...Object.keys(WARNING_LABELS), ...current.rows.flatMap(warningsOf)]);
+    const wanted = new Set([...Object.keys(WARNING_LABELS), ...Object.keys(current.warningCounts || {}), ...current.rows.flatMap(warningsOf)]);
     if (current.warnFilter.startsWith('type:')) wanted.add(current.warnFilter.slice(5));
     const existing = new Map();
     select.querySelectorAll('option[data-warning-type]').forEach(option => existing.set(option.dataset.warningType, option));
@@ -330,7 +332,7 @@
         option.dataset.warningType = code;
         select.appendChild(option);
       }
-      setText(option, warningLabel(code) + ' (' + formatNumber(current.rows.filter(row => warningsOf(row).includes(code)).length) + ')');
+      setText(option, warningLabel(code) + ' (' + formatNumber(current.serverPaged ? current.warningCounts[code] || 0 : current.rows.filter(row => warningsOf(row).includes(code)).length) + ')');
     });
   }
 
@@ -341,37 +343,42 @@
     $('vtTable').dataset.editable = String(canEdit);
     $('vtImportButton').hidden = !canEdit;
     $('vtExportButton').hidden = state[activeTab].canExport !== true;
-    const rows = sortRows(filterRows(current.rows, current.query, current.warnFilter), current.sorts);
+    const rows = current.serverPaged ? current.rows : sortRows(filterRows(current.rows, current.query, current.warnFilter), current.sorts);
     updateSortHeaders();
     // Bộ lọc cảnh báo: số đếm tính trên toàn bộ dòng của cơ sở (không theo từ khóa tìm).
     const select = $('vtWarnFilter');
-    const warned = current.rows.filter(row => warningsOf(row).length > 0).length;
+    const warned = current.serverPaged ? current.summary.warned : current.rows.filter(row => warningsOf(row).length > 0).length;
     setText(select.querySelector('option[value="warn"]'), 'Cảnh báo (' + formatNumber(warned) + ')');
-    setText(select.querySelector('option[value="valid"]'), 'Hợp lệ (' + formatNumber(current.rows.length - warned) + ')');
+    setText(select.querySelector('option[value="valid"]'), 'Hợp lệ (' + formatNumber(current.serverPaged ? current.summary.valid : current.rows.length - warned) + ')');
     syncWarnOptions(select, current);
     if (select.value !== current.warnFilter) select.value = current.warnFilter;
     select.parentElement.dataset.filter = current.warnFilter;
     select.disabled = current.loading || !!current.error;
-    const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+    const totalRows = current.serverPaged ? current.totalRows : rows.length;
+    const pageCount = Math.max(1, Math.ceil(totalRows / pageSize));
     if (!current.loading && !current.error) current.page = Math.min(current.page, pageCount);
     const start = (current.page - 1) * pageSize;
     const body = $('vtRows');
     const search = $('vtSearch');
     if (search.value !== current.query) search.value = current.query;
-    search.disabled = current.loading || !!current.error;
+    search.disabled = false;
     $('vtTable').setAttribute('aria-busy', String(current.loading));
     const status = $('vtStatus');
     status.dataset.error = String(!!current.error);
+    // Đổi trang/tìm/lọc/sắp xếp: giữ bảng cũ (làm mờ) tới khi dữ liệu mới về, không xóa trắng bảng.
+    const stale = current.loading && !current.error && current.serverPaged && current.rows.length > 0 && body.children.length > 0;
+    $('vtTable').classList.toggle('is-stale', stale);
+    if (stale) { status.textContent = ''; return; }
     status.textContent = current.loading ? 'Đang tải vị trí hàng…' : current.error ||
       (current.rows.length === 0 ? 'Chưa có dữ liệu vị trí hàng.' : rows.length === 0 ? (current.warnFilter === 'warn' ? 'Không có dòng cảnh báo.' : current.warnFilter === 'valid' ? 'Không có dòng hợp lệ.' : 'Không tìm thấy hàng phù hợp.') : '');
     const ready = !current.loading && !current.error && rows.length > 0;
     $('vtPager').hidden = !ready;
     if (!ready) { body.replaceChildren(); return; }
 
-    const changed = reconcileRows(body, rows.slice(start, start + pageSize), options.background === true);
+    const changed = reconcileRows(body, current.serverPaged ? rows : rows.slice(start, start + pageSize), options.background === true);
     // Cập nhật nền mà không đổi gì thì khỏi áp lại cấu hình bảng.
     if (window.TKSTables && (changed || options.background !== true)) window.TKSTables.refresh($('vtTable'));
-    $('vtCount').textContent = `${formatNumber(start + 1)}–${formatNumber(Math.min(start + pageSize, rows.length))} / ${formatNumber(rows.length)} dòng`;
+    $('vtCount').textContent = `${formatNumber(start + 1)}–${formatNumber(Math.min(start + pageSize, totalRows))} / ${formatNumber(totalRows)} dòng`;
     $('vtPage').textContent = `Trang ${current.page} / ${pageCount}`;
     if ($('vtPageSize').value !== String(pageSize)) $('vtPageSize').value = String(pageSize);
     $('vtPrevious').disabled = current.page === 1;
@@ -389,6 +396,7 @@
   const jsonOptions = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
   function applyResult(tab, payload) {
+    clearListCache();
     const rows = state[tab].rows;
     if (payload.deleted) { state[tab].rows = rows.filter(row => String(row.id) !== String(payload.id)); return; }
     if (!payload.row) return;
@@ -1237,11 +1245,11 @@
     $('vtExportButton').disabled = true;
     try {
       const current = state[tab];
-      const rows = sortRows(filterRows(current.rows, current.query, current.warnFilter), current.sorts);
+      const rows = current.serverPaged ? current.rows : sortRows(filterRows(current.rows, current.query, current.warnFilter), current.sorts);
       const response = await fetch(API + '/export?branch=' + tab.toUpperCase(), {
         method: 'POST', credentials: 'same-origin', cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: rows.map(row => row.id) })
+        body: JSON.stringify(current.serverPaged ? { query: { q: current.query, warnFilter: current.warnFilter, sorts: current.sorts } } : { ids: rows.map(row => row.id) })
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -1293,9 +1301,9 @@
   function renderHistory() {
     const search = $('vtHistorySearch').value;
     const action = $('vtHistoryAction').value;
-    let rows = history.rows.filter(entry => !action || entry.action === action);
+    let rows = history.serverPaged ? history.rows : history.rows.filter(entry => !action || entry.action === action);
     const text = entry => [entry.actorName, entry.code, entry.location, ACTION_LABELS[entry.action], FIELD_LABELS[entry.field] || entry.field, historyValue(entry, 'old'), historyValue(entry, 'new')].join(' ');
-    if (search.trim()) rows = window.TKSFuzzySearch ? window.TKSFuzzySearch.filter(rows, search, text) : rows.filter(entry => normalizeSearch(text(entry)).includes(normalizeSearch(search)));
+    if (!history.serverPaged && search.trim()) rows = window.TKSFuzzySearch ? window.TKSFuzzySearch.filter(rows, search, text) : rows.filter(entry => normalizeSearch(text(entry)).includes(normalizeSearch(search)));
     const body = $('vtHistoryRows');
     body.replaceChildren();
     if (!rows.length) {
@@ -1326,8 +1334,8 @@
       body.appendChild(tr);
     });
     const more = history.nextBefore !== null && history.nextBefore !== undefined;
-    const count = rows.length === history.rows.length ? String(history.rows.length) : rows.length + '/' + history.rows.length;
-    $('vtHistorySubtitle').textContent = `${count} thay đổi${more ? ' đã tải' : ''}`;
+    const count = history.serverPaged ? String(history.totalRows) : rows.length === history.rows.length ? String(history.rows.length) : rows.length + '/' + history.rows.length;
+    $('vtHistorySubtitle').textContent = `${count} thay đổi${more ? ' · ' + history.rows.length + ' đã tải' : ''}`;
     $('vtHistoryMore').hidden = !more;
     $('vtHistoryExport').hidden = state[history.branch.toLowerCase()].canExport !== true;
     $('vtHistoryPurge').hidden = state[history.branch.toLowerCase()].canDeleteHistory !== true;
@@ -1469,14 +1477,37 @@
   }
 
   async function loadHistory(append) {
+    clearTimeout(history.timer); history.timer = null;
+    if (history.controller) history.controller.abort();
+    history.controller = new AbortController();
     const version = ++history.version;
-    const before = append && history.nextBefore ? '&before=' + encodeURIComponent(history.nextBefore) : '';
-    const { response, payload } = await request(API + '/history?branch=' + history.branch + '&limit=200' + before);
-    if (version !== history.version) return;
-    if (!response.ok) { $('vtHistorySubtitle').textContent = payload.error || 'Không tải được lịch sử.'; return; }
-    history.rows = append ? history.rows.concat(payload.rows || []) : (payload.rows || []);
-    history.nextBefore = payload.nextBefore ?? null;
-    renderHistory();
+    const nextPage = append ? history.page + 1 : 1;
+    const params = new URLSearchParams({ branch: history.branch, page: String(nextPage), pageSize: String(history.pageSize),
+      q: $('vtHistorySearch').value.trim(), action: $('vtHistoryAction').value });
+    if (append && history.legacy && history.nextBefore) { params.delete('page'); params.set('limit', '200'); params.set('before', String(history.nextBefore)); }
+    $('vtHistorySubtitle').textContent = 'Đang tải…';
+    try {
+      const { response, payload } = await request(API + '/history?' + params, { signal: history.controller.signal });
+      if (version !== history.version) return;
+      if (!response.ok) { $('vtHistorySubtitle').textContent = payload.error || 'Không tải được lịch sử.'; return; }
+      history.rows = append ? [...new Map(history.rows.concat(payload.rows || []).map(row => [row.id, row])).values()] : (payload.rows || []);
+      history.serverPaged = Number.isFinite(payload.totalRows);
+      history.legacy = !history.serverPaged;
+      history.page = Number(payload.page) || nextPage;
+      history.totalRows = Number(payload.totalRows) || 0;
+      history.nextBefore = history.serverPaged ? (history.page * history.pageSize < history.totalRows ? history.page : null) : payload.nextBefore ?? null;
+      renderHistory();
+    } catch (error) {
+      if (version === history.version && error.name !== 'AbortError') $('vtHistorySubtitle').textContent = 'Không tải được lịch sử.';
+    }
+  }
+  function queryHistory(debounce) {
+    ++history.version;
+    if (history.controller) history.controller.abort();
+    clearTimeout(history.timer);
+    if (history.legacy) { renderHistory(); return; }
+    if (debounce) history.timer = setTimeout(() => loadHistory(false), 300);
+    else loadHistory(false);
   }
 
   function openHistory() {
@@ -1497,8 +1528,64 @@
     loadHistory(false);
   }
 
+  function listUrl(tab, page) {
+    const current = state[tab];
+    return API + '?' + new URLSearchParams({ branch: tab.toUpperCase(), page: String(page || current.page), pageSize: String(pageSize), q: current.query, warnFilter: current.warnFilter, sorts: JSON.stringify(current.sorts) });
+  }
+
+  // Bộ nhớ đệm các trang đã tải (khóa = URL gồm trang/tìm/lọc/sắp xếp). Hết hạn sau CACHE_TTL_MS và bị xóa khi dữ liệu có thể đã đổi
+  // (tải lại đầy đủ, tín hiệu SSE, sửa/xóa dòng); trang kế bên được tải trước ở nền để bấm Trước/Sau hiện ngay.
+  const CACHE_TTL_MS = 45000, PREFETCH_DELAY_MS = 400;
+  const listCache = new Map();
+  let cacheGeneration = 0, prefetchTimer = null;
+  const clearListCache = () => { listCache.clear(); cacheGeneration++; clearTimeout(prefetchTimer); };
+  function cacheGet(url) {
+    const entry = listCache.get(url);
+    if (entry && Date.now() - entry.time < CACHE_TTL_MS) return entry.payload;
+    listCache.delete(url);
+    return null;
+  }
+  const cachePut = (url, payload) => { listCache.set(url, { payload, time: Date.now() }); };
+  function prefetchNeighbours(tab) {
+    clearTimeout(prefetchTimer);
+    prefetchTimer = setTimeout(() => {
+      const current = state[tab];
+      if (tab !== activeTab || current.loading || !current.serverPaged) return;
+      const pageCount = Math.max(1, Math.ceil(current.totalRows / pageSize));
+      const generation = cacheGeneration;
+      [current.page + 1, current.page - 1].filter(page => page >= 1 && page <= pageCount).forEach(page => {
+        const url = listUrl(tab, page);
+        if (cacheGet(url)) return;
+        request(url).then(({ response, payload }) => {
+          if (generation === cacheGeneration && response.ok && payload.branch === tab.toUpperCase() && Array.isArray(payload.rows) && Number.isFinite(payload.totalRows)) cachePut(url, payload);
+        }).catch(() => {});
+      });
+    }, PREFETCH_DELAY_MS);
+  }
+  function acceptList(current, payload) {
+    current.rows = payload.rows;
+    current.serverPaged = Number.isFinite(payload.totalRows);
+    current.legacy = !current.serverPaged;
+    if (current.serverPaged) {
+      current.page = payload.page; current.totalRows = payload.totalRows;
+      current.summary = payload.summary || { totalRows: payload.totalRows, warned: 0, valid: payload.totalRows };
+      current.warningCounts = payload.warningCounts || {};
+    }
+  }
+  function queryPage(debounce = false) {
+    ++requestVersion;
+    if (queryController) queryController.abort();
+    clearTimeout(queryTimer);
+    if (state[activeTab].legacy) { render(); return; } // máy chủ cũ trả đủ danh sách: lọc/sắp xếp tại chỗ, không tải lại
+    if (debounce) queryTimer = setTimeout(() => { queryTimer = null; selectTab(activeTab, true); }, 300);
+    else { queryTimer = null; selectTab(activeTab, true); }
+  }
+
   // ---------- Tải dữ liệu theo tab ----------
-  async function selectTab(requested) {
+  async function selectTab(requested, queryOnly = false) {
+    clearTimeout(queryTimer); queryTimer = null;
+    if (queryController) queryController.abort();
+    queryController = new AbortController();
     activeTab = allowedTabs.includes(requested) ? requested : allowedTabs[0];
     if (window.location.hash !== '#' + activeTab) window.history.replaceState(null, '', '#' + activeTab);
     const tab = activeTab;
@@ -1511,17 +1598,20 @@
     $('vtTableTitle').textContent = 'VT ' + (tab === 'hn' ? 'Hà Nội' : 'Sài Gòn');
     window.TKSNav.renderTopSidebar($('sidebar'), 'stockLocations', user);
     const current = state[tab];
-    current.rows = [];
-    current.loading = true;
+    if (!queryOnly) { current.rows = []; clearListCache(); }
+    const url = listUrl(tab);
+    const cached = queryOnly ? cacheGet(url) : null;
+    current.loading = !cached;
     current.error = '';
     const version = ++requestVersion;
-    render();
+    if (!cached) render();
     try {
-      const { response, payload } = await request(API + '?branch=' + tab.toUpperCase());
+      const { response, payload } = cached ? { response: { ok: true }, payload: cached } : await request(url, { signal: queryController.signal });
       if (version !== requestVersion) return;
       if (!response.ok) throw new Error(payload.error || 'Không tải được vị trí hàng.');
       if (payload.branch !== tab.toUpperCase() || !Array.isArray(payload.rows)) throw new Error('Dữ liệu vị trí hàng không hợp lệ.');
-      current.rows = payload.rows;
+      if (!cached && Number.isFinite(payload.totalRows)) cachePut(url, payload);
+      acceptList(current, payload);
       current.canEdit = typeof payload.canEdit === 'boolean' ? payload.canEdit : null;
       current.canExport = payload.canExport === true;
       current.canDeleteHistory = payload.canDeleteHistory === true;
@@ -1529,7 +1619,7 @@
       if (version !== requestVersion) return;
       current.error = error.message || 'Lỗi kết nối, vui lòng tải lại trang.';
     } finally {
-      if (version === requestVersion) { current.loading = false; render(); startLive(tab); }
+      if (version === requestVersion) { current.loading = false; render(); startLive(tab); if (!current.error) prefetchNeighbours(tab); }
     }
   }
 
@@ -1537,16 +1627,16 @@
   // Một yêu cầu tại một thời điểm; tín hiệu đến lúc đang tải thì tải thêm một lần sau khi xong.
   const live = { busy: false, pending: false };
   async function refreshInBackground(tab) {
-    if (!tab || tab !== activeTab) return;
+    if (!tab || tab !== activeTab || queryTimer || state[tab].loading) return;
     if (live.busy) { live.pending = true; return; }
     live.busy = true;
     const version = requestVersion;
     try {
-      const { response, payload } = await request(API + '?branch=' + tab.toUpperCase());
+      const { response, payload } = await request(listUrl(tab));
       if (version !== requestVersion || tab !== activeTab) return;
       if (!response.ok || payload.branch !== tab.toUpperCase() || !Array.isArray(payload.rows)) return;
       const current = state[tab];
-      current.rows = payload.rows;
+      acceptList(current, payload);
       current.error = '';
       current.canEdit = typeof payload.canEdit === 'boolean' ? payload.canEdit : null;
       current.canExport = payload.canExport === true;
@@ -1564,6 +1654,7 @@
   const feed = { source: null, debounce: null, fallback: null, opened: false, missed: false };
 
   function scheduleRefresh() {
+    clearListCache(); // có thay đổi từ máy chủ: các trang đã đệm có thể đã cũ
     clearTimeout(feed.debounce);
     feed.debounce = setTimeout(() => {
       if (document.hidden) { feed.missed = true; return; }
@@ -1677,8 +1768,8 @@
     $('vtOrderDialog').addEventListener('cancel', event => { if (stockOutState.busy) event.preventDefault(); });
     $('vtExportButton').addEventListener('click', exportExcel);
     $('vtHistoryButton').addEventListener('click', openHistory);
-    $('vtHistorySearch').addEventListener('input', renderHistory);
-    $('vtHistoryAction').addEventListener('change', renderHistory);
+    $('vtHistorySearch').addEventListener('input', () => queryHistory(true));
+    $('vtHistoryAction').addEventListener('change', () => queryHistory(false));
     $('vtHistoryMore').addEventListener('click', () => loadHistory(true));
     $('vtHistoryExport').addEventListener('click', exportHistory);
     $('vtHistoryPurge').addEventListener('click', openPurge);
@@ -1794,6 +1885,165 @@
     startEdit(target); // lấy focus → ô cũ rời đi và tự lưu
   }
 
+  // Chọn vùng ô rồi Delete / dán từ Excel (table-controls.js bắn 'tks:cells-edit'): ghi vào các ô Ghi chú / Ngày về / Vị trí,
+  // mỗi dòng gửi MỘT lần cập nhật gộp mọi cột đổi, xếp hàng chung saveChain với ô nhập tại chỗ. Cột khác (Mã, SL…) bị bỏ qua.
+  // Xóa Ghi chú nghĩa là hết hàng → dòng bị xóa khỏi bảng, nên hỏi MỘT lần cho cả đợt.
+  function applyCellEdits(event) {
+    if (!editable()) return;
+    const tab = activeTab;
+    const patches = new Map();
+    event.detail.edits.forEach(edit => {
+      const td = edit.cell, field = td.dataset.field, id = td.parentElement && td.parentElement.dataset.id;
+      if (!id || !DETAIL_FIELDS.includes(field)) return;
+      const row = rowById(tab, id);
+      if (!row) return;
+      edit.handled = true;
+      const value = field === 'location' ? normalizeLocation(edit.value) : String(edit.value ?? '').trim();
+      if (value === String(row[field] ?? '').trim()) return;
+      if (!patches.has(id)) {
+        patches.set(id, {
+          id: id,
+          targetId: id,
+          patch: {},
+          edits: [],
+          snapshot: Object.assign({}, row),
+          deleted: false,
+          wasEmptied: false
+        });
+      }
+      const entry = patches.get(id);
+      entry.patch[field] = value;
+      entry.edits.push(edit);
+    });
+    if (!patches.size) return;
+
+    for (const entry of patches.values()) {
+      let pendingRevert = null, pendingReapply = null;
+      const doRevert = () => {
+        if (pendingRevert) return pendingRevert;
+        const job = saveChain.then(async () => {
+          try {
+            if (entry.deleted) {
+              const body = {
+                code: entry.snapshot.code,
+                notes: entry.snapshot.notes,
+                arrivalDate: entry.snapshot.arrivalDate || '',
+                location: entry.snapshot.location || ''
+              };
+              const { response, payload } = await request(API, jsonOptions('POST', body));
+              if (!response.ok) {
+                notify(payload.error || 'Không khôi phục được dòng đã xóa.', true);
+                return false;
+              }
+              entry.targetId = String(payload.row.id);
+              entry.deleted = false;
+              applyResult(tab, payload);
+              const undoBtn = $('vtNotice').querySelector('.vt-undo');
+              if (undoBtn) undoBtn.remove();
+              if (tab === activeTab) render();
+              return true;
+            }
+            const current = rowById(tab, entry.targetId);
+            if (!current) return false;
+            const fields = Object.keys(entry.patch);
+            const alreadyReverted = fields.every(f => String(current[f] ?? '').trim() === String(entry.snapshot[f] ?? '').trim());
+            if (alreadyReverted) return true;
+            const patch = { version: current.version };
+            fields.forEach(f => { patch[f] = entry.snapshot[f] ?? ''; });
+            const { response, payload } = await request(API + '/' + encodeURIComponent(current.id), jsonOptions('PATCH', patch));
+            if (!response.ok) {
+              handleFailure(payload);
+              return false;
+            }
+            applyResult(tab, payload);
+            if (tab === activeTab) render();
+            return true;
+          } finally {
+            pendingRevert = null;
+          }
+        }).catch(() => false);
+        saveChain = job.then(() => {}, () => {});
+        pendingRevert = job;
+        return pendingRevert;
+      };
+
+      const doReapply = () => {
+        if (pendingReapply) return pendingReapply;
+        const job = saveChain.then(async () => {
+          try {
+            if (entry.wasEmptied) {
+              const current = rowById(tab, entry.targetId);
+              if (!current) return false;
+              const { response, payload } = await request(API + '/' + encodeURIComponent(current.id), jsonOptions('PATCH', { version: current.version, notes: '', confirmEmpty: true }));
+              if (!response.ok) {
+                handleFailure(payload);
+                return false;
+              }
+              entry.deleted = true;
+              applyResult(tab, payload);
+              if (tab === activeTab) render();
+              return true;
+            }
+            const current = rowById(tab, entry.targetId);
+            if (!current) return false;
+            const fields = Object.keys(entry.patch);
+            const alreadyReapplied = fields.every(f => String(current[f] ?? '').trim() === String(entry.patch[f] ?? '').trim());
+            if (alreadyReapplied) return true;
+            const patch = Object.assign({ version: current.version }, entry.patch);
+            const { response, payload } = await request(API + '/' + encodeURIComponent(current.id), jsonOptions('PATCH', patch));
+            if (!response.ok) {
+              handleFailure(payload);
+              return false;
+            }
+            applyResult(tab, payload);
+            if (tab === activeTab) render();
+            return true;
+          } finally {
+            pendingReapply = null;
+          }
+        }).catch(() => false);
+        saveChain = job.then(() => {}, () => {});
+        pendingReapply = job;
+        return pendingReapply;
+      };
+
+      entry.edits.forEach(edit => {
+        edit.revert = doRevert;
+        edit.reapply = doReapply;
+      });
+    }
+
+    const emptied = Array.from(patches.values()).filter(entry => entry.patch.notes === '');
+    const job = saveChain.then(async () => {
+      let confirmEmpty = false;
+      if (emptied.length) {
+        confirmEmpty = await confirmBox('Xóa ghi chú ' + emptied.length + ' dòng nghĩa là hết hàng, các dòng này sẽ bị xóa khỏi bảng. Bạn có chắc chắn không?', 'Xóa ghi chú');
+        if (!confirmEmpty) {
+          emptied.forEach(entry => entry.edits.forEach(edit => {
+            edit.cancelled = true;
+            delete edit.revert;
+            delete edit.reapply;
+          }));
+        }
+      }
+      for (const [id, entry] of patches) {
+        if (entry.patch.notes === '' && !confirmEmpty) continue;
+        const current = rowById(tab, id);
+        if (current) {
+          const isDelete = confirmEmpty && entry.patch.notes === '';
+          if (isDelete) {
+            entry.wasEmptied = true;
+            entry.deleted = true;
+          }
+          await patchRow(tab, current, entry.patch, isDelete, message => notify(message, true));
+        }
+      }
+      if (tab === activeTab) render();
+    }).catch(() => notify('Không lưu được thay đổi.', true));
+    saveChain = job;
+    event.detail.pending.push(job);
+  }
+
   // Bấm vào ô nhập liệu được → gõ ngay tại ô; bấm cột khác (hoặc Enter/Space trên dòng) → mở hộp chi tiết.
   // Đang bôi đen chữ để sao chép thì không làm gì.
   function bindTable() {
@@ -1808,6 +2058,7 @@
       const row = rowOf(tr);
       if (row) openDetail(row);
     });
+    body.addEventListener('tks:cells-edit', applyCellEdits);
     body.addEventListener('keydown', event => {
       if (event.target.tagName !== 'TR' || (event.key !== 'Enter' && event.key !== ' ')) return;
       event.preventDefault();
@@ -1875,7 +2126,7 @@
       const field = button.dataset.sortField;
       current.sorts = window.TKSTables.nextSorts(current.sorts, field, event.shiftKey);
       current.page = 1;
-      render();
+      queryPage();
       document.querySelector('.locations-scroll').scrollTop = 0;
     });
     $('vtWarnFilter').addEventListener('change', event => {
@@ -1883,29 +2134,29 @@
       const current = state[activeTab];
       current.warnFilter = value === 'warn' || value === 'valid' || value.startsWith('type:') ? value : 'all';
       current.page = 1;
-      render();
+      queryPage();
     });
     $('vtSearch').addEventListener('input', event => {
       state[activeTab].query = event.target.value;
       state[activeTab].page = 1;
-      render();
+      queryPage(true);
     });
     $('vtPageSize').addEventListener('change', event => {
       const size = Number(event.target.value);
       if (![50, 100, 200].includes(size)) return;
       pageSize = size;
       for (const current of Object.values(state)) current.page = 1;
-      render();
+      queryPage();
       document.querySelector('.locations-scroll').scrollTop = 0;
     });
     ['First', 'Previous', 'Next', 'Last'].forEach(direction => {
       $('vt' + direction).addEventListener('click', () => {
         const current = state[activeTab];
-        const pageCount = Math.max(1, Math.ceil(filterRows(current.rows, current.query, current.warnFilter).length / pageSize));
+        const pageCount = Math.max(1, Math.ceil((current.serverPaged ? current.totalRows : filterRows(current.rows, current.query, current.warnFilter).length) / pageSize));
         if (direction === 'First') current.page = 1;
         else if (direction === 'Last') current.page = pageCount;
         else current.page = Math.max(1, Math.min(pageCount, current.page + (direction === 'Previous' ? -1 : 1)));
-        render();
+        queryPage();
         document.querySelector('.locations-scroll').scrollTop = 0;
       });
     });

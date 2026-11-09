@@ -1052,3 +1052,36 @@ test('queryOrders mode=product: hỏi kiot.findOrderKeysByProduct rồi chỉ tr
     ctx.restore();
   }
 });
+
+test('history filters and sorts the full existing snapshot before slicing and clamps pages', async () => {
+  const fixture = freshService([{ orderCode: 'DH1', _branch: 'HN' }], Array.from({ length: 205 }, (_, i) => overrideRow({ history_id: String(i), order_code: 'DH' + i, changed_by: i % 2 ? 'Nguyễn An' : 'Bình', note: 'Ghi chú', changed_at: '2026-11-01 10:00:00' })));
+  try {
+    const result = await fixture.service.queryHistory({ q: 'Nguyen An', page: 99, pageSize: 50, sorts: '[{"key":"orderCode","dir":"asc"}]' });
+    assert.equal(result.totalRows, 102);
+    assert.equal(result.page, 3);
+    assert.deepEqual(result.rows.map(r => r.orderCode), ['DH201', 'DH203']);
+    assert.equal(result.rows[0].changedBy, 'Nguyễn An');
+    const empty = await fixture.service.queryHistory({ q: 'không có', page: 9 });
+    assert.equal(empty.page, 1);
+    assert.equal(empty.totalRows, 0);
+    await assert.rejects(fixture.service.queryHistory({ sorts: '[{"key":"injected","dir":"desc"}]' }), { code: 'INVALID_SORT' });
+  } finally { fixture.restore(); }
+});
+
+test('history multisort uses raw VN timestamps, null last, stable ties and branch/status scope', async () => {
+  const fixture = freshService([{ orderCode: 'HN1', _branch: 'HN' }, { orderCode: 'SG1', _branch: 'SG' }], [
+    overrideRow({ history_id: 'first', order_code: 'HN1', changed_by: 'An', changed_at: '30/10/2026 10:00:00', to_status_code: 'SIGNED' }),
+    overrideRow({ history_id: 'second', order_code: 'HN1', changed_by: 'An', changed_at: '02/11/2026 10:00:00', to_status_code: 'SIGNED' }),
+    overrideRow({ history_id: 'empty', order_code: 'HN1', changed_by: 'An', changed_at: '', to_status_code: 'SIGNED' }),
+    overrideRow({ history_id: 'SG', order_code: 'SG1', changed_by: 'An', changed_at: '03/11/2026 10:00:00', to_status_code: 'SIGNED' }),
+    overrideRow({ history_id: 'status', order_code: 'HN1', changed_by: 'An', changed_at: '03/11/2026 10:00:00', to_status_code: 'CANCELLED' })
+  ]);
+  try {
+    const result = await fixture.service.queryHistory({ branch: 'HN', status: 'SIGNED', pageSize: 2, sorts: [{ key: 'changedBy', dir: 'asc' }, { key: 'changedAt', dir: 'desc' }] });
+    assert.equal(result.totalRows, 3);
+    assert.deepEqual(result.rows.map(row => row.historyId), ['second', 'first']);
+    assert.equal((await fixture.service.queryHistory({ branch: 'HN', status: 'SIGNED', pageSize: 2, page: 2, sorts: [{ key: 'changedAt', dir: 'asc' }] })).rows[0].historyId, 'empty');
+    assert.deepEqual(result.history, result.rows);
+    assert.equal(result.total, 5);
+  } finally { fixture.restore(); }
+});

@@ -40,7 +40,7 @@ function createDashboard(agingPayload) {
   dom.window.fetch = url => {
     requests.push(String(url));
     if (String(url).startsWith('/api/debt-management/aging')) {
-      return Promise.resolve({ ok: true, json: async () => agingPayload });
+      return Promise.resolve({ ok: true, json: async () => typeof agingPayload === 'function' ? agingPayload(String(url)) : agingPayload });
     }
     return new Promise(() => {});
   };
@@ -56,6 +56,26 @@ function createDashboard(agingPayload) {
 function rowTexts(document) {
   return [...document.querySelectorAll('#debtAgingRows tr')].map(row => [...row.cells].map(cell => cell.textContent.trim()));
 }
+
+test('server aging preserves full facets/count and sends filter/sort/page to API', async () => {
+  const {dom,requests} = createDashboard(url=>{
+    const query = new URL(url,'https://tokosi.example').searchParams;
+    return {...AGING,customers:[AGING.customers[0]],rows:[AGING.customers[0]],totalRows:205,page:Number(query.get('page')||1),pageSize:100,
+      filters:{teams:['Remote team'],sales:['Remote sale'],schedules:['30']}};
+  });
+  await dom.window.loadDebtAging();
+  const doc = dom.window.document;
+  assert.equal(doc.getElementById('tagDebtAging').textContent,'205');
+  assert.ok([...doc.getElementById('debtAgingSaleFilter').options].some(o=>o.value==='Remote sale'));
+  doc.getElementById('debtAgingNextPage').click();
+  for(let i=0;i<8;i++) await new Promise(r=>setImmediate(r));
+  assert.match(doc.getElementById('debtAgingPageLabel').textContent,/2\/3/);
+  dom.window.setTableSort('debtAgingRows',9);
+  for(let i=0;i<8;i++) await new Promise(r=>setImmediate(r));
+  const q = new URL(requests.at(-1),'https://tokosi.example').searchParams;
+  assert.equal(q.get('page'),'1');
+  assert.deepEqual(JSON.parse(q.get('sorts')),[{key:'remainingDays',dir:'asc'}]);
+});
 
 test('muc 3 co du 10 cot, Ngay het no mac dinh an, nut Xuat file debt.aging', () => {
   const source = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8');
@@ -73,7 +93,7 @@ test('tai bang tinh san, hien so, to mau Con han va dau ≥/≤ khi vuot lich su
   const { dom, requests } = createDashboard(AGING);
   const { window } = dom;
   await window.loadDebtAging();
-  assert.ok(requests.includes('/api/debt-management/aging'));
+  assert.ok(requests.some(url=>url.startsWith('/api/debt-management/aging?')));
   const document = window.document;
   assert.equal(document.getElementById('tagDebtAging').textContent, '4');
   const rows = rowTexts(document);

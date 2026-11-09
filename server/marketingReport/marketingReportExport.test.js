@@ -50,3 +50,32 @@ test('multi-level export sorting handles ties and blanks at each priority withou
   assert.deepEqual(tableRows('rows',{rows},'',{sorts:JSON.stringify(sorts)}),[rows[1],rows[0],rows[2],rows[3],rows[4]]);
   assert.equal(rows[0].revenue,2);
 });
+
+
+test('server pages the full searched/sorted snapshot, clamps pages, and keeps full metadata and search KPI scope', () => {
+  const {pageResult,tableRows}=require('./marketingReportExport');
+  const rows=Array.from({length:245},(_,i)=>({key:'row:'+i,customer:i>=200?'Khách Đặng An':'Khách khác',sale:'Sale '+i%3,page:'HN',revenue:i+0.25}));
+  const snapshot={kind:'monthly',rows,kpis:[{label:'Doanh số tháng',value:30000},{label:'Khách chốt',value:245},{label:'Số nhân viên',value:3}],summaryRows:[{label:'Full summary',closed:245}],charts:[{labels:['Full chart'],values:[245]}],filters:{pages:['HN','SG']},snapshotId:'full-id'};
+  const first=pageResult(snapshot,{pageSize:'100'});
+  assert.equal(first.rows.length,100);assert.equal(first.totalRows,245);assert.equal(first.page,1);
+  const last=pageResult(snapshot,{pageNumber:'999',pageSize:'100'});
+  assert.equal(last.page,3);assert.equal(last.rows.length,45);assert.equal(last.rows[0].key,'row:200');
+  const query={q:'dang an',sorts:JSON.stringify([{key:'sale',dir:'asc'},{key:'revenue',dir:'desc'},{key:'__proto__',dir:'asc'}]),pageNumber:'2',pageSize:'10'};
+  const searched=pageResult(snapshot,query),full=tableRows('rows',snapshot,query.q,query);
+  assert.equal(searched.totalRows,45);assert.deepEqual(searched.rows,full.slice(10,20));
+  assert.equal(searched.kpis[0].value,full.reduce((n,row)=>n+row.revenue,0));assert.equal(searched.kpis[1].value,45);
+  assert.equal(searched.summaryRows,snapshot.summaryRows);assert.equal(searched.filters,snapshot.filters);assert.equal(searched.charts,snapshot.charts);assert.equal(searched.snapshotId,'full-id');
+  assert.equal(snapshot.rows.length,245);assert.equal(snapshot.kpis[1].value,245);
+  assert.deepEqual(pageResult(snapshot,{q:'notfound',pageNumber:'99'}).rows,[]);
+  assert.equal(pageResult(snapshot,{q:'notfound',pageNumber:'99'}).page,1);
+  assert.equal(pageResult(snapshot,{pageSize:'9999'}).pageSize,500);
+  assert.equal(pageResult(snapshot,{pageSize:'0',pageNumber:'Infinity'}).pageSize,100);
+});
+
+test('dates sort by source date across pages, blank last, and unknown sort keys are ignored',()=>{
+  const {pageResult}=require('./marketingReportExport');
+  const result={kind:'costs',rows:[{key:'a',date:'02/11/2026',totalCost:2},{key:'b',date:'30/10/2026',totalCost:1},{key:'c',date:null,totalCost:3}]};
+  const page=pageResult(result,{pageNumber:'2',pageSize:'1',sorts:JSON.stringify([{key:'date',dir:'asc'}])});
+  assert.equal(page.rows[0].key,'a');
+  assert.equal(pageResult(result,{sorts:JSON.stringify([{key:'key',dir:'desc'}])}).rows[0].key,'a');
+});

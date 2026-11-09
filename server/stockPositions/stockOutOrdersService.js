@@ -5,6 +5,10 @@
 // stock_position_history action 'stock_out' kem summary { source: 'order', orderId, orderCode } de bam ma don xem chi tiet.
 // Dong trong don tam giu nguyen theo y nguoi nhap (khong gop); luc chot moi tru lan luot tung dong tren cung (ma, vi tri).
 const { getPool } = require('../db/pool');
+const { fuzzySqlParts } = require('../shared/fuzzySql');
+const { normalizeSortsStrict, orderBy } = require('../shared/multiSort');
+const { wantsPage } = require('../shared/tablePage');
+const ORDER_SORTS = { code: 'code', confirmedAt: 'confirmed_at', confirmedByName: 'confirmed_by_name', lineCount: '(SELECT count(*) FROM stock_out_order_lines l WHERE l.order_id = o.id)', positions: "(summary->>'positions')::numeric", negative: "(summary->>'negative')::numeric" };
 const carton = require('../public/shared/carton.js');
 const { parseImportWorkbook } = require('./stockPositionsImport');
 const { keyOf, tx } = require('./stockPositionsService');
@@ -385,16 +389,36 @@ function createStockOutOrdersService({ getDb = getPool, now = () => Date.now() }
     });
   }
 
-  async function list(ctx, branch, { limit, before } = {}) {
+  async function list(ctx, branch, options = {}) {
     assertBranch(branch);
     assertScope(ctx, branch);
-    const size = Math.min(Math.max(Number(limit) || HISTORY_LIMIT, 1), 200);
-    const cursor = Number(before);
-    const { rows } = await getDb().query(
-      `SELECT ${ORDER_COLUMNS}, (SELECT count(*) FROM stock_out_order_lines l WHERE l.order_id = o.id)::int AS line_count
-       FROM stock_out_orders o WHERE branch = $1 AND status = 'confirmed' AND ($2::bigint IS NULL OR id < $2) ORDER BY id DESC LIMIT $3`,
-      [branch, Number.isFinite(cursor) && cursor > 0 ? cursor : null, size]);
-    return { branch, orders: rows.map(row => ({ ...orderOut(row, []), lineCount: row.line_count })) };
+    const sorts = normalizeSortsStrict(options.sorts, ORDER_SORTS);
+    const params = [branch];
+    const where = ["branch = $1", "status = 'confirmed'"];
+    const cursor = Number(options.before);
+    if (Number.isSafeInteger(cursor) && cursor > 0) { params.push(cursor); where.push('id < $' + params.length); }
+    const fz = fuzzySqlParts("concat_ws(' ',code,created_by_name,confirmed_by_name)", String(options.q || '').trim(), value => { params.push(value); return '$' + params.length; });
+    if (fz) where.push(fz.where);
+    const filter = where.join(' AND ');
+    const paged = wantsPage(options);
+    const size = Math.min(Math.max(parseInt(paged ? options.pageSize : options.limit, 10) || (paged ? 50 : HISTORY_LIMIT), 1), 200);
+    const pool = getDb();
+    const client = paged && pool.connect ? await pool.connect() : pool;
+    try {
+      if (paged && pool.connect) await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      const totalRows = paged ? Number((await client.query(`SELECT count(*)::int AS total FROM stock_out_orders WHERE ${filter}`, params)).rows[0].total) : null;
+      const page = paged ? Math.min(Math.max(parseInt(options.page, 10) || 1, 1), Math.max(1, Math.ceil(totalRows / size))) : 1;
+      const listParams = [...params, size, (page - 1) * size];
+      const { rows } = await client.query(
+        `SELECT ${ORDER_COLUMNS}, (SELECT count(*) FROM stock_out_order_lines l WHERE l.order_id = o.id)::int AS line_count
+         FROM stock_out_orders o WHERE ${filter} ORDER BY ${orderBy(sorts, ORDER_SORTS) || 'id DESC'}${sorts.length ? ', id DESC' : ''} LIMIT $${listParams.length - 1} OFFSET $${listParams.length}`, listParams);
+      if (paged && pool.connect) await client.query('COMMIT');
+      const orders = rows.map(row => ({ ...orderOut(row, []), lineCount: row.line_count }));
+      return { branch, orders, rows: orders, ...(paged ? { totalRows, page, pageSize: size } : {}), nextBefore: !paged && rows.length === size ? Number(rows[rows.length - 1].id) : null };
+    } catch (error) {
+      if (paged && pool.connect) await client.query('ROLLBACK');
+      throw error;
+    } finally { if (paged && pool.connect) client.release(); }
   }
 
   async function get(ctx, orderId) {

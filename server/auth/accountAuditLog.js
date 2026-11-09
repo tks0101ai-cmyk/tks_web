@@ -9,6 +9,14 @@
 // ==========================================
 'use strict';
 
+const { normalizeSortsStrict, orderBy } = require('../shared/multiSort');
+const AUDIT_SORTS = Object.freeze({
+  createdAt: 'created_at',
+  actor: "COALESCE(NULLIF(actor_name, ''), actor_username)",
+  target: "COALESCE(NULLIF(target_name, ''), target_username)",
+  action: "CASE action WHEN 'create' THEN 'Tạo tài khoản' WHEN 'update' THEN 'Sửa thông tin' WHEN 'reset_password' THEN 'Đặt lại mật khẩu' WHEN 'delete' THEN 'Xóa tài khoản' WHEN 'permissions' THEN 'Sửa phân quyền' END",
+  changes: 'changes::text'
+});
 const featureRegistry = require('./featureRegistry');
 const { fuzzySqlParts } = require('../shared/fuzzySql');
 const { normalizeDepartments } = require('../hr/hrApprovalDepartments');
@@ -195,20 +203,32 @@ async function listEntries(options = {}) {
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const pageSize = Math.min(PAGE_SIZE_MAX, Math.max(1, parseInt(options.pageSize, 10) || PAGE_SIZE_DEFAULT));
-  const page = Math.max(1, parseInt(options.page, 10) || 1);
+  const requestedPage = Math.max(1, parseInt(options.page, 10) || 1);
+  const sorts = normalizeSortsStrict(options.sorts, AUDIT_SORTS);
+  const sortSql = orderBy(sorts, AUDIT_SORTS);
+  const client = pool.connect ? await pool.connect() : pool;
+  try {
+    if (pool.connect) await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
 
-  const countResult = await pool.query(`SELECT count(*)::int AS total FROM account_audit_log ${whereSql}`, params);
-  const total = countResult.rows[0] ? Number(countResult.rows[0].total) : 0;
-  const listParams = [...params, pageSize, (page - 1) * pageSize];
-  const listResult = await pool.query(
-    `SELECT id, created_at, action, actor_user_id, actor_username, actor_name,
-            target_user_id, target_username, target_name, changes
-       FROM account_audit_log ${whereSql}
-      ORDER BY ${fz ? `${fz.score} DESC, ` : ''}created_at DESC, id DESC
-      LIMIT $${listParams.length - 1} OFFSET $${listParams.length}`,
-    listParams
-  );
-  return { entries: listResult.rows.map(rowToEntry), total, page, pageSize };
+    const countResult = await client.query(`SELECT count(*)::int AS total FROM account_audit_log ${whereSql}`, params);
+    const total = countResult.rows[0] ? Number(countResult.rows[0].total) : 0;
+    const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / pageSize)));
+    const listParams = [...params, pageSize, (page - 1) * pageSize];
+    const listResult = await client.query(
+      `SELECT id, created_at, action, actor_user_id, actor_username, actor_name,
+              target_user_id, target_username, target_name, changes
+         FROM account_audit_log ${whereSql}
+        ORDER BY ${sortSql ? `${sortSql}, ` : fz ? `${fz.score} DESC, ` : ''}${sortSql ? '' : 'created_at DESC, '}id DESC
+        LIMIT $${listParams.length - 1} OFFSET $${listParams.length}`,
+      listParams
+    );
+    if (pool.connect) await client.query('COMMIT');
+    const entries = listResult.rows.map(rowToEntry);
+    return { rows: entries, entries, totalRows: total, total, page, pageSize };
+  } catch (error) {
+    if (pool.connect) await client.query('ROLLBACK');
+    throw error;
+  } finally { if (pool.connect) client.release(); }
 }
 
 module.exports = {

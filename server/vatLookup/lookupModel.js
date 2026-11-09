@@ -5,6 +5,8 @@
 // tim kiem) de ket qua trung app cu: KHONG dung vatDraft/normalization (chuan hoa khac).
 // Nguon: 3 tab file VAT TKS (Gộp VAT, Khớp mã, DK về 2 = MUA VAT SIDA A:E) — doc theo TEN cot nhu app cu.
 
+const { pageRows, sortRows } = require('../shared/tablePage');
+
 /* ---------- Code.gs: nhan dien dong header, ten cot duy nhat ---------- */
 
 // headerAnchors: cac ten cot (da chuan hoa) phai co mat cung luc tren dong header that.
@@ -477,7 +479,15 @@ function buildIncomingDebug(model, products) {
 }
 
 /** Ket qua tra cuu cho ca 2 tab tu danh sach tu khoa (da qua parseSearchQueries). */
-function search(model, queries) {
+function search(model, queries, query = {}) {
+  const modern = ['vatPage','vatPageSize','vatSorts','incomingPage','incomingPageSize','incomingSorts'].some(key => query[key] !== undefined);
+  const catalog = keys => Object.fromEntries(keys.map(key => [key,row => row[key]]));
+  function tablePage(rows, prefix, allowed) {
+    if(!modern)return {total:rows.length,rows:rows.slice(0,MAX_TABLE_ROWS)};
+    const sorted = sortRows(rows,query[prefix+'Sorts'],allowed);
+    const requestedSize=Number(query[prefix+'PageSize']);
+    return {total:rows.length,...pageRows(sorted,{page:query[prefix+'Page'],pageSize:Number.isSafeInteger(requestedSize) && requestedSize>0 ? Math.min(200,requestedSize) : 100})};
+  }
   const result = searchMultipleProducts(model.products, queries);
   const vatRows = buildVatRows(model, result.matches);
   const incoming = buildIncomingRows(model, result.matches);
@@ -485,10 +495,9 @@ function search(model, queries) {
     productCount: result.matches.length,
     matchedQueries: result.matchedQueries,
     notFoundQueries: result.notFoundQueries,
-    vat: { total: vatRows.length, rows: vatRows.slice(0, MAX_TABLE_ROWS) },
+    vat: tablePage(vatRows,'vat',{...catalog(['maKiot','tenKiot','maVat','tenVat','tenHang','dvt','tonDauNgay','tonCoTheNhap']),tongThueMat:row=>row.tongThueMat==null || row.tongThueMat==='' ? null : /\d/.test(row.tongThueMat)?parseNumber(row.tongThueMat):row.tongThueMat,trangThai:row=>row.conVAT?1:0}),
     incoming: {
-      total: incoming.rows.length,
-      rows: incoming.rows.slice(0, MAX_TABLE_ROWS),
+      ...tablePage(incoming.rows,'incoming',{...catalog(['cont','maKiot','tenKiot']),trangThai:row=>row.trangThaiSo,soLuong:row=>row.hasSoLuong?row.soLuong:null,...Object.fromEntries(incoming.extraKeys.map((key,index)=>['extra'+index,row=>row.extra[key]]))}),
       extraKeys: incoming.extraKeys,
       debug: incoming.rows.length ? [] : buildIncomingDebug(model, result.matches)
     }

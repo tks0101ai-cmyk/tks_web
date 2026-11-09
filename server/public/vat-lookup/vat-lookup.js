@@ -7,7 +7,7 @@
   // Số lượng trong sheet dùng dấu phẩy phân cách hàng nghìn — giữ như app cũ (fmtSheetQuantity).
   const qtyFormat = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
 
-  const state = { mode: 'vat', result: null, loading: false, error: '', requestSeq: 0 };
+  const state = { mode: 'vat', result: null, loading: false, error: '', requestSeq: 0, pages:{vat:1,incoming:1}, sorts:{vat:[],incoming:[]}, timer:null, controller:null, query:'' };
 
   function $(id) { return document.getElementById(id); }
   function escapeHtml(value) {
@@ -21,7 +21,8 @@
       credentials: 'same-origin',
       cache: 'no-store',
       headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
-      body: options.body ? JSON.stringify(options.body) : undefined
+      body: options.body ? JSON.stringify(options.body) : undefined,
+      signal: options.signal
     });
     let data = null;
     try { data = await response.json(); } catch (error) { data = null; }
@@ -57,7 +58,8 @@
 
   /** columns: { key, label, width, num?, cell(row) -> HTML, sort?(row) -> số } */
   function tableHtml(key, columns, rows) {
-    const head = columns.map(c => `<th scope="col" data-column-key="${c.key}" data-default-width="${c.width}"${c.num ? ' class="num"' : ''}>${escapeHtml(c.label)}</th>`).join('');
+    const remote=Number.isFinite(state.result?.[state.mode]?.page);
+    const head = columns.map(c => `<th scope="col" data-column-key="${c.key}" data-default-width="${c.width}"${c.num || remote ? ` class="${c.num?'num ':''}${remote?'sortable':''}"` : ''}>${remote ? `<button type="button" class="sort-button" data-sort="${c.key}"><span class="sort-label">${escapeHtml(c.label)}</span><span class="sort-indicator" aria-hidden="true">▲▼</span></button>` : escapeHtml(c.label)}</th>`).join('');
     const body = rows.map(row => `<tr>${columns.map(c => {
       const sort = c.sort ? ` data-sort-value="${c.sort(row)}"` : '';
       return `<td${c.num ? ' class="num"' : ''}${sort}>${c.cell(row)}</td>`;
@@ -65,7 +67,7 @@
     // Máy tính: lần đầu co / giãn các cột theo tỉ lệ cho vừa khung (không có thanh cuộn ngang);
     // điện thoại: giữ độ rộng, cuộn ngang trong khung bảng.
     const fit = window.innerWidth > 600 ? ' data-table-fit="fill"' : '';
-    return `<div class="vl-scroll"><table class="vl-table" data-table-key="${key}" data-table-sort="local" data-columns-button="vlColumns"${fit}><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+    return `<div class="vl-scroll"><table class="vl-table" data-table-key="${key}"${remote ? '' : ' data-table-sort="local"'} data-columns-button="vlColumns"${fit}><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
   }
 
   const mono = value => `<span class="vl-mono">${escapeHtml(value) || '—'}</span>`;
@@ -98,10 +100,16 @@
     ];
   }
 
+  function pager(data) {
+    if(!Number.isFinite(data.page))return limitNote(data.rows.length,data.total);
+    const pages=Math.max(1,Math.ceil(data.totalRows/data.pageSize));
+    return `<div class="pagination-controls" aria-label="Phân trang"><button type="button" data-page="1" ${data.page<=1?'disabled':''} aria-label="Trang đầu">&lt;&lt;</button><button type="button" data-page="${data.page-1}" ${data.page<=1?'disabled':''} aria-label="Trang trước">&lt;</button><span>Trang ${data.page}/${pages} · ${data.totalRows} dòng</span><button type="button" data-page="${data.page+1}" ${data.page>=pages?'disabled':''} aria-label="Trang sau">&gt;</button><button type="button" data-page="${pages}" ${data.page>=pages?'disabled':''} aria-label="Trang cuối">&gt;&gt;</button></div>`;
+  }
+
   function renderVat(result) {
     const vat = result.vat;
     return feedbackHtml(result)
-      + tableHtml('vat-lookup-vat-v2', VAT_COLUMNS, vat.rows) + limitNote(vat.rows.length, vat.total);
+      + tableHtml('vat-lookup-vat-v2', VAT_COLUMNS, vat.rows) + pager(vat);
   }
 
   function renderIncoming(result) {
@@ -117,7 +125,7 @@
         + emptyState('Không có hàng chuẩn bị về', `Không có ${scope} đang ở trạng thái chuẩn bị về (1–3).`);
     }
     return feedbackHtml(result)
-      + tableHtml('vat-lookup-incoming-v2', incomingColumns(incoming.extraKeys), incoming.rows) + limitNote(incoming.rows.length, incoming.total);
+      + tableHtml('vat-lookup-incoming-v2', incomingColumns(incoming.extraKeys), incoming.rows) + pager(incoming);
   }
 
   function render() {
@@ -142,7 +150,19 @@
     box.classList.toggle('is-loading', state.loading && !!result);
     const table = box.querySelector('table');
     $('vlColumns').hidden = !table;
-    if (table && window.TKSTables) window.TKSTables.refresh(table);
+    if (table && window.TKSTables) {
+      window.TKSTables.refresh(table);
+      if(Number.isFinite(result?.[state.mode]?.page)) {
+        window.TKSTables.syncSortHeaders(table,state.sorts[state.mode],th=>th.dataset.columnKey);
+        table.querySelectorAll('[data-sort]').forEach(button=>button.addEventListener('click',event=>{
+          state.sorts[state.mode]=window.TKSTables.nextSorts(state.sorts[state.mode],button.dataset.sort,event.shiftKey);
+          state.pages[state.mode]=1;search(false);
+        }));
+      }
+    }
+    box.querySelectorAll('[data-page]').forEach(button=>button.addEventListener('click',()=>{
+      state.pages[state.mode]=Number(button.dataset.page);search(false);
+    }));
   }
 
   function setMode(mode) {
@@ -152,17 +172,22 @@
   }
 
   // ---------- Dữ liệu ----------
-  async function search() {
-    const q = $('vlQuery').value;
-    if (!q.trim()) { state.result = null; state.error = ''; render(); return; }
+  async function search(reset = true) {
+    clearTimeout(state.timer);
     const seq = ++state.requestSeq;
+    state.controller?.abort();state.controller=new AbortController();
+    const q = $('vlQuery').value;
+    if(reset || q!==state.query)state.pages={vat:1,incoming:1};
+    state.query=q;
+    if (!q.trim()) { state.result = null; state.error = ''; state.loading=false; $('vlSubmit').disabled=false; render(); return; }
     state.loading = true; state.error = '';
     $('vlSubmit').disabled = true;
     render();
     try {
-      const data = await api('/search', { method: 'POST', body: { q } });
+      const data = await api('/search', { method: 'POST', signal:state.controller.signal, body: { q, vatPage:state.pages.vat,vatPageSize:100,vatSorts:state.sorts.vat,incomingPage:state.pages.incoming,incomingPageSize:100,incomingSorts:state.sorts.incoming } });
       if (seq !== state.requestSeq) return;
       state.result = data;
+      for(const mode of ['vat','incoming'])if(Number.isFinite(data[mode]?.page))state.pages[mode]=data[mode].page;
     } catch (error) {
       if (seq !== state.requestSeq) return;
       state.error = error.message;
@@ -214,7 +239,11 @@
       }
       search();
     });
-    $('vlQuery').addEventListener('input', event => autoGrow(event.currentTarget));
+    $('vlQuery').addEventListener('input', event => {
+      autoGrow(event.currentTarget);++state.requestSeq;state.controller?.abort();clearTimeout(state.timer);
+      if(!event.currentTarget.value.trim()){search();return;}
+      state.timer=setTimeout(()=>search(),250);
+    });
     $('vlTabVat').addEventListener('click', () => setMode('vat'));
     $('vlTabIncoming').addEventListener('click', () => setMode('incoming'));
   }

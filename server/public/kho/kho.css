@@ -5,10 +5,10 @@
 .kho-chip{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:40px;padding:6px 14px;border:1px solid var(--border);border-radius:999px;background:var(--panel-2);color:var(--text);font:600 13px var(--font-body);text-decoration:none;cursor:pointer}
 .kho-chip:hover{border-color:var(--blue)}
 .kho-chip:focus-visible,.kho-figure img:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
-.kho-list{display:flex;flex-direction:column;gap:24px}
+.kho-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;align-items:start}
 .kho-figure{margin:0;padding:16px;background:var(--glass-panel);border:1px solid var(--border);border-radius:var(--radius-xl);box-shadow:var(--card-shadow);scroll-margin-top:16px}
-.kho-figure figcaption{margin:0 0 12px;font-family:var(--font-display);font-size:16px;font-weight:700;color:var(--text)}
-.kho-figure img{display:block;max-width:100%;height:auto;margin:0 auto;border-radius:var(--radius-sm);background:#fff;cursor:zoom-in}
+.kho-figure figcaption{margin:0 0 10px;font-family:var(--font-display);font-size:14px;font-weight:700;color:var(--text)}
+.kho-figure img{display:block;max-width:100%;max-height:300px;width:auto;height:auto;object-fit:contain;margin:0 auto;border-radius:var(--radius-sm);background:#fff;cursor:zoom-in}
 .kho-empty{padding:48px 16px;text-align:center;color:var(--muted);font-size:14px;background:var(--glass-panel);border:1px dashed var(--border);border-radius:var(--radius-xl)}
 .kho-zoom{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.88);cursor:zoom-out}
 .kho-zoom[hidden]{display:none}
