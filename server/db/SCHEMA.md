@@ -185,6 +185,10 @@ Hai bảng này **khác** quy ước `branch` 2 giá trị nội bộ ở cột 
 
 Migration `0015` thêm `app_users.telegram_id` dạng `TEXT` để không phụ thuộc giới hạn số nguyên JavaScript và hỗ trợ Telegram ID dài. ID khác rỗng là duy nhất giữa các tài khoản chưa xoá. Từ migration `0016`, cột này là **bản đọc** được trigger đồng bộ từ `hr_telegram_links` (xem mục "Nghỉ phép và bot Telegram"); nguồn sự thật của liên kết Telegram là bảng đó. Tab `_HR_TELEGRAM_LINKS` trên Google Sheets không còn được ứng dụng sử dụng.
 
+### Điền nhãn thời hạn cho đơn cũ (migration `0119`, 09/11/2026, đã áp DB)
+
+`0119_hr_leave_backfill_timing.sql` điền `timing_status`, `registration_deadline_date`, `registration_deadline_exclusive_at`, `first_session_start_at`, `schedule_start` (giờ mặc định Sáng 07:45/Chiều 12:30), `schedule_version` (0) cho các đơn `Xin nghỉ phép` chưa có nhãn, tính bằng `hr_leave_calculate_timing`. Tạm tắt trigger `hr_leave_00_submission` và `hr_leave_department_snapshot` trong migration rồi bật lại; không đổi `thoi_gian_gui`, trạng thái duyệt, `submission_revision` hay `hr_leave_submissions`. Đơn `Tự ý nghỉ (HR ghi nhận)` vẫn `NULL`. Điều chỉnh mục "Old rows remain unclassified" bên dưới: từ 0119 đơn cũ đã có nhãn ước tính nhưng vẫn `submission_revision = 0`.
+
 ### Hạn đăng ký nghỉ phép (migration `0038`)
 
 Migration 0038 adds per-date `hr_leave_work_schedules` (employee/date primary key, nullable morning/afternoon starts, incrementing version), authoritative timing/calendar/schedule snapshots on `hr_leave_requests`, and immutable `hr_leave_submissions`. Submission time is the database clock. New leave requests always start `Chưa duyệt`; `timing_status` independently stores `Đúng hạn`, `Xin muộn`, or `Vi phạm`. Old rows remain unclassified with revision 0, without backfilling events or schedules. Both new tables revoke BI SELECT access.

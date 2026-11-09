@@ -22,6 +22,7 @@ test('timing remains independent after approval and legacy violation is readable
     w.fetch=async(url,o)=>response(o?.method==='PATCH'?{request:{...row,trang_thai:'Đã duyệt'}}:{requests:[row,{...row,request_id:'OLD',trang_thai:'Vi phạm',timing_status:null}],summary:[]});
     await w.loadLeaveRequests();
     assert.equal(w.document.querySelector('.timing-label').textContent,'Vi phạm');
+    assert.equal(w.document.querySelector('#leave-row-A td:nth-last-child(2)').textContent.trim(),'Vi phạm','cột Thời hạn đăng ký');assert.equal(w.document.querySelector('#leave-row-OLD td:nth-last-child(2)').textContent.trim(),'Chưa phân loại');assert.equal(w.document.querySelector('#leave-row-A td:last-child').textContent.trim(),'—');
     assert.deepEqual([...w.document.querySelectorAll('select.status-select option')].filter(o=>!o.disabled).map(o=>o.value),['Chưa duyệt','Đã duyệt','Từ chối','Chưa duyệt','Đã duyệt','Từ chối']);
     await w.submitStatusChange(w.document.querySelector('select.status-select'),'A','Đã duyệt');
     assert.equal(w.document.querySelector('#leave-row-A .timing-label').textContent,'Vi phạm');

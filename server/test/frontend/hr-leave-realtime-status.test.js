@@ -18,7 +18,7 @@ function fakeCan(vaiTro) {
 
 const htmlPath = path.join(__dirname, '..', '..', 'public', 'humanresources', 'index.html');
 
-test('bảng nghỉ phép có 9 cột: Người gửi, Phòng ban, Cơ sở tách riêng, không còn Mã yêu cầu / Người duyệt', async () => {
+test('bảng nghỉ phép có 11 cột: Người gửi, Phòng ban, Cơ sở tách riêng, không còn Mã yêu cầu / Người duyệt', async () => {
   const html = fs.readFileSync(htmlPath, 'utf8');
   const dom = new JSDOM(html, {
     runScripts: 'outside-only',
@@ -69,8 +69,8 @@ test('bảng nghỉ phép có 9 cột: Người gửi, Phòng ban, Cơ sở tác
   await new Promise(resolve => setTimeout(resolve, 0));
 
   const headers = [...window.document.querySelectorAll('#leaveTable thead th')].map(th => th.textContent.replace(/[↕↑↓▲▼]/g, '').trim());
-  assert.equal(headers.length, 9, 'Bảng phải có đúng 9 cột');
-  assert.equal(headers[headers.length - 1], 'Trạng thái', 'Cột cuối cùng phải là Trạng thái');
+  assert.equal(headers.length, 11, 'Bảng phải có đúng 11 cột');
+  assert.deepEqual(headers.slice(-3), ['Trạng thái', 'Thời hạn đăng ký', 'Hạn đăng ký'], 'Sau Trạng thái là nhãn thời hạn + hạn đăng ký');
   assert.ok(!headers.includes('Hành động'), 'Không còn cột Hành động riêng biệt');
   assert.ok(!headers.includes('Mã yêu cầu'), 'Không còn cột Mã yêu cầu');
   assert.ok(!headers.includes('Người duyệt'), 'Không còn cột Người duyệt');
