@@ -21,7 +21,7 @@ Kết luận: nghẽn nằm ở đường nối web ↔ DB (độ trễ cao × p
 ### Nguyên nhân cụ thể đã xác minh trong code
 
 1. **Deploy trong giờ làm, kể cả commit chỉ sửa tài liệu**: cache nguội, mọi tab kết nối lại cùng lúc, có lúc vượt giới hạn 15 kết nối (EMAXCONNSESSION ngày 07/11).
-2. **Kiểm kê** (`server/public/stocktake/stocktake.js`, `stocktakeGrid.js`, `server/stocktake/stocktakeService.js`): mỗi lần ghi ô phát SSE `stocktake-changed`, mọi tab tải lại cả bảng (1–2 MB, ~8 truy vấn). `trailingThrottle` không chờ lượt trước xong; `getBoard` không gộp lượt trùng ở máy chủ.
+2. **Kiểm kê** (`server/public/stocktake/stocktake.js`, `stocktakeGrid.js`): mỗi lần ghi ô phát SSE `stocktake-changed`, mọi tab tải lại cả bảng (1–2 MB, ~8 truy vấn). `trailingThrottle` không chờ lượt trước xong. (Máy chủ đã gộp lượt `getBoard` trùng từ commit `4a8b87a1` ngày 07/11 — khóa `board:<id>:<version>` + `invalidateSession`.)
 3. **Nút "Cập nhật đơn Kiot"** (`stocktakeOrderRefresh.js`) đã có chặn: mỗi cơ sở 1 lượt cùng lúc + nghỉ 15 s. Nhưng khi có đơn mới nó phát `stocktake-changed`, kéo theo vấn đề số 2.
 4. **Bot Telegram duyệt nghỉ phép** (`server/telegram/managerLeaveRuntime.js`, chạy trên web, chu kỳ 5 s): `seedBacklog` đọc lại đơn chờ và `enqueueDelivery` upsert lại mọi cặp (đơn, quản lý) mỗi lượt, khoảng 2,3 lần ghi/giây (8,7 triệu lần từ 13/09), dù 0 tin chờ gửi.
 5. **Không giới hạn tải theo người dùng** cho API nặng (chỉ có giới hạn ở quên mật khẩu / đổi liên hệ).
@@ -50,8 +50,9 @@ Ngoài phạm vi: chuyển DB, đổi Supavisor sang transaction mode, VPS/Docke
 
 ## 3. Giai đoạn 0 — dọn nhanh (cấu hình + merge)
 
-1. **Render Build Filters** cho web và worker, bỏ qua: `**/*.md`, `docs/**`, `graphify-out/**`, `tasks/**`, `design-system/**`. Commit có code vẫn tự deploy như cũ (giữ khả năng sửa nóng trong giờ).
-2. **Merge** `fix/rollup-stale-product-sales`; sau lượt rollup đầy đủ kế tiếp kiểm TVPAMS = 150 − 1950.
+1. **Render Build Filters** cho web và worker: `paths` = `server/**`; `ignoredPaths` = `server/**/*.md`, `server/**/*.test.js`, `server/test/**`. Đã xác minh: dù `rootDir=server`, commit chỉ sửa `graphify-out/` (ví dụ `ec2c5c8a`, `02e448ae`) vẫn deploy; commit chỉ sửa `server/README.md` (`329919e7`) hay test (`c08e183b`) cũng deploy. Commit có code vẫn tự deploy như cũ (giữ khả năng sửa nóng trong giờ).
+   Thêm **Health Check Path** `/health` cho web (hiện để trống): Render chỉ chuyển lưu lượng sang bản mới khi bản mới trả lời được.
+2. Bản sửa `fix/rollup-stale-product-sales` (commit `1ea0f25a`) đã nằm trên `main`: chỉ kiểm lại TVPAMS = 150 − 1950 trong `daily_product_sales` (chỉ đọc).
 3. **Xóa biến thừa**: `DATABASE_URL` trên web và worker (trỏ Render Postgres đã xóa); `KIOTVIET_SYNC_ENABLED` trên web (không dùng khi `BACKGROUND_JOBS=worker`).
 
 ## 4. Giai đoạn 1 — sửa code (mỗi mục 1 PR, viết test trước)
@@ -59,8 +60,9 @@ Ngoài phạm vi: chuyển DB, đổi Supavisor sang transaction mode, VPS/Docke
 ### 1.1 Kiểm kê: tải lại bảng
 
 - **Trình duyệt**: `trailingThrottle` nhận `run` trả về Promise; không lên lịch lượt mới khi lượt hiện tại chưa xong. Tín hiệu đến trong lúc chạy → đánh dấu và chạy đúng 1 lượt sau khi xong, vẫn tôn trọng khoảng cách `RELOAD_GAP_MS`.
-- **Máy chủ**: trong `getBoard`, phần nặng (`loadInputs`/`closedBoard` + `buildBoard` + `loadEmployees`) gộp theo khóa `sessionId + generation`. `generation` tăng ở mọi lần ghi của đợt (cùng chỗ gọi `announce`). Request đến sau một lần ghi luôn dùng generation mới nên không nhận dữ liệu cũ. `readSession(ctx)` và cờ quyền (`canEdit`, `canClose`) vẫn tính riêng từng request.
-- Test: nhiều lượt `getBoard` đồng thời → 1 lần đọc DB; ghi giữa chừng → lượt sau đọc lại; throttle không chồng lượt khi `run` chậm.
+- **Máy chủ**: không đổi (đã gộp trên `main`).
+- Tải nền gặp 429 (mục 1.3) thì lặng lẽ hẹn lại một lượt qua throttle, không hiện lỗi.
+- Test: throttle không chồng lượt khi `run` chậm; tín hiệu đến lúc đang chạy → đúng 1 lượt sau.
 
 ### 1.2 Bot Telegram duyệt nghỉ phép
 
@@ -71,12 +73,13 @@ Ngoài phạm vi: chuyển DB, đổi Supavisor sang transaction mode, VPS/Docke
 
 ### 1.3 Giới hạn tải theo người dùng
 
-- Middleware giới hạn **số request đang chạy cùng lúc**: mỗi người dùng × mỗi nhóm tối đa 2. Request thứ 3 → `429` `{ code: 'TOO_MANY_INFLIGHT', error: 'Đang xử lý yêu cầu trước, vui lòng chờ' }` + `Retry-After: 2`.
+- Middleware giới hạn **số request GET đang chạy cùng lúc**: mỗi người dùng × mỗi đường dẫn (số trong đường dẫn gộp thành `:id`) tối đa 4. Lý do không lấy 2/nhóm: trang Báo cáo hàng hóa gửi song song trang chính + 2 trang tải trước + `containers/meta` + `customer-growth`. Request thứ 5 → `429` `{ code: 'TOO_MANY_INFLIGHT', error: 'Đang xử lý yêu cầu trước, vui lòng chờ' }` + `Retry-After: 2`.
+- Không tính kết nối SSE (đường dẫn kết thúc `/events`), vì chúng mở suốt phiên xem trang.
 - Nhóm (theo tiền tố đường dẫn): Báo cáo hàng hóa `/api/product-report`; bảng Kiểm kê `/api/stocktake/sessions/:id/board` và `/order-status`; Vòng đời `/api/shipment/lifecycle`; Nhặt hàng `/api/shipment/pick`.
 - Khóa người dùng lấy từ phiên đăng nhập (sau auth); không có thì theo IP thật (`trust proxy` đã cấu hình trong `index.js`).
-- Bộ đếm trong bộ nhớ tiến trình (web chỉ chạy 1 instance); giảm đếm khi response `finish` hoặc `close`.
-- Trình duyệt: hàm request dùng chung của các trang trên hiển thị câu báo 429 thay vì lỗi chung; tải nền (SSE reload) gặp 429 thì thử lại một lần sau `Retry-After`.
-- Test: 3 request song song cùng người → 1 bị 429; khác người không ảnh hưởng nhau; request bị hủy giữa chừng vẫn trả suất.
+- Bộ đếm trong bộ nhớ tiến trình (web chỉ chạy 1 instance). Trả suất khi handler gọi `res.end` (xử lý xong thật); trình duyệt hủy giữa chừng thì vẫn giữ suất tới khi handler xong, tối đa 120 s, để bấm làm mới liên tục không đè DB.
+- Trình duyệt: các trang đã hiện `payload.error` nên câu báo 429 tự hiện; tải trước trang lân cận đã bỏ qua lỗi; riêng Kiểm kê xử lý tải nền như mục 1.1.
+- Test: 5 request song song cùng người cùng đường dẫn → 1 bị 429; khác người hoặc khác đường dẫn không ảnh hưởng; POST không bị giới hạn; client hủy thì suất giữ tới khi handler xong.
 
 ### 1.4 Worker
 
@@ -98,7 +101,7 @@ Hai webhook bên ngoài phải đăng ký lại: KiotViet (`/api/kiotviet/webhoo
    - Trong thời gian chạy song song, không deploy `main` dồn dập (mỗi deploy có 2 web cùng khởi động lại).
 3. Gắn custom domain cho `tokosi-sg`, chờ TLS. Thêm origin mới vào Google OAuth (giữ origin cũ).
 4. Chạy thử trên tên miền mới bằng tài khoản thật, chỉ đọc: đăng nhập, Tổng quan, Báo cáo hàng hóa, Vòng đời, Kiểm kê. Đo `[timing]` để so với Oregon.
-5. PR riêng thêm `server/redirect.js`: server Node thuần, không đọc DB; GET/HEAD → 301, phương thức khác → 308, tới `REDIRECT_TO` + đường dẫn + query giữ nguyên; `/health` trả 200.
+5. PR riêng thêm `server/redirect.js`: server Node thuần, không đọc DB; GET/HEAD → 302, phương thức khác → 307 (không dùng 301/308 vì trình duyệt nhớ vĩnh viễn, cản quay lui), tới `REDIRECT_TO` + đường dẫn + query giữ nguyên; `/health` trả 200.
 
 ### Chuyển đổi (ngoài giờ, ~30 phút, báo nhóm ngừng deploy)
 
@@ -127,8 +130,8 @@ Hai webhook bên ngoài phải đăng ký lại: KiotViet (`/api/kiotviet/webhoo
 |---|---|
 | Hai web cùng chạy job (Telegram, chuông, lịch báo) | 6 cờ tắt trên SG cho tới khi Oregon chuyển sang redirect |
 | Vượt 15 kết nối Supabase khi chạy song song | SG `PG_POOL_MAX=2` khi thử; Oregon về 0 kết nối khi chuyển |
-| Mất webhook KiotViet trong lúc chuyển | Redirect 308 làm dự phòng; sync định kỳ của worker vẫn quét lại đơn |
-| Giới hạn tải chặn nhầm | Giới hạn theo request đang chạy (2), không theo số lượt/phút; theo dõi log 429 tuần đầu |
-| Gộp `getBoard` trả dữ liệu cũ | Khóa theo generation tăng ở mọi lần ghi; test hồi quy |
+| Mất webhook KiotViet trong lúc chuyển | Redirect 307 làm dự phòng; sync định kỳ của worker vẫn quét lại đơn |
+| Giới hạn tải chặn nhầm | Giới hạn GET đang chạy (4/người/đường dẫn), không theo số lượt/phút; theo dõi log `[inflightLimit]` tuần đầu |
+| Throttle mới làm Kiểm kê chậm cập nhật | Lượt kế chạy ngay khi lượt trước xong nếu đã quá `RELOAD_GAP_MS`; test hồi quy |
 
 Cập nhật gần nhất: 09/11/2026.
