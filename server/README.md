@@ -371,6 +371,7 @@ npm run invoices:price-audit              # Kiểm tra giá bán: chạy thử (
 npm run invoices:price-audit -- --date 2026-10-20 --apply   # ghi thật
 npm run invoices:price-audit -- --recalc                    # tính lại theo dữ liệu hiện tại: chạy thử (không ghi)
 npm run vt:normalize-notes -- [--branch HN|SG] [--apply]   # VT: chuẩn hóa ghi chú thùng đã lưu (60 → 1T x 60, gộp cộng dồn); mặc định chạy thử
+node scripts/renderPerfReport.js <serviceId> <soGio>   # tóm tắt poolWaiting, RSS theo giờ và [timing] theo endpoint từ log Render (chỉ đọc)
 npm run invoices:price-audit -- --recalc --apply            # ghi thật (một giao dịch, tất cả hoặc không)
 ```
 
