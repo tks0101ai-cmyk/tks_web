@@ -37,6 +37,10 @@ const app = express();
 // 1 bucket va khoa nham ca site chi sau vai chuc request.
 app.set('trust proxy', 1);
 
+// Dat DAU TIEN de bat ca request bi chan o buoc doc/parse body (xem lib/loopStallWatch.js).
+const requestTracker = CONFIG.LOOP_STALL_WARN_MS > 0 ? require('./lib/loopStallWatch').createRequestTracker() : null;
+if (requestTracker) app.use(requestTracker.middleware);
+
 app.use(compression());
 // Mac dinh express.json() gioi han 100kb — khong du cho payload xuat Excel
 // ket qua kiem tra dut hang (hang tram dong, moi dong kem chi tiet cac dot dut hang).
@@ -178,6 +182,15 @@ async function startServer() {
       });
       process.once('SIGTERM', () => memoryMonitor.stop());
       process.once('SIGINT', () => memoryMonitor.stop());
+    }
+
+    if (requestTracker) {
+      const loopStallWatch = require('./lib/loopStallWatch').startLoopStallWatch({
+        tracker: requestTracker,
+        thresholdMs: CONFIG.LOOP_STALL_WARN_MS
+      });
+      process.once('SIGTERM', () => loopStallWatch.stop());
+      process.once('SIGINT', () => loopStallWatch.stop());
     }
 
     if (CONFIG.BACKGROUND_JOBS === 'worker') {

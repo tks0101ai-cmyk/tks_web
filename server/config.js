@@ -197,6 +197,10 @@ const CONFIG = {
   MEMORY_LOG_INTERVAL_MS: Number(process.env.MEMORY_LOG_INTERVAL_MS) || 60000,
   // Tran RAM cua instance (MB) de tinh nguong canh bao; mac dinh 2048 (goi Render 2GB).
   MEMORY_LIMIT_MB: Number(process.env.MEMORY_LIMIT_MB) || 2048,
+  // Event loop dung >= nguong nay (ms) thi log [loop-stall] kem request dang chay/vua xong
+  // (lib/loopStallWatch.js). Mac dinh 1000; LOOP_STALL_WARN_MS=0 de tat.
+  LOOP_STALL_WARN_MS: process.env.LOOP_STALL_WARN_MS === undefined || process.env.LOOP_STALL_WARN_MS === ''
+    ? 1000 : Math.max(0, Number(process.env.LOOP_STALL_WARN_MS) || 0),
 
   // Doc anh hoa don (tab Tao QR) bang AI vision qua xKiro (chuan OpenAI). Thieu key = tat,
   // trang van tao QR nhap tay. Model du phong chi goi khi model chinh loi 404/429/5xx/timeout.
