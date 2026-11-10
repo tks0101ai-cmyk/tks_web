@@ -171,6 +171,14 @@ test('Khớp mã goc (file VAT TKS): cot K "Tên trước (Giá đầu - Giá cu
   assert.deepEqual(result.vat.rows.map(r => [r.maKiot, r.maVat, r.tenVat]), [['NOGOP', 'VAT90009', 'Ấm (72,300 - 78,700) (VAT)']]);
 });
 
+test('Hàng VAT có sẵn: 4 cot Mã/Tên Kiot, Mã/Tên VAT Kiot lay tu Gộp VAT (cot E co hau to "giá chưa vat tham khảo")', () => {
+  const rows = m.search(model(), ['APTH10']).vat.rows;
+  const fromGop = rows.filter(r => r.tenHang);
+  assert.ok(fromGop.length);
+  fromGop.forEach(r => assert.deepEqual([r.maKiot, r.tenKiot, r.maVat, r.tenVat], ['APTH10', 'Ấm Hoa', 'VAT10001', 'Ấm VAT']));
+  // APTH10-B chi co o Khớp mã (khong co dong Gộp VAT rieng) -> van dung ten cua Khớp mã.
+  assert.deepEqual(rows.filter(r => r.maKiot === 'APTH10-B').map(r => [r.tenKiot, r.tenVat]), [['Ấm Hoa bản B', 'Ấm giữ nhiệt 1000ML (VAT)']]);
+});
 
 test('modern VAT/incoming pages sort the full derived result before the old 500-row cap and retain complete extra columns',()=>{
   const built=model(),product=built.products.find(row=>row.maKiot==='ONLYGOP');
