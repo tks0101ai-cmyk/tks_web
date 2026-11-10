@@ -15,7 +15,7 @@ Tài liệu quy định phương thức làm việc, quy chuẩn mã nguồn và
 Mỗi khi bắt đầu một phiên làm việc mới, AI Assistant cần:
 1. Đọc và nắm vững bối cảnh tại:
    - [MEMORY.md](MEMORY.md): Bản đồ kiến trúc, nguyên tắc bất biến và các điều cấm kỵ.
-   - [CURRENT.md](CURRENT.md): Bảng trạng thái thời gian thực của dự án và các đầu việc cần làm.
+   - [CURRENT.md](CURRENT.md): Danh sách việc đang dở / việc tiếp theo (mỗi việc 1 dòng; lịch sử cũ ở `docs/archive/`).
    - [README.md](README.md) & [server/README.md](server/README.md): Hướng dẫn kiến trúc, biến môi trường và chạy thử.
    - [server/db/SCHEMA.md](server/db/SCHEMA.md): Hợp đồng dữ liệu schema Postgres (0001–0109).
 2. Kiểm tra trạng thái Git hiện tại (`git status`) để đảm bảo không làm việc trên trạng thái bẩn ngoài ý muốn.
@@ -50,7 +50,7 @@ Khi có bất kỳ thay đổi nào về cấu trúc thư mục, thêm/xóa file
    - `server/db/SCHEMA.md` (danh sách bảng, hợp đồng schema).
    - `docs/04-planning/implementation_plan.md` (kiến trúc đã triển khai).
    - `docs/02-srs/SRS_Dashboard_GoogleSheets.md` & `docs/01-brd/BRD_Dashboard_GoogleSheets.md` (tính năng nghiệp vụ).
-   - `CURRENT.md` (trạng thái thời gian thực và việc tiếp theo).
+   - `CURRENT.md`: chỉ khi trạng thái việc đang dở thay đổi (thêm/sửa/xóa **1 dòng**, xem mục "Cách ghi" trong file). Lịch sử chi tiết ghi vào mô tả PR, không chép vào CURRENT.md.
 3. Luôn cập nhật ngày cập nhật mới nhất ở cuối các tài liệu.
 
 ---
@@ -61,9 +61,9 @@ Trước khi kết thúc phiên hoặc commit code:
 1. **Chạy unit tests liên quan phần vừa thay đổi và các phần liên quan có thể bị ảnh hưởng (Dựa vào graphify):**
 
    Yêu cầu: 100% test xanh (không có lỗi mới phát sinh).
-2. **Cập nhật đồ thị mã nguồn (Knowledge Graph):**
+2. **Đồ thị mã nguồn (graphify) — chỉ chạy trên máy mình, không commit:**
    ```powershell
    graphify update .
    ```
-   Đảm bảo `graphify-out/` đồng bộ với mã nguồn mới nhất.
-3. Cập nhật lại [CURRENT.md](CURRENT.md) để phản ánh chính xác kết quả của phiên làm việc.
+   `graphify-out/` nằm trong `.gitignore` (file sinh tự động, commit vào chỉ gây conflict). Chạy lại khi cần tra cứu bằng graphify.
+3. Nếu việc còn dở hoặc có bước tiếp theo (deploy, áp migration…), cập nhật dòng tương ứng trong [CURRENT.md](CURRENT.md); việc đã xong thì xóa dòng.
