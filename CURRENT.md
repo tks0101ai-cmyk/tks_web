@@ -14,24 +14,14 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 
 ## Đang dở / chờ
 
-> Chuyển nguyên từ mục "Hành động tiếp theo" của file cũ ngày 10/11/2026, **chưa rà lại**: nhiều việc có thể đã xong. Ai nắm việc nào thì xóa hoặc cập nhật dòng đó. Chi tiết từng việc xem file lưu trữ.
+> Rà ngày 10/11/2026: web `tokosi` và worker đều đang chạy `main` mới nhất (`d5e9ceb8`); mọi migration trong repo (đến `0120`) đã áp DB thật. Các việc cũ đã xong được xóa, xem file lưu trữ nếu cần chi tiết.
 
-- [ ] 31/10 — Chỉ định vị trí: thêm/sửa/xóa VT trong hộp — commit + deploy, báo kho về chặn `BELOW_HELD`
-- [ ] 30/10 — Sau khi gỡ module Vị trí hàng cũ — chờ duyệt migration DROP `stock_location_lines`
-- [ ] 29/10 — Sync KiotViet: đối soát `products` + tăng dần theo id — push/deploy
-- [ ] 27/10 — Trạng thái bốc + phiếu in mới + cột Có thể bốc — kiểm thử lại, deploy
-- [ ] 24/10 — Bảng giá duyệt — áp migration `0091`, `0092`, deploy
-- [ ] 23/10 — Kiểm tra giá bán — các bước production (áp `0077`…)
-- [ ] 20/10 — Yêu cầu xuất VAT (`feature/vat-requests`) — xác nhận đã lên production
-- [ ] 19/10 — Tạo QR bằng AI — biến môi trường trên Render
-- [ ] 19/10 — Tính sẵn báo cáo trong DB (`0068`–`0070`) — deploy, đo lại
-- [ ] 19/10 — Đối chiếu lệch `schema_migrations` (`0014_customer_debt_report_lines.sql`)
-- [ ] 19/10 — Quản lý rà soát 3 tài khoản sau vá phân quyền
-- [ ] 12/10 — Pancake Marketing — bật job, đối soát ≥ 3 đêm rồi mới đặt `MARKETING_REPORT_SOURCE=postgres`
-- [ ] 19/10 — Báo cáo hàng hóa 34 cột (`0067`) — deploy
-- [ ] 19/10 — Giảm egress Supabase đợt 2 (`0066`) — đo lại `pg_stat_statements` sau ≥ 7 ngày
-- [ ] Báo cáo hàng hóa 19 cột (`0057`) — deploy
-- [ ] Vận hành: backfill Báo cáo kinh doanh (`node kiotvietSync/businessMonthlyRefresh.js`), nạp Team sale, đăng ký webhook Telegram bot nghỉ phép
+- [ ] 10/11 — Bộ canh event loop (PR #70, đã deploy 10/11) — 11/11 lọc log `[loop-stall]` trên Render để tìm request gây khối 1–12 s
+- [ ] 10/11 — Vòng đời đơn hàng: đo lại thời gian tải 14–16h; > 2 s thì làm cache `latestStatuses`
+- [ ] 09/11 — Ổn định web, phần còn lại (kế hoạch ở nhánh local `docs/web-stability-singapore`, chưa push): đo RAM worker 3 đêm; tạo web service Singapore + chuyển tên miền (web hiện vẫn ở Oregon, DB ở Singapore)
+- [ ] 05–10/11 — 3 PR đang mở chờ duyệt/merge hoặc đóng: #71 (tên hàng ngừng KD ở Dự kiến hàng về), #47 (bảng Thu mua bị đẩy xuống), #41 (bộ lọc facet = 0 ở Vòng đời)
+- [ ] 30/10 — Bảng cũ `stock_location_lines` (15.302 dòng) và 2 dòng `stock_locations_hn/sg` trong `sheet_snapshot_sync` không còn dùng (ngừng đồng bộ từ 30/10) — quyết định viết migration DROP
+- [ ] 19/10 — Quản lý rà soát 3 tài khoản sau vá phân quyền (danh sách trong file lưu trữ, mục 3)
 
 ## Chỉ người vận hành làm được
 
