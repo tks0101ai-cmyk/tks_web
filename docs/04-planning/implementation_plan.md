@@ -649,6 +649,7 @@ Kiến trúc đã triển khai: **repository → route → module giao diện �
 
 - [x] `dashboard/productCustomerGrowthRepository.js`: một câu SQL (CTE `s` trạng thái, `tot` tổng DS theo sản phẩm, `b` cặp sản phẩm × khách kèm `prior`, `g` thêm `growth` / `growth_state`) trên `product_report_customers` JOIN `product_report`; lọc tên sản phẩm/khách (`fuzzySqlParts`), nhóm tăng trưởng, sắp xếp whitelist, phân trang đều ở SQL. Không migration.
 - [x] Route `GET /api/product-report/customer-growth` (`routes.js`, quyền `reports.products` + `reports.products.sales`).
+- [x] Sắp xếp nhiều cấp: tham số `sorts` (tối đa 4 cấp), xuất file theo `context.sorts`.
 - [x] Giao diện `public/product-customer-growth.js` + `.css`, section `#product90dSection` trong `index.html`: bảng 8 cột, table-controls (khóa lưu `dashboard-table-product-customer-growth`), Sáng/Tối, responsive; ô Tăng trưởng chỉ hiện % với lớp `is-lost` (đỏ, `--red`), `is-check` (cam, `--orange`), `is-drop` (vàng, `--yellow`) và `title` mô tả mức; nhãn "Cần check" đã bỏ (06/11/2026). Hai token `--orange`/`--yellow` thêm vào `shared/shared.css` (bản Tối và Sáng); `index.html` nạp `shared.css?v=20261107-3` và `product-customer-growth.js/.css?v=20261107-3`. Dropdown lọc 6 mục: Tất cả / Giảm hết 100% / Giảm hơn 50% / Giảm dưới 50% / Đang tăng / Khách mới.
 - [x] Xuất Excel/HTML `products.productCustomerGrowth` (`exportService.js`): bộ lọc truyền qua `context`, kiểm tra lại bằng `validateFilters`, trần 50.000 dòng.
 - [x] Dọn giao diện cũ của mục 4 (bảng 26 cột, CSS, thead, test khóa khớp); `product-90d-report.js` giữ cho xuất file cũ `products.product90d`.
@@ -677,4 +678,4 @@ Thiết kế triển khai: public/shared/table-controls.js cung cấp nextSorts 
 
 Kế hoạch kiểm chứng: (1) test hồi quy nhiều lớp, bằng nhau/NULL, chu kỳ/bỏ lớp và lưu-khôi phục; (2) tích hợp nhóm Dashboard/Nhân sự/Tài khoản, nhóm báo cáo phân trang, nhóm Thu mua/VAT/VT/Marketing và chi tiết kiểm kê; (3) chạy test toàn bộ liên quan, kiểm trình duyệt sáng/tối, cập nhật graphify và CURRENT. Không thay nguồn dữ liệu hoặc chạy migration.
 
-Cập nhật gần nhất: 08/11/2026.
+Cập nhật gần nhất: 10/11/2026.

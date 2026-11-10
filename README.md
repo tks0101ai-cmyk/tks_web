@@ -181,7 +181,7 @@ server/
 ├── notifications/        # Chuông thông báo: notificationRepository.js (bảng `notifications`, 0093), notificationRoutes.js (/api/notifications), specialDayNotifier.js; testHelpers/notificationTestPool.js (PGlite cho test)
 ├── productContainers/    # Parser CONT, snapshot repository, đồng bộ Sheets chỉ đọc mỗi 10 phút (ghi khác biệt) và kiểm thử; bảng Dự kiến hàng về (20/10/2026): expectedRefresh.js (job dựng bảng tính sẵn), expectedRepository.js (đọc + cache theo version), expectedRoutes.js (/api/expected-arrivals), expectedExport.js (xuất Excel/HTML); từ 21/10/2026 route trả `fullAccess` và bỏ trường giá khi thiếu quyền `reports.overview.containers.full`, xuất file thêm cột giá theo quyền
 ├── public/               # Frontend HTML/CSS/JS
-│   ├── product-customer-growth.js / .css # Mục 4 "Hàng hóa 90 ngày" của tab Hàng hóa (06/11/2026): bảng Khách hàng theo sản phẩm (mỗi dòng một cặp sản phẩm × khách) + 3 kỳ + Tăng trưởng, lọc tên sản phẩm/khách/nhóm tăng trưởng, ô Tăng trưởng chỉ hiện % với ba mức màu đỏ/cam/vàng (không còn nhãn "Cần check"); đọc API /api/product-report/customer-growth
+│   ├── product-customer-growth.js / .css # Mục 4 "Hàng hóa 90 ngày" của tab Hàng hóa (06/11/2026): bảng Khách hàng theo sản phẩm (mỗi dòng một cặp sản phẩm × khách) + 3 kỳ + Tăng trưởng, lọc tên sản phẩm/khách/nhóm tăng trưởng, ô Tăng trưởng chỉ hiện % với ba mức màu đỏ/cam/vàng (không còn nhãn "Cần check"), sắp xếp nhiều cấp (bấm tiêu đề cột nào cũng cộng dồn, tối đa 4 cấp, nút "Xóa sắp xếp"); đọc API /api/product-report/customer-growth
 │   ├── product-90d-report.js # (còn dùng cho xuất file cũ products.product90d, không còn nạp trong index.html)
 │   ├── invoice-approved-prices.js / .css # Mục Bảng giá duyệt của tab Hóa đơn (24/10/2026): bộ lọc Người duyệt + Ngày duyệt, sắp xếp phía máy chủ, hộp Tạo/Sửa/Xóa chọn khách + sản phẩm từ gợi ý KiotViet, 2 cột/ô giá tùy chọn Giá không VAT + Giá có VAT, xuất Excel
 │   ├── kho-hn/ / kho-sg/ # Sơ đồ Kho Hà Nội / Kho Sài Gòn (05/11/2026): trang tĩnh `/kho-hn/` (10 ảnh trong `img/`, chip A…V, bấm ảnh phóng to) và `/kho-sg/` (trống, "Chưa có sơ đồ kho"); quyền `stockLocationsV2.view`
@@ -478,6 +478,10 @@ Module mới: `server/dashboard/productCustomerGrowthRepository.js` (một câu 
 
 Không migration, không biến môi trường mới. Phần máy chủ cũ của mục 4 (API `/api/product-report/90d`, bảng tính sẵn `product_90d_report`, job 02:00) giữ nguyên, sẽ gỡ ở một đợt riêng. Kiểm thử: `dashboard/productCustomerGrowthRepository.test.js`, `productCustomerGrowthRoutes.test.js`, `exportProductCustomerGrowth.test.js`, `test/frontend/product-customer-growth.test.js`.
 
+**Sắp xếp nhiều cấp bảng Khách hàng theo sản phẩm (10/11/2026).** Bảng mục 4 tab Hàng hóa sắp xếp được nhiều cột cùng lúc như Excel: bấm tiêu đề cột nào cũng thêm một cấp (tối đa 4), bấm lại để đổi chiều rồi gỡ, nút "Xóa sắp xếp" về mặc định; tiêu đề hiện số cấp. API nhận thêm `sorts=khóa:chiều,…` (`sort`/`dir` cũ vẫn chạy), xuất file theo đúng thứ tự nhiều cấp. Không migration, không biến môi trường mới. Kiểm thử: `dashboard/productCustomerGrowthRepository.test.js`, `productCustomerGrowthRoutes.test.js`, `exportProductCustomerGrowth.test.js`, `test/frontend/product-customer-growth.test.js`.
+
+Cập nhật gần nhất: 10/11/2026.
+
 07/11/2026 — Kiểm kê: chỉ gom đơn TEAM có `raw.statusValue = "Phiếu tạm"` ở cả hai cơ sở; số đếm, chi tiết, xuất thống kê, bộ đếm và cảnh báo ngoài khoảng ngày dùng cùng điều kiện. Đơn hủy/hoàn thành/trạng thái khác hoặc thiếu trạng thái bị loại, kể cả dòng đã sửa trên web. Đợt đã chốt giữ nguyên ảnh chụp lịch sử; không migration, chưa deploy.
 
 Cập nhật gần nhất: 08/11/2026.
@@ -498,4 +502,4 @@ Cập nhật gần nhất: 07/11/2026.
 
 07/11/2026 — Kiểm kê: chống gửi lặp yêu cầu xuất Excel, báo tiến trình/lỗi tải file; gộp các truy vấn đọc trùng đang xử lý để giảm nghẽn pool, trạng thái đơn dùng cache tối đa 3 giây. Không migration.
 
-Cập nhật gần nhất: 07/11/2026.
+Cập nhật gần nhất: 10/11/2026.
