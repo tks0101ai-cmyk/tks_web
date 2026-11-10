@@ -1,7 +1,7 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');const C=require('./purchase-calculations');
 const row={qtyPerCarton:300,cartonCount:4,unitPriceCny:1.35,freightPrepaid:10,freightPostpaid:20,fxRate:3920,kgPerCarton:13.8,m3PerCarton:.073,literWarehouse:.25,gramWarehouse:46};
 test('canonical row formulas include both RMB freight charges and exclude tax',()=>{const d=C.row({...row,taxAmount:99999},292000);assert.equal(d.totalQty,1200);assert.equal(d.totalCny,1630);assert.equal(d.goodsAmount,6389600);assert.equal(d.totalTon,.0552);assert.equal(d.totalM3,.292);assert.equal(d.netPrice,(6389600+292000+78400)/1200);assert.ok(Math.abs(d.literDiff-(d.literChina-.25)/.25)<1e-14);assert.equal(d.gramDiff,0)});
-test('missing and zero have different meanings and no division creates NaN',()=>{for(const blank of [null,undefined,'']){const d=C.row({...row,freightPrepaid:blank},100);assert.equal(d.totalCny,null);assert.equal(d.netPrice,null)}assert.equal(C.row({...row,unitPriceCny:0,freightPrepaid:0,freightPostpaid:0},0).netPrice,0);for(const k of ['qtyPerCarton','cartonCount','kgPerCarton','m3PerCarton','fxRate','literWarehouse']){const d=C.row({...row,[k]:0},0);assert.ok(Object.values(d).every(v=>v==null||Number.isFinite(v)))}assert.equal(C.row({...row,m3PerCarton:0},null).totalM3,null);assert.equal(C.row({...row,fxRate:0},0).netPrice,null)});
+test('missing and zero have different meanings and no division creates NaN',()=>{for(const blank of [null,undefined,'']){const d=C.row({...row,freightPrepaid:blank},100);assert.equal(d.totalCny,1620);assert.equal(d.goodsAmount,6350400);assert.equal(d.netPrice,(6350400+100+78400)/1200)}assert.equal(C.row({...row,unitPriceCny:0,freightPrepaid:0,freightPostpaid:0},0).netPrice,0);for(const k of ['qtyPerCarton','cartonCount','kgPerCarton','m3PerCarton','fxRate','literWarehouse']){const d=C.row({...row,[k]:0},0);assert.ok(Object.values(d).every(v=>v==null||Number.isFinite(v)))}assert.equal(C.row({...row,m3PerCarton:0},null).totalM3,null);assert.equal(C.row({...row,fxRate:0},0).netPrice,null)});
 test('decimal operations retain small quantities and do not round intermediate prices',()=>{assert.equal(C.mul(.1,3),.3);assert.equal(C.add(.1,.2),.3);assert.equal(C.row({...row,m3PerCarton:.000001,cartonCount:3},0).totalM3,.000003);assert.equal(C.row({...row,unitPriceCny:1.23456},0).totalCny,1491.472)});
 test('unsafe quantities, negative amounts, invalid exchange rates and overflowing products are reported',()=>{assert.ok(C.issues({...row,cartonCount:1.5}).includes('cartonCount'));assert.ok(C.issues({...row,unitPriceCny:-1}).includes('unitPriceCny'));assert.ok(C.issues({...row,fxRate:0}).includes('fxRate'));assert.ok(C.issues({...row,cartonCount:Number.MAX_SAFE_INTEGER}).includes('totalQty'));assert.equal(C.mul(Number.MAX_SAFE_INTEGER,2),null);assert.equal(C.divide(1,0),null)});
 
@@ -30,4 +30,22 @@ test('numeric expressions respect precedence and reject code, invalid syntax and
  assert.equal(evaluate('-2 * -3'),6);
  assert.equal(evaluate('1,234.5'),1234.5);
  for(const value of ['1/0','2**3','AA11*2','globalThis.x=1','(1+2','2 3','()'])assert.ok(Number.isNaN(evaluate(value)),value);
+});
+
+for(const [label,prepaid,expected] of [['omitted',undefined,1620],['null',null,1620],['empty','',1620],['whitespace','  ',1620],['zero',0,1620],['positive',10,1630],['negative',-23,1597]]){
+ test('row handles '+label+' prepaid freight',()=>{
+  const input={...row,freightPrepaid:prepaid};if(label==='omitted')delete input.freightPrepaid;
+  const d=C.row(input,100);assert.equal(d.totalCny,expected);assert.equal(d.goodsAmount,expected*row.fxRate);
+  assert.equal(d.netPrice,(expected*row.fxRate+100+row.freightPostpaid*row.fxRate)/1200);
+  assert.equal(C.sum([d.totalCny]),expected);
+  for(const key of ['qtyPerCarton','cartonCount','unitPriceCny'])for(const missing of [undefined,null,'']){
+   const incomplete=C.row({...input,[key]:missing},100);
+   for(const field of ['totalCny','goodsAmount','netPrice'])assert.equal(incomplete[field],null,key+'/'+field);
+  }
+ });
+}
+test('row preserves invalid prepaid and other missing freight semantics',()=>{
+ assert.equal(C.row({...row,freightPrepaid:'invalid'},100).totalCny,null);
+ assert.equal(C.row({...row,freightPrepaid:null,freightPostpaid:null},100).netPrice,null);
+ assert.equal(C.row({...row,freightPrepaid:null},null).netPrice,null);
 });

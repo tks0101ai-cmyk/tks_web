@@ -6,8 +6,8 @@ const { ROLES } = require('../auth/userRepository');
 const registry = require('../auth/featureRegistry');
 async function start(t,user) {
   const calls=[];
-  const record=name=>async(...args)=>{calls.push({name,args});return {ok:true}};
-  const service=Object.fromEntries(['employees','trash','operations','remove','restore','undo','applyPlan','list','history','create','update','createContainer','updateContainer','schedule','changeStatus','bulkEdit','transfer','depart','arrive','previewImport','reviseImport','commitImport'].map(name=>[name,record(name)]));
+  const record=name=>async(...args)=>{calls.push({name,args});return name==='revision'?{revision:'9:4'}:{ok:true}};
+  const service=Object.fromEntries(['revision','employees','createEmployee','updateEmployee','trash','operations','remove','restore','undo','applyPlan','list','history','create','update','createContainer','updateContainer','schedule','changeStatus','bulkEdit','transfer','depart','arrive','previewImport','reviseImport','commitImport'].map(name=>[name,record(name)]));
   const app=express();app.use(express.json());app.use((req,res,next)=>{req.user=user;next()});
   app.use(createPurchaseOrdersRouter({service,requireAuth:(req,res,next)=>req.user?next():res.status(401).json({error:'Chưa đăng nhập'})}));
   const server=await new Promise(resolve=>{const server=app.listen(0,'127.0.0.1',()=>resolve(server))});t.after(()=>server.close());
@@ -48,4 +48,30 @@ test('delete restore and undo require edit permission, directory requires purcha
 
 test('invalid request keys are rejected before a mutation reaches the service',async t=>{
  const {base,calls}=await start(t,{id:'manager',vaiTro:ROLES.QUAN_LY});const response=await fetch(base,{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':'invalid'},body:'{}'});assert.equal(response.status,400);assert.equal(calls.length,0);
+});
+
+
+test('catalog writes require purchase edit and manager routes forward exact requests',async t=>{
+ const reader=await start(t,{id:'reader',vaiTro:ROLES.NHAN_VIEN_MUA_HANG,featurePermissions:{'purchase.view':true}});
+ for(const [method,path] of [['POST','/employees'],['PATCH','/employees/7']])assert.equal((await fetch(reader.base+path,{method,headers:{'Content-Type':'application/json'},body:'{}'})).status,403);
+ assert.equal(reader.calls.length,0);
+ const manager=await start(t,{id:'manager',vaiTro:ROLES.QUAN_LY});
+ assert.equal((await fetch(manager.base+'/employees',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'A'})})).status,201);
+ const body={version:2,changes:{name:'B',isActive:false}};
+ assert.equal((await fetch(manager.base+'/employees/7',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).status,200);
+ assert.deepEqual(manager.calls.map(c=>c.name),['createEmployee','updateEmployee']);assert.deepEqual(manager.calls[0].args[1],{name:'A'});assert.equal(manager.calls[1].args[1],'7');assert.deepEqual(manager.calls[1].args[2],body);
+});
+
+test('container patch forwards the complete shared row version snapshot',async t=>{
+ const {base,calls}=await start(t,{id:'manager',vaiTro:ROLES.QUAN_LY});
+ const body={version:3,changes:{arrivalNote:'2026-11-10',arrivalDate:'2026-11-11',truckName:'18.5m',maxTon:35,m3Min:150,m3Max:180},rows:[{id:'1',version:4}]};
+ assert.equal((await fetch(base+'/containers/9',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).status,200);
+ assert.equal(calls[0].name,'updateContainer');assert.equal(calls[0].args[1],'9');assert.deepEqual(calls[0].args[2],body);
+});
+test('revision endpoint requires purchase view and returns only the lightweight fingerprint',async t=>{
+ for(const [user,status] of [[null,401],[{id:'buyer',vaiTro:ROLES.NHAN_VIEN_MUA_HANG},403],[{id:'guest',vaiTro:ROLES.KHACH,featurePermissions:{'purchase.view':true}},403]]){
+  const p=await start(t,user);assert.equal((await fetch(p.base+'/revision')).status,status);assert.equal(p.calls.length,0);
+ }
+ const user={id:'reader',vaiTro:ROLES.NHAN_VIEN_MUA_HANG,featurePermissions:{'purchase.view':true}},p=await start(t,user),response=await fetch(p.base+'/revision');
+ assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');assert.deepEqual(await response.json(),{revision:'9:4'});assert.deepEqual(p.calls.map(c=>c.name),['revision']);assert.deepEqual(p.calls[0].args,[user]);
 });

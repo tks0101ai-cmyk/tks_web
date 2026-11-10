@@ -22,8 +22,8 @@ async function projectContainers(client) {
       COALESCE(o.buyer,'') AS ordered_by,COALESCE(o.listed_at::text,'') AS listed_at,
       o.qty_per_carton AS units_per_package,o.carton_count AS package_count,
       o.qty_per_carton*o.carton_count AS quantity,
-      CASE WHEN o.freight_prepaid IS NOT NULL AND o.freight_postpaid IS NOT NULL AND cost.freight IS NOT NULL AND o.fx_rate>0 AND o.qty_per_carton>0 AND o.carton_count>0
-        THEN ((o.qty_per_carton*o.carton_count*o.unit_price_cny+o.freight_prepaid+o.freight_postpaid)*o.fx_rate+cost.freight)/NULLIF(o.qty_per_carton*o.carton_count,0)
+      CASE WHEN o.freight_postpaid IS NOT NULL AND cost.freight IS NOT NULL AND o.fx_rate>0 AND o.qty_per_carton>0 AND o.carton_count>0
+        THEN ((o.qty_per_carton*o.carton_count*o.unit_price_cny+COALESCE(o.freight_prepaid,0)+o.freight_postpaid)*o.fx_rate+cost.freight)/NULLIF(o.qty_per_carton*o.carton_count,0)
         ELSE NULL END AS vietnam_price,
       o.unit_price_cny,COALESCE(o.buy_note,'') AS other_note
     FROM purchase_orders o LEFT JOIN product_containers c ON c.id=o.container_id

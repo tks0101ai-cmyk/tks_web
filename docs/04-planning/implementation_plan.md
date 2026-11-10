@@ -458,7 +458,7 @@ Cập nhật gần nhất: 05/11/2026.
 
 Thêm /thu-mua/dat-hang/ và /api/purchase-orders với quyền purchase.view/edit/import/export/depart/arrive; mặc định chỉ Quản lý, quyền mở rộng qua cơ chế cấp quyền hiện có. Module có bảng Chỉ số cont và Đặt hàng sửa trực tiếp, lọc riêng theo tài khoản, dropdown NV/cont/trạng thái, tách .01/.02 đệ quy, sửa hàng loạt, undo/xóa mềm/khôi phục, import toàn bộ hợp lệ mới ghi, audit/realtime và bộ công thức dùng chung. Source gate ngăn job Sheet và web ghi đè nhau.
 
-Migrations Thu mua được đổi sang 0110–0116 vì main đã dùng 0101–0109 và 0114 (0114_stocktake_frozen_lines.sql). db/ensurePurchaseSchema.js áp đúng sáu migration này khi web startup, transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
+Migrations Thu mua được đổi sang 0110–0116 vì main đã dùng 0101–0109 và 0114 (0114_stocktake_frozen_lines.sql). db/ensurePurchaseSchema.js hiện đăng ký 9 migration Thu mua 0110–0113, 0115–0119 khi web startup (0119 seed riêng danh mục NV từ buyer hiện có), transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed đơn hàng/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
 
 
 
@@ -522,7 +522,7 @@ Khi seed được duyệt, phải nâng purchase_order_key_seq ít nhất tới 
 - Trang production: server/public/thu-mua/dat-hang/{index.html,purchase.js,purchase.css}, URL /thu-mua/dat-hang/. Dùng shared-nav/quyền purchase.view và danh mục cột chung; mockup giữ riêng để thử dữ liệu.
 - UI gọi API thật cho đặt lại từ lần lên list gần nhất, thêm mã mới vào hàng chờ, sửa ô, xác nhận thay thế, sửa hàng loạt (gom các thay đổi giống nhau thành batch audit), tạo/sửa cont, đặt lịch, chuyển/tách .01/.02, thực xuất, trạng thái 4, lịch sử và Excel. Import sửa toàn bộ preview hoặc tải lại, chỉ ghi khi toàn bộ hợp lệ; export POST chọn ID theo bộ lọc riêng và cột hiện tại, lấy giá trị đã lưu từ server.
 - Bộ lọc/tìm/sắp xếp, trang, cột, độ rộng, lựa chọn và bản nháp không phát sang người khác. Bản nháp/filter/cột/độ rộng lưu sessionStorage theo ID tài khoản, sống qua reload trong cùng tab. Không tự gửi lại thao tác ghi sau mất mạng; import confirm có token chống lặp.
-- SSE /api/purchase-orders/events yêu cầu auth + view, báo hiện diện và thay đổi sau commit. purchaseOrdersRealtime.js dùng lease DB 45 giây, gia hạn/đối chiếu history mỗi 10 giây để hỗ trợ nhiều tiến trình; ngắt kết nối xóa lease, chết tiến trình tự hết hạn. Event không chứa dòng hàng, bộ lọc hay bản nháp. Browser có đọc dự phòng mỗi 30 giây, giữ ô đang nhập, lấy lại dữ liệu khi SSE nối lại.
+- SSE /api/purchase-orders/events yêu cầu auth + view, báo hiện diện và thay đổi sau commit. purchaseOrdersRealtime.js dùng lease DB 45 giây, gia hạn/đối chiếu history mỗi 3 giây để hỗ trợ nhiều tiến trình; ngắt kết nối xóa lease, chết tiến trình tự hết hạn. Event không chứa dòng hàng, bộ lọc hay bản nháp. Browser có đọc dự phòng mỗi 30 giây, giữ ô đang nhập, lấy lại dữ liệu khi SSE nối lại.
 - Ô trùng thay đổi được đánh dấu, popup đối chiếu trước/hệ thống/bản nháp, chọn giữ bản nháp hoặc dùng hệ thống rồi xác nhận lưu lại. Sửa trường khác vẫn kiểm before/version phía server. Mọi cont được chọn sửa; không khóa theo trạng thái.
 - Migration 0101 chưa áp dụng, bổ sung purchase_presence (connection_id UUID, actor_id/name, expires_at, index expiry), không bật source_mode. Bảng mới cũng không cấp quyền reporting_readonly.
 - Kiểm tra tuần tự (--test-concurrency=1): 155 ca, 154 đạt, 0 lỗi, 1 PostgreSQL thật bỏ qua do chưa cấu hình SUPABASE_TEST_DB_URL; gồm DOM/API/quyền/page guard/nav và DDL/giao dịch/lease trên PGlite. Chưa kiểm nhiều kết nối PostgreSQL thật hoặc giao diện bằng trình duyệt production. Lượt song song từng thiếu bộ nhớ V8 ở expectedRefresh; chạy riêng và chạy toàn bộ tuần tự đều đạt. Kiểm thêm ô đang focus giữ đúng baseline cũ khi SSE tới, và chuẩn hóa DATE PostgreSQL theo ngày địa phương.
@@ -558,7 +558,7 @@ Kiểm tra cuối phương án cont 03/11/2026: 83 ca đạt, 0 lỗi (DOM mocku
 05/11/2026 — Hoàn thiện năng suất trên mockup Thu mua bằng public/prototypes/thu-mua/productivity.js: dán vùng Excel kiểm cả vùng trước staging; Enter/Tab điều hướng; đặt lại từ lần lên list gần nhất; chuyển cont nhiều dòng; bộ lọc nhanh riêng; danh sách lỗi có điều hướng ô. Thêm hoàn tác từng thao tác và từng lần lưu với so sánh trạng thái dòng trước khi khôi phục, tách xử lý hai nhánh; xóa mềm có xác nhận/lưu, khôi phục và audit, stale delete chặn cả lần lưu. Dữ liệu thử/lịch sử/undo giữ theo sessionStorage; menu Tác vụ tránh thêm quá nhiều nút. Hướng dẫn public/prototypes/thu-mua/USAGE.md. Đây là mở rộng mockup, chưa có API/DB cho xóa/khôi phục/undo và chưa triển khai các tiện ích này vào trang production.
 
 
-05/11/2026 — Chuẩn bị production Thu mua: chuyển các tiện ích dán bảng/bàn phím/đặt lại/chuyển cont/lọc nhanh/soát lỗi sang purchase.js; dropdown NV từ API HR rút gọn, lưu buyer_employee_id và kiểm active ở lần ghi. Thêm migration 0102_purchase_operations.sql (chưa chạy): xóa mềm và snapshot thao tác máy chủ, API trash/delete/restore/operations/undo có quyền edit/view, actor ownership, CAS và projection trong cùng transaction. Hoàn tác nhiều bước và hai nhánh tách được kiểm trước khi đảo; import/xuất/nhận không hoàn tác bằng endpoint này. Có công cụ purchaseOrdersReconcile.js đọc hai JSON chuẩn hóa, không ghi DB. Chi tiết schema/giới hạn/cách đối chiếu tại server/purchaseOrders/ROLLOUT.md. Chưa seed/chạy migration/cutover/deploy; chưa đối chiếu nguồn thật hay kiểm nhiều trình duyệt/máy chủ thật.
+05/11/2026 — Chuẩn bị production Thu mua: chuyển các tiện ích dán bảng/bàn phím/đặt lại/chuyển cont/lọc nhanh/soát lỗi sang purchase.js; dropdown NV theo mô tả HR/ID cũ (được thay bằng danh mục Thu mua độc lập và snapshot buyer từ 07/11/2026, xem hợp đồng 0119 bên dưới). Thêm migration 0102_purchase_operations.sql (chưa chạy): xóa mềm và snapshot thao tác máy chủ, API trash/delete/restore/operations/undo có quyền edit/view, actor ownership, CAS và projection trong cùng transaction. Hoàn tác nhiều bước và hai nhánh tách được kiểm trước khi đảo; import/xuất/nhận không hoàn tác bằng endpoint này. Có công cụ purchaseOrdersReconcile.js đọc hai JSON chuẩn hóa, không ghi DB. Chi tiết schema/giới hạn/cách đối chiếu tại server/purchaseOrders/ROLLOUT.md. Chưa seed/chạy migration/cutover/deploy; chưa đối chiếu nguồn thật hay kiểm nhiều trình duyệt/máy chủ thật.
 
 05/11/2026 — Kiểm tra cuối phần chuẩn bị production: 65 ca service/route/import/reconcile/UI đạt (PGlite + jsdom), gồm phân quyền API mới, hai actor sửa khác/cùng ô, stale delete, import bị xóa sau preview, undo nhiều bước/hai nhánh và mất mạng giữ draft/filter. Chưa áp dụng migrations trên DB thật, chưa kiểm nhiều trình duyệt/SSE đa tiến trình thực tế.
 
@@ -681,3 +681,34 @@ Thiết kế triển khai: public/shared/table-controls.js cung cấp nextSorts 
 Kế hoạch kiểm chứng: (1) test hồi quy nhiều lớp, bằng nhau/NULL, chu kỳ/bỏ lớp và lưu-khôi phục; (2) tích hợp nhóm Dashboard/Nhân sự/Tài khoản, nhóm báo cáo phân trang, nhóm Thu mua/VAT/VT/Marketing và chi tiết kiểm kê; (3) chạy test toàn bộ liên quan, kiểm trình duyệt sáng/tối, cập nhật graphify và CURRENT. Không thay nguồn dữ liệu hoặc chạy migration.
 
 Cập nhật gần nhất: 10/11/2026.
+Cập nhật gần nhất: 08/11/2026.
+
+## Thu mua — cập nhật kiến trúc workspace và 0119 (07/11/2026)
+
+Hợp đồng hiện hành thay ghi chú HR/free-text buyer và mã mới tự vào cont ở các giai đoạn cũ.
+
+1. Backend: migration 0119 tạo danh mục NV độc lập và seed tên buyer đang có; service/routes cung cấp GET/POST/PATCH employees, kiểm active khi chọn mới, version/audit/realtime khi sửa catalog. Không tra HR; giữ snapshot buyer legacy để tiếp tục sửa các trường khác.
+2. Tạo mã: Mọi mã hàng mới từ create trực tiếp, `plan.creates` hoặc import đều lưu `container_id=NULL` (**Chờ xếp**), kể cả request create gửi `contId`. Việc xếp/chuyển/tách cont là thao tác riêng có xác nhận và kiểm phiên bản. Tên legacy vẫn đọc được; chỉ lựa chọn buyer mới/đổi mới bắt buộc danh mục đang hoạt động.
+3. Cont: PATCH nhận version cont; arrivalNote/arrivalDate phải kèm toàn bộ `rows:[{id,version}]` đã lưu thuộc cont, kể cả dòng ngoài bộ lọc. Khóa/soát membership và version trước khi truyền `etaNote`/`arrivedNote`, tăng version từng dòng/cont và audit trong một giao dịch. Lệch trả 409, rollback toàn bộ. Tên/trạng thái dùng chung; cước đổi tính lại NET; sức chứa không ghi đè số lượng/số đo/tồn.
+4. Tích hợp UI: dùng buyer select từ danh mục active và hộp quản lý danh mục; tên legacy/inactive vẫn đọc được. Khi lưu cont phải lấy snapshot dòng đã lưu, không lấy danh sách đang lọc hoặc hàng nháp. Tải lại sau lưu để nhận version mới; status tiếp tục dùng /status. Phần UI thuộc luồng tích hợp riêng.
+
+### Shared helpers và realtime
+
+- `server/public/shared/purchase-container-workspace.js`: nhóm cont cùng hàng Chờ xếp, tổng trạng thái/tấn/m³/số dòng từ dữ liệu hiệu lực (đã ghép nháp), form chỉ số cont và các chỉ số chỉ đọc.
+- `server/public/shared/purchase-draft-history.js`: gom một lần sửa ô từ focus/input đến commit thành một bước hoàn tác; lưu baseline trước sửa, hỗ trợ undo thay đổi còn đang nhập, xuất/khôi phục trạng thái JSON. Caller quản lý stack và persistence; helper không tự ghi server.
+- `server/public/shared/purchase-realtime.js`: gộp yêu cầu refresh, bỏ snapshot đã bị invalidation mới vượt qua, ghép nháp với dữ liệu từ xa, báo xung đột cùng ô/dòng bị xóa và giữ focus/chữ đang nhập/vùng chọn. Không đổi baseline hay version khóa lạc quan của bản nháp.
+- `server/purchaseOrders/purchaseOrdersRealtime.js`: SSE `/api/purchase-orders/events`, heartbeat mặc định 3 giây, lease hiện diện 45 giây, revision `max(purchase_history.id):count(*)` để nhận thay đổi giữa nhiều tiến trình và trường hợp ID thấp commit muộn. Ngắt kết nối dọn timer/listener/lease; event không mang bản nháp, bộ lọc cá nhân hoặc toàn bộ dòng.
+
+### Kiểm tra trước nghiệm thu
+
+Đối chiếu service/routes/schema và shared helpers với hợp đồng tại [server/README.md](../../server/README.md). Kiểm từng chức năng: CRUD mềm NV/uniqueness/active/version, legacy không đổi, create/bulk/plan/import và revalidation sau preview, mã mới Chờ xếp, cont propagation với snapshot thiếu/cũ/thay membership, rollback/audit/SSE, NET và không sửa tồn/số đo. Kiểm trình duyệt nhiều tài khoản, reconnect, focus/draft/undo và nhãn ngày vẫn là phần nghiệm thu UI; không suy ra đã đạt từ kiểm thử PGlite/jsdom.
+
+Migration `0119_purchase_employees.sql` đã chuẩn bị và được thêm vào `ensurePurchaseSchema.FILES`; **chưa áp DB thật trong tác vụ này**. Không tự bật nguồn web/cờ tích hợp, không seed đơn hàng, không merge/deploy. Phần UI do luồng tích hợp giao diện hoàn thiện; hợp đồng tài liệu không phải xác nhận nghiệm thu trình duyệt/production.
+
+Cập nhật gần nhất: 07/11/2026.
+
+## Thu mua: áp dụng bài học Kiểm kê — 10/11/2026
+
+Đã tách lõi TSV/range/rowKey/fill/summary sang purchase-grid.js, UI vùng sang purchase-grid-ui.js. Scheduler tự động có visibility/throttle, endpoint revision nhẹ tránh tải lại rows/directory nếu chưa đổi. Directory chạy riêng, không chặn render; metadata NV modal giữ snapshot riêng. Render nền giữ thứ tự theo id trong từng nhóm, chờ xếp ưu tiên; neo input/vùng theo id/field. Paste/fill/delete prevalidate toàn vùng rồi tạo một undo unit trong drafts; split-parent costs/NV/cột tính không bị ghi qua đường này. Không đổi sang auto-save. Tài liệu kế hoạch: docs/superpowers/plans/2026-11-10-purchase-grid-sync.md.
+
+Cập nhật cuối: 10/11/2026.

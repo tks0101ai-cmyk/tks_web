@@ -28,7 +28,7 @@
  const signed=v=>number(v);
  const quantity=v=>{const n=positive(v);return Number.isSafeInteger(n)?n:null};
  function row(r,freightAmount=null){
-  const units=quantity(r.qtyPerCarton),cartons=quantity(r.cartonCount),price=nonnegative(r.unitPriceCny),pre=signed(r.freightPrepaid),post=nonnegative(r.freightPostpaid),fx=positive(r.fxRate),kg=positive(r.kgPerCarton),m3=positive(r.m3PerCarton),lw=positive(r.literWarehouse),gw=positive(r.gramWarehouse);
+  const units=quantity(r.qtyPerCarton),cartons=quantity(r.cartonCount),price=nonnegative(r.unitPriceCny),pre=r.freightPrepaid==null||String(r.freightPrepaid).trim()===''?0:signed(r.freightPrepaid),post=nonnegative(r.freightPostpaid),fx=positive(r.fxRate),kg=positive(r.kgPerCarton),m3=positive(r.m3PerCarton),lw=positive(r.literWarehouse),gw=positive(r.gramWarehouse);
   const totalQty=mul(units,cartons),totalCny=add(mul(totalQty,price),pre),goodsAmount=mul(totalCny,fx),totalTon=scaled([kg,cartons],1000),totalM3=mul(m3,cartons),literChina=scaled([m3,1000],units),gramChina=scaled([kg,1000],units),freight=number(freightAmount);
   return {totalQty,totalCny,goodsAmount,totalTon,totalM3,freightAmount:freight,netPrice:result(raw('div',[raw('add',[goodsAmount,freight,raw('mul',[post,fx])]),totalQty])),literChina,gramChina,literDiff:divide(add(literChina,lw==null?null:-lw),lw),gramDiff:divide(add(gramChina,gw==null?null:-gw),gw),ratio:divide(totalTon,totalM3)};
  }

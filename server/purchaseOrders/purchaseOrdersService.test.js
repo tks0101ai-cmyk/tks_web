@@ -17,15 +17,17 @@ before(async () => {
   // Danh sach migration Thu mua lay tu FILES de them migration moi khong lam
   // do test (truoc day ghim cung nen 0114/0115 bi bo sot).
   for (const name of ['0053_product_containers.sql','0072_product_container_unit_price_cny.sql','0075_product_container_expected.sql','0078_product_container_expected_prices.sql','0086_product_container_other_note.sql',...PURCHASE_FILES]) await db.exec(fs.readFileSync(path.join(__dirname,'../db/migrations',name),'utf8'));
-  await db.exec('CREATE TABLE product_report(product_code text,product_name text); CREATE TABLE kiot_test_stock(on_hand numeric);INSERT INTO kiot_test_stock VALUES(99)');
+  // Expected-arrivals projection also reads the Kiot product-name fallback.
+  await db.exec('CREATE TABLE product_report(product_code text,product_name text); CREATE TABLE products(code text,name text); CREATE TABLE kiot_test_stock(on_hand numeric);INSERT INTO kiot_test_stock VALUES(99)');
   events = new EventEmitter();
   const query = (sql,params) => db.query(sql,params);
   service = createPurchaseOrdersService({ pool:{query,connect:async()=>({query,release(){}})},events });
 });
 beforeEach(async () => {
-  await db.exec(`TRUNCATE purchase_requests,purchase_undo_expected,purchase_operation_rows,purchase_operations,purchase_orders,product_containers,purchase_key_history,purchase_history,purchase_departures,purchase_import_previews,product_container_lines,product_container_expected,product_container_expected_state RESTART IDENTITY CASCADE;
+  await db.exec(`TRUNCATE purchase_employees,purchase_requests,purchase_undo_expected,purchase_operation_rows,purchase_operations,purchase_orders,product_containers,purchase_key_history,purchase_history,purchase_departures,purchase_import_previews,product_container_lines,product_container_expected,product_container_expected_state RESTART IDENTITY CASCADE;
     ALTER SEQUENCE purchase_order_key_seq RESTART WITH 1;
-    UPDATE purchase_settings SET source_mode='web',projection_owns_all=true,integration_enabled=true;`);
+    UPDATE purchase_settings SET source_mode='web',projection_owns_all=true,integration_enabled=true;
+    INSERT INTO purchase_employees(name) VALUES('Dung'),('Other'),('Edited after arrival');`);
   // integration_enabled=true: bo test nay mo ta hop dong khi Thu mua DA noi vao
   // he thong. Che do cach ly (mac dinh, migration 0117) duoc kiem rieng o
   // purchaseOrdersIsolation.test.js.
@@ -39,7 +41,7 @@ test('presence leases are shared between connections, expire, and expose only id
   const {createPresenceStore}=require('./purchaseOrdersRealtime');const store=createPresenceStore(db);
   const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222';
   await store.touch(a,{id:'alice',hoTen:'Alice'});const both=await store.touch(b,{id:'bob',hoTen:'Bob'});
-  assert.deepEqual(both.users.map(u=>u.name),['Alice','Bob']);assert.equal(both.version,'0');
+  assert.deepEqual(both.users.map(u=>u.name),['Alice','Bob']);assert.equal(both.version,'0:0');
   await db.query("UPDATE purchase_presence SET expires_at=now()-interval '1 minute' WHERE connection_id=$1",[a]);
   const active=await store.touch(b,{id:'bob',hoTen:'Bob'});assert.deepEqual(active.users,[{id:'bob',name:'Bob'}]);
   await store.remove(b);assert.equal((await db.query('SELECT count(*)::int n FROM purchase_presence')).rows[0].n,0);
@@ -52,7 +54,7 @@ test('order date-times keep hours and minutes through database writes, updates a
  await assert.rejects(service.create(manager,{...input(),etaNote:'đợi xưởng báo'}),e=>e.code==='VALIDATION_ERROR');
 });
 test('confirmed row changes quantity and destination in one transaction; manual status uses version and audit only',async()=>{
- const a=await service.createContainer(manager,{name:'CONT PLAN',truckName:'17.5m'});const r=await service.create(manager,{...input(),contId:a.id});assert.equal(r.contId,String(a.id));
+ const a=await service.createContainer(manager,{name:'CONT PLAN',truckName:'17.5m'});const r=await service.create(manager,{...input(),contId:a.id});assert.equal(r.contId,null);
  const updated=await service.update(manager,r.id,{version:r.version,before:{contId:r.contId},changes:{cartonCount:50,contId:null}});assert.equal(updated.contId,null);assert.equal(updated.cartonCount,50);
  const changed=await service.changeStatus(manager,{containerId:a.id,version:a.version,status:4});assert.equal(changed.status,4);await assert.rejects(service.changeStatus(manager,{containerId:a.id,version:a.version,status:2}),e=>e.statusCode===409);assert.equal((await db.query('SELECT count(*)::int n FROM purchase_history WHERE action=\'status_edit\'')).rows[0].n,1);
 });
@@ -208,8 +210,15 @@ test('soft delete and restore update both read models and stale batch writes not
 test('undo owns immutable snapshots, handles both split branches atomically and rejects another actor or stale row',async()=>{
  const a=await service.create(manager,input());const op=await service.applyPlan(manager,{splits:[{id:a.id,version:a.version,sourceQty:10,quantity:4,manual:true}]});await assert.rejects(service.undo({id:'other'},{operationId:op.operationId}));await service.undo(manager,{operationId:op.operationId});const rows=(await service.list(manager)).rows;assert.equal(rows.length,1);assert.equal(rows[0].rowKey,a.rowKey);assert.equal(rows[0].cartonCount,100);await assert.rejects(service.undo(manager,{operationId:op.operationId}));const update=await service.update(manager,a.id,{version:rows[0].version,changes:{cartonCount:9}});await service.update(manager,a.id,{version:update.version,changes:{supplier:'New'}});await assert.rejects(service.undo(manager,{operationId:update.operationId}),e=>e.code==='VERSION_CONFLICT');assert.equal((await service.list(manager)).rows[0].cartonCount,9);
 });
-test('employee assignment uses active HR id and returns only directory fields',async()=>{
- await db.exec("CREATE TABLE IF NOT EXISTS hr_employees(id BIGSERIAL PRIMARY KEY,ho_ten TEXT,bo_phan TEXT,branch TEXT,is_active BOOLEAN DEFAULT true,employment_status TEXT DEFAULT 'active');TRUNCATE hr_employees RESTART IDENTITY;INSERT INTO hr_employees(ho_ten,bo_phan,branch) VALUES('Nhân viên A','Mua','hanoi')");assert.deepEqual(await service.employees(manager),[]);const a=await service.create(manager,{...input(),buyerEmployeeId:'1'});assert.equal(a.buyer,'Nhân viên A');assert.equal(a.buyerEmployeeId,'1');assert.deepEqual(await service.employees(manager),[{name:'Nhân viên A'}]);await db.exec("UPDATE hr_employees SET employment_status='resigned'");await assert.rejects(service.update(manager,a.id,{version:a.version,changes:{buyerEmployeeId:'1'}}),e=>e.code==='EMPLOYEE_INVALID');
+test('catalog is independent of HR and assignments save name snapshots',async()=>{
+ const e=await service.createEmployee(manager,{name:'Nhân viên A'});assert.deepEqual(Object.keys(e).sort(),['id','isActive','name','version']);
+ assert.equal((await db.query("SELECT to_regclass('hr_employees') AS t")).rows[0].t,null);
+ const row=await service.create(manager,{...input(),buyer:e.name});assert.equal(row.buyer,e.name);assert.equal(row.buyerEmployeeId,null);
+ await service.updateEmployee(manager,e.id,{version:e.version,changes:{name:'Renamed',isActive:false}});
+ assert.equal((await service.latest(manager,'A')).buyer,e.name);
+ await assert.rejects(service.create(manager,{...input(),buyer:e.name}),e=>e.code==='EMPLOYEE_INVALID');
+ await assert.rejects(service.create(manager,{...input(),buyerEmployeeId:'1'}),e=>e.code==='EMPLOYEE_INVALID');
+ const edited=await service.update(manager,row.id,{version:row.version,changes:{buyer:row.buyer,supplier:'OK'}});assert.equal(edited.supplier,'OK');
 });
 
 test('server supports stepwise undo while a later actor edit blocks an older operation',async()=>{
@@ -223,8 +232,8 @@ test('deleting a row after import preview invalidates the whole import and does 
  const a=await service.create(manager,input()),preview=await service.previewImport(manager,{buffer:file([{...a,cartonCount:3},{...input(),productCode:'NEW'}])});await service.remove(manager,{rows:[{id:a.id,version:a.version}]});await assert.rejects(service.commitImport(manager,preview.token));assert.equal((await service.list(manager)).rows.length,0);
 });
 
-test('employee assignment can be cleared without invalid bigint values',async()=>{
- await db.exec("CREATE TABLE IF NOT EXISTS hr_employees(id BIGSERIAL PRIMARY KEY,ho_ten TEXT,bo_phan TEXT,branch TEXT,is_active BOOLEAN DEFAULT true,employment_status TEXT DEFAULT 'active');TRUNCATE hr_employees RESTART IDENTITY;INSERT INTO hr_employees(ho_ten,bo_phan,branch) VALUES('A','Mua','hanoi')");const a=await service.create(manager,{...input(),buyerEmployeeId:'1'});const b=await service.update(manager,a.id,{version:a.version,changes:{buyerEmployeeId:null}});assert.equal(b.buyerEmployeeId,null);assert.equal(b.buyer,'');
+test('employee assignment can be cleared using the buyer name field',async()=>{
+ const a=await service.create(manager,{...input(),buyer:'Dung'});const b=await service.update(manager,a.id,{version:a.version,changes:{buyer:''}});assert.equal(b.buyerEmployeeId,null);assert.equal(b.buyer,'');
 });
 
 test('replaying an acknowledged request returns one result without duplicate rows or audit',async()=>{
@@ -253,11 +262,128 @@ test('freight allocation shares manual container cost and refuses incomplete vol
 
 test('clearing container freight restores the standard volume formula',async()=>{const c=await service.createContainer(manager,{name:'CLEAR COST',truckName:'17.5m'});const manual=await service.updateContainer(manager,c.id,{version:c.version,changes:{freight:123,freightMode:'manual',freightBase:999,freightCapacity:2}});const auto=await service.updateContainer(manager,c.id,{version:manual.version,changes:{freight:null}});assert.equal(auto.freight_mode,'formula');assert.equal(Number(auto.freight_base),202000000);assert.equal(Number(auto.freight_capacity),170)});
 
-test('multi-row allocation, export and SQL projection agree through manual, formula and missing-volume cases',async()=>{const c=await service.createContainer(manager,{name:'PARITY',truckName:'17.5m'});for(const [i,volume] of [.1,.3,.000001].entries())await service.create(manager,{...input(),productCode:'PARITY'+i,contId:c.id,m3PerCarton:volume,unitPriceCny:1.23456,freightPrepaid:.1,freightPostpaid:.2});let version=c.version;for(const changes of [{freight:1234567},{freightMode:'formula',freightBase:202000000,freightCapacity:170}]){const updated=await service.updateContainer(manager,c.id,{version,changes});version=updated.version;const exported=await service.exportRows(manager),projection=(await db.query('SELECT product_code,vietnam_price FROM product_container_lines')).rows;for(const row of exported){const price=Number(projection.find(p=>p.product_code===row.productCode).vietnam_price);assert.ok(Math.abs(price-row.netPrice)<.000001);assert.equal(row.literDiff,null);assert.equal(row.totalCny,2469.22)}const freight=exported.reduce((n,r)=>n+r.freightAmount,0);if(changes.freight)assert.ok(Math.abs(freight-changes.freight)<.001)}const rows=(await service.list(manager)).rows;await service.update(manager,rows[0].id,{version:rows[0].version,before:{m3PerCarton:rows[0].m3PerCarton},changes:{m3PerCarton:null}});const manual=await service.updateContainer(manager,c.id,{version,changes:{freight:1000}});const exported=await service.exportRows(manager);assert.ok(exported.every(r=>r.freightAmount===null&&r.netPrice===null));assert.ok((await db.query('SELECT vietnam_price FROM product_container_lines')).rows.every(r=>r.vietnam_price===null))});
-test('free purchase buyer names persist and suggestions include previously entered names without HR records',async()=>{
- const a=await service.create(manager,{...input(),buyer:'Người mua mới'});
- assert.equal(a.buyer,'Người mua mới');assert.equal(a.buyerEmployeeId,null);
- const b=await service.update(manager,a.id,{version:a.version,changes:{buyer:'Tên khác'}});
- assert.equal(b.buyer,'Tên khác');
- const names=await service.employees(manager);assert.ok(names.some(e=>e.name==='Tên khác'));assert.ok(names.some(e=>e.name==='Người mua mới'));
+test('multi-row allocation, export and SQL projection agree through manual, formula and missing-volume cases',async()=>{const c=await service.createContainer(manager,{name:'PARITY',truckName:'17.5m'});for(const [i,volume] of [.1,.3,.000001].entries()){const r=await service.create(manager,{...input(),productCode:'PARITY'+i,m3PerCarton:volume,unitPriceCny:1.23456,freightPrepaid:.1,freightPostpaid:.2});await service.transfer(manager,{id:r.id,version:r.version,quantity:r.cartonCount,destinationId:c.id})}let version=c.version;for(const changes of [{freight:1234567},{freightMode:'formula',freightBase:202000000,freightCapacity:170}]){const updated=await service.updateContainer(manager,c.id,{version,changes});version=updated.version;const exported=await service.exportRows(manager),projection=(await db.query('SELECT product_code,vietnam_price FROM product_container_lines')).rows;for(const row of exported){const price=Number(projection.find(p=>p.product_code===row.productCode).vietnam_price);assert.ok(Math.abs(price-row.netPrice)<.000001);assert.equal(row.literDiff,null);assert.equal(row.totalCny,2469.22)}const freight=exported.reduce((n,r)=>n+r.freightAmount,0);if(changes.freight)assert.ok(Math.abs(freight-changes.freight)<.001)}const rows=(await service.list(manager)).rows;await service.update(manager,rows[0].id,{version:rows[0].version,before:{m3PerCarton:rows[0].m3PerCarton},changes:{m3PerCarton:null}});const manual=await service.updateContainer(manager,c.id,{version,changes:{freight:1000}});const exported=await service.exportRows(manager);assert.ok(exported.every(r=>r.freightAmount===null&&r.netPrice===null));assert.ok((await db.query('SELECT vietnam_price FROM product_container_lines')).rows.every(r=>r.vietnam_price===null))});
+test('unconfigured new buyer names are rejected and legacy names stay editable',async()=>{
+ await assert.rejects(service.create(manager,{...input(),buyer:'Free text'}),e=>e.code==='EMPLOYEE_INVALID');
+ const a=await service.create(manager,input());await db.query('UPDATE purchase_orders SET buyer=$2 WHERE id=$1',[a.id,'Legacy']);
+ const b=await service.update(manager,a.id,{version:a.version,changes:{buyer:'Legacy',supplier:'Supplier'}});assert.equal(b.buyer,'Legacy');
+ await assert.rejects(service.update(manager,a.id,{version:b.version,changes:{buyer:'Not configured'}}),e=>e.code==='EMPLOYEE_INVALID');
+ assert.ok(!(await service.employees(manager)).some(e=>e.name==='Legacy'));
+});
+
+
+test('catalog lifecycle validates names, optimistic versions, uniqueness, audit and realtime',async()=>{
+ let signals=0;const listener=()=>signals++;events.on('purchase-orders-changed',listener);
+ try{
+  const e=await service.createEmployee(manager,{name:'  Catalog A  '});assert.equal(e.name,'Catalog A');assert.equal(e.isActive,true);assert.equal(e.version,1);
+  await assert.rejects(service.createEmployee(manager,{name:'catalog a'}),e=>e.code==='EMPLOYEE_EXISTS');
+  await assert.rejects(service.createEmployee(manager,{name:' '}),e=>e.code==='NAME_INVALID');
+  await assert.rejects(service.updateEmployee(manager,e.id,{changes:{name:'B'}}),e=>e.code==='VERSION_REQUIRED');
+  await assert.rejects(service.updateEmployee(manager,e.id,{version:99,changes:{name:'B'}}),e=>e.code==='VERSION_CONFLICT');
+  await assert.rejects(service.updateEmployee(manager,e.id,{version:1,changes:{isActive:'false'}}),e=>e.code==='VALIDATION_ERROR');
+  await assert.rejects(service.updateEmployee(manager,e.id,{version:1,changes:{name:'Dung'}}),e=>e.code==='EMPLOYEE_EXISTS');
+  const inactive=await service.updateEmployee(manager,e.id,{version:1,changes:{name:'Catalog B',isActive:false}});assert.equal(inactive.version,2);
+  assert.deepEqual((await service.employees(manager)).find(r=>r.id===e.id),inactive);
+  await assert.rejects(service.create(manager,{...input(),buyer:'Catalog B'}),e=>e.code==='EMPLOYEE_INVALID');
+  await assert.rejects(service.updateEmployee(manager,e.id,{version:1,changes:{isActive:true}}),e=>e.code==='VERSION_CONFLICT');
+  const active=await service.updateEmployee(manager,e.id,{version:2,changes:{isActive:true}});assert.equal(active.version,3);
+  assert.equal(signals,3);assert.equal((await db.query("SELECT count(*)::int n FROM purchase_history WHERE action IN ('employee_create','employee_edit')")).rows[0].n,3);
+  const a=await service.create(manager,{...input(),buyer:active.name});assert.equal(a.buyer,'Catalog B');
+  assert.equal(Number((await db.query('SELECT on_hand FROM kiot_test_stock')).rows[0].on_hand),99);
+ }finally{events.off('purchase-orders-changed',listener)}
+});
+
+test('bulk and plan reject unconfigured or inactive assignments atomically and preserve legacy edits',async()=>{
+ const a=await service.create(manager,input()),b=await service.create(manager,{...input(),productCode:'B'});
+ const rows=[a,b].map(r=>({id:r.id,version:r.version}));
+ await assert.rejects(service.bulkEdit(manager,{rows,changes:{buyer:'Free text'}}),e=>e.code==='EMPLOYEE_INVALID');
+ await db.query("UPDATE purchase_employees SET is_active=false WHERE name='Other'");
+ await assert.rejects(service.applyPlan(manager,{rows:[{...rows[0],changes:{supplier:'Must rollback'}},{...rows[1],changes:{buyer:'Other'}}]}),e=>e.code==='EMPLOYEE_INVALID');
+ await assert.rejects(service.applyPlan(manager,{creates:[{values:{...input(),buyer:'Other'}}]}),e=>e.code==='EMPLOYEE_INVALID');
+ assert.equal((await service.latest(manager,'A')).supplier,null);
+ await db.query("UPDATE purchase_orders SET buyer='Old buyer' WHERE id=$1",[a.id]);
+ await service.applyPlan(manager,{rows:[{...rows[0],changes:{buyer:'Old buyer',supplier:'Still editable'}}]});
+ assert.equal((await service.latest(manager,'A')).supplier,'Still editable');
+ const result=await service.bulkEdit(manager,{rows:[{id:b.id,version:b.version}],changes:{buyer:'Dung'}});assert.equal(result.results[0].status,'updated');
+ assert.equal((await service.latest(manager,'B')).buyer,'Dung');
+});
+
+test('imports validate catalog at preview, revision and commit without losing legacy snapshots',async()=>{
+ const bad=await service.previewImport(manager,{buffer:file([{...input(),buyer:'Free text'}])});assert.equal(bad.valid,false);assert.equal(bad.counts.error,1);
+ await assert.rejects(service.commitImport(manager,bad.token),e=>e.code==='IMPORT_INVALID');
+ const revised=await service.reviseImport(manager,bad.token,[{...input(),buyer:'Dung'}]);assert.equal(revised.valid,true);
+ await db.query("UPDATE purchase_employees SET is_active=false WHERE name='Dung'");
+ await assert.rejects(service.commitImport(manager,bad.token),e=>e.code==='EMPLOYEE_INVALID');assert.equal((await service.list(manager)).rows.length,0);
+ await db.query("UPDATE purchase_employees SET is_active=true WHERE name='Dung'");await service.commitImport(manager,bad.token);
+ const a=(await service.list(manager)).rows[0];assert.equal(a.buyer,'Dung');assert.equal(a.contId,null);
+ await db.query("UPDATE purchase_orders SET buyer='Legacy import' WHERE id=$1",[a.id]);
+ const legacy=await service.previewImport(manager,{buffer:file([{...a,buyer:'Legacy import',supplier:'Imported edit'}])});assert.equal(legacy.valid,true);await service.commitImport(manager,legacy.token);
+ assert.equal((await service.latest(manager,'A')).buyer,'Legacy import');assert.equal((await service.latest(manager,'A')).supplier,'Imported edit');
+ const changed=await service.previewImport(manager,{buffer:file([{...await service.latest(manager,'A'),buyer:'Other'}])});assert.equal(changed.valid,true);
+ await db.query("UPDATE purchase_employees SET is_active=false WHERE name='Other'");await assert.rejects(service.commitImport(manager,changed.token),e=>e.code==='EMPLOYEE_INVALID');
+ assert.equal((await service.latest(manager,'A')).buyer,'Legacy import');
+});
+
+test('direct and plan new products always wait even with a requested container',async()=>{
+ const c=await service.createContainer(manager,{name:'WAITING',truckName:'17.5m'});
+ const a=await service.create(manager,{...input(),contId:c.id});assert.equal(a.contId,null);
+ await service.applyPlan(manager,{creates:[{values:{...input(),productCode:'PLAN',contId:c.id,buyer:'Dung'}}]});
+ assert.ok((await service.list(manager)).rows.every(r=>r.contId===null));
+});
+
+test('shared container edits propagate dates atomically, recalculate NET and preserve quantities and stock',async()=>{
+ const c=await service.createContainer(manager,{name:'SHARED',truckName:'17.5m'});
+ const waiting=await service.create(manager,{...input(),productCode:'WAIT'});
+ for(const productCode of ['A','B']){const r=await service.create(manager,{...input(),productCode,m3PerCarton:.2,kgPerCarton:3});await service.transfer(manager,{id:r.id,version:r.version,quantity:r.cartonCount,destinationId:c.id})}
+ const initial=(await service.list(manager)).rows.filter(r=>r.contId===String(c.id));const rows=initial.map(({id,version})=>({id,version}));
+ const physical=initial.map(r=>[r.id,r.cartonCount,r.qtyPerCarton,r.kgPerCarton,r.m3PerCarton]);
+ const changed=await service.updateContainer(manager,c.id,{version:c.version,rows,changes:{name:'SHARED RENAMED',truckName:'18.5m',carrier:'Carrier',loader:'Loader',nameCn:'中文',loading:'Tomorrow',arrivalNote:'2026-11-10T09:30',arrivalDate:'2026-11-12',maxTon:35,m3Min:150,m3Max:180,freight:1000000}});
+ assert.equal(changed.version,2);assert.equal(changed.truck_name,'18.5m');assert.equal(Number(changed.max_ton),35);
+ const updated=(await service.list(manager)).rows.filter(r=>r.contId===String(c.id));assert.deepEqual(updated.map(r=>[r.id,r.cartonCount,r.qtyPerCarton,r.kgPerCarton,r.m3PerCarton]),physical);
+ for(const r of updated){assert.equal(r.version,3);assert.equal(r.etaNote,'2026-11-10T09:30');assert.equal(r.arrivedNote,'2026-11-12');assert.equal(r.freightAmount,500000)}
+ assert.equal((await service.latest(manager,'WAIT')).version,waiting.version);
+ const exported=(await service.exportRows(manager)).filter(r=>r.contId===String(c.id));assert.ok(exported.every(r=>r.container==='SHARED RENAMED'&&r.netPrice===(4000*3920+500000)/2000));
+ const projection=(await db.query("SELECT container_name,vietnam_price FROM product_container_lines WHERE product_code IN ('A','B')")).rows;assert.ok(projection.every(r=>r.container_name==='SHARED RENAMED'&&Number(r.vietnam_price)===exported[0].netPrice));
+ assert.equal(Number((await db.query('SELECT on_hand FROM kiot_test_stock')).rows[0].on_hand),99);
+ const history=(await db.query("SELECT summary FROM purchase_history WHERE action='container_edit'")).rows[0].summary;assert.equal(history.rows.length,2);assert.equal(history.before.name,'SHARED');assert.equal(history.after.name,'SHARED RENAMED');
+ assert.equal((await db.query('SELECT count(*)::int n FROM purchase_operation_rows WHERE operation_id=$1',[history.operationId])).rows[0].n,2);
+ const versions=updated.map(({id,version})=>({id,version}));
+ await service.updateContainer(manager,c.id,{version:changed.version,rows:versions,changes:{arrivalNote:'',arrivalDate:null}});
+ assert.ok((await service.list(manager)).rows.filter(r=>r.contId===String(c.id)).every(r=>!r.etaNote&&!r.arrivedNote));
+});
+
+test('shared container optimistic conflicts and validation roll back every row, container, audit and event',async()=>{
+ const c=await service.createContainer(manager,{name:'ATOMIC',truckName:'17.5m'}),a=await service.create(manager,input());
+ const r=(await service.transfer(manager,{id:a.id,version:a.version,quantity:a.cartonCount,destinationId:c.id})).row;
+ let signals=0;const listener=()=>signals++;events.on('purchase-orders-changed',listener);
+ try{
+  const changes={arrivalNote:'2026-11-10',name:'Must not persist'};
+  for(const rows of [undefined,[],[{id:r.id,version:1}],[{id:r.id,version:r.version},{id:r.id,version:r.version}]])await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,changes,rows}),e=>e.code==='VERSION_CONFLICT');
+  await assert.rejects(service.updateContainer(manager,c.id,{version:999,changes,rows:[r]}),e=>e.code==='VERSION_CONFLICT');
+  for(const changes of [{maxTon:0},{m3Min:200,m3Max:100},{truckName:'invalid'},{ton:100},{m3:100},{count:1},{arrivalDate:'2026-02-30'},{arrivalNote:'sometime'}])await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,rows:[r],changes}),e=>e.statusCode===400);
+  const other=await service.createContainer(manager,{name:'DUPLICATE',truckName:'17.5m'});signals=0;
+  await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,rows:[r],changes:{arrivalDate:'2026-11-11',name:other.name}}),e=>e.code==='CONTAINER_EXISTS');
+  assert.equal(signals,0);assert.equal((await service.latest(manager,'A')).version,r.version);assert.equal((await service.latest(manager,'A')).arrivedNote,null);
+  assert.equal((await db.query('SELECT name,version FROM product_containers WHERE id=$1',[c.id])).rows[0].name,'ATOMIC');
+  assert.equal((await db.query("SELECT count(*)::int n FROM purchase_history WHERE action='container_edit'")).rows[0].n,0);
+ }finally{events.off('purchase-orders-changed',listener)}
+});
+
+
+test('isolated catalog writes emit only purchase realtime and retain audit',async()=>{
+ await db.query('UPDATE purchase_settings SET integration_enabled=false');
+ const query=(sql,params)=>db.query(sql,params);let shared=0,purchase=0,projected=0,invalidated=0;
+ const isolatedEvents=new EventEmitter();isolatedEvents.on('containersChanged',()=>shared++);isolatedEvents.on('purchase-orders-changed',()=>purchase++);
+ const isolated=createPurchaseOrdersService({pool:{query,connect:async()=>({query,release(){}})},events:isolatedEvents,project:async()=>projected++,invalidate:()=>invalidated++});
+ const e=await isolated.createEmployee(manager,{name:'Isolated'});await isolated.updateEmployee(manager,e.id,{version:e.version,changes:{isActive:false}});
+ assert.deepEqual({shared,purchase,projected,invalidated},{shared:0,purchase:2,projected:0,invalidated:0});
+ assert.equal((await db.query("SELECT count(*)::int n FROM purchase_history WHERE action IN ('employee_create','employee_edit')")).rows[0].n,2);
+});
+
+test('shared container edits reject membership changed after the editor opened',async()=>{
+ const c=await service.createContainer(manager,{name:'MEMBERSHIP',truckName:'17.5m'}),a=await service.create(manager,input()),b=await service.create(manager,{...input(),productCode:'B'});
+ const first=(await service.transfer(manager,{id:a.id,version:a.version,quantity:a.cartonCount,destinationId:c.id})).row;
+ await service.transfer(manager,{id:b.id,version:b.version,quantity:b.cartonCount,destinationId:c.id});
+ await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,rows:[first],changes:{arrivalDate:'2026-11-12'}}),e=>e.code==='VERSION_CONFLICT');
+ assert.ok((await service.list(manager)).rows.every(r=>r.arrivedNote===null));
 });

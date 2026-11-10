@@ -29,6 +29,7 @@ async function baseDb() {
   const db = new PGlite();
   await db.exec("CREATE TABLE schema_migrations(filename text primary key);INSERT INTO schema_migrations VALUES('0109_stocktake_previous_cancel.sql')");
   for (const name of BASE) await db.exec(fs.readFileSync(path.join(__dirname, '../db/migrations', name), 'utf8'));
+  await db.exec('CREATE TABLE products(code text,name text)');
   await ensurePurchaseSchema({ pool: wrap(db), logger: { log() {} } });
   return db;
 }
