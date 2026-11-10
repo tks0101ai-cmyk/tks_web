@@ -103,13 +103,30 @@ function createHrEmployeeAdminService(options = {}) {
     }
   }
 
-  async function assertNoDuplicate(selfId, { email, soDienThoai }) {
+  // Phai phu DU 3 unique index cua hr_employees, neu khong loi tro thanh 23505
+  // tho tu Postgres -> handleError khong nhan ra -> 500 "Loi he thong":
+  //   hr_employees_email_active_key            (email)            WHERE is_active AND email <> ''
+  //   hr_employees_phone_active_key            (so_dien_thoai)    WHERE is_active AND so_dien_thoai <> ''
+  //   hr_employees_insurance_number_unique     (insurance_number) WHERE insurance_number <> '' AND is_active
+  // So so bao hiem tung bi bo sot (migration 0078 them index, tien kiem khong
+  // them theo) nen sua nhan su trung so bao hiem bao 500 thay vi 409 — 10/11/2026.
+  async function assertNoDuplicate(selfId, { email, soDienThoai, insuranceNumber }) {
     const snapshot = await directory.getSnapshot({ forceRefresh: true });
-    const clash = snapshot.employees.find(e => String(e.rowIndex) !== String(selfId) && (
-      (email && e.email === email) || (soDienThoai && e.soDienThoai === soDienThoai)
-    ));
-    if (clash) {
+    const others = snapshot.employees.filter(e => String(e.rowIndex) !== String(selfId));
+    const identityClash = others.find(e =>
+      (email && e.email === email) || (soDienThoai && e.soDienThoai === soDienThoai));
+    if (identityClash) {
       throw new HrEmployeeAdminError('Email hoặc số điện thoại đã thuộc nhân sự khác.', 409, 'HR_IDENTITY_CONFLICT');
+    }
+    // Index co dieu kien `insurance_number <> ''`: de trong thi nhieu nguoi cung
+    // trong van hop le, nen chi kiem khi that su co gia tri.
+    if (insuranceNumber) {
+      const insuranceClash = others.find(e => e.insuranceNumber === insuranceNumber);
+      if (insuranceClash) {
+        throw new HrEmployeeAdminError(
+          `Số sổ bảo hiểm ${insuranceNumber} đã thuộc nhân sự ${insuranceClash.hoTen}.`,
+          409, 'HR_INSURANCE_CONFLICT');
+      }
     }
     return snapshot;
   }

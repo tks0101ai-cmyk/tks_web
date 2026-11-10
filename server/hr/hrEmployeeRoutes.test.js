@@ -44,3 +44,35 @@ test('PUT /api/hr/employees/:id chuyển lỗi nghiệp vụ (409) thành phản
   assert.equal(res.statusCode, 409);
   assert.equal(res.body.code, 'HR_IDENTITY_CONFLICT');
 });
+
+// Luoi an toan: tien kiem co the lot (hai nguoi luu cung luc, hoac unique index
+// them sau ma khong ai cap nhat tien kiem). 23505 la loi NHAP LIEU -> 409 kem ten
+// o dang trung, khong duoc bien thanh 500 "Loi he thong" nhu su co 10/11/2026.
+for (const [constraint, field] of [
+  ['hr_employees_insurance_number_unique', 'Số sổ bảo hiểm'],
+  ['hr_employees_email_active_key', 'Email'],
+  ['hr_employees_phone_active_key', 'Số điện thoại']
+]) {
+  test(`PUT /api/hr/employees/:id gặp 23505 ${constraint} → 409 nêu đúng ô trùng`, async () => {
+    const router = createHrLeaveRoutes({ employeeAdmin: { updateEmployee: async () => {
+      throw Object.assign(new Error('duplicate key value violates unique constraint'), { code: '23505', constraint });
+    } } });
+    const { handler } = handlerOf(router, 'put', '/api/hr/employees/:id');
+    const res = fakeRes();
+    await handler({ user: MANAGER, params: { id: '7' }, body: {} }, res);
+    assert.equal(res.statusCode, 409);
+    assert.equal(res.body.code, 'HR_IDENTITY_CONFLICT');
+    assert.ok(res.body.error.startsWith(field), `thông báo phải nêu "${field}", nhận: ${res.body.error}`);
+  });
+}
+
+test('23505 không rõ ràng buộc vẫn là 409, không phải 500', async () => {
+  const router = createHrLeaveRoutes({ employeeAdmin: { updateEmployee: async () => {
+    throw Object.assign(new Error('duplicate key'), { code: '23505' });
+  } } });
+  const { handler } = handlerOf(router, 'put', '/api/hr/employees/:id');
+  const res = fakeRes();
+  await handler({ user: MANAGER, params: { id: '7' }, body: {} }, res);
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.body.code, 'HR_IDENTITY_CONFLICT');
+});

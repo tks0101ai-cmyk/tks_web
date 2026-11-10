@@ -15,6 +15,7 @@ function mapRow(row) {
     rowIndex: row.id,
     hoTen: row.hoTen, boPhan: row.boPhan, email: row.email, soDienThoai: row.soDienThoai,
     employmentStatus: row.employmentStatus, createdAt: row.createdAt || '',
+    insuranceNumber: row.insuranceNumber || '',
     sheetVaiTro: roleForDepartment(row.boPhan)
   };
 }
@@ -90,6 +91,39 @@ test('thêm nhân sự trùng email hoặc SĐT với nhân sự khác (kể c�
   const { service } = setup();
   await assert.rejects(service.createEmployee(MANAGER, { ...valid, email: 'AN@x.com' }), { statusCode: 409, code: 'HR_IDENTITY_CONFLICT' });
   await assert.rejects(service.createEmployee(MANAGER, { ...valid, soDienThoai: '+84 900 000 002' }), { statusCode: 409 });
+});
+
+// Index hr_employees_insurance_number_unique (migration 0078) khong duoc tien kiem
+// nen sua nhan su trung so bao hiem roi thang xuong Postgres -> 23505 -> 500.
+test('trùng số sổ bảo hiểm với nhân sự khác → 409 nêu đúng tên người giữ số đó', async () => {
+  const rows = [
+    { id: 1, branch: 'hanoi', hoTen: 'An', boPhan: 'KHO', email: 'an@x.com', soDienThoai: '0900000001', employmentStatus: 'active', insuranceNumber: 'BH-001' },
+    { id: 2, branch: 'hanoi', hoTen: 'Bình', boPhan: 'KHO', email: 'binh@x.com', soDienThoai: '0900000002', employmentStatus: 'active', insuranceNumber: 'BH-002' }
+  ];
+  const { service } = setup({ rows });
+  await assert.rejects(
+    service.updateEmployee(MANAGER, 2, { ...valid, hoTen: 'Bình', email: 'binh@x.com', soDienThoai: '0900000002', insuranceNumber: 'BH-001' }),
+    error => error.statusCode === 409 && error.code === 'HR_INSURANCE_CONFLICT' && /An/.test(error.message)
+  );
+});
+
+test('số sổ bảo hiểm để trống thì nhiều nhân sự cùng trống vẫn lưu được', async () => {
+  const rows = [
+    { id: 1, branch: 'hanoi', hoTen: 'An', boPhan: 'KHO', email: 'an@x.com', soDienThoai: '0900000001', employmentStatus: 'active', insuranceNumber: '' },
+    { id: 2, branch: 'hanoi', hoTen: 'Bình', boPhan: 'KHO', email: 'binh@x.com', soDienThoai: '0900000002', employmentStatus: 'active', insuranceNumber: '' }
+  ];
+  const { service } = setup({ rows });
+  const { employee } = await service.updateEmployee(MANAGER, 2, { ...valid, hoTen: 'Bình', email: 'binh@x.com', soDienThoai: '0900000002', insuranceNumber: '' });
+  assert.equal(employee.hoTen, 'Bình');
+});
+
+test('giữ nguyên số bảo hiểm của chính mình khi sửa các trường khác', async () => {
+  const rows = [
+    { id: 1, branch: 'hanoi', hoTen: 'An', boPhan: 'KHO', email: 'an@x.com', soDienThoai: '0900000001', employmentStatus: 'active', insuranceNumber: 'BH-001' }
+  ];
+  const { service } = setup({ rows });
+  const { employee } = await service.updateEmployee(MANAGER, 1, { ...valid, hoTen: 'An sửa', email: 'an@x.com', soDienThoai: '0900000001', insuranceNumber: 'BH-001' });
+  assert.equal(employee.hoTen, 'An sửa');
 });
 
 test('chốt chặn leo thang: người không phải Quản lý không được tạo dòng "BAN QUẢN TRỊ" hoặc dùng email admin cứng', async () => {
