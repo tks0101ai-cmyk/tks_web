@@ -7,7 +7,8 @@
 // cache 10 phut, loi tam thoi tra ban cu toi da 6 gio. Chi DOC sheet; khong dung thuat
 // toan phan bo cua Nhap VAT.
 //
-// Mac dinh doc tab Gộp VAT va Khớp mã cua file VAT TKS (vatDraftConfig); van co the
+// Mac dinh doc tab Gộp VAT va Khớp mã cua file trung gian "cúc cu test" (vatDraftConfig,
+// IMPORTRANGE tu VAT TKS); van co the
 // doi nguon qua bien moi truong (config.js): *_SHEET_ID = ID file, *_GID = sheetId cua tab.
 // Doc theo chu cai cot nen doc ca tab. Bo cuc: A=CTY, B=Mã kiot đại diện, C=Tên kiot đại diện,
 // D=MÃ VAT KIOT, E=TÊN VAT KIOT, I=TỒN ĐẦU NGÀY.

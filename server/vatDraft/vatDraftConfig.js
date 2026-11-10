@@ -13,13 +13,16 @@ function deepFreeze(value) {
 }
 
 module.exports = deepFreeze({
-  // File "VAT TKS" (khong cong khai) doc bang service account GOOGLE_SERVICE_ACCOUNT_JSON,
-  // file phai chia se quyen Nguoi xem cho service account. Tab xac dinh theo sheetId
-  // (= gid tren URL) nen doi ten tab khong anh huong; range giu dung so cot nhu IMPORTRANGE
-  // cua file trung gian "cúc cu test" truoc day (Tra cuu VAT doc theo ten cot nen nhay so cot).
-  spreadsheetId: '1f1vglJwshMF5Ol7mGk3Ll2p8cxoZ_UhevRkzqzknBzU',
-  gopVatSheet: { sheetId: 950697804, range: 'A1:P' },
-  khopMaSheet: { sheetId: 631827560, range: 'A1:K' },
+  // File trung gian "cúc cu test" (khong cong khai) doc bang service account
+  // GOOGLE_SERVICE_ACCOUNT_JSON, file phai chia se quyen Nguoi xem cho service account.
+  // Moi tab chi la 1 IMPORTRANGE chep GIA TRI tu file "VAT TKS" (1f1vglJwsh...): Gộp VAT!A1:P,
+  // Khớp mã!A1:K, MUA VAT SIDA (tab DK VỀ). Tu 10/11/2026 doc file nay thay vi doc thang VAT TKS:
+  // VAT TKS co ~4 trieu o va hang tram nghin XLOOKUP/SUMIFS ca cot, Sheets API phai tinh lai ca
+  // file nen values.get treo > 3 phut (ke ca doc 2 o), con file trung gian tra trong ~1-2 giay.
+  // Tab xac dinh theo sheetId (= gid tren URL) nen doi ten tab khong anh huong.
+  spreadsheetId: '1dNabQaiob7CMozrqjA746uV-atHWJi8gbG6L-I0yrmU',
+  gopVatSheet: { sheetId: 0, range: 'A1:P' },
+  khopMaSheet: { sheetId: 1192158065, range: 'A1:K' },
   // So dong tieu de bo qua: Gop VAT co 1 dong header; Khop ma co 1 dong ghi chu
   // ('Đỏ cao quá' / 'Vàng thấp quá') roi moi toi header.
   gopVatSkipRows: 1,

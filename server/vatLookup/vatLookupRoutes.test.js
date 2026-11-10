@@ -9,12 +9,12 @@ const { createVatLookupRouter } = require('./vatLookupRoutes');
 const { parseCsv } = require('../vatDraft/csv');
 const { createLookupSource } = require('./lookupSource');
 
-// Key = sheetId cua tab trong file VAT TKS (Gộp VAT, Khớp mã goc, MUA VAT SIDA).
+// Key = sheetId cua tab trong file trung gian "cúc cu test" (Gộp VAT, Khớp mã, DK VỀ).
 const CSV = {
-  950697804: 'CTY,Mã kiot đại diện,Tên kiot đại diện,MÃ VAT KIOT,TÊN VAT KIOT,TÊN HÀNG,Đơn vị tính,x,TỒN ĐẦU NGÀY,GIÁ BÁN,THUẾ VAT,THUẾ NK,TỔNG THUẾ MẤT,TỔNG ĐANG NHÁP,TỒN CÓ THỂ NHÁP\n'
+  0: 'CTY,Mã kiot đại diện,Tên kiot đại diện,MÃ VAT KIOT,TÊN VAT KIOT,TÊN HÀNG,Đơn vị tính,x,TỒN ĐẦU NGÀY,GIÁ BÁN,THUẾ VAT,THUẾ NK,TỔNG THUẾ MẤT,TỔNG ĐANG NHÁP,TỒN CÓ THỂ NHÁP\n'
     + 'TKS THẤP,TALEWS,Bút,VAT11629,Bút VAT,Bút chấm chân tóc,Cái,x,"1,000",1,8%,,8.00%,,"1,000"',
-  631827560: ',,,,,,,Đỏ cao quá,Vàng thấp quá\nMã SP,Tên SP,Giá Bq,,,,,,,Mã vat kiot,Tên trước (Giá đầu  - Giá cuối) (VAT)\nTALEWS,BÚT NHUỘM TÓC SUAKE (OD),,,,,,,,VAT11629,Bút VAT',
-  467403108: 'TRẠNG THÁI,CONT,mã kiot,tên kiot,\n1. Đang chờ khai,10-10Y,TALEWS,BÚT NHUỘM TÓC SUAKE (OD),972'
+  1192158065: ',,,,,,,Đỏ cao quá,Vàng thấp quá\nMã SP,Tên SP,Giá Bq,,,,,,,Mã vat kiot,Tên trước (Giá đầu  - Giá cuối) (VAT)\nTALEWS,BÚT NHUỘM TÓC SUAKE (OD),,,,,,,,VAT11629,Bút VAT',
+  740003979: 'TRẠNG THÁI,CONT,mã kiot,tên kiot,\n1. Đang chờ khai,10-10Y,TALEWS,BÚT NHUỘM TÓC SUAKE (OD),972'
 };
 
 /** Sheets API gia lap: tra mang dong theo sheetId cua tab. */
@@ -76,7 +76,7 @@ test('POST /search: tra ca 2 tab tu 1 lan goi; doc dung 3 tab', async () => {
   const readValues = fakeReadValues();
   const res = await request('/search', { method: 'POST', body: { q: 'talews\nkhongco' }, source: createLookupSource({ readValues }) });
   assert.equal(res.status, 200);
-  assert.deepEqual(readValues.calls.sort(), ['467403108', '631827560', '950697804']);
+  assert.deepEqual(readValues.calls.sort(), ['0', '1192158065', '740003979']);
   assert.deepEqual(res.body.queries, ['talews', 'khongco']);
   assert.deepEqual(res.body.notFoundQueries, ['khongco']);
   assert.deepEqual(res.body.vat.rows.map(r => [r.maKiot, r.maVat, r.tonCoTheNhap, r.conVAT, r.hasIncoming]), [['TALEWS', 'VAT11629', 1000, true, true]]);
@@ -90,7 +90,7 @@ test('POST /search: noi dung qua dai -> 400', async () => {
 });
 
 test('DK về 2 tra #REF! -> 503 co code ro rang', async () => {
-  const source = createLookupSource({ readValues: fakeReadValues({ 467403108: '#REF!' }) });
+  const source = createLookupSource({ readValues: fakeReadValues({ 740003979: '#REF!' }) });
   const res = await request('/search', { method: 'POST', body: { q: 'TALEWS' }, source });
   assert.equal(res.status, 503);
   assert.equal(res.body.code, 'DK_VE_REF_ERROR');
