@@ -145,7 +145,7 @@
 
 /* Chênh lệch cân đo dùng trị tuyệt đối, ngưỡng 10%. */
 .purchase-page #orderTable td.measure-bad{color:var(--red)}
-.purchase-page #orderTable td.measure-good{color:var(--green)}
+.purchase-page #orderTable td.measure-good{color:inherit}
 .purchase-page #orderTable td[data-field="status"] select{width:100%;padding:2px;min-width:0}
 
 .expression-result:not(:empty){display:block;font-size:9px;color:var(--muted);text-align:right;white-space:normal}
