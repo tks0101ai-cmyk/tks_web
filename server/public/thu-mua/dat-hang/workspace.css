@@ -325,10 +325,10 @@
 .purchase-page #modalBody [data-directory-color]{min-width:120px;border-left:5px solid currentColor}
 :root[data-theme="light"] .purchase-page #modalBody [data-directory-color]{background:#fff;color:#1E293B}
 
-/* Full-cell employee RGB tags and crisp grid lines in both themes. */
-.purchase-page #orderTable td.employee-color-cell{background:var(--buyer-color);color:var(--buyer-ink);padding:4px 6px}
-.purchase-page #orderTable td.employee-color-cell .purchase-buyer-color{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;color:inherit;white-space:nowrap}
-.purchase-page #orderTable td.employee-color-cell .buyer-color-control{width:100%;height:100%;min-height:23px;margin:-2px 0;padding:1px 3px;background:var(--buyer-color);border-color:transparent;color:var(--buyer-ink);font-weight:600}
+/* Muted employee color fields: keep RGB identity while protecting table legibility. */
+.purchase-page #orderTable td.employee-color-cell{background:color-mix(in srgb,var(--buyer-color) 22%,var(--panel));color:var(--text);padding:4px 6px;border-left:3px solid var(--buyer-color)}
+.purchase-page #orderTable td.employee-color-cell .purchase-buyer-color{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;color:inherit;white-space:nowrap;font-weight:600}
+.purchase-page #orderTable td.employee-color-cell .buyer-color-control{width:100%;height:100%;min-height:23px;margin:-2px 0;padding:1px 3px;background:color-mix(in srgb,var(--buyer-color) 22%,var(--panel));border-color:color-mix(in srgb,var(--buyer-color) 55%,var(--border));color:var(--text);font-weight:600}
 .purchase-page #orderTable td.employee-color-cell .buyer-color-control option{background:var(--panel);color:var(--text)}
 .purchase-page #modalBody #purchaseEmployeeAdd{display:flex;align-items:end;gap:9px;flex-wrap:wrap;margin:0 0 12px}
 .purchase-page #modalBody #purchaseEmployeeAdd label{display:grid;gap:4px;margin:0;font-size:12px}
