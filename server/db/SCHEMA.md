@@ -948,7 +948,7 @@ Cập nhật gần nhất: 04/11/2026.
 
 Thêm /thu-mua/dat-hang/ và /api/purchase-orders với quyền purchase.view/edit/import/export/depart/arrive; mặc định chỉ Quản lý, quyền mở rộng qua cơ chế cấp quyền hiện có. Module có bảng Chỉ số cont và Đặt hàng sửa trực tiếp, lọc riêng theo tài khoản, dropdown NV/cont/trạng thái, tách .01/.02 đệ quy, sửa hàng loạt, undo/xóa mềm/khôi phục, import toàn bộ hợp lệ mới ghi, audit/realtime và bộ công thức dùng chung. Source gate ngăn job Sheet và web ghi đè nhau.
 
-Migrations Thu mua được đổi sang 0110–0116 vì main đã dùng 0101–0109 và 0114 (0114_stocktake_frozen_lines.sql). db/ensurePurchaseSchema.js hiện đăng ký 9 migration Thu mua 0110–0113, 0115–0119 khi web startup (0119 seed riêng danh mục NV từ buyer hiện có), transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed đơn hàng/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
+Migrations Thu mua được đổi sang 0110–0116 vì main đã dùng 0101–0109 và 0114 (0114_stocktake_frozen_lines.sql). db/ensurePurchaseSchema.js áp đúng sáu migration này khi web startup, transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
 
 
 
@@ -968,7 +968,7 @@ Migrations Thu mua được đổi sang 0110–0116 vì main đã dùng 0101–0
 03/11/2026 — Chuẩn hóa cột ngày Thu mua: Lên list / Đặt / Phát / DK đến / Đến / Ngày đo dùng metadata datetime; form và ô sửa dùng datetime-local, nhãn ngày hiển thị dd/MM/yyyy HH:mm khi có giờ. Ngày cũ không có giờ vẫn giữ ngày, không suy diễn giờ hay ngày từ ghi chú. Mockup chuyển nội dung tự do cũ của Đặt/Phát/DK đến/Đến nguyên văn sang Ghi chú 2; không chỉnh nguồn Sheet. Import server/preview kiểm ngày-giờ hợp lệ, Excel xuất kiểu số ngày với định dạng ngày/giờ và đọc lại giữ giờ-phút. listed_at ở migration 0101 chưa áp DB đổi từ DATE thành TIMESTAMP WITHOUT TIME ZONE để lưu giờ địa phương UTC+7; bốn trường *_note cũ giữ tên khóa API/TEXT nhưng giá trị phải ISO ngày hoặc ngày-giờ. Chưa seed/migrate/deploy. Kiểm tra DOM+Excel 33 đạt, service 19 đạt, import/live UI liên quan đạt.
 
 
-05/11/2026 — Chuẩn bị production Thu mua: chuyển các tiện ích dán bảng/bàn phím/đặt lại/chuyển cont/lọc nhanh/soát lỗi sang purchase.js; dropdown NV theo mô tả HR/ID cũ (được thay bằng danh mục Thu mua độc lập và snapshot buyer từ 07/11/2026, xem hợp đồng 0119 bên dưới). Thêm migration 0102_purchase_operations.sql (chưa chạy): xóa mềm và snapshot thao tác máy chủ, API trash/delete/restore/operations/undo có quyền edit/view, actor ownership, CAS và projection trong cùng transaction. Hoàn tác nhiều bước và hai nhánh tách được kiểm trước khi đảo; import/xuất/nhận không hoàn tác bằng endpoint này. Có công cụ purchaseOrdersReconcile.js đọc hai JSON chuẩn hóa, không ghi DB. Chi tiết schema/giới hạn/cách đối chiếu tại server/purchaseOrders/ROLLOUT.md. Chưa seed/chạy migration/cutover/deploy; chưa đối chiếu nguồn thật hay kiểm nhiều trình duyệt/máy chủ thật.
+05/11/2026 — Chuẩn bị production Thu mua: chuyển các tiện ích dán bảng/bàn phím/đặt lại/chuyển cont/lọc nhanh/soát lỗi sang purchase.js; dropdown NV từ API HR rút gọn, lưu buyer_employee_id và kiểm active ở lần ghi. Thêm migration 0102_purchase_operations.sql (chưa chạy): xóa mềm và snapshot thao tác máy chủ, API trash/delete/restore/operations/undo có quyền edit/view, actor ownership, CAS và projection trong cùng transaction. Hoàn tác nhiều bước và hai nhánh tách được kiểm trước khi đảo; import/xuất/nhận không hoàn tác bằng endpoint này. Có công cụ purchaseOrdersReconcile.js đọc hai JSON chuẩn hóa, không ghi DB. Chi tiết schema/giới hạn/cách đối chiếu tại server/purchaseOrders/ROLLOUT.md. Chưa seed/chạy migration/cutover/deploy; chưa đối chiếu nguồn thật hay kiểm nhiều trình duyệt/máy chủ thật.
 
 
 05/11/2026 — Đợt hoàn thiện trước nghiệm thu: thêm 0103_purchase_requests.sql chưa áp dụng, mã Idempotency-Key theo tài khoản/fingerprint và kết quả ghi chung transaction; UI outbox giữ request qua mất mạng/reload, chỉ dọn đúng draft đã gửi khi xác nhận lại, không mất draft khác. Đồng bộ ghim dòng cont live với mockup (chọn theo dõi không tự lọc), lịch sử theo họ khóa và chỉ dblclick Mã SP. Hoàn tác có preview trường/giá trị, audit có liên kết operation. Tối ưu lookup và không dựng packing ẩn; có test 5,001 dòng UI và 5,000 dòng/500 sửa service. Bảng phạm vi server/purchaseOrders/READINESS.md ghi 38/40 tiêu chí đã triển khai/kiểm cục bộ (95% triển khai), không phải nghiệm thu production; nguồn thật và staging nhiều tài khoản là hai cổng bắt buộc còn lại. Chưa migrate/seed/cutover/deploy.
@@ -1001,52 +1001,8 @@ Không đổi schema cho thay đổi ba mức màu cột Tăng trưởng (06/11/
 
 JSONB `user_table_prefs.prefs` hỗ trợ `sorts: [{key, dir}]` theo thứ tự ưu tiên, dir chỉ asc/desc, tối đa 200 khóa cột duy nhất, mỗi khóa 1–200 ký tự. Dữ liệu `sort: {key,dir}` cũ tiếp tục đọc được; client mới ưu tiên mảng sorts khi có. PUT vẫn thay thế cấu hình của đúng tài khoản/bảng/chế độ, không đổi bảng/cột/quyền. Mọi ORDER BY động khác dùng whitelist phía máy chủ qua shared/multiSort.js, không nhận biểu thức SQL từ truy vấn.
 
-## Migration 0119 — danh mục nhân viên Thu mua độc lập (07/11/2026, chưa áp DB thật)
-
-`0119_purchase_employees.sql` tạo bảng `purchase_employees`:
-
-| Cột | Kiểu / ràng buộc |
-|---|---|
-| id | BIGSERIAL PRIMARY KEY |
-| name | TEXT NOT NULL, trim không rỗng, tối đa 200 ký tự |
-| is_active | BOOLEAN NOT NULL DEFAULT true |
-| version | INTEGER NOT NULL DEFAULT 1, > 0 |
-| created_at / updated_at | TIMESTAMPTZ NOT NULL DEFAULT now() |
-
-UNIQUE index `purchase_employees_name_key` trên `lower(btrim(name))`. Migration seed các `purchase_orders.buyer` khác rỗng, trim và khử trùng không phân biệt hoa/thường, `ON CONFLICT DO NOTHING`; không ghi lại buyer cũ, không tạo liên kết HR hoặc FK mới. `purchase_orders.buyer` là snapshot tên tại lúc chọn. `buyer_employee_id` cũ chỉ là di sản; API gán mới không nhận nó và không truy vấn `hr_employees`. Đổi tên/ngừng hoạt động catalog không cập nhật snapshot trên đơn.
-
-Mọi mã hàng mới từ create trực tiếp, `plan.creates` hoặc import đều lưu `container_id=NULL` (**Chờ xếp**), kể cả request create gửi `contId`. Việc xếp/chuyển/tách cont là thao tác riêng có xác nhận và kiểm phiên bản. Tên legacy vẫn đọc được; chỉ lựa chọn buyer mới/đổi mới bắt buộc danh mục đang hoạt động.
-
-Tất cả endpoint bên dưới có tiền tố `/api/purchase-orders`, yêu cầu đăng nhập và `purchase.view`; ghi danh mục/cont cần thêm `purchase.edit`, đồng thời giữ source gate `source_mode='web'`.
-
-| Endpoint | Body | Kết quả |
-|---|---|---|
-| GET /employees | — | `{rows:[{id,name,isActive,version}]}`, gồm cả nhân viên ngừng hoạt động; `id` là chuỗi |
-| POST /employees | `{name}` | HTTP 201, `{id,name,isActive:true,version:1}` |
-| PATCH /employees/:id | `{version,changes:{name?,isActive?}}` | Bản ghi hiện hành, version tăng khi có thay đổi; tên được trim, 1–200 ký tự; `isActive` phải là boolean |
-
-Tên trùng không phân biệt hoa/thường trả 409 `EMPLOYEE_EXISTS`; thiếu version khi sửa trả 400 `VERSION_REQUIRED`, version cũ trả 409 `VERSION_CONFLICT`. Không xóa cứng nhân viên. Ghi có `employee_create`/`employee_edit` trong `purchase_history` và phát `purchase-orders-changed` sau commit qua transaction hiện có. Đổi tên/ngừng hoạt động không sửa snapshot tên đã lưu trên đơn.
-
-Dòng hàng gửi `buyer` là **chuỗi tên được chọn** từ danh mục đang hoạt động; không gửi `buyerEmployeeId` để gán mới, không tra `hr_employees`. Tên mới/đổi không hợp lệ trả 400 `EMPLOYEE_INVALID`; tên legacy không đổi vẫn được giữ và các ô khác vẫn sửa được. Ô buyer trống cho phép chưa gán/xóa gán. Kiểm danh mục ở create/update/bulk/plan, import preview/revise và kiểm lại lúc confirm để chặn danh mục đã đổi sau preview.
-
-`PATCH /api/purchase-orders/containers/:id` nhận `{version,changes,rows?}`; version cont đang xem là bắt buộc. Các trường trong `changes`: `name`, `truckName`, `carrier`, `loader`, `nameCn`, `loading`, `arrivalNote`, `arrivalDate`, `maxTon`, `m3Min`, `m3Max`, `freight`, `freightMode`, `freightBase`, `freightCapacity`. Response là bản ghi cont dạng DB (ví dụ `truck_name`, `arrival_note`, `arrival_date`), không phải toàn bộ dòng con.
-
-Khi có `arrivalNote` hoặc `arrivalDate`, phải gửi `rows:[{id,version}]` cho **toàn bộ dòng đã lưu, chưa xóa trong cont**, không chỉ các dòng đang lọc/hiển thị; cont rỗng gửi `rows:[]`. Ví dụ:
-
-```json
-{"version":3,"changes":{"arrivalNote":"2026-11-10T09:30","arrivalDate":"2026-11-12"},"rows":[{"id":"101","version":5},{"id":"102","version":2}]}
-```
-
-Thiếu snapshot, thay đổi thành viên cont hoặc sai version bất kỳ trả 409 `VERSION_CONFLICT`, không ghi một phần. Server khóa/kiểm cont và toàn bộ dòng, truyền `arrivalNote → etaNote`, `arrivalDate → arrivedNote`, tăng version từng dòng và cont, ghi ảnh trước/sau trong audit cùng transaction. Ngày dự kiến nhận ISO ngày hoặc ngày-giờ, ngày về nhận ISO ngày; xóa bằng arrivalNote rỗng, arrivalDate rỗng/null. Sau lưu phải tải lại snapshot để nhận version mới.
-
-Loại xe nhận `17.5m` hoặc `18.5m`; tải trọng tối đa > 0, khối không âm và `m3Max >= m3Min`. Tấn/m³/số dòng vẫn suy ra từ hàng, không ghi đè số thùng, SL/thùng hay số đo vật lý. Tên/trạng thái cont hiển thị dùng chung cho mọi dòng thuộc cont; trạng thái vẫn qua `POST /status` và quyền depart/arrive hiện có. Cước cont đổi làm phân bổ VC/giá NET các dòng tính lại; projection chỉ chạy khi `integration_enabled=true`. Không tự sửa tồn kho.
-
-Realtime đọc revision từ `purchase_history`, không thêm cột/bảng revision: `max(id):count(*)`. Shared helpers là mã trình duyệt/UMD, không thêm bảng DB. `ensurePurchaseSchema` đăng ký 0119 trong tập DDL Thu mua, giữ transaction/advisory lock/rollback và marker `schema_migrations`; migration không đổi `source_mode`/`integration_enabled`.
-
-Migration `0119_purchase_employees.sql` đã chuẩn bị và được thêm vào `ensurePurchaseSchema.FILES`; **chưa áp DB thật trong tác vụ này**. Không tự bật nguồn web/cờ tích hợp, không seed đơn hàng, không merge/deploy. Phần UI do luồng tích hợp giao diện hoàn thiện; hợp đồng tài liệu không phải xác nhận nghiệm thu trình duyệt/production.
-
 ## Dự kiến hàng về: tên SP dự phòng cho mã ngừng kinh doanh (10/11/2026)
 
-`product_container_expected.product_name` (migration `0075`, xem mục trên) trước đây CHỈ lấy từ `product_report` — bảng này chỉ giữ mã đang kinh doanh ở ít nhất một cơ sở (`0055`), nên mã ngừng kinh doanh (`products.is_active = false` ở cả hai cơ sở) luôn ra tên `''` dù vẫn có dòng hàng trong sheet CONT, gây khó cho sale tìm/nhận diện mã để đặt hàng khi hàng về. `expectedRefresh.js` (`STAGE_SQL`) nay thêm `LEFT JOIN` dự phòng sang `products` (bảng gốc KiotViet, còn cả mã không hoạt động) theo cùng khóa `lower(btrim(mã))`, `min(name)`; thứ tự ưu tiên: `product_report` trước, không có mới lấy `products`, không có ở cả hai thì `''` như cũ. Không đổi cột, bảng, quyền hay cách tính `version`/diff-write; chỉ đổi nguồn tên khi ghi `product_name`. Yêu cầu migration `0001` (bảng `products`) đã áp — luôn đúng ở production vì đây là bảng đồng bộ KiotViet lõi.
+`product_container_expected.product_name` (migration `0075`, xem mục trên) trước đây CHỈ lấy từ `product_report` — bảng này chỉ giữ mã đang kinh doanh ở ít nhất một cơ sở (`0055`), nên mã ngừng kinh doanh (`products.is_active = false` ở cả hai cơ sở) luôn ra tên `''` dù vẫn có dòng hàng trong sheet CONT, gây khó cho sale tìm/nhận diện mã để đặt hàng khi hàng về. `expectedRefresh.js` (`STAGE_SQL`) nay thêm `LEFT JOIN` dự phòng sang `products` (bảng gốc KiotViet, còn cả mã không hoạt động) theo cùng khóa `lower(btrim(mã))`, `min(name)`; thứ tự ưu tiên: `product_report` trước, không có mới lấy `products`, không có ở cả hai thì `''` như cũ. Không đổi cột, bảng, quyền hay cách tính `version`/diff-write; chỉ đổi nguồn tên khi ghi `product_name`. Yêu cầu migration `0001` (bảng `products`) đã áp — luôn đúng ở production vì đây là bảng đồng bộ KiotViet lõi. `purchaseOrdersProjection.js` dùng lại cùng SQL trong transaction ghi đơn Thu mua (chạy cùng nghĩa, nguồn `product_container_lines` của Thu mua): hàm `stageExpected(client)` kiểm `to_regclass('products')` trước, không có bảng thì dùng câu cũ — tránh một fixture test thiếu bảng `products` làm hỏng cả giao dịch ghi đơn.
 
 Cập nhật gần nhất: 10/11/2026.
