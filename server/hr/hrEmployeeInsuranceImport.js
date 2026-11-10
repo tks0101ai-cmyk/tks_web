@@ -1,6 +1,7 @@
 'use strict';
 
 const ExcelJS = require('exceljs');
+const { normalizeInsuranceNumber, isNotEnrolled } = require('./hrInsuranceNumber');
 
 function cellText(cell) {
   const value = cell && cell.value;
@@ -24,7 +25,7 @@ async function parseInsuranceWorkbook(buffer) {
     const row = sheet.getRow(number);
     const insuranceCell = row.getCell(insuranceColumn);
     const id = cellText(row.getCell(idColumn));
-    const insuranceNumber = cellText(insuranceCell);
+    const insuranceNumber = normalizeInsuranceNumber(cellText(insuranceCell));
     if (id || insuranceNumber) rows.push({ number, id, insuranceNumber });
   }
   return rows;
@@ -34,21 +35,24 @@ function previewInsuranceImport(rows, employees, branches) {
   const byId = new Map(employees.map(e => [String(e.rowIndex), e]));
   const seenIds = new Set();
   const seenNumbers = new Set();
-  const existingNumbers = new Map(employees.filter(e => e.insuranceNumber).map(e => [e.insuranceNumber, String(e.rowIndex)]));
+  const existingNumbers = new Map(employees
+    .filter(e => e.insuranceNumber && !isNotEnrolled(e.insuranceNumber))
+    .map(e => [normalizeInsuranceNumber(e.insuranceNumber), String(e.rowIndex)]));
   const updates = [];
   const errors = [];
   for (const row of rows) {
-    if (!row.insuranceNumber) continue;
+    const insuranceNumber = normalizeInsuranceNumber(row.insuranceNumber);
+    if (!insuranceNumber) continue;
     const employee = byId.get(row.id);
     let reason = '';
     if (!/^\d+$/.test(row.id) || !employee) reason = 'ID nhân sự không tồn tại';
     else if (!branches.includes(employee.sourceBranch)) reason = 'Nhân sự ngoài phạm vi cơ sở';
     else if (seenIds.has(row.id)) reason = 'ID nhân sự lặp trong file';
-    else if (seenNumbers.has(row.insuranceNumber) || (existingNumbers.has(row.insuranceNumber) && existingNumbers.get(row.insuranceNumber) !== row.id)) reason = 'Số bảo hiểm bị trùng';
+    else if (!isNotEnrolled(insuranceNumber) && (seenNumbers.has(insuranceNumber) || (existingNumbers.has(insuranceNumber) && existingNumbers.get(insuranceNumber) !== row.id))) reason = 'Số bảo hiểm bị trùng';
     if (reason) errors.push({ row: row.number, id: row.id, reason });
-    else updates.push({ id: row.id, insuranceNumber: row.insuranceNumber });
+    else updates.push({ id: row.id, insuranceNumber });
     seenIds.add(row.id);
-    seenNumbers.add(row.insuranceNumber);
+    if (!isNotEnrolled(insuranceNumber)) seenNumbers.add(insuranceNumber);
   }
   return { total: rows.length, valid: updates.length, errors, updates };
 }

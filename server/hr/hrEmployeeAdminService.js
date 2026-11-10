@@ -21,6 +21,7 @@ const localUserStore = require('../auth/localUserStore');
 const accountPolicy = require('../auth/accountPolicy');
 const accountAuditLog = require('../auth/accountAuditLog');
 const { allowedBranches, branchLabelToCode, branchCodeToLabel } = require('../branch/branches');
+const { normalizeInsuranceNumber, isNotEnrolled } = require('./hrInsuranceNumber');
 
 const LOCK_REASON_RESIGNED = 'hr_resigned';
 const STATUS_ACTIVE = 'active';
@@ -82,8 +83,8 @@ function createHrEmployeeAdminService(options = {}) {
     if (soDienThoai && !/^\+?\d{8,15}$/.test(soDienThoai)) {
       throw new HrEmployeeAdminError('Số điện thoại không hợp lệ.', 400, 'INVALID_PHONE');
     }
-    const insuranceNumber = input.insuranceNumber === undefined && existing
-      ? clean(existing.insuranceNumber) : clean(input.insuranceNumber);
+    const insuranceNumber = normalizeInsuranceNumber(input.insuranceNumber === undefined && existing
+      ? existing.insuranceNumber : input.insuranceNumber);
     const date = value => { const text = clean(value); return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null; };
     return {
       hoTen, boPhan, branch, email, soDienThoai, employmentStatus: toStatus(input.trangThai),
@@ -118,9 +119,9 @@ function createHrEmployeeAdminService(options = {}) {
     if (identityClash) {
       throw new HrEmployeeAdminError('Email hoặc số điện thoại đã thuộc nhân sự khác.', 409, 'HR_IDENTITY_CONFLICT');
     }
-    // Index co dieu kien `insurance_number <> ''`: de trong thi nhieu nguoi cung
-    // trong van hop le, nen chi kiem khi that su co gia tri.
-    if (insuranceNumber) {
+    // Index chi ap dung cho so bao hiem that; ca gia tri rong va nhan 'Khong dong'
+    // deu duoc mien uniqueness (nhung van duoc luu rieng, khong quy ve rong).
+    if (insuranceNumber && !isNotEnrolled(insuranceNumber)) {
       const insuranceClash = others.find(e => e.insuranceNumber === insuranceNumber);
       if (insuranceClash) {
         throw new HrEmployeeAdminError(
