@@ -28,15 +28,19 @@ test('áp riêng migration bảo hiểm trước khi commit và ghi nhận', asy
   assert.match(calls[3].sql, /ADD COLUMN IF NOT EXISTS insurance_number/);
   assert.match(calls[3].sql, /CREATE UNIQUE INDEX IF NOT EXISTS/);
   assert.equal(calls[4].params[0], '0078_hr_employee_insurance_number.sql');
-  assert.equal(calls[5].sql, 'COMMIT');
-  assert.equal(calls[6].sql, 'RELEASE');
+  assert.equal(calls[5].params[0], '0121_hr_insurance_not_enrolled.sql');
+  assert.match(calls[6].sql, /DROP INDEX IF EXISTS hr_employees_insurance_number_unique/);
+  assert.match(calls[6].sql, /insurance_number <> 'Không đóng'/);
+  assert.equal(calls[7].params[0], '0121_hr_insurance_not_enrolled.sql');
+  assert.equal(calls[8].sql, 'COMMIT');
+  assert.equal(calls[9].sql, 'RELEASE');
 });
 
 test('migration đã áp thì bỏ qua DDL', async () => {
   const { calls, pool } = fakePool({ applied: true });
   await ensureHrInsuranceSchema({ pool });
   assert.deepEqual(calls.map((call) => call.sql === 'RELEASE' ? 'RELEASE' : call.sql.split(' ')[0]),
-    ['BEGIN', 'SELECT', 'SELECT', 'COMMIT', 'RELEASE']);
+    ['BEGIN', 'SELECT', 'SELECT', 'SELECT', 'COMMIT', 'RELEASE']);
 });
 
 test('DDL lỗi thì rollback và không đánh dấu đã áp', async () => {
