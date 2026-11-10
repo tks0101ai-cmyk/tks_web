@@ -80,13 +80,15 @@ async function call(query) {
   return res;
 }
 
-test('200: chuyen dung tham so query sang repository', async () => {
+test('200: chuyen dung tham so query sang repository (ke ca sorts)', async () => {
   calls.length = 0;
   nextError = null;
-  const res = await call({ product: 'binh', customer: 'hanh', growth: 'check', sort: 'growth', dir: 'asc', page: '2', pageSize: '25' });
+  const res = await call({ product: 'binh', customer: 'hanh', growth: 'check', sort: 'growth', dir: 'asc', sorts: 'customer_name:asc,share:desc', page: '2', pageSize: '25' });
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.available, true);
-  assert.deepEqual(calls.at(-1), { product: 'binh', customer: 'hanh', growth: 'check', sort: 'growth', dir: 'asc', page: '2', pageSize: '25' });
+  assert.deepEqual(calls.at(-1), {
+    product: 'binh', customer: 'hanh', growth: 'check', sort: 'growth', dir: 'asc', sorts: 'customer_name:asc,share:desc', page: '2', pageSize: '25'
+  });
 });
 
 test('loi: 400 giu thong diep, loi khac -> 500 thong diep chung (khong lo chi tiet)', async () => {
