@@ -98,31 +98,50 @@ test('rowHtml: 8 o theo thu tu COLUMNS, 0 -> "0", NULL -> "—", khach rong -> "
   assert.equal(cells[7], '—');
 });
 
-test('buildQuery: bo tham so rong; growth=all khong gui; dir chi di kem sort; tran pageSize 200', () => {
+test('buildQuery: bo tham so rong; growth=all khong gui; sorts gui dang khoa:chieu; tran pageSize 200', () => {
   assert.equal(H.buildQuery({}), '');
-  assert.equal(H.buildQuery({ product: ' binh ', customer: 'Hạnh', growth: 'check', sort: 'growth', dir: 'asc', page: 2, pageSize: 100 }),
-    'product=binh&customer=H%E1%BA%A1nh&growth=check&sort=growth&dir=asc&page=2&pageSize=100');
-  assert.equal(H.buildQuery({ growth: 'all', sort: 'revenue', page: 1, pageSize: 500 }), 'sort=revenue&page=1&pageSize=200');
-  assert.equal(H.buildQuery({ growth: 'bad', dir: 'asc' }), '');
+  assert.equal(H.buildQuery({ product: ' binh ', customer: 'Hạnh', growth: 'check', sorts: [{ sort: 'growth', dir: 'asc' }], page: 2, pageSize: 100 }),
+    'product=binh&customer=H%E1%BA%A1nh&growth=check&sorts=growth%3Aasc&page=2&pageSize=100');
+  assert.equal(H.buildQuery({ growth: 'all', sorts: [{ sort: 'customer_name', dir: 'asc' }, { sort: 'share', dir: 'desc' }], page: 1, pageSize: 500 }),
+    'sorts=customer_name%3Aasc%2Cshare%3Adesc&page=1&pageSize=200');
+  assert.equal(H.buildQuery({ growth: 'bad', sorts: [] }), '');
   assert.equal(H.buildQuery({ growth: 'lost' }), 'growth=lost');
+  assert.equal(H.buildQuery({ sorts: [{ sort: 'khong-co', dir: 'asc' }, { sort: 'revenue', dir: 'up' }] }), '', 'cap sai bi bo');
 });
 
-test('nextSort: tang dan -> giam dan -> bo sap xep; sortAction bao hanh dong ke tiep', () => {
-  assert.deepEqual(H.nextSort({ sort: '', dir: '' }, 'growth'), { sort: 'growth', dir: 'asc' });
-  assert.deepEqual(H.nextSort({ sort: 'growth', dir: 'asc' }, 'growth'), { sort: 'growth', dir: 'desc' });
-  assert.deepEqual(H.nextSort({ sort: 'growth', dir: 'desc' }, 'growth'), { sort: '', dir: '' });
-  assert.deepEqual(H.nextSort({ sort: 'growth', dir: 'asc' }, 'revenue'), { sort: 'revenue', dir: 'asc' });
+test('nextSorts: them cap -> tang -> giam -> go; toi da 4 cap thi thay cap cuoi; khong sua mang cu; formatSorts; sortAction', () => {
+  const customer = { sort: 'customer_name', dir: 'asc' };
+  assert.deepEqual(H.nextSorts([], 'growth'), [{ sort: 'growth', dir: 'asc' }]);
+  assert.deepEqual(H.nextSorts(undefined, 'growth'), [{ sort: 'growth', dir: 'asc' }]);
+  assert.deepEqual(H.nextSorts([customer], 'share'), [customer, { sort: 'share', dir: 'asc' }], 'cot moi cong don vao cuoi');
+  const two = [customer, { sort: 'share', dir: 'asc' }];
+  assert.deepEqual(H.nextSorts(two, 'share'), [customer, { sort: 'share', dir: 'desc' }]);
+  assert.deepEqual(H.nextSorts(two, 'customer_name'), [{ sort: 'customer_name', dir: 'desc' }, { sort: 'share', dir: 'asc' }], 'doi chieu cap dau, giu thu tu');
+  assert.deepEqual(H.nextSorts([customer, { sort: 'share', dir: 'desc' }], 'share'), [customer], 'giam dan -> go cap');
+  assert.deepEqual(H.nextSorts([customer, { sort: 'share', dir: 'asc' }], 'customer_name').length, 2);
+  assert.deepEqual(H.nextSorts([{ sort: 'customer_name', dir: 'desc' }, { sort: 'share', dir: 'asc' }], 'customer_name'), [{ sort: 'share', dir: 'asc' }], 'go cap dau -> cap sau don len');
+  assert.equal(H.MAX_SORT_LEVELS, 4);
+  const four = [{ sort: 'product_name', dir: 'asc' }, customer, { sort: 'revenue', dir: 'asc' }, { sort: 'share', dir: 'asc' }];
+  assert.deepEqual(H.nextSorts(four, 'growth'), [four[0], four[1], four[2], { sort: 'growth', dir: 'asc' }], 'day 4 cap: thay cap cuoi');
+  const snapshot = JSON.stringify(two);
+  H.nextSorts(two, 'share');
+  assert.equal(JSON.stringify(two), snapshot, 'khong sua mang dau vao');
+  assert.equal(H.formatSorts([customer, { sort: 'share', dir: 'desc' }]), 'customer_name:asc,share:desc');
+  assert.equal(H.formatSorts([]), '');
+  assert.equal(H.formatSorts(null), '');
+  assert.equal(H.formatSorts([{ sort: 'nope', dir: 'asc' }, { sort: 'growth', dir: 'asc' }]), 'growth:asc');
   assert.equal(H.sortAction('none'), 'Sắp xếp tăng dần');
   assert.equal(H.sortAction('ascending'), 'Sắp xếp giảm dần');
   assert.equal(H.sortAction('descending'), 'Bỏ sắp xếp');
 });
 
-test('exportContext: dung bo loc dang ap dung, mac dinh khong gui sap xep', () => {
-  assert.deepEqual(H.exportContext({ product: ' binh ', customer: '', growth: 'check', sort: 'growth', dir: 'asc' }),
-    { context: { productQuery: 'binh', customerQuery: '', growthGroup: 'check', sortKey: 'growth', sortDir: 'asc' } });
+test('exportContext: dung bo loc dang ap dung, gui sorts nhieu cap, mac dinh khong gui sap xep', () => {
+  assert.deepEqual(H.exportContext({ product: ' binh ', customer: '', growth: 'check', sorts: [{ sort: 'growth', dir: 'asc' }] }),
+    { context: { productQuery: 'binh', customerQuery: '', growthGroup: 'check', sorts: 'growth:asc' } });
+  assert.deepEqual(H.exportContext({ sorts: [{ sort: 'customer_name', dir: 'asc' }, { sort: 'share', dir: 'desc' }] }),
+    { context: { productQuery: '', customerQuery: '', growthGroup: 'all', sorts: 'customer_name:asc,share:desc' } });
   assert.deepEqual(H.exportContext({}), { context: { productQuery: '', customerQuery: '', growthGroup: 'all' } });
-  assert.deepEqual(H.exportContext({ growth: 'bad', sort: 'revenue', dir: 'xxx' }),
-    { context: { productQuery: '', customerQuery: '', growthGroup: 'all', sortKey: 'revenue', sortDir: 'desc' } });
+  assert.deepEqual(H.exportContext({ growth: 'bad', sorts: [] }), { context: { productQuery: '', customerQuery: '', growthGroup: 'all' } });
   assert.equal(H.exportContext({ growth: 'lost' }).context.growthGroup, 'lost');
 });
 

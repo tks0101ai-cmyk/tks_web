@@ -24,6 +24,8 @@
     ['up', 'Đang tăng'], ['new', 'Khách mới']
   ];
   const GROWTH_VALUES = GROWTH_OPTIONS.map(function (option) { return option[0]; });
+  const MAX_SORT_LEVELS = 4;
+  const SORT_KEYS = COLUMNS.map(function (column) { return column.sort; });
 
   const NUMBER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
   const PERCENT = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
@@ -136,7 +138,19 @@
 
   function trimmed(value) { return typeof value === 'string' ? value.trim().slice(0, 200) : ''; }
 
-  // Chuỗi truy vấn: BỎ tham số rỗng (máy chủ chỉ nhận chuỗi hợp lệ); growth=all không gửi; dir chỉ đi kèm sort.
+  // Giữ cấp hợp lệ (khóa thuộc cột của bảng, chiều asc/desc), tối đa MAX_SORT_LEVELS; luôn trả mảng mới.
+  function cleanSorts(list) {
+    return (Array.isArray(list) ? list : []).filter(function (level) {
+      return level && SORT_KEYS.indexOf(level.sort) >= 0 && (level.dir === 'asc' || level.dir === 'desc');
+    }).slice(0, MAX_SORT_LEVELS).map(function (level) { return { sort: level.sort, dir: level.dir }; });
+  }
+
+  // [{sort:'customer_name',dir:'asc'},…] → "customer_name:asc,…" (tham số sorts của API và context.sorts của xuất file); rỗng → "".
+  function formatSorts(list) {
+    return cleanSorts(list).map(function (level) { return level.sort + ':' + level.dir; }).join(',');
+  }
+
+  // Chuỗi truy vấn: BỎ tham số rỗng (máy chủ chỉ nhận chuỗi hợp lệ); growth=all không gửi; sorts = "khóa:chiều,khóa:chiều" (nhiều cấp).
   function buildQuery(params) {
     const p = params || {};
     const out = new URLSearchParams();
@@ -144,10 +158,8 @@
     if (product) out.set('product', product);
     if (customer) out.set('customer', customer);
     if (GROWTH_VALUES.indexOf(p.growth) > 0) out.set('growth', p.growth);
-    if (p.sort) {
-      out.set('sort', p.sort);
-      if (p.dir === 'asc' || p.dir === 'desc') out.set('dir', p.dir);
-    }
+    const sorts = formatSorts(p.sorts);
+    if (sorts) out.set('sorts', sorts);
     const page = Number(p.page);
     if (Number.isInteger(page) && page >= 1) out.set('page', String(page));
     const size = Number(p.pageSize);
@@ -155,11 +167,16 @@
     return out.toString();
   }
 
-  // Thứ tự bấm tiêu đề: tăng dần → giảm dần → bỏ sắp xếp (thứ tự mặc định của máy chủ: DS 90 ngày giảm dần).
-  function nextSort(current, key) {
-    if (!current || current.sort !== key) return { sort: key, dir: 'asc' };
-    if (current.dir === 'asc') return { sort: key, dir: 'desc' };
-    return { sort: '', dir: '' };
+  // Bấm tiêu đề cột (cộng dồn kiểu Excel): cột chưa có → thêm vào cuối, tăng dần (đã đủ MAX_SORT_LEVELS cấp thì thay cấp cuối);
+  // cột đã có → tăng dần → giảm dần → gỡ khỏi danh sách (các cấp còn lại giữ thứ tự). Không bao giờ sửa mảng đầu vào.
+  function nextSorts(current, key) {
+    const list = cleanSorts(current);
+    const index = list.findIndex(function (level) { return level.sort === key; });
+    if (index < 0) return list.slice(0, MAX_SORT_LEVELS - 1).concat({ sort: key, dir: 'asc' });
+    if (list[index].dir === 'asc') {
+      return list.map(function (level, i) { return i === index ? { sort: level.sort, dir: 'desc' } : level; });
+    }
+    return list.filter(function (level, i) { return i !== index; });
   }
 
   // Chữ của nút sắp xếp báo hành động KẾ TIẾP khi bấm: chưa sắp → tăng dần → giảm dần → bỏ sắp xếp.
@@ -175,17 +192,16 @@
       customerQuery: trimmed(s.customer),
       growthGroup: GROWTH_VALUES.indexOf(s.growth) >= 0 ? s.growth : 'all'
     };
-    if (s.sort) {
-      context.sortKey = s.sort;
-      context.sortDir = s.dir === 'asc' ? 'asc' : 'desc';
-    }
+    const sorts = formatSorts(s.sorts);
+    if (sorts) context.sorts = sorts;
     return { context: context };
   }
 
   const helpers = {
     COLUMNS: COLUMNS, GROWTH_OPTIONS: GROWTH_OPTIONS, escapeHtml: escapeHtml, formatMoney: formatMoney, formatShare: formatShare,
     formatGrowth: formatGrowth, formatPeriodRange: formatPeriodRange, formatStamp: formatStamp, growthCellHtml: growthCellHtml,
-    rowHtml: rowHtml, buildQuery: buildQuery, nextSort: nextSort, sortAction: sortAction, exportContext: exportContext
+    rowHtml: rowHtml, buildQuery: buildQuery, nextSorts: nextSorts, formatSorts: formatSorts, MAX_SORT_LEVELS: MAX_SORT_LEVELS,
+    sortAction: sortAction, exportContext: exportContext
   };
   if (typeof module === 'object' && module && module.exports) module.exports = helpers;
   if (typeof window === 'undefined' || !window.document) return;
