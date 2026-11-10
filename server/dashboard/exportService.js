@@ -506,6 +506,7 @@ function growthFiltersFromContext(context) {
     filters.sort = source.sortKey;
     if (source.sortDir !== undefined) filters.dir = source.sortDir;
   }
+  if (source.sorts !== undefined && source.sorts !== '') filters.sorts = source.sorts; // nhieu cap: thang sortKey/sortDir
   if (typeof filters.product === 'string') filters.product = filters.product.trim();
   if (typeof filters.customer === 'string') filters.customer = filters.customer.trim();
   return filters;
@@ -1197,7 +1198,7 @@ async function buildProduct90dDataset(description, payload, signal) {
 
 /**
  * Khach hang theo san pham: TOAN BO dong khop bo loc (context.productQuery / customerQuery / growthGroup) theo thu tu
- * sap xep cua man hinh (context.sortKey / sortDir). Chua co cua so khach / khong co dong -> EXPORT_NO_DATA, khong bao gio tao
+ * sap xep cua man hinh (context.sorts nhieu cap, hoac sortKey / sortDir cu). Chua co cua so khach / khong co dong -> EXPORT_NO_DATA, khong bao gio tao
  * file rong.
  */
 async function buildProductCustomerGrowthDataset(description, payload, signal) {

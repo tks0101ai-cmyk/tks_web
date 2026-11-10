@@ -68,7 +68,12 @@ test('quyen: can CA reports.products va reports.products.sales; khoa khong lo ra
 
 test('bo loc o ngu canh bi kiem tra truoc khi xin slot: sai -> 400', async () => {
   await exportService.getExportFields(payload({ context: { growthGroup: 'lost' } }), 'Hà Nội', ALLOWED);
-  for (const context of [{ growthGroup: 'xxx' }, { productQuery: 'x'.repeat(201) }, { customerQuery: 5 }, { sortKey: 'constructor' }, { sortDir: 'up', sortKey: 'revenue' }]) {
+  await exportService.getExportFields(payload({ context: { sorts: 'customer_name:asc,share:desc' } }), 'Hà Nội', ALLOWED);
+  for (const context of [
+    { growthGroup: 'xxx' }, { productQuery: 'x'.repeat(201) }, { customerQuery: 5 }, { sortKey: 'constructor' }, { sortDir: 'up', sortKey: 'revenue' },
+    { sorts: 'revenue:up' }, { sorts: 'nope:asc' }, { sorts: 'revenue:asc,revenue:desc' }, { sorts: 5 },
+    { sorts: 'product_name:asc,customer_name:asc,revenue:asc,share:asc,growth:asc' }
+  ]) {
     await assert.rejects(exportService.getExportFields(payload({ context }), 'Hà Nội', ALLOWED), { statusCode: 400 }, JSON.stringify(context));
   }
 });
@@ -113,6 +118,11 @@ test('dataset: ap dung dung bo loc + sap xep cua man hinh; khong khop / chua co 
     assert.deepEqual((await names({ context: { productQuery: 'coc su' } })).sort(), ['Khách H', 'Khách Mất'].sort());
     assert.deepEqual(await names({ context: { customerQuery: 'moi' } }), ['Khách mới D']);
     assert.deepEqual((await names({ context: { sortKey: 'growth', sortDir: 'asc' } })).slice(0, 3), ['Khách Mất', 'Khách B|<b>', 'Khách A']);
+    // Sap xep nhieu cap: ten hang giam dan (Cốc sứ truoc Bình giữ nhiệt) roi DS giam dan trong tung hang.
+    assert.deepEqual(await names({ context: { sorts: 'product_name:desc,revenue:desc' } }),
+      ['Khách Mất', 'Khách H', 'Khách B|<b>', 'Khách A', 'Khách mới D']);
+    assert.deepEqual(await names({ context: { sorts: 'product_name:desc,revenue:desc', sortKey: 'growth', sortDir: 'asc' } }),
+      ['Khách Mất', 'Khách H', 'Khách B|<b>', 'Khách A', 'Khách mới D'], 'sorts thang sortKey/sortDir');
     const filtered = await dataset({ context: { growthGroup: 'drop', productQuery: 'binh' } });
     const notes = Object.fromEntries(filtered.meta.reportNotes);
     assert.equal(notes['Lọc tên sản phẩm'], 'binh');
