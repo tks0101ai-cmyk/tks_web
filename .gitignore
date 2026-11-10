@@ -56,8 +56,8 @@ server/data/roleChangeRequests.json*
 server/data/users.json
 .codex_tmp/
 
-# Graphify obsolete nested output & backups
-graphify-out/graphify-out/
+# Graphify: do thi sinh tu dong, moi nguoi tu chay `graphify update .` tren may minh (khong commit)
+graphify-out/
 *.bak
 
 # Anh huong dan sinh tu mock (khong commit)
