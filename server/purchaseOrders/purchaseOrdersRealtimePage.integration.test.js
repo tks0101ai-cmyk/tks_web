@@ -62,17 +62,18 @@ for(const scope of ['containerTable','watchedContainer'])test('freight '+scope+'
  doc.activeElement.dispatchEvent(new p.w.Event('change',{bubbles:true}));await tick();await tick();const body=JSON.parse(p.calls.find(c=>c.options.method==='PATCH').options.body);
  assert.equal(body.version,3);assert.equal(p.data.containers[0].freight,9000);assert.match(doc.getElementById('notice').textContent,/Freight conflict/);assert.equal(doc.activeElement.value,'1,000');
 });
-for(const action of ['save','toggle'])test('employee modal '+action+' uses rendered directory version despite SSE directory refresh',async t=>{
- const p=await page(t),doc=p.w.document,fetch=p.w.fetch;let directory=[{id:'nv',name:'Original name',version:2,isActive:true}];
+test('employee manager stages RGB edits and saves once with rendered versions despite SSE refresh',async t=>{
+ const p=await page(t),doc=p.w.document,fetch=p.w.fetch;let directory=[{id:'nv',name:'Original name',color:'#2563EB',version:2,isActive:true}];
  p.w.fetch=async(url,options={})=>{
   if(url.endsWith('/employees'))return {ok:true,json:async()=>({rows:structuredClone(directory)})};
-  if(url.endsWith('/employees/nv')&&options.method==='PATCH'){p.calls.push({url,options});const body=JSON.parse(options.body),ok=body.version===directory[0].version;if(ok)Object.assign(directory[0],body.changes);return {ok,status:ok?200:409,json:async()=>ok?{}:{error:'Employee conflict'}}}
+  if(url.endsWith('/employees/batch')&&options.method==='PUT'){p.calls.push({url,options});const {entries}=JSON.parse(options.body),ok=entries.every(entry=>{const saved=directory.find(row=>String(row.id)===String(entry.id));return saved&&entry.version===saved.version});return {ok,status:ok?200:409,json:async()=>ok?{rows:directory}:{error:'Employee conflict'}}}
   return fetch(url,options);
  };
- doc.getElementById('managePurchaseEmployees').click();await tick();await tick();const input=doc.querySelector('[data-directory-name]');input.value='Local rename';
- directory=[{id:'nv',name:'Remote rename',version:7,isActive:false}];p.listeners.changed();await tick();await tick();assert.equal(input.value,'Local rename');
- doc.querySelector('[data-directory-'+action+']').click();await tick();await tick();const body=JSON.parse(p.calls.find(c=>c.url.endsWith('/employees/nv')).options.body);
- assert.equal(body.version,2);if(action==='toggle')assert.equal(body.changes.isActive,false);assert.equal(directory[0].name,'Remote rename');assert.equal(directory[0].isActive,false);assert.match(doc.getElementById('notice').textContent,/Employee conflict/);assert.equal(input.value,'Local rename');
+ doc.getElementById('managePurchaseEmployees').click();await tick();await tick();const input=doc.querySelector('[data-directory-name]');input.value='Local rename';doc.querySelector('[data-directory-color]').value='#E84A5F';doc.querySelector('[data-directory-active]').value='false';
+ assert.equal(doc.querySelectorAll('[data-directory-save],[data-directory-toggle]').length,0);assert.ok(doc.getElementById('savePurchaseEmployees'));
+ directory=[{id:'nv',name:'Remote rename',color:'#2563EB',version:7,isActive:false}];p.listeners.changed();await tick();await tick();assert.equal(input.value,'Local rename');
+ doc.getElementById('savePurchaseEmployees').click();await tick();await tick();const call=p.calls.find(c=>c.url.endsWith('/employees/batch')),body=JSON.parse(call.options.body);
+ assert.equal(call.options.method,'PUT');assert.deepEqual(body.entries,[{id:'nv',version:2,name:'Local rename',color:'#E84A5F',isActive:false}]);assert.equal(directory[0].name,'Remote rename');assert.match(doc.getElementById('notice').textContent,/Employee conflict/);assert.equal(input.value,'Local rename');
 });
 for(const scope of ['containerTable','watchedContainer'])for(const field of ['freight','carrier'])test('real focusout without native change commits restored dirty '+field+' in '+scope+' once using original version',async t=>{
  const p=await page(t),doc=p.w.document,fetch=p.w.fetch;

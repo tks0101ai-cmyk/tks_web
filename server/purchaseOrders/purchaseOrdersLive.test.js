@@ -34,7 +34,8 @@ async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees
  w.PurchaseRealtime=require('../public/shared/purchase-realtime');w.PurchaseDraftHistory=require('../public/shared/purchase-draft-history');w.PurchaseContainerWorkspace=require('../public/shared/purchase-container-workspace');
  w.EventSource=class{addEventListener(k,fn){listeners[k]=fn}close(){}};
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false};
- w.fetch=async(url,options={})=>{if(url.startsWith('/api/me/table-prefs'))return {ok:true,json:async()=>({tables:{}})};calls.push({url,options});if(url.endsWith('/employees')){
+ w.fetch=async(url,options={})=>{if(url.startsWith('/api/me/table-prefs'))return {ok:true,json:async()=>({tables:{}})};calls.push({url,options});if(url.endsWith('/employees/batch')&&options.method==='PUT'){const {entries}=JSON.parse(options.body),next=[];for(const input of entries){let entry;if(input.id==null){entry={...input,id:'employee-'+(employees.length+1),version:1};delete entry.id;entry.id='employee-'+(employees.length+1);employees.push(entry)}else{entry=employees.find(e=>String(e.id)===String(input.id));if(!entry||input.version!==entry.version)return {ok:false,status:409,json:async()=>({error:'Danh sách NV đã đổi.'})};Object.assign(entry,input,{version:entry.version+1})}next.push(structuredClone(entry))}return {ok:true,json:async()=>({rows:next})}}
+  if(url.endsWith('/employees')){
   if(options.method==='POST'){const input=JSON.parse(options.body),entry={id:'employee-'+(employees.length+1),name:input.name,version:1,isActive:true};employees.push(entry);return {ok:true,json:async()=>structuredClone(entry)}}
   return {ok:true,json:async()=>({rows:structuredClone(employees)})};
  }
@@ -223,25 +224,17 @@ test('pin is above private filters in the orders DOM, remains singular on refres
  assert.equal(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).taskTarget,null);assert.equal(p.calls.filter(c=>c.options.method).length,0);
 });
 
-test('NV manager creates, renames, deactivates and reactivates configured dropdown entries with versions',async t=>{
- const p=await page(t,{employees:[{id:'7',name:'An',version:4,isActive:true}]}),doc=p.w.document;
- const names=()=>[...doc.querySelector('tr[data-id="1"] [data-edit="buyer"]').options].map(o=>o.value);
- const writes=()=>p.calls.filter(c=>c.options.method);
+test('NV manager stages RGB, status and new entries then saves the whole directory once',async t=>{
+ const p=await page(t,{employees:[{id:'7',name:'An',color:'#2563EB',version:4,isActive:true}]}),doc=p.w.document;
+ const names=()=>[...doc.querySelector('tr[data-id="1"] [data-edit="buyer"]').options].map(o=>o.value),writes=()=>p.calls.filter(c=>c.options.method);
  doc.getElementById('managePurchaseEmployees').click();await tick();await tick();
- const form=doc.getElementById('purchaseEmployeeAdd');form.elements.name.value='Bình';form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}));await tick();await tick();
- assert.ok(names().includes('Bình'));assert.deepEqual(JSON.parse(writes()[0].options.body),{name:'Bình'});assert.equal(writes()[0].options.method,'POST');
- let tr=doc.querySelector('[data-directory-id="7"]');tr.querySelector('[data-directory-name]').value='An mới';tr.querySelector('[data-directory-save]').click();await tick();await tick();
- assert.ok(names().includes('An mới'));assert.equal(names().includes('An'),false);assert.deepEqual(JSON.parse(writes()[1].options.body),{version:4,changes:{name:'An mới'}});
- p.change('tr[data-id="1"] [data-edit="buyer"]','An mới');
- doc.querySelector('[data-directory-id="7"] [data-directory-toggle]').click();await tick();await tick();
- const select=doc.querySelector('tr[data-id="1"] [data-edit="buyer"]');assert.equal(select.value,'An mới');assert.equal(select.selectedOptions[0].disabled,true,'existing draft retains an inactive historical name');
- assert.deepEqual(JSON.parse(writes()[2].options.body),{version:5,changes:{isActive:false}});
- doc.querySelector('[data-directory-id="7"] [data-directory-toggle]').click();await tick();await tick();
- assert.equal(doc.querySelector('tr[data-id="1"] [data-edit="buyer"]').selectedOptions[0].disabled,false);
- assert.deepEqual(JSON.parse(writes()[3].options.body),{version:6,changes:{isActive:true}});assert.equal(writes().length,4);
- assert.ok(writes().slice(1).every(c=>c.options.method==='PATCH'&&c.url.endsWith('/employees/7')));
+ const form=doc.getElementById('purchaseEmployeeAdd');form.elements.name.value='Bình';form.elements.color.value='#EA580C';form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}));
+ assert.equal(writes().length,0,'adding a row stages it locally');assert.ok(doc.querySelector('[data-directory-id^="new:"]'));
+ const tr=doc.querySelector('[data-directory-id="7"]');tr.querySelector('[data-directory-name]').value='An mới';tr.querySelector('[data-directory-color]').value='#123456';tr.querySelector('[data-directory-active]').value='false';
+ doc.getElementById('savePurchaseEmployees').click();await tick();await tick();
+ assert.equal(writes().length,1);assert.equal(writes()[0].options.method,'PUT');assert.match(writes()[0].url,/\/employees\/batch$/);
+ const body=JSON.parse(writes()[0].options.body);assert.equal(body.entries.length,2);assert.deepEqual(body.entries.find(e=>e.id==='7'),{id:'7',version:4,name:'An mới',color:'#123456',isActive:false});assert.equal(body.entries.find(e=>e.id===null).name,'Bình');assert.ok(names().includes('Bình'));assert.equal(names().includes('An'),false);
  assert.equal(p.current.rows[0].buyer,undefined,'directory changes do not save order drafts');
- assert.equal(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).drafts['1'].changes.buyer,'An mới');
 });
 
 test('measurement colors include exact plus/minus ten percent as good and only larger magnitudes as bad',async t=>{

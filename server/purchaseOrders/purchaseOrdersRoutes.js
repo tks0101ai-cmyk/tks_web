@@ -17,6 +17,7 @@ function createPurchaseOrdersRouter(dependencies={}) {
   router.get(root,handle(async(req,res)=>res.json({...await service.list(req.user),permissions:Object.fromEntries(['edit','import','export','depart','arrive'].map(k=>[k,hasFeature(req.user,'purchase.'+k)]))})));
   router.get(root+'/revision',handle(async(req,res)=>res.json(await service.revision(req.user))));
   router.get(root+'/employees',handle(async(req,res)=>res.json({rows:await service.employees(req.user)})));
+  router.put(root+'/employees/batch',requireFeature('purchase.edit'),handle(async(req,res)=>res.json(await service.saveEmployees(req.user,req.body))));
   router.post(root+'/employees',requireFeature('purchase.edit'),handle(async(req,res)=>res.status(201).json(await service.createEmployee(req.user,req.body))));
   router.patch(root+'/employees/:id',requireFeature('purchase.edit'),handle(async(req,res)=>res.json(await service.updateEmployee(req.user,req.params.id,req.body))));
   router.get(root+'/trash',handle(async(req,res)=>res.json({rows:await service.trash(req.user)})));
