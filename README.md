@@ -148,6 +148,7 @@ Mở `http://localhost:3000`.
 | `PICK_KIOT_RECONCILE_INTERVAL_MS` | Chu kỳ job trên, mặc định 120000 (2 phút), kẹp trong 30 giây – 30 phút |
 | `DASHBOARD_PREWARM` | Nạp sẵn cache nguồn lúc khởi động; mặc định bật, `false` để tắt |
 | `MEMORY_MONITOR` / `MEMORY_LOG_INTERVAL_MS` / `MEMORY_LIMIT_MB` | Log bộ nhớ định kỳ; mặc định bật, 60000 ms, trần cảnh báo 2048 MB (`MEMORY_MONITOR=false` để tắt) |
+| `LOOP_STALL_WARN_MS` | Event loop đứng ≥ ngưỡng này (ms) thì log `[loop-stall]` kèm request đang chạy/vừa xong; mặc định 1000, `0` để tắt |
 | `XKIRO_API_KEY`, `XKIRO_BASE_URL`, `INVOICE_VISION_MODEL`, `INVOICE_VISION_FALLBACK_MODEL` | AI đọc ảnh hóa đơn ở tab Tạo QR (xKiro, chuẩn OpenAI). Thiếu key = tắt, trang báo nhập tay; mặc định model `mistralai/mistral-large-2512` (free, đọc đúng 5/5 trường trên ảnh hóa đơn thử); `INVOICE_VISION_FALLBACK_MODEL` nhận nhiều model cách nhau dấu phẩy, thử lần lượt (mặc định `mistralai/mistral-medium-3.5,openai/gpt-6-luna` — model `openai/*` tự gửi `reasoning_effort: none` cho nhanh, tính vào gói Max xKiro; tránh model `google/*` vì tier premium trừ ví pay-as-you-go; lỗi 404 = model đã bị xKiro gỡ cũng tự chuyển sang model kế — xem model còn sống ở `GET {XKIRO_BASE_URL}/models`) |
 | `VAT_REQUEST_STOCK_SHEET_ID`, `VAT_REQUEST_STOCK_GID`, `VAT_REQUEST_STOCK_COLUMN`, `VAT_REQUEST_MAPPING_SHEET_ID`, `VAT_REQUEST_MAPPING_GID` | Nguồn cột **Tồn VAT** của ORDER VAT: tab Gộp VAT (cột I `TỒN ĐẦU NGÀY`) + Khớp mã, đọc bằng service account (`*_SHEET_ID` = ID file, `*_GID` = sheetId của tab; file phải chia sẻ Viewer cho service account). **Nên bỏ trống** = tab Gộp VAT (sheetId `950697804`, cùng tab Nháp VAT / Tra cứu VAT dùng) + Khớp mã (`631827560`) của file VAT TKS; nếu Render còn đặt `39032` / `1192158065` (file trung gian "cúc cu test" cũ) thì xóa các biến này |
 | `PG_POOL_MAX` | Trần kết nối pool `pg` mỗi tiến trình (mặc định mã nguồn 7; production: web 4, worker 2). Tính cả LISTEN và phiên bản cũ/mới khi deploy: 2 × (4 + 1) + 2 × 2 = 14 ≤ 15 |
@@ -300,6 +301,8 @@ server/lib/sharedCache.test.js               # timeout, expiry, invalidation, co
 server/lib/sharedCache.integration.test.js   # Redis thật qua REDIS_TEST_URL (TEST riêng)
 server/lib/inflightLimit.js                   # Giới hạn GET đang chạy / người dùng / đường dẫn API nặng (429 TOO_MANY_INFLIGHT)
 server/lib/inflightLimit.test.js              # 429 ở request thứ 5, SSE /events bỏ qua, giữ suất khi client hủy
+server/lib/loopStallWatch.js                  # Log [loop-stall] khi event loop đứng ≥ LOOP_STALL_WARN_MS, kèm request đang chạy/vừa xong
+server/lib/loopStallWatch.test.js             # bỏ qua SSE, không rò khi client hủy, chỉ log khi vượt ngưỡng
 server/scripts/benchmarkPicking.js           # benchmark offline PGlite, không production
 server/pickAssignments/sellerPhoneCache.test.js
 server/sheets/lifecycleSourceCache.test.js
@@ -496,6 +499,8 @@ Cập nhật gần nhất: 07/11/2026.
 
 Cập nhật gần nhất: 07/11/2026.
 
+10/11/2026 — **Bộ canh event loop `[loop-stall]` (không migration, chưa deploy):** `server/lib/loopStallWatch.js` gắn đầu tiên trong `index.js`, ghi request đang chạy và request vừa xong (2 s gần nhất, tối đa 200), bỏ qua SSE; vòng `setInterval` 100 ms (unref) thấy event loop đứng ≥ `LOOP_STALL_WARN_MS` (mặc định 1000, `0` để tắt) thì in một dòng `[loop-stall] lag=…ms inflight=N [5 request chạy lâu nhất] done=[5 request xong trong khoảng đứng, lâu nhất trước]`. Mục đích: tìm request gây khối chặn 1,1–1,7 s (10/11) và 10–12 s (09/11). Chi phí: Set.add/delete mỗi request + một phép so sánh mỗi 100 ms. Test: `server/lib/loopStallWatch.test.js` (9 ca).
+
 07/11/2026 — Kiểm kê: chống gửi lặp yêu cầu xuất Excel, báo tiến trình/lỗi tải file; gộp các truy vấn đọc trùng đang xử lý để giảm nghẽn pool, trạng thái đơn dùng cache tối đa 3 giây. Không migration.
 
-Cập nhật gần nhất: 07/11/2026.
+Cập nhật gần nhất: 10/11/2026.
