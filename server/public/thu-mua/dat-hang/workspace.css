@@ -338,3 +338,21 @@
 .purchase-page #modalBody #employeeSaveStatus{font-size:12px;color:var(--muted)}
 :root:not([data-theme="light"]) .purchase-page #orderTable th,:root:not([data-theme="light"]) .purchase-page #orderTable td,:root:not([data-theme="light"]) .purchase-page #containerTable th,:root:not([data-theme="light"]) .purchase-page #containerTable td,:root:not([data-theme="light"]) .purchase-page #watchedContainer th,:root:not([data-theme="light"]) .purchase-page #watchedContainer td{border-right-color:#596A80;border-bottom-color:#596A80}
 :root:not([data-theme="light"]) .purchase-page #orderTable th,:root:not([data-theme="light"]) .purchase-page #containerTable th,:root:not([data-theme="light"]) .purchase-page #watchedContainer th{background:#202C3E;color:#D8E2F0}
+
+/* Consistent control contrast across the complete Thu mua workspace. */
+.purchase-page :is(.content button,dialog button){min-height:32px;padding:6px 11px;border:1px solid #64748B;border-radius:6px;background:#263449;color:#F1F5F9;font:600 12px/1.35 var(--font-body);box-shadow:0 1px 2px #0003;cursor:pointer}
+.purchase-page :is(.content button,dialog button):hover:not(:disabled){background:#344761;border-color:#93A4BA;color:#fff;filter:none}
+.purchase-page :is(.content button,dialog button):active:not(:disabled){background:#1E293B;transform:translateY(1px)}
+.purchase-page :is(.content button,dialog button):focus-visible{outline:2px solid #60A5FA;outline-offset:2px}
+.purchase-page :is(.content button,dialog button):disabled{opacity:.52;cursor:not-allowed;box-shadow:none}
+.purchase-page :is(#save,#commit,#add,#savePurchaseEmployees,#transfer,#depart,#arrive,#schedule,.btn-primary,.tks-btn-primary){background:#2563EB;border-color:#3B82F6;color:#fff;font-weight:700}
+.purchase-page :is(#save,#commit,#add,#savePurchaseEmployees,#transfer,#depart,#arrive,#schedule,.btn-primary,.tks-btn-primary):hover:not(:disabled){background:#1D4ED8;border-color:#60A5FA}
+.purchase-page :is(.btn-danger,.tks-btn-danger,[data-danger="true"]){background:#B91C1C;border-color:#EF4444;color:#fff}
+.purchase-page :is(.btn-danger,.tks-btn-danger,[data-danger="true"]):hover:not(:disabled){background:#991B1B;border-color:#F87171;color:#fff}
+.purchase-page :is(.content input,.content select,.content textarea,dialog input,dialog select,dialog textarea){border-color:#64748B;color:var(--text)}
+:root[data-theme="light"] .purchase-page :is(.content button,dialog button){background:#E2E8F0;border-color:#94A3B8;color:#0F172A;box-shadow:0 1px 2px #0F172A14}
+:root[data-theme="light"] .purchase-page :is(.content button,dialog button):hover:not(:disabled){background:#CBD5E1;border-color:#64748B;color:#0F172A}
+:root[data-theme="light"] .purchase-page :is(.content button,dialog button):active:not(:disabled){background:#BFCBDA}
+:root[data-theme="light"] .purchase-page :is(#save,#commit,#add,#savePurchaseEmployees,#transfer,#depart,#arrive,#schedule,.btn-primary,.tks-btn-primary){background:#1D4ED8;border-color:#1D4ED8;color:#fff}
+:root[data-theme="light"] .purchase-page :is(#save,#commit,#add,#savePurchaseEmployees,#transfer,#depart,#arrive,#schedule,.btn-primary,.tks-btn-primary):hover:not(:disabled){background:#1E40AF;border-color:#1E40AF;color:#fff}
+:root[data-theme="light"] .purchase-page :is(.content input,.content select,.content textarea,dialog input,dialog select,dialog textarea){border-color:#94A3B8}
