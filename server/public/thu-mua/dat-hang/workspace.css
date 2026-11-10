@@ -287,6 +287,20 @@
 @media(max-width:1100px){.purchase-page .order-filters{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:520px){.purchase-page .order-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.purchase-page .order-filters .wide{grid-column:1/-1}.purchase-page .pagination{justify-content:center}.purchase-page .page-size-control{margin:0 auto 0 0}.purchase-page .page-numbers{max-width:52vw}}
 
+/* Order filters: dates and filter actions share the second row. */
+.purchase-page #sourceBanner{display:none!important}
+.purchase-page .order-filters label:has(#orderFrom){grid-column:1;grid-row:2}
+.purchase-page .order-filters label:has(#orderTo){grid-column:2;grid-row:2}
+.purchase-page .order-filters label:has(#orderFlag){grid-column:3;grid-row:2}
+.purchase-page .order-filters label:has(#sort){grid-column:4;grid-row:2}
+.purchase-page .order-filters .filter-actions{grid-column:5/7;grid-row:2;align-self:end;justify-content:flex-end;padding-top:0;border-top:0}
+.purchase-page .order-filters .column-tools span{display:none}
+.purchase-page .order-grid-shell{overflow:hidden;border:1px solid var(--border);border-radius:0 0 7px 7px;background:var(--panel)}
+.purchase-page .order-grid-shell #orderTable{border:0;border-radius:0}
+.purchase-page .order-grid-shell .pagination{border:0;border-top:1px solid var(--border);border-radius:0;background:var(--panel)}
+@media(max-width:1100px){.purchase-page .order-filters label:has(#orderFrom){grid-column:1;grid-row:2}.purchase-page .order-filters label:has(#orderTo){grid-column:2;grid-row:2}.purchase-page .order-filters label:has(#orderFlag){grid-column:3;grid-row:2}.purchase-page .order-filters label:has(#sort){grid-column:4;grid-row:2}.purchase-page .order-filters .filter-actions{grid-column:1/-1;grid-row:3}}
+@media(max-width:520px){.purchase-page .order-filters label:has(#orderFrom){grid-column:1;grid-row:auto}.purchase-page .order-filters label:has(#orderTo){grid-column:2;grid-row:auto}.purchase-page .order-filters label:has(#orderFlag){grid-column:1;grid-row:auto}.purchase-page .order-filters label:has(#sort){grid-column:2;grid-row:auto}.purchase-page .order-filters .filter-actions{grid-column:1/-1;grid-row:auto}.purchase-page .order-grid-shell .pagination{justify-content:space-between}}
+
 /* Typography scale: consistent UI, readable dense data, and a clear title level. */
 .purchase-page{font-family:var(--font-body);font-size:12px;line-height:1.45}
 .purchase-page .content{font-size:12px}
