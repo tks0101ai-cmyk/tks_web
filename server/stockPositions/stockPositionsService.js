@@ -835,30 +835,24 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
       if (!spec || !Number.isSafeInteger(quantity) || quantity <= 0) { reject('Ghi chú sai định dạng hoặc không có số lượng (vd 1T x 50).'); continue; }
       const candidates = byKey.get(keyOf(code, location));
       if (!candidates) { reject('Không có dòng nào cùng mã hàng và vị trí trong cơ sở này.'); continue; }
+      // Cho phep xuat ca khi dong dang bi don Dang boc giu cho va cho phep ve so AM ("-2T x 100"): tru tuan tu tren dong dau tien doc duoc.
       let target = null;
       let result = null;
-      let available = 0;
       let reason = '';
       for (const candidate of candidates) {
-        const current = carton.parseSpec(candidate.notes);
-        if (!current || current.empty) { reason = reason || 'Ghi chú của dòng đang lưu không đọc được hoặc đã hết hàng nên không trừ được.'; continue; }
-        const free = Math.max(0, current.quantity - (held.get(Number(candidate.row.id)) || 0));
-        available += free;
-        // Phan giu cho cua phieu boc "Dang boc" khong duoc xuat: chi tru toi da SL co the boc.
-        if (quantity > free) continue;
-        const deducted = carton.deduct(current, quantity);
-        if (deducted) { target = candidate; result = deducted; break; }
+        const done = carton.subtractNotes(candidate.notes, quantity, spec.perCarton);
+        if (done) { target = candidate; result = done; break; }
+        reason = reason || 'Ghi chú của dòng đang lưu không đọc được nên không trừ được.';
       }
-      if (!target) {
-        reject(reason && !available ? reason : `Số lượng xuất ${quantity} vượt quá số lượng có thể xuất (${available}).`);
-        continue;
-      }
+      if (!target) { reject(reason); continue; }
       target.notes = result.text;
       target.deducted += quantity;
       target.fileRows.push(line.row);
       applied += 1;
     }
-    const changed = [...byKey.values()].flat().filter(entry => entry.deducted > 0).map(entry => ({ ...entry, removed: isEmptyNote(entry.notes) }));
+    // Ve 0 thi xoa dong, tru khi dong dang duoc don Dang boc giu cho (giu lai "Het hang" de phieu boc con dong tro toi).
+    const changed = [...byKey.values()].flat().filter(entry => entry.deducted > 0)
+      .map(entry => ({ ...entry, removed: isEmptyNote(entry.notes) && !(held.get(Number(entry.row.id)) > 0) }));
     return { changed, errors, applied, total: changed.reduce((sum, entry) => sum + entry.deducted, 0) };
   }
 

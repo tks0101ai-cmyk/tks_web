@@ -28,6 +28,7 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 - [ ] 09/11 — Ổn định web, phần còn lại (kế hoạch ở nhánh local `docs/web-stability-singapore`, chưa push): đo RAM worker 3 đêm; tạo web service Singapore + chuyển tên miền (web hiện vẫn ở Oregon, DB ở Singapore)
 - [ ] 05–10/11 — 3 PR đang mở chờ duyệt/merge hoặc đóng: #71 (tên hàng ngừng KD ở Dự kiến hàng về), #47 (bảng Thu mua bị đẩy xuống), #41 (bộ lọc facet = 0 ở Vòng đời)
 - [ ] 30/10 — Bảng cũ `stock_location_lines` (15.302 dòng) và 2 dòng `stock_locations_hn/sg` trong `sheet_snapshot_sync` không còn dùng (ngừng đồng bộ từ 30/10) — quyết định viết migration DROP
+- [ ] 10/11 — Xuất kho Excel (`POST /stock-positions/stock-out`) cho xuất khi Đang bốc + cho xuất âm, `planStockOut` (không migration) — deploy rồi thử file có mã đang bốc và mã vượt tồn trên VT thật
 - [ ] 19/10 — Quản lý rà soát 3 tài khoản sau vá phân quyền (danh sách trong file lưu trữ, mục 3)
 
 ## Chỉ người vận hành làm được

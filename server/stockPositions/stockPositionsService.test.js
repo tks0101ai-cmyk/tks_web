@@ -934,16 +934,14 @@ test('stockOut: dòng sai bị bỏ qua kèm số dòng Excel + lý do, dòng h�
       ['ZZZ9', '1T x 5', 'A1'], // 4: không có mã
       ['AAA1', 'rác', 'A1'], // 5: ghi chú sai định dạng
       ['AAA1', '', 'A1'], // 6: ghi chú trống
-      ['AAA1', '5T x 100', 'A1'], // 7: vượt tồn (còn 100)
-      ['', '1T x 5', 'A1'], // 8: thiếu mã
-      ['AAA1', '1T x 5', ''] // 9: thiếu vị trí
+      ['', '1T x 5', 'A1'], // 7: thiếu mã
+      ['AAA1', '1T x 5', ''] // 8: thiếu vị trí
     ]);
     const result = await service.stockOutFile(ctx(), 'HN', { buffer });
-    assert.deepEqual(result.counts, { fileRows: 8, applied: 1, updated: 1, deleted: 0, skipped: 7, quantity: 100 });
-    assert.deepEqual(result.errors.map(e => [e.row, e.code, e.location]), [[3, 'AAA1', 'Z9'], [4, 'ZZZ9', 'A1'], [5, 'AAA1', 'A1'], [6, 'AAA1', 'A1'], [7, 'AAA1', 'A1'], [8, '', 'A1'], [9, 'AAA1', '']]);
+    assert.deepEqual(result.counts, { fileRows: 7, applied: 1, updated: 1, deleted: 0, skipped: 6, quantity: 100 });
+    assert.deepEqual(result.errors.map(e => [e.row, e.code, e.location]), [[3, 'AAA1', 'Z9'], [4, 'ZZZ9', 'A1'], [5, 'AAA1', 'A1'], [6, 'AAA1', 'A1'], [7, '', 'A1'], [8, 'AAA1', '']]);
     assert.match(result.errors[0].message, /Không có dòng/u);
     assert.match(result.errors[2].message, /sai định dạng/u);
-    assert.match(result.errors[4].message, /vượt quá/u);
     assert.equal((await stored(db))[0].notes, '1T x 100');
     const before = (await db.query('SELECT count(*)::int AS n FROM stock_position_history')).rows[0].n;
     const none = await service.stockOutFile(ctx(), 'HN', { buffer: workbook([OUT_HEADER, ['ZZZ9', '1T x 5', 'A1']]) });
@@ -953,28 +951,29 @@ test('stockOut: dòng sai bị bỏ qua kèm số dòng Excel + lý do, dòng h�
   } finally { await db.close(); }
 });
 
-test('stockOut: dòng trùng (mã, vị trí) trong file trừ tuần tự theo thứ tự file; tổng không vượt tồn, dòng làm vượt bị bỏ qua riêng, 1 lịch sử cho mỗi vị trí', async () => {
+test('stockOut: dòng trùng (mã, vị trí) trong file trừ tuần tự theo thứ tự file; cho phép vượt tồn (ra số âm), 1 lịch sử cho mỗi vị trí', async () => {
   const { db, service } = await fixture({ lines: [{ branch: 'HN', code: 'AAA1', notes: '3T x 100', location: 'A1' }] });
   try {
     const buffer = workbook([OUT_HEADER, ['AAA1', '1T x 100', 'A1'], ['AAA1', '1T x 100', 'A1'], ['AAA1', '2T x 100', 'A1'], ['aaa1', '1T x 100', 'a1']]);
     const result = await service.stockOutFile(ctx(), 'HN', { fileName: 'trung.xlsx', buffer });
-    // Dòng 4 (2T x 100) vượt phần còn lại (100) nên bỏ qua; dòng 5 vẫn trừ được và làm hết hàng.
-    assert.deepEqual(result.counts, { fileRows: 4, applied: 3, updated: 0, deleted: 1, skipped: 1, quantity: 300 });
-    assert.deepEqual(result.errors.map(e => e.row), [4]);
-    assert.match(result.errors[0].message, /có thể xuất \(100\)/u);
-    assert.deepEqual(await stored(db), []);
+    // 300 - 100 - 100 = 100; trừ 200 -> -100; trừ 100 -> -200. Không dòng nào bị bỏ qua.
+    assert.deepEqual(result.counts, { fileRows: 4, applied: 4, updated: 1, deleted: 0, skipped: 0, quantity: 500 });
+    assert.deepEqual(result.errors, []);
+    assert.deepEqual((await stored(db)).map(r => r.notes), ['-2T x 100']);
     const history = (await service.history(ctx(), 'HN')).rows.filter(h => h.action === 'stock_out');
     assert.equal(history.length, 1);
-    assert.deepEqual(history[0].summary, { deducted: 300, removed: true, fileName: 'trung.xlsx', fileRows: [2, 3, 5] });
+    assert.deepEqual(history[0].summary, { deducted: 500, removed: false, fileName: 'trung.xlsx', fileRows: [2, 3, 4, 5] });
   } finally { await db.close(); }
 });
 
-test('stockOut: dòng trùng cuối cùng làm hết hàng thì các dòng sau bị bỏ qua vì còn 0', async () => {
+test('stockOut: xuất vượt tồn để lại số lượng âm; dòng đã âm trừ tiếp thì âm sâu hơn', async () => {
   const { db, service } = await fixture({ lines: [{ branch: 'HN', code: 'AAA1', notes: '2T x 100', location: 'A1' }] });
   try {
-    const result = await service.stockOutFile(ctx(), 'HN', { buffer: workbook([OUT_HEADER, ['AAA1', '1T x 100', 'A1'], ['AAA1', '1T x 100', 'A1'], ['AAA1', '1T x 100', 'A1']]) });
-    assert.deepEqual([result.counts.applied, result.counts.deleted, result.counts.skipped], [2, 1, 1]);
-    assert.deepEqual(await stored(db), []);
+    const first = await service.stockOutFile(ctx(), 'HN', { buffer: workbook([OUT_HEADER, ['AAA1', '1T x 100', 'A1'], ['AAA1', '1T x 100', 'A1'], ['AAA1', '1T x 100', 'A1']]) });
+    assert.deepEqual([first.counts.applied, first.counts.deleted, first.counts.skipped], [3, 0, 0]);
+    assert.deepEqual((await stored(db)).map(r => r.notes), ['-1T x 100']);
+    await service.stockOutFile(ctx(), 'HN', { buffer: workbook([OUT_HEADER, ['AAA1', '1T x 50', 'A1']]) });
+    assert.deepEqual((await stored(db)).map(r => r.notes), ['-3T x 50']); // -100 - 50 = -150, biểu diễn theo quy cách dòng xuất
   } finally { await db.close(); }
 });
 
@@ -986,7 +985,7 @@ test('stockOut: trừ phần lẻ khi SL không tròn thùng (số trần = 1 th
   } finally { await db.close(); }
 });
 
-test('stockOut: không xuất phần đang bị phiếu bốc giữ chỗ (Đang bốc); đủ phần còn lại thì trừ', async () => {
+test('stockOut: vẫn xuất được phần đang bị phiếu bốc giữ chỗ (Đang bốc), kể cả xuất quá tồn; về 0 thì giữ dòng "Hết hàng" để phiếu bốc còn trỏ tới', async () => {
   const { db, service } = await fixture({ lines: [{ branch: 'HN', code: 'AAA1', notes: '3T x 100', location: 'A1' }] });
   try {
     await db.exec(migration('0096_order_pick_assignments.sql'));
@@ -995,11 +994,12 @@ test('stockOut: không xuất phần đang bị phiếu bốc giữ chỗ (Đang
     const assignment = Number((await db.query(`INSERT INTO order_pick_assignments (branch, order_code, status) VALUES ('HN', 'DH1', 'picking') RETURNING id`)).rows[0].id);
     await db.query(`INSERT INTO order_pick_lines (assignment_id, product_code, position_id, location, planned_qty, reserved_qty) VALUES ($1, 'AAA1', $2, 'A1', 120, 120)`, [assignment, position.id]);
     const result = await service.stockOutFile(ctx(), 'HN', { buffer: workbook([OUT_HEADER, ['AAA1', '2T x 100', 'A1'], ['AAA1', '1T x 100', 'A1']]) });
-    // Còn 300, giữ chỗ 120 -> có thể xuất 180: dòng 2 (200) bị bỏ qua, dòng 3 (100) trừ được.
-    assert.deepEqual([result.counts.applied, result.counts.skipped], [1, 1]);
-    assert.equal(result.errors[0].row, 2);
-    assert.match(result.errors[0].message, /có thể xuất \(180\)/u);
-    assert.equal((await stored(db))[0].notes, '2T x 100');
+    // Còn 300, giữ chỗ 120: cả hai dòng (200 + 100) đều trừ được, về đúng 0 nhưng còn giữ chỗ nên dòng không bị xóa.
+    assert.deepEqual([result.counts.applied, result.counts.skipped, result.counts.deleted, result.counts.updated], [2, 0, 0, 1]);
+    assert.deepEqual(result.errors, []);
+    assert.equal((await stored(db))[0].notes, 'Hết hàng');
+    await service.stockOutFile(ctx(), 'HN', { buffer: workbook([OUT_HEADER, ['AAA1', '1T x 100', 'A1']]) });
+    assert.equal((await stored(db))[0].notes, '-1T x 100');
   } finally { await db.close(); }
 });
 
