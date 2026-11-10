@@ -199,3 +199,128 @@
 .purchase-page #orderTable .purchase-fill-handle{position:absolute;right:0;bottom:0;width:7px;height:7px;min-height:0;padding:0;border:1px solid var(--panel);border-radius:0;background:var(--blue);cursor:crosshair;z-index:2}
 .purchase-selection-status{margin:0;padding:4px 10px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;background:var(--panel)}
 .purchase-selection-status:empty{display:none}
+
+/* Operations toolbar: clear groups, restrained utility actions, theme-aware controls. */
+.purchase-page .order-actions{display:flex;flex-wrap:wrap;align-items:center;gap:7px;row-gap:8px;padding:9px 12px}
+.purchase-page .order-actions h2{flex:1 1 150px;margin:0 10px 0 0;white-space:nowrap}
+.purchase-page .order-actions .purchase-work-tools{display:inline-flex;align-items:center;gap:6px}
+.purchase-page .order-actions #managePurchaseEmployees,
+.purchase-page .order-actions #editedRows,
+.purchase-page .order-actions #save,
+.purchase-page .order-actions #cancel{margin-left:5px}
+.purchase-page .order-actions #managePurchaseEmployees,
+.purchase-page .order-actions #import,
+.purchase-page .order-actions #undoWork{background:transparent;color:var(--muted);border-color:transparent}
+.purchase-page .order-actions #managePurchaseEmployees:hover:not(:disabled),
+.purchase-page .order-actions #import:hover:not(:disabled),
+.purchase-page .order-actions #export:hover:not(:disabled),
+.purchase-page .order-actions #undoWork:hover:not(:disabled){color:var(--text);border-color:var(--border)}
+.purchase-page .order-actions #add{margin-left:auto}
+.purchase-page .order-actions #quickWork{min-width:132px;min-height:32px;padding:5px 26px 5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background-color:var(--panel-2);color:var(--text);font:500 12px var(--font-body)}
+.purchase-page .work-menu>summary{min-height:32px;padding:7px 10px;border-radius:var(--radius-sm);border-color:var(--border);color:var(--text);font:500 12px var(--font-body)}
+.purchase-page #ordersPackingSection{margin:0 0 8px;padding:0 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel)}
+.purchase-page #ordersPackingSection>summary{padding:8px 2px;color:var(--text);font-size:12px;font-weight:600;cursor:pointer;list-style-position:inside}
+.purchase-page #ordersPackingSection[open]{padding-bottom:10px}
+
+/* One status control for the order grid: the status chips above the filters also apply this filter. */
+.purchase-page .order-filters label:has(#orderStatus){display:none}
+.purchase-page .purchase-container-status{display:flex;flex-wrap:wrap;gap:6px;margin:7px 0 10px}
+.purchase-page .purchase-container-status button{display:inline-flex;align-items:center;gap:7px;min-height:30px;padding:5px 10px;border:1px solid var(--border);border-radius:999px;background:var(--panel);color:var(--muted);font:500 11px var(--font-body)}
+.purchase-page .purchase-container-status button:hover:not(:disabled){border-color:var(--primary);color:var(--text);filter:none}
+.purchase-page .purchase-container-status button[aria-pressed="true"]{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 10%,var(--panel));color:var(--text);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--primary) 35%,transparent)}
+.purchase-page .purchase-container-status strong{font-weight:550}
+.purchase-page .purchase-container-status [data-status-count]{min-width:1.5em;text-align:center;color:var(--text);font-variant-numeric:tabular-nums}
+
+/* Filters use dashboard theme tokens so the same panel works in light and dark mode. */
+.purchase-page .purchase-filters{background:var(--panel-2);color:var(--text);border-color:var(--border);color-scheme:normal}
+.purchase-page .purchase-filters label{color:var(--muted)}
+.purchase-page .purchase-filters input,
+.purchase-page .purchase-filters select{background:var(--bg);color:var(--text);border-color:var(--border)}
+.purchase-page .purchase-filters input::placeholder{color:var(--muted);opacity:.8}
+.purchase-page .purchase-filters select option{background:var(--panel);color:var(--text)}
+.purchase-page .purchase-filters button{background:var(--panel);color:var(--text);border-color:var(--border)}
+.purchase-page .filter-actions{border-color:var(--border)}
+.purchase-page .purchase-filters .column-tools span{color:var(--muted);font-size:10px}
+.purchase-page .filter-summary{background:var(--panel-2);color:var(--muted);border-color:var(--border)}
+
+/* Column picker follows the source column groups instead of one long, flat checklist. */
+.purchase-page #modalBody .purchase-column-presets{display:flex;gap:7px;margin:0 0 12px}
+.purchase-page #modalBody .purchase-column-presets button{min-height:30px;padding:5px 10px}
+.purchase-page #modalBody .purchase-column-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;max-height:56vh;overflow:auto;padding:1px 4px 4px 1px}
+.purchase-page #modalBody .purchase-column-group{min-width:0;margin:0;padding:8px 9px;border:1px solid var(--border);border-radius:var(--radius-sm)}
+.purchase-page #modalBody .purchase-column-group legend{padding:0 5px;color:var(--text);font-size:11px;font-weight:650}
+.purchase-page #modalBody .purchase-column-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 8px}
+.purchase-page #modalBody .purchase-column-options label{display:flex;align-items:center;gap:5px;min-width:0;margin:0;padding:3px 2px;font-size:11px}
+.purchase-page #modalBody .purchase-column-options label span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.purchase-page #modalBody .purchase-column-options input{flex:none;margin:0}
+.purchase-page #containerPanel{margin-top:12px}
+@media(max-width:700px){
+ .purchase-page .order-actions h2{flex-basis:100%;margin:0 0 2px}
+ .purchase-page .order-actions #add{margin-left:0}
+ .purchase-page #modalBody .purchase-column-groups{grid-template-columns:1fr;max-height:60vh}
+}
+@media(max-width:430px){
+ .purchase-page .order-actions{gap:6px;padding:8px}
+ .purchase-page .order-actions .purchase-work-tools{flex-wrap:wrap}
+ .purchase-page .purchase-container-status{gap:5px}
+ .purchase-page .purchase-container-status button{padding:5px 8px;font-size:10px}
+ .purchase-page .purchase-filters{gap:8px 6px;padding:9px}
+ .purchase-page .filter-actions{gap:6px}
+ .purchase-page .filter-actions .column-tools{justify-content:flex-start}
+ .purchase-page .filter-actions .column-tools span{flex-basis:100%;text-align:left}
+}
+
+/* Joined order heading and status filters, plus direct page size and page navigation. */
+.purchase-page .order-actions{border-radius:6px 6px 0 0;border-bottom:0}
+.purchase-page .purchase-container-status{margin:0;padding:8px 12px 10px;border:1px solid var(--border);border-top:0;border-radius:0 0 6px 6px;background:var(--panel);gap:6px}
+.purchase-page .order-filters{grid-template-columns:repeat(6,minmax(0,1fr));border-radius:6px 6px 0 0}
+.purchase-page .order-filters .wide{grid-column:span 2}
+.purchase-page .order-filters label:has(#filter),.purchase-page .order-filters label:has(#orderSupplier){grid-column:span 1}
+.purchase-page .pagination{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.purchase-page .page-size-control{display:flex;align-items:center;gap:7px;margin-right:auto;color:var(--muted);font-size:11px}
+.purchase-page #pageSize{min-height:30px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font:500 12px var(--font-body)}
+.purchase-page .page-controls{display:flex;align-items:center;gap:4px}
+.purchase-page .page-numbers{display:flex;align-items:center;gap:3px;max-width:min(70vw,720px);overflow-x:auto}
+.purchase-page .page-controls button{min-width:30px;min-height:30px;padding:4px 8px;font:500 11px var(--font-body)}
+.purchase-page .page-controls .page-numbers button[aria-current="page"]{border-color:var(--primary);background:var(--primary);color:#fff}
+.purchase-page #pageLabel{margin-left:5px;color:var(--muted);font-size:10px;white-space:nowrap}
+@media(max-width:1100px){.purchase-page .order-filters{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:520px){.purchase-page .order-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.purchase-page .order-filters .wide{grid-column:1/-1}.purchase-page .pagination{justify-content:center}.purchase-page .page-size-control{margin:0 auto 0 0}.purchase-page .page-numbers{max-width:52vw}}
+
+/* Typography scale: consistent UI, readable dense data, and a clear title level. */
+.purchase-page{font-family:var(--font-body);font-size:12px;line-height:1.45}
+.purchase-page .content{font-size:12px}
+.purchase-page .content button,.purchase-page .content input,.purchase-page .content select,.purchase-page .content textarea,.purchase-page dialog button,.purchase-page dialog input,.purchase-page dialog select,.purchase-page dialog textarea{font-family:var(--font-body);font-size:12px;line-height:1.35}
+.purchase-page .order-actions h2,.purchase-page #containerPanel>summary{font-family:var(--font-display);font-size:15px;line-height:1.35;font-weight:650}
+.purchase-page .order-actions small{font-family:var(--font-body);font-size:11px;line-height:1.35;font-weight:500}
+.purchase-page .purchase-tabs button{font-family:var(--font-body);font-size:12px;line-height:1.35}
+.purchase-page .purchase-filters label,.purchase-page dialog label{font-family:var(--font-body);font-size:11px;line-height:1.4;font-weight:550}
+.purchase-page .purchase-filters input,.purchase-page .purchase-filters select{font-size:12px;line-height:1.35}
+.purchase-page .purchase-container-status button{font-family:var(--font-body);font-size:11.5px;line-height:1.35}
+.purchase-page #orderTable table,.purchase-page #containerTable table,.purchase-page #watchedContainer table{font-family:var(--font-body);font-size:11.5px;line-height:1.4}
+.purchase-page #orderTable th,.purchase-page #containerTable th,.purchase-page #watchedContainer th{font-family:var(--font-body);font-size:10.5px;line-height:1.3;font-weight:600}
+.purchase-page #orderTable td,.purchase-page #containerTable td,.purchase-page #watchedContainer td{font-size:11.5px;line-height:1.4}
+.purchase-page #orderTable td input,.purchase-page #orderTable td select,.purchase-page #containerTable td input,.purchase-page #containerTable td select,.purchase-page #containerTable td button{font-family:var(--font-body);font-size:11.5px;line-height:1.35}
+.purchase-page .table-legend,.purchase-page .filter-summary,.purchase-page #pageLabel{font-family:var(--font-body);font-size:11px;line-height:1.45}
+.purchase-page .page-size-control,.purchase-page .page-controls button{font-family:var(--font-body);font-size:12px;line-height:1.35}
+.purchase-page #pageSize{font-size:12px}
+.purchase-page #modalBody h2,.purchase-page dialog h2{font-family:var(--font-display);font-size:15px;line-height:1.4}
+.purchase-page .purchase-page-number,.purchase-page .num{font-variant-numeric:tabular-nums}
+
+.purchase-page .column-tools,.purchase-page .column-tools span,.purchase-page #containerTable small,.purchase-page .expression-result,.purchase-page #orderTable td[data-field="productCode"] .code-edit{font-size:11px;line-height:1.4}
+
+/* Light theme contrast: replace the legacy dark purchase panel and strengthen grid dividers. */
+:root[data-theme="light"] .purchase-page .purchase-filters{background:#F1F5F9;color:#1E293B;border-color:#CBD5E1;color-scheme:light}
+:root[data-theme="light"] .purchase-page .purchase-filters label{color:#334155}
+:root[data-theme="light"] .purchase-page .purchase-filters input,:root[data-theme="light"] .purchase-page .purchase-filters select{background:#FFFFFF;color:#1E293B;border-color:#A8B5C5}
+:root[data-theme="light"] .purchase-page .purchase-filters input::placeholder{color:#64748B;opacity:1}
+:root[data-theme="light"] .purchase-page .purchase-filters select option{background:#FFFFFF;color:#1E293B}
+:root[data-theme="light"] .purchase-page .purchase-filters button{background:#FFFFFF;color:#1E293B;border-color:#A8B5C5}
+:root[data-theme="light"] .purchase-page .filter-summary{background:#F1F5F9;color:#475569;border-color:#CBD5E1}
+:root[data-theme="light"] .purchase-page .filter-actions{border-color:#CBD5E1}
+:root[data-theme="light"] .purchase-page #orderTable th,:root[data-theme="light"] .purchase-page #orderTable td,:root[data-theme="light"] .purchase-page #containerTable th,:root[data-theme="light"] .purchase-page #containerTable td,:root[data-theme="light"] .purchase-page #watchedContainer th,:root[data-theme="light"] .purchase-page #watchedContainer td{border-right-color:#D1D9E3;border-bottom-color:#C5CFDA}
+:root[data-theme="light"] .purchase-page #orderTable th,:root[data-theme="light"] .purchase-page #containerTable th,:root[data-theme="light"] .purchase-page #watchedContainer th{background:#EEF2F7;color:#334155}
+.purchase-page .purchase-buyer-color{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;padding:2px 7px;border:1px solid color-mix(in srgb,var(--buyer-color) 42%,var(--border));border-radius:999px;background:color-mix(in srgb,var(--buyer-color) 13%,var(--panel));color:var(--buyer-color);white-space:nowrap}
+.purchase-page #orderTable td .buyer-color-control{width:100%;min-width:0;background:color-mix(in srgb,var(--buyer-color) 12%,var(--panel));border-color:color-mix(in srgb,var(--buyer-color) 38%,var(--border));color:var(--text)}
+.purchase-page #modalBody [data-directory-color]{min-width:120px;border-left:5px solid currentColor}
+:root[data-theme="light"] .purchase-page #modalBody [data-directory-color]{background:#fff;color:#1E293B}

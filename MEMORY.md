@@ -1,7 +1,7 @@
 # MEMORY: BỘ NHỚ DÀI HẠN DỰ ÁN TOKOSI DASHBOARD
 
 > **Thời hạn giá trị:** Ít nhất 3 tháng (Q4/2026 – Q1/2027).  
-> **Cập nhật gần nhất:** 30/10/2026.  
+> **Cập nhật gần nhất:** 10/11/2026.
 > **Quy tắc:** Chỉ lưu trữ các nguyên tắc cốt lõi, kiến trúc bất biến, quy ước chuẩn hóa và bài học kinh nghiệm dài hạn. Không ghi deadline ngắn hạn hay task vụn vặt vào file này.
 >
 > **Nguyên tắc tiên quyết:** với chức năng chưa quen thuộc, đừng viết từ con số 0 — tìm các dự án mã nguồn mở trên GitHub để so sánh ý tưởng trước khi bắt tay làm (xem mục 0 của [CLAUDE.md](CLAUDE.md)).
@@ -35,7 +35,7 @@
 
 ## 2. Nguyên tắc kiến trúc & Quy tắc bất biến (Do's & Don'ts)
 
-- **Quy tắc Git do người dùng yêu cầu (20/10/2026):** Mọi thay đổi được thực hiện trực tiếp trên nhánh `main`. Không tự tạo nhánh hoặc worktree dùng nhánh khác; chỉ tạo nhánh khi người dùng yêu cầu rõ ràng.
+- **Quy tắc Git do người dùng yêu cầu (20/10/2026):** Mọi thay đổi được thực hiện trực tiếp trên nhánh `main`. Không tự tạo nhánh hoặc worktree dùng nhánh khác; chỉ tạo nhánh khi người dùng yêu cầu rõ ràng. Khi merge PR, dùng GitHub CLI `gh pr merge <PR_NUMBER> --merge` để giữ merge commit.
 
 ### 2.1. Quy ước cơ sở & dữ liệu
 - **`branch` chỉ có 2 giá trị:** `hanoi` và `saigon` trong Postgres. Khóa chính của mọi bảng nghiệp vụ KiotViet luôn bắt đầu bằng `(branch, id)`.

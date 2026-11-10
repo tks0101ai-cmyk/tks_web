@@ -17,6 +17,8 @@ const dbCols = writable.map(c=>snake(c.k));
 const numeric = new Set(['num','num1','num2','num4','cny','money','pct','ratio']);
 const fail = (statusCode,code,message,extra={}) => Object.assign(new Error(message),{statusCode,code,...extra});
 const { normalizeName } = require('./containerNames');
+const employeeColors=['#2563EB','#0891B2','#059669','#65A30D','#D97706','#EA580C','#DC2626','#DB2777','#9333EA','#475569'];
+const employeeColor=value=>{if(!employeeColors.includes(value))throw fail(400,'COLOR_INVALID','Màu nhân viên không hợp lệ.');return value};
 function jsRow(row) {
   const out={freightAmount:null,id:String(row.id),rowKey:row.row_key,sourceSheet:row.source_sheet??null,sourceRow:row.source_row==null?null:Number(row.source_row),rootKey:row.root_key,splitFromKey:row.split_from_key,contId:row.container_id==null?null:String(row.container_id),version:Number(row.version),buyerEmployeeId:row.buyer_employee_id==null?null:String(row.buyer_employee_id)};
   writable.forEach(c=>{const value=row[snake(c.k)];out[c.k]=value==null?null:c.k==='buyerEmployeeId'?String(value):c.t==='datetime'? (value instanceof Date?([value.getFullYear(),String(value.getMonth()+1).padStart(2,'0'),String(value.getDate()).padStart(2,'0')].join('-')+(value.getHours()||value.getMinutes()?'T'+String(value.getHours()).padStart(2,'0')+':'+String(value.getMinutes()).padStart(2,'0'):'')):String(value).replace(' ','T').replace(/T00:00:00(?:\.000)?$/,'').replace(/:(\d{2}):00$/ ,':$1')) : c.t==='date'?(value instanceof Date?[value.getFullYear(),String(value.getMonth()+1).padStart(2,'0'),String(value.getDate()).padStart(2,'0')].join('-'):String(value).slice(0,10)):numeric.has(c.t)?Number(value):value});return out;
@@ -89,7 +91,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
     if(!e)throw fail(400,'EMPLOYEE_INVALID','Chọn nhân viên đang hoạt động trong danh mục Thu mua.');
     changes.buyer=e.name;
   }
-  const employeeSelect='id::text,name,is_active AS "isActive",version';
+  const employeeSelect='id::text,name,color,is_active AS "isActive",version';
   function employeeName(name){if(typeof name!=='string'||!name.trim()||name.trim().length>200)throw fail(400,'NAME_INVALID','Tên nhân viên phải có 1–200 ký tự.');return name.trim()}
   async function validateImportEmployees(client,plan,current){
     for(const row of plan.rows){
@@ -112,21 +114,21 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
   }
   return {
     async employees(user){actor(user);return (await pool.query('SELECT '+employeeSelect+' FROM purchase_employees ORDER BY name,id')).rows},
-    async createEmployee(user,{name}){return transaction(user,async client=>{
-      let row;try{row=(await client.query('INSERT INTO purchase_employees(name) VALUES($1) RETURNING '+employeeSelect,[employeeName(name)])).rows[0]}catch(error){if(error.code==='23505')throw fail(409,'EMPLOYEE_EXISTS','Tên nhân viên đã có.');throw error}
+    async createEmployee(user,{name,color=employeeColors[0]}){return transaction(user,async client=>{
+      let row;try{row=(await client.query('INSERT INTO purchase_employees(name,color) VALUES($1,$2) RETURNING '+employeeSelect,[employeeName(name),employeeColor(color)])).rows[0]}catch(error){if(error.code==='23505')throw fail(409,'EMPLOYEE_EXISTS','Tên nhân viên đã có.');throw error}
       await audit(client,user,'employee_create',{after:row});return {changed:true,value:row};
     })},
     async updateEmployee(user,id,{version,changes={}}){return transaction(user,async client=>{
       if(!Number.isSafeInteger(Number(version))||Number(version)<1)throw fail(400,'VERSION_REQUIRED','Cần phiên bản nhân viên đang xem.');
-      if(!changes||typeof changes!=='object'||Array.isArray(changes)||!Object.keys(changes).length||Object.keys(changes).some(k=>!['name','isActive'].includes(k)))throw fail(400,'FIELD_NOT_WRITABLE','Trường nhân viên không được sửa.');
+      if(!changes||typeof changes!=='object'||Array.isArray(changes)||!Object.keys(changes).length||Object.keys(changes).some(k=>!['name','isActive','color'].includes(k)))throw fail(400,'FIELD_NOT_WRITABLE','Trường nhân viên không được sửa.');
       const before=(await client.query('SELECT '+employeeSelect+' FROM purchase_employees WHERE id=$1 FOR UPDATE',[id])).rows[0];
       if(!before)throw fail(404,'EMPLOYEE_NOT_FOUND','Không có nhân viên.');
       if(Number(before.version)!==Number(version))throw fail(409,'VERSION_CONFLICT','Nhân viên đã thay đổi.');
       const name=Object.hasOwn(changes,'name')?employeeName(changes.name):before.name;
       if(Object.hasOwn(changes,'isActive')&&typeof changes.isActive!=='boolean')throw fail(400,'VALIDATION_ERROR','Trạng thái nhân viên không hợp lệ.');
-      const active=changes.isActive??before.isActive;
-      if(name===before.name&&active===before.isActive)return {changed:false,value:before};
-      let row;try{row=(await client.query('UPDATE purchase_employees SET name=$2,is_active=$3,version=version+1,updated_at=now() WHERE id=$1 RETURNING '+employeeSelect,[id,name,active])).rows[0]}catch(error){if(error.code==='23505')throw fail(409,'EMPLOYEE_EXISTS','Tên nhân viên đã có.');throw error}
+      const active=changes.isActive??before.isActive,color=Object.hasOwn(changes,'color')?employeeColor(changes.color):before.color;
+      if(name===before.name&&active===before.isActive&&color===before.color)return {changed:false,value:before};
+      let row;try{row=(await client.query('UPDATE purchase_employees SET name=$2,is_active=$3,color=$4,version=version+1,updated_at=now() WHERE id=$1 RETURNING '+employeeSelect,[id,name,active,color])).rows[0]}catch(error){if(error.code==='23505')throw fail(409,'EMPLOYEE_EXISTS','Tên nhân viên đã có.');throw error}
       await audit(client,user,'employee_edit',{before,after:row});return {changed:true,value:row};
     })},
     async trash(user){actor(user);return (await pool.query('SELECT * FROM purchase_orders WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT 500')).rows.map(jsRow)},

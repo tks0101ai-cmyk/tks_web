@@ -211,7 +211,7 @@ test('undo owns immutable snapshots, handles both split branches atomically and 
  const a=await service.create(manager,input());const op=await service.applyPlan(manager,{splits:[{id:a.id,version:a.version,sourceQty:10,quantity:4,manual:true}]});await assert.rejects(service.undo({id:'other'},{operationId:op.operationId}));await service.undo(manager,{operationId:op.operationId});const rows=(await service.list(manager)).rows;assert.equal(rows.length,1);assert.equal(rows[0].rowKey,a.rowKey);assert.equal(rows[0].cartonCount,100);await assert.rejects(service.undo(manager,{operationId:op.operationId}));const update=await service.update(manager,a.id,{version:rows[0].version,changes:{cartonCount:9}});await service.update(manager,a.id,{version:update.version,changes:{supplier:'New'}});await assert.rejects(service.undo(manager,{operationId:update.operationId}),e=>e.code==='VERSION_CONFLICT');assert.equal((await service.list(manager)).rows[0].cartonCount,9);
 });
 test('catalog is independent of HR and assignments save name snapshots',async()=>{
- const e=await service.createEmployee(manager,{name:'Nhân viên A'});assert.deepEqual(Object.keys(e).sort(),['id','isActive','name','version']);
+ const e=await service.createEmployee(manager,{name:'Nhân viên A'});assert.deepEqual(Object.keys(e).sort(),['color','id','isActive','name','version']);
  assert.equal((await db.query("SELECT to_regclass('hr_employees') AS t")).rows[0].t,null);
  const row=await service.create(manager,{...input(),buyer:e.name});assert.equal(row.buyer,e.name);assert.equal(row.buyerEmployeeId,null);
  await service.updateEmployee(manager,e.id,{version:e.version,changes:{name:'Renamed',isActive:false}});
