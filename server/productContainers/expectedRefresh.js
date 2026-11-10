@@ -21,18 +21,22 @@ const VALUE_COLUMNS = ['sheet_order', 'container_row', 'container_name', 'status
   'product_code', 'product_key', 'product_name', 'color', 'sale_note', 'other_note', 'ordered_by', 'listed_at', 'units_per_package', 'package_count', 'unit_price_cny', 'vietnam_price', 'quantity'];
 const COLUMNS = ['sheet_name', 'source_row', ...VALUE_COLUMNS];
 
-// Ten SP: product_report 1 dong / ma hang (gom ca 2 co so) nen ten da on dinh; min() chi phong khi
-// khoa chuan hoa lower(btrim()) trung nhau giua 2 ma khac hoa/thuong. Khong co => ''.
+// Ten SP: uu tien product_report (chi ma dang kinh doanh, 1 dong/ma, ten da on dinh); ma ngung kinh
+// doanh (khong con trong product_report) lay du phong tu products (bang goc KiotViet, con is_active=false)
+// de sale van nhan dien duoc ma hang khi tim trong bang nay. min() chi phong khi khoa chuan hoa
+// lower(btrim()) trung nhau giua 2 ma khac hoa/thuong hoac 2 co so. Khong co o ca hai => ''.
 const STAGE_SQL = `
   CREATE TEMP TABLE expected_stage ON COMMIT DROP AS
   SELECT l.sheet_name, l.source_row, l.sheet_order, l.container_row, l.container_name, l.status, l.status_label, l.eta,
          btrim(concat_ws(' ', NULLIF(btrim(l.status_label), ''), NULLIF(btrim(l.eta), ''))) AS schedule_label,
-         l.product_code, l.product_key, COALESCE(n.product_name, '') AS product_name,
+         l.product_code, l.product_key, COALESCE(n.product_name, i.product_name, '') AS product_name,
          l.color, l.sale_note, l.other_note, l.ordered_by, l.listed_at, l.units_per_package, l.package_count,
          l.unit_price_cny, l.vietnam_price, l.quantity
   FROM product_container_lines l
   LEFT JOIN (SELECT lower(btrim(product_code)) AS product_key, min(product_name) AS product_name
-             FROM product_report GROUP BY 1) n ON n.product_key = l.product_key`;
+             FROM product_report GROUP BY 1) n ON n.product_key = l.product_key
+  LEFT JOIN (SELECT lower(btrim(code)) AS product_key, min(name) AS product_name
+             FROM products GROUP BY 1) i ON i.product_key = l.product_key`;
 
 const COUNT_STAGE_SQL = 'SELECT count(*)::int AS n FROM expected_stage';
 const COUNT_TARGET_SQL = 'SELECT count(*)::int AS n FROM product_container_expected';

@@ -11,7 +11,7 @@ const { refreshExpected, requestExpectedRefresh, __test__ } = require('./expecte
 const { createExpectedRepository } = require('./expectedRepository');
 
 const migration = file => fs.readFileSync(path.join(__dirname, '..', 'db', 'migrations', file), 'utf8');
-const MIGRATIONS = ['0018_product_report.sql', '0053_product_containers.sql', '0072_product_container_unit_price_cny.sql', '0075_product_container_expected.sql', '0078_product_container_expected_prices.sql', '0086_product_container_other_note.sql'];
+const MIGRATIONS = ['0001_core_master_data.sql', '0018_product_report.sql', '0053_product_containers.sql', '0072_product_container_unit_price_cny.sql', '0075_product_container_expected.sql', '0078_product_container_expected_prices.sql', '0086_product_container_other_note.sql'];
 const quiet = () => {};
 
 async function setup() {
@@ -72,6 +72,20 @@ test('lan dau ghi du dong, ghep Lich = B + 1 dau cach + C (C rong khong thua dau
     assert.deepEqual(rows.map(r => r.product_name), ['Ao thun', 'Quan jean', '']);
     const state = (await db.query('SELECT version::int AS version, row_count FROM product_container_expected_state')).rows[0];
     assert.deepEqual(state, { version: 1, row_count: 3 });
+  } finally { await db.close(); }
+});
+
+test('ma ngung kinh doanh (khong con trong product_report) van lay ten tu products de sale tim duoc', async () => {
+  const { db, pool } = await setup();
+  try {
+    await seed(db);
+    // NONAME chi co trong product_container_lines (xem seed); them vao products voi is_active=false
+    // de mo phong ma hang da ngung kinh doanh nhung van con nam trong sheet CONT.
+    await db.exec(`INSERT INTO products (branch, id, code, name, is_active, raw)
+      VALUES ('hanoi', 1, 'NONAME', 'Ao khoac ngung ban', false, '{}'::jsonb)`);
+    await refreshExpected(pool, { log: quiet });
+    const { rows } = await db.query('SELECT product_name FROM product_container_expected WHERE product_code = $1', ['NONAME']);
+    assert.equal(rows[0].product_name, 'Ao khoac ngung ban');
   } finally { await db.close(); }
 });
 
