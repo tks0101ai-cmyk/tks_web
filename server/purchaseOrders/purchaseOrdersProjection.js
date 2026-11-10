@@ -41,7 +41,7 @@ async function projectContainers(client) {
     ON CONFLICT(sheet_name,source_row) DO UPDATE SET ${cols.filter(c=>!['sheet_name','source_row'].includes(c)).map(c=>`${c}=EXCLUDED.${c}`).join(',')}
     WHERE (${cols.map(c=>'product_container_lines.'+c).join(',')}) IS DISTINCT FROM (${cols.map(c=>'EXCLUDED.'+c).join(',')})`);
   await client.query('UPDATE product_container_sync SET version=$1,last_success_at=now(),last_error=NULL WHERE singleton=true',[randomUUID()]);
-  await client.query(expected.STAGE_SQL);
+  await expected.stageExpected(client);
   await client.query(`DELETE FROM product_container_expected t WHERE NOT EXISTS(SELECT 1 FROM expected_stage s WHERE s.sheet_name=t.sheet_name AND s.source_row=t.source_row)`);
   await client.query(expected.UPSERT_SQL);
   await client.query(`UPDATE product_container_expected e SET product_name=o.product_name FROM purchase_orders o WHERE e.sheet_name='THU MUA' AND e.source_row=o.id AND e.product_name IS DISTINCT FROM o.product_name`);

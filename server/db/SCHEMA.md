@@ -682,7 +682,7 @@ Migration thu hồi ALL cả hai bảng khỏi `reporting_readonly` (có giá b�
 
 | Bảng | Hợp đồng |
 |---|---|
-| `product_container_expected` | PK `(sheet_name, source_row)` (1 dòng = 1 dòng hàng sheet CONT, không gộp). `sheet_order`, `container_row` INTEGER; `container_name`, `status SMALLINT`, `status_label` (cột B), `eta` (cột C), `schedule_label` = `btrim(B || ' ' || C)` một dấu cách, `product_code`, `product_key`, `product_name` (từ `product_report` theo `lower(btrim(product_code))`, `min()`; không có thì ''), `color`, `sale_note`, `ordered_by` TEXT; `units_per_package`, `package_count` NUMERIC nullable; `quantity` NUMERIC. |
+| `product_container_expected` | PK `(sheet_name, source_row)` (1 dòng = 1 dòng hàng sheet CONT, không gộp). `sheet_order`, `container_row` INTEGER; `container_name`, `status SMALLINT`, `status_label` (cột B), `eta` (cột C), `schedule_label` = `btrim(B || ' ' || C)` một dấu cách, `product_code`, `product_key`, `product_name` (ưu tiên `product_report` theo `lower(btrim(product_code))`, `min()`; mã ngừng kinh doanh — không còn trong `product_report` — dự phòng tên từ `products` cùng khóa, `min()`; không có ở cả hai thì '' — từ 10/11/2026, để sale vẫn tìm/nhận diện được mã ngừng kinh doanh trong bảng này), `color`, `sale_note`, `ordered_by` TEXT; `units_per_package`, `package_count` NUMERIC nullable; `quantity` NUMERIC. |
 | `product_container_expected_state` | 1 dòng `id = 1`: `version BIGINT` (chỉ tăng khi có dòng thêm/đổi/xóa), `source_version UUID` (= `product_container_sync.version` lúc tính), `computed_at`, `row_count`. |
 
 Dựng bởi `productContainers/expectedRefresh.js`, web chỉ SELECT (`expectedRepository.js`, cache theo `version`). Chưa áp migration thì API trả bảng rỗng, job bỏ qua. Sau khi áp, chạy tay `node productContainers/expectedRefresh.js` một lần.
@@ -1001,4 +1001,8 @@ Không đổi schema cho thay đổi ba mức màu cột Tăng trưởng (06/11/
 
 JSONB `user_table_prefs.prefs` hỗ trợ `sorts: [{key, dir}]` theo thứ tự ưu tiên, dir chỉ asc/desc, tối đa 200 khóa cột duy nhất, mỗi khóa 1–200 ký tự. Dữ liệu `sort: {key,dir}` cũ tiếp tục đọc được; client mới ưu tiên mảng sorts khi có. PUT vẫn thay thế cấu hình của đúng tài khoản/bảng/chế độ, không đổi bảng/cột/quyền. Mọi ORDER BY động khác dùng whitelist phía máy chủ qua shared/multiSort.js, không nhận biểu thức SQL từ truy vấn.
 
-Cập nhật gần nhất: 07/11/2026.
+## Dự kiến hàng về: tên SP dự phòng cho mã ngừng kinh doanh (10/11/2026)
+
+`product_container_expected.product_name` (migration `0075`, xem mục trên) trước đây CHỈ lấy từ `product_report` — bảng này chỉ giữ mã đang kinh doanh ở ít nhất một cơ sở (`0055`), nên mã ngừng kinh doanh (`products.is_active = false` ở cả hai cơ sở) luôn ra tên `''` dù vẫn có dòng hàng trong sheet CONT, gây khó cho sale tìm/nhận diện mã để đặt hàng khi hàng về. `expectedRefresh.js` (`STAGE_SQL`) nay thêm `LEFT JOIN` dự phòng sang `products` (bảng gốc KiotViet, còn cả mã không hoạt động) theo cùng khóa `lower(btrim(mã))`, `min(name)`; thứ tự ưu tiên: `product_report` trước, không có mới lấy `products`, không có ở cả hai thì `''` như cũ. Không đổi cột, bảng, quyền hay cách tính `version`/diff-write; chỉ đổi nguồn tên khi ghi `product_name`. Yêu cầu migration `0001` (bảng `products`) đã áp — luôn đúng ở production vì đây là bảng đồng bộ KiotViet lõi. `purchaseOrdersProjection.js` dùng lại cùng SQL trong transaction ghi đơn Thu mua (chạy cùng nghĩa, nguồn `product_container_lines` của Thu mua): hàm `stageExpected(client)` kiểm `to_regclass('products')` trước, không có bảng thì dùng câu cũ — tránh một fixture test thiếu bảng `products` làm hỏng cả giao dịch ghi đơn.
+
+Cập nhật gần nhất: 10/11/2026.
