@@ -8,7 +8,7 @@ const { defaultStockConfig, createStockSource, lookupStock } = require('./stockS
 
 const GOP_VAT_SHEET_ID = vatDraftConfig.gopVatSheet.sheetId;
 
-test('defaultStockConfig: mac dinh doc tab Gộp VAT + Khớp mã cua file VAT TKS', () => {
+test('defaultStockConfig: mac dinh doc tab Gộp VAT + Khớp mã cua file trung gian (vatDraftConfig)', () => {
   const config = defaultStockConfig();
   assert.deepEqual(config.stockSheet, { spreadsheetId: vatDraftConfig.spreadsheetId, sheetId: GOP_VAT_SHEET_ID });
   assert.deepEqual(config.mappingSheet, { spreadsheetId: vatDraftConfig.spreadsheetId, sheetId: vatDraftConfig.khopMaSheet.sheetId });

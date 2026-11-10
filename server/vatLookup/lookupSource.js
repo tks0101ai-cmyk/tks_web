@@ -1,7 +1,7 @@
 'use strict';
 
-// Nguon du lieu Tra cuu VAT: 3 tab cua file VAT TKS (Gộp VAT, Khớp mã, MUA VAT SIDA cot
-// A:E = "DK về 2" cu) doc bang service account — dung lai fetchSheetRecords cua Nhap VAT
+// Nguon du lieu Tra cuu VAT: 3 tab cua file trung gian "cúc cu test" (IMPORTRANGE tu VAT TKS:
+// Gộp VAT, Khớp mã, DK VỀ = MUA VAT SIDA cot A:E) doc bang service account — dung lai fetchSheetRecords cua Nhap VAT
 // nhung cache RIENG vi Nhap VAT parse theo chu cai cot, khong co cot TÊN HÀNG va bo dong
 // ton khong hop le. Cache 10 phut; Sheets loi tam thoi thi tra ban cu (stale) toi da 6 gio.
 
@@ -10,8 +10,9 @@ const { createTtlSnapshotCache } = require('../lib/ttlSnapshotCache');
 const vatDraftConfig = require('../vatDraft/vatDraftConfig');
 const { SHEET_TARGETS, rowsToObjects, buildModel } = require('./lookupModel');
 
-// Tab MUA VAT SIDA, cot A:E = du lieu "DK về 2" (TRẠNG THÁI, CONT, mã kiot, tên kiot, SL).
-const DK_VE_SHEET = Object.freeze({ sheetId: 467403108, range: 'A:E' });
+// Tab DK VỀ cua file trung gian (IMPORTRANGE tab MUA VAT SIDA cua VAT TKS), cot A:E = du lieu
+// "DK về 2" (TRẠNG THÁI, CONT, mã kiot, tên kiot, SL).
+const DK_VE_SHEET = Object.freeze({ sheetId: 740003979, range: 'A:E' });
 
 function defaultLookupConfig() {
   return {

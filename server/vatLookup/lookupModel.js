@@ -131,7 +131,8 @@ function buildGopVatGroups(rawRows) {
   const resolve = buildHeaderResolver(rawRows[0]);
   const kCty = resolve(['cty']);
   const kMaKiot = resolve(['ma kiot dai dien']), kTenKiot = resolve(['ten kiot dai dien']);
-  const kMaVat = resolve(['ma vat kiot']), kTenVat = resolve(['ten vat kiot']);
+  // File trung gian dat ten cot E la "TÊN VAT KIOT (giá chưa vat tham khảo)" — cung du lieu.
+  const kMaVat = resolve(['ma vat kiot']), kTenVat = resolve(['ten vat kiot', 'ten vat kiot (gia chua vat tham khao)']);
   const kTenHang = resolve(['ten hang']), kDvt = resolve(['don vi tinh', 'dvt']);
   const kTonDau = resolve(['ton dau ngay']), kTonNhap = resolve(['ton co the nhap']);
   const kTongThueMat = resolve(['tong thue mat', 'tong thue mat (thue xuat)']);
@@ -213,7 +214,19 @@ function buildDkVeRows(rawRows) {
   return byMaKiot;
 }
 
-/** Danh sach san pham thong nhat theo Ma Kiot (uu tien danh tinh tu Khop ma). */
+/**
+ * Dong VAT lay tu 1 nhom Gop VAT: 4 cot Ma Kiot / Ten Kiot / Ma VAT Kiot / Ten VAT Kiot hien
+ * dung cot B-E cua Gop VAT (10/11/2026), khong lay ten tu Khop ma.
+ */
+function gopVatLine(gop, mapped) {
+  return {
+    maKiot: gop.maKiotDaiDien, tenKiot: gop.tenKiotDaiDien, maVat: gop.maVat, tenVat: gop.tenVat,
+    tenHang: gop.tenHang, dvt: gop.dvt, tongThueMat: gop.tongThueMat,
+    tonDauNgay: gop.tonDauNgay, tonCoTheNhap: gop.tonCoTheNhap, mapped
+  };
+}
+
+/** Danh sach san pham thong nhat theo Ma Kiot (uu tien danh tinh tu Khop ma de tim kiem). */
 function buildProducts(khopRows, gopByKey) {
   const products = new Map();
   const gopByBaseKey = new Map();
@@ -248,11 +261,7 @@ function buildProducts(khopRows, gopByKey) {
     matches.forEach(({ key, gop }) => {
       if (p.vatKeysSeen.has(key)) return;
       p.vatKeysSeen.add(key);
-      p.vatLines.push({
-        maVat: gop.maVat || row.maVat, tenVat: gop.tenVat || row.tenVat,
-        tenHang: gop.tenHang, dvt: gop.dvt, tongThueMat: gop.tongThueMat,
-        tonDauNgay: gop.tonDauNgay, tonCoTheNhap: gop.tonCoTheNhap, mapped: true
-      });
+      p.vatLines.push(gopVatLine(gop, true));
     });
   });
 
@@ -261,10 +270,7 @@ function buildProducts(khopRows, gopByKey) {
     const p = ensure(gop.maKiotDaiDienNorm, gop.maKiotDaiDien, gop.tenKiotDaiDien);
     if (p.vatKeysSeen.has(key)) return;
     p.vatKeysSeen.add(key);
-    p.vatLines.push({
-      maVat: gop.maVat, tenVat: gop.tenVat, tenHang: gop.tenHang, dvt: gop.dvt, tongThueMat: gop.tongThueMat,
-      tonDauNgay: gop.tonDauNgay, tonCoTheNhap: gop.tonCoTheNhap, mapped: false
-    });
+    p.vatLines.push(gopVatLine(gop, false));
   });
 
   return [...products.values()];
@@ -430,8 +436,9 @@ function buildVatRows(model, products) {
       rows.push({ maKiot: p.maKiot, tenKiot: p.tenKiot, maVat: '', tenVat: '', tenHang: '', dvt: '', tongThueMat: '', tonDauNgay: 0, tonCoTheNhap: 0, conVAT: false, hasIncoming });
       return;
     }
+    // Dong co trong Gop VAT mang san Ma/Ten Kiot cua Gop VAT; dong chi co o Khop ma thi dung cua san pham.
     p.vatLines.forEach(l => rows.push({
-      maKiot: p.maKiot, tenKiot: p.tenKiot, maVat: l.maVat, tenVat: l.tenVat,
+      maKiot: l.maKiot ?? p.maKiot, tenKiot: l.tenKiot ?? p.tenKiot, maVat: l.maVat, tenVat: l.tenVat,
       tenHang: l.tenHang, dvt: l.dvt, tongThueMat: l.tongThueMat, tonDauNgay: l.tonDauNgay, tonCoTheNhap: l.tonCoTheNhap,
       conVAT: isConVat(model, l.maVat), hasIncoming
     }));
