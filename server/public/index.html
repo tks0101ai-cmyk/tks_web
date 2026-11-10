@@ -52,7 +52,7 @@
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261016">
   <link rel="stylesheet" href="/shared/product-history.css?v=20261105-1">
   <link rel="stylesheet" href="/marketing-report.css?v=20261102-kpis">
-  <link rel="stylesheet" href="/product-customer-growth.css?v=20261107-3">
+  <link rel="stylesheet" href="/product-customer-growth.css?v=20261110-1">
   <link rel="stylesheet" href="/invoice-approved-prices.css?v=20261024-4">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -4508,7 +4508,7 @@
           </section>
 
           <!-- Hàng hóa 90 ngày: bảng Khách hàng theo sản phẩm (product-customer-growth.js), API chỉ đọc /api/product-report/customer-growth
-               (reports.products.sales). Mỗi dòng một cặp sản phẩm × khách + 3 kỳ 30 ngày + Tăng trưởng; lọc/sắp xếp/phân trang ở máy chủ.
+               (reports.products.sales). Mỗi dòng một cặp sản phẩm × khách + 3 kỳ 30 ngày + Tăng trưởng; lọc/sắp xếp nhiều cấp (cộng dồn)/phân trang ở máy chủ.
                thead 1 tầng khớp COLUMNS của module (test/frontend/product-customer-growth.test.js khóa khớp). -->
           <section class="section" id="product90dSection" hidden>
             <div class="section-head"><span class="section-step">4</span>
@@ -4542,6 +4542,7 @@
                       <option value="new">Khách mới</option>
                     </select>
                   </label>
+                  <button type="button" class="btn-secondary pcg-clear-sort" id="pcgClearSort" hidden>Xóa sắp xếp</button>
                 </div>
                 <p class="pcg-status" id="pcgStatus" role="status" aria-live="polite"></p>
                 <div class="pcg-scroll" id="pcgScroll">
@@ -5515,7 +5516,7 @@
   <script src="/marketing-report.js?v=20261107-3"></script>
   <script src="/invoice-price-audit.js?v=20261107-3"></script>
   <script src="/invoice-approved-prices.js?v=20261107-3"></script>
-  <script src="/product-customer-growth.js?v=20261107-3"></script>
+  <script src="/product-customer-growth.js?v=20261110-1"></script>
 
   <script>
     // Toast thong bao inline — thay the window.alert() cho loi/canh bao (khong chan luong,
@@ -7116,7 +7117,7 @@
         return payload;
       }
       // Hàng hóa 90 ngày (bảng Khách hàng theo sản phẩm): lọc/sắp xếp ở máy chủ — gửi đúng bộ lọc đang áp dụng do
-      // product-customer-growth.js giữ (context.productQuery/customerQuery/growthGroup/sortKey/sortDir).
+      // product-customer-growth.js giữ (context.productQuery/customerQuery/growthGroup/sorts).
       if (tableKey === 'products.productCustomerGrowth') {
         const growth = window.TKSProductCustomerGrowth && typeof window.TKSProductCustomerGrowth.exportState === 'function'
           ? window.TKSProductCustomerGrowth.exportState() : null;

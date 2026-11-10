@@ -98,31 +98,50 @@ test('rowHtml: 8 o theo thu tu COLUMNS, 0 -> "0", NULL -> "—", khach rong -> "
   assert.equal(cells[7], '—');
 });
 
-test('buildQuery: bo tham so rong; growth=all khong gui; dir chi di kem sort; tran pageSize 200', () => {
+test('buildQuery: bo tham so rong; growth=all khong gui; sorts gui dang khoa:chieu; tran pageSize 200', () => {
   assert.equal(H.buildQuery({}), '');
-  assert.equal(H.buildQuery({ product: ' binh ', customer: 'Hạnh', growth: 'check', sort: 'growth', dir: 'asc', page: 2, pageSize: 100 }),
-    'product=binh&customer=H%E1%BA%A1nh&growth=check&sort=growth&dir=asc&page=2&pageSize=100');
-  assert.equal(H.buildQuery({ growth: 'all', sort: 'revenue', page: 1, pageSize: 500 }), 'sort=revenue&page=1&pageSize=200');
-  assert.equal(H.buildQuery({ growth: 'bad', dir: 'asc' }), '');
+  assert.equal(H.buildQuery({ product: ' binh ', customer: 'Hạnh', growth: 'check', sorts: [{ sort: 'growth', dir: 'asc' }], page: 2, pageSize: 100 }),
+    'product=binh&customer=H%E1%BA%A1nh&growth=check&sorts=growth%3Aasc&page=2&pageSize=100');
+  assert.equal(H.buildQuery({ growth: 'all', sorts: [{ sort: 'customer_name', dir: 'asc' }, { sort: 'share', dir: 'desc' }], page: 1, pageSize: 500 }),
+    'sorts=customer_name%3Aasc%2Cshare%3Adesc&page=1&pageSize=200');
+  assert.equal(H.buildQuery({ growth: 'bad', sorts: [] }), '');
   assert.equal(H.buildQuery({ growth: 'lost' }), 'growth=lost');
+  assert.equal(H.buildQuery({ sorts: [{ sort: 'khong-co', dir: 'asc' }, { sort: 'revenue', dir: 'up' }] }), '', 'cap sai bi bo');
 });
 
-test('nextSort: tang dan -> giam dan -> bo sap xep; sortAction bao hanh dong ke tiep', () => {
-  assert.deepEqual(H.nextSort({ sort: '', dir: '' }, 'growth'), { sort: 'growth', dir: 'asc' });
-  assert.deepEqual(H.nextSort({ sort: 'growth', dir: 'asc' }, 'growth'), { sort: 'growth', dir: 'desc' });
-  assert.deepEqual(H.nextSort({ sort: 'growth', dir: 'desc' }, 'growth'), { sort: '', dir: '' });
-  assert.deepEqual(H.nextSort({ sort: 'growth', dir: 'asc' }, 'revenue'), { sort: 'revenue', dir: 'asc' });
+test('nextSorts: them cap -> tang -> giam -> go; toi da 4 cap thi thay cap cuoi; khong sua mang cu; formatSorts; sortAction', () => {
+  const customer = { sort: 'customer_name', dir: 'asc' };
+  assert.deepEqual(H.nextSorts([], 'growth'), [{ sort: 'growth', dir: 'asc' }]);
+  assert.deepEqual(H.nextSorts(undefined, 'growth'), [{ sort: 'growth', dir: 'asc' }]);
+  assert.deepEqual(H.nextSorts([customer], 'share'), [customer, { sort: 'share', dir: 'asc' }], 'cot moi cong don vao cuoi');
+  const two = [customer, { sort: 'share', dir: 'asc' }];
+  assert.deepEqual(H.nextSorts(two, 'share'), [customer, { sort: 'share', dir: 'desc' }]);
+  assert.deepEqual(H.nextSorts(two, 'customer_name'), [{ sort: 'customer_name', dir: 'desc' }, { sort: 'share', dir: 'asc' }], 'doi chieu cap dau, giu thu tu');
+  assert.deepEqual(H.nextSorts([customer, { sort: 'share', dir: 'desc' }], 'share'), [customer], 'giam dan -> go cap');
+  assert.deepEqual(H.nextSorts([customer, { sort: 'share', dir: 'asc' }], 'customer_name').length, 2);
+  assert.deepEqual(H.nextSorts([{ sort: 'customer_name', dir: 'desc' }, { sort: 'share', dir: 'asc' }], 'customer_name'), [{ sort: 'share', dir: 'asc' }], 'go cap dau -> cap sau don len');
+  assert.equal(H.MAX_SORT_LEVELS, 4);
+  const four = [{ sort: 'product_name', dir: 'asc' }, customer, { sort: 'revenue', dir: 'asc' }, { sort: 'share', dir: 'asc' }];
+  assert.deepEqual(H.nextSorts(four, 'growth'), [four[0], four[1], four[2], { sort: 'growth', dir: 'asc' }], 'day 4 cap: thay cap cuoi');
+  const snapshot = JSON.stringify(two);
+  H.nextSorts(two, 'share');
+  assert.equal(JSON.stringify(two), snapshot, 'khong sua mang dau vao');
+  assert.equal(H.formatSorts([customer, { sort: 'share', dir: 'desc' }]), 'customer_name:asc,share:desc');
+  assert.equal(H.formatSorts([]), '');
+  assert.equal(H.formatSorts(null), '');
+  assert.equal(H.formatSorts([{ sort: 'nope', dir: 'asc' }, { sort: 'growth', dir: 'asc' }]), 'growth:asc');
   assert.equal(H.sortAction('none'), 'Sắp xếp tăng dần');
   assert.equal(H.sortAction('ascending'), 'Sắp xếp giảm dần');
   assert.equal(H.sortAction('descending'), 'Bỏ sắp xếp');
 });
 
-test('exportContext: dung bo loc dang ap dung, mac dinh khong gui sap xep', () => {
-  assert.deepEqual(H.exportContext({ product: ' binh ', customer: '', growth: 'check', sort: 'growth', dir: 'asc' }),
-    { context: { productQuery: 'binh', customerQuery: '', growthGroup: 'check', sortKey: 'growth', sortDir: 'asc' } });
+test('exportContext: dung bo loc dang ap dung, gui sorts nhieu cap, mac dinh khong gui sap xep', () => {
+  assert.deepEqual(H.exportContext({ product: ' binh ', customer: '', growth: 'check', sorts: [{ sort: 'growth', dir: 'asc' }] }),
+    { context: { productQuery: 'binh', customerQuery: '', growthGroup: 'check', sorts: 'growth:asc' } });
+  assert.deepEqual(H.exportContext({ sorts: [{ sort: 'customer_name', dir: 'asc' }, { sort: 'share', dir: 'desc' }] }),
+    { context: { productQuery: '', customerQuery: '', growthGroup: 'all', sorts: 'customer_name:asc,share:desc' } });
   assert.deepEqual(H.exportContext({}), { context: { productQuery: '', customerQuery: '', growthGroup: 'all' } });
-  assert.deepEqual(H.exportContext({ growth: 'bad', sort: 'revenue', dir: 'xxx' }),
-    { context: { productQuery: '', customerQuery: '', growthGroup: 'all', sortKey: 'revenue', sortDir: 'desc' } });
+  assert.deepEqual(H.exportContext({ growth: 'bad', sorts: [] }), { context: { productQuery: '', customerQuery: '', growthGroup: 'all' } });
   assert.equal(H.exportContext({ growth: 'lost' }).context.growthGroup, 'lost');
 });
 
@@ -164,6 +183,11 @@ test('tieu de bang: 8 cot khop COLUMNS, nut sap xep, do rong ghi trong thead; bo
   assert.deepEqual([...pageDoc.querySelectorAll('#pcgGrowth option')].map(o => [o.value, o.textContent]), H.GROWTH_OPTIONS);
   assert.deepEqual(H.GROWTH_OPTIONS.map(o => o[0]), ['all', 'lost', 'check', 'drop', 'up', 'new']);
   ['pcgProductSearch', 'pcgCustomerSearch', 'pcgGrowth', 'pcgExportButton', 'pcgPageSize'].forEach(id => assert.ok(pageDoc.getElementById(id), id));
+  const clear = pageDoc.getElementById('pcgClearSort');
+  assert.ok(clear, 'co nut Xoa sap xep');
+  assert.equal(clear.hidden, true, 'an khi chua sap xep');
+  assert.equal(clear.type, 'button');
+  assert.ok(clear.closest('.pcg-filters'));
   assert.match(pageDoc.getElementById('pcgExportButton').getAttribute('onclick'), /openExportDialog\('products\.productCustomerGrowth'\)/);
   assert.ok(pageDoc.getElementById('pcgExportButton').closest('#product90dSection .panel-head-actions'));
 });
@@ -175,6 +199,8 @@ test('CSS: ba muc mau dung bien mau cua trang (khong ma hex), bang co khung cuon
   assert.match(css, /\.pcg-table td\.is-drop[^{]*\{[^}]*var\(--yellow\)/);
   assert.doesNotMatch(css, /pcg-flag/);
   assert.match(css, /\.pcg-scroll\s*\{[^}]*overflow:\s*auto/);
+  assert.match(css, /\.pcg-table thead \.sort-level\s*\{[^}]*position:\s*absolute/);
+  assert.match(css, /\.pcg-clear-sort\[hidden\]\s*\{[^}]*display:\s*none/);
   assert.doesNotMatch(css, /#[0-9a-fA-F]{3,8}\b/);
 });
 
@@ -329,25 +355,108 @@ test('sap xep o may chu: ▲▼ -> ▼ tang -> ▲ giam -> bo; nut bao hanh dong
     await settle();
     const th = p.w.document.querySelector('th[data-column-key="growth"]');
     th.querySelector('.sort-button').click();
-    assert.equal(p.params(1).get('sort'), 'growth');
-    assert.equal(p.params(1).get('dir'), 'asc');
+    assert.equal(p.params(1).get('sorts'), 'growth:asc');
+    assert.equal(p.params(1).get('sort'), null, 'khong con gui sort/dir cu');
     assert.equal(p.params(1).get('page'), '1');
     p.answer(1, report([sampleRow('Khách A')], { sort: 'growth', dir: 'asc' }));
     await settle();
     assert.equal(th.getAttribute('aria-sort'), 'ascending');
     assert.equal(th.querySelector('.sort-indicator').textContent, '▼');
     assert.match(th.querySelector('.sort-button').title, /^Sắp xếp giảm dần theo Tăng trưởng/);
+    assert.equal(th.querySelector('.sort-level'), null, 'mot cap thi khong hien so cap');
     th.querySelector('.sort-button').click();
-    assert.equal(p.params(2).get('dir'), 'desc');
+    assert.equal(p.params(2).get('sorts'), 'growth:desc');
     p.answer(2, report([sampleRow('Khách A')], { sort: 'growth', dir: 'desc' }));
     await settle();
     assert.equal(th.getAttribute('aria-sort'), 'descending');
     th.querySelector('.sort-button').click();
-    assert.equal(p.params(3).get('sort'), null, 'bo sap xep -> thu tu mac dinh cua may chu');
-    assert.equal(p.params(3).get('dir'), null);
+    assert.equal(p.params(3).get('sorts'), null, 'bo sap xep -> thu tu mac dinh cua may chu');
     p.answer(3, report([sampleRow('Khách A')]));
     await settle();
     assert.equal(th.getAttribute('aria-sort'), 'none');
+  } finally { p.dom.window.close(); }
+});
+
+test('sap xep nhieu cap: bam cot thu hai cong don, so cap tren tieu de, doi chieu, go cap, nut Xoa sap xep', async () => {
+  const p = createWidget();
+  try {
+    p.w.TKSProductCustomerGrowth.load(true);
+    p.answer(0, report([sampleRow('Khách A')]));
+    await settle();
+    const th = key => p.w.document.querySelector('th[data-column-key="' + key + '"]');
+    const level = key => { const el = th(key).querySelector('.sort-level'); return el ? el.textContent : null; };
+    // Bam, tra loi, doi cap nhat giao dien; tra ve chi so lan goi API vua gui.
+    const click = async key => {
+      th(key).querySelector('.sort-button').click();
+      const index = p.calls.length - 1;
+      p.answer(index, report([sampleRow('Khách A')]));
+      await settle();
+      return index;
+    };
+    assert.equal(p.$('pcgClearSort').hidden, true);
+
+    let i = await click('customer');
+    assert.equal(p.params(i).get('sorts'), 'customer_name:asc');
+    assert.equal(level('customer'), null, 'mot cap thi khong hien so');
+    assert.equal(p.$('pcgClearSort').hidden, false);
+    assert.equal(p.$('pcgClearSort').textContent, 'Xóa sắp xếp (1)');
+
+    i = await click('share');
+    assert.equal(p.params(i).get('sorts'), 'customer_name:asc,share:asc', 'bam cot thu hai = cong don');
+    assert.equal(p.params(i).get('page'), '1');
+    assert.equal(level('customer'), '1');
+    assert.equal(level('share'), '2');
+    assert.equal(th('customer').getAttribute('aria-sort'), 'ascending');
+    assert.equal(th('share').getAttribute('aria-sort'), 'ascending');
+    assert.equal(th('revenue').getAttribute('aria-sort'), 'none');
+    assert.equal(th('share').querySelector('.sort-button').title, 'Sắp xếp giảm dần theo % của SP (cấp 2)');
+    assert.equal(th('share').querySelector('.sort-button').getAttribute('aria-label'), 'Sắp xếp giảm dần theo cột % của SP (cấp 2)');
+    assert.equal(p.$('pcgClearSort').textContent, 'Xóa sắp xếp (2)');
+
+    i = await click('share');
+    assert.equal(p.params(i).get('sorts'), 'customer_name:asc,share:desc', 'bam lai cot: doi chieu, giu thu tu cap');
+    assert.equal(th('share').getAttribute('aria-sort'), 'descending');
+    assert.equal(th('share').querySelector('.sort-indicator').textContent, '▲');
+
+    i = await click('share');
+    assert.equal(p.params(i).get('sorts'), 'customer_name:asc', 'bam lan ba: go cap khoi danh sach');
+    assert.equal(level('customer'), null, 'con 1 cap -> an so cap');
+    assert.equal(th('share').getAttribute('aria-sort'), 'none');
+
+    i = await click('growth');
+    assert.equal(p.params(i).get('sorts'), 'customer_name:asc,growth:asc');
+    assert.deepEqual(JSON.parse(JSON.stringify(p.w.TKSProductCustomerGrowth.exportState())),
+      { context: { productQuery: '', customerQuery: '', growthGroup: 'all', sorts: 'customer_name:asc,growth:asc' } });
+
+    p.$('pcgClearSort').click();
+    i = p.calls.length - 1;
+    assert.equal(p.params(i).get('sorts'), null, 'Xoa sap xep -> thu tu mac dinh');
+    assert.equal(p.params(i).get('page'), '1');
+    p.answer(i, report([sampleRow('Khách A')]));
+    await settle();
+    assert.equal(p.$('pcgClearSort').hidden, true);
+    ['customer', 'growth'].forEach(key => {
+      assert.equal(th(key).getAttribute('aria-sort'), 'none', key);
+      assert.equal(level(key), null, key);
+    });
+    assert.deepEqual(JSON.parse(JSON.stringify(p.w.TKSProductCustomerGrowth.exportState())),
+      { context: { productQuery: '', customerQuery: '', growthGroup: 'all' } });
+  } finally { p.dom.window.close(); }
+});
+
+test('reset(): xoa ca danh sach cap sap xep', async () => {
+  const p = createWidget();
+  try {
+    p.w.TKSProductCustomerGrowth.load(true);
+    p.answer(0, report([sampleRow('Khách A')]));
+    await settle();
+    p.w.document.querySelector('th[data-column-key="customer"] .sort-button').click();
+    p.answer(1, report([sampleRow('Khách A')]));
+    await settle();
+    assert.equal(p.$('pcgClearSort').hidden, false);
+    p.w.TKSProductCustomerGrowth.reset();
+    assert.equal(p.$('pcgClearSort').hidden, true);
+    assert.equal(p.w.document.querySelector('th[data-column-key="customer"]').getAttribute('aria-sort'), 'none');
   } finally { p.dom.window.close(); }
 });
 
@@ -365,7 +474,7 @@ test('nut Xuat file: khoa/mo theo du lieu, an khi thieu reports.export, exportSt
     p.w.document.querySelector('th[data-column-key="growth"] .sort-button').click();
     // Doi tuong tao trong JSDOM khac realm (prototype) voi Node -> so sanh qua JSON.
     assert.deepEqual(JSON.parse(JSON.stringify(p.w.TKSProductCustomerGrowth.exportState())),
-      { context: { productQuery: '', customerQuery: '', growthGroup: 'check', sortKey: 'growth', sortDir: 'asc' } });
+      { context: { productQuery: '', customerQuery: '', growthGroup: 'check', sorts: 'growth:asc' } });
     p.answer(2, report([]));
     await settle();
     assert.equal(p.$('pcgExportButton').disabled, true, 'khong co dong -> khong xuat');

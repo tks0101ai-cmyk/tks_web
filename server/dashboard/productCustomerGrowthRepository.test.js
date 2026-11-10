@@ -74,6 +74,7 @@ test('mac dinh: state + 3 ky + summary, 9 dong (bo cap mo coi) xep DS 90 ngay gi
     assert.equal(data.pageSize, 50);
     assert.equal(data.sort, 'revenue');
     assert.equal(data.dir, 'desc');
+    assert.deepEqual(data.sorts, [{ sort: 'revenue', dir: 'desc' }]);
     assert.deepEqual(names(data), ['Khách C', 'Khách B', 'Khách A', 'Khách F', 'Khách mới D', 'Khách thiếu kỳ', 'Khách trả hàng', 'Khách H', 'Khách E']);
     const c = data.rows[0];
     assert.equal(c.productCode, 'SP1');
@@ -195,6 +196,84 @@ test('sap xep theo tang truong: NULL luon cuoi o ca hai chieu; sap theo cot chu'
     assert.equal(text.dir, 'asc', 'cot chu mac dinh tang dan');
     assert.equal(text.rows[0].productCode, 'SP1');
     assert.equal(text.rows.at(-1).productCode, 'SP2');
+  } finally { await db.close(); }
+});
+
+test('sap xep nhieu cap: khach hang roi % cua SP; thu tu cap quyet dinh; NULL van cuoi', async () => {
+  const db = await setup();
+  try {
+    await products(db);
+    // Khach A co 3 san pham, khach B co 2. share: SP1 A .25 / B .75; SP2 A .75 / B .25; SP3 A 1.
+    await pair(db, 'sp1', 'Khách A', 100, 10, 10, 10);
+    await pair(db, 'sp1', 'Khách B', 300, 10, 10, 10);
+    await pair(db, 'sp2', 'Khách A', 300, 10, 10, 10);
+    await pair(db, 'sp2', 'Khách B', 100, 10, 10, 10);
+    await pair(db, 'sp3', 'Khách A', 200, 10, 10, 10);
+    const pairs = data => data.rows.map(r => r.productCode + '/' + r.customerName);
+    const asc = await repo.getProductCustomerGrowth({ sorts: 'customer_name:asc,share:asc', pool: db });
+    assert.deepEqual(pairs(asc), ['SP1/Khách A', 'SP2/Khách A', 'SP3/Khách A', 'SP2/Khách B', 'SP1/Khách B']);
+    assert.deepEqual(asc.sorts, [{ sort: 'customer_name', dir: 'asc' }, { sort: 'share', dir: 'asc' }]);
+    assert.equal(asc.sort, 'customer_name', 'sort/dir cu = cap dau');
+    assert.equal(asc.dir, 'asc');
+    const desc = await repo.getProductCustomerGrowth({ sorts: 'customer_name:asc,share:desc', pool: db });
+    assert.deepEqual(pairs(desc), ['SP3/Khách A', 'SP2/Khách A', 'SP1/Khách A', 'SP1/Khách B', 'SP2/Khách B']);
+    const swapped = await repo.getProductCustomerGrowth({ sorts: 'share:desc,customer_name:asc', pool: db });
+    assert.deepEqual(pairs(swapped), ['SP3/Khách A', 'SP2/Khách A', 'SP1/Khách B', 'SP1/Khách A', 'SP2/Khách B'],
+      'doi thu tu cap (share truoc, khach sau) -> ket qua khac');
+  } finally { await db.close(); }
+  const db2 = await setup();
+  try {
+    await seed(db2);
+    const byProduct = await repo.getProductCustomerGrowth({ sorts: 'product_code:asc,revenue:asc', pool: db2 });
+    assert.deepEqual(names(byProduct),
+      ['Khách E', 'Khách thiếu kỳ', 'Khách mới D', 'Khách F', 'Khách A', 'Khách B', 'Khách C', 'Khách H', 'Khách trả hàng']);
+    const nullLast = await repo.getProductCustomerGrowth({ sorts: 'product_code:desc,growth:asc', pool: db2 });
+    assert.equal(nullLast.rows[0].productCode, 'SP2');
+    assert.equal(nullLast.rows[0].customerName, 'Khách H', 'SP2: H 0% truoc, "Khach tra hang" (growth NULL) cuoi nhom SP2');
+    assert.equal(nullLast.rows[1].customerName, 'Khách trả hàng');
+  } finally { await db2.close(); }
+});
+
+test('sorts uu tien hon sort/dir; khong co sorts thi sort/dir cu chay nhu truoc; mac dinh tra sorts = DS giam dan', async () => {
+  const db = await setup();
+  try {
+    await seed(db);
+    const both = await repo.getProductCustomerGrowth({ sort: 'growth', dir: 'asc', sorts: 'revenue:asc', pool: db });
+    assert.equal(both.rows[0].customerName, 'Khách E', 'sorts thang: DS tang dan, Khach E co DS 0');
+    assert.deepEqual(both.sorts, [{ sort: 'revenue', dir: 'asc' }]);
+    const legacy = await repo.getProductCustomerGrowth({ sort: 'growth', dir: 'asc', pool: db });
+    assert.equal(legacy.rows[0].customerName, 'Khách F');
+    assert.deepEqual(legacy.sorts, [{ sort: 'growth', dir: 'asc' }]);
+    const def = await repo.getProductCustomerGrowth({ pool: db });
+    assert.deepEqual(def.sorts, [{ sort: 'revenue', dir: 'desc' }]);
+    const text = await repo.getProductCustomerGrowth({ sort: 'product_code', pool: db });
+    assert.deepEqual(text.sorts, [{ sort: 'product_code', dir: 'asc' }], 'cot chu mac dinh tang dan');
+    const empty = await repo.getProductCustomerGrowth({ sorts: '', pool: db });
+    assert.deepEqual(empty.sorts, [{ sort: 'revenue', dir: 'desc' }], 'sorts rong = khong co sorts');
+  } finally { await db.close(); }
+});
+
+test('sorts khong hop le -> 400, khong cham DB; xuat file cung luat va cung thu tu', async () => {
+  const noDb = { query: () => { throw new Error('khong duoc cham DB'); } };
+  const bad = [
+    'revenue', 'revenue:up', 'nope:asc', 'revenue:asc,revenue:desc', 'revenue:asc:x', 'revenue:asc,', ',revenue:asc',
+    'product_name:asc,customer_name:asc,revenue:asc,share:asc,growth:asc', 'constructor:asc', 'x'.repeat(201),
+    ['revenue:asc'], 5, { revenue: 'asc' }
+  ];
+  for (const sorts of bad) {
+    await assert.rejects(repo.getProductCustomerGrowth({ sorts, pool: noDb }), error => error.statusCode === 400, JSON.stringify(sorts));
+    await assert.rejects(repo.getProductCustomerGrowthForExport({ sorts, pool: noDb }), error => error.statusCode === 400, JSON.stringify(sorts));
+    assert.throws(() => repo.validateFilters({ sorts }), { statusCode: 400 }, JSON.stringify(sorts));
+  }
+  assert.doesNotThrow(() => repo.validateFilters({ sorts: 'customer_name:asc,share:desc' }));
+  assert.doesNotThrow(() => repo.validateFilters({ sorts: 'product_name:asc,customer_name:asc,revenue:asc,share:asc' }), 'dung 4 cap la hop le');
+  assert.equal(repo.MAX_SORT_LEVELS, 4);
+  const db = await setup();
+  try {
+    await seed(db);
+    const data = await repo.getProductCustomerGrowthForExport({ sorts: 'product_code:desc,revenue:desc', pool: db });
+    assert.deepEqual(names(data), ['Khách trả hàng', 'Khách H', 'Khách C', 'Khách B', 'Khách A', 'Khách F', 'Khách mới D', 'Khách thiếu kỳ', 'Khách E']);
+    assert.deepEqual(data.sorts, [{ sort: 'product_code', dir: 'desc' }, { sort: 'revenue', dir: 'desc' }]);
   } finally { await db.close(); }
 });
 
