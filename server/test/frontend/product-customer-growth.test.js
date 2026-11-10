@@ -183,6 +183,11 @@ test('tieu de bang: 8 cot khop COLUMNS, nut sap xep, do rong ghi trong thead; bo
   assert.deepEqual([...pageDoc.querySelectorAll('#pcgGrowth option')].map(o => [o.value, o.textContent]), H.GROWTH_OPTIONS);
   assert.deepEqual(H.GROWTH_OPTIONS.map(o => o[0]), ['all', 'lost', 'check', 'drop', 'up', 'new']);
   ['pcgProductSearch', 'pcgCustomerSearch', 'pcgGrowth', 'pcgExportButton', 'pcgPageSize'].forEach(id => assert.ok(pageDoc.getElementById(id), id));
+  const clear = pageDoc.getElementById('pcgClearSort');
+  assert.ok(clear, 'co nut Xoa sap xep');
+  assert.equal(clear.hidden, true, 'an khi chua sap xep');
+  assert.equal(clear.type, 'button');
+  assert.ok(clear.closest('.pcg-filters'));
   assert.match(pageDoc.getElementById('pcgExportButton').getAttribute('onclick'), /openExportDialog\('products\.productCustomerGrowth'\)/);
   assert.ok(pageDoc.getElementById('pcgExportButton').closest('#product90dSection .panel-head-actions'));
 });
@@ -194,6 +199,8 @@ test('CSS: ba muc mau dung bien mau cua trang (khong ma hex), bang co khung cuon
   assert.match(css, /\.pcg-table td\.is-drop[^{]*\{[^}]*var\(--yellow\)/);
   assert.doesNotMatch(css, /pcg-flag/);
   assert.match(css, /\.pcg-scroll\s*\{[^}]*overflow:\s*auto/);
+  assert.match(css, /\.pcg-table thead \.sort-level\s*\{[^}]*position:\s*absolute/);
+  assert.match(css, /\.pcg-clear-sort\[hidden\]\s*\{[^}]*display:\s*none/);
   assert.doesNotMatch(css, /#[0-9a-fA-F]{3,8}\b/);
 });
 
@@ -348,25 +355,108 @@ test('sap xep o may chu: ▲▼ -> ▼ tang -> ▲ giam -> bo; nut bao hanh dong
     await settle();
     const th = p.w.document.querySelector('th[data-column-key="growth"]');
     th.querySelector('.sort-button').click();
-    assert.equal(p.params(1).get('sort'), 'growth');
-    assert.equal(p.params(1).get('dir'), 'asc');
+    assert.equal(p.params(1).get('sorts'), 'growth:asc');
+    assert.equal(p.params(1).get('sort'), null, 'khong con gui sort/dir cu');
     assert.equal(p.params(1).get('page'), '1');
     p.answer(1, report([sampleRow('Khách A')], { sort: 'growth', dir: 'asc' }));
     await settle();
     assert.equal(th.getAttribute('aria-sort'), 'ascending');
     assert.equal(th.querySelector('.sort-indicator').textContent, '▼');
     assert.match(th.querySelector('.sort-button').title, /^Sắp xếp giảm dần theo Tăng trưởng/);
+    assert.equal(th.querySelector('.sort-level'), null, 'mot cap thi khong hien so cap');
     th.querySelector('.sort-button').click();
-    assert.equal(p.params(2).get('dir'), 'desc');
+    assert.equal(p.params(2).get('sorts'), 'growth:desc');
     p.answer(2, report([sampleRow('Khách A')], { sort: 'growth', dir: 'desc' }));
     await settle();
     assert.equal(th.getAttribute('aria-sort'), 'descending');
     th.querySelector('.sort-button').click();
-    assert.equal(p.params(3).get('sort'), null, 'bo sap xep -> thu tu mac dinh cua may chu');
-    assert.equal(p.params(3).get('dir'), null);
+    assert.equal(p.params(3).get('sorts'), null, 'bo sap xep -> thu tu mac dinh cua may chu');
     p.answer(3, report([sampleRow('Khách A')]));
     await settle();
     assert.equal(th.getAttribute('aria-sort'), 'none');
+  } finally { p.dom.window.close(); }
+});
+
+test('sap xep nhieu cap: bam cot thu hai cong don, so cap tren tieu de, doi chieu, go cap, nut Xoa sap xep', async () => {
+  const p = createWidget();
+  try {
+    p.w.TKSProductCustomerGrowth.load(true);
+    p.answer(0, report([sampleRow('Khách A')]));
+    await settle();
+    const th = key => p.w.document.querySelector('th[data-column-key="' + key + '"]');
+    const level = key => { const el = th(key).querySelector('.sort-level'); return el ? el.textContent : null; };
+    // Bam, tra loi, doi cap nhat giao dien; tra ve chi so lan goi API vua gui.
+    const click = async key => {
+      th(key).querySelector('.sort-button').click();
+      const index = p.calls.length - 1;
+      p.answer(index, report([sampleRow('Khách A')]));
+      await settle();
+      return index;
+    };
+    assert.equal(p.$('pcgClearSort').hidden, true);
+
+    let i = await click('customer');
+    assert.equal(p.params(i).get('sorts'), 'customer_name:asc');
+    assert.equal(level('customer'), null, 'mot cap thi khong hien so');
+    assert.equal(p.$('pcgClearSort').hidden, false);
+    assert.equal(p.$('pcgClearSort').textContent, 'Xóa sắp xếp (1)');
+
+    i = await click('share');
+    assert.equal(p.params(i).get('sorts'), 'customer_name:asc,share:asc', 'bam cot thu hai = cong don');
+    assert.equal(p.params(i).get('page'), '1');
+    assert.equal(level('customer'), '1');
+    assert.equal(level('share'), '2');
+    assert.equal(th('customer').getAttribute('aria-sort'), 'ascending');
+    assert.equal(th('share').getAttribute('aria-sort'), 'ascending');
+    assert.equal(th('revenue').getAttribute('aria-sort'), 'none');
+    assert.equal(th('share').querySelector('.sort-button').title, 'Sắp xếp giảm dần theo % của SP (cấp 2)');
+    assert.equal(th('share').querySelector('.sort-button').getAttribute('aria-label'), 'Sắp xếp giảm dần theo cột % của SP (cấp 2)');
+    assert.equal(p.$('pcgClearSort').textContent, 'Xóa sắp xếp (2)');
+
+    i = await click('share');
+    assert.equal(p.params(i).get('sorts'), 'customer_name:asc,share:desc', 'bam lai cot: doi chieu, giu thu tu cap');
+    assert.equal(th('share').getAttribute('aria-sort'), 'descending');
+    assert.equal(th('share').querySelector('.sort-indicator').textContent, '▲');
+
+    i = await click('share');
+    assert.equal(p.params(i).get('sorts'), 'customer_name:asc', 'bam lan ba: go cap khoi danh sach');
+    assert.equal(level('customer'), null, 'con 1 cap -> an so cap');
+    assert.equal(th('share').getAttribute('aria-sort'), 'none');
+
+    i = await click('growth');
+    assert.equal(p.params(i).get('sorts'), 'customer_name:asc,growth:asc');
+    assert.deepEqual(JSON.parse(JSON.stringify(p.w.TKSProductCustomerGrowth.exportState())),
+      { context: { productQuery: '', customerQuery: '', growthGroup: 'all', sorts: 'customer_name:asc,growth:asc' } });
+
+    p.$('pcgClearSort').click();
+    i = p.calls.length - 1;
+    assert.equal(p.params(i).get('sorts'), null, 'Xoa sap xep -> thu tu mac dinh');
+    assert.equal(p.params(i).get('page'), '1');
+    p.answer(i, report([sampleRow('Khách A')]));
+    await settle();
+    assert.equal(p.$('pcgClearSort').hidden, true);
+    ['customer', 'growth'].forEach(key => {
+      assert.equal(th(key).getAttribute('aria-sort'), 'none', key);
+      assert.equal(level(key), null, key);
+    });
+    assert.deepEqual(JSON.parse(JSON.stringify(p.w.TKSProductCustomerGrowth.exportState())),
+      { context: { productQuery: '', customerQuery: '', growthGroup: 'all' } });
+  } finally { p.dom.window.close(); }
+});
+
+test('reset(): xoa ca danh sach cap sap xep', async () => {
+  const p = createWidget();
+  try {
+    p.w.TKSProductCustomerGrowth.load(true);
+    p.answer(0, report([sampleRow('Khách A')]));
+    await settle();
+    p.w.document.querySelector('th[data-column-key="customer"] .sort-button').click();
+    p.answer(1, report([sampleRow('Khách A')]));
+    await settle();
+    assert.equal(p.$('pcgClearSort').hidden, false);
+    p.w.TKSProductCustomerGrowth.reset();
+    assert.equal(p.$('pcgClearSort').hidden, true);
+    assert.equal(p.w.document.querySelector('th[data-column-key="customer"]').getAttribute('aria-sort'), 'none');
   } finally { p.dom.window.close(); }
 });
 
@@ -384,7 +474,7 @@ test('nut Xuat file: khoa/mo theo du lieu, an khi thieu reports.export, exportSt
     p.w.document.querySelector('th[data-column-key="growth"] .sort-button').click();
     // Doi tuong tao trong JSDOM khac realm (prototype) voi Node -> so sanh qua JSON.
     assert.deepEqual(JSON.parse(JSON.stringify(p.w.TKSProductCustomerGrowth.exportState())),
-      { context: { productQuery: '', customerQuery: '', growthGroup: 'check', sortKey: 'growth', sortDir: 'asc' } });
+      { context: { productQuery: '', customerQuery: '', growthGroup: 'check', sorts: 'growth:asc' } });
     p.answer(2, report([]));
     await settle();
     assert.equal(p.$('pcgExportButton').disabled, true, 'khong co dong -> khong xuat');

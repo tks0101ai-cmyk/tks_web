@@ -1,7 +1,7 @@
 /* Tab Hàng hóa — mục 4 "Hàng hóa 90 ngày": bảng Khách hàng theo sản phẩm (mỗi dòng một cặp sản phẩm × khách) kèm Tăng trưởng
    (API chỉ đọc /api/product-report/customer-growth, quyền reports.products + reports.products.sales). Tăng trưởng = T.này ÷
    trung bình(T.trước, T.trước nữa) − 1, do máy chủ tính; ba mức màu theo %: đỏ ≤ −100% (không còn doanh số), cam −100%..−50%, vàng −50%..0 (chỉ hiện %). Lọc tên sản phẩm / tên khách /
-   nhóm tăng trưởng, sắp xếp và phân trang đều ở máy chủ trên TOÀN BỘ kết quả. thead tĩnh trong index.html (1 tầng, khớp COLUMNS
+   nhóm tăng trưởng, sắp xếp (bấm tiêu đề cột nào cũng cộng dồn thêm một cấp, tối đa 4 cấp; bấm lại: tăng → giảm → gỡ; nút "Xóa sắp xếp") và phân trang đều ở máy chủ trên TOÀN BỘ kết quả. thead tĩnh trong index.html (1 tầng, khớp COLUMNS
    bên dưới — test/frontend/product-customer-growth.test.js khóa khớp). Ẩn/hiện cột + kéo độ rộng: shared/table-controls.js
    (data-table-sort="off": trang tự sắp xếp qua API). Phần đầu file là hàm thuần (không đụng DOM) — Node require() được để test. */
 (function () {
@@ -219,7 +219,7 @@
 
   function freshState() {
     return {
-      product: '', customer: '', growth: 'all', sort: '', dir: '', page: 1, pageSize: 50,
+      product: '', customer: '', growth: 'all', sorts: [], page: 1, pageSize: 50,
       data: null, error: '', loading: false, seq: 0, controller: null, pending: null, loadedAt: 0,
       timers: { product: null, customer: null }, composing: { product: false, customer: false }
     };
@@ -259,20 +259,36 @@
   function renderHeader() {
     const d = state.data;
     const periods = d && d.available && Array.isArray(d.periods) ? d.periods : [];
+    const multi = state.sorts.length > 1;
     document.querySelectorAll('#pcgTable th.sortable[data-sort]').forEach(function (th) {
       const column = COLUMNS.find(function (c) { return c.key === th.dataset.columnKey; });
-      const active = state.sort === th.dataset.sort;
-      const mode = active ? (state.dir === 'desc' ? 'descending' : 'ascending') : 'none';
+      const index = state.sorts.findIndex(function (level) { return level.sort === th.dataset.sort; });
+      const active = index >= 0;
+      const mode = active ? (state.sorts[index].dir === 'desc' ? 'descending' : 'ascending') : 'none';
+      const level = active && multi ? String(index + 1) : '';
       if (th.getAttribute('aria-sort') !== mode) th.setAttribute('aria-sort', mode);
       th.classList.toggle('sort-active', active);
       const mark = th.querySelector('.sort-indicator');
       if (mark && mark.textContent !== SORT_GLYPH[mode]) mark.textContent = SORT_GLYPH[mode];
       const button = th.querySelector('.sort-button');
-      if (button && column) {
+      if (!button) return;
+      // Số cấp (1, 2, …) chỉ hiện khi có từ 2 cột sắp xếp trở lên.
+      let badge = button.querySelector('.sort-level');
+      if (level && !badge) {
+        badge = document.createElement('span');
+        badge.className = 'sort-level';
+        badge.setAttribute('aria-hidden', 'true');
+        button.insertBefore(badge, mark || null);
+      }
+      if (badge && !level) badge.remove();
+      else if (badge && badge.textContent !== level) badge.textContent = level;
+      button.classList.toggle('has-level', !!level);
+      if (column) {
         const period = column.period ? periods.find(function (p) { return p && p.key === column.period; }) : null;
         const range = period ? formatPeriodRange(period.from, period.to) : '';
-        const title = sortAction(mode) + ' theo ' + column.label + (range ? ' (' + range + ')' : '');
-        const aria = sortAction(mode) + ' theo cột ' + column.label;
+        const suffix = level ? ' (cấp ' + level + ')' : '';
+        const title = sortAction(mode) + ' theo ' + column.label + (range ? ' (' + range + ')' : '') + suffix;
+        const aria = sortAction(mode) + ' theo cột ' + column.label + suffix;
         if (button.title !== title) button.title = title;
         if (button.getAttribute('aria-label') !== aria) button.setAttribute('aria-label', aria);
       }
@@ -323,6 +339,12 @@
       const clear = $('pcg' + name + 'Clear');
       if (clear) clear.hidden = !$('pcg' + name + 'Search').value;
     });
+    const clearSort = $('pcgClearSort');
+    if (clearSort) {
+      clearSort.hidden = state.sorts.length === 0;
+      const label = 'Xóa sắp xếp (' + state.sorts.length + ')';
+      if (clearSort.textContent !== label) clearSort.textContent = label;
+    }
     // Nút Xuất file: ẩn khi tài khoản không có quyền xuất; khóa khi chưa có dữ liệu / lỗi / đang tải / lọc không ra dòng nào.
     const exportButton = $('pcgExportButton');
     if (exportButton) {
@@ -338,7 +360,7 @@
     if (typeof window.openExportDialog === 'function') window.openExportDialog('products.productCustomerGrowth');
   }
   function exportState() {
-    return exportContext({ product: state.product, customer: state.customer, growth: state.growth, sort: state.sort, dir: state.dir });
+    return exportContext({ product: state.product, customer: state.customer, growth: state.growth, sorts: state.sorts });
   }
 
   function render() {
@@ -370,7 +392,7 @@
     state.error = '';
     render();
     const url = API + '?' + buildQuery({
-      product: state.product, customer: state.customer, growth: state.growth, sort: state.sort, dir: state.dir,
+      product: state.product, customer: state.customer, growth: state.growth, sorts: state.sorts,
       page: state.page, pageSize: state.pageSize
     });
     const options = { credentials: 'same-origin' };
@@ -436,9 +458,7 @@
       : (event.target.matches && event.target.matches('th.sortable[data-sort]') ? event.target : null);
     if (!th) return;
     event.preventDefault();
-    const next = nextSort({ sort: state.sort, dir: state.dir }, th.dataset.sort);
-    state.sort = next.sort;
-    state.dir = next.dir;
+    state.sorts = nextSorts(state.sorts, th.dataset.sort);
     state.page = 1;
     fetchPage();
   }
@@ -455,6 +475,11 @@
     initialized = true;
     setupTable();
     $('pcgTable').tHead.addEventListener('click', onSortClick);
+    $('pcgClearSort').addEventListener('click', function () {
+      state.sorts = [];
+      state.page = 1;
+      fetchPage();
+    });
     bindSearch('product', 'pcgProductSearch', 'pcgProductClear');
     bindSearch('customer', 'pcgCustomerSearch', 'pcgCustomerClear');
     $('pcgGrowth').addEventListener('change', function (event) {
