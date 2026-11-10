@@ -21,6 +21,19 @@ const VALUE_COLUMNS = ['sheet_order', 'container_row', 'container_name', 'status
   'product_code', 'product_key', 'product_name', 'color', 'sale_note', 'other_note', 'ordered_by', 'listed_at', 'units_per_package', 'package_count', 'unit_price_cny', 'vietnam_price', 'quantity'];
 const COLUMNS = ['sheet_name', 'source_row', ...VALUE_COLUMNS];
 
+// Ten SP: product_report 1 dong / ma hang (gom ca 2 co so) nen ten da on dinh; min() chi phong khi
+// khoa chuan hoa lower(btrim()) trung nhau giua 2 ma khac hoa/thuong. Khong co => ''.
+const LEGACY_STAGE_SQL = `
+  CREATE TEMP TABLE expected_stage ON COMMIT DROP AS
+  SELECT l.sheet_name, l.source_row, l.sheet_order, l.container_row, l.container_name, l.status, l.status_label, l.eta,
+         btrim(concat_ws(' ', NULLIF(btrim(l.status_label), ''), NULLIF(btrim(l.eta), ''))) AS schedule_label,
+         l.product_code, l.product_key, COALESCE(n.product_name, '') AS product_name,
+         l.color, l.sale_note, l.other_note, l.ordered_by, l.listed_at, l.units_per_package, l.package_count,
+         l.unit_price_cny, l.vietnam_price, l.quantity
+  FROM product_container_lines l
+  LEFT JOIN (SELECT lower(btrim(product_code)) AS product_key, min(product_name) AS product_name
+             FROM product_report GROUP BY 1) n ON n.product_key = l.product_key`;
+
 // Ten SP: uu tien product_report (chi ma dang kinh doanh, 1 dong/ma, ten da on dinh); ma ngung kinh
 // doanh (khong con trong product_report) lay du phong tu products (bang goc KiotViet, con is_active=false)
 // de sale van nhan dien duoc ma hang khi tim trong bang nay. min() chi phong khi khoa chuan hoa
@@ -37,6 +50,15 @@ const STAGE_SQL = `
              FROM product_report GROUP BY 1) n ON n.product_key = l.product_key
   LEFT JOIN (SELECT lower(btrim(code)) AS product_key, min(name) AS product_name
              FROM products GROUP BY 1) i ON i.product_key = l.product_key`;
+
+// products (0001) luon co o production nhung mot so fixture test (vd purchaseOrdersProjection
+// chay trong transaction cua Thu mua) chi dung migration toi thieu khong co bang nay — kiem
+// to_regclass TRUOC khi chon cau, khong de cau JOIN that bai (that bai giua transaction se lam
+// hong ca giao dich dang ghi, khong chi rieng buoc tinh Du kien hang ve).
+async function stageExpected(client) {
+  const hasProducts = (await client.query("SELECT to_regclass('products') IS NOT NULL AS exists")).rows[0]?.exists === true;
+  await client.query(hasProducts ? STAGE_SQL : LEGACY_STAGE_SQL);
+}
 
 const COUNT_STAGE_SQL = 'SELECT count(*)::int AS n FROM expected_stage';
 const COUNT_TARGET_SQL = 'SELECT count(*)::int AS n FROM product_container_expected';
@@ -113,7 +135,7 @@ async function refreshOnce(pool, { log }) {
       await client.query('ROLLBACK');
       return { status: 'busy', rows: 0, written: 0, deleted: 0, changed: false };
     }
-    await client.query(STAGE_SQL);
+    await stageExpected(client);
     const purchaseTable=await client.query("SELECT to_regclass('purchase_settings') AS name");
     if(purchaseTable.rows[0]?.name){
       // Read the optional 0117 flag through JSON so pre-migration Sheets sync keeps running.
@@ -159,7 +181,7 @@ function requestExpectedRefresh(pool = getPool(), { log = console.log } = {}) {
   });
 }
 
-module.exports = { refreshExpected, requestExpectedRefresh, __test__: { UPSERT_SQL, STATE_SQL, STAGE_SQL, VALUE_COLUMNS } };
+module.exports = { refreshExpected, requestExpectedRefresh, __test__: { UPSERT_SQL, STATE_SQL, STAGE_SQL, VALUE_COLUMNS, stageExpected } };
 
 if (require.main === module) {
   refreshExpected()
