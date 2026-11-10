@@ -32,14 +32,13 @@ test('Khach hang theo san pham: nut Xuat file gui dung bo loc + sap xep dang ap 
   assert.equal(call.body.tableKey, 'products.productCustomerGrowth');
   assert.equal(call.body.context.productQuery, undefined);
   assert.equal(call.body.tableSort, undefined);
-  h.win.TKSProductCustomerGrowth = { exportState: () => ({ context: { productQuery: 'binh', customerQuery: 'hanh', growthGroup: 'check', sortKey: 'growth', sortDir: 'asc' } }) };
+  h.win.TKSProductCustomerGrowth = { exportState: () => ({ context: { productQuery: 'binh', customerQuery: 'hanh', growthGroup: 'check', sorts: 'customer_name:asc,share:desc' } }) };
   h.win.openExportDialog('products.productCustomerGrowth');
   call = h.fieldsCalls().pop();
   assert.equal(call.body.context.productQuery, 'binh');
   assert.equal(call.body.context.customerQuery, 'hanh');
   assert.equal(call.body.context.growthGroup, 'check');
-  assert.equal(call.body.context.sortKey, 'growth');
-  assert.equal(call.body.context.sortDir, 'asc');
+  assert.equal(call.body.context.sorts, 'customer_name:asc,share:desc');
   const button = h.document.getElementById('pcgExportButton');
   assert.ok(button.closest('#product90dSection .panel-head-actions'));
   assert.ok(button.classList.contains('export-button'));

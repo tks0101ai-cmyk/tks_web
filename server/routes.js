@@ -459,12 +459,12 @@ router.get('/api/product-report/90d', requireFeature('reports.products.sales'), 
 
 // Muc 4 "Hang hoa 90 ngay" (tab Hang hoa): bang San pham x Khach hang + Tang truong. CHI DOC product_report_customers
 // JOIN product_report (3 ky cuon 30 ngay lam moi tang dan sau moi luot sync); loc ten san pham / ten khach / nhom tang truong,
-// sap xep, phan trang o SQL. Duoi /api/product-report (guard reports.products) va them reports.products.sales vi doanh so khach
+// sap xep (1 cot qua sort/dir hoac nhieu cap qua sorts=khoa:chieu,...), phan trang o SQL. Duoi /api/product-report (guard reports.products) va them reports.products.sales vi doanh so khach
 // theo san pham la du lieu ban hang.
 router.get('/api/product-report/customer-growth', requireFeature('reports.products.sales'), async (req, res) => {
   try {
-    const { product, customer, growth, sort, dir, page, pageSize } = req.query;
-    res.status(200).json(await getProductCustomerGrowth({ product, customer, growth, sort, dir, page, pageSize }));
+    const { product, customer, growth, sort, dir, sorts, page, pageSize } = req.query;
+    res.status(200).json(await getProductCustomerGrowth({ product, customer, growth, sort, dir, sorts, page, pageSize }));
   } catch (err) {
     if (!err.statusCode || err.statusCode >= 500) console.error('product-report/customer-growth:', err.message);
     res.status(err.statusCode === 400 ? 400 : 500).json({

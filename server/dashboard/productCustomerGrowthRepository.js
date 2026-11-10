@@ -4,6 +4,7 @@
 // 30 ngay (T.nay / T.truoc / T.truoc nua), % cua SP va TANG TRUONG. Doc thang product_report_customers (lam moi tang dan sau moi luot
 // sync) JOIN product_report lay ma/ten. Loc ten san pham, ten khach, nhom tang truong + sap xep + phan trang deu o SQL tren
 // TOAN BO ket qua.
+// Sap xep nhieu cap: tham so sorts = "khoa:chieu,khoa:chieu" (toi da 4 cap), uu tien hon sort/dir cu.
 //   prior  = T.truoc + T.truoc nua  (= 2 x trung binh hai ky truoc)
 //   growth = T.nay x 2 / prior - 1  khi prior > 0, so sanh nguong bang NUMERIC nhan cheo (khong dung so thuc):
 //     lost: prior > 0 va T.nay <= 0 (<= -100%) | check: T.nay > 0 va 4 x T.nay < prior (-100%..-50%) |
@@ -24,6 +25,7 @@ const TEXT_SORTS = new Set(['product_code', 'product_name', 'customer_name']);
 const MAX_PAGE_SIZE = 200;
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_QUERY_LENGTH = 200;
+const MAX_SORT_LEVELS = 4;
 const EXPORT_MAX_ROWS = 50000;
 
 function invalid() {
@@ -38,8 +40,25 @@ function integer(value, fallback, max) {
 // NUMERIC lay ra dang chuoi (::text) roi doi sang so; NULL giu nguyen NULL (khong bien thanh 0).
 const toNumber = value => (value === null || value === undefined ? null : Number(value));
 
+// "customer_name:asc,share:desc" -> [{ sort, dir }]. Moi khoa phai nam trong whitelist, chieu chi asc/desc, khong trung khoa,
+// toi da MAX_SORT_LEVELS cap. Sai bat ky diem nao -> 400. Chuoi rong khong goi ham nay (coi nhu khong co sorts).
+function parseSorts(value) {
+  if (typeof value !== 'string' || value.length > MAX_QUERY_LENGTH) throw invalid();
+  const seen = new Set();
+  const levels = value.split(',').map(part => {
+    const pieces = part.split(':');
+    if (pieces.length !== 2) throw invalid();
+    const [sort, dir] = pieces;
+    if (!SORT_KEYS.includes(sort) || (dir !== 'asc' && dir !== 'desc') || seen.has(sort)) throw invalid();
+    seen.add(sort);
+    return { sort, dir };
+  });
+  if (levels.length > MAX_SORT_LEVELS) throw invalid();
+  return levels;
+}
+
 // Kiem tra bo loc + dung WHERE / ORDER BY. `add` them tham so va tra ve placeholder ($n). KHONG cham DB.
-function parseFilters({ product = '', customer = '', growth = 'all', sort, dir } = {}, add) {
+function parseFilters({ product = '', customer = '', growth = 'all', sort, dir, sorts } = {}, add) {
   if (typeof product !== 'string' || product.length > MAX_QUERY_LENGTH) throw invalid();
   if (typeof customer !== 'string' || customer.length > MAX_QUERY_LENGTH) throw invalid();
   if (typeof growth !== 'string' || !GROWTH_GROUPS.includes(growth)) throw invalid();
@@ -51,14 +70,23 @@ function parseFilters({ product = '', customer = '', growth = 'all', sort, dir }
   const customerFuzzy = fuzzySqlParts('g.customer_name', customer, add);
   if (customerFuzzy) where.push(customerFuzzy.where);
   if (growth !== 'all') where.push(`g.growth_state = '${growth}'`); // growth da nam trong whitelist o tren
-  const sortKey = sort === undefined ? 'revenue' : sort;
-  const direction = dir === 'asc' ? 'ASC' : dir === 'desc' ? 'DESC' : (TEXT_SORTS.has(sortKey) ? 'ASC' : 'DESC');
-  // NULL luon cuoi o ca 2 chieu; hoa bang -> ma hang -> ten khach -> khoa khach de thu tu on dinh giua cac trang.
+  let levels;
+  if (sorts !== undefined && sorts !== '') {
+    levels = parseSorts(sorts); // sorts thang sort/dir
+  } else {
+    const sortKey = sort === undefined ? 'revenue' : sort;
+    const direction = dir === 'asc' ? 'asc' : dir === 'desc' ? 'desc' : (TEXT_SORTS.has(sortKey) ? 'asc' : 'desc');
+    levels = [{ sort: sortKey, dir: direction }];
+  }
+  // NULL luon cuoi o moi cap, moi chieu; sau cac cap la hoa bang -> ma hang -> ten khach -> khoa khach de thu tu on dinh giua cac trang.
   const orderBy = alias => [
-    `${alias}.${SORT_SQL[sortKey]} ${direction} NULLS LAST`,
+    ...levels.map(level => `${alias}.${SORT_SQL[level.sort]} ${level.dir === 'asc' ? 'ASC' : 'DESC'} NULLS LAST`),
     `${alias}.product_code ASC`, `${alias}.customer_name ASC`, `${alias}.customer_key ASC`
   ].join(', ');
-  return { where: where.length ? 'WHERE ' + where.join(' AND ') : '', orderBy, sortKey, direction };
+  return {
+    where: where.length ? 'WHERE ' + where.join(' AND ') : '', orderBy,
+    sortKey: levels[0].sort, direction: levels[0].dir.toUpperCase(), sorts: levels
+  };
 }
 
 function validateFilters(filters) {
@@ -119,10 +147,10 @@ function stateOf(head) {
 
 const UNAVAILABLE = () => ({ available: false, rows: [], summary: { totalRows: 0, lostRows: 0, checkRows: 0 } });
 
-async function getProductCustomerGrowth({ product, customer, growth, sort, dir, page, pageSize, pool } = {}) {
+async function getProductCustomerGrowth({ product, customer, growth, sort, dir, sorts, page, pageSize, pool } = {}) {
   const values = [];
   const add = value => { values.push(value); return '$' + values.length; };
-  const filters = parseFilters({ product, customer, growth, sort, dir }, add);
+  const filters = parseFilters({ product, customer, growth, sort, dir, sorts }, add);
   page = integer(page, 1, 1000000);
   pageSize = integer(pageSize, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
   const pageParam = add(page), sizeParam = add(pageSize);
@@ -156,6 +184,7 @@ async function getProductCustomerGrowth({ product, customer, growth, sort, dir, 
     rows: mapRecords(records),
     page: head.page,
     pageSize,
+    sorts: filters.sorts,
     sort: filters.sortKey,
     dir: filters.direction.toLowerCase()
   };
@@ -163,10 +192,10 @@ async function getProductCustomerGrowth({ product, customer, growth, sort, dir, 
 
 // Xuat file: TOAN BO dong khop bo loc, cung luat loc + sap xep voi man hinh, khong phan trang. Tran an toan EXPORT_MAX_ROWS:
 // vuot -> loi 413 ro rang, khong cat ngam.
-async function getProductCustomerGrowthForExport({ product, customer, growth, sort, dir, pool, maxRows = EXPORT_MAX_ROWS } = {}) {
+async function getProductCustomerGrowthForExport({ product, customer, growth, sort, dir, sorts, pool, maxRows = EXPORT_MAX_ROWS } = {}) {
   const values = [];
   const add = value => { values.push(value); return '$' + values.length; };
-  const filters = parseFilters({ product, customer, growth, sort, dir }, add);
+  const filters = parseFilters({ product, customer, growth, sort, dir, sorts }, add);
   const limit = integer(maxRows, EXPORT_MAX_ROWS, EXPORT_MAX_ROWS);
   const limitParam = add(limit + 1);
   const sql = `${BASE_CTES}, f AS (
@@ -193,6 +222,7 @@ async function getProductCustomerGrowthForExport({ product, customer, growth, so
     periods: customerPeriods(head.window_end),
     summary: { totalRows: head.total_rows, lostRows: head.lost_rows, checkRows: head.check_rows },
     rows,
+    sorts: filters.sorts,
     sort: filters.sortKey,
     dir: filters.direction.toLowerCase()
   };
@@ -200,5 +230,5 @@ async function getProductCustomerGrowthForExport({ product, customer, growth, so
 
 module.exports = {
   getProductCustomerGrowth, getProductCustomerGrowthForExport, validateFilters,
-  GROWTH_GROUPS, SORT_KEYS, EXPORT_MAX_ROWS, MAX_PAGE_SIZE, DEFAULT_PAGE_SIZE
+  GROWTH_GROUPS, SORT_KEYS, EXPORT_MAX_ROWS, MAX_PAGE_SIZE, DEFAULT_PAGE_SIZE, MAX_SORT_LEVELS
 };
