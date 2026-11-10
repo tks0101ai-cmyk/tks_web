@@ -122,6 +122,25 @@ function handleError(res, err, context) {
     console.warn(`[${context}] ${err.detail || err.message}`);
     return res.status(err.statusCode || 503).json({ error: err.message, code: err.code });
   }
+  // 23505 = unique_violation. Tien kiem o hrEmployeeAdminService bat truoc 3 unique
+  // index cua hr_employees, nhung hai nguoi luu cung luc thi nguoi sau van cham DB —
+  // va moi unique index them sau nay cung se roi vao day. Loi NHAP LIEU, khong phai
+  // loi he thong: tra 409 kem ten rang buoc thay vi 500 "Loi he thong" (su co 10/11/2026:
+  // sua nhan su trung so so bao hiem bao 500, nguoi dung tuong server hong).
+  if (err.code === '23505') {
+    const constraint = err.constraint || '';
+    const field = /insurance/.test(constraint) ? 'Số sổ bảo hiểm'
+      : /email/.test(constraint) ? 'Email'
+      : /phone/.test(constraint) ? 'Số điện thoại'
+      : null;
+    console.warn(`[${context}] 23505 ${constraint || '(khong ro rang buoc)'}`);
+    return res.status(409).json({
+      error: field
+        ? `${field} đã thuộc nhân sự khác đang làm việc.`
+        : 'Giá trị vừa nhập đã thuộc nhân sự khác đang làm việc.',
+      code: 'HR_IDENTITY_CONFLICT'
+    });
+  }
   console.error(`=== LOI ${context} ===`);
   console.error(err.stack);
   console.error(`${'='.repeat(context.length + 10)}`);
