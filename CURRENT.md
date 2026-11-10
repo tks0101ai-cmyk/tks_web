@@ -457,7 +457,7 @@
 
 ## Sắp xếp nhiều cấp bảng Khách hàng theo sản phẩm (10/11/2026)
 
-**Đã làm (nhánh `claude/multi-column-sort-merchandise-721a2c`, không migration, chưa merge/deploy):** bảng mục 4 tab Hàng hóa sắp xếp nhiều cấp như Excel: bấm tiêu đề cột nào cũng cộng dồn một cấp (tối đa 4, bấm lại đổi chiều rồi gỡ), nút "Xóa sắp xếp", tiêu đề hiện số cấp. API `GET /api/product-report/customer-growth` nhận `sorts=khóa:chiều,…` (`sort`/`dir` cũ vẫn chạy, response thêm `sorts`); xuất file theo `context.sorts`.
+**Đã làm (nhánh `claude/multi-column-sort-merchandise-721a2c`, không migration, chưa merge/deploy):** bảng mục 4 tab Hàng hóa sắp xếp nhiều cấp như Excel: bấm tiêu đề cột nào cũng cộng dồn một cấp (tối đa 4, bấm lại đổi chiều rồi gỡ, đủ 4 cấp thì bấm cột mới thay cấp cuối), nút "Xóa sắp xếp", tiêu đề hiện số cấp. API `GET /api/product-report/customer-growth` nhận `sorts=khóa:chiều,…` (`sort`/`dir` cũ vẫn chạy, response thêm `sorts`); xuất file theo `context.sorts`.
 
 **Tệp chính:** `server/dashboard/productCustomerGrowthRepository.js`, `server/routes.js`, `server/dashboard/exportService.js`, `server/public/product-customer-growth.js` + `.css`, `index.html`. **Kiểm thử:** `dashboard/productCustomerGrowthRepository.test.js`, `productCustomerGrowthRoutes.test.js`, `exportProductCustomerGrowth.test.js`, `exportService.test.js`, `test/frontend/product-customer-growth.test.js`, `test/frontend/export-ui.test.js`. Spec/kế hoạch: `docs/superpowers/specs|plans/2026-11-10-product-customer-growth-multi-sort*`.
 

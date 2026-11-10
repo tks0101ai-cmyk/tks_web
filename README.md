@@ -478,7 +478,7 @@ Module mới: `server/dashboard/productCustomerGrowthRepository.js` (một câu 
 
 Không migration, không biến môi trường mới. Phần máy chủ cũ của mục 4 (API `/api/product-report/90d`, bảng tính sẵn `product_90d_report`, job 02:00) giữ nguyên, sẽ gỡ ở một đợt riêng. Kiểm thử: `dashboard/productCustomerGrowthRepository.test.js`, `productCustomerGrowthRoutes.test.js`, `exportProductCustomerGrowth.test.js`, `test/frontend/product-customer-growth.test.js`.
 
-**Sắp xếp nhiều cấp bảng Khách hàng theo sản phẩm (10/11/2026).** Bảng mục 4 tab Hàng hóa sắp xếp được nhiều cột cùng lúc như Excel: bấm tiêu đề cột nào cũng thêm một cấp (tối đa 4), bấm lại để đổi chiều rồi gỡ, nút "Xóa sắp xếp" về mặc định; tiêu đề hiện số cấp. API nhận thêm `sorts=khóa:chiều,…` (`sort`/`dir` cũ vẫn chạy), xuất file theo đúng thứ tự nhiều cấp. Không migration, không biến môi trường mới. Kiểm thử: `dashboard/productCustomerGrowthRepository.test.js`, `productCustomerGrowthRoutes.test.js`, `exportProductCustomerGrowth.test.js`, `test/frontend/product-customer-growth.test.js`.
+**Sắp xếp nhiều cấp bảng Khách hàng theo sản phẩm (10/11/2026).** Bảng mục 4 tab Hàng hóa sắp xếp được nhiều cột cùng lúc như Excel: bấm tiêu đề cột nào cũng thêm một cấp (tối đa 4), bấm lại để đổi chiều rồi gỡ, đủ 4 cấp thì bấm cột mới thay cấp cuối, nút "Xóa sắp xếp" về mặc định; tiêu đề hiện số cấp. API nhận thêm `sorts=khóa:chiều,…` (`sort`/`dir` cũ vẫn chạy), xuất file theo đúng thứ tự nhiều cấp. Không migration, không biến môi trường mới. Kiểm thử: `dashboard/productCustomerGrowthRepository.test.js`, `productCustomerGrowthRoutes.test.js`, `exportProductCustomerGrowth.test.js`, `test/frontend/product-customer-growth.test.js`.
 
 Cập nhật gần nhất: 10/11/2026.
 
