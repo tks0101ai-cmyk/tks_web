@@ -92,6 +92,42 @@ async function fixture({ orders = { DH001: order() }, positions, loadOrder } = {
 
 const assignBody = (allocations, extra = {}) => ({ branch: 'HN', orderCode: 'DH001', allocations, ...extra });
 
+test('rename position updates active picks and confirmation deducts negative stock at the new location', async () => {
+  const orders = {
+    DH001: order({ lines: [{ productCode: 'AAA1', quantity: 100, price: 10 }] }),
+    DH002: order({ orderCode: 'DH002', lines: [{ productCode: 'AAA1', quantity: 100, price: 10 }] })
+  };
+  const { db, service, notesOf } = await fixture({ orders });
+  const positions = require('../stockPositions/stockPositionsService').createStockPositionsService({ getDb: () => poolFor(db) });
+  try {
+    await db.exec(migration('0099_stock_position_ack_and_history_purge.sql'));
+    await db.query("INSERT INTO products (branch, id, code, name, raw) VALUES ('hanoi', 1, 'AAA1', 'Hàng A', '{}'::jsonb)");
+    const first = (await service.assign(ctx(), assignBody([{ productCode: 'AAA1', positionId: 1, qty: 100 }]))).assignment;
+    const second = (await service.assign(ctx(), assignBody([{ productCode: 'AAA1', positionId: 1, qty: 100 }], { orderCode: 'DH002' }))).assignment;
+    await db.query("UPDATE stock_positions SET notes = 'Hết hàng' WHERE id = 1");
+    await positions.update(ctx(), 1, { version: 1, location: ' Q10 ', notes: 'Hết hàng' });
+    const latest = (await service.get(ctx(), { branch: 'HN', orderCode: 'DH001' })).assignment;
+    assert.equal(latest.version, first.version + 1);
+    assert.equal(latest.lines[0].location, 'Q10');
+    await assert.rejects(() => service.confirm(ctx(), first.id, { version: first.version }), { code: 'VERSION_CONFLICT' });
+    await service.confirm(ctx(), first.id, { version: latest.version });
+    assert.equal(await notesOf(1), '-1T x 100');
+    await positions.update(ctx(), 1, { version: 3, location: 'Q11', notes: '-1T x 100' });
+    for (const orderCode of ['DH001', 'DH002']) {
+      const pick = (await service.get(ctx(), { branch: 'HN', orderCode })).assignment;
+      assert.equal(pick.lines[0].location, 'Q11');
+    }
+    const pending = (await service.get(ctx(), { branch: 'HN', orderCode: 'DH002' })).assignment;
+    await service.confirm(ctx(), second.id, { version: pending.version });
+    assert.equal(await notesOf(1), '-2T x 100');
+    const completed = (await service.get(ctx(), { branch: 'HN', orderCode: 'DH001' })).assignment;
+    assert.equal(completed.status, 'confirmed');
+    const rows = (await db.query('SELECT location, allocation_snapshot, position_snapshot FROM order_pick_lines ORDER BY id')).rows;
+    assert.ok(rows.every(row => row.location === 'Q11' && row.allocation_snapshot.locationKey === 'Q11'));
+    assert.ok(rows.every(row => row.position_snapshot.location === 'Q11'));
+  } finally { await db.close(); }
+});
+
 test('assign and candidates share the contact lookup already performed by loadOrder, without repeating an empty lookup',async()=>{
   const {db}=await fixture();
   try {

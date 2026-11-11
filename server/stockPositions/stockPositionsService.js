@@ -373,6 +373,33 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
   }
 
   const FIELD_COLUMN = { notes: 'notes', arrivalDate: 'arrival_date', location: 'location' };
+
+  async function renamePickLocation(client, row, location) {
+    const { rows: [schema] } = await client.query(
+      `SELECT to_regclass('order_pick_lines') IS NOT NULL AS ready,
+        EXISTS (SELECT 1 FROM information_schema.columns
+          WHERE table_schema = current_schema() AND table_name = 'order_pick_lines'
+            AND column_name = 'allocation_snapshot') AS snapshots`);
+    if (!schema.ready) return [];
+    const snapshotUpdate = schema.snapshots
+      ? ", allocation_snapshot = CASE WHEN l.allocation_snapshot IS NULL THEN NULL ELSE jsonb_set(l.allocation_snapshot, '{locationKey}', to_jsonb($4::text)) END"
+      : '';
+    const { rows } = await client.query(
+      `WITH changed AS (
+        UPDATE order_pick_lines l SET location = $2,
+          position_snapshot = CASE WHEN l.position_snapshot IS NULL THEN NULL
+            ELSE jsonb_set(l.position_snapshot, '{location}', to_jsonb($2::text)) END
+          ${snapshotUpdate}
+        FROM order_pick_assignments a
+        WHERE a.id = l.assignment_id AND a.branch = $3
+          AND a.status IN ('picking', 'confirmed') AND l.position_id = $1
+        RETURNING l.assignment_id
+      )
+      UPDATE order_pick_assignments SET version = version + 1, updated_at = now()
+      WHERE id IN (SELECT assignment_id FROM changed) RETURNING id`,
+      schema.snapshots ? [row.id, location, row.branch, normalizeLocation(location)] : [row.id, location, row.branch]);
+    return rows.map(item => Number(item.id));
+  }
   const fieldChanges = (row, next) => ['notes', 'arrivalDate', 'location']
     .filter(field => next[field] !== undefined && next[field] !== row[FIELD_COLUMN[field]])
     .map(field => ({ field, oldValue: row[FIELD_COLUMN[field]], newValue: next[field] }));
@@ -468,7 +495,7 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
       if (next.location !== undefined && await findSamePosition(client, row.branch, row.code, merged.location, row.id)) {
         throw fail(409, 'DUPLICATE_POSITION', 'Mã hàng này đã có ở vị trí đó. Hãy dùng Thêm dòng để cộng vào dòng sẵn có.', { field: 'location' });
       }
-      if (knownProduct && next.notes !== undefined && isEmptyNote(merged.notes)) {
+      if (knownProduct && changes.some(change => change.field === 'notes') && isEmptyNote(merged.notes)) {
         await assertNotHeld(client, row, options.excludeOrder);
         if (!body.confirmEmpty) throw fail(409, 'WOULD_AUTO_DELETE', 'Số lượng về 0 nên dòng sẽ bị xóa. Xác nhận để tiếp tục.');
         await removeRow(client, row.branch, actor, row, 'auto_delete', { newValue: merged.notes, summary: src || undefined });
@@ -479,7 +506,14 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
         `UPDATE stock_positions SET notes = $2, arrival_date = $3, location = $4, version = version + 1,
            updated_by_user_id = $5, updated_by_name = $6, updated_at = now() WHERE id = $1 RETURNING ${ROW_COLUMNS}`,
         [row.id, merged.notes, merged.arrivalDate, merged.location, actor.id, actor.name]);
-      await writeHistory(client, row.branch, actor, changes.map(change => ({ positionId: row.id, code: row.code, location: merged.location, action: 'edit', ...change, ...(src ? { summary: src } : {}) })));
+      const assignmentIds = changes.some(change => change.field === 'location')
+        ? await renamePickLocation(client, row, merged.location) : [];
+      const locationSummary = assignmentIds.length ? { ...src, assignmentIds } : src;
+      await writeHistory(client, row.branch, actor, changes.map(change => {
+        const summary = change.field === 'location' ? locationSummary : src;
+        return { positionId: row.id, code: row.code, location: merged.location, action: 'edit', ...change,
+          ...(summary ? { summary } : {}) };
+      }));
       return { row: await shapeOne(client, rows[0]) };
     });
   }
