@@ -1,7 +1,7 @@
 # MEMORY: BỘ NHỚ DÀI HẠN DỰ ÁN TOKOSI DASHBOARD
 
 > **Thời hạn giá trị:** Ít nhất 3 tháng (Q4/2026 – Q1/2027).  
-> **Cập nhật gần nhất:** 10/11/2026.
+> **Cập nhật gần nhất:** 11/11/2026.
 > **Quy tắc:** Chỉ lưu trữ các nguyên tắc cốt lõi, kiến trúc bất biến, quy ước chuẩn hóa và bài học kinh nghiệm dài hạn. Không ghi deadline ngắn hạn hay task vụn vặt vào file này.
 >
 > **Nguyên tắc tiên quyết:** với chức năng chưa quen thuộc, đừng viết từ con số 0 — tìm các dự án mã nguồn mở trên GitHub để so sánh ý tưởng trước khi bắt tay làm (xem mục 0 của [CLAUDE.md](CLAUDE.md)).
@@ -68,6 +68,7 @@
 
 - **Kế toán – Nháp VAT (`/vat-draft/`, 17/10/2026):** port 1:1 vat-draft-app (Python) — **không sửa thuật toán** trong `server/vatDraft/allocation.js`/`nameMatching.js` (Tra cứu nguồn + `sourceLookup.js` đã gỡ 17/10/2026); mọi phép số/chuỗi kiểu Python đi qua `pyCompat.js` (round banker's, sum Neumaier, casefold, float()). Master data = 2 tab "Gộp VAT"/"Khớp mã" của file trung gian "cúc cu test" (IMPORTRANGE giá trị từ VAT TKS) đọc bằng service account (từ 10/11/2026; **không** đọc thẳng VAT TKS — file quá nặng, Sheets API treo), parse theo chữ cái cột trong `vatDraftConfig.js` (kèm 17 tài khoản VietQR). Chứng từ HD/DH đọc Postgres, "Ghi chú tổng" = `raw->>'description'` chỉ gắn lúc hiển thị. Quyền `accounting.vatDraft` mặc định chỉ Quản lý (Kế toán phải được bật riêng, Khách bị cấm). Quyền `accounting.qr` (chỉ tab Tạo QR) mặc định Quản lý + Nhân viên sale, `escalationExempt`; route `/qr/*` + `/meta` nhận một trong hai quyền.
 - **Tìm kiếm gần đúng theo từ (21/10/2026):** mọi ô tìm văn bản thường dùng `public/shared/fuzzy-search.js` (frontend, `window.TKSFuzzySearch`) và `shared/fuzzySearch.js` / `shared/fuzzySql.js` (server) — bỏ dấu/hoa thường; 1 từ phải khớp, 2 từ khớp cả 2, ≥3 từ khớp quá nửa; xếp theo số từ khớp, nguyên cụm đầu. Ô tìm theo mã chính xác giữ nguyên. Ô tìm lọc ngay khi gõ qua sự kiện `input` (không nút Tìm); KPI của bảng tính trên toàn bộ dòng đã lọc (hook `afterRender` ở frontend, `countSummary` ở Vòng đời đơn hàng). Vòng đời đơn hàng mặc định tìm "Theo tên khách" (server `parseParams` vẫn `mode='code'`). Không tự viết luật khớp riêng cho ô tìm mới — dùng helper chung.
+- **Hiệu năng (11/11/2026):** Node chạy 1 luồng — vòng lặp JS nặng ở 1 request làm đứng MỌI người dùng (xem log `[loop-stall]`). Không lọc lại toàn bộ dòng cho từng nhóm (O(N × M)); đếm 1 lượt bằng Map và nhớ kết quả hàm chuẩn hóa chuỗi (`norm`, `toLocaleLowerCase('vi')`). Mỗi câu SQL tốn 1 vòng mạng web↔DB: gộp câu trong giao dịch (CTE ghi nhiều bảng, khóa + đọc 1 câu), đọc độc lập thì song song.
 
 ### 2.5. Vòng đời đơn hàng & Khung chi tiết dùng chung
 - **Khung chi tiết dùng chung (`public/shared/detail-panel.css` — `.dp-*`):** Áp dụng đồng bộ cho các hộp Chi tiết giao dịch, Báo cáo hàng hóa theo khách, Báo cáo kinh doanh (Sale/Khách/Mã hàng), Chi tiết đơn Vòng đời, Chi tiết nghỉ phép và Chi tiết Marketing. Thiết kế gồm hàng **chỉ số tổng quan** (`.dp-stats`), 1 khung cuộn thống nhất, tiêu đề dính, **tắt hoàn toàn nút Cột hiển thị** trong hộp (`data-table-controls="off"`), hỗ trợ Light/Dark mode.

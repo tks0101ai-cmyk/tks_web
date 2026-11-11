@@ -26,3 +26,30 @@ test('blank-employee row detail ignores same-employee date repeats exactly like 
   assert.deepEqual(detail.reconciliation.found,{first:1,repeat:0,closed:0});
 });
 test('directory search requires every keyword, in any order',async()=>{const directory=[{branch:'hanoi',code:'K1',name:'KH A Khả Hân Ba Vì'},{branch:'hanoi',code:'K2',name:'HN A Khanh Dương Nội'},{branch:'hanoi',code:'K3',name:'KH Hân Khách'}];const service=createDatabaseMarketingReportService({repository:{readSnapshot:async()=>({...snapshot,rawRows:[]})},legacy:{},revenue:()=>{},businessRepository:{snapshot:async()=>({directory})}});const names=async q=>(await service.customers({q})).customers.map(r=>r.code);assert.deepEqual(await names('khả hân'),['K1']);assert.deepEqual(await names('han kha'),['K1','K2','K3']);assert.deepEqual(await names('hân khả'),['K1']);assert.deepEqual(await names('ba vì khả'),['K1']);});
+
+// Bảng tổng SĐT theo NV từng lọc lại toàn bộ dòng cho từng NV (~30k dòng × 60 NV ≈ 15 s, treo event loop). Kết quả đếm 1 lượt phải
+// giống hệt cách lọc cũ (kể cả tên khác hoa/thường, khoảng trắng thừa, ô chứa nhiều tên) và không còn chạy hàng chục giây.
+test('phones summary counts match the per-employee filter and stay fast on 30k rows',async()=>{
+  const {norm}=require('./marketingParsers');
+  const names=v=>String(v??'').split(/\s*,\s*/).filter(Boolean);
+  const oldMatches=(r,employee)=>[r.employee,r.sale,r.firstEmployee,r.currentEmployee,r.repeatEmployee].some(v=>names(v).some(n=>norm(n)===norm(employee)));
+  const employees=Array.from({length:60},(_,i)=>`Nhân Viên ${i}`);
+  const variants=['Nguyễn  A','nguyễn a','B, C','  C ','Đặng Đ'];
+  const rows=Array.from({length:30000},(_,i)=>({pageId:String(i%5),phoneKey:`p${i}`,phone:`09${i}`,
+    firstEmployee:i%11===0?variants[i%variants.length]:employees[i%60],currentEmployee:i%13===0?variants[(i+2)%variants.length]:employees[(i*7)%60],
+    repeatEmployee:i%3===0?employees[(i*3)%60]:null,firstAt:'2026-10-01',currentAt:'2026-10-02',repeatAt:i%3===0?'2026-10-03':null,trace:[]}));
+  const fixture={pages:Array.from({length:5},(_,i)=>({pageId:String(i),name:`Page ${i}`,lastSuccessAt:'2026-10-01'})),aliases:[{rawName:'Đặng Đ',reportEmployee:'Sale Đ'}],monthlyRows:[],
+    summary:{rows,employeeRaws:[],periods:[],unresolvedAny:false}};
+  const service=createDatabaseMarketingReportService({independent:true,repository:{readIndependentSummary:async()=>fixture},legacy:{},revenue:()=>{}});
+  const started=performance.now();
+  const report=await service.report('phones',{});
+  const elapsed=performance.now()-started;
+  const byEmployee=report.summaryRows.filter(r=>r.kind==='employee');
+  assert.ok(byEmployee.length>60);
+  for(const row of byEmployee)assert.equal(row.count,report.rows.filter(r=>oldMatches(r,row.employee)).length,row.employee);
+  for(const row of report.summaryRows.filter(r=>r.kind==='page'))assert.equal(row.count,report.rows.filter(r=>r.page===row.page).length);
+  assert.ok(elapsed<3000,`phones report took ${Math.round(elapsed)} ms`);
+  const filtered=await service.report('phones',{employee:'NGUYỄN A'});
+  assert.equal(filtered.rows.length,report.rows.filter(r=>oldMatches(r,'NGUYỄN A')).length);
+  assert.ok(filtered.rows.length>0);
+});

@@ -39,23 +39,23 @@ function setup(html, reduced = false, supported = true) {
   };
 }
 
-test('heading letters stagger 40ms while keeping subtitle node, text, and listener intact', () => {
+test('heading letters stagger 12ms while keeping subtitle node, text, and listener intact', () => {
   const ctx = setup('<div class="section-head"><h2>AB <span class="section-note">Note</span></h2></div>');
   const heading = ctx.w.document.querySelector('h2');
   const note = heading.querySelector('.section-note');
   assert.equal(heading.textContent, 'AB Note');
-  assert.deepEqual(ctx.animations.filter(a => a.options.duration === 480).map(a => a.options.delay), [0, 40]);
+  assert.deepEqual(ctx.animations.filter(a => a.options.duration === 260).map(a => a.options.delay), [0, 12]);
   assert.match(ctx.animations[0].keyframes[0].transform, /translateY\(-20px\)/);
   assert.equal(heading.querySelector('.section-note'), note);
-  ctx.timers.find(timer => timer.delay > 500).callback();
+  ctx.timers.find(timer => timer.delay > 260).callback();
   assert.equal(heading.textContent, 'AB Note');
   assert.equal(heading.querySelector('.section-note'), note);
   ctx.dom.window.close();
 });
 
-test('cards flip with 150ms stagger and do not replay on refresh or row replacement', async () => {
+test('cards flip with 30ms stagger and do not replay on refresh or row replacement', async () => {
   const ctx = setup('<div><div class="kpi-card"></div><div class="kpi-card"></div></div><main><table><tbody><tr><td>A</td></tr></tbody></table></main>');
-  assert.deepEqual(ctx.animations.filter(a => a.options.duration === 580).map(a => a.options.delay), [0, 150]);
+  assert.deepEqual(ctx.animations.filter(a => a.options.duration === 300).map(a => a.options.delay), [0, 30]);
   assert.match(ctx.animations[0].keyframes[0].transform, /rotateY\(-90deg\)/);
   const before = ctx.animations.length;
   ctx.w.document.querySelector('tbody').innerHTML = '<tr><td>B</td></tr>';
@@ -69,7 +69,7 @@ test('loading placeholders defer row entrance until data arrives', async () => {
   assert.equal(ctx.animations.length, 0);
   ctx.w.document.querySelector('tbody').innerHTML = '<tr><td>Data</td><td>42</td></tr><tr><td>More</td><td>21</td></tr>';
   await ctx.rescan();
-  assert.deepEqual(ctx.animations.map(a => a.options.delay), [0, 35]);
+  assert.deepEqual(ctx.animations.map(a => a.options.delay), [0, 15]);
   ctx.dom.window.close();
 });
 
@@ -77,11 +77,11 @@ test('countup leaves financial source text unchanged and restores visual style o
   const ctx = setup('<div class="kpi-card"><div class="value" style="color:rgb(1, 2, 3)">1.234.567₫</div></div>');
   const value = ctx.w.document.querySelector('.value');
   ctx.frame(0);
-  ctx.frame(375);
+  ctx.frame(200);
   assert.equal(value.textContent, '1.234.567₫');
   assert.notEqual(value.getAttribute('data-tks-count-display'), '1.234.567₫');
   value.textContent = '2.000₫';
-  ctx.frame(400);
+  ctx.frame(210);
   assert.equal(value.textContent, '2.000₫');
   assert.equal(value.classList.contains('tks-motion-count'), false);
   assert.equal(value.style.color, 'rgb(1, 2, 3)');
@@ -94,7 +94,7 @@ test('countup finishes with exact original display; zero placeholders permit fir
   value.textContent = '1.234,50%';
   await ctx.rescan();
   ctx.frame(0);
-  ctx.frame(750);
+  ctx.frame(400);
   assert.equal(value.textContent, '1.234,50%');
   assert.equal(value.hasAttribute('data-tks-count-display'), false);
   ctx.dom.window.close();
@@ -104,12 +104,12 @@ test('dashboard en-US money and decimal ratios animate without changing source d
   const ctx = setup('<div data-motion-count>20,947,817,562₫</div><div data-motion-count>5.2%</div><div data-motion-count data-motion-locale="vi-VN">1.234₫</div>');
   const values = [...ctx.w.document.querySelectorAll('[data-motion-count]')];
   ctx.frame(0);
-  ctx.frame(375);
+  ctx.frame(200);
   assert.deepEqual(values.map(v => v.textContent), ['20,947,817,562₫', '5.2%', '1.234₫']);
   assert.equal(values[0].getAttribute('data-tks-count-display'), '18,329,340,367₫');
   assert.equal(values[1].getAttribute('data-tks-count-display'), '4.6%');
   assert.equal(values[2].getAttribute('data-tks-count-display'), '1.080₫');
-  ctx.frame(750);
+  ctx.frame(400);
   assert.ok(values.every(v => !v.classList.contains('tks-motion-count')));
   ctx.dom.window.close();
 });
@@ -134,4 +134,11 @@ test('unsupported animation APIs and explicit opt-out leave content untouched', 
   assert.equal(off.animations.length, 0);
   ctx.dom.window.close();
   off.dom.window.close();
+});
+
+test('every entrance finishes quickly so data is readable almost immediately', () => {
+  const ctx = setup('<div class="view-title">Báo cáo vòng đời đơn hàng theo cơ sở</div><div class="kpi-card"></div><div class="kpi-card"></div><div class="kpi-card"></div><div class="kpi-card"></div><div class="kpi-card"></div><div class="kpi-card"></div><div class="kpi-card"></div><main><table><tbody>' + '<tr><td>x</td></tr>'.repeat(20) + '</tbody></table></main>');
+  const longest = Math.max(...ctx.animations.map(a => a.options.duration + a.options.delay));
+  assert.ok(longest <= 450, 'longest entrance ' + longest + 'ms');
+  ctx.dom.window.close();
 });
