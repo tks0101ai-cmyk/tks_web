@@ -203,11 +203,72 @@ test('reward reads current sale teams even when monthly results are finalized', 
     await f.db.exec("CREATE TABLE sale_teams (sale_name text, team_name text); INSERT INTO sale_teams VALUES ('An', 'Team A')");
     const board = await f.service.readBoard();
     assert.equal(board.rows.find(r => r.sale === 'An').saleTeam, 'Team A');
+    // Bảng tạm tính đang được giữ ngắn hạn vẫn phải hiện team mới ngay.
+    await f.db.exec("UPDATE sale_teams SET team_name = 'Team C'");
+    assert.equal((await f.service.readBoard()).rows.find(r => r.sale === 'An').saleTeam, 'Team C');
     await f.db.query("INSERT INTO debt_reward_months(month, rule_version, finalized_at, result) VALUES ('2026-10-01', 'test', now(), $1::jsonb)", [JSON.stringify(board)]);
+    // Ghi thẳng thay cho finalizeMonth: luồng thật xóa bảng đang giữ khi chốt tháng xong.
+    f.service.clearScores();
     await f.db.exec("UPDATE sale_teams SET team_name = 'Team B'");
     const changed = await f.service.readBoard();
     assert.equal(changed.status, 'finalized');
     assert.equal(changed.rows.find(r => r.sale === 'An').saleTeam, 'Team B');
     assert.equal(changed.rows.find(r => r.sale === 'An').reward, board.rows.find(r => r.sale === 'An').reward);
+  } finally { await f.db.close(); }
+});
+
+// /penalty-board: nhiều người mở cùng lúc chỉ tính 1 lần; giữ 30 s khi công nợ không đổi; ghi công nợ / quá hạn / lỗi thì tính lại.
+test('penalty board is computed once for concurrent readers, kept briefly and recomputed after changes or errors', async () => {
+  const f = await setup();
+  try {
+    let computes = 0, failNext = false;
+    const pool = { query: async (sql, params) => {
+      if (/FROM debt_reward_months ORDER BY month DESC/.test(sql)) {
+        computes++;
+        if (failNext) { failNext = false; throw new Error('db down'); }
+      }
+      return f.pool.query(sql, params);
+    }, connect: f.pool.connect };
+    let instant = new Date('2026-10-14T09:00:00Z');
+    const service = createDebtRewardService({ pool, repository: f.repository, now: () => instant });
+    const [hn, sg, both] = await Promise.all([
+      service.readBoard({ branches: ['hanoi'] }), service.readBoard({ branches: ['saigon'] }), service.readBoard()
+    ]);
+    assert.equal(computes, 1, 'concurrent readers share one computation');
+    assert.ok(hn.rows.every(r => r.branches.includes('hanoi')) && sg.rows.every(r => r.branches.includes('saigon')));
+    assert.equal(both.rows.length, new Set([...hn.rows, ...sg.rows].map(r => r.sale)).size);
+    await service.readBoard();
+    assert.equal(computes, 1, 'kept while debt data is unchanged');
+    f.repository.bumpVersion();
+    await service.readBoard();
+    assert.equal(computes, 2, 'a debt write invalidates the kept board');
+    instant = new Date(instant.getTime() + 31000);
+    await service.readBoard();
+    assert.equal(computes, 3, 'expires after 30 s');
+    f.repository.bumpVersion();
+    failNext = true;
+    await assert.rejects(service.readBoard(), /db down/);
+    await service.readBoard();
+    assert.equal(computes, 5, 'a failed computation is not kept');
+  } finally { await f.db.close(); }
+});
+
+test('a debt write during the board computation is not hidden by the kept board', async () => {
+  const f = await setup();
+  try {
+    let computes = 0, writeDuring = true;
+    const pool = { query: async (sql, params) => {
+      if (/FROM debt_reward_months ORDER BY month DESC/.test(sql)) {
+        computes++;
+        if (writeDuring) { writeDuring = false; f.repository.bumpVersion(); } // ghi công nợ xen giữa lúc đang tính
+      }
+      return f.pool.query(sql, params);
+    }, connect: f.pool.connect };
+    const service = createDebtRewardService({ pool, repository: f.repository, now: () => new Date('2026-10-14T09:00:00Z') });
+    await service.readBoard();
+    await service.readBoard();
+    assert.equal(computes, 2, 'board computed before the write must not be kept');
+    await service.readBoard();
+    assert.equal(computes, 2);
   } finally { await f.db.close(); }
 });

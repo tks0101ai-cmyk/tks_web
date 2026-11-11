@@ -1363,3 +1363,10 @@ Kết quả `.codex_tmp/purchase-load-20-results.json`; mã thoát 0: chức nă
 - API, response và schema không đổi.
 
 Cập nhật cuối: 11/11/2026.
+
+## Hiệu năng báo cáo — 11/11/2026 (sau PR #77)
+
+- `businessReport/businessReportRoutes.js`: `reportOf(kind, snapshot)` nhớ báo cáo đã dựng theo object snapshot (WeakMap) cho `/overview`, `/sales`, `/customers`, `/products`, export và tra khách/sale; `/detail` vẫn dựng riêng (route có sửa object trả về). Kết quả dùng chung chỉ đọc.
+- `debtSchedule/debtRewardService.js`: `readBoard` dùng `sharedBoard(month)` — gom request trùng (kể cả đang tính), giữ `boardCacheMs` (30 s) khi `repository.getVersion()` không đổi; `clearScores()` và chốt tháng xóa bảng giữ; lỗi không giữ. Lọc cơ sở + gắn team (`attachSaleTeams`) vẫn chạy mỗi request. `readCurrentCycle` và danh sách tháng đọc song song.
+
+Cập nhật cuối: 11/11/2026.
