@@ -1356,6 +1356,12 @@ Kết quả `.codex_tmp/purchase-load-20-results.json`; mã thoát 0: chức nă
 
 `purchase-calculations.js` và `purchaseOrdersProjection.js` tính NET = (Tiền hàng + Tiền VC mã + Thuế + VC sau CNY × 3,920) / Tổng SL. Tiền hàng dùng tỉ giá theo dòng; hằng 3,920 chỉ dùng cho VC sau. Chi phí trống được tính là 0 trong NET; kết quả NET vẫn có thể hiển thị khi chưa có phân bổ VC mã.
 
+Tổng tệ trên bảng Đặt hàng làm tròn đơn vị mặc định; bấm hoặc kích hoạt nút bằng bàn phím sẽ hiện 3 chữ số thập phân ngay trong ô, khi mất focus trả về số làm tròn. Không mở hộp thoại và không đổi giá trị tính toán/ghi dữ liệu.
+
+## Thu mua — ghi đè nhóm Đối chiếu Cân đo (migration 0122, 11/11/2026)
+
+`purchase_orders.measurement_overrides` lưu riêng 9 số đo/tính toán người dùng sửa trên từng dòng. Key vắng mặt dùng giá trị nguồn/phép tính tự động; nhập trống hoặc xóa bỏ key và trở lại tự động. `0122_purchase_measurement_overrides.sql` đã thêm vào `ensurePurchaseSchema.FILES`; migration chỉ thêm cột JSONB, không sửa `shipping_measures` hoặc Google Sheet. Chưa xác minh DB production.
+
 ## Hiệu năng — 11/11/2026
 
 - `marketingReport/marketingDatabaseReportService.js`: `matches()` dùng `norm()` có nhớ kết quả; bảng tổng SĐT theo NV đếm 1 lượt (`countByEmployee`) thay vì lọc toàn bộ dòng cho từng NV — nguồn các lần treo event loop ~11 s.

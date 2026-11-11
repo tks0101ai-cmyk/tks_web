@@ -328,6 +328,8 @@
 .purchase-page .order-filters .filter-actions{grid-column:1/-1;grid-row:2}
 .purchase-page #orderTable td[data-field="productCode"]{font-weight:400}
 .purchase-page #orderTable td[data-field="productCode"],.purchase-page #orderTable td[data-field="productCode"] .code-label{text-overflow:clip}
+.purchase-page #orderTable .purchase-cny-detail{min-height:0;padding:0;border:0;background:transparent;box-shadow:none;color:inherit;font:inherit;line-height:inherit}
+.purchase-page #orderTable .purchase-cny-detail:hover{background:transparent;color:var(--primary)}
 
 .purchase-page .column-tools,.purchase-page .column-tools span,.purchase-page #containerTable small,.purchase-page .expression-result,.purchase-page #orderTable td[data-field="productCode"] .code-edit{font-size:11px;line-height:1.4}
 

@@ -3,7 +3,7 @@
   else root.PurchaseExcel = factory(root.XLSX,root.PurchaseCalculations);
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (XLSX,C) {
   'use strict';
-  const numericTypes = new Set(['num', 'num1', 'num2', 'num4', 'cny', 'money', 'pct', 'ratio']);
+  const numericTypes = new Set(['num', 'num1', 'num2', 'num3', 'num4', 'cny', 'money', 'pct', 'ratio']);
   const labels = { productName: 'Tên SP (Việt)', productNameCn: 'Tên SP (Trung)', literDiff: 'Lệch L/c (%)', gramDiff: 'Lệch g/c (%)' };
   const normalize = value => String(value ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
   const caption = col => labels[col.k] || (col.cn ? col.l + ' · ' + col.cn : col.l);

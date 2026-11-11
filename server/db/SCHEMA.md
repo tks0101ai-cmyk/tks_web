@@ -1,5 +1,9 @@
 # Supabase schema cho đồng bộ KiotViet
 
+## Migration 0122 — Thu mua: số đo đối chiếu ghi đè theo dòng (11/11/2026, chưa xác minh DB production)
+
+`0122_purchase_measurement_overrides.sql` thêm `purchase_orders.measurement_overrides JSONB NOT NULL DEFAULT '{}'::jsonb`. JSONB lưu riêng giá trị người dùng sửa cho 9 trường nhóm Đối chiếu Cân đo (`literWarehouse`, `m3Warehouse`, `literChina`, `literDiff`, `gramWarehouse`, `gramChina`, `gramDiff`, `measuredOn`, `ratio`). Khi key không có, UI dùng giá trị tự động từ nguồn/ phép tính hiện hành; xóa hoặc nhập trống gỡ key để trở về tự động. Không đổi bảng nguồn `shipping_measures` hay dữ liệu Sheet. Migration được đăng ký trong `db/ensurePurchaseSchema.js`; cần có trên DB trước khi dùng bản UI ghi đè.
+
 ## Migration 0118 — Thu mua: nguồn gốc của từng dòng (06/11/2026, chưa áp DB)
 
 `0118_purchase_source_sheet.sql`: `purchase_orders` thêm `source_sheet TEXT` và `source_row INTEGER`.
@@ -948,13 +952,13 @@ Cập nhật gần nhất: 04/11/2026.
 
 Thêm /thu-mua/dat-hang/ và /api/purchase-orders với quyền purchase.view/edit/import/export/depart/arrive; mặc định chỉ Quản lý, quyền mở rộng qua cơ chế cấp quyền hiện có. Module có bảng Chỉ số cont và Đặt hàng sửa trực tiếp, lọc riêng theo tài khoản, dropdown NV/cont/trạng thái, tách .01/.02 đệ quy, sửa hàng loạt, undo/xóa mềm/khôi phục, import toàn bộ hợp lệ mới ghi, audit/realtime và bộ công thức dùng chung. Source gate ngăn job Sheet và web ghi đè nhau.
 
-Migrations Thu mua được đổi sang 0110–0116 vì main đã dùng 0101–0109 và 0114 (0114_stocktake_frozen_lines.sql). db/ensurePurchaseSchema.js áp đúng sáu migration này khi web startup, transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
+Migrations Thu mua bắt đầu ở 0110–0116 vì main đã dùng 0101–0109 và 0114 (`0114_stocktake_frozen_lines.sql`). `db/ensurePurchaseSchema.js` áp các migration Thu mua đã đăng ký trong một giao dịch/advisory lock, không chạy migration module khác; hiện có tới `0122_purchase_measurement_overrides.sql`. Nguồn mặc định Sheets được giữ nguyên; không seed/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
 
 
 
 ## Migration 0101 — Thu mua / cont dùng chung (03/11/2026, chưa áp DB)
 - product_containers: một nguồn cont chuẩn cho Thu mua và các bảng đọc Dự kiến hàng về; không tạo purchase_containers riêng. Trạng thái 1–4, xe và sức chứa NUMERIC, ngày/kho/người xác nhận về, version. Tên cont có khóa chuẩn hóa UNIQUE.
-- purchase_orders: ID BIGSERIAL bất biến, row_key UNIQUE, root_key, split_from_key, container_id NULL là hàng chờ; các trường tiền/số lượng NUMERIC, listed_at DATE. Không phân tách branch theo ngoại lệ chỉ HN đặt hàng. Khóa .01/.02 đệ quy, số thùng và quy cách nguyên dương.
+- purchase_orders: ID BIGSERIAL bất biến, row_key UNIQUE, root_key, split_from_key, container_id NULL là hàng chờ; các trường tiền/số lượng NUMERIC, listed_at DATE; `measurement_overrides` JSONB per-row (migration 0122). Không phân tách branch theo ngoại lệ chỉ HN đặt hàng. Khóa .01/.02 đệ quy, số thùng và quy cách nguyên dương.
 - purchase_key_history: lưu khóa đã nghỉ khi tách, không cho UPDATE/DELETE; import chỉ nhận khóa lá hiện hành.
 - purchase_history và purchase_departures: audit và ảnh chụp thực xuất append-only, trigger chặn sửa/xóa.
 - purchase_import_previews: UUID token, actor_id, payload server, hạn 30 phút và result cho xác nhận lặp. Ghi dữ liệu và đánh dấu token trong cùng giao dịch.

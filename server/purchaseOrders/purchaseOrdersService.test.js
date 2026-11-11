@@ -17,7 +17,7 @@ before(async () => {
   // Danh sach migration Thu mua lay tu FILES de them migration moi khong lam
   // do test (truoc day ghim cung nen 0114/0115 bi bo sot).
   for (const name of ['0053_product_containers.sql','0072_product_container_unit_price_cny.sql','0075_product_container_expected.sql','0078_product_container_expected_prices.sql','0086_product_container_other_note.sql',...PURCHASE_FILES]) await db.exec(fs.readFileSync(path.join(__dirname,'../db/migrations',name),'utf8'));
-  await db.exec('CREATE TABLE shipping_measures(code_key text PRIMARY KEY, per_carton numeric, m3_per_unit numeric)');
+  await db.exec('CREATE TABLE shipping_measures(code_key text PRIMARY KEY, per_carton numeric, m3_per_unit numeric, kg_per_unit numeric)');
   // Expected-arrivals projection also reads the Kiot product-name fallback.
   await db.exec('CREATE TABLE product_report(product_code text,product_name text); CREATE TABLE products(code text,name text); CREATE TABLE kiot_test_stock(on_hand numeric);INSERT INTO kiot_test_stock VALUES(99)');
   events = new EventEmitter();
@@ -69,6 +69,25 @@ test('warehouse liter and m³ measurements project one CÂN ĐO record to every 
  const preview=await service.previewImport(manager,{buffer:file(exported)});
  assert.equal(preview.valid,true);assert.equal(preview.counts.unchanged,2);assert.ok(preview.ignoredColumns.includes('L/c (kho)'));assert.ok(preview.ignoredColumns.includes('M³ kho đo'));
  await service.remove(manager,{rows:[{id:listed.rows[0].id,version:listed.rows[0].version}]});assert.equal((await service.trash(manager))[0].m3Warehouse,.3);
+});
+test('comparison overrides persist per order row, export effective values, and clear back to shared measurements',async()=>{
+ await db.query("INSERT INTO shipping_measures(code_key,per_carton,m3_per_unit,kg_per_unit) VALUES('a',12,.025,.4)");
+ const a=await service.create(manager,{...input(),productCode:'A',m3PerCarton:.073,kgPerCarton:10}),b=await service.create(manager,{...input(),productCode:'A',listedAt:'2026-11-02',m3PerCarton:.073,kgPerCarton:10});
+ const edited=await service.update(manager,a.id,{version:a.version,before:{literWarehouse:25},changes:{literWarehouse:30,m3Warehouse:.42,literChina:8,literDiff:-.7333,gramWarehouse:450,gramChina:350,gramDiff:-.2222,measuredOn:'2026-11-10T14:35',ratio:18.5}});
+ assert.deepEqual([edited.literWarehouse,edited.m3Warehouse,edited.literChina,edited.literDiff,edited.gramWarehouse,edited.gramChina,edited.gramDiff,edited.measuredOn,edited.ratio],[30,.42,8,-.7333,450,350,-.2222,'2026-11-10T14:35',18.5]);
+ assert.equal(edited.measurementDefaults.literWarehouse,25);assert.equal(edited.measurementDefaults.m3Warehouse,.3);assert.equal(edited.measurementDefaults.measuredOn,null);
+ assert.deepEqual(Object.keys(edited.measurementOverrides).sort(),['literChina','literDiff','literWarehouse','m3Warehouse','gramWarehouse','gramChina','gramDiff','measuredOn','ratio'].sort());
+ const listed=await service.list(manager),exported=await service.exportRows(manager),latest=await service.latest(manager,'A');
+ const persisted=listed.rows.find(r=>r.id===a.id);assert.equal(persisted.literWarehouse,30);assert.equal(persisted.m3Warehouse,.42);assert.equal(exported.find(r=>r.id===a.id).literChina,8);assert.equal(exported.find(r=>r.id===a.id).literDiff,-.7333);assert.equal(latest.measurementOverrides.literWarehouse,30);
+ assert.deepEqual([listed.rows.find(r=>r.id===b.id).literWarehouse,listed.rows.find(r=>r.id===b.id).m3Warehouse],[25,.3]);
+ assert.deepEqual((await db.query("SELECT per_carton,m3_per_unit,kg_per_unit FROM shipping_measures WHERE code_key='a'")).rows[0],{per_carton:'12',m3_per_unit:'0.025',kg_per_unit:'0.4'});
+ const undo=(await service.operations(manager))[0];assert.ok(undo);await service.undo(manager,{operationId:undo.id});assert.equal((await service.latest(manager,'A')).literWarehouse,25);
+ const again=await service.update(manager,a.id,{version:(await service.latest(manager,'A')).version,changes:{literWarehouse:30,m3Warehouse:.42,measuredOn:'2026-11-10'}});
+ const cleared=await service.update(manager,a.id,{version:again.version,changes:{literWarehouse:null,m3Warehouse:'',measuredOn:null}});assert.equal(cleared.literWarehouse,25);assert.equal(cleared.m3Warehouse,.3);assert.equal(cleared.measuredOn,null);assert.equal(Object.hasOwn(cleared.measurementOverrides,'literWarehouse'),false);
+ const changedSource=await service.update(manager,a.id,{version:cleared.version,changes:{literWarehouse:35,literDiff:null}});assert.ok(Number.isFinite(changedSource.literDiff));
+ await assert.rejects(service.update(manager,a.id,{version:changedSource.version,changes:{literWarehouse:-1}}),e=>e.code==='VALIDATION_ERROR');
+ const direct=await service.create(manager,{...input(),productCode:'A',m3Warehouse:.66});assert.equal(direct.m3Warehouse,.66);
+ const planned=await service.applyPlan(manager,{creates:[{values:{...input(),productCode:'A',gramWarehouse:550}}]});assert.equal(planned.createdKeys.length,1);assert.equal((await service.latest(manager,'A')).gramWarehouse,550);
 });
 test('migration leaves Sheets as default and writes are blocked before cutover', async () => {
   await db.query("UPDATE purchase_settings SET source_mode='sheets'");
