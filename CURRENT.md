@@ -32,7 +32,7 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 - [ ] 10/11 — Nguồn 3 trang VAT đổi sang file trung gian "cúc cu test" (nhánh `claude/brainstorm-error-cause-fix-bb0ebf`) — merge + deploy; sau đó cân nhắc lưu bản đọc tốt gần nhất vào Postgres để deploy không mất cache
 
 - [ ] 11/11 — Vị trí hàng cho xác nhận bốc âm, đổi tên vị trí đồng bộ đơn chỉ định và đối soát đơn Kiot hoàn thành (không migration) — deploy web/worker rồi kiểm số đơn chuyển và số còn lỗi đối soát
-- [ ] 11/11 — Hiệu năng: sửa treo ~11 s do báo cáo SĐT marketing, bớt vòng DB bốc/in đơn, rút gọn animation (nhánh `claude/friendly-ride-y0uwwk`, không migration) — merge + deploy, rồi lọc lại log `[loop-stall]`/`[timing]`; còn đứng 1–3 s thì làm gom request + cache cho `penalty-board`/`business-report`
+- [ ] 11/11 — Hiệu năng: PR #77, #78 đã deploy; đợt 3 (gỡ sao băng/pháo hoa, bỏ số đếm/chữ chạy, Công nợ bớt tải lại, log `[timing]` API kế toán — nhánh `claude/friendly-ride-y0uwwk`, không migration) — merge + deploy, rồi đọc `[loop-stall]` và `[timing]` API kế toán
 
 ## Chỉ người vận hành làm được
 

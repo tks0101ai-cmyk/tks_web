@@ -1,7 +1,7 @@
 'use strict';
 
 // Bao NGAY LE / SINH NHAT len chuong thong bao. Du lieu ngay: public/shared/special-days.js
-// (dung chung voi shooting-star.js de ban phao hoa). Nguoi nhan = moi tai khoan dang hoat
+// (truoc dung chung voi shooting-star.js; hieu ung phao hoa da go 11/11/2026). Nguoi nhan = moi tai khoan dang hoat
 // dong co quyen `hr.leave` (quyen xem lich nghi phep).
 //
 // Chong gui trung: moi (ngay, su kien) chi gui khi CHEN DUOC dong vao bang

@@ -17,6 +17,18 @@ const rules = require('./customerProfileRules');
 const { wantsPage, pageRows, searchRows } = require('../shared/tablePage');
 
 const BUILDERS = { sales: svc.buildSaleReport, customers: svc.buildCustomerReport, products: svc.buildProductReport };
+// repository.snapshot() tra CUNG 1 object trong ~60 s (cache SWR): moi loai bao cao chi dung 1 lan / snapshot thay vi moi
+// request (Tong quan ~0,4 s CPU, Sale / Khach ~0,15 s; vai nguoi mo cung luc tung lam event loop dung 2+ s, log 11/11/2026).
+// Ket qua dung chung CHI DOC: enrich / loc / sap xep / phan trang deu tao mang + object moi, khong sua tai cho.
+const REPORT_BUILDERS = { ...BUILDERS, overview: svc.buildOverview };
+const builtReports = new WeakMap(); // snapshot -> Map(kind -> report)
+function reportOf(kind, snap) {
+  if (!snap || typeof snap !== 'object') return REPORT_BUILDERS[kind](snap);
+  let reports = builtReports.get(snap);
+  if (!reports) { reports = new Map(); builtReports.set(snap, reports); }
+  if (!reports.has(kind)) reports.set(kind, REPORT_BUILDERS[kind](snap));
+  return reports.get(kind);
+}
 const CUSTOMER_NOTES = 'reports.business.customerNotes';
 const CUSTOMER_MANAGE = 'reports.business.customerManage';
 const MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -46,7 +58,7 @@ function createBusinessReportRouter({ repository = createRepository(), customerP
 
   for (const kind of Object.keys(BUILDERS)) {
     router.get(`/${kind}`, requireAuth, requireFeature(kind === 'products' ? 'reports.products.growth' : 'reports.business'), handle(async (req, res) => {
-      let report = BUILDERS[kind](await repository.snapshot());
+      let report = reportOf(kind, await repository.snapshot());
       if (kind === 'customers') {
         if ((req.query.salesChannel || req.query.warehouseScale) && !hasFeature(req.user, CUSTOMER_NOTES)) {
           throw fail(403, 'CUSTOMER_PROFILE_FORBIDDEN', 'Bạn không có quyền lọc thông tin chi tiết khách hàng.');
@@ -57,7 +69,7 @@ function createBusinessReportRouter({ repository = createRepository(), customerP
     }));
   }
 
-  router.get('/overview', ...view, handle(async (req, res) => res.json(svc.buildOverview(await repository.snapshot()))));
+  router.get('/overview', ...view, handle(async (req, res) => res.json(reportOf('overview', await repository.snapshot()))));
 
   function queryReport(kind, report, query) {
     const all = report.rows;
@@ -129,7 +141,7 @@ function createBusinessReportRouter({ repository = createRepository(), customerP
     if (!saleName || saleName === UNGROUPED_SALE) throw bad('Sale không hợp lệ.');
     if (teamName.length > 60) throw bad('Tên team tối đa 60 ký tự.');
     // Chi nhan sale dang co trong bang (khong de ghi khoa tuy y vao sale_teams).
-    const known = svc.buildSaleReport(await repository.snapshot()).rows.some(r => r.key === saleName);
+    const known = reportOf('sales', await repository.snapshot()).rows.some(r => r.key === saleName);
     if (!known) { const e = new Error('Không tìm thấy sale này.'); e.statusCode = 404; throw e; }
     res.json(await repository.setSaleTeam(saleName, teamName));
   }));
@@ -145,7 +157,7 @@ function createBusinessReportRouter({ repository = createRepository(), customerP
   async function customerOf(rawKey) {
     const key = String(rawKey == null ? '' : rawKey);
     if (!key) throw fail(400, 'INVALID_CUSTOMER_KEY', 'Thiếu khách hàng.');
-    const row = svc.buildCustomerReport(await repository.snapshot()).rows.find(r => r.key === key);
+    const row = reportOf('customers', await repository.snapshot()).rows.find(r => r.key === key);
     if (!row) throw fail(404, 'CUSTOMER_NOT_FOUND', 'Không tìm thấy khách hàng này.');
     return { key, name: row.name };
   }
@@ -233,7 +245,7 @@ function createBusinessReportRouter({ repository = createRepository(), customerP
       throw fail(400, 'IMPORT_UNREADABLE', 'Không đọc được file Excel (file hỏng hoặc không phải .xlsx).');
     }
     if (!parsed.rows.length) throw fail(400, 'IMPORT_EMPTY', 'File không có dòng khách hàng nào.');
-    const validKeys = new Set(svc.buildCustomerReport(await repository.snapshot()).rows.map(r => r.key));
+    const validKeys = new Set(reportOf('customers', await repository.snapshot()).rows.map(r => r.key));
     res.json(await profileImport.runProfileImport({
       rows: parsed.rows, columns: parsed.columns, validKeys, pool: importPool(), apply: req.query.apply === '1',
       mode: req.query.mode === 'overwrite' ? 'overwrite' : 'fill', actor: actorOf(req.user)
@@ -349,8 +361,8 @@ function createBusinessReportRouter({ repository = createRepository(), customerP
   const exportGuard = [requireAuth, kindPermission, requireFeature('reports.export')];
   const exportReport = async req => {
     const kind = String(req.query.kind || '');
-    if (!BUILDERS[kind]) { const e = new Error('Bảng xuất không hợp lệ.'); e.statusCode = 400; throw e; }
-    let report = BUILDERS[kind](await repository.snapshot());
+    if (!Object.hasOwn(BUILDERS, kind)) { const e = new Error('Bảng xuất không hợp lệ.'); e.statusCode = 400; throw e; }
+    let report = reportOf(kind, await repository.snapshot());
     if (kind === 'customers') {
       if ((req.query.salesChannel || req.query.warehouseScale) && !hasFeature(req.user, CUSTOMER_NOTES)) {
         throw fail(403,'CUSTOMER_PROFILE_FORBIDDEN','Bạn không có quyền lọc thông tin chi tiết khách hàng.');

@@ -100,6 +100,13 @@ router.use(branchRoutes);
 router.use(stockPositionsRoutes);
 router.use(require('./purchaseOrders/purchaseOrdersRoutes'));
 router.use(stocktakeRoutes);
+// Do thoi gian (log [timing] khi >= 500 ms) cho cac API ke toan / bao cao: truoc 11/11/2026 khong co so lieu de biet cho cham.
+// Chi bao tong thoi gian; route nao can chi tiet thi them timedQuery/timedOperation ben trong.
+for (const prefix of ['/api/cashbook', '/api/vat-draft', '/api/vat-requests', '/api/vat-lookup', '/api/business-report',
+  '/api/expected-arrivals', '/api/invoice-price-audit', '/api/invoice-approved-prices', '/api/marketing-report',
+  '/api/debt-management', '/api/dashboard']) {
+  router.use(prefix, startTiming);
+}
 // Sổ quỹ toàn công ty: không áp cookie hoặc middleware chọn cơ sở.
 router.use('/api/cashbook', cashbookRoutes);
 // Kế toán – Nháp VAT (port vat-draft-app): chứng từ theo cookie cơ sở, gắn resolveBranch trong router.
@@ -272,6 +279,7 @@ router.get('/api/dashboard', async (req, res) => {
 // bao "co du lieu moi" (khong keo payload) - frontend tu goi lai voi bo loc
 // va quyen/co so cua chinh phien dang nhap do, nen khong can phat rieng theo
 // co so o day.
+const SSE_COALESCE_MS = 2000;
 router.get('/api/dashboard/events', (req, res) => {
   req.socket.setTimeout(0); // Node mac dinh timeout socket sau ~2 phut khong hoat dong
   res.writeHead(200, {
@@ -290,7 +298,20 @@ router.get('/api/dashboard/events', (req, res) => {
   };
 
   write(':ok\n\n');
-  const onUpdated = (payload) => write(`event: dashboard-updated\ndata: ${JSON.stringify(payload)}\n\n`);
+  // Gom tin hieu: nhieu lan 'updated' trong SSE_COALESCE_MS (vd vai nguoi doi trang thai cong no lien tiep, job + webhook
+  // cung luc) chi gui 1 event (payload moi nhat) -> moi trinh duyet tai lai 1 lan thay vi 1 lan / tin hieu.
+  let pendingPayload = null;
+  let coalesceTimer = null;
+  const flushUpdated = () => {
+    coalesceTimer = null;
+    const payload = pendingPayload;
+    pendingPayload = null;
+    write(`event: dashboard-updated\ndata: ${JSON.stringify(payload)}\n\n`);
+  };
+  const onUpdated = (payload) => {
+    pendingPayload = payload;
+    if (!coalesceTimer) coalesceTimer = setTimeout(flushUpdated, SSE_COALESCE_MS);
+  };
   dashboardRollupEvents.on('updated', onUpdated);
 
   // Giu ket noi song qua proxy hay tu ngat sau vai chuc giay khong co byte nao.
@@ -298,6 +319,7 @@ router.get('/api/dashboard/events', (req, res) => {
 
   req.on('close', () => {
     clearInterval(heartbeat);
+    clearTimeout(coalesceTimer);
     dashboardRollupEvents.off('updated', onUpdated);
   });
 });

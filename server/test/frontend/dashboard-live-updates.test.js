@@ -184,3 +184,21 @@ test('tai khoan co mot trong cac quyen /api/dashboard thi van ket noi SSE khi tr
   const app = run({ permissionsDeferred: true, features: ['reports.debt'] });
   assert.equal(app.streams.length, 1);
 });
+
+// 11/11/2026: mọi tab nền cùng tải lại mỗi lần có tín hiệu từng làm tới 56 request bảng thưởng/phạt chạy cùng lúc.
+test('tab dang an nhan dashboard-updated: chi danh dau cu, khong goi may chu; quay lai tab thi tai lai 1 lan', () => {
+  const app = run({ lastFetchAt: Date.now() });
+  app.document.visibilityState = 'hidden';
+  app.latestStream().emit('dashboard-updated');
+  app.latestStream().emit('dashboard-updated');
+  assert.equal(app.state.dataEpoch, 2, 'cac tab khac van biet du lieu da cu');
+  assert.equal(app.timeouts.length, 0, 'tab an khong hen tai lai');
+  assert.equal(app.loadCalls.length, 0);
+
+  app.document.visibilityState = 'visible';
+  app.documentHandlers.visibilitychange();
+  assert.equal(app.loadCalls.length, 1, 'quay lai tab: tai lai du du lieu con moi theo lastFetchAt');
+  assert.equal(app.quietCalls.length, 1);
+  app.documentHandlers.visibilitychange();
+  assert.equal(app.loadCalls.length, 1, 'chi tai lai 1 lan cho cac tin hieu da lo');
+});

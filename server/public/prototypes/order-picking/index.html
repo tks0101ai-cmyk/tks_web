@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Roboto:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="/shared/shared.css?v=20261107-3">
-<script src="/shared/motion.js?v=20261111-fast-1" defer></script>
+<script src="/shared/motion.js?v=20261111-calm-1" defer></script>
   <link rel="stylesheet" href="/shared/search-clear.css?v=20261009-1">
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261016">
 <style>
@@ -717,7 +717,7 @@
   <script src="/shared/table-controls.js?v=20261108-2"></script>
   <script src="/shared/fuzzy-search.js"></script>
   <script src="/shared/search-clear.js?v=20261009-1"></script>
-  <script src="/shared/shared-nav.js?v=20261105-kho"></script>
+  <script src="/shared/shared-nav.js?v=20261111-nofx"></script>
   <script src="/shared/table-align.js?v=20261017"></script>
   <script src="/shared/dateInput.js?v=20260912"></script>
   <script src="/shared/carton.js?v=20261031-1"></script>
@@ -2743,7 +2743,6 @@
       applyLcSubtabFromHash();
     });
   </script>
-  <script src="/shared/shooting-star.js?v=20261019"></script>
 <div id="pickingPrototypeBanner" class="picking-prototype-banner">PROTOTYPE · Dữ liệu mô phỏng · Giữ nguyên giao diện Vòng đời đơn hàng <button id="pickingDataBtn" type="button">Nguồn dữ liệu</button> <button id="pickingStocktakeBtn" type="button">Tồn đầu kiểm kê</button> <button id="pickingLocationsBtn" type="button">Sổ vị trí</button> <span id="pickingLocationSource">Vị trí: Dữ liệu demo</span></div>
 <dialog id="pickingDialog" aria-labelledby="pickingTitle"><div class="dp-head"><div class="dp-head-text"><h2 class="dp-title" id="pickingTitle"></h2><p class="dp-subtitle">Chọn vị trí và điều chỉnh số lượng nhặt. Tổng phân bổ không vượt quá số lượng cần nhặt.</p></div><button id="pickingClose" class="dp-close" aria-label="Đóng chỉ định vị trí">×</button></div><div class="picking-body"><div class="picking-status-bar"><span id="pickingOrderStatus" class="picking-order-status" data-status="">Chưa chỉ định</span><button id="pickingConfirmPick" type="button" class="btn-primary" hidden>Xác nhận nhặt</button><button id="pickingCancelPick" type="button" hidden>Hủy nhặt</button><button id="pickingReopen" type="button" hidden>Chỉ định lại</button></div><p id="pickingSource" class="picking-source"></p><div class="picking-table-wrap"><table class="dp-table picking-table" data-table-controls="off" data-table-sort="off"><thead><tr><th>Mã hàng</th><th>Tên hàng</th><th>Cần nhặt</th><th title="Số thùng thực nhặt theo chỉ định (SL nhặt / SL mỗi thùng). Trống khi dòng chưa chỉ định đủ SL; lẻ hiện đỏ.">ST</th><th title="Tổng khả dụng cùng mã tại cơ sở sau giữ chỗ của các đơn khác">Tồn kho</th><th>Vị trí kho</th></tr></thead><tbody id="pickingRows"></tbody></table></div><label class="picking-note">Ghi chú cho kho<textarea id="pickingNote" rows="2"></textarea></label><p id="pickingStatus" role="status"></p></div><div class="picking-footer"><span id="pickingProgress"></span><div><button id="pickingSuggest">Gợi ý lại</button><button id="pickingConfirm" class="btn-primary">Xác nhận chỉ định</button></div></div></dialog>
 <dialog id="pickingPrintDialog" aria-labelledby="pickingPrintTitle"><div class="dp-head"><div><p class="dp-kicker">ĐÃ XÁC NHẬN VỊ TRÍ</p><h2 class="dp-title" id="pickingPrintTitle">Xem trước phiếu nhặt · mẫu tạm</h2></div><div><button id="pickingPrintBtn" class="btn-primary">In phiếu tạm</button><button id="pickingPrintClose" class="dp-close" aria-label="Đóng bản in">×</button></div></div><div id="pickingPrintSheet"></div></dialog>

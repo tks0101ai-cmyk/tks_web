@@ -545,3 +545,20 @@ Workspace dùng thêm shared/purchase-grid.js (TSV, rowKey, vùng, fill, tổng 
 Log `[loop-stall]` cho thấy cả web đứng ~11 s nhiều lần mỗi giờ do `GET /api/marketing-report/phones` lọc lại ~30k SĐT cho từng nhân viên (hàng chục triệu lần chuẩn hóa chuỗi). Nay đếm một lượt + nhớ kết quả `norm()` (mô phỏng 30k × 60 NV: 15,5 s → 0,27 s). Bốc/in đơn: transaction chỉ định vị trí 9 → 6 vòng DB (khóa VT + giữ chỗ 1 câu; đầu + dòng + lịch sử 1 câu), đổi trạng thái + lịch sử 1 câu (hủy/xác nhận), đọc lại chỉ định 2 → 1 vòng; form in chung tải song song với lệnh lưu. Animation dùng chung (`shared/motion.js`) xong trong ≤ 0,45 s thay vì tới 1,3 s. Không đổi schema/env/dependency.
 
 Cập nhật cuối: 11/11/2026.
+
+## Hiệu năng: báo cáo kinh doanh và bảng thưởng/phạt sale dùng chung kết quả (11/11/2026)
+
+Sau PR #77, log `[loop-stall]` còn các lần đứng 1–2 s do nhiều người mở cùng lúc `/api/debt-management/penalty-board` (5–19 request song song, mỗi cái 5–16 s) và `/api/business-report/*` (dựng lại báo cáo mỗi request: Tổng quan ~0,4 s CPU, Sale/Khách ~0,15 s). Nay báo cáo kinh doanh dựng 1 lần cho mỗi snapshot (snapshot vốn giữ ~60 s); bảng thưởng/phạt tính 1 lần cho các request trùng, giữ 30 s, tính lại ngay khi ghi công nợ (`bumpVersion`), khi khách đổi (`customersChanged`) hoặc khi chốt tháng; team sale vẫn đọc mới mỗi request. Không đổi schema/env/dependency/API.
+
+Cập nhật cuối: 11/11/2026.
+
+## Hiệu năng: gỡ hiệu ứng trang trí, bớt tải lại Công nợ, đo thời gian API kế toán (11/11/2026)
+
+- Gỡ hẳn hiệu ứng sao băng / pháo hoa (`shared/shooting-star.js`, `shared/fireworks.js`): vòng vẽ toàn màn hình 60 lần/giây chạy liên tục trên mọi trang. `shared/special-days.js` vẫn giữ cho chuông thông báo ngày lễ / sinh nhật.
+- `shared/motion.js`: bỏ số đếm chạy trên KPI (số thật hiện ngay) và tiêu đề hiện từng chữ (chỉ mờ dần 0,22 s); không theo dõi đổi chữ toàn trang nữa.
+- Công nợ (Dashboard): tab ẩn nhận tín hiệu cập nhật chỉ đánh dấu cũ, tải lại khi quay lại tab; bảng thưởng/phạt + tuổi nợ khi số công nợ không đổi chỉ tải lại tối đa 1 lần / 60 s; SSE `/api/dashboard/events` gom tín hiệu dồn dập trong 2 s; tuổi nợ dùng chung 1 lượt đọc khi nhiều request trùng.
+- Log `[timing]` (≥ 500 ms) cho `/api/cashbook`, `/api/vat-*`, `/api/business-report`, `/api/expected-arrivals`, `/api/invoice-price-audit`, `/api/invoice-approved-prices`, `/api/marketing-report`, `/api/debt-management`, `/api/dashboard`.
+
+Không đổi schema/env/dependency/API.
+
+Cập nhật cuối: 11/11/2026.

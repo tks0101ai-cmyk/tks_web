@@ -1369,3 +1369,18 @@ Tổng tệ trên bảng Đặt hàng làm tròn đơn vị mặc định; bấm
 - API, response và schema không đổi.
 
 Cập nhật cuối: 11/11/2026.
+
+## Hiệu năng báo cáo — 11/11/2026 (sau PR #77)
+
+- `businessReport/businessReportRoutes.js`: `reportOf(kind, snapshot)` nhớ báo cáo đã dựng theo object snapshot (WeakMap) cho `/overview`, `/sales`, `/customers`, `/products`, export và tra khách/sale; `/detail` vẫn dựng riêng (route có sửa object trả về). Kết quả dùng chung chỉ đọc.
+- `debtSchedule/debtRewardService.js`: `readBoard` dùng `sharedBoard(month)` — gom request trùng (kể cả đang tính), giữ `boardCacheMs` (30 s) khi `repository.getVersion()` không đổi; `clearScores()` và chốt tháng xóa bảng giữ; lỗi không giữ. Lọc cơ sở + gắn team (`attachSaleTeams`) vẫn chạy mỗi request. `readCurrentCycle` và danh sách tháng đọc song song.
+
+Cập nhật cuối: 11/11/2026.
+
+## Hiệu năng — 11/11/2026 (đợt 3)
+
+- `routes.js`: `startTiming` gắn cho các tiền tố API kế toán / báo cáo (danh sách trong vòng `for (const prefix of …)`); SSE `/api/dashboard/events` gom các `updated` trong `SSE_COALESCE_MS` (2 s) thành 1 event mỗi kết nối, gửi payload mới nhất.
+- `debtSchedule/debtAgingRepository.js`: `readAging` dùng chung 1 lượt đọc cho request trùng (`pending`), `clearCache()` trong lúc đọc thì kết quả không được ghi cache.
+- Đã xóa `public/shared/shooting-star.js`, `public/shared/fireworks.js`, `test/frontend/fireworks.test.js`; `shared-nav.js` không còn tự nạp sao băng.
+
+Cập nhật cuối: 11/11/2026.

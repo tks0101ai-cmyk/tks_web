@@ -47,7 +47,7 @@
     })();
   </script>
   <link rel="stylesheet" href="/shared/shared.css?v=20261107-3">
-  <script src="/shared/motion.js?v=20261111-fast-1" defer></script>
+  <script src="/shared/motion.js?v=20261111-calm-1" defer></script>
   <link rel="stylesheet" href="/shared/search-clear.css?v=20261009-1">
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261016">
   <link rel="stylesheet" href="/shared/product-history.css?v=20261105-1">
@@ -4034,7 +4034,6 @@
 <body>
 
   <!-- ===== SHOOTING STAR CANVAS ===== -->
-  <canvas id="shooting-star-canvas" aria-hidden="true"></canvas>
 
   <div class="tks-toast-stack" id="tksToastStack" aria-live="polite"></div>
 
@@ -5509,7 +5508,7 @@
     })();
   </script>
   <script src="/shared/search-clear.js?v=20261009-1"></script>
-  <script src="/shared/shared-nav.js?v=20261105-kho"></script>
+  <script src="/shared/shared-nav.js?v=20261111-nofx"></script>
   <script src="/shared/table-align.js?v=20261017"></script>
   <script src="/shared/dateInput.js?v=20260912"></script>
   <script src="/shared/image-compress.js?v=20261022"></script>
@@ -12220,10 +12219,7 @@
         const tableOnly = state.debtRenderTableOnly === true;
         state.debtRenderTableOnly = false;
         renderDebtManagement();
-        if (!tableOnly) {
-          loadDebtPenaltyBoard();
-          loadDebtAging();
-        }
+        if (!tableOnly) loadDebtSideTables();
       }
       applyActiveTableSorts();
     }
@@ -12734,6 +12730,19 @@
     function formatCycleMonth(month) {
       const text = String(month || '');
       return /^\d{4}-\d{2}$/.test(text) ? text.slice(5, 7) + '/' + text.slice(0, 4) : '';
+    }
+
+    // Tự làm mới (tín hiệu SSE) khi số công nợ KHÔNG đổi: chỉ tải lại bảng thưởng/phạt + tuổi nợ nếu lần tải trước đã quá
+    // 60 s. Trước đây mọi tín hiệu đều làm mọi tab gọi lại cả 2 bảng (log 11/11/2026: tới 56 request penalty-board cùng lúc).
+    const DEBT_SIDE_REFRESH_MS = 60000;
+    function loadDebtSideTables() {
+      state.debtSideLoadedAt = Date.now();
+      loadDebtPenaltyBoard();
+      loadDebtAging();
+    }
+    function refreshDebtSideTablesIfStale() {
+      if (Date.now() - (state.debtSideLoadedAt || 0) < DEBT_SIDE_REFRESH_MS) return;
+      loadDebtSideTables();
     }
 
     function loadDebtPenaltyBoard(month) {
@@ -13506,10 +13515,9 @@
               showToast('Lỗi hiển thị dữ liệu: ' + (err && err.message ? err.message : err), 'error');
             }
           }
-          // Điểm/hạng có thể đổi khi doanh thu tháng đổi, dù payload công nợ giống nhau.
+          // Điểm/hạng có thể đổi khi doanh thu tháng đổi, dù payload công nợ giống nhau: tải lại tối đa 1 lần / 60 s.
           if (isActiveView && targetView === 'debt' && !changed && !isManualRefresh && !request.debtTableOnly) {
-            loadDebtPenaltyBoard();
-            loadDebtAging();
+            refreshDebtSideTablesIfStale();
           }
           saveDashboardCache();
           settleManual();
@@ -13714,6 +13722,13 @@
       let retryTimer = null;
       let retryCount = 0;
       let consecutiveErrors = 0;
+      // Tín hiệu tới lúc tab đang ẩn: chưa gọi máy chủ, tải lại khi người dùng quay lại tab.
+      let pendingWhileHidden = false;
+
+      function reloadForLiveUpdate() {
+        loadData(state.days, false);
+        refreshCustomerProductReportQuietly();
+      }
 
       function refreshIfStale() {
         if (Date.now() - (state.lastFetchAt || 0) < STALE_AFTER_MS) return;
@@ -13744,14 +13759,13 @@
           // Moi tab da tai truoc do gio la du lieu cu; tab dang xem duoc tai lai o duoi,
           // cac tab khac tai lai khi nguoi dung mo (xem ensureViewData).
           state.dataEpoch = (state.dataEpoch || 0) + 1;
+          // Tab nền (ẩn) không tải ngay: mọi tab nền cùng gọi máy chủ mỗi lần có thay đổi từng làm nghẽn web (11/11/2026).
+          if (document.visibilityState === 'hidden') { pendingWhileHidden = true; return; }
           // Giai nhip: nhieu tab cung mo se nhan SSE gan nhu cung luc sau moi
           // luot rollup (~7 phut) - neu goi loadData() ngay, tat ca goi
           // /api/dashboard dong thoi, don tai pool ket noi DB. Tre ngau nhien
           // 0-3s de rai request ra.
-          setTimeout(function () {
-            loadData(state.days, false);
-            refreshCustomerProductReportQuietly();
-          }, Math.floor(Math.random() * 3000));
+          setTimeout(reloadForLiveUpdate, Math.floor(Math.random() * 3000));
         });
         stream.onopen = function () {
           consecutiveErrors = 0;
@@ -13772,7 +13786,10 @@
       // chet nhat, va cung la luc quay lai can so lieu dung nhat.
       document.addEventListener('visibilitychange', function () {
         if (document.visibilityState !== 'visible') return;
-        refreshIfStale();
+        if (pendingWhileHidden) {
+          pendingWhileHidden = false;
+          reloadForLiveUpdate();
+        } else refreshIfStale();
         if (!stream || stream.readyState === 2 /* CLOSED */) {
           if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
           retryCount = 0;
@@ -13803,7 +13820,6 @@
       mark();
     })();
   </script>
-  <script src="/shared/shooting-star.js?v=20261019"></script>
 </body>
 
 </html>

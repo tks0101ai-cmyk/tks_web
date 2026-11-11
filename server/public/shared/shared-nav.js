@@ -2227,13 +2227,5 @@
     catch(err){}
   });
 
-  // Tự động nạp hiệu ứng sao băng nền dùng chung cho mọi trang
-  if(typeof document !== 'undefined' && !window.__TKS_SHOOTING_STAR_INITIALIZED__){
-    var starScript = document.createElement('script');
-    starScript.src = '/shared/shooting-star.js?v=20261019';
-    starScript.defer = true;
-    document.head.appendChild(starScript);
-  }
-
   window.TKSNav = TKSNav;
 })();
