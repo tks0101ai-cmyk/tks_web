@@ -1351,3 +1351,11 @@ Cập nhật cuối: 10/11/2026.
 Từ gốc repo chạy `node server/scripts/purchase-load-20.cjs`. Script dùng router/service/SQL thật và PGlite mới trong RAM, không dùng DB cấu hình, không ghi dữ liệu production. 20 HTTP worker và 20 SSE connection; kiểm tra sửa riêng, xung đột, gửi lại, vừa lưu vừa tải bảng 500/5.000 dòng. Client và server cùng process; không đại diện 20 trình duyệt hay PostgreSQL nhiều connection. Integration tắt.
 
 Kết quả `.codex_tmp/purchase-load-20-results.json`; mã thoát 0: chức năng và ngưỡng local đạt; 2: chức năng đạt nhưng có ngưỡng tốc độ không đạt; 1: lỗi chạy/kiểm chứng. Ngưỡng tạm để đánh giá: p95 PATCH ≤1 giây, GET toàn bảng ≤2 giây; chưa phải SLA được duyệt. Báo cáo: `docs/04-planning/purchase-load-20-20261110-report.md`. Không có thay đổi schema/env/dependency.
+
+## Hiệu năng — 11/11/2026
+
+- `marketingReport/marketingDatabaseReportService.js`: `matches()` dùng `norm()` có nhớ kết quả; bảng tổng SĐT theo NV đếm 1 lượt (`countByEmployee`) thay vì lọc toàn bộ dòng cho từng NV — nguồn các lần treo event loop ~11 s.
+- `pickAssignments/pickAssignmentsService.js`: `assign` khóa VT + tính giữ chỗ trong 1 câu (`LOCK_POSITIONS_WITH_HELD_SQL`), ghi đầu + dòng + lịch sử bằng 1 câu CTE; `setAssignmentStatus` đổi trạng thái + ghi lịch sử 1 câu (hủy, xác nhận, chỉ định lại); `readAssignment` đọc đầu/dòng/lịch sử song song. Server-Timing: `pickPositionsLock`, `pickInsert` thay `pickInsertLines`.
+- API, response và schema không đổi.
+
+Cập nhật cuối: 11/11/2026.

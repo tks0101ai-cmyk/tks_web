@@ -538,3 +538,9 @@ Cập nhật gần nhất: 07/11/2026.
 Workspace dùng thêm shared/purchase-grid.js (TSV, rowKey, vùng, fill, tổng vùng) và purchase-grid-ui.js (chọn/copy/dán/điền), kèm test riêng. SSE/poll được gộp3giây và hoãn khi tab ẩn; GET /api/purchase-orders/revision kiểm fingerprint trước khi tải hàng. Danh mục NV không chặn bảng. Shift chọn vùng, Ctrl+C/V, Ctrl+D và tay kéo điền; Escape hủy ô đang sửa. Mọi thay đổi hàng vẫn là bản nháp, một thao tác vùng là một bước hoàn tác, bấm Lưu và xác nhận mới ghi. Báo cáo: docs/04-planning/purchase-grid-sync-20261110-test-report.md. Chưa merge/deploy.
 
 Cập nhật cuối: 10/11/2026.
+
+## Hiệu năng: bỏ treo event loop, bớt vòng DB khi bốc/in đơn, rút gọn animation (11/11/2026)
+
+Log `[loop-stall]` cho thấy cả web đứng ~11 s nhiều lần mỗi giờ do `GET /api/marketing-report/phones` lọc lại ~30k SĐT cho từng nhân viên (hàng chục triệu lần chuẩn hóa chuỗi). Nay đếm một lượt + nhớ kết quả `norm()` (mô phỏng 30k × 60 NV: 15,5 s → 0,27 s). Bốc/in đơn: transaction chỉ định vị trí 9 → 6 vòng DB (khóa VT + giữ chỗ 1 câu; đầu + dòng + lịch sử 1 câu), đổi trạng thái + lịch sử 1 câu (hủy/xác nhận), đọc lại chỉ định 2 → 1 vòng; form in chung tải song song với lệnh lưu. Animation dùng chung (`shared/motion.js`) xong trong ≤ 0,45 s thay vì tới 1,3 s. Không đổi schema/env/dependency.
+
+Cập nhật cuối: 11/11/2026.

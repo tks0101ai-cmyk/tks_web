@@ -22,7 +22,6 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 
 > Rà ngày 10/11/2026: web `tokosi` và worker đều đang chạy `main` mới nhất (`d5e9ceb8`); mọi migration trong repo (đến `0120`) đã áp DB thật. Các việc cũ đã xong được xóa, xem file lưu trữ nếu cần chi tiết.
 
-- [ ] 10/11 — Bộ canh event loop (PR #70, đã deploy 10/11) — 11/11 lọc log `[loop-stall]` trên Render để tìm request gây khối 1–12 s
 - [ ] 10/11 — Nhân sự: sửa hồ sơ trùng số sổ bảo hiểm báo 500 (nhánh `fix/hr-employee-insurance-duplicate`, không migration) — merge + deploy, rồi rà `hr_employees` xem còn số bảo hiểm trùng nào do import cũ để lại
 - [ ] 10/11 — Vòng đời đơn hàng: đo lại thời gian tải 14–16h; > 2 s thì làm cache `latestStatuses`
 - [ ] 09/11 — Ổn định web, phần còn lại (kế hoạch ở nhánh local `docs/web-stability-singapore`, chưa push): đo RAM worker 3 đêm; tạo web service Singapore + chuyển tên miền (web hiện vẫn ở Oregon, DB ở Singapore)
@@ -33,6 +32,7 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 - [ ] 10/11 — Nguồn 3 trang VAT đổi sang file trung gian "cúc cu test" (nhánh `claude/brainstorm-error-cause-fix-bb0ebf`) — merge + deploy; sau đó cân nhắc lưu bản đọc tốt gần nhất vào Postgres để deploy không mất cache
 
 - [ ] 11/11 — Vị trí hàng cho xác nhận bốc âm, đổi tên vị trí đồng bộ đơn chỉ định và đối soát đơn Kiot hoàn thành (không migration) — deploy web/worker rồi kiểm số đơn chuyển và số còn lỗi đối soát
+- [ ] 11/11 — Hiệu năng: sửa treo ~11 s do báo cáo SĐT marketing, bớt vòng DB bốc/in đơn, rút gọn animation (nhánh `claude/friendly-ride-y0uwwk`, không migration) — merge + deploy, rồi lọc lại log `[loop-stall]`/`[timing]`; còn đứng 1–3 s thì làm gom request + cache cho `penalty-board`/`business-report`
 
 ## Chỉ người vận hành làm được
 
@@ -40,4 +40,4 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 - Áp migration lên DB thật: `npm run db:migrate` ngoài giờ cao điểm.
 
 ---
-Cập nhật: 10/11/2026
+Cập nhật: 11/11/2026

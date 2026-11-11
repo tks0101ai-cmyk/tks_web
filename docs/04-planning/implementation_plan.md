@@ -714,3 +714,9 @@ Cập nhật gần nhất: 07/11/2026.
 Đã tách lõi TSV/range/rowKey/fill/summary sang purchase-grid.js, UI vùng sang purchase-grid-ui.js. Scheduler tự động có visibility/throttle, endpoint revision nhẹ tránh tải lại rows/directory nếu chưa đổi. Directory chạy riêng, không chặn render; metadata NV modal giữ snapshot riêng. Render nền giữ thứ tự theo id trong từng nhóm, chờ xếp ưu tiên; neo input/vùng theo id/field. Paste/fill/delete prevalidate toàn vùng rồi tạo một undo unit trong drafts; split-parent costs/NV/cột tính không bị ghi qua đường này. Không đổi sang auto-save. Tài liệu kế hoạch: docs/superpowers/plans/2026-11-10-purchase-grid-sync.md.
 
 Cập nhật cuối: 10/11/2026.
+
+## Hiệu năng web — 11/11/2026
+
+Đo trên log Render: mỗi câu SQL ~175 ms (web Oregon ↔ DB Singapore) và event loop đứng ~11 s do báo cáo SĐT marketing O(N × số NV). Đã sửa: đếm SĐT theo NV 1 lượt; bốc/in đơn bớt vòng DB (chỉ định 9 → 6 vòng trong giao dịch, đọc lại 2 → 1, form in tải song song); animation dùng chung ≤ 0,45 s. Việc tiếp theo: sau deploy lọc lại `[loop-stall]`/`[timing]`; cân nhắc gom request trùng + cache ngắn cho `penalty-board`/`business-report` (các lần đứng 1–3 s khi nhiều người mở cùng lúc); chọn VPS gần DB (Singapore) khi chuyển hạ tầng.
+
+Cập nhật cuối: 11/11/2026.

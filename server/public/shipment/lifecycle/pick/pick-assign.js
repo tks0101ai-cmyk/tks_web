@@ -623,6 +623,8 @@
     // Chụp thứ tự in trước khi lưu: sort theo Vị trí/ST dựa vào phân bổ đang chọn.
     const printKeys=printOrderKeys();
     const readyTiming=window.PickingInvoice?.startTiming?.('submit-ready');
+    // Phiếu in sau khi lưu luôn dùng mẫu 'order' (printPick): tải form chung song song với lệnh lưu.
+    window.PickingPrint?.prefetchLayout?.('order');
     if(!await write(API,{branch:state.order.branch,orderCode:state.order.orderCode,allocations,...(Object.keys(needs).length?{needs}:{}),...(removed.length?{removed}:{}),...(mismatched.length?{allowMismatch:true}:{}),...reassign}))return;
     $('pickingDialog').close();
     if(await printPick(printKeys))readyTiming?.();
