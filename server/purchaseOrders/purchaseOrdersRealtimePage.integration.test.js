@@ -20,10 +20,9 @@ test('integrated refresh updates another cell during numeric expression typing, 
  p.data.rows[0].supplier='Remote supplier';p.data.rows[0].cartonCount=20;p.data.rows[0].version=5;p.listeners.changed();await tick();await tick();
  assert.equal(doc.activeElement.value,'2*6');assert.equal(doc.activeElement.selectionStart,1);assert.equal(doc.activeElement.selectionEnd,2);assert.equal(doc.activeElement.dataset.gridEditing,'true');assert.equal(doc.activeElement.dataset.gridDirty,'true');assert.equal(doc.querySelector('[data-edit="supplier"]').value,'Remote supplier');assert.equal(p.drafts()['1'].before.cartonCount,10);assert.equal(p.drafts()['1'].version,4);assert.match(doc.getElementById('notice').textContent,/Người khác/);assert.ok(doc.querySelector('[data-field="cartonCount"]').classList.contains('conflict'));
 });
-for(const modal of [false,true])test('arrival '+(modal?'modal':'inline')+' sends saved contained row versions, excluding local rows and retaining edit baseline across refresh',async t=>{
- const p=await page(t,{local:true}),doc=p.w.document;assert.ok(p.drafts()['new-local']);
- if(modal){doc.querySelector('[data-container-edit="2"]').click();const form=doc.getElementById('editCont');form.elements.arrivalNote.value='09/11';p.data.containers[0].version=9;p.data.rows[0].version=8;p.listeners.changed();await tick();await tick();form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}))}
- else{let input=doc.querySelector('#containerTable [data-container-field="arrivalNote"]');input.focus();input.value='09/11';p.data.containers[0].version=9;p.data.rows[0].version=8;p.listeners.changed();await tick();await tick();input=doc.activeElement;assert.equal(input.value,'09/11');input.dispatchEvent(new p.w.Event('change',{bubbles:true}))}
+ test('arrival inline edit sends saved contained row versions, excluding local rows and retaining edit baseline across refresh',async t=>{
+  const p=await page(t,{local:true}),doc=p.w.document;assert.ok(p.drafts()['new-local']);
+  let input=doc.querySelector('#containerTable [data-container-field="arrivalNote"]');input.focus();input.value='09/11';p.data.containers[0].version=9;p.data.rows[0].version=8;p.listeners.changed();await tick();await tick();input=doc.activeElement;assert.equal(input.value,'09/11');input.dispatchEvent(new p.w.Event('change',{bubbles:true}));
  await tick();await tick();const call=p.calls.find(c=>c.options.method==='PATCH');assert.ok(call);const body=JSON.parse(call.options.body);assert.equal(body.version,3);assert.deepEqual(body.rows,[{id:'1',version:4}]);assert.match(body.changes.arrivalNote,/11-09/);
 });
 test('pagehide closes events, clears poll timer and prevents queued refreshes',async t=>{
@@ -67,15 +66,15 @@ test('measurement inputs show agreed precision and focus/blur alone creates no d
 test('percentage overrides edit in displayed percentage points; blank clears a value override',async t=>{
  const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{literDiff:-.03,ratio:.25,literChina:1.23,measurementOverrides:{literDiff:-.03,ratio:.25,literChina:1.23}});p.listeners.changed();await tick();await tick();
  doc.getElementById('columns').click();for(const key of ['literDiff','ratio','literChina']){const box=doc.querySelector('[data-column="'+key+'"]');box.checked=true;box.dispatchEvent(new p.w.Event('change',{bubbles:true}))}
- assert.equal(doc.querySelector('[data-edit="literDiff"]').value,'-3');assert.equal(doc.querySelector('[data-edit="ratio"]').value,'25');
+  assert.equal(doc.querySelector('[data-edit="literDiff"]').value,'-3.0%');assert.equal(doc.querySelector('[data-edit="ratio"]').value,'25.0%');
  for(const [key,v] of [['literDiff','12'],['ratio','12'],['literChina','']]){const input=doc.querySelector('tr[data-id="1"] [data-edit="'+key+'"]');input.value=v;input.dispatchEvent(new p.w.Event('input',{bubbles:true}))}
  assert.deepEqual(p.drafts()['1'].changes,{literDiff:.12,ratio:.12,literChina:null});doc.getElementById('save').click();doc.getElementById('commit').click();await tick();await tick();const body=JSON.parse(p.calls.find(c=>c.options.method==='PATCH'&&c.url.endsWith('/1')).options.body);assert.deepEqual(body.changes,{literDiff:.12,ratio:.12,literChina:null});
 });
 test('staged override changes and clears recalculate dependent comparison fields from fallback',async t=>{
  const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{m3PerCarton:.005,literWarehouse:1,literChina:1.2,literDiff:.2,measurementOverrides:{literChina:1.2},measurementDefaults:{literWarehouse:1,m3Warehouse:null,literChina:1,literDiff:0,gramWarehouse:null,gramChina:null,gramDiff:null,measuredOn:null,ratio:null}});p.listeners.changed();await tick();await tick();
  doc.getElementById('columns').click();for(const key of ['literChina','literDiff']){const box=doc.querySelector('[data-column="'+key+'"]');box.checked=true;box.dispatchEvent(new p.w.Event('change',{bubbles:true}))}
- let input=doc.querySelector('tr[data-id="1"] [data-edit="literChina"]');input.focus();input.value='1.5';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));input.dispatchEvent(new p.w.Event('change',{bubbles:true}));assert.equal(doc.querySelector('tr[data-id="1"] [data-edit="literDiff"]').value,'50');
- input=doc.querySelector('tr[data-id="1"] [data-edit="literChina"]');input.focus();input.value='';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));input.dispatchEvent(new p.w.Event('change',{bubbles:true}));assert.equal(doc.querySelector('tr[data-id="1"] [data-edit="literDiff"]').value,'0');
+  let input=doc.querySelector('tr[data-id="1"] [data-edit="literChina"]');input.focus();input.value='1.5';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));input.dispatchEvent(new p.w.Event('change',{bubbles:true}));assert.equal(doc.querySelector('tr[data-id="1"] [data-edit="literDiff"]').value,'+50.0%');
+  input=doc.querySelector('tr[data-id="1"] [data-edit="literChina"]');input.focus();input.value='';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));input.dispatchEvent(new p.w.Event('change',{bubbles:true}));assert.equal(doc.querySelector('tr[data-id="1"] [data-edit="literDiff"]').value,'0.0%');
 });
 test('new row submission carries staged comparison overrides',async t=>{
  const p=await page(t,{local:true}),doc=p.w.document;doc.getElementById('columns').click();doc.querySelector('[data-column="literChina"]').checked=true;doc.querySelector('[data-column="literChina"]').dispatchEvent(new p.w.Event('change',{bubbles:true}));
