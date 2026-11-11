@@ -539,4 +539,8 @@ Workspace dùng thêm shared/purchase-grid.js (TSV, rowKey, vùng, fill, tổng 
 
 11/11/2026 — Thu mua: Giá NET đồng bộ tab VK-DUNG, gồm Thuế và VC sau CNY × 3,920 (giá hàng dùng tỉ giá dòng). Giá tệ hiển thị 2 chữ số; Tổng tệ làm tròn đơn vị và bấm xem phần lẻ.
 
+## Hiệu năng: bỏ treo event loop, bớt vòng DB khi bốc/in đơn, rút gọn animation (11/11/2026)
+
+Log `[loop-stall]` cho thấy cả web đứng ~11 s nhiều lần mỗi giờ do `GET /api/marketing-report/phones` lọc lại ~30k SĐT cho từng nhân viên (hàng chục triệu lần chuẩn hóa chuỗi). Nay đếm một lượt + nhớ kết quả `norm()` (mô phỏng 30k × 60 NV: 15,5 s → 0,27 s). Bốc/in đơn: transaction chỉ định vị trí 9 → 6 vòng DB (khóa VT + giữ chỗ 1 câu; đầu + dòng + lịch sử 1 câu), đổi trạng thái + lịch sử 1 câu (hủy/xác nhận), đọc lại chỉ định 2 → 1 vòng; form in chung tải song song với lệnh lưu. Animation dùng chung (`shared/motion.js`) xong trong ≤ 0,45 s thay vì tới 1,3 s. Không đổi schema/env/dependency.
+
 Cập nhật cuối: 11/11/2026.

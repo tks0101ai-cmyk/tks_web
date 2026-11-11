@@ -99,3 +99,27 @@ test('a delayed print frame cannot print an older layout after the same root is 
     assert.equal(printed,0,'the frame captured before the successful save must be discarded');
   }finally{dom.window.close();}
 });
+
+test('shared form prefetched alongside the save is reused once; a failed prefetch falls back to a fresh read',async()=>{
+  const dom=new JSDOM('<dialog id="pickingPrintDialog"><div class="dp-head"><div><button id="pickingPrintBtn"></button></div></div><div id="pickingPrintSheet"></div></dialog><div id="pickingPrintTitle"></div>',{runScripts:'outside-only'}),w=dom.window,d=w.document;
+  try{
+    w.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};
+    w.PickingInvoiceTemplate=source('order-template.tpl');w.PickingPrintCSS=source('invoice-a4.css');
+    w.eval(source('invoice.js'));w.eval(source('print-tools.js'));w.PickingPrint.init();
+    const reads=[];let failNext=false;
+    w.fetch=async(url,options={})=>{
+      if((options.method||'GET')==='GET'&&url.includes('/print-layout/')){reads.push(url);if(failNext){failNext=false;return {ok:false};}return {ok:true,json:async()=>({layout:null,version:3})};}
+      throw new Error('unexpected '+url);
+    };
+    const order={schemaVersion:2,orderCode:'o',branch:'HN',lines:[],goodsTotal:'0',payable:'0',invoiceDiscount:'0'};
+    w.PickingPrint.prefetchLayout('order');
+    await settle();
+    assert.equal(reads.length,1,'prefetch must start before the preview is built');
+    assert.equal(await w.PickingInvoice.show(order,{status:'picking',lines:[]}),true);
+    assert.equal(reads.length,1,'preview must reuse the prefetched form');
+    failNext=true;w.PickingPrint.prefetchLayout('order');await settle();
+    assert.equal(await w.PickingInvoice.show(order,{status:'picking',lines:[]}),true);
+    assert.equal(reads.length,3,'failed prefetch must be retried with a fresh read');
+    assert.equal(d.getElementById('pickingPrintBtn').disabled,false);
+  }finally{dom.window.close();}
+});

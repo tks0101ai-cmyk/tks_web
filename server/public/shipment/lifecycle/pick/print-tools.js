@@ -208,6 +208,24 @@ function formattingControls(host,restore=true,shared=null){
   window.requestAnimationFrame?.(()=>{if(root.isConnected)names().forEach(applyGroup);});
 }
 const layoutWrites=new Map();
+// Form chung tải SONG SONG với lệnh lưu chỉ định (trước đây chỉ bắt đầu sau khi lưu xong: thêm 0,5–3 s mỗi lần in).
+// prepare chỉ dùng bản tải trước khi còn mới (< 30 s) và không có lần lưu form nào xen giữa; lỗi thì tải lại như cũ.
+const layoutPrefetch=new Map();
+const LAYOUT_PREFETCH_MS=30000;
+async function fetchLayout(template){
+  const res=await fetch('/api/shipment/pick/print-layout/'+template,{credentials:'same-origin',cache:'no-store'});
+  if(!res.ok)throw new Error('HTTP '+res.status);
+  return res.json();
+}
+function prefetchLayout(template='order'){
+  // Đợi lần lưu form đang dở (nếu có; task lưu không bao giờ reject) để không đọc bản cũ.
+  const promise=(layoutWrites.get(template)||Promise.resolve()).then(()=>fetchLayout(template));promise.catch(()=>{});
+  layoutPrefetch.set(template,{at:Date.now(),promise});
+}
+function takeLayout(template){
+  const early=layoutPrefetch.get(template);layoutPrefetch.delete(template);
+  return early&&Date.now()-early.at<LAYOUT_PREFETCH_MS?early.promise.catch(()=>fetchLayout(template)):fetchLayout(template);
+}
 function setPrintReady(root,ready){
   if(!root?.isConnected)return;
   // A successful later save can make this same root ready again. Frames must still
@@ -228,9 +246,7 @@ async function prepare(){
   message('Đang tải form chung…','loading');
   try{
     await layoutWrites.get(template);
-    const res=await fetch(url,{credentials:'same-origin',cache:'no-store'});
-    if(!res.ok)throw new Error('HTTP '+res.status);
-    const saved=await res.json();
+    const saved=await takeLayout(template);
     if(!root.isConnected)return false;
     let version=saved.version,blocked=false;
     formattingControls(host,true,{layout:saved.layout,save:prefs=>{
@@ -247,7 +263,7 @@ async function prepare(){
         // Lưu chung lỗi vẫn cho in/lưu HTML đúng như đang hiển thị; thông báo đỏ nói rõ chưa lưu chung.
         if(layoutWrites.get(template)===task)setPrintReady(root,true);
       });
-      layoutWrites.set(template,task);
+      layoutWrites.set(template,task);layoutPrefetch.delete(template);
     }});
     const picker=$('pickingPrintTemplate');if(picker)picker.value=template;
     message(saved.version?'Đã lưu form chung':'Form mặc định','saved');
@@ -339,5 +355,5 @@ function init(){
   };
   $('pickingSavePrint').onclick=save;
 }
-window.PickingPrint={init,prepare,document:printDocument,save};
+window.PickingPrint={init,prepare,prefetchLayout,document:printDocument,save};
 })();

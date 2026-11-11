@@ -50,6 +50,33 @@ const CANDIDATES_SQL = `SELECT p.*, COALESCE(h.held, 0)::float8 AS held
               GROUP BY l.position_id) h ON h.position_id = p.id
  ORDER BY p.id`;
 
+// Khoa cac dong VT duoc chon (FOR UPDATE, theo id) + giu cho cua don KHAC dang nhat tren chinh cac dong do, 1 luot DB.
+const LOCK_POSITIONS_WITH_HELD_SQL = `WITH p AS (
+    SELECT ${ROW_COLUMNS} FROM stock_positions WHERE branch = $1 AND id = ANY($2::bigint[]) ORDER BY id FOR UPDATE
+  )
+  SELECT p.*, COALESCE(h.held, 0) AS held
+    FROM p LEFT JOIN (SELECT l.position_id, SUM(l.reserved_qty) AS held
+                        FROM order_pick_lines l JOIN order_pick_assignments a ON a.id = l.assignment_id
+                       WHERE a.status = 'picking' AND a.branch = $1 AND l.position_id = ANY($2::bigint[])
+                         AND lower(btrim(a.order_code)) <> $3
+                       GROUP BY l.position_id) h ON h.position_id = p.id
+   ORDER BY p.id`;
+
+// Doi trang thai chi dinh + ghi 1 dong order_pick_history trong CUNG 1 cau lenh (1 vong DB thay vi 2).
+// Cot nguoi thuc hien theo trang thai: confirmed -> confirmed_*, cancelled -> cancelled_*.
+const STATUS_UPDATE_SQL = Object.freeze({
+  confirmed: { action: 'confirm', set: `status = 'confirmed', version = version + 1, confirmed_by_user_id = $2, confirmed_by_name = $3, confirmed_at = now(), updated_at = now()` },
+  cancelled: { action: 'cancel', set: `status = 'cancelled', version = version + 1, cancelled_by_user_id = $2, cancelled_by_name = $3, cancelled_at = now(), updated_at = now()` }
+});
+function setAssignmentStatus(client, status, { id, branch, orderCode, actor, summary }) {
+  const { action, set } = STATUS_UPDATE_SQL[status];
+  return client.query(
+    `WITH changed AS (UPDATE order_pick_assignments SET ${set} WHERE id = $1 RETURNING id)
+     INSERT INTO order_pick_history (assignment_id, branch, order_code, action, summary, actor_user_id, actor_name)
+     SELECT id, $4, $5, '${action}', $6::jsonb, $2, $3 FROM changed`,
+    [id, actor.id, actor.name, branch, orderCode, JSON.stringify(summary)]);
+}
+
 /* Hoan thung da tru cua 1 dong chi dinh 'confirmed' (THUAN TUY, dung chung cho hoan that va xem truoc "Chi dinh lai"):
    - dong VT con va ghi chu chua bi doi sau lan tru (= spec_after) -> khoi phuc dung chuoi cu spec_before;
    - dong VT con nhung ghi chu da bi doi -> cong tra so da nhat (carton.restore), ghi chu khong doc duoc thi loi;
@@ -226,15 +253,19 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
 
   // Hang order_pick_assignments -> JSON cho client. Dong, lich su va SDT sale (snapshot cu thieu) doc SONG SONG (1 luot DB thay vi 3).
   // supplementPhone=false (va trong giao dich): chi doc du lieu da luu, khong goi Kiot/cache khi dang giu khoa.
-  async function shapeAssignment(db, head, { supplementPhone = true } = {}) {
+  const readLines = (db, id) => db.query('SELECT * FROM order_pick_lines WHERE assignment_id = $1 ORDER BY id', [id]).then(result => result.rows);
+  const readHistory = (db, id) => db.query('SELECT created_at, action, actor_name, summary FROM order_pick_history WHERE assignment_id = $1 ORDER BY id', [id]).then(result => result.rows);
+
+  // preloaded = { lines, history } da doc song song voi dau chi dinh (readAssignment) -> khong doc lai.
+  async function shapeAssignment(db, head, { supplementPhone = true, preloaded = null } = {}) {
     // Older snapshots have no seller contact: supplement the print response without rewriting history.
     const snapshot = {...(head.order_snapshot || {})};
     const [sellerPhone, lines, history] = await Promise.all([
       supplementPhone && !snapshot.sellerPhone && loadSellerPhone
         ? timedOperation('sellerPhone', () => loadSellerPhone(db, head.branch, head.order_code))
         : null,
-      db.query('SELECT * FROM order_pick_lines WHERE assignment_id = $1 ORDER BY id', [head.id]).then(result => result.rows),
-      db.query('SELECT created_at, action, actor_name, summary FROM order_pick_history WHERE assignment_id = $1 ORDER BY id', [head.id]).then(result => result.rows)
+      preloaded ? preloaded.lines : readLines(db, head.id),
+      preloaded ? preloaded.history : readHistory(db, head.id)
     ]);
     if (sellerPhone !== null) snapshot.sellerPhone = sellerPhone;
     const at = value => (value ? isoOf(value) : null);
@@ -268,9 +299,16 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
     };
   }
 
+  // Da biet id: dau chi dinh, dong va lich su doc SONG SONG (1 vong DB thay vi 2; moi vong ~175 ms khi web o xa DB).
+  // Trong giao dich 1 client tu xep hang cac cau, ket qua van nhu doc noi tiep.
   async function readAssignment(db, id, { inTransaction = false, supplementPhone = true } = {}) {
-    const head = (await db.query('SELECT * FROM order_pick_assignments WHERE id = $1', [id])).rows[0];
-    return head ? shapeAssignment(db, head, { supplementPhone: supplementPhone && !inTransaction }) : null;
+    const [heads, lines, history] = await Promise.all([
+      db.query('SELECT * FROM order_pick_assignments WHERE id = $1', [id]).then(result => result.rows),
+      readLines(db, id),
+      readHistory(db, id)
+    ]);
+    const head = heads[0];
+    return head ? shapeAssignment(db, head, { supplementPhone: supplementPhone && !inTransaction, preloaded: { lines, history } }) : null;
   }
 
   // Chi dinh moi nhat cua don: lay luon ca hang (1 luot) thay vi id roi doc lai theo id.
@@ -583,19 +621,17 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
               }
             }
           }
-          await client.query(
-            `UPDATE order_pick_assignments SET status = 'cancelled', version = version + 1, cancelled_by_user_id = $2, cancelled_by_name = $3, cancelled_at = now(), updated_at = now() WHERE id = $1`,
-            [active.id, actor.id, actor.name]);
-          await client.query(
-            `INSERT INTO order_pick_history (assignment_id, branch, order_code, action, summary, actor_user_id, actor_name) VALUES ($1, $2, $3, 'cancel', $4::jsonb, $5, $6)`,
-            [active.id, branch, order.orderCode, JSON.stringify({ reverted: wasConfirmed, reason: CANCEL_REASON.REASSIGN }), actor.id, actor.name]);
+          await setAssignmentStatus(client, STATUS.CANCELLED, { id: active.id, branch, orderCode: order.orderCode, actor,
+            summary: { reverted: wasConfirmed, reason: CANCEL_REASON.REASSIGN } });
         }
 
         const ids = [...new Set(perLine.flatMap(map => [...map.keys()]))].sort((a, b) => a - b);
-        const positions = (await client.query(
-          `SELECT ${ROW_COLUMNS} FROM stock_positions WHERE branch = $1 AND id = ANY($2::bigint[]) ORDER BY id FOR UPDATE`, [branch, ids])).rows;
+        // Khoa dong VT + tinh giu cho cua don khac trong 1 cau (truoc la 2 vong). Da giu khoa co so tu cau truoc nen snapshot
+        // cua cau nay da thay moi thay doi da commit, khong ai ghi chen duoc.
+        const held = new Map();
+        const positions = (await timedQuery(client, 'pickPositionsLock', LOCK_POSITIONS_WITH_HELD_SQL, [branch, ids, codeKey(order.orderCode)])).rows
+          .map(({ held: amount, ...row }) => { held.set(Number(row.id), Number(amount) || 0); return row; });
         if (positions.length !== ids.length) throw fail(400, 'VALIDATION', 'Có vị trí không tồn tại (có thể đã bị xóa). Hãy tải lại.', { field: 'allocations' });
-        const held = await heldByPosition(client, branch, ids, order.orderCode);
         const byId = new Map(positions.map(row => [Number(row.id), row]));
         const locations = positions.map(row => {
           const spec = carton.parseSpec(row.notes);
@@ -610,10 +646,6 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
           throw fail(400, 'VALIDATION', errors.join('; '), { field: 'allocations' });
         }
 
-        const head = (await client.query(
-          `INSERT INTO order_pick_assignments (branch, order_code, status, order_snapshot, assigned_by_user_id, assigned_by_name)
-           VALUES ($1, $2, 'picking', $3::jsonb, $4, $5) RETURNING id`,
-          [branch, order.orderCode, JSON.stringify(snapshot), actor.id, actor.name])).rows[0];
         let total = 0;
         const insertLines = [];
         for (const [lineIndex, map] of perLine.entries()) {
@@ -628,16 +660,24 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
               st_text:spec ? carton.pickText(spec, qty) : null, allocation_snapshot:allocationSnapshot });
           }
         }
-        if (insertLines.length) await timedQuery(client,'pickInsertLines',
-          `INSERT INTO order_pick_lines (assignment_id, product_code, position_id, location, planned_qty, reserved_qty, st_cartons, st_text, allocation_snapshot)
-           SELECT $1, l.product_code, l.position_id, l.location, l.qty, l.qty, l.st_cartons, l.st_text, l.allocation_snapshot
-             FROM jsonb_to_recordset($2::jsonb) AS l(product_code text, position_id bigint, location text,
-               qty numeric, st_cartons numeric, st_text text, allocation_snapshot jsonb, line_order integer)
-            ORDER BY l.line_order`,[head.id,JSON.stringify(insertLines)]);
-        await client.query(
-          `INSERT INTO order_pick_history (assignment_id, branch, order_code, action, summary, actor_user_id, actor_name)
-           VALUES ($1, $2, $3, 'assign', $4::jsonb, $5, $6)`,
-          [head.id, branch, order.orderCode, JSON.stringify({ lines: lines.length, positions: ids.length, quantity: total }), actor.id, actor.name]);
+        // Dau chi dinh + dong + lich su 'assign' trong 1 cau (truoc la 3 vong). FK dong -> dau kiem cuoi cau lenh.
+        const head = (await timedQuery(client, 'pickInsert',
+          `WITH head AS (
+             INSERT INTO order_pick_assignments (branch, order_code, status, order_snapshot, assigned_by_user_id, assigned_by_name)
+             VALUES ($1, $2, 'picking', $3::jsonb, $4, $5) RETURNING id
+           ), lines AS (
+             INSERT INTO order_pick_lines (assignment_id, product_code, position_id, location, planned_qty, reserved_qty, st_cartons, st_text, allocation_snapshot)
+             SELECT head.id, l.product_code, l.position_id, l.location, l.qty, l.qty, l.st_cartons, l.st_text, l.allocation_snapshot
+               FROM head, jsonb_to_recordset($6::jsonb) AS l(product_code text, position_id bigint, location text,
+                 qty numeric, st_cartons numeric, st_text text, allocation_snapshot jsonb, line_order integer)
+              ORDER BY l.line_order
+           ), history AS (
+             INSERT INTO order_pick_history (assignment_id, branch, order_code, action, summary, actor_user_id, actor_name)
+             SELECT head.id, $1, $2, 'assign', $7::jsonb, $4, $5 FROM head
+           )
+           SELECT id FROM head`,
+          [branch, order.orderCode, JSON.stringify(snapshot), actor.id, actor.name, JSON.stringify(insertLines),
+            JSON.stringify({ lines: lines.length, positions: ids.length, quantity: total })])).rows[0];
         return Number(head.id);
       });
     } catch (error) {
@@ -757,12 +797,8 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
           `UPDATE order_pick_lines SET picked_qty = $2, spec_before = $3, spec_after = $4, position_snapshot = $5::jsonb WHERE id = $1`,
           [job.id, planned, row.notes, result.text, JSON.stringify(snapshot)]);
       }
-      await client.query(
-        `UPDATE order_pick_assignments SET status = 'confirmed', version = version + 1, confirmed_by_user_id = $2, confirmed_by_name = $3, confirmed_at = now(), updated_at = now() WHERE id = $1`,
-        [id, actor.id, actor.name]);
-      await client.query(
-        `INSERT INTO order_pick_history (assignment_id, branch, order_code, action, summary, actor_user_id, actor_name) VALUES ($1, $2, $3, 'confirm', $4::jsonb, $5, $6)`,
-        [id, head.branch, head.order_code, JSON.stringify({ positions: jobs.length }), actor.id, actor.name]);
+      await setAssignmentStatus(client, STATUS.CONFIRMED, { id, branch: head.branch, orderCode: head.order_code, actor,
+        summary: { positions: jobs.length } });
     });
     return { assignment: await readAssignment(db, id) };
   }
@@ -778,12 +814,8 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
       if (head.status === STATUS.CONFIRMED) {
         throw fail(409, 'ALREADY_CONFIRMED', 'Đơn đã bốc xong, không hủy được nữa.', { latest: await readAssignment(client, id, {inTransaction:true}) });
       }
-      await client.query(
-        `UPDATE order_pick_assignments SET status = 'cancelled', version = version + 1, cancelled_by_user_id = $2, cancelled_by_name = $3, cancelled_at = now(), updated_at = now() WHERE id = $1`,
-        [id, actor.id, actor.name]);
-      await client.query(
-        `INSERT INTO order_pick_history (assignment_id, branch, order_code, action, summary, actor_user_id, actor_name) VALUES ($1, $2, $3, 'cancel', $4::jsonb, $5, $6)`,
-        [id, head.branch, head.order_code, JSON.stringify({ reverted: false, reason }), actor.id, actor.name]);
+      await setAssignmentStatus(client, STATUS.CANCELLED, { id, branch: head.branch, orderCode: head.order_code, actor,
+        summary: { reverted: false, reason } });
     });
     return { assignment: await readAssignment(db, id) };
   }

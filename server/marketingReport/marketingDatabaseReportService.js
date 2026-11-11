@@ -15,7 +15,26 @@ const fail=(statusCode,code,message)=>Object.assign(new Error(message),{
 });
 const unique=values=>[...new Set(values.filter(Boolean))].sort((a,b)=>a.localeCompare(b,'vi'));
 const names=v=>String(v??'').split(/\s*,\s*/).filter(Boolean);
-const matches=(r,q)=>!((q.page&&norm(r.page)!==norm(q.page))||(q.employee&&![r.employee,r.sale,r.firstEmployee,r.currentEmployee,r.repeatEmployee].some(v=>names(v).some(n=>norm(n)===norm(q.employee))))||(q.status&&r.status!==q.status)||(q.dataSource&&r.dataSource!==q.dataSource));
+// norm() (NFC + regex + toLocaleLowerCase('vi')) từng bị gọi hàng chục triệu lần trên cùng vài chục tên NV/page khi lọc ~30k SĐT,
+// treo cả event loop ~11 s (log [loop-stall] 11/11/2026). Tên lặp lại rất nhiều nên nhớ kết quả theo chuỗi gốc.
+const normCache=new Map(),namesCache=new Map();
+const remember=(cache,key,make)=>{let value=cache.get(key);if(value===undefined){if(cache.size>=20000)cache.clear();value=make();cache.set(key,value);}return value;};
+const normOf=v=>{const key=String(v??'');return remember(normCache,key,()=>norm(key));};
+// Tên NV đã chuẩn hóa của 1 ô (một ô có thể chứa nhiều tên cách nhau dấu phẩy).
+const normNamesOf=v=>{const key=String(v??'');return remember(namesCache,key,()=>names(key).map(normOf));};
+const EMPLOYEE_FIELDS=['employee','sale','firstEmployee','currentEmployee','repeatEmployee'];
+const hasEmployee=(r,target)=>EMPLOYEE_FIELDS.some(f=>normNamesOf(r[f]).includes(target));
+const matches=(r,q)=>!((q.page&&normOf(r.page)!==normOf(q.page))||(q.employee&&!hasEmployee(r,normOf(q.employee)))||(q.status&&r.status!==q.status)||(q.dataSource&&r.dataSource!==q.dataSource));
+// Số dòng khớp mỗi tên NV (cùng quy tắc matches({employee})) đếm trong 1 lượt, thay vì lọc lại toàn bộ dòng cho từng NV (O(N × số NV)).
+function countByEmployee(rows){
+  const counts=new Map();
+  for(const r of rows){
+    const seen=new Set();
+    for(const f of EMPLOYEE_FIELDS)for(const n of normNamesOf(r[f]))seen.add(n);
+    for(const n of seen)counts.set(n,(counts.get(n)||0)+1);
+  }
+  return employee=>counts.get(normOf(employee))||0;
+}
 const kpi=(label,value,format='number')=>({
   label,value,format
 });
@@ -143,12 +162,13 @@ function createDatabaseMarketingReportService({
     if(kind==='phones'){
       rows=phones;
       const selected=rows.filter(r=>matches(r,q));
+      const pageCounts=new Map();
+      for(const r of selected)pageCounts.set(r.page,(pageCounts.get(r.page)||0)+1);
+      const employeeCount=countByEmployee(selected);
       summaryRows=[...unique(selected.map(r=>r.page)).map(page=>({
-        key:JSON.stringify(['phones-page',page]),kind:'page',label:page,page,count:selected.filter(r=>r.page===page).length
+        key:JSON.stringify(['phones-page',page]),kind:'page',label:page,page,count:pageCounts.get(page)||0
       })),...unique(selected.flatMap(r=>[r.firstEmployee,r.currentEmployee].flatMap(names))).map(employee=>({
-        key:JSON.stringify(['phones-employee',employee]),kind:'employee',label:employee,employee,count:selected.filter(r=>matches(r,{
-          employee
-        })).length
+        key:JSON.stringify(['phones-employee',employee]),kind:'employee',label:employee,employee,count:employeeCount(employee)
       }))];
       kpis=[kpi('Dòng SĐT',selected.length),kpi('Page',unique(selected.map(r=>r.page)).length)];
     }

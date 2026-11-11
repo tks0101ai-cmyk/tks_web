@@ -1355,3 +1355,11 @@ Kết quả `.codex_tmp/purchase-load-20-results.json`; mã thoát 0: chức nă
 ## Thu mua — NET theo VK-DUNG (11/11/2026)
 
 `purchase-calculations.js` và `purchaseOrdersProjection.js` tính NET = (Tiền hàng + Tiền VC mã + Thuế + VC sau CNY × 3,920) / Tổng SL. Tiền hàng dùng tỉ giá theo dòng; hằng 3,920 chỉ dùng cho VC sau. Chi phí trống được tính là 0 trong NET; kết quả NET vẫn có thể hiển thị khi chưa có phân bổ VC mã.
+
+## Hiệu năng — 11/11/2026
+
+- `marketingReport/marketingDatabaseReportService.js`: `matches()` dùng `norm()` có nhớ kết quả; bảng tổng SĐT theo NV đếm 1 lượt (`countByEmployee`) thay vì lọc toàn bộ dòng cho từng NV — nguồn các lần treo event loop ~11 s.
+- `pickAssignments/pickAssignmentsService.js`: `assign` khóa VT + tính giữ chỗ trong 1 câu (`LOCK_POSITIONS_WITH_HELD_SQL`), ghi đầu + dòng + lịch sử bằng 1 câu CTE; `setAssignmentStatus` đổi trạng thái + ghi lịch sử 1 câu (hủy, xác nhận, chỉ định lại); `readAssignment` đọc đầu/dòng/lịch sử song song. Server-Timing: `pickPositionsLock`, `pickInsert` thay `pickInsertLines`.
+- API, response và schema không đổi.
+
+Cập nhật cuối: 11/11/2026.

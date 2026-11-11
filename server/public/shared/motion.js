@@ -22,6 +22,16 @@
   };
   var selector = Object.keys(selectors).map(function (key) { return selectors[key]; }).join(',');
   var ease = 'cubic-bezier(0.22,1,0.36,1)';
+  // Nhịp chuyển động (ms). Rút ngắn 11/2026: tiêu đề dài từng chạy ~1,3 s, thẻ KPI chờ tới 0,75 s rồi lật, số đếm che giá
+  // trị thật 0,75 s -> người dùng thấy thông tin hiện chậm. Nay mọi lối vào xong trong khoảng 0,3–0,45 s, giữ nguyên kiểu hiệu ứng.
+  var TIMING = {
+    titleMs: 260, titleStagger: 12, titleMaxDelay: 180,
+    kpiMs: 300, kpiStagger: 30,
+    rowMs: 200, rowStagger: 15,
+    panelMs: 280, panelStagger: 40,
+    subtitleMs: 220, subtitleDelay: 40,
+    countMs: 400
+  };
 
   function play(element, frames, duration, delay) {
     try {
@@ -82,7 +92,7 @@
         { opacity: 0, transform: 'translateY(-20px) scale(0.96)', offset: 0 },
         { opacity: 1, transform: 'translateY(4px) scale(1.01)', offset: 0.65 },
         { opacity: 1, transform: 'none', offset: 1 }
-      ], 480, i * 40);
+      ], TIMING.titleMs, Math.min(i * TIMING.titleStagger, TIMING.titleMaxDelay));
     });
     // Keep the original text/semantics after motion; never overwrite a live update.
     window.setTimeout(function () {
@@ -91,7 +101,7 @@
           item.holder.replaceWith(document.createTextNode(item.original));
         }
       });
-    }, 500 + letters.length * 40);
+    }, TIMING.titleMs + 20 + Math.min(letters.length * TIMING.titleStagger, TIMING.titleMaxDelay));
   }
 
   function count(element) {
@@ -139,7 +149,7 @@
     function tick(now) {
       if (!element.isConnected || element.textContent !== original || media.matches) { finish(); return; }
       if (started == null) started = now;
-      var progress = Math.min((now - started) / 750, 1);
+      var progress = Math.min((now - started) / TIMING.countMs, 1);
       if (progress === 1) { finish(); return; }
       element.setAttribute('data-tks-count-display', format.format(value * (1 - Math.pow(1 - progress, 3))) + match[4]);
       frame = window.requestAnimationFrame(tick);
@@ -164,13 +174,13 @@
       play(element, [
         { opacity: 0, transform: 'perspective(900px) rotateY(-90deg) translateY(12px)' },
         { opacity: 1, transform: 'perspective(900px) rotateY(0deg) translateY(0)' }
-      ], 580, Math.min(Math.max(0, siblingIndex(element, selectors.kpi)), 5) * 150);
+      ], TIMING.kpiMs, Math.min(Math.max(0, siblingIndex(element, selectors.kpi)), 5) * TIMING.kpiStagger);
       return;
     }
     if (element.matches(selectors.rows)) {
       Array.from(element.children).slice(0, 12).forEach(function (row, i) {
         if (!row.getClientRects().length) return;
-        play(row, [{ opacity: 0, transform: 'translateY(7px)' }, { opacity: 1, transform: 'none' }], 300, i * 35);
+        play(row, [{ opacity: 0, transform: 'translateY(7px)' }, { opacity: 1, transform: 'none' }], TIMING.rowMs, i * TIMING.rowStagger);
       });
       return;
     }
@@ -178,7 +188,8 @@
     play(element, [
       { opacity: 0, transform: 'translateY(' + (subtitle ? 6 : 16) + 'px)' },
       { opacity: 1, transform: 'none' }
-    ], subtitle ? 360 : 460, subtitle ? 120 : Math.min(Math.max(0, siblingIndex(element, selectors.panel)), 4) * 70);
+    ], subtitle ? TIMING.subtitleMs : TIMING.panelMs,
+    subtitle ? TIMING.subtitleDelay : Math.min(Math.max(0, siblingIndex(element, selectors.panel)), 4) * TIMING.panelStagger);
   }
 
   var intersection = window.IntersectionObserver ? new IntersectionObserver(function (entries) {
