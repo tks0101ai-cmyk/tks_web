@@ -93,6 +93,16 @@ test('bấm dòng mở hộp chi tiết: mã, tên, vị trí và thông số SL
   assert.equal(ui.field('notes').readOnly, false);
 });
 
+test('chi tiết vị trí hiển thị tồn âm và tiếp tục trừ số đang giữ chỗ', async t => {
+  const ui = await setup(t, { data: { HN: [row(1, { notes: '-2T x 100', quantity: -200, available: -250 })], SG: [] } });
+  await ui.open(1);
+  assert.equal(ui.text('vtDetailCartons'), '-2');
+  assert.equal(ui.text('vtDetailPieces'), '-200');
+  assert.equal(ui.text('vtDetailAvailable'), '-250');
+  ui.type('notes', 'Hết hàng');
+  assert.equal(ui.text('vtDetailAvailable'), '-50');
+});
+
 test('hàng ngoài Kiot không tự tính thông số trong hộp chi tiết kể cả khi đã đánh dấu Đã sửa', async t => {
   const ui = await setup(t, { data: { HN: [row(1, { quantity: null, available: null, kiotQuantity: null, rawWarnings: ['unknowncode'], warnings: [], acknowledged: true })], SG: [] } });
   await ui.open(1);

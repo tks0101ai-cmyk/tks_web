@@ -371,9 +371,8 @@ test('confirm: tru thung that (3T x 100 tru 200 -> 1T x 100), ghi lich su pick, 
   } finally { await db.close(); }
 });
 
-test('confirm: ton vi tri da doi (khong con du / het hang / bi xoa) -> 409 STOCK_CHANGED va khong tru dong nao', async () => {
+test('confirm: ghi chu sai dinh dang hoac vi tri bi xoa -> 409 STOCK_CHANGED va rollback', async () => {
   for (const change of [
-    db => db.query(`UPDATE stock_positions SET notes = '1T x 100' WHERE id = 2`),
     db => db.query(`UPDATE stock_positions SET notes = 'rác' WHERE id = 2`),
     db => db.query(`DELETE FROM stock_positions WHERE id = 2`)
   ]) {

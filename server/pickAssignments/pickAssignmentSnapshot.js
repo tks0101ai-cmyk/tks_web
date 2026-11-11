@@ -39,9 +39,18 @@ function allocationMatches(snapshot, row) {
   return Number.isSafeInteger(printedTotal) && printedTotal - snapshot.excess === snapshot.plannedQty;
 }
 
-function deductAllocation(snapshot, row) {
-  if (!allocationMatches(snapshot, row)) return null;
-  const spec = carton.parseSpec(row.notes);
+function deductAllocation(snapshot, row, { allowNegative = false } = {}) {
+  if (!row) return null;
+  const spec = carton.parseSigned(row.notes);
+  if (!spec || !Number.isSafeInteger(spec.quantity)) return null;
+  if (!allocationMatches(snapshot, row)) {
+    if (!allowNegative || !snapshot || !allocationMatches(snapshot, {...row, notes: snapshot.notes}) ||
+        spec.quantity >= snapshot.plannedQty ||
+        !Number.isSafeInteger(spec.quantity - snapshot.plannedQty)) return null;
+    if (spec.quantity > 0 && !spec.terms.every(term =>
+      snapshot.terms?.some(original => original.perCarton === term.perCarton))) return null;
+    return carton.subtractNotes(row.notes, snapshot.plannedQty, snapshot.pickTerms[0].perCarton);
+  }
   // Follow the original whole-carton plan even if a different combination has
   // since become preferable. Partial picks retain the existing loose notation.
   if (spec.loose === 0 && snapshot.excess === 0) {

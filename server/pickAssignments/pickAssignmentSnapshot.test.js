@@ -33,3 +33,14 @@ test('partial printed plan does not switch to newly added whole cartons',()=>{
   assert.equal(result.text,'3T x 100 + 1T x 50 - 50');
   assert.equal(result.taken,0.5);
 });
+test('confirmation deducts a valid reservation from depleted or already negative stock', () => {
+  const snapshot = makeAllocationSnapshot(row(), 200);
+  const options = { allowNegative: true };
+  for (const [notes, expected] of [['1T x 100', -100], ['Hết hàng', -200], ['-1T x 100', -300]]) {
+    assert.equal(deductAllocation(snapshot, row(notes)), null);
+    const result = deductAllocation(snapshot, row(notes), options);
+    assert.equal(C.parseSigned(result.text).quantity, expected);
+  }
+  assert.equal(deductAllocation(snapshot, row('1T x 50'), options), null);
+  assert.equal(deductAllocation(snapshot, row('Hết hàng', { location: 'B02' }), options), null);
+});

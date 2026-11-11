@@ -243,7 +243,7 @@ test('reconcileWithKiot: Kiot Hoan thanh -> Da boc (tru thung), Kiot Da huy -> C
   } finally { await db.close(); }
 });
 
-test('reconcileWithKiot: ton vi tri da doi -> bao loi cho chi dinh do, giu Dang boc, khong chan don khac; khong co chi dinh nao thi nhe', async () => {
+test('reconcileWithKiot: xac nhan don da hoan thanh khi vi tri het hang, tru am dung mot lan', async () => {
   const { db, service, notesOf, latest } = await fixture({ orders: {
     DH001: order(),
     DH002: order({ orderCode: 'DH002', lines: [lineOf('BBB2', 20)] })
@@ -254,12 +254,14 @@ test('reconcileWithKiot: ton vi tri da doi -> bao loi cho chi dinh do, giu Dang 
     await addKiotOrder(db, { code: 'DH002', status: 'Hoàn thành', id: 2, lines: [{ productCode: 'BBB2', quantity: 20 }] });
     await service.assign(ctx(), body([{ productCode: 'AAA1', positionId: 1, qty: 250 }]));
     await service.assign(ctx(), { branch: 'HN', orderCode: 'DH002', allocations: [{ productCode: 'BBB2', positionId: 3, qty: 20 }] });
-    await db.query(`UPDATE stock_positions SET notes = '1T x 100', version = version + 1 WHERE id = 1`);
+    await db.query(`UPDATE stock_positions SET notes = 'Hết hàng', version = version + 1 WHERE id = 1`);
     const result = await service.reconcileWithKiot();
-    assert.deepEqual([result.confirmed, result.failed.length, result.failed[0].code, result.failed[0].orderCode], [1, 1, 'STOCK_CHANGED', 'DH001']);
-    assert.equal((await latest('DH001')).status, 'picking');
+    assert.equal(result.confirmed, 2);
+    assert.deepEqual(result.failed, []);
+    assert.equal((await latest('DH001')).status, 'confirmed');
     assert.equal((await latest('DH002')).status, 'confirmed');
-    assert.equal(await notesOf(1), '1T x 100');
+    assert.equal((await service.reconcileWithKiot()).confirmed, 0);
+    assert.equal(await notesOf(1), '-1T x 250');
   } finally { await db.close(); }
 });
 

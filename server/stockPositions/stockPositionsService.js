@@ -300,7 +300,7 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
   }
 
   function shape(row, product, held = 0) {
-    // parseSigned: dong am (xuat qua ton tu Don xuat kho) van co SL am de hien thi; "Co the boc" khong bao gio am.
+    // Giữ dấu âm để thấy cả tồn âm lẫn phần thiếu so với số đang giữ chỗ.
     const spec = product ? carton.parseSigned(row.notes) : null;
     const rawWarnings = carton.warnings(row.notes, { unknownCode: !product });
     return {
@@ -313,7 +313,7 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
       location: row.location,
       quantity: spec ? spec.quantity : null,
       held,
-      available: spec ? Math.max(0, spec.quantity - held) : null,
+      available: spec ? spec.quantity - held : null,
       kiotQuantity: product ? product.onHand : null,
       // Cảnh báo gốc tính từ ghi chú; dòng đã "Đã sửa" (format_ack) thì warnings rỗng để không đếm/lọc là cảnh báo.
       acknowledged: Boolean(row.format_ack),

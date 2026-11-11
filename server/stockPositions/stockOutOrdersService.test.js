@@ -173,7 +173,7 @@ test('dòng âm tự bù khi cộng hàng vào đúng vị trí (Thêm dòng VT)
     const [row] = (await positions.list(ctx(), 'HN')).rows;
     assert.equal(row.notes, '-2T x 100');
     assert.equal(row.quantity, -200);
-    assert.equal(row.available, 0, 'Có thể bốc không âm');
+    assert.equal(row.available, -200);
     assert.deepEqual(row.warnings, ['negative']);
     const added = await positions.create(ctx(), 'HN', { code: 'AAA1', location: 'A1', notes: '5T x 100' });
     assert.equal(added.merged, true);

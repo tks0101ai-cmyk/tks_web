@@ -489,11 +489,11 @@
     const form = $('vtDetailForm');
     const carton = window.PickingCarton;
     const notes = form.elements.notes.value;
-    const spec = row.kiotQuantity != null && carton && carton.parseSpec ? carton.parseSpec(notes) : null;
-    $('vtDetailCartons').textContent = spec ? formatNumber(spec.cartons) : '—';
+    const spec = row.kiotQuantity != null && carton?.parseSigned ? carton.parseSigned(notes) : null;
+    $('vtDetailCartons').textContent = spec ? formatNumber(spec.negative ? -spec.cartons : spec.cartons) : '—';
     $('vtDetailPieces').textContent = spec ? formatNumber(spec.quantity) : '—';
     const held = Number(row.held) || 0;
-    $('vtDetailAvailable').textContent = spec ? formatNumber(Math.max(0, spec.quantity - held)) : '—';
+    $('vtDetailAvailable').textContent = spec ? formatNumber(spec.quantity - held) : '—';
     $('vtDetailAvailable').closest('.dp-stat').title = held > 0 ? 'Đang giữ chỗ ' + formatNumber(held) + ' cho các đơn Đang bốc' : '';
     $('vtDetailKiot').textContent = dash(formatNumber(row.kiotQuantity));
     $('vtDetailStatLocation').textContent = dash(form.elements.location.value.trim());

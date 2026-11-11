@@ -679,7 +679,7 @@ test('list: Có thể bốc = SL kho trừ giữ chỗ của các đơn Đang b�
     await line(await assign('HN', 'DH5', 'picking'), b, 9); // giữ vượt SL: không âm
     await line(await assign('SG', 'DH6', 'picking'), sg[0], 40);
     const after = (await service.list(ctx(), 'HN')).rows;
-    assert.deepEqual(after.map(r => [r.quantity, r.held, r.available]), [[300, 150, 150], [5, 9, 0], [null, 0, null]]);
+    assert.deepEqual(after.map(r => [r.quantity, r.held, r.available]), [[300, 150, 150], [5, 9, -4], [null, 0, null]]);
     const afterSg = (await service.list(ctx(), 'SG')).rows;
     assert.deepEqual(afterSg.map(r => [r.quantity, r.held, r.available]), [[200, 40, 160]]);
   } finally { await db.close(); }

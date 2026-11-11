@@ -6,12 +6,12 @@
 //   cancelled = Huy nhat: tra giu cho (Huy chi ap dung cho 'picking'). 'confirmed' chi doi duoc bang chi dinh lai (assign reassign):
 //   hoan thung da tru (action 'pick_revert') roi huy luot cu + tao luot Dang nhat moi trong 1 giao dich.
 // Moi thao tac ghi chay trong 1 giao dich co khoa advisory theo co so (cung khoa voi stockPositionsService) + FOR UPDATE
-// cac dong vi tri theo id, nen khong the chi dinh/tru vuot ton khi nhieu nguoi cung thao tac.
-// Ton kha dung cua vi tri = SL (tinh tu ghi chu, carton.parseSpec) - tong giu cho (reserved_qty) cua cac chi dinh 'picking' o DON KHAC.
+// cac dong vi tri theo id, nen khong chi dinh trung luong ton hay tru cung chi dinh hai lan.
+// Xac nhan luot da chi dinh co the ghi ton am neu ton vi tri da giam sau khi giu cho.
 const { getPool } = require('../db/pool');
 const carton = require('../public/shared/carton.js');
 const rules = require('../public/shared/pick-rules.js');
-const { makeAllocationSnapshot, allocationMatches, deductAllocation } = require('./pickAssignmentSnapshot');
+const { makeAllocationSnapshot, deductAllocation } = require('./pickAssignmentSnapshot');
 const { makeOrderSnapshot } = require('./pickOrderSnapshot');
 const { tx, createStockPositionsService } = require('../stockPositions/stockPositionsService');
 const kiotData = require('./pickKiotData');
@@ -57,16 +57,21 @@ const CANDIDATES_SQL = `SELECT p.*, COALESCE(h.held, 0)::float8 AS held
    Tra { target, notes, exact } | { create: true, notes, snapshot } | { error }. */
 function planRevert(job, row, same) {
   const picked = Number(job.picked_qty);
+  const restore = notes => {
+    const spec = carton.parseSigned(notes);
+    if (spec?.negative) return carton.mergeNotes(notes, carton.formatSpec(1, picked));
+    return carton.restore(spec, picked)?.text;
+  };
   if (row) {
     if (row.notes === job.spec_after) return { target: row, notes: job.spec_before, exact: true };
-    const spec = carton.parseSpec(row.notes);
-    if (!spec) return { error: 'có ghi chú sai định dạng nên không cộng trả được số đã nhặt' };
-    return { target: row, notes: carton.restore(spec, picked).text, exact: false };
+    const notes = restore(row.notes);
+    if (notes == null) return { error: 'có ghi chú sai định dạng nên không cộng trả được số đã nhặt' };
+    return { target: row, notes, exact: false };
   }
   if (same) {
-    const spec = carton.parseSpec(same.notes);
-    if (!spec) return { error: 'đã được nhập lại với ghi chú sai định dạng nên không cộng trả được' };
-    return { target: same, notes: carton.restore(spec, picked).text, exact: false, recreated: false };
+    const notes = restore(same.notes);
+    if (notes == null) return { error: 'đã được nhập lại với ghi chú sai định dạng nên không cộng trả được' };
+    return { target: same, notes, exact: false, recreated: false };
   }
   // Chi khoi phuc nguyen chuoi cu khi chinh luot xac nhan nay da lam het hang (spec_after rong).
   const notes = isEmptyNote(job.spec_after) ? job.spec_before : carton.restore(carton.parseSpec('') || { terms: [], loose: 0 }, picked).text;
@@ -725,6 +730,7 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
       const head = await lockAssignment(client, ctx, id, body.version, [STATUS.PICKING]);
       const jobs = (await client.query('SELECT * FROM order_pick_lines WHERE assignment_id = $1 ORDER BY position_id', [id])).rows;
       const positions = await lockPositions(client, head.branch, jobs);
+      const held = await heldByPosition(client, head.branch, [...positions.keys()], head.order_code);
       // Ton that do don hang tru: nguoi sua (lich su VT + cot Nguoi sua cuoi) la MA DON; ten nguoi bam that nam trong summary
       // (rong khi job Kiot tu dong, actor.id === null). order_pick_history van ghi nguoi bam.
       const stockActor = { id: actor.id, name: head.order_code };
@@ -732,17 +738,14 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
       for (const job of jobs) {
         const row = positions.get(Number(job.position_id));
         if (!row) throw stockChanged(job, 'không còn tồn tại');
-        const spec = carton.parseSpec(row.notes);
-        if (!spec || spec.empty) throw stockChanged(job, 'đã hết hàng hoặc ghi chú sai định dạng');
         const planned = Number(job.planned_qty);
-        if (!Number.isSafeInteger(planned) || planned <= 0 ||
-            !allocationMatches(job.allocation_snapshot, row) || job.allocation_snapshot.plannedQty !== planned) {
+        const result = job.allocation_snapshot?.plannedQty === planned &&
+          deductAllocation(job.allocation_snapshot, row, { allowNegative: true });
+        if (!result) {
           throw stockChanged(job, 'đã đổi mã/vị trí/quy cách hoặc phiếu cũ thiếu dấu vết để xác nhận an toàn');
         }
-        const result = deductAllocation(job.allocation_snapshot, row);
-        if (!result) throw stockChanged(job, `không còn đủ ${planned} để nhặt (hiện ${spec.quantity})`);
         const snapshot = { code: row.code, name: row.name, notes: row.notes, arrivalDate: row.arrival_date, location: row.location };
-        if (isEmptyNote(result.text)) {
+        if (isEmptyNote(result.text) && !held.get(Number(row.id))) {
           await removeRow(client, head.branch, stockActor, row, 'auto_delete', { newValue: result.text, summary: { ...summary, picked: planned } });
         } else {
           await client.query(
