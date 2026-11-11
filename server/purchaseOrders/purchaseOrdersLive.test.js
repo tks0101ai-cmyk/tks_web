@@ -24,10 +24,15 @@ test('purchase uses the shared application shell and brand instead of a private 
   assert.ok(doc.querySelector('.receipt-header .status-line #accountChip'));
  }finally{dom.window.close();reference.window.close()}
 });
-test('history leaves the title tabs and returns to orders from the toolbar action',async t=>{
- const p=await page(t),doc=p.w.document,fetch=p.w.fetch;assert.equal(doc.querySelector('.purchase-tabs'),null);assert.ok(doc.querySelector('.order-actions #historyToggle'));p.w.fetch=async(url,options)=>url.endsWith('/history')?{ok:true,json:async()=>({rows:[]})}:fetch(url,options);
- doc.getElementById('historyToggle').click();await tick();await tick();assert.equal(doc.getElementById('orders').hidden,true);assert.equal(doc.getElementById('history').hidden,false);
- doc.getElementById('backToOrders').click();assert.equal(doc.getElementById('orders').hidden,false);assert.equal(doc.getElementById('history').hidden,true);
+test('purchase workspace omits the redundant order and history tab buttons',()=>{
+ const dom=new JSDOM(fs.readFileSync(path.join(dir,'index.html'),'utf8'));
+ try{assert.equal(dom.window.document.querySelector('.purchase-tabs'),null);assert.equal(dom.window.document.getElementById('historyToggle'),null)}finally{dom.window.close()}
+});
+test('pagination shows only pages one to three and arrows navigate the rest',async t=>{
+ const extraRows=Array.from({length:150},(_,i)=>({id:String(i+2),rowKey:'D'+String(i+2).padStart(5,'0'),version:1,productCode:'P'+i,productName:'Item '+i,cartonCount:1,qtyPerCarton:1}));
+ const p=await page(t,{extraRows}),doc=p.w.document,pages=()=>[...doc.querySelectorAll('#pageNumbers [data-page]')].map(button=>Number(button.dataset.page));
+ assert.deepEqual(pages(),[1,2,3]);assert.match(doc.getElementById('pageNumbers').textContent,/…/);assert.equal(doc.getElementById('pageLabel').textContent,'Trang 1/4');
+ for(const [button,label] of [['next','Trang 2/4'],['next','Trang 3/4'],['next','Trang 4/4'],['previous','Trang 3/4']]){doc.getElementById(button).click();assert.equal(doc.getElementById('pageLabel').textContent,label);assert.deepEqual(pages(),[1,2,3])}
 });
 async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees=[],integrationEnabled=true,onEnhance}={}){
  const dom=new JSDOM(fs.readFileSync(path.join(dir,'index.html'),'utf8'),{url:'https://example.test/thu-mua/dat-hang/',runScripts:'outside-only'}),w=dom.window;
