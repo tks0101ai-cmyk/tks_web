@@ -24,7 +24,7 @@ let db, service, events, projected, invalidated, shared;
 before(async () => {
   db = new PGlite();
   for (const name of [...BASE, ...PURCHASE_FILES]) await db.exec(fs.readFileSync(path.join(__dirname, '../db/migrations', name), 'utf8'));
-  await db.exec('CREATE TABLE shipping_measures(code_key text PRIMARY KEY, per_carton numeric, m3_per_unit numeric)');
+  await db.exec('CREATE TABLE shipping_measures(code_key text PRIMARY KEY, per_carton numeric, m3_per_unit numeric, kg_per_unit numeric)');
   await db.exec('CREATE TABLE product_report(product_code text,product_name text)');
   events = new EventEmitter();
   const query = (sql, params) => db.query(sql, params);

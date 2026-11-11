@@ -52,6 +52,35 @@ test('pristine focused input retains its original comparison value/version when 
  const input=doc.querySelector('[data-edit="supplier"]');assert.equal(doc.activeElement,input);assert.equal(input.value,'Old');assert.match(input.closest('td').title,/Remote/);
  input.value='My edit';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));assert.equal(p.drafts()['1'].before.supplier,'Old');assert.equal(p.drafts()['1'].version,4);
 });
+test('Đối chiếu overrides are directly editable and sent through the normal versioned row patch',async t=>{
+ const p=await page(t),doc=p.w.document;p.data.rows[0].literChina=120;p.data.rows[0].measurementOverrides={literChina:120};p.data.rows.push({...p.data.rows[0],id:'2',rowKey:'D00002',literChina:110,measurementOverrides:{literChina:110}});p.listeners.changed();await tick();await tick();
+ doc.getElementById('columns').click();doc.querySelector('[data-column="literChina"]').checked=true;doc.querySelector('[data-column="literChina"]').dispatchEvent(new p.w.Event('change',{bubbles:true}));
+ const cells=doc.querySelectorAll('[data-field="literChina"]'),paste=new p.w.Event('paste',{bubbles:true,cancelable:true});cells[0].click();paste.clipboardData={getData:()=> '121\n122'};cells[0].dispatchEvent(paste);assert.equal(p.drafts()['2'].changes.literChina,121);assert.equal(p.drafts()['1'].changes.literChina,122);doc.getElementById('undoWork').click();assert.equal(p.drafts()['1'],undefined);assert.equal(p.drafts()['2'],undefined);
+ const input=doc.querySelector('tr[data-id="1"] [data-edit="literChina"]');assert.ok(input);assert.equal(doc.querySelector('[data-field="status"] input'),null);input.focus();input.value='125';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));assert.equal(p.drafts()['1'].changes.literChina,125);
+ doc.getElementById('save').click();doc.getElementById('commit').click();await tick();await tick();const call=p.calls.find(c=>c.options.method==='PATCH'&&c.url.endsWith('/1'));assert.ok(call);assert.deepEqual(JSON.parse(call.options.body),{version:4,before:{literChina:120},changes:{literChina:125}});
+});
+test('measurement inputs show agreed precision and focus/blur alone creates no draft',async t=>{
+ const p=await page(t),doc=p.w.document;p.data.rows[0].kgPerCarton=14.04;p.data.rows[0].m3PerCarton=.0671;p.listeners.changed();await tick();await tick();
+ doc.getElementById('columns').click();for(const key of ['kgPerCarton','m3PerCarton']){const box=doc.querySelector('[data-column="'+key+'"]');box.checked=true;box.dispatchEvent(new p.w.Event('change',{bubbles:true}))}
+ for(const [key,shown] of [['kgPerCarton','14.0'],['m3PerCarton','0.067']]){let input=doc.querySelector('[data-edit="'+key+'"]');assert.equal(input.value,shown,key+' initial');input.focus();input.blur();await new Promise(resolve=>setTimeout(resolve,5));input=doc.querySelector('[data-edit="'+key+'"]');assert.equal(input.value,shown,key+' after blur')}assert.equal(Object.keys(p.drafts()).length,0);
+});
+test('percentage overrides edit in displayed percentage points; blank clears a value override',async t=>{
+ const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{literDiff:-.03,ratio:.25,literChina:1.23,measurementOverrides:{literDiff:-.03,ratio:.25,literChina:1.23}});p.listeners.changed();await tick();await tick();
+ doc.getElementById('columns').click();for(const key of ['literDiff','ratio','literChina']){const box=doc.querySelector('[data-column="'+key+'"]');box.checked=true;box.dispatchEvent(new p.w.Event('change',{bubbles:true}))}
+ assert.equal(doc.querySelector('[data-edit="literDiff"]').value,'-3');assert.equal(doc.querySelector('[data-edit="ratio"]').value,'25');
+ for(const [key,v] of [['literDiff','12'],['ratio','12'],['literChina','']]){const input=doc.querySelector('tr[data-id="1"] [data-edit="'+key+'"]');input.value=v;input.dispatchEvent(new p.w.Event('input',{bubbles:true}))}
+ assert.deepEqual(p.drafts()['1'].changes,{literDiff:.12,ratio:.12,literChina:null});doc.getElementById('save').click();doc.getElementById('commit').click();await tick();await tick();const body=JSON.parse(p.calls.find(c=>c.options.method==='PATCH'&&c.url.endsWith('/1')).options.body);assert.deepEqual(body.changes,{literDiff:.12,ratio:.12,literChina:null});
+});
+test('staged override changes and clears recalculate dependent comparison fields from fallback',async t=>{
+ const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{m3PerCarton:.005,literWarehouse:1,literChina:1.2,literDiff:.2,measurementOverrides:{literChina:1.2},measurementDefaults:{literWarehouse:1,m3Warehouse:null,literChina:1,literDiff:0,gramWarehouse:null,gramChina:null,gramDiff:null,measuredOn:null,ratio:null}});p.listeners.changed();await tick();await tick();
+ doc.getElementById('columns').click();for(const key of ['literChina','literDiff']){const box=doc.querySelector('[data-column="'+key+'"]');box.checked=true;box.dispatchEvent(new p.w.Event('change',{bubbles:true}))}
+ let input=doc.querySelector('tr[data-id="1"] [data-edit="literChina"]');input.focus();input.value='1.5';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));input.dispatchEvent(new p.w.Event('change',{bubbles:true}));assert.equal(doc.querySelector('tr[data-id="1"] [data-edit="literDiff"]').value,'50');
+ input=doc.querySelector('tr[data-id="1"] [data-edit="literChina"]');input.focus();input.value='';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));input.dispatchEvent(new p.w.Event('change',{bubbles:true}));assert.equal(doc.querySelector('tr[data-id="1"] [data-edit="literDiff"]').value,'0');
+});
+test('new row submission carries staged comparison overrides',async t=>{
+ const p=await page(t,{local:true}),doc=p.w.document;doc.getElementById('columns').click();doc.querySelector('[data-column="literChina"]').checked=true;doc.querySelector('[data-column="literChina"]').dispatchEvent(new p.w.Event('change',{bubbles:true}));
+ const input=doc.querySelector('tr[data-id="new-local"] [data-edit="literChina"]');assert.ok(input);input.value='125';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));doc.getElementById('save').click();doc.getElementById('commit').click();await tick();await tick();const call=p.calls.find(c=>c.options.method==='POST'&&c.url==='/api/purchase-orders/plan');assert.ok(call);const body=JSON.parse(call.options.body);assert.equal(body.creates[0].values.literChina,125);
+});
 for(const scope of ['containerTable','watchedContainer'])test('freight '+scope+' sends original focus version after SSE and cannot overwrite remote freight',async t=>{
  const p=await page(t),doc=p.w.document,fetch=p.w.fetch;
  if(scope==='watchedContainer')doc.querySelector('[data-container-filter="2"]').click();

@@ -718,3 +718,9 @@ Cập nhật gần nhất: 07/11/2026.
 Đo trên log Render: mỗi câu SQL ~175 ms (web Oregon ↔ DB Singapore) và event loop đứng ~11 s do báo cáo SĐT marketing O(N × số NV). Đã sửa: đếm SĐT theo NV 1 lượt; bốc/in đơn bớt vòng DB (chỉ định 9 → 6 vòng trong giao dịch, đọc lại 2 → 1, form in tải song song); animation dùng chung ≤ 0,45 s. Việc tiếp theo: sau deploy lọc lại `[loop-stall]`/`[timing]`; cân nhắc gom request trùng + cache ngắn cho `penalty-board`/`business-report` (các lần đứng 1–3 s khi nhiều người mở cùng lúc); chọn VPS gần DB (Singapore) khi chuyển hạ tầng.
 
 Cập nhật cuối: 11/11/2026.
+
+## Thu mua — ghi đè số đo theo dòng (migration 0122, 11/11/2026)
+
+`purchase_orders.measurement_overrides` giữ các giá trị người dùng chỉnh ở nhóm Đối chiếu Cân đo theo từng dòng. Key không có tiếp tục đọc nguồn/phép tính tự động; xóa/trống gỡ ghi đè. Không sửa dữ liệu Sheet hay `shipping_measures`; `0122_purchase_measurement_overrides.sql` đã đăng ký trong `ensurePurchaseSchema`, chưa xác minh DB production.
+
+Cập nhật cuối: 11/11/2026.

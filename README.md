@@ -537,7 +537,8 @@ Cập nhật gần nhất: 07/11/2026.
 
 Workspace dùng thêm shared/purchase-grid.js (TSV, rowKey, vùng, fill, tổng vùng) và purchase-grid-ui.js (chọn/copy/dán/điền), kèm test riêng. SSE/poll được gộp3giây và hoãn khi tab ẩn; GET /api/purchase-orders/revision kiểm fingerprint trước khi tải hàng. Danh mục NV không chặn bảng. Shift chọn vùng, Ctrl+C/V, Ctrl+D và tay kéo điền; Escape hủy ô đang sửa. Mọi thay đổi hàng vẫn là bản nháp, một thao tác vùng là một bước hoàn tác, bấm Lưu và xác nhận mới ghi. Báo cáo: docs/04-planning/purchase-grid-sync-20261110-test-report.md. Chưa merge/deploy.
 
-11/11/2026 — Thu mua: Giá NET đồng bộ tab VK-DUNG, gồm Thuế và VC sau CNY × 3,920 (giá hàng dùng tỉ giá dòng). Giá tệ hiển thị 2 chữ số; Tổng tệ làm tròn đơn vị và bấm xem phần lẻ.
+11/11/2026 — Thu mua: Giá NET đồng bộ tab VK-DUNG, gồm Thuế và VC sau CNY × 3,920 (giá hàng dùng tỉ giá dòng). Giá tệ hiển thị 2 chữ số; Tổng tệ làm tròn đơn vị, bấm hoặc kích hoạt bàn phím để xem 3 chữ số ngay trong ô; mất focus thì trở về số làm tròn, không mở popup.
+11/11/2026 — Thu mua / Cân đo: migration `0122_purchase_measurement_overrides.sql` thêm `purchase_orders.measurement_overrides` để lưu đè 9 giá trị của nhóm Đối chiếu theo từng dòng; xóa/trống trả về nguồn và phép tính tự động. Không ghi ngược vào `shipping_measures`/Google Sheet. Migration đã đăng ký cho startup nhưng chưa xác minh DB production.
 
 ## Hiệu năng: bỏ treo event loop, bớt vòng DB khi bốc/in đơn, rút gọn animation (11/11/2026)
 

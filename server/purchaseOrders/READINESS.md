@@ -90,11 +90,14 @@ Nguồn kiểm chứng: công thức Sheet đã ghi nhận trong memory phiên d
 
 Ô trống = chưa biết, không mặc định bằng 0. Giá/chi phí 0 hợp lệ; tỉ giá phải >0 hoặc trống. Số thùng và SL/thùng là số nguyên dương; chặn số không hữu hạn, âm, nhóm phẩy sai và tích vượt Number.MAX_SAFE_INTEGER. Kg/m³/số đo kho 0 được coi là chưa có số đo sử dụng được. Không chia cho 0 và không xuất NaN/Infinity. Thiếu dữ liệu thì kết quả phụ thuộc để trống; tổng tải/khối chỉ cộng phần biết và giữ cảnh báo thiếu số đo. Cont nhập cước tay mà còn mã thiếu m³/số thùng thì chưa phân bổ cho mọi mã, tránh dồn cước sai cho số mã còn lại.
 
-Chuẩn nhập/xuất: 1,234.56; số Excel thật giữ nguyên độ chính xác. Giá tệ hiển thị 2 chữ số thập phân; Tổng tệ hiển thị làm tròn đến đơn vị và bấm để xem 3 chữ số thập phân; VND hiển thị đồng. Không làm tròn giữa chừng hoặc lấy số đã hiển thị làm đầu vào phép tính. Tổng các dòng đã làm tròn hiển thị có thể chênh vài đồng với tổng làm tròn một lần; dữ liệu gốc không bị điều chỉnh để bù chênh. Xóa tiền cont khôi phục chuẩn 202,000,000 / 170; nhập 0 là cước 0. Tách mã con chưa nhập số thùng thì chưa cộng vào tải/khối/cước. Đổi cont cập nhật cả nguồn và đích.
+Chuẩn nhập/xuất: 1,234.56; số Excel thật giữ nguyên độ chính xác. Giá tệ hiển thị 2 chữ số thập phân; Tổng tệ hiển thị làm tròn đến đơn vị và bấm/nhấn Enter hoặc Space để hiện 3 chữ số ngay trong ô; khi mất focus trở về số làm tròn. VND hiển thị đồng. Không làm tròn giữa chừng hoặc lấy số đã hiển thị làm đầu vào phép tính. Tổng các dòng đã làm tròn hiển thị có thể chênh vài đồng với tổng làm tròn một lần; dữ liệu gốc không bị điều chỉnh để bù chênh. Xóa tiền cont khôi phục chuẩn 202,000,000 / 170; nhập 0 là cước 0. Tách mã con chưa nhập số thùng thì chưa cộng vào tải/khối/cước. Đổi cont cập nhật cả nguồn và đích.
 
 Mã dùng chung: public/shared/purchase-calculations.js và purchase-freight.js; mockup/live/export dùng cùng phép tính, SQL projection kiểm chéo với export qua PGlite. Bộ đối soát bổ sung FX, VC sau, Thuế và số đo kho. Chưa migrate/cutover/deploy.
 
-11/11/2026 — Công thức NET đồng bộ tab VK-DUNG: giá hàng dùng tỉ giá dòng, VC sau nhân 3,920, Thuế được cộng; VC/thuế/postpaid trống được coi là 0 trong NET. Giá tệ hiển thị 2 chữ số, Tổng tệ làm tròn đến đơn vị và bấm xem phần lẻ 3 chữ số. M³/thùng hiển thị 3 chữ số.
+11/11/2026 — Công thức NET đồng bộ tab VK-DUNG: giá hàng dùng tỉ giá dòng, VC sau nhân 3,920, Thuế được cộng; VC/thuế/postpaid trống được coi là 0 trong NET. Giá tệ hiển thị 2 chữ số, Tổng tệ làm tròn đến đơn vị; bấm/Enter/Space hiện phần lẻ 3 chữ số trong ô tới khi blur. M³/thùng hiển thị 3 chữ số.
+11/11/2026 — Migration 0122 thêm `purchase_orders.measurement_overrides` để sửa riêng 9 trường nhóm Đối chiếu theo dòng; bỏ giá trị riêng thì dùng lại nguồn/tự tính. Nguồn Cân đo không bị ghi. Migration được đăng ký ở startup; chưa áp hoặc kiểm chứng DB production.
+
+Cập nhật gần nhất: 11/11/2026.
 
 
 05/11/2026 — Triển khai đợt 1–2 trang Thu mua thật: index.html dùng header/sidebar chung, tổng quan 6 chỉ số, Chỉ số cont trên/Đặt hàng dưới/Nhật ký riêng; thêm workspace.css riêng cho trang production. Bảng cont có 15 cột gồm cước/m³, tỉ lệ, ngày về/lịch bốc, nhà VC/cont TQ/người xếp; giữ chỉnh cước/trạng thái và bản ghim có cùng độ rộng. Tạo cont chuyển lên panel cont và khóa khi chỉ xem.

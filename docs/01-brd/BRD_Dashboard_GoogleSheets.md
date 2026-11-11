@@ -694,6 +694,7 @@ Cập nhật gần nhất: 07/11/2026.
 
 Áp dụng thao tác vùng giống bảng tính (chọn, copy/dán, điền xuống, kéo điền, thống kê vùng) trong mô hình bản nháp Thu mua. Dùng Mã dòng để phân biệt cùng mã SP nằm nhiều cont; không tự đoán mã SP. Đồng bộ gộp cập nhật, giảm tải khi tab ẩn, không để danh mục NV chặn bảng; giữ mốc đối chiếu, xác nhận lưu và chống gửi trùng hiện có. Không chuyển sang lưu ngay theo mô hình Kiểm kê.
 
-11/11/2026 — Thu mua tính Giá NET theo tab VK-DUNG: cộng Thuế và VC sau CNY × 3,920 vào Tiền hàng + Tiền VC mã trước khi chia Tổng SL; 3,920 chỉ dành cho VC sau, giá hàng tiếp tục theo tỉ giá dòng. Giá tệ hiển thị 2 chữ số; Tổng tệ làm tròn đơn vị, bấm để xem 3 chữ số chính xác.
+11/11/2026 — Thu mua tính Giá NET theo tab VK-DUNG: cộng Thuế và VC sau CNY × 3,920 vào Tiền hàng + Tiền VC mã trước khi chia Tổng SL; 3,920 chỉ dành cho VC sau, giá hàng tiếp tục theo tỉ giá dòng. Giá tệ hiển thị 2 chữ số; Tổng tệ làm tròn đơn vị, bấm/Enter/Space hiện 3 chữ số chính xác ngay trong ô đến khi blur, không bật popup.
+11/11/2026 — Nhóm Đối chiếu Cân đo trong Thu mua cho phép sửa số đo/tính toán theo từng dòng mà không sửa dữ liệu Cân đo nguồn; xóa giá trị riêng để dùng lại nguồn hoặc tính tự động. Migration 0122 lưu các ghi đè theo đơn hàng.
 
 Cập nhật cuối: 11/11/2026.

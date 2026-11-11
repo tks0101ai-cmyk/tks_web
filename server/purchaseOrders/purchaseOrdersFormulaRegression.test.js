@@ -11,7 +11,7 @@ let db,service;
 before(async()=>{
  db=new PGlite();
  for(const name of ['0053_product_containers.sql','0072_product_container_unit_price_cny.sql','0075_product_container_expected.sql','0078_product_container_expected_prices.sql','0086_product_container_other_note.sql',...FILES])await db.exec(fs.readFileSync(path.join(__dirname,'../db/migrations',name),'utf8'));
- await db.exec('CREATE TABLE shipping_measures(code_key text PRIMARY KEY, per_carton numeric, m3_per_unit numeric)');
+ await db.exec('CREATE TABLE shipping_measures(code_key text PRIMARY KEY, per_carton numeric, m3_per_unit numeric, kg_per_unit numeric)');
  await db.exec("CREATE TABLE product_report(product_code text,product_name text);CREATE TABLE products(code text,name text);UPDATE purchase_settings SET source_mode='web',projection_owns_all=true,integration_enabled=true");
  const query=(sql,params)=>db.query(sql,params);
  service=createPurchaseOrdersService({pool:{query,connect:async()=>({query,release(){}})}});
