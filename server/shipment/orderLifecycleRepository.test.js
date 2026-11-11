@@ -426,3 +426,19 @@ test('readAll: tab Khách_HN lỗi -> fail-soft, các tab khác vẫn đọc', a
     ctx.restore();
   }
 });
+
+test('readAll: tab mất tiêu đề "Mã đơn hàng" (ô A1 trống, bug 11/11/2026 ở DonHang_SG) vẫn đọc mã đơn ở cột A; cột A mang tiêu đề khác thì không đoán', async t => {
+  t.mock.method(console, 'warn', () => {});
+  const header = ['', 'Nhân Viên Bán Hàng', 'Khách hàng', 'Sale gửi đơn cho kế toán', 'Kế toán duyệt đơn', 'Lái Xe',
+    'Tài xế gửi xác nhận giao hàng', 'Kế toán duyệt giao hàng', 'Ship nhận đơn', 'Đơn đã ký nhận'];
+  const row = ['DH022860', 'NGUYỄN THỊ LỆ', 'NN QHI Campuchia', '11/11/2026 09:41', '11/11/2026 09:45', 'Phan Thành Bảy',
+    '11/11/2026 14:15', '11/11/2026 14:51', '', '11/11/2026 15:48'];
+  const ctx = freshRepository({ sg: [header, row], hn: [['Khách hàng', 'Sale gửi đơn cho kế toán'], ['KH A', '11/11/2026 08:00']] });
+  try {
+    const records = await ctx.repo.readAll();
+    const sg = records.find(r => r._branch === 'SG');
+    assert.equal(sg.orderCode, 'DH022860');
+    assert.equal(sg.orderSignedAt, '11/11/2026 15:48');
+    assert.equal(records.find(r => r._branch === 'HN').orderCode, '', 'cột A là "Khách hàng": không lấy làm mã đơn');
+  } finally { ctx.restore(); }
+});

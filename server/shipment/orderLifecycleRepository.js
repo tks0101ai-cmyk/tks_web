@@ -81,6 +81,18 @@ function buildColumnIndex(headerRow) {
   return columnIndex;
 }
 
+/**
+ * Tieu de cot "Ma don hang" bi xoa/doi ten (da xay ra 11/11/2026: o A1 tab DonHang_SG bi de trong -> moi dong co ma
+ * rong, khong ghep duoc don Kiot, ca tab hien "Don chua gui ke toan"). Ma don luon nam o cot A nen khi khong tim thay
+ * tieu de va cot A chua bi truong nao khac nhan thi doc cot A, kem canh bao de nguoi van hanh sua lai tieu de.
+ */
+function withOrderCodeFallback(columnIndex, sheetName) {
+  if (columnIndex.orderCode >= 0) return columnIndex;
+  if (Object.keys(columnIndex).some(key => key !== 'orderCode' && columnIndex[key] === 0)) return columnIndex;
+  console.warn(`[orderLifecycleRepository] Tab "${sheetName}" khong co tieu de "Mã đơn hàng" — tam doc ma don o cot A. Hay sua lai o A1.`);
+  return Object.assign({}, columnIndex, { orderCode: 0 });
+}
+
 function readRowByHeader(row, columnIndex, fieldKeys) {
   const obj = {};
   fieldKeys.forEach(key => {
@@ -186,7 +198,7 @@ async function readAccountingTab(readOptions) {
 async function readTab(sheetName, branch, { fieldKeys = DELIVERY_FIELD_KEYS, flow = FLOW_DELIVERY } = {}, readOptions) {
   const values = await client.getValues(sheetName, readOptions);
   if (!values || values.length === 0) return [];
-  const columnIndex = buildColumnIndex(values[0]);
+  const columnIndex = withOrderCodeFallback(buildColumnIndex(values[0]), sheetName);
   const dataRows = values.slice(1);
   return dataRows
     .filter(row => row.some(cell => cell !== '' && cell !== undefined))
