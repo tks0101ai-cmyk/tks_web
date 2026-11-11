@@ -16,6 +16,9 @@ const { createSheetValuesCache } = require('./sheetValuesCache');
 
 const API_TIMEOUT_MS = 15000; // 15s
 const CACHE_TTL_MS = 15 * 1000; // 15s
+// Google loi tam thoi (qua han muc, timeout): dung ban doc tot gan nhat toi da 10 phut thay vi coi tab nhu rong
+// (tab phu/lich su ghi de fail-soft ve [] -> don tut ve "Don chua gui ke toan", mat ghi de).
+const STALE_IF_ERROR_MS = 10 * 60 * 1000;
 
 let sheetsApiPromise = null;
 
@@ -56,6 +59,7 @@ const {sharedCache} = require('../lib/sharedCache');
 // L1 trong tien trinh (tra ban cu + lam moi nen) dung tren L2 Redis (sharedCache, fail-open): nhieu instance chia se mot lan doc Google.
 const valuesCache = createSheetValuesCache({
   ttlMs: CACHE_TTL_MS,
+  staleIfErrorMs: STALE_IF_ERROR_MS,
   load: sheetName => {
     const spreadsheetId = requireSpreadsheetId();
     return sharedCache.readThrough(`lifecycle-sheets:${spreadsheetId}:${sheetName}`, CACHE_TTL_MS, async () => {
@@ -69,7 +73,7 @@ const valuesCache = createSheetValuesCache({
       return res.data.values || [];
     }, { validate: rows => Array.isArray(rows) && rows.every(Array.isArray) });
   },
-  onBackgroundError: err => console.warn('[orderLifecycleSheetsClient] lam moi nen loi:', err.message)
+  onBackgroundError: err => console.warn('[orderLifecycleSheetsClient] doc Google Sheet loi, tam dung ban cu:', err.message)
 });
 
 /**

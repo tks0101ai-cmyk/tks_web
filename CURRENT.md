@@ -50,6 +50,8 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 - [ ] 13/11 — Thu mua: phím tắt `Ctrl+Enter` và `Ctrl+Shift+Mũi tên` đã triển khai cục bộ nhưng vòng review cuối chặn vì chọn chữ do điều hướng bị nhầm là đang sửa — cần phân biệt selection do grid tạo với selection người dùng tạo; xem [báo cáo](.superpowers/sdd/2026-11-12-purchase-excel-fast-shortcuts/task-1-report.md)
 - [ ] 13/11 — Thu mua: Mã dòng tái sử dụng đã triển khai cục bộ trên `main` và cập nhật docs; `npm test`/review có ghi nhận trong kế hoạch — kiểm backfill và toàn bộ split family trên staging/copy, sau đó người vận hành áp migration 0125 trước deploy; migration chưa áp staging/production, chưa deploy
 - [ ] 13/11 — Phiên đăng nhập trượt 7 ngày (nhánh `claude/extend-session-timeout-63d7e1`, không migration) — merge + deploy, xóa biến `JWT_EXPIRES_IN` trên Render (web + worker) nếu có
+- [ ] 11/11 — Hiệu năng: PR #77, #78 đã deploy; đợt 3 (gỡ sao băng/pháo hoa, bỏ số đếm/chữ chạy, Công nợ bớt tải lại, log `[timing]` API kế toán — nhánh `claude/friendly-ride-y0uwwk`, không migration) — merge + deploy, rồi đọc `[loop-stall]` và `[timing]` API kế toán
+- [ ] 11/11 — Vòng đời: trạng thái không theo kịp Google Sheet — sửa dòng trùng mã lấy dòng tiến xa nhất + Sheets lỗi dùng bản đọc gần nhất (nhánh `claude/practical-ride-ucgwap`, không migration) — merge + deploy; cần 1–2 mã đơn còn lệch để đối chiếu nếu vẫn sai
 
 ## Chỉ người vận hành làm được
 
