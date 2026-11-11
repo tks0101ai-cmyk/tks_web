@@ -334,7 +334,7 @@ async function findOrder(orderCode) {
   if (!target) {
     return { found: false, summary: computeStatus(null) };
   }
-  const [records, historyRows] = await Promise.all([repo.readAll(), repo.readOverrideHistory()]);
+  const [records, historyRows] = await Promise.all([readRecords(), repo.readOverrideHistory()]);
   const record = records.find(r => normalizeCode(r.orderCode) === target);
   if (!record) {
     return { found: false, summary: computeStatus(null) };
@@ -369,6 +369,32 @@ async function findOrder(orderCode) {
 
 function kiotKey(branch, code) {
   return `${branch}|${normalizeCode(code)}`;
+}
+
+/**
+ * HAM THUAN. Cung 1 don (co so + ma) co NHIEU dong sheet (bot ghi lai khi Sale gui lai, hoac don chuyen tu tab giao xe
+ * sang tab khach/ship lay) -> giu dong co trang thai TIEN XA NHAT, bang nhau thi dong gap truoc; vi tri = dong dau tien.
+ * Truoc day luon lay dong dau nen don ket o trang thai cu du sheet da co moc moi o dong sau.
+ * Dong KeToan_ChungTu khong tham gia (khong co co so, van xep sau cung nhu cu).
+ */
+function dedupeRecords(records) {
+  const slotByKey = new Map();
+  const out = [];
+  records.forEach(record => {
+    const code = normalizeCode(record && record.orderCode);
+    if (!code || record._flow === FLOW_ACCOUNTING) { out.push(record); return; }
+    const key = kiotKey(record._branch, code);
+    const slot = slotByKey.get(key);
+    const rank = STATUS_RANK[computeStatus(record).code];
+    if (!slot) { slotByKey.set(key, { index: out.length, rank }); out.push(record); return; }
+    if (rank > slot.rank) { out[slot.index] = record; slot.rank = rank; }
+  });
+  return out;
+}
+
+/** Toan bo dong sheet da gop dong trung (xem dedupeRecords) — moi noi trong service doc sheet qua day. */
+async function readRecords(readOptions) {
+  return dedupeRecords(await repo.readAll(readOptions));
 }
 
 /**
@@ -487,7 +513,7 @@ const selectionCache = query.createSelectionCache(); // tu bo het khi mang dong 
 
 async function loadMergedRows(kiot, { allowStale = false } = {}) {
   const [records, historyRows, kiotResult] = await Promise.all([
-    repo.readAll({ allowStale }),
+    readRecords({ allowStale }),
     repo.readOverrideHistory({ allowStale }),
     kiot ? kiot.readOrders() : Promise.resolve(null)
   ]);
@@ -587,7 +613,7 @@ async function findPickingOrder(branch, orderCode, {kiot} = {}) {
   const target = normalizeCode(orderCode);
   if (!target) return null;
   const [records, historyRows, orders] = await Promise.all([
-    repo.readAll(), repo.readOverrideHistory(), kiot.readOrderHeaders(orderCode.trim())
+    readRecords(), repo.readOverrideHistory(), kiot.readOrderHeaders(orderCode.trim())
   ]);
   return mergeRows({
     records: records.filter(row => normalizeCode(row.orderCode) === target),
@@ -617,7 +643,7 @@ async function exportOrders(rawParams, { kiot, pickStatuses } = {}) {
  * hang" dung queryOrders.
  */
 async function listAllOrders(branchFilter) {
-  const [records, historyRows] = await Promise.all([repo.readAll(), repo.readOverrideHistory()]);
+  const [records, historyRows] = await Promise.all([readRecords(), repo.readOverrideHistory()]);
   const overrides = latestOverrideByCode(historyRows);
   const filtered = branchFilter ? records.filter(r => r._branch === branchFilter) : records;
   return filtered.map(record => toOrderRow(record, overrides.get(normalizeCode(record.orderCode))));
@@ -632,7 +658,7 @@ async function listAllOrders(branchFilter) {
  * Khu B; don khong con trong bang chinh (vd ma go nham luc ghi de) -> branch null.
  */
 async function listHistory() {
-  const [historyRows, records] = await Promise.all([repo.readOverrideHistory(), repo.readAll()]);
+  const [historyRows, records] = await Promise.all([repo.readOverrideHistory(), readRecords()]);
   const branchByCode = new Map();
   records.forEach(record => {
     const key = normalizeCode(record.orderCode);
@@ -694,7 +720,7 @@ async function overrideStatus(orderCode, { code, changedBy, changedByRole, note 
   }
 
   const target = normalizeCode(orderCode);
-  const [records, historyRows] = await Promise.all([repo.readAll(), repo.readOverrideHistory()]);
+  const [records, historyRows] = await Promise.all([readRecords(), repo.readOverrideHistory()]);
   const record = records.find(r => normalizeCode(r.orderCode) === target);
   if (!record) {
     throw makeError(`Không tìm thấy đơn hàng "${orderCode}" trong bảng vòng đời đơn hàng.`, 404, 'ORDER_NOT_FOUND');
@@ -732,5 +758,5 @@ module.exports = {
   STATUS, STATUS_LABEL, STATUS_RANK,
   computeStatus, computeEffectiveStatus, WARNING, WARNING_LABEL, computeWarnings, workingMsBetween, parseSheetTimeMs, findOrder, listAllOrders, queryOrders,
   exportOrders, overrideStatus, listHistory, queryHistory, findMergedOrder, findPickingOrder,
-  mergeRows, pickAccountingKiotOrder
+  mergeRows, pickAccountingKiotOrder, dedupeRecords
 };

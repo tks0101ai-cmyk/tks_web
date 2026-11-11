@@ -93,3 +93,23 @@ test('khong allowStale + doc loi: nem loi; invalidate bo ca luot doc dang chay',
   loads[2].resolve([['sau khi ghi']]);
   assert.deepEqual(await after, [['sau khi ghi']]);
 });
+
+test('staleIfErrorMs: doc lai loi thi tra ban tot gan nhat (khong nem), qua han thi nem; chua co ban nao van nem', async () => {
+  let time = 0;
+  const errors = [];
+  const results = [[['v1']], new Error('quota'), new Error('quota 2'), [['v4']]];
+  let calls = 0;
+  const cache = createSheetValuesCache({
+    ttlMs: 15000, staleIfErrorMs: 600000, now: () => time, onBackgroundError: e => errors.push(e.message),
+    load: async () => { const r = results[calls++]; if (r instanceof Error) throw r; return r; }
+  });
+  await cache.get('A');
+  time = 15001;
+  assert.deepEqual(await cache.get('A'), [['v1']], 'Google loi: van tra ban cu');
+  assert.deepEqual(errors, ['quota']);
+  time = 15001 + 600001;
+  await assert.rejects(cache.get('A'), /quota 2/, 'ban cu qua 10 phut: bao loi that');
+  assert.deepEqual(await cache.get('A'), [['v4']], 'lan sau doc lai binh thuong');
+  const empty = createSheetValuesCache({ ttlMs: 15000, staleIfErrorMs: 600000, load: async () => { throw new Error('down'); } });
+  await assert.rejects(empty.get('A'), /down/);
+});

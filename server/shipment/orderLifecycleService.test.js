@@ -1085,3 +1085,34 @@ test('history multisort uses raw VN timestamps, null last, stable ties and branc
     assert.equal(result.total, 5);
   } finally { fixture.restore(); }
 });
+
+// ---------------------------------------------------------------------------
+// Dong sheet trung (co so, ma don): lay dong co trang thai tien xa nhat (2026-11-11) — truoc day lay dong dau nen
+// don ket o trang thai cu khi bot ghi dong moi / don chuyen tu tab giao xe sang tab khach lay.
+// ---------------------------------------------------------------------------
+
+test('dedupeRecords: trùng (cơ sở, mã) giữ dòng tiến xa nhất ở vị trí dòng đầu; bằng nhau giữ dòng đầu; khác cơ sở và dòng kế toán không gộp', () => {
+  const { service, restore } = freshService([]);
+  try {
+    const old = record({ orderCode: 'DH1', saleSentAt: '01/11/2026 08:00' });
+    const newer = record({ orderCode: ' dh1 ', saleSentAt: '01/11/2026 08:05', shipReceivedAt: '01/11/2026 10:00', _flow: 'PICKUP' });
+    const other = record({ orderCode: 'DH2', saleSentAt: '01/11/2026 08:00', saleName: 'A' });
+    const otherSame = record({ orderCode: 'DH2', saleSentAt: '01/11/2026 09:00', saleName: 'B' });
+    const saigon = record({ orderCode: 'DH1', _branch: 'SG' });
+    const accounting = record({ orderCode: 'DH1', _branch: null, _flow: 'ACCOUNTING' });
+    assert.deepEqual(service.dedupeRecords([old, other, newer, otherSame, saigon, accounting]), [newer, other, saigon, accounting]);
+  } finally { restore(); }
+});
+
+test('queryOrders + findOrder: đơn có 2 dòng sheet thì hiện trạng thái của dòng tiến xa nhất', async () => {
+  const ctx = freshService([
+    record({ orderCode: 'DH041173', saleSentAt: '01/10/2026 08:00' }),
+    record({ orderCode: 'DH041173', saleSentAt: '01/10/2026 08:00', driverConfirmedDeliveryAt: '01/10/2026 09:00', orderSignedAt: '01/10/2026 11:00' })
+  ]);
+  try {
+    const { orders } = await ctx.service.queryOrders({}, { kiot: fakeKiot({ ok: true, orders: [kiotOrder()] }) });
+    assert.equal(orders.length, 1);
+    assert.equal(orders[0].summary.code, 'SIGNED');
+    assert.equal((await ctx.service.findOrder('dh041173')).summary.code, 'SIGNED');
+  } finally { ctx.restore(); }
+});
