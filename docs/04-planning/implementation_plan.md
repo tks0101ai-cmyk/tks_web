@@ -720,3 +720,9 @@ Cập nhật cuối: 10/11/2026.
 Đo trên log Render: mỗi câu SQL ~175 ms (web Oregon ↔ DB Singapore) và event loop đứng ~11 s do báo cáo SĐT marketing O(N × số NV). Đã sửa: đếm SĐT theo NV 1 lượt; bốc/in đơn bớt vòng DB (chỉ định 9 → 6 vòng trong giao dịch, đọc lại 2 → 1, form in tải song song); animation dùng chung ≤ 0,45 s. Việc tiếp theo: sau deploy lọc lại `[loop-stall]`/`[timing]`; cân nhắc gom request trùng + cache ngắn cho `penalty-board`/`business-report` (các lần đứng 1–3 s khi nhiều người mở cùng lúc); chọn VPS gần DB (Singapore) khi chuyển hạ tầng.
 
 Cập nhật cuối: 11/11/2026.
+
+## Hiệu năng báo cáo dùng chung — 11/11/2026
+
+Đo sau deploy PR #77: hết các lần đứng ~11 s; còn đứng 1–2 s do `/penalty-board` và `/business-report/*` tính lại cho từng request khi nhiều người mở cùng lúc. Đã làm: báo cáo kinh doanh dựng 1 lần / snapshot; bảng thưởng/phạt gom request trùng + giữ 30 s, mất hiệu lực theo version công nợ. Việc tiếp theo: lọc lại `[loop-stall]` sau deploy; nếu `/debt-management/aging` hay `/expected-arrivals` còn nổi lên thì áp dụng cùng cách.
+
+Cập nhật cuối: 11/11/2026.

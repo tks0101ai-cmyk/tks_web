@@ -49,9 +49,20 @@ const CYCLES_SQL = `SELECT cycle_date::text AS cycle_date FROM debt_penalty_cycl
   WHERE cycle_date >= $1::date AND cycle_date < $2::date ORDER BY cycle_date`;
 const MONTHS_SQL = `SELECT to_char(month, 'YYYY-MM') AS month FROM debt_reward_months ORDER BY month DESC`;
 
-function createDebtRewardService({ pool = getPool(), repository = createDebtScheduleRepository({ pool }), now = () => new Date() } = {}) {
+// Bảng thưởng/phạt đã tính (chưa lọc cơ sở) giữ ngắn hạn: nhiều người mở cùng lúc chỉ tính 1 lần (log 11/11/2026: 5–19
+// request /penalty-board chạy song song, mỗi cái 5–16 s và làm event loop đứng 1–2 s).
+const BOARD_CACHE_MS = 30 * 1000;
+
+function createDebtRewardService({ pool = getPool(), repository = createDebtScheduleRepository({ pool }), now = () => new Date(),
+  boardCacheMs = BOARD_CACHE_MS } = {}) {
   const scoresCache = new Map();
-  function clearScores() { scoresCache.clear(); }
+  // key tháng yêu cầu ('' = tháng của chu kỳ hiện tại) -> { at, version, pending, promise }.
+  const boardCache = new Map();
+  function clearScores() { scoresCache.clear(); boardCache.clear(); }
+  // Mọi lần ghi công nợ (trạng thái, lịch TT, bản chốt mới) đều bumpVersion -> bảng đã giữ hết hiệu lực ngay.
+  const versioned = typeof repository.getVersion === 'function';
+  const repositoryVersion = () => (versioned ? repository.getVersion() : 0);
+  let ownBumps = 0; // bumpVersion do chính loadScores (nạp lại điểm), không phải ghi công nợ.
 
   async function loadScores(month, { db = pool, fresh = false, frozenRequired = false } = {}) {
     const cached = scoresCache.get(month);
@@ -99,6 +110,7 @@ function createDebtRewardService({ pool = getPool(), repository = createDebtSche
       // Customer groups are live. Refresh the debt row cache at the same boundary so
       // points and this cycle's penalties cannot be attributed to different sales.
       repository.bumpVersion();
+      ownBumps += 1;
       scoresCache.set(month, { at: now().getTime(), rows });
     }
     return rows;
@@ -181,12 +193,13 @@ function createDebtRewardService({ pool = getPool(), repository = createDebtSche
         penalizedCustomers: day.customers, amount: day.amount, branch: day.branch })) };
   }
 
-  async function readBoard({ month, branches = BRANCHES } = {}) {
-    const instant = now();
-    if (month !== undefined) validateMonth(month, instant);
-    const cycle = await repository.readCurrentCycle();
+  // Bảng đầy đủ HN + SG (xếp hạng toàn cục) của tháng yêu cầu; readBoard lọc cơ sở và gắn team (team đổi là thấy ngay).
+  async function computeBoard(month) {
+    const [cycle, savedMonths] = await Promise.all([
+      repository.readCurrentCycle(),
+      pool.query(MONTHS_SQL).then(result => result.rows.map(row => row.month))
+    ]);
     const selected = month || (cycle && cycle.cycleDate.slice(0, 7));
-    const savedMonths = (await pool.query(MONTHS_SQL)).rows.map(row => row.month);
     const months = [...new Set([...(cycle ? [cycle.cycleDate.slice(0, 7)] : []), ...savedMonths])].sort().reverse();
     if (!selected) return { month: null, openCycleDate: null, days: [], rows: [], summary: null,
       status: 'provisional', coverage: { from: null, to: null, missingDays: [], complete: false }, months, ruleVersion: RULE_VERSION, closedAt: null };
@@ -197,7 +210,35 @@ function createDebtRewardService({ pool = getPool(), repository = createDebtSche
       if (!cycle || cycle.cycleDate.slice(0, 7) !== selected) throw error(404, 'Chưa có kết quả thưởng đã chốt của tháng này.', 'REWARD_MONTH_NOT_FOUND');
       board = await buildMonth(selected, { cycle });
     }
-    return { ...board, months, rows: await require('./saleTeams').attachSaleTeams(board.rows.filter(row => row.branches.some(branch => branches.includes(branch))), pool),
+    return { ...board, months };
+  }
+
+  // Dùng chung 1 lần tính cho các request trùng (kể cả đang tính dở); giữ boardCacheMs nếu version công nợ không đổi.
+  // Lỗi không được giữ: request sau tính lại.
+  function sharedBoard(month) {
+    const key = month || '';
+    const hit = boardCache.get(key);
+    if (hit && (hit.pending || (now().getTime() - hit.at < boardCacheMs && hit.version === repositoryVersion()))) return hit.promise;
+    // Version lấy TRƯỚC khi tính, cộng các lần bump do chính loadScores trong lúc tính: ghi công nợ xen giữa thì
+    // version lệch -> bảng này không được giữ. Request tới khi đang tính luôn dùng chung lần tính đó.
+    const startVersion = repositoryVersion(), startOwn = ownBumps;
+    const entry = { at: 0, version: startVersion, pending: true, promise: null };
+    entry.promise = computeBoard(month).then(value => {
+      Object.assign(entry, { pending: false, at: now().getTime(), version: versioned ? startVersion + ownBumps - startOwn : 0 });
+      return value;
+    }, failure => {
+      if (boardCache.get(key) === entry) boardCache.delete(key);
+      throw failure;
+    });
+    boardCache.set(key, entry);
+    return entry.promise;
+  }
+
+  async function readBoard({ month, branches = BRANCHES } = {}) {
+    if (month !== undefined) validateMonth(month, now());
+    const board = await sharedBoard(month);
+    // Bảng dùng chung CHỈ ĐỌC: lọc cơ sở tạo mảng mới, attachSaleTeams tạo dòng mới, không sửa dòng gốc.
+    return { ...board, rows: await require('./saleTeams').attachSaleTeams(board.rows.filter(row => row.branches.some(branch => branches.includes(branch))), pool),
       days: board.days.filter(day => !day.branch || branches.includes(day.branch)) };
   }
 
@@ -244,6 +285,7 @@ function createDebtRewardService({ pool = getPool(), repository = createDebtSche
     for (const row of candidates.rows) {
       try {
         if (await finalizeMonth(row.month)) {
+          boardCache.clear(); // Tháng vừa chốt: bảng tạm tính đang giữ không còn đúng.
           done.push(row.month);
           if (onClosed) onClosed(row.month);
         }

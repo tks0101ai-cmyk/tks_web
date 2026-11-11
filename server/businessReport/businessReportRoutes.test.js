@@ -302,3 +302,25 @@ test('POST /customer-profile-import: can customerManage, chi .xlsx, xem truoc ma
   assert.equal((await upload('?mode=bat-ky', { permissions: manage })).status, 200);
   assert.equal(calls[2].mode, 'fill');
 });
+
+// Cùng 1 snapshot (repository giữ ~60 s) thì mỗi loại báo cáo chỉ dựng 1 lần; snapshot mới thì dựng lại.
+test('reports are built once per snapshot and rebuilt for a new snapshot', async () => {
+  let reads = 0;
+  const track = snap => new Proxy(snap, { get(target, prop, receiver) { if (prop === 'customers') reads++; return Reflect.get(target, prop, receiver); } });
+  let current = track(serviceSnapshot());
+  const repo = { snapshot: async () => current };
+  const first = await request('/overview', { repo });
+  const afterFirst = reads;
+  assert.ok(afterFirst > 0);
+  const second = await request('/overview', { repo });
+  assert.equal(reads, afterFirst, 'same snapshot must reuse the built overview');
+  assert.deepEqual(second.data, first.data);
+  await request('/customers', { repo });
+  const afterCustomers = reads;
+  await request('/customers', { repo });
+  assert.equal(reads, afterCustomers, 'same snapshot must reuse the built customer report');
+  current = track(serviceSnapshot());
+  const rebuilt = await request('/overview', { repo });
+  assert.ok(reads > afterCustomers, 'a new snapshot must rebuild');
+  assert.deepEqual(rebuilt.data, first.data);
+});
