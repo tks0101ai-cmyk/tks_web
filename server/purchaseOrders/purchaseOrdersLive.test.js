@@ -67,13 +67,14 @@ test('quantity and container drafts recalculate container totals immediately and
  const target=p.w.document.querySelector('[data-container-filter="2"]').closest('tr');assert.equal(target.cells[3].textContent,'2.00');assert.equal(target.cells[4].textContent,'10.00');assert.match(target.textContent,/Chưa lưu/);assert.equal(p.calls.filter(c=>c.options.method).length,0);
  p.w.document.getElementById('cancel').click();p.w.document.getElementById('discard').click();assert.equal(p.w.document.querySelector('[data-container-filter="2"]').closest('tr').cells[3].textContent,'0.00');assert.equal(p.current.rows[0].cartonCount,10);
 });
-test('order-row status dropdown updates the parent container and every other row in it',async t=>{
+test('order rows show container status but cannot change it; metrics board updates whole container',async t=>{
  const p=await page(t,{extraRows:[{id:'3',rowKey:'D00003',version:1,contId:'2',productCode:'B',cartonCount:5,qtyPerCarton:10},{id:'4',rowKey:'D00004',version:1,contId:'2',productCode:'C',cartonCount:8,qtyPerCarton:10}]});
- p.change('#orderTable tr[data-id="3"] [data-status="2"]','3');await tick();await tick();
- assert.equal(p.w.document.querySelector('#containerTable [data-status="2"]').value,'3');const peers=[...p.w.document.querySelectorAll('#orderTable [data-status="2"]')];assert.equal(peers.length,2);assert.ok(peers.every(select=>select.value==='3'));assert.equal(p.calls.filter(c=>c.url.endsWith('/status')).length,1);assert.equal(p.current.rows[1].cartonCount,5);assert.equal(p.w.document.getElementById('modal').open,false);
+ assert.equal(p.w.document.querySelectorAll('#orderTable tr[data-id="3"] [data-status]').length,0);assert.match(p.w.document.querySelector('#orderTable tr[data-id="3"] [data-field="status"]').textContent,/Chờ bốc/);
+ p.change('#containerTable [data-status="2"]','3');await tick();await tick();
+ assert.equal(p.w.document.querySelector('#containerTable [data-status="2"]').value,'3');const peers=['3','4'].map(id=>p.w.document.querySelector('#orderTable tr[data-id="'+id+'"] [data-field="status"]'));assert.ok(peers.every(cell=>cell.textContent==='Đã bốc'));assert.equal(p.calls.filter(c=>c.url.endsWith('/status')).length,1);assert.equal(p.current.rows[1].cartonCount,5);assert.equal(p.w.document.getElementById('modal').open,false);
 });
-test('direct status dropdown sends one authorized status request with no wizard',async t=>{
- const p=await page(t);p.change('[data-status="2"]','4');await tick();await tick();const calls=p.calls.filter(c=>c.url.endsWith('/status'));assert.equal(calls.length,1);assert.equal(JSON.parse(calls[0].options.body).status,4);assert.equal(p.w.document.getElementById('modal').open,false);assert.equal(p.w.document.getElementById('ordersPackingSection').hidden,true);assert.equal(p.w.document.getElementById('openOrdersPacking'),null);
+test('status is editable from metrics board and sends one authorized request',async t=>{
+ const p=await page(t);p.change('#containerTable [data-status="2"]','4');await tick();await tick();const calls=p.calls.filter(c=>c.url.endsWith('/status'));assert.equal(calls.length,1);assert.equal(JSON.parse(calls[0].options.body).status,4);assert.equal(p.w.document.getElementById('modal').open,false);
 });
 test('adding an arbitrary product reserves a real row key and stages it without writing the row',async t=>{
  const p=await page(t);
@@ -315,9 +316,10 @@ test('container freight formula tracks unsaved order volume immediately',async t
 
 test('pinned freight input uses the same container update endpoint',async t=>{const p=await page(t),doc=p.w.document;doc.querySelector('[data-container-filter="2"]').click();const fetch=p.w.fetch;p.w.fetch=async(url,options)=>{if(url.endsWith('/containers/2')&&options.method==='PATCH'){const body=JSON.parse(options.body);Object.assign(p.current.containers[0],body.changes);p.calls.push({url,options});return {ok:true,json:async()=>p.current.containers[0]}}return fetch(url,options)};p.change('#watchedContainer [data-cont-freight="2"]','12,000,000');await tick();await tick();const call=p.calls.find(c=>c.url.endsWith('/containers/2')&&c.options.method==='PATCH');assert.ok(call);assert.equal(JSON.parse(call.options.body).changes.freight,12000000);assert.equal(doc.querySelector('#watchedContainer [data-cont-freight="2"]').value,'12,000,000');p.change('#watchedContainer [data-cont-freight="2"]','');await tick();await tick();const reset=JSON.parse(p.calls.filter(c=>c.url.endsWith('/containers/2')&&c.options.method==='PATCH').at(-1).options.body).changes;assert.equal(reset.freight,null);assert.equal(reset.freightMode,'formula');assert.equal(reset.freightBase,202000000);assert.equal(reset.freightCapacity,170)});
 
-test('live measurement differences use supplier minus warehouse over warehouse and preserve input precision',async t=>{const p=await page(t),doc=p.w.document;doc.getElementById('columns').click();doc.getElementById('showSourceColumns').click();doc.getElementById('modalClose').click();Object.assign(p.current.rows[0],{m3PerCarton:.073,kgPerCarton:13.8,qtyPerCarton:300,literWarehouse:.25,gramWarehouse:40,unitPriceCny:1.23456,freightPrepaid:0,freightPostpaid:0,fxRate:3920});p.listeners.changed();await tick();await tick();assert.equal(doc.querySelector('[data-field="literDiff"]').textContent,'-3%');assert.equal(doc.querySelector('[data-field="gramDiff"]').textContent,'+15%');const input=doc.querySelector('[data-edit="unitPriceCny"]');input.focus();assert.equal(input.value,'1.23456');p.change('[data-edit="cartonCount"]','1,00');assert.equal(doc.querySelector('[data-field="totalQty"]').textContent,'');assert.equal(doc.querySelector('[data-field="netPrice"]').textContent,'')});
+test('live measurement differences use supplier minus warehouse over warehouse and preserve input precision',async t=>{const p=await page(t),doc=p.w.document;doc.getElementById('columns').click();doc.getElementById('showSourceColumns').click();doc.getElementById('modalClose').click();Object.assign(p.current.rows[0],{m3PerCarton:.073,kgPerCarton:13.8,qtyPerCarton:300,literWarehouse:.25,m3Warehouse:.3,gramWarehouse:40,unitPriceCny:1.23456,freightPrepaid:0,freightPostpaid:0,fxRate:3920});p.listeners.changed();await tick();await tick();assert.equal(doc.querySelector('[data-field="literDiff"]').textContent,'-3%');assert.equal(doc.querySelector('[data-field="m3Warehouse"]').textContent,'0.300');assert.equal(doc.querySelector('[data-field="gramDiff"]').textContent,'+15%');const input=doc.querySelector('[data-edit="unitPriceCny"]');input.focus();assert.equal(input.value,'1.23456');p.change('[data-edit="cartonCount"]','1,00');assert.equal(doc.querySelector('[data-field="totalQty"]').textContent,'');assert.equal(doc.querySelector('[data-field="netPrice"]').textContent,'')});
+test('purchase CNY display uses two decimals and total CNY opens exact draft precision',async t=>{const p=await page(t),doc=p.w.document;Object.assign(p.current.rows[0],{qtyPerCarton:1,cartonCount:1,unitPriceCny:3.1,freightPrepaid:0,fxRate:1});p.listeners.changed();await tick();await tick();assert.equal(doc.querySelector('[data-edit="unitPriceCny"]').value,'3.10');const total=doc.querySelector('[data-cny-detail]');assert.equal(total.textContent,'3');total.click();assert.match(doc.getElementById('modalBody').textContent,/3\.100 CNY/);doc.getElementById('modalClose').click();p.change('[data-edit="unitPriceCny"]','4.2');const updated=doc.querySelector('[data-cny-detail]');assert.equal(updated.textContent,'4');updated.click();assert.match(doc.getElementById('modalBody').textContent,/4\.200 CNY/)});
 
-test('production workspace filters compose privately and retain their values on refresh',async t=>{const p=await page(t,{extraRows:[{id:'3',rowKey:'D00003',version:1,productCode:'TARGET',contId:'2',supplier:'X',vatNote:'VAT X',buyer:'An',buyerEmployeeId:'5',listedAt:'2026-11-05T14:30',cartonCount:2,qtyPerCarton:10,kgPerCarton:100,m3PerCarton:.5,unitPriceCny:2,freightPrepaid:0,freightPostpaid:0,fxRate:3920},{id:'4',rowKey:'D00004',version:1,productCode:'OTHER',contId:'2',supplier:'Y',buyer:'Dung',listedAt:'2026-10-01',cartonCount:5,qtyPerCarton:10}]});const doc=p.w.document;p.change('#orderStatus','2');p.change('#orderBuyer','id:5');p.change('#orderSupplier','X');p.change('#orderVat','VAT X');p.change('#orderFrom','2026-11-05');p.change('#orderTo','2026-11-05');assert.equal(doc.querySelectorAll('#orderTable tr[data-id]').length,1);assert.equal(doc.querySelector('#orderTable tr[data-id]').dataset.id,'3');assert.equal(doc.getElementById('purchaseOverview'),null);assert.ok(doc.getElementById('containerStatusBoard'));const status=doc.querySelector('#containerStatusBoard [data-container-status="2"]');assert.equal(status.getAttribute('aria-pressed'),'true');assert.equal(status.textContent,'Chưa bốc 1');assert.equal(status.querySelector('[data-status-count]').textContent,'1');assert.equal(status.querySelector('[data-status-metric]'),null);p.listeners.changed();await tick();await tick();assert.equal(doc.getElementById('orderBuyer').value,'id:5');const saved=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.equal(saved.orderFilters.orderSupplier,'X');assert.equal(p.calls.filter(c=>c.options.method).length,0);doc.getElementById('clearOrderFilters').click();assert.equal(doc.querySelectorAll('#orderTable tr[data-id]').length,3)});
+test('production workspace filters compose privately and retain their values on refresh',async t=>{const p=await page(t,{extraRows:[{id:'3',rowKey:'D00003',version:1,productCode:'TARGET',contId:'2',supplier:'X',vatNote:'VAT X',buyer:'An',buyerEmployeeId:'5',listedAt:'2026-11-05T14:30',cartonCount:2,qtyPerCarton:10,kgPerCarton:100,m3PerCarton:.5,unitPriceCny:2,freightPrepaid:0,freightPostpaid:0,fxRate:3920},{id:'4',rowKey:'D00004',version:1,productCode:'OTHER',contId:'2',supplier:'Y',buyer:'Dung',listedAt:'2026-10-01',cartonCount:5,qtyPerCarton:10}]});const doc=p.w.document;p.change('#orderStatus','2');p.change('#orderBuyer','id:5');p.change('#orderSupplier','X');assert.equal(doc.getElementById('orderVat'),null,'the production workspace has no VAT filter');p.change('#orderFrom','2026-11-05');p.change('#orderTo','2026-11-05');assert.equal(doc.querySelectorAll('#orderTable tr[data-id]').length,1);assert.equal(doc.querySelector('#orderTable tr[data-id]').dataset.id,'3');assert.equal(doc.getElementById('purchaseOverview'),null);assert.ok(doc.getElementById('containerStatusBoard'));const status=doc.querySelector('#containerStatusBoard [data-container-status="2"]');assert.equal(status.getAttribute('aria-pressed'),'true');assert.equal(status.textContent,'Chưa bốc 1');assert.equal(status.querySelector('[data-status-count]').textContent,'1');assert.equal(status.querySelector('[data-status-metric]'),null);p.listeners.changed();await tick();await tick();assert.equal(doc.getElementById('orderBuyer').value,'id:5');const saved=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.equal(saved.orderFilters.orderSupplier,'X');assert.equal(p.calls.filter(c=>c.options.method).length,0);doc.getElementById('clearOrderFilters').click();assert.equal(doc.querySelectorAll('#orderTable tr[data-id]').length,3)});
 test('container filters do not filter orders and readonly mode disables new container creation',async t=>{const p=await page(t,{sourceMode:'sheets'}),doc=p.w.document;assert.equal(doc.getElementById('newCont').disabled,true);assert.equal(doc.getElementById('sourceBanner').hidden,false);doc.getElementById('contSearch').value='11-1V';doc.getElementById('contSearch').dispatchEvent(new p.w.Event('input'));assert.equal(doc.querySelectorAll('#containerTable [data-container-filter]').length,1);assert.equal(doc.querySelectorAll('#orderTable tr[data-id]').length,1);doc.getElementById('clearContFilters').click();assert.equal(doc.querySelectorAll('#containerTable [data-container-filter]').length,2);assert.equal(p.calls.filter(c=>c.options.method).length,0)});
 test('saved filter reload, accent-insensitive search and export use the same selected rows',async t=>{const p=await page(t,{saved:{filter:'all',orderFilters:{orderSupplier:'A'}},extraRows:[{id:'4',rowKey:'D00004',productCode:'B',supplier:'B',version:1,qtyPerCarton:10,cartonCount:2}]});const doc=p.w.document;assert.equal(doc.getElementById('orderSupplier').value,'A');doc.getElementById('search').value='bang dinh';doc.getElementById('search').dispatchEvent(new p.w.Event('input'));assert.equal(doc.querySelectorAll('#orderTable tr[data-id]').length,1);p.w.URL.createObjectURL=()=>'/test.xlsx';p.w.URL.revokeObjectURL=()=>{};p.w.HTMLAnchorElement.prototype.click=function(){};const prior=p.w.fetch;let exported;p.w.fetch=async(url,options)=>{if(url.endsWith('/export')){exported=JSON.parse(options.body);return {ok:true,blob:async()=>new p.w.Blob(['test'])}}return prior(url,options)};doc.getElementById('export').click();await tick();await tick();assert.deepEqual(exported.ids,['1'])});
 test('add dialog lists each known code once and fills the rest as soon as one is picked',async t=>{
@@ -364,7 +366,7 @@ test('compact columns declare stable keys, small numeric widths and keep row key
  assert.equal(table.querySelector('.resize'),null);
  doc.getElementById('columns').click();doc.getElementById('showSourceColumns').click();
  const names=[...doc.querySelectorAll('#orderTable th')].filter(th=>th.querySelector('.sort-label').textContent==='Tên SP');
- assert.equal(names.length,2);assert.notEqual(names[0].dataset.columnKey,names[1].dataset.columnKey);
+ assert.equal(names.length,1);assert.equal(names[0].dataset.columnKey,'productName');
  assert.ok([...doc.querySelectorAll('#containerTable th')].every(th=>Number(th.dataset.defaultWidth)>0));
 });
 
@@ -396,34 +398,21 @@ test('with the Sheet source the banner says writing is off and never mentions a 
  assert.doesNotMatch(banner.textContent,/DÙNG THỬ|dữ liệu mẫu/i);
 });
 
-// Luong phan theo ten nguon (migration 0118): o chon Nguon dung ten sheet that
-// co trong du lieu, loc chinh xac, va tim kiem bat duoc ten nguon.
-test('the source filter lists the sheets present and narrows the table to one of them',async t=>{
+// Nguồn là metadata nội bộ: không có bộ lọc/cột riêng, nhưng vẫn được tìm qua ô Tìm kiếm.
+test('source metadata remains searchable without exposing a source filter or column',async t=>{
  const p=await page(t,{extraRows:[
    {id:'10',rowKey:'D00010',version:1,contId:null,productCode:'YW-1',cartonCount:1,qtyPerCarton:1,sourceSheet:'YIWU'},
    {id:'11',rowKey:'D00011',version:1,contId:null,productCode:'YW-2',cartonCount:1,qtyPerCarton:1,sourceSheet:'YIWU'},
    {id:'12',rowKey:'D00012',version:1,contId:null,productCode:'TK-1',cartonCount:1,qtyPerCarton:1,sourceSheet:'CONT TKS1'}
  ]}),doc=p.w.document;
- const select=doc.getElementById('orderSource');
- assert.ok(select,'co o chon Nguon');
- assert.deepEqual([...select.options].map(o=>o.value),['','CONT TKS1','YIWU'],'chi liet ke nguon co that, sap theo ten');
-
- // Thu tu hang theo kieu sap xep dang chon, nen so sanh theo tap hop.
  const keys=()=>[...doc.querySelectorAll('#orderTable tbody tr td[data-field="rowKey"]')].map(td=>td.textContent.trim()).sort();
- p.change('#orderSource','YIWU');
- assert.deepEqual(keys(),['D00010','D00011'],'chi con dong cua YIWU');
- p.change('#orderSource','CONT TKS1');
- assert.deepEqual(keys(),['D00012']);
- p.change('#orderSource','');
- assert.ok(keys().length>3,'bo loc thi hien lai tat ca');
-
- // Cot Nguon hien gia tri va khong cho sua truc tiep.
- const cell=doc.querySelector('#orderTable tbody tr td[data-field="sourceSheet"]');
- assert.equal(cell,null,'Nguồn không còn là cột trên bảng');
-
- // O tim kiem dung oninput, khong phai change.
- const box=doc.getElementById('search');box.value='tks1';box.dispatchEvent(new p.w.Event('input',{bubbles:true}));
- assert.deepEqual(keys(),['D00012'],'tim kiem bat duoc ten nguon');
+ assert.equal(doc.getElementById('orderSource'),null,'nguon khong co bo loc rieng');
+ assert.equal(doc.querySelector('#orderTable [data-field="sourceSheet"]'),null,'nguon khong hien thanh cot');
+ const search=doc.getElementById('search');search.value='CONT TKS1';search.dispatchEvent(new p.w.Event('input',{bubbles:true}));
+ assert.deepEqual(keys(),['D00012'],'ten nguon duoc tim qua o tim kiem');
+ search.value='';search.dispatchEvent(new p.w.Event('input',{bubbles:true}));
+ assert.deepEqual(keys(),['D00001','D00010','D00011','D00012']);
+ assert.equal(p.calls.filter(c=>c.options.method).length,0,'chi loc, khong gui lenh ghi');
 });
 
 // Sort cua table-controls doi cho dong trong DOM nen chi xep 50 dong dang hien; o day phai xep
@@ -551,7 +540,7 @@ test('arithmetic, dd/mm, payment and configured NV stage and save real values',a
  assert.equal(JSON.parse(write.options.body).changes.buyer,'Tên đã nhập');
  assert.equal(JSON.parse(write.options.body).changes.m3PerCarton,.006);
 });
-test('grid arrows move through inputs, computed cells and dropdowns without saving; F2 edits text',async t=>{
+test('grid arrows move through inputs, computed and readonly cells without saving; F2 edits text',async t=>{
  const p=await page(t,{saved:{columnLayout:5,visible:['rowKey','productCode','productName','container','status','qtyPerCarton','cartonCount','totalQty','unitPriceCny']},extraRows:[{id:'3',rowKey:'D00003',version:1,productCode:'B',cartonCount:2,qtyPerCarton:10,contId:'2'}]}),doc=p.w.document;
  const key=k=>doc.activeElement.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:k,bubbles:true,cancelable:true}));
  doc.querySelector('tr[data-id="3"] [data-edit="cartonCount"]').focus();
@@ -562,7 +551,7 @@ test('grid arrows move through inputs, computed cells and dropdowns without savi
  key('ArrowUp');assert.equal(doc.activeElement.closest('tr').dataset.id,'1');assert.equal(doc.activeElement.dataset.edit,'cartonCount');
  assert.equal(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).drafts['3'].changes.cartonCount,12);
  doc.querySelector('tr[data-id="3"] [data-edit="contId"]').focus();key('ArrowRight');
- assert.equal(doc.activeElement.dataset.status,'2');key('ArrowUp');assert.equal(doc.activeElement.dataset.field,'status');
+ assert.equal(doc.activeElement.dataset.field,'status');key('ArrowUp');assert.equal(doc.activeElement.dataset.field,'status');
  const text=doc.querySelector('tr[data-id="3"] [data-edit="productName"]');text.focus();key('F2');
  assert.equal(text.dataset.gridEditing,'true');key('ArrowLeft');assert.equal(doc.activeElement,text);
  key('Escape');key('ArrowLeft');assert.equal(doc.activeElement.className,'code-label');
@@ -631,7 +620,7 @@ test('range paste validates every target before changing any draft and supports 
 test('Ctrl+D reads current typed draft rather than stale rendered row and remains a private undo step',async t=>{
  const p=await page(t,{extraRows:[{id:'3',rowKey:'D00003',version:1,contId:null,productCode:'B',cartonCount:2,qtyPerCarton:10,unitPriceCny:3}]}),doc=p.w.document;
  const source=doc.querySelector('tr[data-id="3"] [data-edit="unitPriceCny"]'),target=doc.querySelector('tr[data-id="1"] [data-edit="unitPriceCny"]');source.focus();source.value='4';source.dispatchEvent(new p.w.Event('input',{bubbles:true}));source.closest('td').click();target.closest('td').dispatchEvent(new p.w.MouseEvent('click',{bubbles:true,shiftKey:true}));source.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'d',ctrlKey:true,bubbles:true,cancelable:true}));
- const saved=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.equal(saved.drafts['1'].changes.unitPriceCny,4);assert.equal(saved.drafts['3'].changes.unitPriceCny,4);assert.equal(p.calls.filter(c=>c.options.method).length,0);doc.getElementById('undoWork').click();assert.equal(doc.querySelector('tr[data-id="3"] [data-edit="unitPriceCny"]').value,'4');
+ const saved=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.equal(saved.drafts['1'].changes.unitPriceCny,4);assert.equal(saved.drafts['3'].changes.unitPriceCny,4);assert.equal(p.calls.filter(c=>c.options.method).length,0);doc.getElementById('undoWork').click();assert.equal(doc.querySelector('tr[data-id="3"] [data-edit="unitPriceCny"]').value,'4.00');
 });
 
 test('Escape cancels the active cell edit without discarding another staged field',async t=>{const p=await page(t),doc=p.w.document;p.change('[data-edit="cartonCount"]','20');const supplier=doc.querySelector('[data-edit="supplier"]');supplier.focus();supplier.value='Cancelled';supplier.dispatchEvent(new p.w.Event('input',{bubbles:true}));supplier.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));const saved=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.equal(saved.drafts['1'].changes.supplier,undefined);assert.equal(saved.drafts['1'].changes.cartonCount,20);assert.equal(doc.querySelector('[data-edit="supplier"]').value,'A');assert.equal(p.calls.filter(c=>c.options.method).length,0)});

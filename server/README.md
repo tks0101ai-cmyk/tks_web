@@ -1352,6 +1352,10 @@ Từ gốc repo chạy `node server/scripts/purchase-load-20.cjs`. Script dùng 
 
 Kết quả `.codex_tmp/purchase-load-20-results.json`; mã thoát 0: chức năng và ngưỡng local đạt; 2: chức năng đạt nhưng có ngưỡng tốc độ không đạt; 1: lỗi chạy/kiểm chứng. Ngưỡng tạm để đánh giá: p95 PATCH ≤1 giây, GET toàn bảng ≤2 giây; chưa phải SLA được duyệt. Báo cáo: `docs/04-planning/purchase-load-20-20261110-report.md`. Không có thay đổi schema/env/dependency.
 
+## Thu mua — NET theo VK-DUNG (11/11/2026)
+
+`purchase-calculations.js` và `purchaseOrdersProjection.js` tính NET = (Tiền hàng + Tiền VC mã + Thuế + VC sau CNY × 3,920) / Tổng SL. Tiền hàng dùng tỉ giá theo dòng; hằng 3,920 chỉ dùng cho VC sau. Chi phí trống được tính là 0 trong NET; kết quả NET vẫn có thể hiển thị khi chưa có phân bổ VC mã.
+
 ## Hiệu năng — 11/11/2026
 
 - `marketingReport/marketingDatabaseReportService.js`: `matches()` dùng `norm()` có nhớ kết quả; bảng tổng SĐT theo NV đếm 1 lượt (`countByEmployee`) thay vì lọc toàn bộ dòng cho từng NV — nguồn các lần treo event loop ~11 s.
