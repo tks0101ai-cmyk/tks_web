@@ -98,5 +98,8 @@ test('tai lai ngam khi chua chon khach thi khong goi API', async () => {
 test('su kien SSE dashboard-updated cung tai lai ngam bao cao khach dang xem', () => {
   const source = fs.readFileSync(indexPath, 'utf8');
   const handler = source.slice(source.indexOf("stream.addEventListener('dashboard-updated'"));
-  assert.match(handler.slice(0, 900), /loadData\(state\.days, false\);\s*refreshCustomerProductReportQuietly\(\);/);
+  // Tab đang xem tải lại qua reloadForLiveUpdate (tab ẩn hoãn tới khi quay lại, cùng hàm này).
+  assert.match(handler.slice(0, 900), /setTimeout\(reloadForLiveUpdate,/);
+  const reload = source.slice(source.indexOf('function reloadForLiveUpdate()'));
+  assert.match(reload.slice(0, 200), /loadData\(state\.days, false\);\s*refreshCustomerProductReportQuietly\(\);/);
 });

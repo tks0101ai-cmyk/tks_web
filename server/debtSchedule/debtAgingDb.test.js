@@ -190,3 +190,22 @@ test('hop chi tiet: hoa don Hoan thanh tu ngay het no toi nay, moi nhat truoc; c
     await assert.rejects(buildDebtAgingInvoices(['hanoi'], { branch: 'hanoi', customerId: '999' }, { repository: repo }), { statusCode: 404 });
   } finally { await db.close(); }
 });
+
+test('doc dong thoi dung chung 1 luot DB; clearCache giua luc doc thi ket qua cu khong duoc giu', async () => {
+  const { db, pool } = await setup();
+  try {
+    await seed(db);
+    await refreshDebtAging(pool, { now: () => NOW, log: quiet });
+    let reads = 0;
+    const counted = { query: (sql, params) => { if (/FROM debt_aging_customers/i.test(sql)) reads++; return pool.query(sql, params); } };
+    const repo = createDebtAgingRepository({ pool: counted, now: () => NOW });
+    const [a, b, c] = await Promise.all([repo.readAging(['hanoi', 'saigon']), repo.readAging(['saigon', 'hanoi']), repo.readAging(['hanoi', 'saigon'])]);
+    assert.equal(reads, 1, 'request trung luc cache trong chi doc 1 lan');
+    assert.equal(a, b); assert.equal(b, c);
+    const loading = repo.readAging(['hanoi']);
+    repo.clearCache();
+    await loading;
+    await repo.readAging(['hanoi']);
+    assert.equal(reads, 3, 'ket qua doc truoc clearCache khong duoc giu');
+  } finally { await db.close(); }
+});

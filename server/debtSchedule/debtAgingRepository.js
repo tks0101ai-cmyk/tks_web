@@ -94,13 +94,27 @@ function queryDebtAging(data, query = {}) {
 
 function createDebtAgingRepository({ pool = getPool(), now = Date.now } = {}) {
   const cache = new Map(); // branchesKey -> { expiresAt, data }
+  // Các request trùng lúc cache trống dùng chung 1 lần đọc (log 11/11/2026: nhiều /aging cùng lúc mỗi cái 2–9 s).
+  const pending = new Map(); // branchesKey -> Promise
+  let generation = 0; // clearCache() trong lúc đang đọc -> kết quả đó không được ghi vào cache
 
   /** { state: { asOfDay, refreshedAt, customersSyncedAt } | null, rows: [...] } */
-  async function readAging(branches) {
+  function readAging(branches) {
     const scope = (branches || []).filter(code => BRANCH_CODES.includes(code));
     const key = scope.slice().sort().join(',');
     const cached = cache.get(key);
-    if (cached && now() < cached.expiresAt) return cached.data;
+    if (cached && now() < cached.expiresAt) return Promise.resolve(cached.data);
+    if (pending.has(key)) return pending.get(key);
+    const started = generation;
+    const task = loadAging(scope).then(data => {
+      if (started === generation) cache.set(key, { expiresAt: now() + CACHE_TTL_MS, data });
+      return data;
+    }).finally(() => { if (pending.get(key) === task) pending.delete(key); });
+    pending.set(key, task);
+    return task;
+  }
+
+  async function loadAging(scope) {
     const [state, rows] = await Promise.all([pool.query(STATE_SQL), pool.query(ROWS_SQL, [scope])]);
     const stateRow = state.rows[0];
     const data = {
@@ -111,7 +125,6 @@ function createDebtAgingRepository({ pool = getPool(), now = Date.now } = {}) {
       } : null,
       rows: rows.rows.map(mapRow)
     };
-    cache.set(key, { expiresAt: now() + CACHE_TTL_MS, data });
     return data;
   }
 
@@ -134,7 +147,8 @@ function createDebtAgingRepository({ pool = getPool(), now = Date.now } = {}) {
     };
   }
 
-  return { attachSaleTeams: rows => require('./saleTeams').attachSaleTeams(rows, pool), readAging, readCustomerInvoices, clearCache: () => cache.clear() };
+  return { attachSaleTeams: rows => require('./saleTeams').attachSaleTeams(rows, pool), readAging, readCustomerInvoices,
+    clearCache: () => { generation += 1; cache.clear(); pending.clear(); } };
 }
 
 let defaultRepository = null;

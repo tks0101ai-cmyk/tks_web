@@ -244,8 +244,11 @@ for (const kind of ['status', 'schedule']) {
   });
 }
 
-test('dashboard refresh reloads selected reward month even when dashboard fingerprint stays unchanged', async () => {
+// 11/11/2026: tự làm mới khi số công nợ không đổi chỉ tải lại bảng thưởng/phạt tối đa 1 lần / 60 s (trước: mỗi tín hiệu SSE).
+test('dashboard refresh reloads selected reward month when the dashboard fingerprint is unchanged, at most once per 60 s', async () => {
   const dom = createDashboard(editableDebt());
+  let clock = Date.now();
+  dom.window.Date.now = () => clock;
   serve(dom, boardPayload({ month: '2026-09', status: 'finalized' }));
   await dom.window.loadDebtPenaltyBoard('2026-09');
   let score = 50;
@@ -260,6 +263,12 @@ test('dashboard refresh reloads selected reward month even when dashboard finger
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(dom.window.document.querySelector('#debtPenaltyRows tr.doc-row').cells[3].textContent, '50');
   score = 60;
+  clock += 30000;
+  dom.window.loadData(undefined, false, 'debt');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(boardRequests, 1, 'within 60 s the unchanged refresh does not reload the board');
+  assert.equal(dom.window.document.querySelector('#debtPenaltyRows tr.doc-row').cells[3].textContent, '50');
+  clock += 31000;
   dom.window.loadData(undefined, false, 'debt');
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(dom.window.document.querySelector('#debtPenaltyRows tr.doc-row').cells[3].textContent, '60');

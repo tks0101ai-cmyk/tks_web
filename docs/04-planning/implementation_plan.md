@@ -724,3 +724,9 @@ Cập nhật cuối: 11/11/2026.
 Đo sau deploy PR #77: hết các lần đứng ~11 s; còn đứng 1–2 s do `/penalty-board` và `/business-report/*` tính lại cho từng request khi nhiều người mở cùng lúc. Đã làm: báo cáo kinh doanh dựng 1 lần / snapshot; bảng thưởng/phạt gom request trùng + giữ 30 s, mất hiệu lực theo version công nợ. Việc tiếp theo: lọc lại `[loop-stall]` sau deploy; nếu `/debt-management/aging` hay `/expected-arrivals` còn nổi lên thì áp dụng cùng cách.
 
 Cập nhật cuối: 11/11/2026.
+
+## Hiệu năng đợt 3 — 11/11/2026
+
+Log chiều 11/11: tới 20–56 request `/penalty-board` cùng lúc do mỗi tín hiệu SSE làm mọi tab (kể cả tab ẩn) tải lại cả bảng thưởng/phạt + tuổi nợ dù số không đổi. Đã làm: tab ẩn hoãn tải, bảng phụ tối đa 1 lần / 60 s khi số không đổi, SSE gom tín hiệu 2 s, tuổi nợ dùng chung 1 lượt đọc; gỡ sao băng / pháo hoa, bỏ số đếm và chữ chạy trong motion.js; gắn log `[timing]` cho API kế toán. Việc tiếp theo: sau deploy đọc `[timing]` các API kế toán để tìm chỗ chậm tiếp; in đơn còn ~0,5 s có thể ép (gộp BEGIN + khóa, trả kết quả từ giao dịch) — để sau khi lên VPS.
+
+Cập nhật cuối: 11/11/2026.
