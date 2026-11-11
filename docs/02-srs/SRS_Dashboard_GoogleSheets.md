@@ -1165,14 +1165,14 @@ Nguồn kiểm chứng: công thức Sheet đã ghi nhận trong memory phiên d
 | VC cont tự tính | 202,000,000 / 170 × tổng m³ (hoặc định mức đã sửa) |
 | VC/m³ | Tự tính: tiền chuẩn / m³ chuẩn; nhập tay: tiền cont / tổng m³ đầy đủ của cont |
 | Tiền VC mã | Tổng m³ mã × VC/m³ cont |
-| Giá NET VND/cái | (Tiền hàng + Tiền VC mã + VC sau CNY × tỉ giá) / Tổng SL; không cộng Thuế |
+| Giá NET VND/cái | (Tiền hàng + Tiền VC mã + Thuế + VC sau CNY × 3,920) / Tổng SL; hằng số 3,920 chỉ áp dụng VC sau, giá hàng dùng tỉ giá dòng |
 | L/c TQ; g/c TQ | m³/thùng × 1,000 / SL/thùng; kg/thùng × 1,000 / SL/thùng |
 | Lệch số đo | (Số đo TQ − số đo kho) / số đo kho; hiển thị % |
 | Tỉ lệ | Tổng tấn / tổng m³; hiển thị % |
 
 Ô trống = chưa biết, không mặc định bằng 0. Giá/chi phí 0 hợp lệ; tỉ giá phải >0 hoặc trống. Số thùng và SL/thùng là số nguyên dương; chặn số không hữu hạn, âm, nhóm phẩy sai và tích vượt Number.MAX_SAFE_INTEGER. Kg/m³/số đo kho 0 được coi là chưa có số đo sử dụng được. Không chia cho 0 và không xuất NaN/Infinity. Thiếu dữ liệu thì kết quả phụ thuộc để trống; tổng tải/khối chỉ cộng phần biết và giữ cảnh báo thiếu số đo. Cont nhập cước tay mà còn mã thiếu m³/số thùng thì chưa phân bổ cho mọi mã, tránh dồn cước sai cho số mã còn lại.
 
-Chuẩn nhập/xuất: 1,234.56; số Excel thật giữ nguyên độ chính xác. Tổng tệ hiển thị 3 chữ số thập phân, VND hiển thị đồng; không làm tròn giữa chừng hoặc lấy số đã hiển thị làm đầu vào phép tính. Tổng các dòng đã làm tròn hiển thị có thể chênh vài đồng với tổng làm tròn một lần; dữ liệu gốc không bị điều chỉnh để bù chênh. Xóa tiền cont khôi phục chuẩn 202,000,000 / 170; nhập 0 là cước 0. Tách mã con chưa nhập số thùng thì chưa cộng vào tải/khối/cước. Đổi cont cập nhật cả nguồn và đích.
+Chuẩn nhập/xuất: 1,234.56; số Excel thật giữ nguyên độ chính xác. Giá tệ hiển thị 2 chữ số thập phân; Tổng tệ hiển thị làm tròn đến đơn vị và bấm để xem 3 chữ số thập phân; VND hiển thị đồng. Không làm tròn giữa chừng hoặc lấy số đã hiển thị làm đầu vào phép tính. Tổng các dòng đã làm tròn hiển thị có thể chênh vài đồng với tổng làm tròn một lần; dữ liệu gốc không bị điều chỉnh để bù chênh. Xóa tiền cont khôi phục chuẩn 202,000,000 / 170; nhập 0 là cước 0. Tách mã con chưa nhập số thùng thì chưa cộng vào tải/khối/cước. Đổi cont cập nhật cả nguồn và đích.
 
 Mã dùng chung: public/shared/purchase-calculations.js và purchase-freight.js; mockup/live/export dùng cùng phép tính, SQL projection kiểm chéo với export qua PGlite. Bộ đối soát bổ sung FX, VC sau, Thuế và số đo kho. Chưa migrate/cutover/deploy.
 
@@ -1273,4 +1273,6 @@ Cập nhật gần nhất: 07/11/2026.
 - Một giá trị điền cả vùng; Ctrl+D lấy dòng đầu, tay kéo lặp mẫu; tổng/đếm/trung bình vùng. Escape hủy lần sửa hiện tại, không xóa bản nháp ô khác.
 - Dán/kéo điền/xóa vùng kiểm toàn bộ trước khi sửa, tối đa10.000 ô; không sửa NV/cột tính/cột chỉ đọc hoặc phí cha đang tách. Chỉ tạo bản nháp, giữ xác nhận lưu.
 
-Cập nhật cuối: 10/11/2026.
+11/11/2026 — NET theo tab VK-DUNG: cộng Thuế, nhân VC sau CNY với 3,920 (chỉ riêng phí này), giá hàng vẫn dùng tỉ giá dòng; chi phí để trống được tính là 0. Hiển thị giá tệ 2 chữ số và Tổng tệ làm tròn đơn vị; nút Tổng tệ mở số chính xác 3 chữ số.
+
+Cập nhật cuối: 11/11/2026.

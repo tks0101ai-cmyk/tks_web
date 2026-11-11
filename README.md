@@ -537,4 +537,6 @@ Cập nhật gần nhất: 07/11/2026.
 
 Workspace dùng thêm shared/purchase-grid.js (TSV, rowKey, vùng, fill, tổng vùng) và purchase-grid-ui.js (chọn/copy/dán/điền), kèm test riêng. SSE/poll được gộp3giây và hoãn khi tab ẩn; GET /api/purchase-orders/revision kiểm fingerprint trước khi tải hàng. Danh mục NV không chặn bảng. Shift chọn vùng, Ctrl+C/V, Ctrl+D và tay kéo điền; Escape hủy ô đang sửa. Mọi thay đổi hàng vẫn là bản nháp, một thao tác vùng là một bước hoàn tác, bấm Lưu và xác nhận mới ghi. Báo cáo: docs/04-planning/purchase-grid-sync-20261110-test-report.md. Chưa merge/deploy.
 
-Cập nhật cuối: 10/11/2026.
+11/11/2026 — Thu mua: Giá NET đồng bộ tab VK-DUNG, gồm Thuế và VC sau CNY × 3,920 (giá hàng dùng tỉ giá dòng). Giá tệ hiển thị 2 chữ số; Tổng tệ làm tròn đơn vị và bấm xem phần lẻ.
+
+Cập nhật cuối: 11/11/2026.

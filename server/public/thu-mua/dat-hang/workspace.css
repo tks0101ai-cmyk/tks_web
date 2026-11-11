@@ -321,6 +321,14 @@
 .purchase-page #modalBody h2,.purchase-page dialog h2{font-family:var(--font-display);font-size:15px;line-height:1.4}
 .purchase-page .purchase-page-number,.purchase-page .num{font-variant-numeric:tabular-nums}
 
+/* Keep the compact order filters on one desktop row; narrow columns clip text cleanly. */
+.purchase-page .order-filters{grid-template-columns:repeat(9,minmax(90px,1fr));overflow-x:auto}
+.purchase-page .order-filters label:has(#search){grid-column:1/span 2;grid-row:1}
+.purchase-page .order-filters label:has(#filter),.purchase-page .order-filters label:has(#orderBuyer),.purchase-page .order-filters label:has(#orderSupplier),.purchase-page .order-filters label:has(#orderFrom),.purchase-page .order-filters label:has(#orderTo),.purchase-page .order-filters label:has(#orderFlag),.purchase-page .order-filters label:has(#sort){grid-column:auto;grid-row:1}
+.purchase-page .order-filters .filter-actions{grid-column:1/-1;grid-row:2}
+.purchase-page #orderTable td[data-field="productCode"]{font-weight:400}
+.purchase-page #orderTable td[data-field="productCode"],.purchase-page #orderTable td[data-field="productCode"] .code-label{text-overflow:clip}
+
 .purchase-page .column-tools,.purchase-page .column-tools span,.purchase-page #containerTable small,.purchase-page .expression-result,.purchase-page #orderTable td[data-field="productCode"] .code-edit{font-size:11px;line-height:1.4}
 
 /* Light theme contrast: replace the legacy dark purchase panel and strengthen grid dividers. */

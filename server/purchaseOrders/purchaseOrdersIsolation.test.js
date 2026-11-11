@@ -24,6 +24,7 @@ let db, service, events, projected, invalidated, shared;
 before(async () => {
   db = new PGlite();
   for (const name of [...BASE, ...PURCHASE_FILES]) await db.exec(fs.readFileSync(path.join(__dirname, '../db/migrations', name), 'utf8'));
+  await db.exec('CREATE TABLE shipping_measures(code_key text PRIMARY KEY, per_carton numeric, m3_per_unit numeric)');
   await db.exec('CREATE TABLE product_report(product_code text,product_name text)');
   events = new EventEmitter();
   const query = (sql, params) => db.query(sql, params);
@@ -35,7 +36,7 @@ before(async () => {
   });
 });
 beforeEach(async () => {
-  await db.exec(`TRUNCATE purchase_requests,purchase_undo_expected,purchase_operation_rows,purchase_operations,purchase_orders,product_containers,purchase_key_history,purchase_history,purchase_departures,purchase_import_previews,product_container_lines RESTART IDENTITY CASCADE;
+  await db.exec(`TRUNCATE purchase_requests,purchase_undo_expected,purchase_operation_rows,purchase_operations,purchase_orders,product_containers,purchase_key_history,purchase_history,purchase_departures,purchase_import_previews,product_container_lines,shipping_measures RESTART IDENTITY CASCADE;
     ALTER SEQUENCE purchase_order_key_seq RESTART WITH 1;
     UPDATE purchase_settings SET source_mode='web',integration_enabled=false;`);
   projected = 0; invalidated = 0; shared = [];

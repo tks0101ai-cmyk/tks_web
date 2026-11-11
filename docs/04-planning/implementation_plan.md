@@ -472,7 +472,7 @@ Trạng thái: mockup cục bộ, chưa có API Thu mua, chưa tạo/chạy migr
 - Thêm mã lấy lần lên list gần nhất, không giới hạn thời gian; mỗi lần lưu tạo dòng mới ở hàng chờ.
 - Xe 17,5m và 18,5m: 32T, dải 160–170 m³; cảnh báo mềm. Hàng chưa đến điểm gom vẫn được lập kế hoạch cont.
 - Tách một lá thành khóa cũ+.01 (giữ lại) và khóa cũ+.02 (phần tách), giữ nguyên ID nội bộ, rootKey dùng truy gia đình. Chỉ cộng các lá hiện hành; khóa trước tách không còn hợp lệ để import, không tự ánh xạ vào nhánh .01.
-- VC trước/VC sau/Tiền VC nhập tay; sau tách để trống ở hai nhánh, giữ ảnh chụp giá trị cũ để đối chiếu. Giá NET chưa tính khi thiếu chi phí; nhập 0 nếu đã xác nhận không phát sinh. Cước cont không làm đổi giá vốn dòng.
+- VC trước/VC sau/Tiền VC nhập tay; sau tách để trống ở hai nhánh, giữ ảnh chụp giá trị cũ để đối chiếu. Giá NET theo VK-DUNG: (Tiền hàng + Tiền VC mã + Thuế + VC sau CNY × 3,920) / Tổng SL; giá hàng dùng tỉ giá dòng, hằng 3,920 chỉ áp dụng VC sau. Chi phí trống được coi là 0 trong NET; cước cont được phân bổ vào giá vốn dòng theo m³.
 - Xuất thiếu tạo nhánh .02 ở hàng chờ, phần xuất giữ ở .01; không tạo nhánh khi chuyển cả dòng. Lưu ảnh chụp xác nhận xuất độc lập với dữ liệu chỉnh sửa sau xuất.
 - Trạng thái 4 chỉ ghi ngày về thực tế, kho nhận, người xác nhận và lịch sử; không nhận đủ, không đối chiếu Kiot, không cộng tồn hay tự khóa giá.
 - Sửa sau xuất được phép; lọc/sắp xếp/chọn/bản nháp riêng từng phiên. Sửa khác trường có thể cùng ghi nếu các trường đích chưa đổi; cùng trường thì báo xung đột. Mockup chưa có SSE/presence thật.
@@ -713,4 +713,4 @@ Cập nhật gần nhất: 07/11/2026.
 
 Đã tách lõi TSV/range/rowKey/fill/summary sang purchase-grid.js, UI vùng sang purchase-grid-ui.js. Scheduler tự động có visibility/throttle, endpoint revision nhẹ tránh tải lại rows/directory nếu chưa đổi. Directory chạy riêng, không chặn render; metadata NV modal giữ snapshot riêng. Render nền giữ thứ tự theo id trong từng nhóm, chờ xếp ưu tiên; neo input/vùng theo id/field. Paste/fill/delete prevalidate toàn vùng rồi tạo một undo unit trong drafts; split-parent costs/NV/cột tính không bị ghi qua đường này. Không đổi sang auto-save. Tài liệu kế hoạch: docs/superpowers/plans/2026-11-10-purchase-grid-sync.md.
 
-Cập nhật cuối: 10/11/2026.
+Cập nhật cuối: 11/11/2026.
