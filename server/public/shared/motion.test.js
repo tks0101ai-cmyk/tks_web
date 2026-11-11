@@ -39,17 +39,20 @@ function setup(html, reduced = false, supported = true) {
   };
 }
 
-test('heading letters stagger 12ms while keeping subtitle node, text, and listener intact', () => {
+test('headings fade in as one element without splitting letters; subtitle node, text and listener stay intact', () => {
   const ctx = setup('<div class="section-head"><h2>AB <span class="section-note">Note</span></h2></div>');
   const heading = ctx.w.document.querySelector('h2');
   const note = heading.querySelector('.section-note');
-  assert.equal(heading.textContent, 'AB Note');
-  assert.deepEqual(ctx.animations.filter(a => a.options.duration === 260).map(a => a.options.delay), [0, 12]);
-  assert.match(ctx.animations[0].keyframes[0].transform, /translateY\(-20px\)/);
+  let clicks = 0;
+  note.addEventListener('click', () => clicks++);
+  const headingAnimations = ctx.animations.filter(a => a.element === heading);
+  assert.equal(headingAnimations.length, 1);
+  assert.equal(headingAnimations[0].options.delay, 0);
+  assert.ok(headingAnimations[0].options.duration <= 250);
+  assert.equal(heading.innerHTML, 'AB <span class="section-note">Note</span>', 'heading DOM is not split into letter spans');
   assert.equal(heading.querySelector('.section-note'), note);
-  ctx.timers.find(timer => timer.delay > 260).callback();
-  assert.equal(heading.textContent, 'AB Note');
-  assert.equal(heading.querySelector('.section-note'), note);
+  note.click();
+  assert.equal(clicks, 1);
   ctx.dom.window.close();
 });
 
@@ -73,44 +76,19 @@ test('loading placeholders defer row entrance until data arrives', async () => {
   ctx.dom.window.close();
 });
 
-test('countup leaves financial source text unchanged and restores visual style on live data update', () => {
-  const ctx = setup('<div class="kpi-card"><div class="value" style="color:rgb(1, 2, 3)">1.234.567₫</div></div>');
+test('KPI numbers show their real value immediately (no count-up overlay)', () => {
+  const ctx = setup('<div class="kpi-card"><div class="value" style="color:rgb(1, 2, 3)">1.234.567₫</div></div><div data-motion-count>20,947,817,562₫</div>');
   const value = ctx.w.document.querySelector('.value');
+  const money = ctx.w.document.querySelector('[data-motion-count]');
   ctx.frame(0);
   ctx.frame(200);
+  for (const el of [value, money]) {
+    assert.equal(el.classList.contains('tks-motion-count'), false);
+    assert.equal(el.hasAttribute('data-tks-count-display'), false);
+  }
   assert.equal(value.textContent, '1.234.567₫');
-  assert.notEqual(value.getAttribute('data-tks-count-display'), '1.234.567₫');
-  value.textContent = '2.000₫';
-  ctx.frame(210);
-  assert.equal(value.textContent, '2.000₫');
-  assert.equal(value.classList.contains('tks-motion-count'), false);
   assert.equal(value.style.color, 'rgb(1, 2, 3)');
-  ctx.dom.window.close();
-});
-
-test('countup finishes with exact original display; zero placeholders permit first loaded value', async () => {
-  const ctx = setup('<div class="kpi-stat"><div class="val">0</div></div>');
-  const value = ctx.w.document.querySelector('.val');
-  value.textContent = '1.234,50%';
-  await ctx.rescan();
-  ctx.frame(0);
-  ctx.frame(400);
-  assert.equal(value.textContent, '1.234,50%');
-  assert.equal(value.hasAttribute('data-tks-count-display'), false);
-  ctx.dom.window.close();
-});
-
-test('dashboard en-US money and decimal ratios animate without changing source data', () => {
-  const ctx = setup('<div data-motion-count>20,947,817,562₫</div><div data-motion-count>5.2%</div><div data-motion-count data-motion-locale="vi-VN">1.234₫</div>');
-  const values = [...ctx.w.document.querySelectorAll('[data-motion-count]')];
-  ctx.frame(0);
-  ctx.frame(200);
-  assert.deepEqual(values.map(v => v.textContent), ['20,947,817,562₫', '5.2%', '1.234₫']);
-  assert.equal(values[0].getAttribute('data-tks-count-display'), '18,329,340,367₫');
-  assert.equal(values[1].getAttribute('data-tks-count-display'), '4.6%');
-  assert.equal(values[2].getAttribute('data-tks-count-display'), '1.080₫');
-  ctx.frame(400);
-  assert.ok(values.every(v => !v.classList.contains('tks-motion-count')));
+  assert.equal(ctx.animations.some(a => a.element === value || a.element === money), false);
   ctx.dom.window.close();
 });
 
@@ -121,7 +99,6 @@ test('reduced motion starts static and changing preference cancels active effect
   const ctx = setup('<div class="kpi-card"><div class="value">100</div></div>');
   ctx.reduce();
   assert.ok(ctx.animations.every(a => a.cancelled));
-  assert.equal(ctx.w.document.querySelector('.value').classList.contains('tks-motion-count'), false);
   staticCtx.dom.window.close();
   ctx.dom.window.close();
 });

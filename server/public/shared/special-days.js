@@ -4,7 +4,7 @@
  * Danh sách ngày lễ Việt Nam (dương lịch + âm lịch) và sinh nhật Nguyễn Ngọc
  * Việt Thắng. Một nguồn dữ liệu dùng chung:
  *   - Server: job thông báo chuông (notifications/specialDayNotifier.js)
- *   - Trình duyệt: shooting-star.js quyết định bắn pháo hoa thay sao băng
+ *   (Hiệu ứng sao băng / pháo hoa trên trình duyệt đã gỡ 11/11/2026.)
  * Dạng UMD (CommonJS + biến toàn cục TKSSpecialDays), không phụ thuộc thư viện.
  * Ngày luôn tính theo giờ Việt Nam (Asia/Ho_Chi_Minh), không theo múi giờ máy.
  * ============================================================================
