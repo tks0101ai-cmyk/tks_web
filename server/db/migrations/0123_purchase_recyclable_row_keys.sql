@@ -6,8 +6,10 @@ SET root_order_id = COALESCE(
   (SELECT history.order_id FROM purchase_key_history AS history
    WHERE history.row_key = row.root_key),
   (SELECT root.id FROM purchase_orders AS root
-   WHERE root.row_key = row.root_key AND root.deleted_at IS NULL
+   WHERE root.row_key = row.root_key
    ORDER BY root.id LIMIT 1),
+  (SELECT min(family.id) FROM purchase_orders AS family
+   WHERE family.root_key = row.root_key),
   row.id
 );
 
@@ -36,7 +38,8 @@ ALTER TABLE purchase_key_history ADD COLUMN root_order_id BIGINT;
 UPDATE purchase_key_history AS history
 SET root_order_id = COALESCE(
   (SELECT row.root_order_id FROM purchase_orders AS row WHERE row.id = history.order_id),
-  (SELECT root.id FROM purchase_orders AS root WHERE root.row_key = history.root_key ORDER BY root.id LIMIT 1),
+  (SELECT root.root_order_id FROM purchase_orders AS root WHERE root.row_key = history.root_key ORDER BY root.id LIMIT 1),
+  (SELECT min(family.root_order_id) FROM purchase_orders AS family WHERE family.root_key = history.root_key),
   history.order_id
 );
 DROP TRIGGER IF EXISTS purchase_keys_guard ON purchase_key_history;
@@ -48,9 +51,25 @@ UPDATE purchase_operation_rows AS snapshot
 SET root_order_id = COALESCE(
   (SELECT row.root_order_id FROM purchase_orders AS row WHERE row.id = snapshot.row_id),
   (SELECT history.root_order_id FROM purchase_key_history AS history WHERE history.order_id = snapshot.row_id ORDER BY history.id DESC LIMIT 1),
+  (SELECT family.root_order_id FROM purchase_orders AS family
+   WHERE family.root_key = COALESCE(snapshot.before_row->>'root_key', snapshot.after_row->>'root_key')
+   ORDER BY family.id LIMIT 1),
   snapshot.row_id
 );
 ALTER TABLE purchase_operation_rows ALTER COLUMN root_order_id SET NOT NULL;
+
+UPDATE purchase_operation_rows
+SET before_row = CASE WHEN before_row IS NULL THEN NULL ELSE before_row || jsonb_build_object('root_order_id',root_order_id) END,
+    after_row = CASE WHEN after_row IS NULL THEN NULL ELSE after_row || jsonb_build_object('root_order_id',root_order_id) END;
+UPDATE purchase_undo_expected AS expected
+SET expected_row = expected.expected_row || jsonb_build_object('root_order_id',COALESCE(
+  (SELECT snapshot.root_order_id FROM purchase_operation_rows AS snapshot
+   WHERE snapshot.operation_id=expected.operation_id AND snapshot.row_id=expected.row_id),
+  (SELECT history.root_order_id FROM purchase_key_history AS history WHERE history.order_id=expected.row_id ORDER BY history.id DESC LIMIT 1),
+  (SELECT family.root_order_id FROM purchase_orders AS family
+   WHERE family.root_key=expected.expected_row->>'root_key' ORDER BY family.id LIMIT 1),
+  expected.row_id
+));
 
 -- New audit snapshots retain the family ID even if undo later removes the row.
 CREATE OR REPLACE FUNCTION purchase_capture_row() RETURNS trigger AS $$
@@ -92,7 +111,7 @@ SELECT family.root_key
 FROM inactive_families AS family
 WHERE NOT EXISTS (
   SELECT 1 FROM purchase_orders AS active
-  WHERE active.row_key = family.root_key AND active.deleted_at IS NULL
+  WHERE active.root_key = family.root_key AND active.deleted_at IS NULL
 )
 ON CONFLICT(row_key) DO NOTHING;
 

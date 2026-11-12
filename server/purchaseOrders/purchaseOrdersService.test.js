@@ -60,6 +60,53 @@ test('recyclable row key migration preserves family identity and seeds only inac
  assert.deepEqual((await db.query('SELECT row_key FROM purchase_key_pool ORDER BY row_key')).rows.map(r=>r.row_key),['D70002']);
 });
 
+test('migration 0123 backfills legacy import families, undo snapshots, and exact pool contents',async t=>{
+ const legacyDb=new PGlite();
+ try {
+  for(const name of ['0053_product_containers.sql','0072_product_container_unit_price_cny.sql','0075_product_container_expected.sql','0078_product_container_expected_prices.sql','0086_product_container_other_note.sql',...PURCHASE_FILES.slice(0,-1)]) await legacyDb.exec(fs.readFileSync(path.join(__dirname,'../db/migrations',name),'utf8'));
+  const insertRoot="INSERT INTO purchase_orders(row_key,root_key,split_from_key,deleted_at,product_code,product_name,qty_per_carton,carton_count) VALUES($1,$2,$3,$4,$5,$6,1,1) RETURNING id";
+  const root=Number((await legacyDb.query(insertRoot,['D88000','D88000',null,null,'ROOT','Gốc'])).rows[0].id);
+  await legacyDb.query(insertRoot,['D88000.01','D88000','D88000',null,'CHILD','Nhánh']);
+  const importedA=Number((await legacyDb.query(insertRoot,['D88001.01','D88001','D88001',null,'IMP1','Nhập 1'])).rows[0].id);
+  await legacyDb.query(insertRoot,['D88001.02','D88001','D88001',null,'IMP2','Nhập 2']);
+  await legacyDb.query(insertRoot,['D88002.01','D88002','D88002',new Date(),'DEL1','Xóa 1']);
+  await legacyDb.query(insertRoot,['D88002.02','D88002','D88002',new Date(),'DEL2','Xóa 2']);
+  await legacyDb.query(insertRoot,['D88003.01','D88003','D88003',null,'LIVE','Còn sống']);
+  await legacyDb.query(insertRoot,['D88003.02','D88003','D88003',new Date(),'DEL3','Xóa 3']);
+  await legacyDb.query("INSERT INTO purchase_key_history(row_key,order_id,root_key) VALUES('D88000',$1,'D88000')",[root]);
+  const operation='88888888-8888-4888-8888-888888888888';
+  await legacyDb.query('INSERT INTO purchase_operations(id,actor_id,action) VALUES($1,$2,$3)',[operation,manager.id,'delete']);
+  const oldRow=(await legacyDb.query('SELECT to_jsonb(purchase_orders) AS row FROM purchase_orders WHERE id=$1',[root])).rows[0].row;
+  await legacyDb.query('INSERT INTO purchase_operation_rows(operation_id,row_id,before_row,after_row) VALUES($1,$2,$3,NULL)',[operation,root,JSON.stringify(oldRow)]);
+  await legacyDb.query('INSERT INTO purchase_undo_expected(operation_id,row_id,expected_row) VALUES($1,$2,$3)',[operation,root,JSON.stringify(oldRow)]);
+  const missingRow=999999;
+  const orphanSnapshot={id:missingRow,row_key:'D88001.01',root_key:'D88001',split_from_key:'D88001'};
+  await legacyDb.query('INSERT INTO purchase_operation_rows(operation_id,row_id,before_row,after_row) VALUES($1,$2,$3,NULL)',[operation,missingRow,JSON.stringify(orphanSnapshot)]);
+  await legacyDb.query('INSERT INTO purchase_undo_expected(operation_id,row_id,expected_row) VALUES($1,$2,$3)',[operation,missingRow,JSON.stringify(orphanSnapshot)]);
+
+  await legacyDb.exec(fs.readFileSync(path.join(__dirname,'../db/migrations/0123_purchase_recyclable_row_keys.sql'),'utf8'));
+  const families=(await legacyDb.query("SELECT root_key,array_agg(root_order_id ORDER BY id) ids FROM purchase_orders GROUP BY root_key ORDER BY root_key")).rows;
+  const byKey=new Map(families.map(f=>[f.root_key,f.ids.map(String)]));
+  await t.test('legacy split and suffix-only import rows share one root identity',async()=>{
+   assert.deepEqual(byKey.get('D88000'),[String(root),String(root)]);
+   assert.deepEqual(byKey.get('D88001'),[String(importedA),String(importedA)]);
+   assert.equal(Number((await legacyDb.query("SELECT root_order_id FROM purchase_key_history WHERE row_key='D88000'")).rows[0].root_order_id),root);
+  });
+  const snapshots=(await legacyDb.query('SELECT row_id,root_order_id,before_row FROM purchase_operation_rows WHERE operation_id=$1 ORDER BY row_id',[operation])).rows;
+  await t.test('legacy undo snapshots keep exact current-row equality',async()=>{
+   assert.equal(Number(snapshots[0].root_order_id),root);
+   assert.equal(Number(snapshots[0].before_row.root_order_id),root);
+   assert.equal(Number(snapshots[1].root_order_id),importedA);
+   assert.equal(Number(snapshots[1].before_row.root_order_id),importedA);
+   assert.deepEqual((await legacyDb.query('SELECT expected.expected_row=to_jsonb(row) AS exact FROM purchase_undo_expected expected JOIN purchase_orders row ON row.id=expected.row_id WHERE expected.operation_id=$1',[operation])).rows,[{exact:true}]);
+   assert.equal((await legacyDb.query('SELECT expected_row->>\'root_order_id\' AS root_id FROM purchase_undo_expected WHERE operation_id=$1 AND row_id=$2',[operation,missingRow])).rows[0].root_id,String(importedA));
+  });
+  await t.test('pool seed excludes active suffix-only families and contains only inactive roots',async()=>{
+   assert.deepEqual((await legacyDb.query('SELECT row_key FROM purchase_key_pool ORDER BY row_key')).rows.map(r=>r.row_key),['D88002']);
+  });
+ } finally { await legacyDb.close(); }
+});
+
 test('presence leases are shared between connections, expire, and expose only identity and history version',async()=>{
   const {createPresenceStore}=require('./purchaseOrdersRealtime');const store=createPresenceStore(db);
   const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222';
