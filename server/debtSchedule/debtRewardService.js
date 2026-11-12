@@ -213,23 +213,35 @@ function createDebtRewardService({ pool = getPool(), repository = createDebtSche
     return { ...board, months };
   }
 
-  // Dùng chung 1 lần tính cho các request trùng (kể cả đang tính dở); giữ boardCacheMs nếu version công nợ không đổi.
-  // Lỗi không được giữ: request sau tính lại.
-  function sharedBoard(month) {
-    const key = month || '';
-    const hit = boardCache.get(key);
-    if (hit && (hit.pending || (now().getTime() - hit.at < boardCacheMs && hit.version === repositoryVersion()))) return hit.promise;
-    // Version lấy TRƯỚC khi tính, cộng các lần bump do chính loadScores trong lúc tính: ghi công nợ xen giữa thì
-    // version lệch -> bảng này không được giữ. Request tới khi đang tính luôn dùng chung lần tính đó.
+  // Một lần tính bảng; version lấy TRƯỚC khi tính, cộng các lần bump do chính loadScores trong lúc tính: ghi công nợ
+  // xen giữa thì version lệch -> bảng này không được giữ.
+  function computeEntry(month) {
     const startVersion = repositoryVersion(), startOwn = ownBumps;
-    const entry = { at: 0, version: startVersion, pending: true, promise: null };
+    const entry = { at: 0, version: startVersion, pending: true, refreshing: false, promise: null };
     entry.promise = computeBoard(month).then(value => {
       Object.assign(entry, { pending: false, at: now().getTime(), version: versioned ? startVersion + ownBumps - startOwn : 0 });
       return value;
-    }, failure => {
-      if (boardCache.get(key) === entry) boardCache.delete(key);
-      throw failure;
     });
+    return entry;
+  }
+
+  // Dùng chung 1 lần tính cho các request trùng (kể cả đang tính dở). Công nợ không đổi mà bảng đã quá boardCacheMs:
+  // trả NGAY bảng cũ và tính lại nền 1 lượt (12/11/2026: trước đó người mở phải chờ ~3 s mỗi 30 s). Công nợ vừa đổi
+  // (version lệch), khách đổi / chốt tháng (xóa bảng giữ): chờ tính bảng mới. Lỗi không được giữ.
+  function sharedBoard(month) {
+    const key = month || '';
+    const hit = boardCache.get(key);
+    if (hit && hit.pending) return hit.promise;
+    if (hit && hit.version === repositoryVersion()) {
+      if (now().getTime() - hit.at >= boardCacheMs && !hit.refreshing) {
+        hit.refreshing = true;
+        const next = computeEntry(month);
+        next.promise.then(() => { if (boardCache.get(key) === hit) boardCache.set(key, next); }, () => { hit.refreshing = false; });
+      }
+      return hit.promise;
+    }
+    const entry = computeEntry(month);
+    entry.promise.catch(() => { if (boardCache.get(key) === entry) boardCache.delete(key); });
     boardCache.set(key, entry);
     return entry.promise;
   }

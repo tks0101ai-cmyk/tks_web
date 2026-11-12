@@ -3603,6 +3603,7 @@
     let leaveLoadVersion = 0;
     async function loadLeaveRequests(silent){
       const version = ++leaveLoadVersion;
+      lastLeaveLoadAt = Date.now();
       const tbody = document.getElementById('leaveTableBody');
       const fromDate = document.getElementById('fromDateFilter').value;
       const toDate = document.getElementById('toDateFilter').value;
@@ -5084,6 +5085,22 @@
 
     // ---------- Real-time (SSE) cap nhat tu dong khong can reload ----------
     let leaveEventSource = null;
+    // Tín hiệu nghỉ phép: tab ẩn chỉ ghi nhớ (tải khi quay lại), tab đang xem gom tín hiệu dồn dập trong 1 s thành 1 lần tải.
+    // Trước 12/11/2026 mỗi tín hiệu làm mọi tab Nhân sự (kể cả tab ẩn) gọi lại cả danh sách cùng lúc.
+    let leaveReloadPending = false;
+    let leaveReloadTimer = null;
+    let lastLeaveLoadAt = 0;
+    const LEAVE_STALE_MS = 60000;
+    function scheduleLeaveReload(){
+      if(document.visibilityState === 'hidden'){ leaveReloadPending = true; return; }
+      if(leaveReloadTimer) return;
+      leaveReloadTimer = setTimeout(() => { leaveReloadTimer = null; loadLeaveRequests(true); }, 1000);
+    }
+    function reloadLeaveIfStale(){
+      if(!leaveReloadPending && Date.now() - lastLeaveLoadAt < LEAVE_STALE_MS) return;
+      leaveReloadPending = false;
+      loadLeaveRequests(true);
+    }
 
     function setupLeaveRealtimeStream(){
       if(!window.EventSource) return;
@@ -5106,7 +5123,7 @@
             const payload = JSON.parse(event.data);
             if(!payload || !payload.type) return;
             if(payload.type==='LEAVE_REQUEST_DELETED' && payload.data){
-              removeDeletedLeave(payload.data.request_id); loadLeaveRequests(true); return;
+              removeDeletedLeave(payload.data.request_id); scheduleLeaveReload(); return;
             }
 
             if(payload.data){
@@ -5160,7 +5177,7 @@
                 rowEl.classList.add('row-highlight-update');
               }
             }
-            if(payload.type==='LEAVE_STATUS_CHANGED' || payload.type==='LEAVE_REQUEST_CREATED') loadLeaveRequests(true);
+            if(payload.type==='LEAVE_STATUS_CHANGED' || payload.type==='LEAVE_REQUEST_CREATED') scheduleLeaveReload();
           }catch(err){ /* parse error */ }
         };
 
@@ -5209,7 +5226,7 @@
         updateLeaveCalendarVisibility();
         if(document.visibilityState === 'visible'){
           if(ruleDocState.status === 'ready') loadRuleDocuments(true /* silent */);
-          loadLeaveRequests(true /* silent */);
+          if(hrCan('hr.leave') || hrCan('hr.leave.submit')) reloadLeaveIfStale();
         }
       });
     });

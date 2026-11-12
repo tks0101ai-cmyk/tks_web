@@ -146,7 +146,9 @@ test('loi doc bang tinh san (khong phai thieu bang) => lui ve live(), khong nem 
   } finally { console.error = original; await db.close(); }
 });
 
-test('job doi bang => repository xoa cache ngay (khong cho het 60s), con khong doi thi giu cache', async () => {
+// 12/11/2026: job đổi bảng => snapshot ĐÁNH DẤU CŨ (không xóa trắng): lần đọc ngay sau trả bản cũ (người dùng không phải chờ
+// tải lại 8–11 s), bản mới nạp nền và có ngay sau đó — vẫn không phải chờ hết 60 s.
+test('job doi bang => repository tra ban cu ngay va lam moi nen (khong cho het 60s), con khong doi thi giu cache', async () => {
   const { db, pool } = await setup();
   try {
     await job.refreshBusinessCurrentMonth(pool, jobOptions());
@@ -158,7 +160,13 @@ test('job doi bang => repository xoa cache ngay (khong cho het 60s), con khong d
     assert.equal(await kh1(), 530, 'chua chay job: van cache cu trong 60s');
     const idle = await job.refreshBusinessCurrentMonth(pool, jobOptions(NOW.getTime() + MIN));
     assert.equal(idle.changed, true);
-    assert.equal(await kh1(), 1530, 'job ghi bang => cache bi xoa => doc so moi ngay');
+    assert.equal(await kh1(), 530, 'job ghi bang => tra ngay ban cu, khong bat cho tai lai');
+    let fresh = 530;
+    for (let i = 0; i < 200 && fresh !== 1530; i++) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+      fresh = await kh1();
+    }
+    assert.equal(fresh, 1530, 'ban moi nap nen co ngay sau do (khong cho het 60s)');
     const calls = pool.calls.length;
     await job.refreshBusinessCurrentMonth(pool, jobOptions(NOW.getTime() + 2 * MIN));
     assert.equal(await kh1(), 1530);
