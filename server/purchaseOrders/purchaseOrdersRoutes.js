@@ -26,6 +26,7 @@ function createPurchaseOrdersRouter(dependencies={}) {
   for(const [path,method] of [['delete','remove'],['restore','restore'],['undo','undo']])router.post(root+'/'+path,requireFeature('purchase.edit'),handle(async(req,res)=>res.json(await service[method](req.user,req.body))));
   router.get(root+'/latest',handle(async(req,res)=>res.json({row:await service.latest(req.user,req.query.code)})));
   router.post(root+'/next-key',requireFeature('purchase.edit'),handle(async(req,res)=>res.json(await service.reserveKey(req.user))));
+  router.post(root+'/release-key',requireFeature('purchase.edit'),handle(async(req,res)=>{if(!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(req.body?.reservationId||''))return res.status(400).json({code:'RESERVATION_ID_INVALID',error:'Mã giữ chỗ không hợp lệ.'});res.json(await service.releaseKey(req.user,{reservationId:req.body.reservationId}))}));
   router.get(root+'/history',handle(async(req,res)=>res.json({rows:await service.history(req.user,req.query.rowKey)})));
   router.post(root+'/export',requireFeature('purchase.export'),handle(async(req,res)=>{
     const allowed=new Set(columns.map(c=>c.k)),fields=req.body.fields,ids=req.body.ids;

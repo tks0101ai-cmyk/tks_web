@@ -9,7 +9,7 @@ const columns = require('../public/shared/purchase-columns');
 async function start(t,user) {
   const calls=[];
   const record=name=>async(...args)=>{calls.push({name,args});return name==='revision'?{revision:'9:4'}:name==='importSnapshot'?{revision:'9:4',rows:[]}:{ok:true}};
-  const service=Object.fromEntries(['revision','changes','employees','saveEmployees','createEmployee','updateEmployee','trash','operations','remove','restore','undo','applyPlan','list','history','create','update','createContainer','updateContainer','schedule','changeStatus','bulkEdit','transfer','depart','arrive','previewImport','reviseImport','commitImport'].map(name=>[name,record(name)]));
+  const service=Object.fromEntries(['revision','changes','employees','saveEmployees','createEmployee','updateEmployee','trash','operations','remove','restore','undo','applyPlan','list','history','create','update','createContainer','updateContainer','schedule','changeStatus','bulkEdit','transfer','depart','arrive','previewImport','reviseImport','commitImport','reserveKey','releaseKey'].map(name=>[name,record(name)]));
   const app=express();app.use(express.json());app.use((req,res,next)=>{req.user=user;next()});
   app.use(createPurchaseOrdersRouter({service,requireAuth:(req,res,next)=>req.user?next():res.status(401).json({error:'Chưa đăng nhập'})}));
   const server=await new Promise(resolve=>{const server=app.listen(0,'127.0.0.1',()=>resolve(server))});t.after(()=>server.close());
@@ -63,6 +63,17 @@ test('import commit accepts a token only, never client-generated write operation
 
 test('delete restore and undo require edit permission, directory requires purchase view only',async t=>{
  const {base,calls}=await start(t,{id:'reader',vaiTro:ROLES.NHAN_VIEN_MUA_HANG,featurePermissions:{'purchase.view':true}});for(const path of ['/delete','/restore','/undo','/plan'])assert.equal((await fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,403);assert.equal((await fetch(base+'/employees')).status,200);assert.deepEqual(calls.map(c=>c.name),['employees']);
+});
+
+test('row key release requires edit permission and validates reservation ID',async t=>{
+ const reader=await start(t,{id:'reader',vaiTro:ROLES.NHAN_VIEN_MUA_HANG,featurePermissions:{'purchase.view':true}});
+ assert.equal((await fetch(reader.base+'/release-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reservationId:'01234567-89ab-4def-8123-456789abcdef'})})).status,403);
+ assert.deepEqual(reader.calls,[]);
+ const manager=await start(t,{id:'manager',vaiTro:ROLES.QUAN_LY}),id='01234567-89ab-4def-8123-456789abcdef';
+ for(const body of [{},{reservationId:'invalid'}])assert.equal((await fetch(manager.base+'/release-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).status,400);
+ const response=await fetch(manager.base+'/release-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reservationId:id})});
+ assert.equal(response.status,200);assert.deepEqual(await response.json(),{ok:true});
+ assert.equal(manager.calls[0].name,'releaseKey');assert.deepEqual(manager.calls[0].args,[{id:'manager',vaiTro:ROLES.QUAN_LY},{reservationId:id}]);
 });
 
 test('invalid request keys are rejected before a mutation reaches the service',async t=>{

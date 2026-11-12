@@ -60,6 +60,38 @@ test('recyclable row key migration preserves family identity and seeds only inac
  assert.deepEqual((await db.query('SELECT row_key FROM purchase_key_pool ORDER BY row_key')).rows.map(r=>r.row_key),['D70002']);
 });
 
+test('row key reservation releases the smallest key only for its actor',async()=>{
+ const first=await service.reserveKey(manager),second=await service.reserveKey(manager);
+ assert.deepEqual(Object.keys(first).sort(),['expiresAt','reservationId','rowKey']);assert.notEqual(first.rowKey,second.rowKey);
+ assert.ok(new Date(first.expiresAt)>new Date());
+ assert.deepEqual(await service.releaseKey({id:'other'},{reservationId:first.reservationId}),{released:false});
+ assert.deepEqual(await service.releaseKey(manager,{reservationId:first.reservationId}),{released:true});
+ const third=await service.reserveKey(manager);assert.equal(third.rowKey,first.rowKey);
+ assert.deepEqual(await service.releaseKey(manager,{reservationId:first.reservationId}),{released:false});
+ assert.equal((await db.query('SELECT count(*)::int n FROM purchase_operations')).rows[0].n,0);
+});
+
+test('row key reservation requires web source mode',async()=>{
+ await db.query("UPDATE purchase_settings SET source_mode='sheets' WHERE id=1");
+ await assert.rejects(service.reserveKey(manager),e=>e.code==='PURCHASE_SOURCE_NOT_ACTIVE');
+ assert.equal((await db.query('SELECT count(*)::int n FROM purchase_key_reservations')).rows[0].n,0);
+});
+
+test('row key reservation reclaims expired keys and rejects expired claims',async()=>{
+ const expired=await service.reserveKey(manager);
+ await db.query('UPDATE purchase_key_reservations SET expires_at=now()-interval \'1 minute\' WHERE reservation_id=$1',[expired.reservationId]);
+ const next=await service.reserveKey(manager);assert.equal(next.rowKey,expired.rowKey);
+ await assert.rejects(service.create(manager,{...input(),rowKey:expired.rowKey,reservationId:expired.reservationId}),e=>e.code==='ROW_KEY_UNKNOWN');
+});
+
+test('row key reservation is consumed once and concurrent reservations are unique',async()=>{
+ const reservation=await service.reserveKey(manager),row=await service.create(manager,{...input(),rowKey:reservation.rowKey,reservationId:reservation.reservationId});
+ assert.equal(row.rowKey,reservation.rowKey);
+ await assert.rejects(service.create(manager,{...input(),productCode:'SECOND',rowKey:reservation.rowKey,reservationId:reservation.reservationId}),e=>e.code==='ROW_KEY_UNKNOWN');
+ const reservations=await Promise.all([service.reserveKey(manager),service.reserveKey(manager)]);
+ assert.notEqual(reservations[0].rowKey,reservations[1].rowKey);
+});
+
 test('migration 0123 backfills legacy import families, undo snapshots, and exact pool contents',async t=>{
  const legacyDb=new PGlite();
  try {
@@ -366,9 +398,10 @@ test('balance plan commits edits, recursive split and new code together; stale s
 });
 
 test('balance plan ignores client-only id and version on a new row',async()=>{
- await db.query("SELECT setval('purchase_order_key_seq',1,true)");
- const result=await service.applyPlan(manager,{creates:[{values:{...input(),id:'new123',version:1,rowKey:'D00001',contId:null}}]});
+ await db.query("SELECT setval('purchase_order_key_seq',1,false)");
+ const result=await service.applyPlan(manager,{creates:[{values:{...input(),id:'new123',version:1,contId:null}}]});
  const created=(await service.list(manager)).rows[0];assert.deepEqual(result.createdKeys,['D00001']);assert.equal(created.rowKey,'D00001');assert.equal(created.version,1);assert.notEqual(created.id,'new123');
+ await assert.rejects(service.applyPlan(manager,{creates:[{values:{...input(),productCode:'UNRESERVED',rowKey:'D00002'}}]}),e=>e.code==='ROW_KEY_UNKNOWN');
 });
 
 test('manual code split saves independently entered quantities and rejects blank child',async()=>{

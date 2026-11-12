@@ -204,6 +204,15 @@ test('new row submission carries staged comparison overrides',async t=>{
  const p=await page(t,{local:true}),doc=p.w.document;doc.getElementById('columns').click();doc.querySelector('[data-column="literChina"]').checked=true;doc.querySelector('[data-column="literChina"]').dispatchEvent(new p.w.Event('change',{bubbles:true}));
  const input=doc.querySelector('tr[data-id="new-local"] [data-edit="literChina"]');assert.ok(input);input.value='125';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));doc.getElementById('save').click();doc.getElementById('commit').click();await tick();await tick();const call=p.calls.find(c=>c.options.method==='POST'&&c.url==='/api/purchase-orders/plan');assert.ok(call);const body=JSON.parse(call.options.body);assert.equal(body.creates[0].values.literChina,125);
 });
+test('new row reservation survives add and autosave outside the order values',async t=>{
+ const p=await page(t),doc=p.w.document,fetch=p.w.fetch,reservationId='01234567-89ab-4def-8123-456789abcdef';
+ p.w.fetch=async(url,options={})=>{if(url==='/api/purchase-orders/next-key')return {ok:true,json:async()=>({rowKey:'D00042',reservationId,expiresAt:'2026-11-13T12:30:00.000Z'})};if(url==='/api/purchase-orders/plan'&&options.method==='POST'){p.calls.push({url,options});return {ok:true,json:async()=>({})}}return fetch(url,options)};
+ doc.getElementById('add').click();const form=doc.getElementById('addForm');
+ Object.assign(form.elements.productCode,{value:'NEW'});Object.assign(form.elements.productName,{value:'New item'});Object.assign(form.elements.qtyPerCarton,{value:'2'});Object.assign(form.elements.cartonCount,{value:'3'});
+ form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}));await tick();await new Promise(resolve=>setTimeout(resolve,550));await tick();await tick();
+ const call=p.calls.find(c=>c.url==='/api/purchase-orders/plan'&&c.options.method==='POST');assert.ok(call);const body=JSON.parse(call.options.body),create=body.creates[0];
+ assert.equal(create.values.rowKey,'D00042');assert.equal(create.reservationId,reservationId);assert.equal(Object.hasOwn(create.values,'reservationId'),false);
+});
 for(const scope of ['containerTable'])test('freight '+scope+' sends original focus version after SSE and cannot overwrite remote freight',async t=>{
  const p=await page(t),doc=p.w.document,fetch=p.w.fetch;
  if(scope==='watchedContainer')doc.querySelector('[data-container-filter="2"]').click();
