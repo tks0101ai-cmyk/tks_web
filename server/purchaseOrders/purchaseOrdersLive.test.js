@@ -239,8 +239,9 @@ test('pin is under private filters in the orders DOM, remains singular on refres
  assert.equal(watched.hidden,false);assert.equal(filters.nextElementSibling,watched);assert.equal(doc.getElementById('search').value,'AC305');
  assert.equal(watched.querySelectorAll('tbody tr').length,1);assert.equal(watched.querySelectorAll('[id]').length,0);
  assert.equal(watched.querySelectorAll('thead th').length,5,'the pinned copy stays compact');
+ assert.equal(watched.querySelector('.watched-caption'),null);assert.equal(watched.querySelector('.watched-actions button').textContent,'Bỏ ghim');assert.equal(watched.querySelector('.watched-actions').nextElementSibling.className,'watched-scroll');assert.doesNotMatch(watched.textContent,/Đang theo dõi/);
  p.listeners.changed();await tick();await tick();assert.equal(doc.querySelectorAll('#watchedContainer').length,1);assert.equal(watched.hidden,false);
- watched.querySelector('.watched-caption button').click();assert.equal(watched.hidden,true);assert.equal(doc.getElementById('search').value,'AC305');
+ watched.querySelector('.watched-actions button').click();assert.equal(watched.hidden,true);assert.equal(doc.getElementById('search').value,'AC305');
  assert.equal(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).taskTarget,null);assert.equal(p.calls.filter(c=>c.options.method).length,0);
 });
 

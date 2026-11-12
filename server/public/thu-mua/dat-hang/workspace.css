@@ -396,8 +396,7 @@
 .purchase-page #containerPanel .container-filters{border-radius:6px}
 
 .purchase-page #watchedContainer{margin:4px 0 6px;padding:4px 7px;border:1px solid var(--border);border-radius:6px;background:var(--panel)}
-.purchase-page #watchedContainer .watched-caption{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px;color:var(--muted);font-size:9px;line-height:1.2}
-.purchase-page #watchedContainer .watched-caption button{min-height:22px;padding:2px 7px;font-size:9px}
+.purchase-page #watchedContainer .watched-actions button{min-height:22px;padding:2px 7px;font-size:9px}
 .purchase-page #watchedContainer .watched-scroll{max-width:100%;overflow-x:auto}
 .purchase-page #watchedContainer table{width:393px;min-width:393px;table-layout:fixed}
 .purchase-page #watchedContainer :is(th,td){padding:3px 4px;font-size:9px;line-height:1.2}
