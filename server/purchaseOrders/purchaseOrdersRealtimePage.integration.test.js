@@ -127,9 +127,9 @@ test('Đối chiếu overrides are directly editable and sent through the normal
  doc.getElementById('save').click();doc.getElementById('commit').click();await tick();await tick();const call=p.calls.find(c=>c.options.method==='PATCH'&&c.url.endsWith('/1'));assert.ok(call);assert.deepEqual(JSON.parse(call.options.body),{version:4,before:{literChina:120},changes:{literChina:125}});
 });
 test('measurement inputs show agreed precision and focus/blur alone creates no draft',async t=>{
- const p=await page(t),doc=p.w.document;p.data.rows[0].kgPerCarton=14.04;p.data.rows[0].m3PerCarton=.0671;p.listeners.changed();await tick();await tick();
- doc.getElementById('columns').click();for(const key of ['kgPerCarton','m3PerCarton']){const box=doc.querySelector('[data-column="'+key+'"]');box.checked=true;box.dispatchEvent(new p.w.Event('change',{bubbles:true}))}
- for(const [key,shown] of [['kgPerCarton','14.0'],['m3PerCarton','0.067']]){let input=doc.querySelector('[data-edit="'+key+'"]');assert.equal(input.value,shown,key+' initial');input.focus();input.blur();await new Promise(resolve=>setTimeout(resolve,5));input=doc.querySelector('[data-edit="'+key+'"]');assert.equal(input.value,shown,key+' after blur')}assert.equal(Object.keys(p.drafts()).length,0);
+ const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{kgPerCarton:14.041,m3PerCarton:.0671,qtyPerCarton:3});p.listeners.changed();await tick();await tick();
+ doc.getElementById('columns').click();for(const key of ['kgPerCarton','m3PerCarton','gramChina']){const box=doc.querySelector('[data-column="'+key+'"]');box.checked=true;box.dispatchEvent(new p.w.Event('change',{bubbles:true}))}
+ for(const [key,shown] of [['kgPerCarton','14.0'],['m3PerCarton','0.067'],['gramChina','4,680']]){let input=doc.querySelector('[data-edit="'+key+'"]');assert.equal(input.value,shown,key+' initial');input.focus();input.blur();await new Promise(resolve=>setTimeout(resolve,5));input=doc.querySelector('[data-edit="'+key+'"]');assert.equal(input.value,shown,key+' after blur')}assert.equal(Object.keys(p.drafts()).length,0);
 });
 test('calculated ratio is shown as a rounded percentage in edit and view modes',async t=>{
  for(const readOnly of [false,true]){const p=await page(t,{readOnly}),doc=p.w.document;Object.assign(p.data.rows[0],{kgPerCarton:14,m3PerCarton:.067});p.listeners.changed();await tick();await tick();
