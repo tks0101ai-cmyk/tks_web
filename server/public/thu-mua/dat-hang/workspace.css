@@ -508,3 +508,37 @@
   .purchase-page #modalBody .purchase-modal-actions{flex-wrap:wrap;}
 }
 @media(max-width:420px){.purchase-page #modalBody>form,.purchase-page #modalBody #addForm{grid-template-columns:1fr;}}
+
+/* Final responsive overrides: the dense desktop grid must not leak into phone layouts. */
+@media(max-width:1100px){
+  .purchase-page .order-filters{grid-template-columns:repeat(4,minmax(0,1fr));overflow:visible}
+  .purchase-page .order-filters label:has(#search){grid-column:span 2;grid-row:auto}
+  .purchase-page .order-filters label:has(#filter),.purchase-page .order-filters label:has(#orderStatus),.purchase-page .order-filters label:has(#orderBuyer),.purchase-page .order-filters label:has(#orderSupplier),.purchase-page .order-filters label:has(#orderFrom),.purchase-page .order-filters label:has(#orderTo),.purchase-page .order-filters label:has(#orderFlag),.purchase-page .order-filters label:has(#sort){grid-column:span 1;grid-row:auto}
+  .purchase-page .order-filters .filter-actions{grid-column:1/-1;grid-row:auto;justify-content:space-between}
+}
+@media(max-width:520px){
+  .purchase-page .order-filters{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .purchase-page .order-filters label:has(#search){grid-column:1/-1}
+  .purchase-page .order-filters .filter-actions{align-items:flex-start;flex-wrap:wrap}
+  .purchase-page .order-filters .column-tools{margin-left:auto}
+}
+@media(max-width:900px){
+  .purchase-page .purchase-connection{display:inline-flex;flex:0 0 auto;align-items:center;padding:4px 8px;border:1px solid var(--border);border-radius:999px;background:var(--panel-2);font-size:10px}
+  .purchase-page .purchase-presence{display:none}
+}
+.purchase-page #watchedContainer{top:calc(var(--tks-header-h,52px) + 4px)}
+.purchase-page #modal .dp-close{display:grid;place-items:center;flex:0 0 34px;width:34px;height:34px;padding:0;line-height:1}
+.purchase-page #modal:has(#downloadSnapshot){width:min(680px,calc(100vw - 32px))}
+.purchase-page #modal:has(#downloadSnapshot) .dp-body{max-height:62dvh}
+.purchase-page #modalBody .purchase-modal-actions{position:sticky;bottom:-20px;background:var(--panel);padding-bottom:4px}
+.purchase-page .import-drop{background:var(--panel-2);line-height:1.5}
+.purchase-page #purchaseTaskDialog{position:relative;width:min(720px,92vw);max-height:min(86dvh,900px);overflow:auto;padding:54px 18px 18px;border-radius:var(--radius-xl);box-shadow:var(--shadow-modal)}
+.purchase-page #purchaseTaskDialog::backdrop{backdrop-filter:blur(2px)}
+.purchase-page #purchaseTaskDialog>form{position:absolute;top:12px;right:12px;margin:0}
+.purchase-page #purchaseTaskDialog .task-close{display:grid;place-items:center;width:34px;height:34px;padding:0;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel-2);color:var(--text);font-size:20px;line-height:1}
+.purchase-page #purchaseTaskDialog h2{margin:0 42px 14px 0;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.purchase-page #purchaseTaskDialog .task-picker-results{max-height:min(40dvh,360px);border-radius:var(--radius-sm)}
+@media(max-width:700px){
+  .purchase-page #modal:has(#downloadSnapshot){width:calc(100vw - 20px)}
+  .purchase-page #modalBody .purchase-modal-actions{bottom:-16px}
+}
