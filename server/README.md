@@ -1395,3 +1395,13 @@ Cập nhật cuối: 11/11/2026.
 - Đã xóa `public/shared/shooting-star.js`, `public/shared/fireworks.js`, `test/frontend/fireworks.test.js`; `shared-nav.js` không còn tự nạp sao băng.
 
 Cập nhật cuối: 11/11/2026.
+
+## Hiệu năng — 12/11/2026 (đợt 4)
+
+- `hr/hrLeaveAuthorization.js`: `createApproverIndex(users)` — bản tính sẵn cho `describeRequests` (cùng kết quả `selectApprovers`, test đối chiếu).
+- `dashboard/exportExcelRenderer.js` (tách từ exportService, thuần ExcelJS), `exportExcelWorker.js`, `exportExcelPool.js` (`renderExcelInWorker`: 1 worker dùng chung, tự tắt sau 5 phút rảnh, fallback luồng chính). Biến `EXPORT_EXCEL_WORKER=off` tắt worker.
+- `businessReport/businessReportRepository.js`: `createSwrCache().markStale()`; sự kiện job tháng hiện tại dùng `markStale` (trả bản cũ, làm mới nền) thay vì `clear`.
+- `debtSchedule/debtRewardService.js`: bảng quá `boardCacheMs` mà version công nợ không đổi → trả bảng cũ, tính lại nền 1 lượt.
+- `debtSchedule/debtAgingRepository.js`: quá 60 s → trả bản cũ, đọc lại nền; `clearCache()` vẫn chờ bản mới.
+
+Cập nhật cuối: 12/11/2026.

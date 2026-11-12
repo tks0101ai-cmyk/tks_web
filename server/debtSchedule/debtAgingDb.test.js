@@ -209,3 +209,28 @@ test('doc dong thoi dung chung 1 luot DB; clearCache giua luc doc thi ket qua cu
     assert.equal(reads, 3, 'ket qua doc truoc clearCache khong duoc giu');
   } finally { await db.close(); }
 });
+
+test('het 60 giay: tra ngay ban cu va doc lai nen; clearCache thi cho ban moi', async () => {
+  const { db, pool } = await setup();
+  try {
+    await seed(db);
+    await refreshDebtAging(pool, { now: () => NOW, log: quiet });
+    let clock = NOW;
+    let reads = 0;
+    const counted = { query: (sql, params) => { if (/FROM debt_aging_customers/i.test(sql)) reads++; return pool.query(sql, params); } };
+    const repo = createDebtAgingRepository({ pool: counted, now: () => clock });
+    const first = await repo.readAging(['hanoi', 'saigon']);
+    clock += 61000;
+    const kept = await repo.readAging(['hanoi', 'saigon']);
+    assert.equal(kept, first, 'het han: tra ngay ban cu');
+    assert.equal(reads, 2, 'va bat dau doc lai nen');
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const refreshed = await repo.readAging(['hanoi', 'saigon']);
+    assert.notEqual(refreshed, first, 'lan sau dung ban vua doc lai');
+    assert.equal(reads, 2);
+    repo.clearCache();
+    const fresh = repo.readAging(['hanoi', 'saigon']);
+    assert.equal(reads, 3, 'clearCache: cho ban moi');
+    assert.notEqual(await fresh, refreshed);
+  } finally { await db.close(); }
+});

@@ -27,6 +27,38 @@ function selectApprovers(users, request) {
   const fallback = users.filter(user => isActiveApprover(user) && isSeniorAdmin(user));
   return {users:fallback,fallback:true,missing:fallback.length === 0};
 }
+// Bản tính sẵn cho cả danh sách đơn: kiểm quyền / chuẩn hóa cơ sở và phòng ban MỘT lần mỗi tài khoản, nhớ kết quả theo
+// (cơ sở, phòng ban) của đơn. Cùng kết quả với selectApprovers; trước đây 361 đơn × 171 tài khoản tốn ~1,2 s CPU mỗi lần
+// tải danh sách nghỉ phép và làm đứng cả web (log [loop-stall] 12/11/2026).
+function createApproverIndex(users) {
+  const active = users.filter(isActiveApprover).map(user => ({
+    user,
+    scope: normalizeCoSo(user.assignedCoSo !== undefined ? user.assignedCoSo : user.coSo),
+    departments: new Set((Array.isArray(user.leaveApprovalDepartments) ? user.leaveApprovalDepartments : []).map(departmentKey)),
+    senior: isSeniorAdmin(user)
+  }));
+  const cache = new Map();
+  return function routingOf(request) {
+    if (!request) return selectApprovers(users, request);
+    const branch = normalizeCoSo(request.co_so || request.branch) || branchCodeToLabel(request.branch);
+    const department = departmentKey(request.bo_phan);
+    const key = JSON.stringify([branch, department]);
+    let routing = cache.get(key);
+    if (!routing) {
+      const inBranch = BRANCHES_ALL.includes(branch) && !!department;
+      const normal = inBranch
+        ? active.filter(a => (a.scope === BRANCH_BOTH || a.scope === branch) && a.departments.has(department)).map(a => a.user)
+        : [];
+      if (normal.length) routing = { users: normal, fallback: false, missing: false };
+      else {
+        const fallback = active.filter(a => a.senior).map(a => a.user);
+        routing = { users: fallback, fallback: true, missing: fallback.length === 0 };
+      }
+      cache.set(key, routing);
+    }
+    return routing;
+  };
+}
 function routingWarning(routing) {
   if (routing.missing) return 'Chưa có người duyệt phù hợp hoặc quản trị dự phòng đang hoạt động. Đơn được giữ chờ xử lý.';
   return routing.fallback ? 'Đơn chuyển quản trị cao nhất vì chưa có người duyệt đúng phòng ban và cơ sở.' : '';
@@ -48,12 +80,12 @@ function createHrLeaveAuthorization({loadUsers=()=>appUsers.selectAllRows()}={})
     return current;
   }
   async function describeRequests(user,requests) {
-    const users=await loadUsers();
+    const routingOf=createApproverIndex(await loadUsers());
     return requests.map(request=>{
-      const routing=selectApprovers(users,request);
+      const routing=routingOf(request);
       return {...request,canManage:routing.users.some(candidate=>isSameAccount(candidate,user)),routingWarning:routingWarning(routing)};
     });
   }
   return {authorize,authorizeEmployee,routingFor,canDecide,describeRequests};
 }
-module.exports={normalizeDepartments,isActiveApprover,matchesApprovalScope,selectApprovers,routingWarning,createHrLeaveAuthorization};
+module.exports={normalizeDepartments,isActiveApprover,matchesApprovalScope,selectApprovers,createApproverIndex,routingWarning,createHrLeaveAuthorization};
