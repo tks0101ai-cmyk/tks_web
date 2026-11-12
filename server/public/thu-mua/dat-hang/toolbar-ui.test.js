@@ -20,6 +20,13 @@ test('order toolbar keeps primary actions first and secondary actions grouped la
   ]);
 });
 
+test('order title stays left and pushes toolbar actions to the right', () => {
+  assert.ok(
+    /\.purchase-page\s+\.order-actions\s+h2\s*\{[^}]*margin-right:\s*auto/i.test(styles),
+    'the title needs an auto right margin to push actions to the right'
+  );
+});
+
 test('bulk and employee buttons keep dark text in light mode', () => {
   assert.ok(
     /:root\[data-theme="light"\][^{]*\.order-actions[^}]*#bulk[^}]*#managePurchaseEmployees[^}]*color:\s*#0f172a/i.test(styles),
@@ -27,9 +34,18 @@ test('bulk and employee buttons keep dark text in light mode', () => {
   );
 });
 
-test('toolbar utility buttons retain visible borders at rest', () => {
+test('import and undo use the normal opaque button background', () => {
   assert.ok(
-    !/\.order-actions[^{}]*#(?:managePurchaseEmployees|import|undoWork)[^{}]*\{[^}]*border-color:\s*transparent/i.test(styles),
-    'toolbar utility buttons must not hide their borders at rest'
+    !/\.order-actions[^{}]*#(?:import|undoWork)[^{}]*\{[^}]*background:\s*transparent/i.test(styles),
+    '#import and #undoWork must use the shared opaque button treatment'
+  );
+});
+
+test('container panel opens by default and sits 20px below the order grid', () => {
+  const doc = new JSDOM(page).window.document;
+  assert.equal(doc.querySelector('#containerPanel').hasAttribute('open'), true);
+  assert.ok(
+    /#containerPanel\s*\{[^}]*margin-top:\s*20px/i.test(styles),
+    'container panel should have a 20px top margin'
   );
 });

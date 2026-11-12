@@ -2,7 +2,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {JSDOM}=require('jsdom');
 const dir=path.join(__dirname,'../public/thu-mua/dat-hang'),tick=()=>new Promise(setImmediate);
-async function page(t,{local=false,directory=null}={}){
+async function page(t,{local=false,directory=null,projectionProbe=null}={}){
  const w=new JSDOM(fs.readFileSync(path.join(dir,'index.html'),'utf8'),{url:'https://example.test/thu-mua/dat-hang/',runScripts:'outside-only'}).window;
  t.after(()=>w.close());w.HTMLCanvasElement.prototype.getContext=()=>null;
  const data={sourceMode:'web',integrationEnabled:true,permissions:{edit:true,import:true,export:true,depart:true,arrive:true},rows:[{id:'1',rowKey:'D00001',version:4,contId:'2',productCode:'A',productName:'Product',supplier:'Old',cartonCount:10,qtyPerCarton:5}],containers:[{id:'2',name:'CONT 11-1V',status:2,version:3,arrival_note:'2026-11-08',arrival_date:null}]},listeners={},calls=[],timers=new Set();let closed=0;
@@ -10,8 +10,8 @@ async function page(t,{local=false,directory=null}={}){
  w.TKSNav={authGuard:async()=>({id:'buyer'})};w.EventSource=class{addEventListener(k,f){listeners[k]=f}close(){closed++}};
  w.setInterval=fn=>{timers.add(fn);return fn};w.clearInterval=id=>timers.delete(id);
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false};
- w.fetch=async(url,options={})=>{if(url.startsWith('/api/me/table-prefs'))return {ok:true,json:async()=>({tables:{}})};calls.push({url,options});if(url.endsWith('/employees')&&directory)return {ok:true,json:()=>directory};return {ok:true,json:async()=>url.endsWith('/employees')?{rows:[]}:options.method==='PATCH'?{}:structuredClone(data)}};
- if(local){const row={...data.rows[0],id:'new-local',rowKey:'D00002',version:1};w.sessionStorage.setItem('purchase:buyer:v1',JSON.stringify({newRows:{'new-local':row},drafts:{'new-local':{version:1,before:{supplier:''},changes:{supplier:'Local'}}}}))}
+ w.fetch=async(url,options={})=>{if(url.startsWith('/api/me/table-prefs'))return {ok:true,json:async()=>({tables:{}})};calls.push({url,options});if(url.endsWith('/employees')&&directory)return {ok:true,json:()=>directory};return {ok:true,json:async()=>{if(url.endsWith('/employees'))return {rows:[]};if(options.method==='PATCH')return {};const snapshot=structuredClone(data);if(projectionProbe&&snapshot.rows[0])Object.defineProperty(snapshot.rows[0],'__projectionProbe',{enumerable:true,get(){projectionProbe.count++;return true}});return snapshot}}};
+ if(local){const row={...data.rows[0],id:'new-local',rowKey:'D00002',version:1,qtyPerCarton:5};w.sessionStorage.setItem('purchase:buyer:v1',JSON.stringify({newRows:{'new-local':row},drafts:{'new-local':{version:1,before:{supplier:''},changes:{supplier:'Local'}}}}))}
  w.eval(fs.readFileSync(path.join(dir,'../../shared/table-controls.js'),'utf8'));w.PurchaseGrid=require('../public/shared/purchase-grid');w.PurchaseGridUI=require('../public/shared/purchase-grid-ui');Object.defineProperty(w.document,'hidden',{value:false,configurable:true});const realtimeAPI=w.PurchaseRealtime;w.PurchaseRealtime={...realtimeAPI,createScheduler:options=>realtimeAPI.createScheduler({...options,gapMs:0})};w.eval(fs.readFileSync(path.join(dir,'purchase.js'),'utf8'));await tick();await tick();
  return {w,data,calls,listeners,timers,get closed(){return closed},drafts:()=>JSON.parse(w.sessionStorage.getItem('purchase:buyer:v1')).drafts};
 }
@@ -62,6 +62,27 @@ test('input burst avoids repeated synchronous cont/task rebuilds while keeping d
  assert.deepEqual(countWrites,{containers:0,tasks:0},'input burst must not rebuild summary DOM synchronously');const pendingFrames=[...frames.values()];frames.clear();pendingFrames.forEach(callback=>callback(16));
  assert.deepEqual(countWrites,{containers:1,tasks:1},'one frame rebuilds each summary once');assert.equal(p.drafts()['1'].changes.cartonCount,13);const values=[...doc.querySelector('#containerTable [data-container-filter="2"]').closest('tr').querySelectorAll('td.num')].slice(0,3).map(td=>td.textContent);assert.deepEqual(values,['1','0.13','1.30']);
  assert.match(doc.querySelector('#purchaseTaskBar strong').textContent,/0\.13 \/ 32 T · 1\.30 \/ 170 m³/);
+});
+test('successful save refresh renders the fresh snapshot once and clears the saved draft',async t=>{
+ const p=await page(t),doc=p.w.document; p.data.rows[0].qtyPerCarton=5;const input=doc.querySelector('[data-edit="supplier"]');input.focus();input.value='Saved supplier';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));input.dispatchEvent(new p.w.Event('change',{bubbles:true}));
+ doc.getElementById('save').click();const root=doc.getElementById('orderTable');let writes=0,proto=Object.getPrototypeOf(root),descriptor;while(proto&&!descriptor){descriptor=Object.getOwnPropertyDescriptor(proto,'innerHTML');proto=Object.getPrototypeOf(proto)}Object.defineProperty(root,'innerHTML',{configurable:true,get(){return descriptor.get.call(root)},set(value){writes++;descriptor.set.call(root,value)}});
+ const fetch=p.w.fetch;p.w.fetch=async(url,options={})=>{if(url==='/api/purchase-orders/1'&&options.method==='PATCH'){p.data.rows[0].supplier='Saved supplier';return {ok:true,json:async()=>({})}}if(url==='/api/purchase-orders'&&!options.method)return {ok:true,json:async()=>structuredClone(p.data)};return fetch(url,options)};
+ doc.getElementById('commit').click();for(let i=0;i<5;i++)await tick();
+ assert.equal(writes,1,'the successful snapshot refresh should perform the only full table render');assert.equal(doc.querySelector('[data-edit="supplier"]').value,'Saved supplier');assert.equal(p.drafts()['1'],undefined);assert.equal(doc.getElementById('save').hidden,true);
+});
+test('definite save rejection keeps draft and re-enables commit for retry',async t=>{
+ const p=await page(t,{local:true}),doc=p.w.document;doc.getElementById('save').click();const commit=doc.getElementById('commit'),fetch=p.w.fetch;p.w.fetch=async(url,options={})=>{if(url==='/api/purchase-orders/plan'&&options.method==='POST'){p.calls.push({url,options});return {ok:false,status:400,json:async()=>({error:'Definite validation rejection'})}}return fetch(url,options)};
+ commit.click();for(let i=0;i<5;i++)await tick();
+ assert.equal(p.calls.filter(c=>c.url==='/api/purchase-orders/plan'&&c.options.method==='POST').length,1);assert.ok(p.drafts()['new-local']);assert.equal(doc.getElementById('modal').open,true);assert.equal(doc.getElementById('retryWrite').hidden,true);assert.equal(commit.disabled,false);
+});
+test('ambiguous save failure keeps commit disabled while retry outbox is pending',async t=>{
+ const p=await page(t,{local:true}),doc=p.w.document;doc.getElementById('save').click();const commit=doc.getElementById('commit'),fetch=p.w.fetch;p.w.fetch=async(url,options={})=>{if(url==='/api/purchase-orders/plan'&&options.method==='POST'){p.calls.push({url,options});return {ok:false,status:500,json:async()=>({error:'Ambiguous server failure'})}}return fetch(url,options)};
+ commit.click();for(let i=0;i<5;i++)await tick();
+ assert.ok(p.drafts()['new-local']);assert.equal(doc.getElementById('modal').open,true);assert.equal(doc.getElementById('retryWrite').hidden,false);assert.equal(commit.disabled,true);
+});
+test('one view-only full render projects each source row once for every summary',async t=>{
+ const projectionProbe={count:0},p=await page(t,{projectionProbe});projectionProbe.count=0;p.w.document.getElementById('bulk').click();
+ assert.equal(projectionProbe.count,1,'one full render should build one shared projected row array');
 });
 test('Đối chiếu overrides are directly editable and sent through the normal versioned row patch',async t=>{
  const p=await page(t),doc=p.w.document;p.data.rows[0].literChina=120;p.data.rows[0].measurementOverrides={literChina:120};p.data.rows.push({...p.data.rows[0],id:'2',rowKey:'D00002',literChina:110,measurementOverrides:{literChina:110}});p.listeners.changed();await tick();await tick();

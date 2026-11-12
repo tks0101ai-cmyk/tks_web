@@ -202,16 +202,14 @@
 .purchase-selection-status:empty{display:none}
 
 /* Operations toolbar: clear groups, restrained utility actions, theme-aware controls. */
-.purchase-page .order-actions{display:flex;flex-wrap:wrap;align-items:center;gap:7px;row-gap:8px;padding:9px 12px}
-.purchase-page .order-actions h2{flex:0 0 auto;margin:0 3px 0 0;white-space:nowrap}
+.purchase-page .order-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:7px;row-gap:8px;padding:9px 12px}
+.purchase-page .order-actions h2{flex:0 0 auto;margin:0 auto 0 0;white-space:nowrap}
 .purchase-page .order-actions .purchase-work-tools{display:inline-flex;align-items:center;gap:6px}
 .purchase-page .order-actions #managePurchaseEmployees,
 .purchase-page .order-actions #editedRows,
 .purchase-page .order-actions #save,
 .purchase-page .order-actions #cancel{margin-left:5px}
-.purchase-page .order-actions #managePurchaseEmployees,
-.purchase-page .order-actions #import,
-.purchase-page .order-actions #undoWork{background:transparent;color:var(--muted)}
+.purchase-page .order-actions #managePurchaseEmployees{background:transparent;color:var(--muted)}
 .purchase-page .order-actions #managePurchaseEmployees:hover:not(:disabled),
 .purchase-page .order-actions #import:hover:not(:disabled),
 .purchase-page .order-actions #export:hover:not(:disabled),
@@ -394,7 +392,7 @@
 .purchase-page .purchase-container-status button[aria-pressed="true"]{background:#2563EB;border-color:#60A5FA;color:#fff;box-shadow:inset 0 0 0 1px #60A5FA}
 .purchase-page #newCont{min-height:38px;padding:8px 15px;background:#2563EB;border-color:#60A5FA;color:#fff;font-size:13px;font-weight:700}
 .purchase-page #newCont:hover:not(:disabled){background:#1D4ED8;border-color:#93C5FD}
-.purchase-page #containerPanel{margin-top:18px;padding:10px 12px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel-2)}
+.purchase-page #containerPanel{margin-top:20px;padding:10px 12px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel-2)}
 .purchase-page #containerPanel>summary{padding:2px 0 8px}
 .purchase-page #containerPanel .container-filters{border-radius:6px}
 .purchase-page #orderTable th[data-key="productCode"],.purchase-page #orderTable td[data-field="productCode"]{position:sticky;left:var(--purchase-code-sticky-left,0px);z-index:10;background:var(--panel)}
@@ -405,7 +403,7 @@
 .purchase-page #orderTable th .sort-indicator{display:block;flex:0 0 9px;height:9px;line-height:9px}
 @media(min-width:1101px){
  .purchase-page .order-actions{flex-wrap:nowrap;gap:5px;overflow-x:auto;padding:6px 8px}
- .purchase-page .order-actions h2{flex:0 0 auto;margin-right:3px}
+ .purchase-page .order-actions h2{flex:0 0 auto;margin-right:auto}
  .purchase-page .order-actions button{min-height:30px;padding:5px 8px;white-space:nowrap}
  .purchase-page .order-actions #add{margin-left:0}
  .purchase-page .order-filters{grid-template-columns:repeat(12,minmax(72px,1fr));overflow-x:auto}
