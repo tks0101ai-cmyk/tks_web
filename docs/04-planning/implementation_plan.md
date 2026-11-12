@@ -758,6 +758,6 @@ Cập nhật cuối: 12/11/2026.
 
 `GET /api/purchase-orders/import/snapshot` tạo workbook đầy đủ từ cùng một revision `REPEATABLE READ`; popup chỉ mở chọn/kéo file sau khi tải xong snapshot. Sheet `Hướng dẫn` mô tả mọi cột, định dạng và quy tắc dòng; manifest revision được giấu trong `__TOKOSI`. Preview hỗ trợ tạo mới, cập nhật, giữ nguyên, xóa mềm dòng bị thiếu, và xóa giá trị bằng ô trống; một lỗi hoặc revision cũ chặn toàn bộ. Xác nhận áp dụng create/update/soft-delete nguyên tử qua transaction, giữ audit, undo/restore và delta realtime hiện có. Không migration.
 
-Kiểm tra: test importer và service bao gồm blank-clear, stale preview/confirm, soft-delete và tombstone delta; route download cần quyền `purchase.import`; UI yêu cầu download trước, kéo/chọn `.xlsx`, giới hạn 10 MB và hiển thị tiến độ thật. Còn kiểm tra full suite, graphify nếu có và deploy/đồng bộ nhiều phiên trên môi trường chạy thật.
+Kiểm tra: test importer và service bao gồm blank-clear, stale preview/confirm, soft-delete/restore và tombstone delta; route download cần quyền `purchase.import`; UI yêu cầu download trước, kéo/chọn `.xlsx`, giới hạn 10 MB và hiển thị tiến độ thật. Commit `725e73d5` đã push `main`; xác nhận Render phục vụ JS chứa UI snapshot mới. Còn test workbook với dữ liệu thật và xác minh đồng bộ hai phiên trên production.
 
 Cập nhật cuối: 12/11/2026.

@@ -80,4 +80,5 @@
 - [x] Unit/service/UI regression tests for workbook, stale snapshots, soft-delete/tombstone delta, route authorization and download gate.
 - [x] README, API README, SRS, BRD, implementation plan and CURRENT updated. No schema change.
 - [ ] Full server suite and graphify remain unavailable in this environment: the suite hit OOM in unrelated auth tests; `graphify` is not installed. Focused snapshot/import tests pass.
-- [ ] Commit/push on `main`, then verify deploy and test synchronization with two authorized sessions; no production data was imported or deleted here.
+- [x] Commit `725e73d5` pushed directly to `main`; confirmed Render serves the new public purchase JS bundle.
+- [ ] User to validate with a real workbook and two authorized production sessions; no production data was imported or deleted by this implementation.
