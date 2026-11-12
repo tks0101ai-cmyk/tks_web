@@ -152,3 +152,21 @@ test('ngay ngoai 7 ban chot, ngay sai dinh dang, trang thai la, khach khong co o
     assert.deepEqual(await streaks(db), [1, 2, 3, 4, 5]);
   } finally { await db.close(); }
 });
+
+test('sua lich su cua cung khach lay khoa advisory TRUOC khi doc chuoi, nen hai lan sua chay lan luot (khong ghi de nhau)', async () => {
+  const { db } = await setup();
+  try {
+    const seen = [];
+    const spy = {
+      query: (sql, params) => { seen.push({ sql: String(sql), params }); return db.query(sql, params); },
+      connect: async () => ({ query: (sql, params) => { seen.push({ sql: String(sql), params }); return db.query(sql, params); }, release() {} })
+    };
+    await createDebtScheduleRepository({ pool: spy }).saveHistoricalStatus({ ...target, cycleDate: '2026-10-30', status: 'Đã xử lý' });
+    const lockAt = seen.findIndex(q => q.sql.includes('pg_advisory_xact_lock'));
+    const chainAt = seen.findIndex(q => q.sql.includes('COALESCE(f.status'));
+    assert.ok(lockAt > 0, 'phai co khoa advisory');
+    assert.ok(chainAt > lockAt, 'khoa phai truoc khi doc chuoi cac ngay sau');
+    assert.deepEqual(seen[lockAt].params, ['debt-history:hanoi:1']);
+    assert.match(seen[lockAt - 1].sql, /BEGIN/);
+  } finally { await db.close(); }
+});

@@ -42,5 +42,7 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 - Deploy Render; nhập biến môi trường/token (AI không được nhập token).
 - Áp migration lên DB thật: `npm run db:migrate` ngoài giờ cao điểm.
 
+- [ ] 12/11 — Lịch sử công nợ: hai lần sửa trạng thái liên tiếp của 1 khách chạy song song làm dòng phạt đã chốt lệch trạng thái thật (đã vá bằng khóa advisory trong `saveHistoricalStatus`, chưa commit/deploy) — deploy rồi chạy `node server/debtSchedule/debtHistoryRepair.js` (dry-run) → `--apply` để sửa 19 dòng phạt + 15 số phiên lệch (−475.000đ)
+
 ---
 Cập nhật: 12/11/2026

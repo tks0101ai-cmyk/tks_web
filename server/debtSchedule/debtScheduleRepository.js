@@ -381,6 +381,10 @@ function createDebtScheduleRepository({ pool = getPool(), now = Date.now } = {})
     if (!CYCLE_DATE_PATTERN.test(day)) throw httpError(400, 'Ngày chu kỳ công nợ không hợp lệ.', 'INVALID_CYCLE_DATE');
     const actor = actorOf(user);
     const result = await withTransaction(async client => {
+      // Cac lan sua cua CUNG MOT khach phai chay lan luot: moi lan tinh lai chuoi tu trang thai cac ngay SAU, neu hai lan
+      // (vd danh dau Da xu ly lien tiep ngay 07 va 08) chay song song thi lan sau doc trang thai cu cua lan truoc
+      // (chua commit) roi ghi de ket qua cua no -> dong phat / so phien lech trang thai thuc.
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`debt-history:${code}:${id}`]);
       const runList = await client.query(
         'SELECT cycle_date::text AS cycle_date FROM (SELECT cycle_date FROM debt_cycle_runs ORDER BY cycle_date DESC LIMIT $1) r ORDER BY cycle_date',
         [CYCLE_HISTORY_DAYS]
