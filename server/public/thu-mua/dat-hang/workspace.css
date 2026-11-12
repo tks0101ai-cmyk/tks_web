@@ -425,3 +425,86 @@
 .purchase-page #importFile{display:block;margin:12px auto 0;max-width:100%}
 .purchase-page #importProgress{display:block;width:100%;height:12px;margin:10px 0;accent-color:var(--primary)}
 .purchase-page .import-delete{color:var(--muted);background:var(--surface-hover)}
+
+/* Purchase workspace polish: keep the dense grid, make controls and dialogs feel like one product. */
+.purchase-page .order-actions,
+.purchase-page .order-filters,
+.purchase-page .filter-summary,
+.purchase-page #orderTable,
+.purchase-page .pagination,
+.purchase-page #containerPanel,
+.purchase-page #containerTable{
+  border-color:var(--border);
+}
+.purchase-page .order-actions{background:var(--panel);border-radius:var(--radius-md) var(--radius-md) 0 0;}
+.purchase-page .order-filters{background:var(--panel-2);color:var(--text);color-scheme:dark;}
+:root[data-theme="light"] .purchase-page .order-filters{color-scheme:light;}
+.purchase-page .purchase-filters label{color:var(--text-secondary);font-weight:600;}
+.purchase-page .purchase-filters input,
+.purchase-page .purchase-filters select{background:var(--panel);color:var(--text);border-color:var(--border);border-radius:var(--radius-sm);}
+.purchase-page .purchase-filters input::placeholder{color:var(--muted);}
+.purchase-page .purchase-filters select option{background:var(--panel);color:var(--text);}
+.purchase-page .purchase-filters button{background:var(--panel);color:var(--text-secondary);border-color:var(--border);border-radius:var(--radius-sm);}
+.purchase-page .purchase-filters button:hover:not(:disabled){background:var(--surface-hover);color:var(--text);border-color:var(--border-focus);}
+.purchase-page .filter-actions{border-color:var(--border);}
+.purchase-page .column-tools span{color:var(--muted)!important;}
+.purchase-page .filter-summary{background:var(--panel-2);color:var(--muted);}
+.purchase-page #orderTable,.purchase-page #containerTable{border-radius:0 0 var(--radius-md) var(--radius-md);scrollbar-color:var(--muted) var(--panel-2);scrollbar-width:thin;}
+.purchase-page #orderTable th,.purchase-page #containerTable th,.purchase-page #watchedContainer th{background:var(--panel-2);color:var(--text-secondary);}
+.purchase-page #containerPanel{padding:12px;border-radius:var(--radius-lg);background:var(--panel);}
+.purchase-page #containerPanel>summary{font-size:15px;}
+.purchase-page .pagination{border-radius:0 0 var(--radius-md) var(--radius-md);}
+.purchase-page :is(.content button,dialog button){border-color:var(--border);border-radius:var(--radius-sm);background:var(--panel-2);color:var(--text-secondary);box-shadow:none;transition:background-color .14s ease,border-color .14s ease,color .14s ease;}
+.purchase-page :is(.content button,dialog button):hover:not(:disabled){background:var(--surface-hover);border-color:var(--border-focus);color:var(--text);}
+.purchase-page :is(.content button,dialog button):active:not(:disabled){transform:translateY(1px);}
+.purchase-page :is(#save,#commit,#add,#savePurchaseEmployees,#transfer,#depart,#arrive,#schedule,#newCont,.btn-primary,.tks-btn-primary){background:var(--primary);border-color:var(--primary);color:var(--primary-text);box-shadow:0 2px 5px color-mix(in srgb,var(--primary) 22%,transparent);}
+.purchase-page :is(#save,#commit,#add,#savePurchaseEmployees,#transfer,#depart,#arrive,#schedule,#newCont,.btn-primary,.tks-btn-primary):hover:not(:disabled){background:var(--primary-hover);border-color:var(--primary);color:var(--primary-text);}
+.purchase-page .purchase-container-status button{background:var(--panel-2);border-color:var(--border);color:var(--text-secondary);}
+.purchase-page .purchase-container-status button[aria-pressed="true"]{background:color-mix(in srgb,var(--primary) 14%,var(--panel));border-color:var(--primary);color:var(--primary);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--primary) 20%,transparent);}
+
+/* The single shared dialog is used by add/edit, import, history, column and confirm flows. */
+.purchase-page #modal{width:min(980px,calc(100vw - 32px));max-height:min(88dvh,900px);overflow:hidden;padding:0;border:1px solid var(--border);border-top:3px solid var(--primary);border-radius:var(--radius-xl);background:var(--panel);color:var(--text);box-shadow:var(--shadow-modal);}
+.purchase-page #modal[open]{display:flex;flex-direction:column;}
+.purchase-page #modal::backdrop{background:rgba(7,12,22,.66);backdrop-filter:blur(2px);}
+.purchase-page #modal .dp-head{align-items:center;padding:16px 20px;background:var(--panel-2);border-bottom:1px solid var(--border);}
+.purchase-page #modal .dp-kicker{margin-bottom:3px;color:var(--primary);font-size:10px;letter-spacing:.1em;}
+.purchase-page #modal .dp-title{font-size:18px;line-height:1.3;letter-spacing:-.02em;}
+.purchase-page #modal .dp-close{width:34px;height:34px;border-color:var(--border);border-radius:var(--radius-sm);background:var(--panel);color:var(--muted);font-size:21px;}
+.purchase-page #modal .dp-close:hover{background:var(--surface-hover);color:var(--text);}
+.purchase-page #modal .dp-body{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:20px;}
+.purchase-page #modalBody{display:grid;gap:14px;min-width:0;}
+.purchase-page #modalBody>p{margin:0;color:var(--text-secondary);line-height:1.55;}
+.purchase-page #modalBody>form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:end;}
+.purchase-page #modalBody form>label,
+.purchase-page #modalBody>label{display:grid;gap:6px;min-width:0;margin:0;width:auto;color:var(--text-secondary);font-size:11px;font-weight:600;}
+.purchase-page #modalBody form>p{grid-column:1/-1;margin:0;}
+.purchase-page #modalBody :is(input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),select,textarea){width:100%;min-width:0;min-height:36px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);}
+.purchase-page #modalBody textarea{min-height:88px;resize:vertical;}
+.purchase-page #modalBody :is(input,select,textarea):focus-visible{outline:2px solid var(--primary);outline-offset:1px;border-color:var(--primary);}
+.purchase-page #modalBody :is(.scroll,.purchase-column-groups){border-color:var(--border);border-radius:var(--radius-md);}
+.purchase-page #modalBody .scroll{max-height:min(55dvh,560px);}
+.purchase-page #modalBody .scroll table{width:max-content;min-width:100%;}
+.purchase-page #modalBody .scroll th{position:sticky;top:0;background:var(--panel-2);color:var(--text-secondary);z-index:2;}
+.purchase-page #modalBody .scroll td,.purchase-page #modalBody .scroll th{padding:8px 10px;border-color:var(--border);}
+.purchase-page #modalBody details{padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--panel-2);}
+.purchase-page #modalBody details summary{cursor:pointer;color:var(--text);font-weight:600;}
+.purchase-page #modalBody :is(form>p:has(>button),p:has(>button)){display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:0;}
+.purchase-page #modalBody form>p:has(>button),.purchase-page #modalBody p:has(#commit){grid-column:1/-1;justify-content:flex-end;padding-top:12px;border-top:1px solid var(--border);}
+.purchase-page #modalBody>button{justify-self:start;}
+.purchase-page #modalBody form :is(button[type="submit"],button:not([type])),.purchase-page #modalBody :is(#splitConfirm,#commit,#resolve,#move,#reviewDeparture,#ship,#downloadSnapshot,#confirmImport){background:var(--primary);border-color:var(--primary);color:var(--primary-text);}
+.purchase-page #modalBody form :is(button[type="submit"],button:not([type])):hover:not(:disabled),.purchase-page #modalBody :is(#splitConfirm,#commit,#resolve,#move,#reviewDeparture,#ship,#downloadSnapshot,#confirmImport):hover:not(:disabled){background:var(--primary-hover);color:var(--primary-text);}
+.purchase-page #modalBody #discard{background:#B91C1C;border-color:#B91C1C;color:#fff;}
+.purchase-page #modalBody #discard:hover:not(:disabled){background:#991B1B;border-color:#991B1B;color:#fff;}
+.purchase-page #modalBody .purchase-modal-actions{display:flex;justify-content:flex-end;gap:9px;padding-top:14px;border-top:1px solid var(--border);}
+.purchase-page #modalBody #addForm{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;}
+.purchase-page #modalBody #addForm>p:first-child{color:var(--muted);font-size:11px;}
+.purchase-page #modalBody .purchase-column-groups{max-height:min(56dvh,560px);padding:4px;}
+@media(max-width:700px){
+  .purchase-page #modal{width:calc(100vw - 20px);max-height:92dvh;border-radius:var(--radius-lg);}
+  .purchase-page #modal .dp-head{padding:14px 16px;}
+  .purchase-page #modal .dp-body{padding:16px;}
+  .purchase-page #modalBody>form,.purchase-page #modalBody #addForm{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .purchase-page #modalBody .purchase-column-groups{grid-template-columns:1fr;}
+  .purchase-page #modalBody .purchase-modal-actions{flex-wrap:wrap;}
+}
+@media(max-width:420px){.purchase-page #modalBody>form,.purchase-page #modalBody #addForm{grid-template-columns:1fr;}}
