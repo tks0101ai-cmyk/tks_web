@@ -542,3 +542,6 @@
   .purchase-page #modal:has(#downloadSnapshot){width:calc(100vw - 20px)}
   .purchase-page #modalBody .purchase-modal-actions{bottom:-16px}
 }
+
+/* Keep the order grid in its own fixed-height viewport with a visible vertical rail. */
+.purchase-page #orderTable{height:min(67vh,680px);overflow-x:auto;overflow-y:scroll}
