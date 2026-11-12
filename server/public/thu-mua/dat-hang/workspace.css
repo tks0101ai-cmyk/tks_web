@@ -213,11 +213,9 @@
 .purchase-page .order-actions #managePurchaseEmployees{background:transparent;color:var(--muted)}
 .purchase-page .order-actions #managePurchaseEmployees:hover:not(:disabled),
 .purchase-page .order-actions #import:hover:not(:disabled),
-.purchase-page .order-actions #export:hover:not(:disabled),
-.purchase-page .order-actions #undoWork:hover:not(:disabled){color:var(--text);border-color:var(--border)}
+.purchase-page .order-actions #export:hover:not(:disabled){color:var(--text);border-color:var(--border)}
 .purchase-page .order-actions #add{margin-left:auto}
 .purchase-page .order-actions #quickWork{min-width:132px;min-height:32px;padding:5px 26px 5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background-color:var(--panel-2);color:var(--text);font:500 12px var(--font-body)}
-.purchase-page .work-menu>summary{min-height:32px;padding:7px 10px;border-radius:var(--radius-sm);border-color:var(--border);color:var(--text);font:500 12px var(--font-body)}
 .purchase-page #ordersPackingSection{margin:0 0 8px;padding:0 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel)}
 .purchase-page #ordersPackingSection>summary{padding:8px 2px;color:var(--text);font-size:12px;font-weight:600;cursor:pointer;list-style-position:inside}
 .purchase-page #ordersPackingSection[open]{padding-bottom:10px}

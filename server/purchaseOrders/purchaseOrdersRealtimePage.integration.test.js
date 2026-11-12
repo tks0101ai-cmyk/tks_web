@@ -29,11 +29,20 @@ test('page size 10 slices the table and keeps next-page navigation',async t=>{
 test('purchase errors are announced through a visible toast',async t=>{
  const p=await page(t),doc=p.w.document;
  p.w.fetch=async url=>url.endsWith('/operations')?{ok:true,json:async()=>({rows:[]})}:{ok:true,json:async()=>({rows:[]})};
- doc.getElementById('undoWork').click();await tick();
+ doc.querySelector('#orderTable [data-field="supplier"]').focus();
+ doc.activeElement.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true}));await tick();
  const notice=doc.getElementById('notice');
  assert.match(notice.textContent,/Chưa có thao tác/);
  assert.ok(notice.classList.contains('toast'));
  assert.equal(notice.getAttribute('role'),'status');
+});
+test('Ctrl+Z undoes a grid paste but leaves native undo alone in the search field',async t=>{
+ const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{literChina:120,measurementOverrides:{literChina:120}});
+ p.data.rows.push({...p.data.rows[0],id:'2',rowKey:'D00002',literChina:110,measurementOverrides:{literChina:110}});p.listeners.changed();await tick();await tick();
+ doc.getElementById('columns').click();const box=doc.querySelector('[data-column="literChina"]');box.checked=true;box.dispatchEvent(new p.w.Event('change',{bubbles:true}));
+ const cell=doc.querySelector('[data-field="literChina"]'),paste=new p.w.Event('paste',{bubbles:true,cancelable:true});cell.click();paste.clipboardData={getData:()=> '121\n122'};cell.dispatchEvent(paste);
+ assert.ok(p.drafts()['1']);const currentCell=doc.querySelector('[data-field="literChina"]'),undo=new p.w.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true});currentCell.focus();currentCell.dispatchEvent(undo);assert.equal(undo.defaultPrevented,true);assert.equal(p.drafts()['1'],undefined);assert.equal(p.drafts()['2'],undefined);
+ const search=doc.getElementById('search'),nativeUndo=new p.w.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true});search.dispatchEvent(nativeUndo);assert.equal(nativeUndo.defaultPrevented,false);
 });
 test('integrated refresh updates another cell during numeric expression typing, retaining baseline/caret and navigation mode',async t=>{
  const p=await page(t),doc=p.w.document,input=doc.querySelector('[data-edit="cartonCount"]');input.focus();input.value='2*6';input.dataset.gridEditing='true';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));input.setSelectionRange(1,2);
@@ -142,7 +151,7 @@ test('one view-only full render projects each source row once for every summary'
 test('Đối chiếu overrides are directly editable and sent through the normal versioned row patch',async t=>{
  const p=await page(t),doc=p.w.document;p.data.rows[0].literChina=120;p.data.rows[0].measurementOverrides={literChina:120};p.data.rows.push({...p.data.rows[0],id:'2',rowKey:'D00002',literChina:110,measurementOverrides:{literChina:110}});p.listeners.changed();await tick();await tick();
  doc.getElementById('columns').click();doc.querySelector('[data-column="literChina"]').checked=true;doc.querySelector('[data-column="literChina"]').dispatchEvent(new p.w.Event('change',{bubbles:true}));
- const cells=doc.querySelectorAll('[data-field="literChina"]'),paste=new p.w.Event('paste',{bubbles:true,cancelable:true});cells[0].click();paste.clipboardData={getData:()=> '121\n122'};cells[0].dispatchEvent(paste);assert.equal(p.drafts()['2'].changes.literChina,121);assert.equal(p.drafts()['1'].changes.literChina,122);doc.getElementById('undoWork').click();assert.equal(p.drafts()['1'],undefined);assert.equal(p.drafts()['2'],undefined);
+ const cells=doc.querySelectorAll('[data-field="literChina"]'),paste=new p.w.Event('paste',{bubbles:true,cancelable:true});cells[0].click();paste.clipboardData={getData:()=> '121\n122'};cells[0].dispatchEvent(paste);assert.equal(p.drafts()['2'].changes.literChina,121);assert.equal(p.drafts()['1'].changes.literChina,122);const keyTarget=doc.querySelector('[data-field="literChina"]'),undo=new p.w.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true});keyTarget.focus();keyTarget.dispatchEvent(undo);assert.equal(p.drafts()['1'],undefined);assert.equal(p.drafts()['2'],undefined);
  const input=doc.querySelector('tr[data-id="1"] [data-edit="literChina"]');assert.ok(input);assert.equal(doc.querySelector('[data-field="status"] input'),null);input.focus();input.value='125';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));assert.equal(p.drafts()['1'].changes.literChina,125);
  doc.getElementById('save').click();doc.getElementById('commit').click();await tick();await tick();const call=p.calls.find(c=>c.options.method==='PATCH'&&c.url.endsWith('/1'));assert.ok(call);assert.deepEqual(JSON.parse(call.options.body),{version:4,before:{literChina:120},changes:{literChina:125}});
 });

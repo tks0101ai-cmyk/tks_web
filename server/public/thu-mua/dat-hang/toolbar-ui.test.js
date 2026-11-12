@@ -6,6 +6,7 @@ const { JSDOM } = require('jsdom');
 
 const page = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 const styles = fs.readFileSync(path.join(__dirname, 'workspace.css'), 'utf8');
+const script = fs.readFileSync(path.join(__dirname, 'purchase.js'), 'utf8');
 
 test('order toolbar keeps primary actions first and secondary actions grouped last', () => {
   const doc = new JSDOM(page).window.document;
@@ -34,11 +35,21 @@ test('bulk and employee buttons keep dark text in light mode', () => {
   );
 });
 
-test('import and undo use the normal opaque button background', () => {
+test('import uses the normal opaque button background', () => {
   assert.ok(
-    !/\.order-actions[^{}]*#(?:import|undoWork)[^{}]*\{[^}]*background:\s*transparent/i.test(styles),
-    '#import and #undoWork must use the shared opaque button treatment'
+    !/\.order-actions[^{}]*#import[^{}]*\{[^}]*background:\s*transparent/i.test(styles),
+    '#import must use the shared opaque button treatment'
   );
+});
+
+test('undo is keyboard-only and the task dropdown is removed', () => {
+  assert.doesNotMatch(script, /<button id="undoWork"/);
+  assert.doesNotMatch(script, /<summary>Tác vụ/);
+  assert.match(script, /e\.ctrlKey\|\|e\.metaKey[^\n]*e\.key\.toLowerCase\(\)!==['"]z['"]/i);
+});
+
+test('requested compact date and row key columns reserve a narrower default width', () => {
+  assert.match(script, /c\.k==='rowKey'\|\|\['listedAt','orderedNote','shippedNote','etaNote','arrivedNote'\]\.includes\(c\.k\)/);
 });
 
 test('container panel opens by default and sits 20px below the order grid', () => {
