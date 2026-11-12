@@ -7,7 +7,7 @@ const registry = require('../auth/featureRegistry');
 async function start(t,user) {
   const calls=[];
   const record=name=>async(...args)=>{calls.push({name,args});return name==='revision'?{revision:'9:4'}:{ok:true}};
-  const service=Object.fromEntries(['revision','employees','saveEmployees','createEmployee','updateEmployee','trash','operations','remove','restore','undo','applyPlan','list','history','create','update','createContainer','updateContainer','schedule','changeStatus','bulkEdit','transfer','depart','arrive','previewImport','reviseImport','commitImport'].map(name=>[name,record(name)]));
+  const service=Object.fromEntries(['revision','changes','employees','saveEmployees','createEmployee','updateEmployee','trash','operations','remove','restore','undo','applyPlan','list','history','create','update','createContainer','updateContainer','schedule','changeStatus','bulkEdit','transfer','depart','arrive','previewImport','reviseImport','commitImport'].map(name=>[name,record(name)]));
   const app=express();app.use(express.json());app.use((req,res,next)=>{req.user=user;next()});
   app.use(createPurchaseOrdersRouter({service,requireAuth:(req,res,next)=>req.user?next():res.status(401).json({error:'Chưa đăng nhập'})}));
   const server=await new Promise(resolve=>{const server=app.listen(0,'127.0.0.1',()=>resolve(server))});t.after(()=>server.close());
@@ -74,4 +74,13 @@ test('revision endpoint requires purchase view and returns only the lightweight 
  }
  const user={id:'reader',vaiTro:ROLES.NHAN_VIEN_MUA_HANG,featurePermissions:{'purchase.view':true}},p=await start(t,user),response=await fetch(p.base+'/revision');
  assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');assert.deepEqual(await response.json(),{revision:'9:4'});assert.deepEqual(p.calls.map(c=>c.name),['revision']);assert.deepEqual(p.calls[0].args,[user]);
+});
+
+test('changes route forwards the exact revision cursor to the view-only service',async()=>{
+ const user={id:'reader',vaiTro:ROLES.NHAN_VIEN_MUA_HANG,featurePermissions:{'purchase.view':true}},calls=[];
+ const service={changes:async(...args)=>{calls.push(args);return {revision:'10:5',rows:[],deletedIds:[],containers:[],sourceMode:'web',integrationEnabled:false,employeesChanged:false,reset:false}}};
+ const router=createPurchaseOrdersRouter({service,requireAuth:(req,res,next)=>next()}),route=router.stack.find(layer=>layer.route?.path==='/api/purchase-orders/changes').route;
+ let body;const response={set(){return this},json(value){body=value;return this}};
+ await route.stack[0].handle({user,method:'GET',get:()=>undefined,originalUrl:'/api/purchase-orders/changes?after=9%3A4',query:{after:'9:4'},body:{}},response);
+ assert.deepEqual(body,{revision:'10:5',rows:[],deletedIds:[],containers:[],sourceMode:'web',integrationEnabled:false,employeesChanged:false,reset:false});assert.deepEqual(calls,[[user,'9:4']]);
 });

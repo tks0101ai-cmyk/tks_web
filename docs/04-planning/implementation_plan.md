@@ -731,3 +731,17 @@ Cập nhật cuối: 11/11/2026.
 
 Log chiều 11/11: tới 20–56 request `/penalty-board` cùng lúc do mỗi tín hiệu SSE làm mọi tab (kể cả tab ẩn) tải lại cả bảng thưởng/phạt + tuổi nợ dù số không đổi. Đã làm: tab ẩn hoãn tải, bảng phụ tối đa 1 lần / 60 s khi số không đổi, SSE gom tín hiệu 2 s, tuổi nợ dùng chung 1 lượt đọc; gỡ sao băng / pháo hoa, bỏ số đếm và chữ chạy trong motion.js; gắn log `[timing]` cho API kế toán. Việc tiếp theo: sau deploy đọc `[timing]` các API kế toán để tìm chỗ chậm tiếp; in đơn còn ~0,5 s có thể ép (gộp BEGIN + khóa, trả kết quả từ giao dịch) — để sau khi lên VPS.
 Cập nhật cuối: 11/11/2026.
+
+## Thu mua — API delta đồng bộ nhiều người — 12/11/2026
+
+Backend đã thêm `GET /api/purchase-orders/changes?after=<maxHistoryId:historyCount>` trong `purchaseOrdersRoutes.js` và `purchaseOrdersService.js`. Một `REPEATABLE READ READ ONLY` snapshot trả revision, trạng thái cuối của order IDs đổi, tombstones, snapshot cont, flags nguồn/tích hợp và `employeesChanged`; truy vết row IDs qua `purchase_history.summary.operationId` + `purchase_operation_rows`, không xuất snapshot audit. Cursor sai/ahead/inconsistent hoặc quá 500 ID yêu cầu reset/full snapshot. Không đổi schema, migration, quyền, optimistic version, audit hoặc idempotency của write API.
+
+Kiểm tra backend cục bộ: `purchaseOrdersService.test.js` 51/51 đạt; test route delta 1/1 đạt; `node --check` các file service/route/test đạt. Các fixture là PGlite và unit route, chưa phải đo Postgres production hay xác minh end-to-end trên nhiều trình duyệt.
+
+Client đã được nối vào delta sau SSE/revision và sau save; merge row/tombstone có version gate, giữ draft/focus/conflict, reset fallback full snapshot và reload employee catalog khi cờ bật. Còn lại: chạy integration test nhiều tab/reconnect/đổi đồng thời, sau đó benchmark staging với 20/30 worker ở 500/5.000 rows, integration bật/tắt; ghi p50/p95, bytes/request, số snapshot fallback, lỗi và lock wait. Không tuyên bố latency production trước phép đo.
+
+Thử tải local bổ sung 12/11: 20 và 30 HTTP worker, 5.000 dòng, mỗi worker lưu 3 lần vào dòng riêng rồi đọc delta sau mỗi đợt. 20 worker: 60 PATCH p95 251 ms, 60 delta p95 156 ms, tổng delta 1.15 MiB. 30 worker: 90 PATCH p95 290 ms, 90 delta p95 227 ms, tổng delta 2.59 MiB; không lỗi. Snapshot ban đầu trong harness 5,021,856 byte. So với lượt GET full snapshot 30 worker riêng cùng harness (p95 16.17 s, 143.67 MiB tổng), delta trung bình 30,118 byte/response, khoảng 167 lần nhỏ hơn payload snapshot. Đây là hai lượt đo local khác nhau; API/client/PGlite chạy cùng tiến trình, không TLS/compression/browser thật. Thử tải 30 worker lặp full snapshot trước đó bị `ECONNRESET`; không dùng các số này làm SLA production. Bài delta này chưa giữ 30 SSE stream; client invalidation qua SSE/revision được kiểm thử riêng trong `purchase-realtime.test.js` và page integration.
+
+Thiết kế tổng: [purchase delta sync](../superpowers/plans/2026-11-12-purchase-delta-sync.md).
+
+Cập nhật cuối: 12/11/2026.

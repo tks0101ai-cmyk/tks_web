@@ -694,7 +694,9 @@ Cập nhật gần nhất: 07/11/2026.
 
 Áp dụng thao tác vùng giống bảng tính (chọn, copy/dán, điền xuống, kéo điền, thống kê vùng) trong mô hình bản nháp Thu mua. Dùng Mã dòng để phân biệt cùng mã SP nằm nhiều cont; không tự đoán mã SP. Đồng bộ gộp cập nhật, giảm tải khi tab ẩn, không để danh mục NV chặn bảng; giữ mốc đối chiếu, xác nhận lưu và chống gửi trùng hiện có. Không chuyển sang lưu ngay theo mô hình Kiểm kê.
 
+Khi nhiều người cùng mở bảng, sau snapshot ban đầu client đồng bộ theo revision lịch sử và chỉ nhận các dòng đổi cuối cùng, ID bị xóa cùng metadata cont/danh mục liên quan. Tín hiệu realtime được gộp; tab ẩn hoãn cập nhật. Delta tối đa 500 ID; cursor lỗi hoặc thay đổi vượt giới hạn sẽ tải lại snapshot đầy đủ để tránh bỏ sót. Bản nháp, kiểm xung đột cùng ô và xác nhận lưu vẫn được giữ. Backend `GET /api/purchase-orders/changes` và client delta sau SSE/revision/lưu đã được tích hợp trong mã hiện tại; còn cần kiểm nhiều tab/reconnect và chạy staging/production để xác nhận. Mục tiêu là giảm payload và thời gian chờ cập nhật; chưa có số đo production để cam kết độ trễ.
+
 11/11/2026 — Thu mua tính Giá NET theo tab VK-DUNG: cộng Thuế và VC sau CNY × 3,920 vào Tiền hàng + Tiền VC mã trước khi chia Tổng SL; 3,920 chỉ dành cho VC sau, giá hàng tiếp tục theo tỉ giá dòng. Giá tệ hiển thị 2 chữ số; Tổng tệ làm tròn đơn vị, bấm/Enter/Space hiện 3 chữ số chính xác ngay trong ô đến khi blur, không bật popup.
 11/11/2026 — Nhóm Đối chiếu Cân đo trong Thu mua cho phép sửa số đo/tính toán theo từng dòng mà không sửa dữ liệu Cân đo nguồn; xóa giá trị riêng để dùng lại nguồn hoặc tính tự động. Migration 0122 lưu các ghi đè theo đơn hàng.
 
-Cập nhật cuối: 11/11/2026.
+Cập nhật cuối: 12/11/2026.

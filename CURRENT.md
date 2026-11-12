@@ -33,7 +33,7 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 
 - [ ] 11/11 — Vị trí hàng cho xác nhận bốc âm, đổi tên vị trí đồng bộ đơn chỉ định và đối soát đơn Kiot hoàn thành (không migration) — deploy web/worker rồi kiểm số đơn chuyển và số còn lỗi đối soát
 - [ ] 11/11 — Hiệu năng: PR #77, #78 đã deploy; đợt 3 (gỡ sao băng/pháo hoa, bỏ số đếm/chữ chạy, Công nợ bớt tải lại, log `[timing]` API kế toán — nhánh `claude/friendly-ride-y0uwwk`, không migration) — merge + deploy, rồi đọc `[loop-stall]` và `[timing]` API kế toán
-- [ ] 12/11 — Thu mua: nút lưu báo loading, đóng hộp xác nhận sau phản hồi thành công, áp row PATCH ngay và tải snapshot nền (không migration) — deploy rồi đo thời gian API thực tế; bulk/plan vẫn cần snapshot nền để cập nhật bảng
+- [ ] 12/11 — Thu mua: endpoint delta + client đồng bộ sau SSE/revision/lưu, giữ version/draft và reset fallback (không migration) — kiểm nhiều tab/reconnect, deploy rồi đo p50/p95 và payload production; xem [kế hoạch](docs/superpowers/plans/2026-11-12-purchase-delta-sync.md)
 
 ## Chỉ người vận hành làm được
 

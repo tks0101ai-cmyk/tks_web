@@ -48,6 +48,50 @@ test('presence leases are shared between connections, expire, and expose only id
   await store.remove(b);assert.equal((await db.query('SELECT count(*)::int n FROM purchase_presence')).rows[0].n,0);
 });
 
+test('delta changes return authoritative rows, tombstones, containers and employee invalidation',async()=>{
+ const original=await service.create(manager,input());
+ const baseline=await service.revision(manager);
+ const container=await service.createContainer(manager,{name:'DELTA CONT',truckName:'17.5m'});
+ const updated=await service.update(manager,original.id,{version:original.version,changes:{cartonCount:80}});
+ const deleted=await service.create(manager,{...input(),productCode:'B'});
+ await service.remove(manager,{rows:[{id:deleted.id,version:deleted.version}]});
+ await service.createEmployee(manager,{name:'Delta employee'});
+ const delta=await service.changes(manager,baseline.revision);
+ assert.equal(delta.reset,false);
+ assert.equal(delta.employeesChanged,true);
+ assert.ok(delta.revision!==baseline.revision);
+ assert.deepEqual(delta.rows.map(row=>row.id),[original.id]);
+ assert.equal(delta.rows[0].version,updated.version);
+ assert.equal(delta.rows[0].cartonCount,80);
+ assert.deepEqual(delta.deletedIds,[deleted.id]);
+ assert.ok(delta.containers.some(row=>String(row.id)===String(container.id)));
+ assert.equal(delta.sourceMode,'web');
+ assert.equal(delta.integrationEnabled,true);
+ assert.equal(Object.hasOwn(delta,'before_row'),false);
+ assert.equal(JSON.stringify(delta).includes('before_row'),false);
+});
+
+test('delta changes request a reset for malformed, ahead and over-cap cursors',async()=>{
+ const one=await service.create(manager,input());
+ const current=await service.revision(manager);
+ for(const after of ['broken','999999:999999',current.revision+':999999']){
+  const result=await service.changes(manager,after);
+  assert.equal(result.reset,true,after);
+  assert.equal(result.revision,current.revision,after);
+  assert.deepEqual(result.rows,[],after);
+  assert.deepEqual(result.deletedIds,[],after);
+ }
+ const operation='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+ await db.query('INSERT INTO purchase_operations(id,actor_id) VALUES($1,$2)',[operation,manager.id]);
+ await db.query("INSERT INTO purchase_history(action,actor_id,actor_name,summary) VALUES('edit',$1,$2,$3)",[manager.id,manager.hoTen,JSON.stringify({operationId:operation})]);
+ await db.query('INSERT INTO purchase_operation_rows(operation_id,row_id,before_row,after_row) SELECT $1,100000+g,NULL,NULL FROM generate_series(1,501) g',[operation]);
+ const overCap=await service.changes(manager,'0:0');
+ assert.equal(overCap.reset,true);
+ assert.deepEqual(overCap.rows,[]);
+ assert.deepEqual(overCap.deletedIds,[]);
+ assert.ok(one.id);
+});
+
 test('order date-times keep hours and minutes through database writes, updates and import validation',async()=>{
  const created=await service.create(manager,{...input(),listedAt:'2026-11-03T14:25',orderedNote:'2026-11-03T15:30',etaNote:'2026-11-08T09:15'});
  assert.equal(created.listedAt,'2026-11-03T14:25');assert.equal(created.orderedNote,'2026-11-03T15:30');

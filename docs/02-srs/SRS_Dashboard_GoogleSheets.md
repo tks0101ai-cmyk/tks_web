@@ -467,6 +467,7 @@ Tab cấp 2 `/reports/#marketing`; nguồn và nghiệm thu tại [marketing-rep
 | NFR-14 | Độ trễ lấy danh sách trường | Với bảng cố định, `POST /api/export/fields` dưới 1 giây vì không truy vấn nặng.                                                           |
 | NFR-15 | Chuẩn nhãn trường xuất | Nhãn theo FR-07.8, bị test (`exportFieldCatalog.test.js`, `exportService.test.js`) chặn khi vi phạm.                                         |
 | NFR-16 | Bot quản lý nghỉ phép | Token/secret chỉ ở môi trường; webhook xác thực secret, quyền và cơ sở kiểm tra lại khi thao tác; quét 5 giây cần máy chủ chạy liên tục; sự kiện/inbox/giao tin bền vững tiếp tục khi máy chủ hoạt động lại; migration `0029` và `0030` phải áp trước bản web mới dù bot tắt. |
+| NFR-17 | Đồng bộ Thu mua nhiều người | Sau snapshot ban đầu, client hiển thị dùng cursor lịch sử và lấy delta thay vì tải lại toàn bộ dòng sau mỗi sự kiện. Delta đọc cùng snapshot repeatable-read, tối đa 500 order IDs; cursor sai/quá mới/không nhất quán hoặc vượt mức phải trả reset để client lấy snapshot đầy đủ. Giữ nguyên draft, kiểm version/conflict và idempotency. Đo p50/p95 và payload trên staging trước khi đặt mục tiêu độ trễ production. |
 
 # 5. Yêu cầu giao diện người dùng (UI Requirements)
 
@@ -1273,7 +1274,9 @@ Cập nhật gần nhất: 07/11/2026.
 - Một giá trị điền cả vùng; Ctrl+D lấy dòng đầu, tay kéo lặp mẫu; tổng/đếm/trung bình vùng. Escape hủy lần sửa hiện tại, không xóa bản nháp ô khác.
 - Dán/kéo điền/xóa vùng kiểm toàn bộ trước khi sửa, tối đa10.000 ô; không sửa NV/cột tính/cột chỉ đọc hoặc phí cha đang tách. Chỉ tạo bản nháp, giữ xác nhận lưu.
 
+- **Đồng bộ nhiều người:** sau snapshot đầu, client dùng `GET /api/purchase-orders/changes?after=<maxHistoryId:historyCount>` sau tín hiệu SSE/revision và sau lưu. Response gồm revision, các dòng active cuối cùng, `deletedIds`, snapshot cont, chế độ nguồn/tích hợp, `employeesChanged` và `reset`. Một snapshot `REPEATABLE READ READ ONLY` giữ revision và dữ liệu nhất quán. Trên 500 ID hoặc cursor invalid/ahead/inconsistent yêu cầu full snapshot; không làm yếu version check, draft conflict hay idempotency. Endpoint và luồng client delta đã được tích hợp trong mã hiện tại; kiểm nhiều tab/reconnect và đo staging/production còn là bước nghiệm thu.
+
 11/11/2026 — NET theo tab VK-DUNG: cộng Thuế, nhân VC sau CNY với 3,920 (chỉ riêng phí này), giá hàng vẫn dùng tỉ giá dòng; chi phí để trống được tính là 0. Hiển thị giá tệ 2 chữ số và Tổng tệ làm tròn đơn vị; nút Tổng tệ hiện số chính xác 3 chữ số trong cùng ô tới khi mất focus, không mở popup.
 11/11/2026 — Thu mua cho phép ghi đè theo dòng 9 trường thuộc nhóm Đối chiếu Cân đo. `measurement_overrides` (JSONB, migration 0122) chỉ lưu key đã sửa; bỏ key/nhập trống sẽ lấy lại số nguồn hoặc kết quả tính tự động. Không ghi thay đổi ngược vào bảng `shipping_measures` hay Google Sheet; ngày đo vẫn trống nếu nguồn không có ngày.
 
-Cập nhật cuối: 11/11/2026.
+Cập nhật cuối: 12/11/2026.

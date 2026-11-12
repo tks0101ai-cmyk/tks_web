@@ -1296,6 +1296,7 @@ Tất cả endpoint bên dưới có tiền tố `/api/purchase-orders`, yêu c�
 | GET /employees | — | `{rows:[{id,name,isActive,version}]}`, gồm cả nhân viên ngừng hoạt động; `id` là chuỗi |
 | POST /employees | `{name}` | HTTP 201, `{id,name,isActive:true,version:1}` |
 | PATCH /employees/:id | `{version,changes:{name?,isActive?}}` | Bản ghi hiện hành, version tăng khi có thay đổi; tên được trim, 1–200 ký tự; `isActive` phải là boolean |
+| GET /changes?after=`maxHistoryId:historyCount` | — | Delta `{revision,rows,deletedIds,containers,sourceMode,integrationEnabled,employeesChanged,reset}`; yêu cầu `purchase.view` |
 
 Tên trùng không phân biệt hoa/thường trả 409 `EMPLOYEE_EXISTS`; thiếu version khi sửa trả 400 `VERSION_REQUIRED`, version cũ trả 409 `VERSION_CONFLICT`. Không xóa cứng nhân viên. Ghi có `employee_create`/`employee_edit` trong `purchase_history` và phát `purchase-orders-changed` sau commit qua transaction hiện có. Đổi tên/ngừng hoạt động không sửa snapshot tên đã lưu trên đơn.
 
@@ -1345,6 +1346,16 @@ GET /api/purchase-orders/revision (purchase.view, no-store) trả {revision:"max
 Frontend: shared/purchase-grid.js/.test.js là hàm thuần TSV/range/rowKey/fill/summary; shared/purchase-grid-ui.js/.test.js giữ vùng theo id/field. purchase-realtime.js thêm scheduler (gộp3giây, hidden dirty, lượt cuối); coordinator render phản hồi hợp lệ trước lượt tiếp theo, tránh starvation. Không thêm thư viện, env hay migration. Tests: purchaseOrdersRevision.test.js, purchaseOrdersRealtimePage.integration.test.js và nhóm purchase shared/live.
 
 Cập nhật cuối: 10/11/2026.
+
+## Thu mua — API delta đồng bộ nhiều người (12/11/2026)
+
+`GET /api/purchase-orders/changes?after=<maxHistoryId:historyCount>` yêu cầu đăng nhập và `purchase.view`, `Cache-Control: no-store`. Backend đọc revision, settings, cont, nhân viên thay đổi và delta trong cùng `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY` snapshot. Response luôn có dạng `{revision,rows,deletedIds,containers,sourceMode,integrationEnabled,employeesChanged,reset}`. `rows` là trạng thái cuối có thẩm quyền của các dòng active, gồm dữ liệu đo đã join từ `shipping_measures`; `deletedIds` chỉ chứa ID không còn active. Delta xác định order IDs bằng `purchase_operation_rows` ghép với `purchase_history.summary.operationId`; không trả `before_row`, `after_row` hay nội dung audit. `containers` là snapshot cont hiện hành; `employeesChanged` báo cần tải lại danh mục khi có `employee_create`/`employee_edit` sau cursor.
+
+Cursor sai định dạng, vượt revision hiện tại, không khớp số history tại mốc, hoặc delta vượt 500 order IDs trả `reset:true`, `rows:[]`, `deletedIds:[]` cùng metadata/containers hiện tại. Client dùng full list snapshot làm fallback. Không có schema/migration mới; các kiểm tra version, audit, idempotency và source gate của API ghi giữ nguyên.
+
+Sau snapshot đầu, client dùng cursor này sau SSE/revision và sau save thay vì tải toàn bộ rows mỗi lần đổi; PATCH áp row response authoritative ngay, rồi delta nền reconcile. Delta coalescing/cap/fallback giảm dữ liệu truyền; giữ bản nháp và đối chiếu version/conflict như hiện tại. Chưa có số liệu latency production; cần kiểm nhiều tab/reconnect và đo p50/p95, payload, TTFB và lỗi trên staging/Postgres gần production trước khi đặt SLO.
+
+Cập nhật cuối: 12/11/2026.
 
 ## Purchase: thử tải 20 worker local — 10/11/2026
 
