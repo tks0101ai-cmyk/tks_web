@@ -87,3 +87,8 @@ test('order grid keeps both scroll axes inside a bounded viewport and notices us
   assert.match(styles, /\.purchase-page\s+#orderTable\s*\{[^}]*max-height:\s*67vh[^}]*overflow:\s*auto/i);
   assert.match(styles, /#notice\.toast\s*\{[^}]*position:\s*fixed/i);
 });
+
+test('pinned order cells stay opaque over scrolled rows, including draft cells', () => {
+  assert.match(styles, /#orderTable\s+tbody\s*>\s*tr\s*>\s*td\.purchase-pinned-column\s*\{[^}]*background-color:\s*var\(--panel\)\s*!important/i);
+  assert.match(styles, /#orderTable\s+tbody\s*>\s*tr\s*>\s*td\.purchase-pinned-column\.draft\s*\{[^}]*background-color:\s*color-mix\(in\s+srgb,\s*var\(--primary\)\s+13%,\s*var\(--panel\)\)\s*!important/i);
+});
