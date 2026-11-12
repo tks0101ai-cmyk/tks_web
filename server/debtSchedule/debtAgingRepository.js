@@ -104,13 +104,18 @@ function createDebtAgingRepository({ pool = getPool(), now = Date.now } = {}) {
     const key = scope.slice().sort().join(',');
     const cached = cache.get(key);
     if (cached && now() < cached.expiresAt) return Promise.resolve(cached.data);
-    if (pending.has(key)) return pending.get(key);
+    // Hết 60 s (không phải job vừa đổi số — clearCache xóa hẳn): trả ngay bản cũ, đọc lại nền 1 lượt.
+    if (pending.has(key)) return cached ? Promise.resolve(cached.data) : pending.get(key);
     const started = generation;
     const task = loadAging(scope).then(data => {
       if (started === generation) cache.set(key, { expiresAt: now() + CACHE_TTL_MS, data });
       return data;
     }).finally(() => { if (pending.get(key) === task) pending.delete(key); });
     pending.set(key, task);
+    if (cached) {
+      task.catch(error => console.error('[debt-aging] Làm mới nền thất bại, giữ bản cũ:', error && error.message));
+      return Promise.resolve(cached.data);
+    }
     return task;
   }
 

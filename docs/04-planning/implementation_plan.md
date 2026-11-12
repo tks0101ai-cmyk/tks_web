@@ -747,3 +747,9 @@ Thử tải local bổ sung 12/11: 20 và 30 HTTP worker, 5.000 dòng, mỗi wor
 Thiết kế tổng: [purchase delta sync](../superpowers/plans/2026-11-12-purchase-delta-sync.md).
 
 Cập nhật cuối: 12/11/2026.
+
+## Hiệu năng đợt 4 — 12/11/2026
+
+Đo sáng 12/11 sau PR #78/#79: khựng ~16 lần/giờ (từ ~50–60), lag tối đa 4,2 s. Đã làm: nghỉ phép bỏ vòng lặp đơn × tài khoản (~200 lần nhanh hơn) + trang Nhân sự bớt tải lại; xuất Excel chạy worker thread; báo cáo kinh doanh / thưởng phạt / tuổi nợ trả bản cũ khi làm mới. Tiếp theo: đọc lại `[loop-stall]`/`[timing]` sau deploy; xem `invoice-price-audit` (1 lần 23,8 s); cân nhắc tránh deploy giờ cao điểm (cache trống sau mỗi lần khởi động lại).
+
+Cập nhật cuối: 12/11/2026.

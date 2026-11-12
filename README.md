@@ -142,6 +142,7 @@ Mở `http://localhost:3000`.
 | `HR_MANAGER_TELEGRAM_SCAN_INTERVAL_MS` | Chu kỳ quét đơn/sự kiện trong Postgres; mặc định `5000` ms (giới hạn 1.000–60.000) |
 | `HR_LEAVE_DB_REALTIME_ENABLED` | Cầu thay đổi Postgres → SSE của HR, mặc định `true`, độc lập với công tắc bot |
 | `SPECIAL_DAYS_NOTIFY_ENABLED` | Báo ngày lễ/sinh nhật lên chuông thông báo; mặc định `true`, `false` để tắt |
+| `EXPORT_EXCEL_WORKER` | Dựng file Excel xuất (`POST /api/export`) trong worker thread để không chặn web; mặc định bật, `off` để dựng trong luồng chính |
 | `VAT_REQUEST_NOTIFY_ENABLED` | Báo chuông cho sale ~10 phút sau khi kế toán ngừng sửa yêu cầu ORDER VAT của họ; mặc định `true`, `false` để tắt (cần migration `0080`) |
 | `BACKGROUND_JOBS` | `inline` (mặc định): job nền chạy chung web; `worker`: web chỉ nghe sự kiện, job chạy ở `npm run worker` (`worker.js`) |
 | `INVOICE_PRICE_AUDIT_ENABLED` | Bật job 23:00 (giờ Việt Nam) của **Kiểm tra giá bán**: chụp hóa đơn chưa quét trong cửa sổ 7 ngày và đối chiếu giá min; mặc định `false`. Rollout: áp migration `0077` → deploy khi còn `false` → chạy tay lần đầu `npm run invoices:price-audit -- --date <hôm nay> --apply` → mới bật `true` |
@@ -562,6 +563,17 @@ Cập nhật cuối: 11/11/2026.
 Không đổi schema/env/dependency/API.
 
 Cập nhật cuối: 11/11/2026.
+
+## Hiệu năng đợt 4: nghỉ phép, xuất Excel, trả bản cũ trong lúc làm mới (12/11/2026)
+
+Log sáng 12/11 (sau PR #78, #79: web khựng ~16 lần/giờ, từ ~50–60): thủ phạm mới là danh sách nghỉ phép (~1,2 s CPU mỗi lần, nhiều tab gọi cùng lúc), xuất Excel (đứng tới 4,2 s) và các báo cáo bắt người dùng chờ tải lại khi cache hết hạn.
+- Nghỉ phép: `describeRequests` tính sẵn người duyệt 1 lần / tài khoản, nhớ theo (cơ sở, phòng ban) — 361 đơn × 171 tài khoản: 1,16 s → ~5 ms; trang Nhân sự: tab ẩn hoãn tải, gom tín hiệu 1 s, quay lại tab chỉ tải khi cũ > 60 s hoặc có tín hiệu bị lỡ.
+- Xuất Excel dựng trong worker thread (`dashboard/exportExcelRenderer.js`, `exportExcelWorker.js`, `exportExcelPool.js`); lỗi / không gửi được dữ liệu thì dựng trong luồng chính như cũ; `EXPORT_EXCEL_WORKER=off` để tắt.
+- Báo cáo kinh doanh (job đổi số tháng hiện tại), bảng thưởng/phạt (quá 30 s, công nợ không đổi), tuổi nợ (quá 60 s): trả ngay bản cũ, làm mới nền. Ghi công nợ / chốt tháng / đổi team / refreeze vẫn tính mới ngay.
+
+Không đổi schema/dependency/API. Biến môi trường mới (tùy chọn): `EXPORT_EXCEL_WORKER`.
+
+Cập nhật cuối: 12/11/2026.
 
 ## Nguồn dự phòng 3 trang VAT (12/11/2026)
 

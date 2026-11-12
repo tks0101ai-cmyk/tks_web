@@ -1396,6 +1396,16 @@ Cập nhật cuối: 11/11/2026.
 
 Cập nhật cuối: 11/11/2026.
 
+## Hiệu năng — 12/11/2026 (đợt 4)
+
+- `hr/hrLeaveAuthorization.js`: `createApproverIndex(users)` — bản tính sẵn cho `describeRequests` (cùng kết quả `selectApprovers`, test đối chiếu).
+- `dashboard/exportExcelRenderer.js` (tách từ exportService, thuần ExcelJS), `exportExcelWorker.js`, `exportExcelPool.js` (`renderExcelInWorker`: 1 worker dùng chung, tự tắt sau 5 phút rảnh, fallback luồng chính). Biến `EXPORT_EXCEL_WORKER=off` tắt worker.
+- `businessReport/businessReportRepository.js`: `createSwrCache().markStale()`; sự kiện job tháng hiện tại dùng `markStale` (trả bản cũ, làm mới nền) thay vì `clear`.
+- `debtSchedule/debtRewardService.js`: bảng quá `boardCacheMs` mà version công nợ không đổi → trả bảng cũ, tính lại nền 1 lượt.
+- `debtSchedule/debtAgingRepository.js`: quá 60 s → trả bản cũ, đọc lại nền; `clearCache()` vẫn chờ bản mới.
+
+Cập nhật cuối: 12/11/2026.
+
 ## Nguồn dự phòng 3 trang VAT — 12/11/2026
 
 - `vatDraft/sheetsSource.js`: `fetchSheetRecordsWithFallback` — tab file trung gian lỗi API / chỉ còn 1 ô (`#REF!`, `Loading...`) / thiếu cột thì đọc tab tương ứng file gốc VAT TKS (`vatDraftConfig.fallback`, timeout 45 s qua `readSheetValuesById({ timeoutMs })`); dùng ở Nháp VAT, Tra cứu VAT (`vatLookup/lookupSource.js`), Tồn VAT (`vatRequests/stockSource.js`). Meta `/api/vat-draft/meta` và `/api/vat-lookup/*` có thêm `fallbackTabs`.

@@ -40,6 +40,8 @@
 #orderTable{background:var(--panel);border:1px solid var(--border);max-height:67vh;min-height:160px}
 #orderTable .purchase-pinned-column{position:sticky!important;background:var(--panel);z-index:10;box-shadow:1px 0 var(--border)}
 #orderTable thead .purchase-pinned-column{z-index:20;background:var(--panel-2)}
+#orderTable tbody>tr>td.purchase-pinned-column{background-color:var(--panel)!important}
+#orderTable tbody>tr>td.purchase-pinned-column.draft{background-color:color-mix(in srgb,var(--primary) 13%,var(--panel))!important}
 #containerTable{max-height:340px;background:var(--panel)}
 #containerTable table{min-width:100%;table-layout:fixed}
 #containerTable th,#containerTable td{padding:7px 8px;font-size:11px}

@@ -70,6 +70,8 @@ async function readSnapshotQueries(pool, queries) {
 //   get({ wait:true }): nhu get() nhung het han thi CHO ban moi (dung khi chinh no la tai nen cua cache khac,
 //                      de ban moi that su moi chu khong mang them ban cu).
 //   clear()          : bo ban + tai dang do; tai bat dau truoc clear() khong duoc ghi vao cache nua.
+//   markStale()      : nhu clear() nhung GIU ban cu de tra ngay (lan get() ke tiep lam moi nen) — cho thay doi do job nen,
+//                      nguoi dang mo bao cao khong phai cho tai lai 8–11 s (log [timing] 12/11/2026).
 function createSwrCache({ load, now, ttlMs, label }) {
   let entry = null;    // { at, value }
   let inflight = null; // Promise dang tai (dung chung, tranh dam dong)
@@ -100,7 +102,13 @@ function createSwrCache({ load, now, ttlMs, label }) {
     inflight = null;
   }
 
-  return { get, clear };
+  function markStale() {
+    generation += 1;
+    inflight = null;
+    if (entry) entry = { at: -Infinity, value: entry.value };
+  }
+
+  return { get, clear, markStale };
 }
 
 function createRepository({
@@ -287,10 +295,10 @@ function createRepository({
   const snapshotCache = createSwrCache({ load, now, ttlMs, label: 'snapshot' });
   const snapshot = () => snapshotCache.get();
 
-  // Job vua doi bang thang hien tai: bo cache snapshot + live cua thang hien tai (cac thang cu giu nguyen
-  // de khong phai tinh lai SQL nang).
+  // Job vua doi bang thang hien tai: snapshot danh dau cu (tra ban cu ngay, lam moi nen cho ban live MOI vi tai nen
+  // goi live voi wait:true); bo cache live cua thang hien tai (cac thang cu giu nguyen de khong tinh lai SQL nang).
   onCurrentMonthChanged(() => {
-    snapshotCache.clear();
+    snapshotCache.markStale();
     const month = monthKey(vnToday(now()));
     const cache = liveCaches.get(month);
     if (cache) cache.clear();

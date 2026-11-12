@@ -136,7 +136,10 @@ test('customer reassignment refreshes points and moves the open-cycle live penal
     assert.equal((await f.service.readBoard()).rows.find(r=>r.sale==='An').grossPenalty,25000);
     await f.db.exec(`UPDATE customers SET raw='{"groups":"Chi"}' WHERE branch='hanoi'`);
     f.setNow('2026-10-14T09:01:01Z');
-    const board=await f.service.readBoard();
+    // Bảng quá hạn (12/11/2026): lần đọc ngay sau trả bảng cũ và tính lại nền; bảng mới có ngay sau đó.
+    // (Trên web thật đổi nhóm khách đi qua customersChanged -> clearScores nên tính mới ngay.)
+    let board=await f.service.readBoard();
+    for(let i=0;i<200&&!board.rows.some(r=>r.sale==='Chi');i++){await new Promise(resolve=>setTimeout(resolve,10));board=await f.service.readBoard();}
     assert.equal(board.rows.find(r=>r.sale==='Chi').points,30);
     assert.equal(board.rows.find(r=>r.sale==='Chi').grossPenalty,25000);
     assert.equal(board.rows.some(r=>r.sale==='An'),false);
@@ -243,8 +246,14 @@ test('penalty board is computed once for concurrent readers, kept briefly and re
     await service.readBoard();
     assert.equal(computes, 2, 'a debt write invalidates the kept board');
     instant = new Date(instant.getTime() + 31000);
+    const kept = await service.readBoard();
+    assert.equal(computes, 3, 'after 30 s one background recomputation starts');
+    assert.equal(kept.month, both.month, 'the kept board is returned immediately while recomputing');
     await service.readBoard();
-    assert.equal(computes, 3, 'expires after 30 s');
+    assert.equal(computes, 3, 'no second recomputation while one is running');
+    await new Promise(resolve => setTimeout(resolve, 200));
+    await service.readBoard();
+    assert.equal(computes, 3, 'the recomputed board replaces the kept one');
     f.repository.bumpVersion();
     failNext = true;
     await assert.rejects(service.readBoard(), /db down/);
