@@ -86,15 +86,24 @@ test('order rows show container status but cannot change it; metrics board updat
 test('status is editable from metrics board and sends one authorized request',async t=>{
  const p=await page(t);p.change('#containerTable [data-status="2"]','4');await tick();await tick();const calls=p.calls.filter(c=>c.url.endsWith('/status'));assert.equal(calls.length,1);assert.equal(JSON.parse(calls[0].options.body).status,4);assert.equal(p.w.document.getElementById('modal').open,false);
 });
-test('adding an arbitrary product reserves a real row key and stages it without writing the row',async t=>{
+test('adding an arbitrary product reserves a row key, stages a draft and saves it',async t=>{
  const p=await page(t);
- const prior=p.w.fetch;p.w.fetch=async(url,options)=>url.endsWith('/next-key')?{ok:true,json:async()=>({rowKey:'D00042'})}:prior(url,options);
+ const prior=p.w.fetch;p.w.fetch=async(url,options={})=>{if(url.endsWith('/next-key'))return {ok:true,json:async()=>({rowKey:'D00042'})};if(url.endsWith('/plan')&&options.method==='POST'){p.calls.push({url,options});const plan=JSON.parse(options.body);for(const [i,create] of plan.creates.entries())p.current.rows.push({...create.values,id:String(42+i),version:1});return {ok:true,json:async()=>({createdKeys:plan.creates.map(create=>create.values.rowKey)})}}return prior(url,options)};
  p.w.document.getElementById('add').click();const form=p.w.document.getElementById('addForm');Object.entries({productCode:'ANY',productName:'Hàng thử',qtyPerCarton:'5',cartonCount:'4',kgPerCarton:'100',m3PerCarton:'0.2'}).forEach(([k,v])=>form.elements[k].value=v);form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
  const state=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.equal(Object.keys(state.newRows).length,1);
  // Khoa cap ngay luc them, khong con cho giu cho 'MOI', va van chua ghi dong nao len may chu.
  assert.equal(Object.values(state.newRows)[0].rowKey,'D00042');assert.equal(Object.values(state.newRows)[0].contId,null);assert.equal(form.elements.contId,undefined);
  assert.match(p.w.document.querySelector('#orderTable tbody tr[data-id^="new"] [data-field="rowKey"]').textContent,/D00042/);
  assert.equal(p.calls.filter(c=>c.options.method).length,0);const target=p.w.document.querySelector('[data-container-filter="2"]').closest('tr');assert.equal(target.cells[3].textContent,'0.00');assert.equal(target.cells[4].textContent,'0.00');
+ p.w.document.getElementById('save').click();p.w.document.getElementById('commit').click();await tick();await tick();
+ const plan=JSON.parse(p.calls.find(c=>c.url.endsWith('/plan')).options.body);assert.equal(plan.creates[0].values.rowKey,'D00042');assert.equal(Object.hasOwn(plan.creates[0].values,'id'),false);assert.equal(Object.hasOwn(plan.creates[0].values,'version'),false);assert.equal(p.current.rows.at(-1).productCode,'ANY');assert.ok(p.w.document.querySelector('tr[data-id="42"] [data-edit="productName"]'));
+});
+test('adding from an existing product code without changing its values still saves as a new row',async t=>{
+ const p=await page(t),prior=p.w.fetch;p.w.fetch=async(url,options={})=>{if(url.endsWith('/next-key'))return {ok:true,json:async()=>({rowKey:'D00042'})};if(url.includes('/latest?code='))return {ok:true,json:async()=>({row:structuredClone(p.current.rows[0])})};if(url.endsWith('/plan')&&options.method==='POST'){p.calls.push({url,options});const plan=JSON.parse(options.body);for(const [i,create] of plan.creates.entries())p.current.rows.push({...create.values,id:String(42+i),version:1});return {ok:true,json:async()=>({createdKeys:plan.creates.map(create=>create.values.rowKey)})}}return prior(url,options)};
+ p.w.document.getElementById('add').click();const form=p.w.document.getElementById('addForm');form.elements.productCode.value='AC305';form.elements.productCode.dispatchEvent(new p.w.Event('input',{bubbles:true}));await tick();await tick();
+ assert.equal(form.elements.productName.value,'Băng dính');assert.equal(form.elements.cartonCount.value,'10');
+ form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}));await tick();p.w.document.getElementById('save').click();p.w.document.getElementById('commit').click();await tick();await tick();
+ const plan=JSON.parse(p.calls.find(c=>c.url.endsWith('/plan')).options.body),saved=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.equal(plan.creates[0].values.productCode,'AC305');assert.equal(Object.hasOwn(plan.creates[0].values,'id'),false);assert.equal(Object.hasOwn(plan.creates[0].values,'version'),false);assert.equal(p.current.rows.length,2);assert.equal(Object.keys(saved.drafts).length,0);
 });
 test('numeric cells display comma thousands and accept the same notation without changing magnitude',async t=>{
  const p=await page(t,{extraRows:[{id:'4',rowKey:'D00004',version:1,cartonCount:1234,qtyPerCarton:2000,productCode:'LARGE',contId:null}]});
