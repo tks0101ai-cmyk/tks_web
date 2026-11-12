@@ -49,3 +49,18 @@ test('container panel opens by default and sits 20px below the order grid', () =
     'container panel should have a 20px top margin'
   );
 });
+
+test('container status chips share the first orders toolbar row and all requested page sizes are available', () => {
+  const doc = new JSDOM(page).window.document;
+  const toolbar = doc.querySelector('#orders .order-actions');
+  assert.equal(toolbar.querySelector('#containerStatusBoard')?.parentElement, toolbar);
+  assert.deepEqual(
+    [...doc.querySelectorAll('#pageSize option')].map(option => option.value),
+    ['10', '50', '100', '150', '200']
+  );
+});
+
+test('order grid keeps both scroll axes inside a bounded viewport and notices use a visible toast', () => {
+  assert.match(styles, /\.purchase-page\s+#orderTable\s*\{[^}]*max-height:\s*67vh[^}]*overflow:\s*auto/i);
+  assert.match(styles, /#notice\.toast\s*\{[^}]*position:\s*fixed/i);
+});

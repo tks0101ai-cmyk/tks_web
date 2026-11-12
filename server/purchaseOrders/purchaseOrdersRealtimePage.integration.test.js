@@ -15,6 +15,26 @@ async function page(t,{local=false,directory=null,projectionProbe=null,revision=
  w.eval(fs.readFileSync(path.join(dir,'../../shared/table-controls.js'),'utf8'));w.PurchaseGrid=require('../public/shared/purchase-grid');w.PurchaseGridUI=require('../public/shared/purchase-grid-ui');Object.defineProperty(w.document,'hidden',{value:false,configurable:true});const realtimeAPI=w.PurchaseRealtime;w.PurchaseRealtime={...realtimeAPI,createScheduler:options=>realtimeAPI.createScheduler({...options,gapMs:0})};w.eval(fs.readFileSync(path.join(dir,'purchase.js'),'utf8'));await tick();await tick();
  return {w,data,calls,listeners,timers,get closed(){return closed},drafts:()=>JSON.parse(w.sessionStorage.getItem('purchase:buyer:v1')).drafts};
 }
+test('page size 10 slices the table and keeps next-page navigation',async t=>{
+ const p=await page(t),doc=p.w.document;
+ for(let i=2;i<=12;i++)p.data.rows.push({...p.data.rows[0],id:String(i),rowKey:'D'+String(i).padStart(5,'0')});
+ p.listeners.changed();await tick();await tick();
+ const size=doc.getElementById('pageSize');size.value='10';size.dispatchEvent(new p.w.Event('change',{bubbles:true}));
+ assert.equal(doc.querySelectorAll('#orderTable tbody tr[data-id]').length,10);
+ assert.equal(doc.getElementById('pageLabel').textContent,'Trang 1/2');
+ doc.getElementById('next').click();
+ assert.equal(doc.querySelectorAll('#orderTable tbody tr[data-id]').length,2);
+ assert.equal(doc.getElementById('pageLabel').textContent,'Trang 2/2');
+});
+test('purchase errors are announced through a visible toast',async t=>{
+ const p=await page(t),doc=p.w.document;
+ p.w.fetch=async url=>url.endsWith('/operations')?{ok:true,json:async()=>({rows:[]})}:{ok:true,json:async()=>({rows:[]})};
+ doc.getElementById('undoWork').click();await tick();
+ const notice=doc.getElementById('notice');
+ assert.match(notice.textContent,/Chưa có thao tác/);
+ assert.ok(notice.classList.contains('toast'));
+ assert.equal(notice.getAttribute('role'),'status');
+});
 test('integrated refresh updates another cell during numeric expression typing, retaining baseline/caret and navigation mode',async t=>{
  const p=await page(t),doc=p.w.document,input=doc.querySelector('[data-edit="cartonCount"]');input.focus();input.value='2*6';input.dataset.gridEditing='true';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));input.setSelectionRange(1,2);
  p.data.rows[0].supplier='Remote supplier';p.data.rows[0].cartonCount=20;p.data.rows[0].version=5;p.listeners.changed();await tick();await tick();

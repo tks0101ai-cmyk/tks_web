@@ -8,6 +8,7 @@
 .purchase-tabs button.active{border-bottom-color:var(--primary);color:var(--text);font-weight:650}
 #notice:empty{display:none}
 #notice{padding:8px 10px;margin:10px 0;background:var(--warn-bg,rgba(242,196,109,.08));border-left:2px solid var(--purchase-amber);font-size:11px}
+#notice.toast{position:fixed;z-index:1500;right:20px;bottom:20px;width:min(440px,calc(100vw - 32px));min-height:0;margin:0;padding:14px 16px;border:1px solid var(--purchase-amber);border-left:4px solid var(--purchase-amber);border-radius:8px;background:var(--panel);color:var(--text);font-size:14px;line-height:1.4;box-shadow:0 12px 36px #0005}
 #sourceBanner{padding:9px 12px;border:1px solid var(--border);border-radius:5px;background:var(--panel);color:var(--muted);margin-bottom:12px}
 #purchaseOverview{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));margin:12px 0 16px}
 #purchaseOverview .kpi{padding:12px;min-width:0}
@@ -398,7 +399,10 @@
 .purchase-page #orderTable th[data-key="productCode"],.purchase-page #orderTable td[data-field="productCode"]{position:sticky;left:var(--purchase-code-sticky-left,0px);z-index:10;background:var(--panel)}
 .purchase-page #orderTable th[data-key="productCode"]{z-index:20}
 .purchase-page #orderTable th[data-key="productName"]{left:var(--purchase-name-sticky-left,196px)}
-.purchase-page #orderTable{max-height:none;overflow-y:visible}
+.purchase-page #orderTable{max-height:67vh;overflow:auto;scrollbar-gutter:stable}
+.purchase-page .order-actions #containerStatusBoard{flex:0 0 auto;margin:0}
+.purchase-page .order-actions #containerStatusBoard .purchase-container-status{gap:5px;margin:0;padding:0;border:0;border-radius:0;background:transparent}
+.purchase-page .order-actions #containerStatusBoard .purchase-container-status button{padding:5px 8px;min-height:30px;font-size:10px}
 .purchase-page #orderTable th .sort-button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;white-space:normal}
 .purchase-page #orderTable th .sort-indicator{display:block;flex:0 0 9px;height:9px;line-height:9px}
 @media(min-width:1101px){
