@@ -283,6 +283,12 @@ test('balance plan commits edits, recursive split and new code together; stale s
  const current=all.find(r=>String(r.id)===String(b.id));await assert.rejects(service.applyPlan(manager,{rows:[{id:b.id,version:current.version,changes:{cartonCount:99}}],splits:[{id:a.id,version:a.version,sourceQty:60,quantity:10,destinationId:c.id}]}));assert.equal((await service.list(manager)).rows.find(r=>String(r.id)===String(b.id)).cartonCount,30);
 });
 
+test('balance plan ignores client-only id and version on a new row',async()=>{
+ await db.query("SELECT setval('purchase_order_key_seq',1,true)");
+ const result=await service.applyPlan(manager,{creates:[{values:{...input(),id:'new123',version:1,rowKey:'D00001',contId:null}}]});
+ const created=(await service.list(manager)).rows[0];assert.deepEqual(result.createdKeys,['D00001']);assert.equal(created.rowKey,'D00001');assert.equal(created.version,1);assert.notEqual(created.id,'new123');
+});
+
 test('manual code split saves independently entered quantities and rejects blank child',async()=>{
  const a=await service.create(manager,input());await assert.rejects(service.applyPlan(manager,{splits:[{id:a.id,version:a.version,manual:true,sourceQty:100,quantity:null}]}));await service.applyPlan(manager,{splits:[{id:a.id,version:a.version,manual:true,sourceQty:7,quantity:4,destinationId:null}]});const rows=(await service.list(manager)).rows;assert.equal(rows.find(r=>r.rowKey===a.rowKey+'.01').cartonCount,7);assert.equal(rows.find(r=>r.rowKey===a.rowKey+'.02').cartonCount,4);
 });
