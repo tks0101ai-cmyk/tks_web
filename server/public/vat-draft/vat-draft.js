@@ -155,8 +155,10 @@
       sheets.textContent = 'Không tải được Google Sheets: ' + md.error;
       sheets.dataset.tone = 'error';
     } else {
-      sheets.textContent = `Dữ liệu Google Sheets (Gộp VAT ${intFormat.format(md.stockRows)} dòng · Khớp mã ${intFormat.format(md.mappingRows)} dòng) cập nhật lúc ${vnTime(md.loadedAt)}${md.stale ? ' — đang dùng bản cũ vì tải lại thất bại' : ''}`;
-      sheets.dataset.tone = md.stale ? 'warning' : '';
+      const fallbackTabs = md.fallbackTabs || [];
+      const fallbackNote = fallbackTabs.length ? ` — ${fallbackTabs.join(', ')} đọc từ file gốc VAT TKS vì file trung gian đang lỗi` : '';
+      sheets.textContent = `Dữ liệu Google Sheets (Gộp VAT ${intFormat.format(md.stockRows)} dòng · Khớp mã ${intFormat.format(md.mappingRows)} dòng) cập nhật lúc ${vnTime(md.loadedAt)}${md.stale ? ' — đang dùng bản cũ vì tải lại thất bại' : ''}${fallbackNote}`;
+      sheets.dataset.tone = md.stale || fallbackTabs.length ? 'warning' : '';
     }
     const times = (meta.sync || []).map(s => s.syncedAt && Date.parse(s.syncedAt)).filter(Boolean);
     const sync = $('vdSyncStatus');

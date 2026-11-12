@@ -154,3 +154,86 @@ test('createMasterDataSource: doc 2 tab theo sheetId; cache 10 phut, refresh ep 
   assert.equal(stale.stale, true);
   assert.equal(stale.stockRows.length, 1);
 });
+
+const {
+  isBrokenSheetRecords,
+  fetchSheetRecordsWithFallback
+} = require('./sheetsSource');
+
+const silentLogger = { warn() {} };
+
+test('isBrokenSheetRecords: chi 1 o (#REF!, Loading...) / rong / it cot hon can doc', () => {
+  assert.equal(isBrokenSheetRecords([['#REF!']]), true);
+  assert.equal(isBrokenSheetRecords([['Loading...', '']]), true);
+  assert.equal(isBrokenSheetRecords([]), true);
+  assert.equal(isBrokenSheetRecords([['a', 'b'], ['1', '2']]), false);
+  assert.equal(isBrokenSheetRecords([['a', 'b'], ['1', '2']], 3), true);
+});
+
+test('fetchSheetRecordsWithFallback: tab trung gian #REF! -> doc file goc', async () => {
+  const calls = [];
+  const readValues = async source => {
+    calls.push(source.spreadsheetId);
+    return source.spreadsheetId === 'MID' ? [['#REF!']] : [['h1', 'h2'], ['1', '2']];
+  };
+  const result = await fetchSheetRecordsWithFallback({
+    source: { spreadsheetId: 'MID', sheetId: 0 }, fallbackSource: { spreadsheetId: 'SRC', sheetId: 9, timeoutMs: 45000 },
+    sheetName: 'Gộp VAT', readValues, logger: silentLogger
+  });
+  assert.deepEqual(calls, ['MID', 'SRC']);
+  assert.equal(result.usedFallback, true);
+  assert.deepEqual(result.records, [['h1', 'h2'], ['1', '2']]);
+});
+
+test('fetchSheetRecordsWithFallback: loi API o file trung gian -> doc file goc; tab tot thi khong doc file goc', async () => {
+  const readValues = async source => {
+    if (source.spreadsheetId === 'MID') throw Object.assign(new Error('timeout of 15000ms exceeded'), {});
+    return [['a', 'b'], ['1', '2']];
+  };
+  const viaFallback = await fetchSheetRecordsWithFallback({
+    source: { spreadsheetId: 'MID', sheetId: 0 }, fallbackSource: { spreadsheetId: 'SRC', sheetId: 9 }, sheetName: 'Khớp mã', readValues, logger: silentLogger
+  });
+  assert.equal(viaFallback.usedFallback, true);
+  let fallbackCalls = 0;
+  const ok = await fetchSheetRecordsWithFallback({
+    source: { spreadsheetId: 'MID', sheetId: 0 }, fallbackSource: { spreadsheetId: 'SRC', sheetId: 9 }, sheetName: 'Khớp mã', logger: silentLogger,
+    readValues: async source => { if (source.spreadsheetId === 'SRC') fallbackCalls += 1; return [['a', 'b'], ['1', '2']]; }
+  });
+  assert.equal(ok.usedFallback, false);
+  assert.equal(fallbackCalls, 0);
+});
+
+test('fetchSheetRecordsWithFallback: ca hai hong -> loi 503 ro rang; khong co du phong -> giu hanh vi cu', async () => {
+  await assert.rejects(fetchSheetRecordsWithFallback({
+    source: { spreadsheetId: 'MID', sheetId: 0 }, fallbackSource: { spreadsheetId: 'SRC', sheetId: 9 }, sheetName: 'Gộp VAT', logger: silentLogger,
+    readValues: async () => [['#REF!']]
+  }), error => error.code === 'SHEET_REF_ERROR' && error.statusCode === 503 && /file gốc VAT TKS dự phòng cũng lỗi/.test(error.message));
+  await assert.rejects(fetchSheetRecordsWithFallback({
+    source: { spreadsheetId: 'MID', sheetId: 0 }, fallbackSource: { spreadsheetId: 'SRC', sheetId: 9 }, sheetName: 'Gộp VAT', logger: silentLogger,
+    readValues: async source => { if (source.spreadsheetId === 'MID') return [['#REF!']]; throw Object.assign(new Error('denied'), { code: 403 }); }
+  }), error => error.code === 'SHEET_FORBIDDEN' && /'#REF!'/.test(error.message));
+  const noFallback = await fetchSheetRecordsWithFallback({ source: { spreadsheetId: 'MID', sheetId: 0 }, sheetName: 'Gộp VAT', readValues: async () => [['#REF!']] });
+  assert.deepEqual(noFallback, { records: [['#REF!']], usedFallback: false });
+  await assert.rejects(fetchSheetRecordsWithFallback({
+    source: { spreadsheetId: 'MID', sheetId: 0 }, sheetName: 'Gộp VAT', readValues: async () => { throw new Error('socket hang up'); }
+  }), error => error.code === 'SHEET_NETWORK');
+});
+
+test('createMasterDataSource: file trung gian #REF! -> doc tab file goc (sheetId goc, timeout dai), ghi fallbackTabs', async () => {
+  const gop = parseCsv(`${GOP_HEADER}\nMAY,SP1,Tên,VAT1,Tên VAT,KT,Cái,MAY,1,100,8%,,8%,,5`);
+  const khop = parseCsv(`${KHOP_HEADER}\nSP1,Tên,,,,,,,,VAT1,Tên VAT`);
+  const sources = [];
+  const readValues = async source => {
+    sources.push(source);
+    if (source.spreadsheetId === vatDraftConfig.spreadsheetId) {
+      return source.sheetId === vatDraftConfig.gopVatSheet.sheetId ? [['#REF!']] : khop;
+    }
+    return gop;
+  };
+  const data = await createMasterDataSource({ readValues, logger: silentLogger }).get();
+  assert.equal(data.stockRows.length, 1);
+  assert.equal(data.mappingRows.length, 1);
+  assert.deepEqual(data.fallbackTabs, ['Gộp VAT']);
+  const fallbackRead = sources.find(s => s.spreadsheetId === vatDraftConfig.fallback.spreadsheetId);
+  assert.deepEqual(fallbackRead, { spreadsheetId: vatDraftConfig.fallback.spreadsheetId, timeoutMs: vatDraftConfig.fallback.timeoutMs, sheetId: 950697804, range: 'A1:P' });
+});

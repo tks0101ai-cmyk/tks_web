@@ -23,6 +23,17 @@ module.exports = deepFreeze({
   spreadsheetId: '1dNabQaiob7CMozrqjA746uV-atHWJi8gbG6L-I0yrmU',
   gopVatSheet: { sheetId: 0, range: 'A1:P' },
   khopMaSheet: { sheetId: 1192158065, range: 'A1:K' },
+  // Du phong (12/11/2026): tab trung gian loi (IMPORTRANGE ra #REF! / "Loading..." khi VAT TKS qua
+  // nang, hoac Sheets API loi) thi doc thang tab tuong ung cua file goc VAT TKS — cung bo cuc cot.
+  // Timeout dai hon vi file goc co luc phai tinh lai lau (do 12/11: ~1-2 giay/tab).
+  fallback: {
+    spreadsheetId: '1f1vglJwshMF5Ol7mGk3Ll2p8cxoZ_UhevRkzqzknBzU',
+    timeoutMs: 45000,
+    gopVatSheet: { sheetId: 950697804, range: 'A1:P' },
+    khopMaSheet: { sheetId: 631827560, range: 'A1:K' },
+    // Tab MUA VAT SIDA = nguon cua tab DK VỀ (Tra cuu VAT, cot A:E).
+    dkVeSheet: { sheetId: 467403108, range: 'A:E' }
+  },
   // So dong tieu de bo qua: Gop VAT co 1 dong header; Khop ma co 1 dong ghi chu
   // ('Đỏ cao quá' / 'Vàng thấp quá') roi moi toi header.
   gopVatSkipRows: 1,

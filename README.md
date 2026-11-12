@@ -122,7 +122,7 @@ Mở `http://localhost:3000`.
 | `KIOTVIET_CASHBOOK_SYNC_ENABLED` | Bật riêng đồng bộ Sổ quỹ khi engine tổng tắt. Khi engine tổng bật, Sổ quỹ cũng chạy. `KIOTVIET_CASHBOOK_SYNC_INTERVAL_MS` mặc định/tối thiểu 60 giây; giao diện kiểm tra mốc đồng bộ mỗi 15 giây khi đang hiển thị |
 | `KIOTVIET_WEBHOOK_SECRET` | Bí mật gắn vào đường dẫn webhook `/api/kiotviet/webhook/<secret>`; đường dẫn cũ không secret tắt bằng `KIOTVIET_WEBHOOK_LEGACY_PATH_ENABLED=false` |
 | `SPREADSHEET_ID`, `SPREADSHEET_ID_SG` | Di sản — không còn module nào đọc (Trả NCC đã chuyển sang upload Excel vào Postgres `supplier_return_imports`); bỏ trống vẫn chạy được |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | Service account Google (bắt buộc khi khởi động). Quyền Viewer cho workbook CÂN ĐO và file trung gian **"cúc cu test"** (`1dNabQ…`, IMPORTRANGE giá trị từ file VAT TKS; nguồn Nháp VAT / Tra cứu VAT / Tồn VAT của ORDER VAT từ 10/11/2026); **Editor** cho workbook Vòng đời đơn hàng (ghi tab `Lịch sử cập nhật`) |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | Service account Google (bắt buộc khi khởi động). Quyền Viewer cho workbook CÂN ĐO và file trung gian **"cúc cu test"** (`1dNabQ…`, IMPORTRANGE giá trị từ file VAT TKS; nguồn Nháp VAT / Tra cứu VAT / Tồn VAT của ORDER VAT từ 10/11/2026) và file gốc **VAT TKS** (`1f1vgl…`, nguồn dự phòng khi tab trung gian lỗi `#REF!`, từ 12/11/2026); **Editor** cho workbook Vòng đời đơn hàng (ghi tab `Lịch sử cập nhật`) |
 | `DEBT_MANAGEMENT_SPREADSHEET_ID` | (Không còn dùng từ 13/10/2026 — tab Công nợ tính từ KiotViet + lịch TT trong Postgres) |
 | `STOCK_LOCATIONS_SPREADSHEET_ID` | Tên biến là **di sản** của module Vị trí hàng đọc Google Sheets (đã gỡ 30/10/2026). Workbook này nay chỉ phục vụ sheet `CÂN ĐO` (giá trị dự phòng của `SHIPPING_MEASURE_SPREADSHEET_ID`), chỉ đọc; giữ nguyên tên biến để không làm hỏng cấu hình đã deploy. Hai biến `STOCK_LOCATIONS_SHEET_HN/_SG` đã bỏ khỏi `config.js` |
 | `PRODUCT_CONTAINER_SPREADSHEET_ID` | Workbook TKS2 ĐẶT CONT; chỉ đọc 7 sheet CONT mỗi 600.000 ms; service account cần Viewer |
@@ -562,3 +562,9 @@ Cập nhật cuối: 11/11/2026.
 Không đổi schema/env/dependency/API.
 
 Cập nhật cuối: 11/11/2026.
+
+## Nguồn dự phòng 3 trang VAT (12/11/2026)
+
+Tab của file trung gian "cúc cu test" lỗi IMPORTRANGE (`#REF!` khi file VAT TKS quá nặng, `Loading...`, thiếu cột) hoặc Sheets API lỗi thì Nháp VAT, Tra cứu VAT và Tồn VAT của ORDER VAT tự đọc tab tương ứng của file gốc VAT TKS (cấu hình `vatDraftConfig.fallback`); trang ghi rõ tab nào đang đọc từ file gốc. Service account đã có quyền xem file gốc. Không đổi schema/env/dependency.
+
+Cập nhật cuối: 12/11/2026.

@@ -27,3 +27,17 @@ test('createStockSource: doc 2 tab qua Sheets API, cong ton moi cong ty theo Kh�
   assert.deepEqual(lookupStock(snapshot, 'bat1'), { total: 1500, byCompany: [{ company: 'TKS THẤP', vatCode: 'VAT1', stock: 1200 }, { company: 'VC', vatCode: 'VAT1', stock: 300 }] });
   assert.equal(lookupStock(snapshot, '014xoan').total, 1500, 'khong co trong Khớp mã thi dung Mã kiot đại diện');
 });
+
+test('createStockSource: tab Gộp VAT trung gian #REF! -> doc tab Gộp VAT cua file goc VAT TKS', async () => {
+  const config = defaultStockConfig();
+  assert.equal(config.stockFallbackSheet.sheetId, vatDraftConfig.fallback.gopVatSheet.sheetId);
+  assert.equal(config.mappingFallbackSheet.sheetId, vatDraftConfig.fallback.khopMaSheet.sheetId);
+  const gop = parseCsv('CTY,Mã kiot đại diện,Tên,MÃ VAT KIOT,TÊN VAT,Tên hàng,ĐVT,x,TỒN ĐẦU NGÀY\nVC,,,VAT1,,,Cái,,300');
+  const khop = [[], ['Mã SP', 'Tên SP', '', '', '', '', '', '', '', 'Mã vat kiot'], ['BAT1', 'Bát', '', '', '', '', '', '', '', 'VAT1']];
+  const readValues = async sheet => {
+    if (sheet.spreadsheetId === vatDraftConfig.fallback.spreadsheetId) return gop;
+    return sheet.sheetId === GOP_VAT_SHEET_ID ? [['#REF!']] : khop;
+  };
+  const snapshot = await createStockSource({ config, readValues, logger: null }).get();
+  assert.equal(lookupStock(snapshot, 'bat1').total, 300);
+});

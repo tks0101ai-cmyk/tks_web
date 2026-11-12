@@ -28,6 +28,7 @@ function masterDataMeta(snapshot) {
   return {
     loadedAt: snapshot.loadedAt ? new Date(snapshot.loadedAt).toISOString() : null,
     stale: !!snapshot.stale,
+    fallbackTabs: snapshot.fallbackTabs || [],
     stockRows: snapshot.stockRows.length,
     mappingRows: snapshot.mappingRows.length,
     invalidStockRows: (snapshot.warnings || []).length

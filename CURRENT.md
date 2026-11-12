@@ -30,6 +30,7 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 - [ ] 10/11 — Xuất kho Excel (`POST /stock-positions/stock-out`) cho xuất khi Đang bốc + cho xuất âm, `planStockOut` (không migration) — deploy rồi thử file có mã đang bốc và mã vượt tồn trên VT thật
 - [ ] 19/10 — Quản lý rà soát 3 tài khoản sau vá phân quyền (danh sách trong file lưu trữ, mục 3)
 - [ ] 10/11 — Nguồn 3 trang VAT đổi sang file trung gian "cúc cu test" (nhánh `claude/brainstorm-error-cause-fix-bb0ebf`) — merge + deploy; sau đó cân nhắc lưu bản đọc tốt gần nhất vào Postgres để deploy không mất cache
+- [ ] 12/11 — 3 trang VAT đọc file gốc VAT TKS làm dự phòng khi tab trung gian lỗi `#REF!` (nhánh `claude/sheet-ref-error-3eeb99`, không migration) — merge + deploy
 
 - [ ] 11/11 — Vị trí hàng cho xác nhận bốc âm, đổi tên vị trí đồng bộ đơn chỉ định và đối soát đơn Kiot hoàn thành (không migration) — deploy web/worker rồi kiểm số đơn chuyển và số còn lỗi đối soát
 - [ ] 11/11 — Hiệu năng: PR #77, #78 đã deploy; đợt 3 (gỡ sao băng/pháo hoa, bỏ số đếm/chữ chạy, Công nợ bớt tải lại, log `[timing]` API kế toán — nhánh `claude/friendly-ride-y0uwwk`, không migration) — merge + deploy, rồi đọc `[loop-stall]` và `[timing]` API kế toán

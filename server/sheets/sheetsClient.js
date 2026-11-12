@@ -171,12 +171,12 @@ function createClient(getSpreadsheetId, branchLabel) {
  *   range dang 'A1:P' (bo trong = ca tab).
  * @param {{ sheetsApi?: object, valueRenderOption?: string }} options sheetsApi de test gia lap.
  */
-async function readSheetValuesById({ spreadsheetId, sheetId, range = '' }, { sheetsApi, valueRenderOption = 'FORMATTED_VALUE' } = {}) {
+async function readSheetValuesById({ spreadsheetId, sheetId, range = '', timeoutMs = API_TIMEOUT_MS }, { sheetsApi, valueRenderOption = 'FORMATTED_VALUE' } = {}) {
   const sheets = sheetsApi || await getSheetsApi();
   const meta = await sheets.spreadsheets.get({
     spreadsheetId,
     fields: 'sheets.properties(sheetId,title)'
-  }, { timeout: API_TIMEOUT_MS });
+  }, { timeout: timeoutMs });
   const tab = (meta.data.sheets || []).find(s => String(s.properties.sheetId) === String(sheetId));
   if (!tab) {
     const err = new Error(`Không có tab sheetId ${sheetId} trong file ${spreadsheetId}.`);
@@ -188,7 +188,7 @@ async function readSheetValuesById({ spreadsheetId, sheetId, range = '' }, { she
     range: quoteSheetName(tab.properties.title) + (range ? `!${range}` : ''),
     valueRenderOption,
     dateTimeRenderOption: 'FORMATTED_STRING'
-  }, { timeout: API_TIMEOUT_MS });
+  }, { timeout: timeoutMs });
   return res.data.values || [];
 }
 

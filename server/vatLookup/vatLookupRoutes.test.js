@@ -89,11 +89,23 @@ test('POST /search: noi dung qua dai -> 400', async () => {
   assert.equal(res.body.code, 'VAT_LOOKUP_QUERY_TOO_LONG');
 });
 
-test('DK về 2 tra #REF! -> 503 co code ro rang', async () => {
-  const source = createLookupSource({ readValues: fakeReadValues({ 740003979: '#REF!' }) });
+test('DK về 2 tra #REF! ca file trung gian lan file goc -> 503 co code ro rang', async () => {
+  const source = createLookupSource({ readValues: fakeReadValues({ 740003979: '#REF!', 467403108: '#REF!' }), logger: null });
   const res = await request('/search', { method: 'POST', body: { q: 'TALEWS' }, source });
   assert.equal(res.status, 503);
   assert.equal(res.body.code, 'DK_VE_REF_ERROR');
+  assert.match(res.body.error, /file gốc VAT TKS dự phòng cũng lỗi/);
+});
+
+test('Tab file trung gian #REF! -> doc tab file goc (MUA VAT SIDA / Gộp VAT goc), meta ghi fallbackTabs', async () => {
+  const readValues = fakeReadValues({ 740003979: '#REF!', 0: '#REF!', 467403108: CSV[740003979], 950697804: CSV[0] });
+  const source = createLookupSource({ readValues, logger: null });
+  const res = await request('/search', { method: 'POST', body: { q: 'TALEWS' }, source });
+  assert.equal(res.status, 200);
+  assert.deepEqual(readValues.calls.sort(), ['0', '1192158065', '467403108', '740003979', '950697804']);
+  assert.deepEqual(res.body.meta.fallbackTabs, ['Gộp VAT', 'DK về 2']);
+  assert.deepEqual(res.body.incoming.rows.map(r => [r.cont, r.soLuong]), [['10-10Y', 972]]);
+  assert.equal((await request('/meta', { source })).body.fallbackTabs.length, 2);
 });
 
 test('POST /refresh ep tai lai; Sheets loi sau do -> tra ban cu danh dau stale', async () => {
