@@ -51,7 +51,7 @@
     if(Object.hasOwn(r.measurementOverrides||{},k))return r.measurementOverrides[k]??'';
     if(k==='container')return name(r.contId);if(k==='status')return r.contId==null?'Chờ xếp':status[cont(r.contId)?.status];
     let derived=calculationCache.get(r);if(!derived){derived=PurchaseCalculations.row(r,PurchaseFreight.rowAmount(r,freightRates));calculationCache.set(r,derived)}
-    const result=Object.hasOwn(derived,k)?derived[k]:r[k];return result??'';
+    const result=Object.hasOwn(derived,k)?derived[k]:r[k];return result==null?'':k==='ratio'?result*100:result;
   }
   const overrideCell=c=>!!c.o;
   const orderEditable=c=>writable.some(x=>x.k===c.k)||overrideCell(c);

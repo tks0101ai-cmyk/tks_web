@@ -2,10 +2,10 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {JSDOM}=require('jsdom');
 const dir=path.join(__dirname,'../public/thu-mua/dat-hang'),tick=()=>new Promise(setImmediate);
-async function page(t,{local=false,directory=null,projectionProbe=null,revision=null}={}){
+async function page(t,{local=false,directory=null,projectionProbe=null,revision=null,readOnly=false}={}){
  const w=new JSDOM(fs.readFileSync(path.join(dir,'index.html'),'utf8'),{url:'https://example.test/thu-mua/dat-hang/',runScripts:'outside-only'}).window;
  t.after(()=>w.close());w.HTMLCanvasElement.prototype.getContext=()=>null;
- const data={...(revision?{revision}:{}),sourceMode:'web',integrationEnabled:true,permissions:{edit:true,import:true,export:true,depart:true,arrive:true},rows:[{id:'1',rowKey:'D00001',version:4,contId:'2',productCode:'A',productName:'Product',supplier:'Old',cartonCount:10,qtyPerCarton:5}],containers:[{id:'2',name:'CONT 11-1V',status:2,version:3,arrival_note:'2026-11-08',arrival_date:null}]},listeners={},calls=[],timers=new Set();let closed=0;
+ const data={...(revision?{revision}:{}),sourceMode:'web',integrationEnabled:true,permissions:{edit:!readOnly,import:true,export:true,depart:true,arrive:true},rows:[{id:'1',rowKey:'D00001',version:4,contId:'2',productCode:'A',productName:'Product',supplier:'Old',cartonCount:10,qtyPerCarton:5}],containers:[{id:'2',name:'CONT 11-1V',status:2,version:3,arrival_note:'2026-11-08',arrival_date:null}]},listeners={},calls=[],timers=new Set();let closed=0;
  for(const [name,file] of Object.entries({PurchaseCalculations:'purchase-calculations',PurchaseFreight:'purchase-freight',PurchaseColumns:'purchase-columns',PurchaseTasks:'purchase-tasks',PurchaseRealtime:'purchase-realtime',PurchaseDraftHistory:'purchase-draft-history',PurchaseContainerWorkspace:'purchase-container-workspace'}))w[name]=require('../public/shared/'+file);
  w.TKSNav={authGuard:async()=>({id:'buyer'})};w.EventSource=class{addEventListener(k,f){listeners[k]=f}close(){closed++}};
  w.setInterval=fn=>{timers.add(fn);return fn};w.clearInterval=id=>timers.delete(id);
@@ -130,6 +130,12 @@ test('measurement inputs show agreed precision and focus/blur alone creates no d
  const p=await page(t),doc=p.w.document;p.data.rows[0].kgPerCarton=14.04;p.data.rows[0].m3PerCarton=.0671;p.listeners.changed();await tick();await tick();
  doc.getElementById('columns').click();for(const key of ['kgPerCarton','m3PerCarton']){const box=doc.querySelector('[data-column="'+key+'"]');box.checked=true;box.dispatchEvent(new p.w.Event('change',{bubbles:true}))}
  for(const [key,shown] of [['kgPerCarton','14.0'],['m3PerCarton','0.067']]){let input=doc.querySelector('[data-edit="'+key+'"]');assert.equal(input.value,shown,key+' initial');input.focus();input.blur();await new Promise(resolve=>setTimeout(resolve,5));input=doc.querySelector('[data-edit="'+key+'"]');assert.equal(input.value,shown,key+' after blur')}assert.equal(Object.keys(p.drafts()).length,0);
+});
+test('calculated ratio is shown as a rounded percentage in edit and view modes',async t=>{
+ for(const readOnly of [false,true]){const p=await page(t,{readOnly}),doc=p.w.document;Object.assign(p.data.rows[0],{kgPerCarton:14,m3PerCarton:.067});p.listeners.changed();await tick();await tick();
+  doc.getElementById('columns').click();const box=doc.querySelector('[data-column="ratio"]');box.checked=true;box.dispatchEvent(new p.w.Event('change',{bubbles:true}));
+  assert.equal(readOnly?doc.querySelector('[data-field="ratio"]').textContent:doc.querySelector('[data-edit="ratio"]').value,'20.9%',readOnly?'read-only':'editable');
+ }
 });
 test('percentage overrides edit in displayed percentage points; blank clears a value override',async t=>{
  const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{literDiff:-.03,ratio:25,literChina:1.23,measurementOverrides:{literDiff:-.03,ratio:25,literChina:1.23}});p.listeners.changed();await tick();await tick();
