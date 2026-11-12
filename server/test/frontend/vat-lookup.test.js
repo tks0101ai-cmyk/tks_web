@@ -137,6 +137,14 @@ test('Sheets loi nhung con ban da luu: bao ngay tren ket qua', async t => {
   assert.ok(doc.querySelector('#vlResults table'));
 });
 
+test('file trung gian loi, da doc file goc: bao tab nao doc tu file goc', async t => {
+  const data = searchResponse({ meta: { ...META, fallbackTabs: ['Gộp VAT', 'DK về 2'] } });
+  const { window, doc } = await setup(t, { responses: { 'POST /search': { status: 200, data } } });
+  await submit(window, doc, 'TALEWS');
+  assert.match(doc.querySelector('#vlResults .vl-feedback').textContent, /File trung gian đang lỗi, Gộp VAT, DK về 2 đọc từ file gốc VAT TKS/);
+  assert.ok(doc.querySelector('#vlResults table'));
+});
+
 test('thanh tab Ke toan: Quan ly thay du 4 muc; thieu quyen ORDER VAT thi an muc do', async t => {
   const { doc } = await setup(t, { vaiTro: 'Quản lý' });
   assert.deepEqual([...doc.querySelectorAll('#vlTabs a')].map(a => a.textContent.trim()), ['Xử lý hóa đơn', 'Tạo QR', 'Tra cứu VAT', 'ORDER VAT']);

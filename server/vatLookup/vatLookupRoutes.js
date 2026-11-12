@@ -35,6 +35,7 @@ function createVatLookupRouter({ source = createLookupSource() } = {}) {
   const meta = snapshot => ({
     loadedAt: snapshot.loadedAt ? new Date(snapshot.loadedAt).toISOString() : null,
     stale: !!snapshot.stale,
+    fallbackTabs: snapshot.fallbackTabs || [],
     products: snapshot.products.length,
     source: snapshot.source
   });

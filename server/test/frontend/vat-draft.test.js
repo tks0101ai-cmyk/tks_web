@@ -87,6 +87,15 @@ async function pasteAndRun(doc, text = 'HD999 HD028345 abc DH044391') {
   await tick(); await tick(); await tick();
 }
 
+test('tai trang: file trung gian loi -> dong trang thai Sheets bao tab doc tu file goc (mau canh bao)', async t => {
+  const base = api();
+  const responses = { ...base, 'GET /meta': { ...base['GET /meta'], masterData: { ...base['GET /meta'].masterData, fallbackTabs: ['Gộp VAT'] } } };
+  const { doc } = await setup(t, { responses });
+  const status = doc.getElementById('vdSheetsStatus');
+  assert.match(status.textContent, /Gộp VAT đọc từ file gốc VAT TKS vì file trung gian đang lỗi/);
+  assert.equal(status.dataset.tone, 'warning');
+});
+
 test('tai trang: trang thai Sheets/KiotViet; chi con o dan ma + Co so + Xu ly, khong con bang tick chon / bo loc', async t => {
   const { doc, calls } = await setup(t);
   assert.match(doc.getElementById('vdSheetsStatus').textContent, /Gộp VAT 8,432 dòng · Khớp mã 2,998 dòng/);

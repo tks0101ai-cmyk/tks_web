@@ -5,7 +5,7 @@
 // nhung cache RIENG vi Nhap VAT parse theo chu cai cot, khong co cot TÊN HÀNG va bo dong
 // ton khong hop le. Cache 10 phut; Sheets loi tam thoi thi tra ban cu (stale) toi da 6 gio.
 
-const { fetchSheetRecords } = require('../vatDraft/sheetsSource');
+const { fetchSheetRecordsWithFallback, fallbackSourceFor } = require('../vatDraft/sheetsSource');
 const { createTtlSnapshotCache } = require('../lib/ttlSnapshotCache');
 const vatDraftConfig = require('../vatDraft/vatDraftConfig');
 const { SHEET_TARGETS, rowsToObjects, buildModel } = require('./lookupModel');
@@ -17,7 +17,13 @@ const DK_VE_SHEET = Object.freeze({ sheetId: 740003979, range: 'A:E' });
 function defaultLookupConfig() {
   return {
     spreadsheetId: vatDraftConfig.spreadsheetId,
-    sheets: { gop: vatDraftConfig.gopVatSheet, khop: vatDraftConfig.khopMaSheet, dkve: DK_VE_SHEET }
+    sheets: { gop: vatDraftConfig.gopVatSheet, khop: vatDraftConfig.khopMaSheet, dkve: DK_VE_SHEET },
+    // Tab trung gian hong (#REF! ...) thi doc tab tuong ung cua file goc VAT TKS.
+    fallbackSheets: {
+      gop: fallbackSourceFor(vatDraftConfig, 'gopVatSheet'),
+      khop: fallbackSourceFor(vatDraftConfig, 'khopMaSheet'),
+      dkve: fallbackSourceFor(vatDraftConfig, 'dkVeSheet')
+    }
   };
 }
 
@@ -50,16 +56,23 @@ function parseLookupRecords(recordsByKey) {
   return buildModel(rowsBySheet);
 }
 
-function createLookupSource({ readValues, config = defaultLookupConfig(), now } = {}) {
+function createLookupSource({ readValues, config = defaultLookupConfig(), now, logger } = {}) {
   const cache = createTtlSnapshotCache({
     freshTtlMs: 10 * 60 * 1000,
     staleTtlMs: 6 * 60 * 60 * 1000,
     ...(now ? { now } : {}),
     fetch: async () => {
-      const records = await Promise.all(SHEET_TARGETS.map(target => fetchSheetRecords({
-        source: { spreadsheetId: config.spreadsheetId, ...config.sheets[target.key] }, sheetName: target.label, readValues
+      const results = await Promise.all(SHEET_TARGETS.map(target => fetchSheetRecordsWithFallback({
+        source: { spreadsheetId: config.spreadsheetId, ...config.sheets[target.key] },
+        fallbackSource: (config.fallbackSheets && config.fallbackSheets[target.key]) || null,
+        sheetName: target.label,
+        refErrorCode: target.key === 'dkve' ? 'DK_VE_REF_ERROR' : 'SHEET_REF_ERROR',
+        readValues,
+        ...(logger !== undefined ? { logger } : {})
       })));
-      return parseLookupRecords(Object.fromEntries(SHEET_TARGETS.map((target, i) => [target.key, records[i]])));
+      const model = parseLookupRecords(Object.fromEntries(SHEET_TARGETS.map((target, i) => [target.key, results[i].records])));
+      model.fallbackTabs = SHEET_TARGETS.filter((target, i) => results[i].usedFallback).map(target => target.label);
+      return model;
     }
   });
   return {

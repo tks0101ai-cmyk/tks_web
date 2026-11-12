@@ -208,6 +208,54 @@ async function fetchSheetRecords({ source, sheetName, readValues = readSheetValu
   return values.map(row => Array.from({ length: width }, (_, i) => (row[i] === undefined || row[i] === null ? '' : String(row[i]))));
 }
 
+/**
+ * Tab doc duoc nhung khong dung duoc: IMPORTRANGE cua file trung gian loi chi con 1 o
+ * ('#REF!', '#N/A', 'Loading...') hoac rong; hoac it cot hon so cot can doc (minColumns).
+ */
+function isBrokenSheetRecords(records, minColumns = 0) {
+  const filled = records.flat().filter(value => String(value || '').trim() !== '').length;
+  if (filled <= 1) return true;
+  const width = records.reduce((max, row) => Math.max(max, row.length), 0);
+  return width < minColumns;
+}
+
+function describeBrokenRecords(records) {
+  const first = records.flat().map(value => String(value || '').trim()).find(Boolean);
+  return first ? `chỉ có '${first}'` : 'trống';
+}
+
+/**
+ * Doc tab cua file trung gian; loi API hoac tab hong (isBrokenSheetRecords) thi doc tab
+ * tuong ung cua file goc (fallbackSource). Tra { records, usedFallback, reason }.
+ * Ca hai deu hong: nem loi cua file goc kem ly do file trung gian (503 code cua file goc,
+ * hoac SHEET_REF_ERROR khi file goc doc duoc nhung cung hong).
+ */
+async function fetchSheetRecordsWithFallback({ source, fallbackSource, sheetName, minColumns = 0, refErrorCode = 'SHEET_REF_ERROR', readValues = readSheetValuesById, logger = console }) {
+  let reason;
+  let primaryRecords = null;
+  try {
+    primaryRecords = await fetchSheetRecords({ source, sheetName, readValues });
+    if (!isBrokenSheetRecords(primaryRecords, minColumns)) return { records: primaryRecords, usedFallback: false };
+    reason = `tab ${describeBrokenRecords(primaryRecords)}`;
+  } catch (error) {
+    if (!fallbackSource) throw error;
+    reason = error.message;
+  }
+  if (!fallbackSource) return { records: primaryRecords, usedFallback: false };
+
+  if (logger) logger.warn(`[vat-sheets] '${sheetName}' file trung gian lỗi (${reason}) -> đọc file gốc VAT TKS (sheetId ${fallbackSource.sheetId}).`);
+  let fallbackRecords;
+  try {
+    fallbackRecords = await fetchSheetRecords({ source: fallbackSource, sheetName: `${sheetName} (file gốc VAT TKS)`, readValues });
+  } catch (error) {
+    throw sheetError(`Sheet '${sheetName}' ở file trung gian lỗi (${reason}); đọc file gốc VAT TKS dự phòng cũng lỗi: ${error.message}`, error.code || 'SHEET_NETWORK');
+  }
+  if (isBrokenSheetRecords(fallbackRecords, minColumns)) {
+    throw sheetError(`Sheet '${sheetName}' ở file trung gian lỗi (${reason}); file gốc VAT TKS dự phòng cũng lỗi (tab ${describeBrokenRecords(fallbackRecords)}). Báo người quản lý sheet kiểm tra.`, refErrorCode);
+  }
+  return { records: fallbackRecords, usedFallback: true, reason };
+}
+
 /** Tai CSV 1 sheet cong khai (chi con script import ORDER VAT dung); sheet het chia se cong khai thi Google tra HTML dang nhap -> bao loi ro. */
 async function fetchSheetCsv({ gid, sheetName, sheetId, fetchImpl = globalThis.fetch }) {
   const url = EXPORT_URL.replace('{sheetId}', sheetId).replace('{gid}', String(gid));
@@ -243,22 +291,44 @@ function parseMasterData(gopVatRecords, khopMaRecords, config = vatDraftConfig) 
   };
 }
 
+/** Nguon file goc du phong cua 1 tab (config.fallback[key]) hoac null khi khong cau hinh. */
+function fallbackSourceFor(config, key) {
+  const fallback = config.fallback;
+  if (!fallback || !fallback[key]) return null;
+  return { spreadsheetId: fallback.spreadsheetId, ...(fallback.timeoutMs ? { timeoutMs: fallback.timeoutMs } : {}), ...fallback[key] };
+}
+
+/** So cot toi thieu de doc du cac cot cau hinh theo chu cai. */
+function minColumnsFor(letters) {
+  return Math.max(0, ...Object.values(letters).map(letter => columnLetterToIndex(letter) + 1));
+}
+
 /**
  * Nguon master data co cache: tuoi 10 phut, nut "Cập nhật" ep tai lai; Sheets loi tam
- * thoi thi tra ban cu (stale, toi da 6 gio) thay vi lam hong ca trang.
+ * thoi thi tra ban cu (stale, toi da 6 gio) thay vi lam hong ca trang. Tab trung gian hong
+ * thi doc file goc (config.fallback), ten tab da dung du phong ghi trong fallbackTabs.
  */
-function createMasterDataSource({ readValues, config = vatDraftConfig, now } = {}) {
+function createMasterDataSource({ readValues, config = vatDraftConfig, now, logger } = {}) {
   const cache = createTtlSnapshotCache({
     freshTtlMs: 10 * 60 * 1000,
     staleTtlMs: 6 * 60 * 60 * 1000,
     ...(now ? { now } : {}),
     fetch: async () => {
-      const [gopVatRecords, khopMaRecords] = await Promise.all([
-        fetchSheetRecords({ source: { spreadsheetId: config.spreadsheetId, ...config.gopVatSheet }, sheetName: 'Gộp VAT', readValues }),
-        fetchSheetRecords({ source: { spreadsheetId: config.spreadsheetId, ...config.khopMaSheet }, sheetName: 'Khớp mã', readValues })
+      const read = (key, sheetName, letters) => fetchSheetRecordsWithFallback({
+        source: { spreadsheetId: config.spreadsheetId, ...config[key] },
+        fallbackSource: fallbackSourceFor(config, key),
+        sheetName,
+        minColumns: minColumnsFor(letters),
+        readValues,
+        ...(logger !== undefined ? { logger } : {})
+      });
+      const [gopVat, khopMa] = await Promise.all([
+        read('gopVatSheet', 'Gộp VAT', config.gopVatColumns),
+        read('khopMaSheet', 'Khớp mã', config.khopMaColumns)
       ]);
-      const data = parseMasterData(gopVatRecords, khopMaRecords, config);
+      const data = parseMasterData(gopVat.records, khopMa.records, config);
       if (data.errors.length) throw sheetError(data.errors.join(' '), 'SHEET_COLUMNS');
+      data.fallbackTabs = [gopVat.usedFallback && 'Gộp VAT', khopMa.usedFallback && 'Khớp mã'].filter(Boolean);
       return data;
     }
   });
@@ -278,6 +348,9 @@ module.exports = {
   parseKhopMa,
   parseMasterData,
   fetchSheetRecords,
+  isBrokenSheetRecords,
+  fetchSheetRecordsWithFallback,
+  fallbackSourceFor,
   fetchSheetCsv,
   createMasterDataSource
 };

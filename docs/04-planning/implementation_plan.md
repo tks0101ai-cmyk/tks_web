@@ -242,9 +242,11 @@ Cập nhật 23/10/2026 (nhánh `feat/vat-sheets-service-account`): 3 module VAT
 
 Cập nhật 10/11/2026: cả 3 module VAT chuyển sang đọc file trung gian "cúc cu test" (`1dNabQ…`, tab Gộp VAT `0`, Khớp mã `1192158065`, DK VỀ `740003979`) vẫn bằng service account, vì đọc thẳng VAT TKS bị Sheets API treo (file ~4 triệu ô, công thức tra cả cột theo từng dòng). Chỉ đổi cấu hình `vatDraftConfig.js` và `DK_VE_SHEET`; bố cục cột và bộ parse giữ nguyên.
 
+Cập nhật 12/11/2026: thêm nguồn dự phòng là file gốc VAT TKS cho cả 3 module VAT — `vatDraftConfig.fallback` (Gộp VAT `950697804`, Khớp mã `631827560`, MUA VAT SIDA `467403108`, timeout 45 s; `readSheetValuesById` nhận `timeoutMs`), `sheetsSource.fetchSheetRecordsWithFallback` đọc file gốc khi tab trung gian lỗi API / chỉ còn 1 ô (`#REF!`, `Loading...`) / thiếu cột; snapshot ghi `fallbackTabs`, trang Nháp VAT và Tra cứu VAT hiện cảnh báo.
+
 Nhánh `feat/vat-lookup`, không migration. Port app Apps Script "Tra cứu VAT" (logic v12) sang `server/vatLookup/`: `lookupModel.js` (logic thuần chép từ Code.gs + Index.html: dò dòng tiêu đề, ghép Khớp mã + Gộp VAT, DK về 2 trạng thái 1–3, tìm kiếm nhiều từ khóa), `lookupSource.js` (3 CSV công khai Gộp VAT gid 0 / Khớp mã / DK về 2 gid 1150116423 qua `vatDraft/sheetsSource.fetchSheetCsv`, đọc theo tên cột, model dựng sẵn trong `createTtlSnapshotCache` 10 phút / stale 6 giờ), `vatLookupRoutes.js` (`GET /meta`, `POST /search`, `POST /refresh`). Tìm kiếm chạy trên server (~10 ms trên 3.142 sản phẩm + 8.052 dòng DK về 2), client chỉ vẽ 2 bảng (`public/vat-lookup/`, `table-controls.js`). Không dùng chung bản parse của Nháp VAT (đọc theo chữ cái cột, thiếu Tên hàng, bỏ dòng tồn không phải số). Quyền `accounting.vatLookup`. Sửa 27/10/2026: trạng thái "Còn VAT" không còn theo mã Kiot mà theo mã VAT từng dòng — `buildModel` cộng sẵn `tonCoTheNhapByMaVat` (SUMIF Tồn có thể nháp trên toàn Gộp VAT), `buildVatRows` tra Map; bỏ điều kiện có Khớp mã.
 
-Cập nhật gần nhất: 23/10/2026.
+Cập nhật gần nhất: 12/11/2026.
 
 # Cập nhật 23/10/2026 — level giá nội bộ
 

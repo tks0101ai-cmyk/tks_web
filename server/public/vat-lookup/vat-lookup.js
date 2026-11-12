@@ -47,6 +47,8 @@
     const notes = [];
     // Trang không còn dòng nguồn dữ liệu: chỉ báo khi Sheets lỗi và kết quả lấy từ bản đã lưu.
     if (result.meta && result.meta.stale) notes.push('<b>Sheets đang lỗi</b>, kết quả lấy từ dữ liệu đã lưu trước đó.');
+    const fallbackTabs = (result.meta && result.meta.fallbackTabs) || [];
+    if (fallbackTabs.length) notes.push(`<b>File trung gian đang lỗi</b>, ${fallbackTabs.map(escapeHtml).join(', ')} đọc từ file gốc VAT TKS.`);
     if (result.notFoundQueries.length) notes.push(`<b>Không tìm thấy ${result.notFoundQueries.length}:</b> ${result.notFoundQueries.map(escapeHtml).join(', ')}`);
     if (result.ignoredCount) notes.push(`<b>Chưa xử lý ${result.ignoredCount} dòng cuối</b> vì mỗi lượt tìm tối đa 100 dòng.`);
     return notes.length ? `<div class="vl-feedback" role="status">${notes.join('<br>')}</div>` : '';

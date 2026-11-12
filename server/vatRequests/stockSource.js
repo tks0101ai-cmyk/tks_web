@@ -17,7 +17,7 @@
 // co trong sheet ma chua co trong product_report (ma chi co o KiotViet SG, ngung kinh doanh,
 // hoac ma VAT / ma dai dien khong phai ma hang KiotViet).
 
-const { fetchSheetRecords, columnLetterToIndex } = require('../vatDraft/sheetsSource');
+const { fetchSheetRecordsWithFallback, fallbackSourceFor, columnLetterToIndex } = require('../vatDraft/sheetsSource');
 const { normalizeCode, normalizeCodeForMatch, toFloatOrNone } = require('../vatDraft/normalization');
 const { createTtlSnapshotCache } = require('../lib/ttlSnapshotCache');
 const vatDraftConfig = require('../vatDraft/vatDraftConfig');
@@ -35,6 +35,9 @@ function defaultStockConfig() {
       spreadsheetId: appConfig.VAT_REQUEST_MAPPING_SHEET_ID || vatDraftConfig.spreadsheetId,
       sheetId: appConfig.VAT_REQUEST_MAPPING_GID || vatDraftConfig.khopMaSheet.sheetId
     },
+    // Tab trung gian hong (#REF! ...) thi doc tab tuong ung cua file goc VAT TKS (cung bo cuc cot).
+    stockFallbackSheet: fallbackSourceFor(vatDraftConfig, 'gopVatSheet'),
+    mappingFallbackSheet: fallbackSourceFor(vatDraftConfig, 'khopMaSheet'),
     mappingSkipRows: vatDraftConfig.khopMaSkipRows,
     mappingColumns: {
       productCode: vatDraftConfig.khopMaColumns['Mã SP'],
@@ -153,15 +156,18 @@ function lookupStock(snapshot, productCode) {
   return { total, byCompany };
 }
 
-function createStockSource({ readValues, config = defaultStockConfig(), now } = {}) {
+function createStockSource({ readValues, config = defaultStockConfig(), now, logger } = {}) {
   const cache = createTtlSnapshotCache({
     freshTtlMs: 10 * 60 * 1000,
     staleTtlMs: 6 * 60 * 60 * 1000,
     ...(now ? { now } : {}),
     fetch: async () => {
+      const read = (source, fallbackSource, sheetName) => fetchSheetRecordsWithFallback({
+        source, fallbackSource: fallbackSource || null, sheetName, readValues, ...(logger !== undefined ? { logger } : {})
+      }).then(result => result.records);
       const [stockRecords, mappingRecords] = await Promise.all([
-        fetchSheetRecords({ source: config.stockSheet, sheetName: 'Tồn VAT', readValues }),
-        fetchSheetRecords({ source: config.mappingSheet, sheetName: 'Khớp mã', readValues })
+        read(config.stockSheet, config.stockFallbackSheet, 'Tồn VAT'),
+        read(config.mappingSheet, config.mappingFallbackSheet, 'Khớp mã')
       ]);
       const { representativeCatalog, vatCatalog, ...stock } = parseStockRecords(stockRecords, config);
       const mappingCatalog = new Map();
