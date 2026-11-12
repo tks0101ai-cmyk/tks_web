@@ -25,7 +25,7 @@ before(async () => {
   service = createPurchaseOrdersService({ pool:{query,connect:async()=>({query,release(){}})},events });
 });
 beforeEach(async () => {
-  await db.exec(`TRUNCATE purchase_employees,purchase_requests,purchase_undo_expected,purchase_operation_rows,purchase_operations,purchase_orders,product_containers,purchase_key_history,purchase_history,purchase_departures,purchase_import_previews,product_container_lines,product_container_expected,product_container_expected_state,shipping_measures RESTART IDENTITY CASCADE;
+  await db.exec(`TRUNCATE purchase_employees,purchase_requests,purchase_undo_expected,purchase_operation_rows,purchase_operations,purchase_orders,product_containers,purchase_key_history,purchase_key_pool,purchase_key_reservations,purchase_history,purchase_departures,purchase_import_previews,product_container_lines,product_container_expected,product_container_expected_state,shipping_measures RESTART IDENTITY CASCADE;
     ALTER SEQUENCE purchase_order_key_seq RESTART WITH 1;
     UPDATE purchase_settings SET source_mode='web',projection_owns_all=true,integration_enabled=true;
     INSERT INTO purchase_employees(name) VALUES('Dung'),('Other'),('Edited after arrival');`);
@@ -37,6 +37,28 @@ beforeEach(async () => {
   // mot phan (mac dinh) duoc kiem rieng o purchaseOrdersProjectionScope.test.js.
 });
 after(async () => db?.close());
+
+test('recyclable row key migration preserves family identity and seeds only inactive root keys',async()=>{
+ const root=(await db.query("INSERT INTO purchase_orders(row_key,root_key,product_code,product_name,qty_per_carton,carton_count) VALUES('D70000','D70000','ROOT','Hàng gốc',1,1) RETURNING id")).rows[0].id;
+ const child=(await db.query("INSERT INTO purchase_orders(row_key,root_key,split_from_key,root_order_id,product_code,product_name,qty_per_carton,carton_count) VALUES('D70000.01','D70000','D70000',$1,'CHILD','Hàng con',1,1) RETURNING id",[root])).rows[0].id;
+ assert.deepEqual((await db.query('SELECT DISTINCT root_order_id FROM purchase_orders WHERE id=ANY($1::bigint[])',[ [root,child] ])).rows.map(r=>Number(r.root_order_id)),[Number(root)]);
+ const retired=(await db.query("INSERT INTO purchase_orders(row_key,root_key,deleted_at,product_code,product_name,qty_per_carton,carton_count) VALUES('D70001','D70001',now(),'OLD','Hàng cũ',1,1) RETURNING id")).rows[0].id;
+ await db.query("INSERT INTO purchase_orders(row_key,root_key,product_code,product_name,qty_per_carton,carton_count) VALUES('D70001','D70001','NEW','Hàng mới',1,1)");
+ await db.query("INSERT INTO purchase_key_history(row_key,order_id,root_order_id,root_key) VALUES('D70001',$1,$1,'D70001'),('D70001',$2,$2,'D70001')",[retired,root]);
+ assert.equal((await db.query("SELECT count(*)::int n FROM purchase_orders WHERE row_key='D70001'")).rows[0].n,2);
+ assert.equal((await db.query("SELECT count(*)::int n FROM purchase_key_history WHERE row_key='D70001'")).rows[0].n,2);
+ await db.query("INSERT INTO purchase_orders(row_key,root_key,deleted_at,product_code,product_name,qty_per_carton,carton_count) VALUES('D70002','D70002',now(),'DEL','Hàng xóa',1,1)");
+ await db.query("INSERT INTO purchase_orders(row_key,root_key,product_code,product_name,qty_per_carton,carton_count) VALUES('D70003','D70003','LIVE','Hàng sống',1,1)");
+ const seed=`WITH inactive_families AS (
+   SELECT root_order_id,min(root_key) AS root_key FROM purchase_orders GROUP BY root_order_id
+   HAVING bool_or(deleted_at IS NOT NULL) AND NOT bool_or(deleted_at IS NULL)
+   ) INSERT INTO purchase_key_pool(row_key)
+   SELECT family.root_key FROM inactive_families AS family
+   WHERE NOT EXISTS(SELECT 1 FROM purchase_orders AS active WHERE active.row_key=family.root_key AND active.deleted_at IS NULL)
+   ON CONFLICT(row_key) DO NOTHING`;
+ await db.query(seed);await db.query(seed);
+ assert.deepEqual((await db.query('SELECT row_key FROM purchase_key_pool ORDER BY row_key')).rows.map(r=>r.row_key),['D70002']);
+});
 
 test('presence leases are shared between connections, expire, and expose only identity and history version',async()=>{
   const {createPresenceStore}=require('./purchaseOrdersRealtime');const store=createPresenceStore(db);
@@ -92,7 +114,7 @@ test('delta changes request a reset for malformed, ahead and over-cap cursors',a
  const operation='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
  await db.query('INSERT INTO purchase_operations(id,actor_id) VALUES($1,$2)',[operation,manager.id]);
  await db.query("INSERT INTO purchase_history(action,actor_id,actor_name,summary) VALUES('edit',$1,$2,$3)",[manager.id,manager.hoTen,JSON.stringify({operationId:operation})]);
- await db.query('INSERT INTO purchase_operation_rows(operation_id,row_id,before_row,after_row) SELECT $1,100000+g,NULL,NULL FROM generate_series(1,501) g',[operation]);
+ await db.query('INSERT INTO purchase_operation_rows(operation_id,row_id,root_order_id,before_row,after_row) SELECT $1,100000+g,100000+g,NULL,NULL FROM generate_series(1,501) g',[operation]);
  const overCap=await service.changes(manager,'0:0');
  assert.equal(overCap.reset,true);
  assert.deepEqual(overCap.rows,[]);

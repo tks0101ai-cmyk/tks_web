@@ -152,7 +152,7 @@ async function importSourceRows({ pool = getPool(), file, year = 2026, replace =
            supplier,buyer,listed_at,qty_per_carton,carton_count,unit_price_cny,freight_prepaid,fx_rate,
            freight_postpaid,kg_per_carton,m3_per_carton,source_sheet,source_row)
          VALUES($1,split_part($1,'.',1),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
-         ON CONFLICT(row_key) DO NOTHING`,
+         ON CONFLICT(row_key) WHERE deleted_at IS NULL DO NOTHING`,
         [r.rowKey, r.cont ? ids.get(r.cont) : null, r.productCode, r.productName, r.productNameCn,
           r.supplier, r.buyer, r.listedAt, r.qtyPerCarton, r.cartonCount, r.unitPriceCny,
           r.freightPrepaid, r.fxRate, r.freightPostpaid, r.kgPerCarton, r.m3PerCarton,

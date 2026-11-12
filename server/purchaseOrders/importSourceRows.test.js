@@ -135,6 +135,16 @@ test('the key sequence is pushed past the imported keys so the next key is free'
   } finally { await db.close(); }
 });
 
+test('a repeated active source key is ignored by the partial active-row index', async () => {
+  const db = await freshDb();
+  try {
+    const file = fixture([row(), row({ productName: 'Băng dính trùng' })]);
+    const out = await importSourceRows({ pool: wrap(db), file, logger: { log() {} } });
+    assert.equal(out.inserted, 1);
+    assert.equal(await count(db, "SELECT count(*) FROM purchase_orders WHERE row_key='D00001' AND deleted_at IS NULL"), 1);
+  } finally { await db.close(); }
+});
+
 test('the sequence is never pulled back below a key already issued', async () => {
   const db = await freshDb();
   try {

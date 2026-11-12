@@ -114,7 +114,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
   async function split(client,row,quantity,destination) {
     if(!Number.isSafeInteger(quantity)||quantity<=0||quantity>=Number(row.carton_count))throw fail(400,'SPLIT_QUANTITY_INVALID','Số thùng tách phải nhỏ hơn số hiện có.');
     const before=row.row_key,root=row.root_key;
-    await client.query('INSERT INTO purchase_key_history(row_key,order_id,root_key) VALUES($1,$2,$3) ON CONFLICT(row_key) DO NOTHING',[before,row.id,root]);
+    await client.query('INSERT INTO purchase_key_history(row_key,order_id,root_key) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[before,row.id,root]);
     const remaining=await patchRow(client,row,{row_key:before+'.01',split_from_key:before,carton_count:Number(row.carton_count)-quantity,freight_prepaid:null,freight_postpaid:null,freight_amount:null});
     const child={...row,row_key:before+'.02',root_key:root,split_from_key:before,container_id:destination,carton_count:quantity,freight_prepaid:null,freight_postpaid:null,freight_amount:null};
     const created=(await insertMany(client,[child]))[0];return {remaining,created,previousKey:before,previousCosts:{freightPrepaid:row.freight_prepaid,freightPostpaid:row.freight_postpaid,freightAmount:row.freight_amount}};
