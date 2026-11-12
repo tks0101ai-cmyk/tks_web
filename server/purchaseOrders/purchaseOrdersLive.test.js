@@ -232,13 +232,13 @@ test('status board toggles waiting and saved-container filters together without 
  assert.equal(p.calls.filter(c=>c.options.method).length,0);
 });
 
-test('pin is above private filters in the orders DOM, remains singular on refresh and unpins locally',async t=>{
+test('pin is under private filters in the orders DOM, remains singular on refresh and unpins locally',async t=>{
  const p=await page(t),doc=p.w.document,watched=doc.getElementById('watchedContainer'),filters=doc.querySelector('.order-filters');
- assert.equal(watched.parentElement,doc.getElementById('orders'));assert.equal(watched.nextElementSibling,filters);assert.equal(watched.hidden,true);
+ assert.equal(watched.parentElement,doc.getElementById('orders'));assert.equal(filters.nextElementSibling,watched);assert.equal(watched.hidden,true);
  p.change('#search','AC305');doc.querySelector('#containerTable [data-container-filter="2"]').click();
- assert.equal(watched.hidden,false);assert.equal(watched.nextElementSibling,filters);assert.equal(doc.getElementById('search').value,'AC305');
+ assert.equal(watched.hidden,false);assert.equal(filters.nextElementSibling,watched);assert.equal(doc.getElementById('search').value,'AC305');
  assert.equal(watched.querySelectorAll('tbody tr').length,1);assert.equal(watched.querySelectorAll('[id]').length,0);
- assert.ok(watched.querySelector('[data-container-field="arrivalDate"]'),'pinned controls remain editable');
+ assert.equal(watched.querySelectorAll('thead th').length,5,'the pinned copy stays compact');
  p.listeners.changed();await tick();await tick();assert.equal(doc.querySelectorAll('#watchedContainer').length,1);assert.equal(watched.hidden,false);
  watched.querySelector('.watched-caption button').click();assert.equal(watched.hidden,true);assert.equal(doc.getElementById('search').value,'AC305');
  assert.equal(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).taskTarget,null);assert.equal(p.calls.filter(c=>c.options.method).length,0);
