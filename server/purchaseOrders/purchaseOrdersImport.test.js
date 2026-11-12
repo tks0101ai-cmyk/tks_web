@@ -1,7 +1,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { prepareRows, prepareWorkbook, recheckPreview } = require('./purchaseOrdersImport');
+const { prepareRows, prepareWorkbook, prepareSnapshotWorkbook, recheckPreview } = require('./purchaseOrdersImport');
 const excel = require('../public/shared/purchase-workbook');
+const XLSX = require('xlsx');
 const columns = require('../public/shared/purchase-columns');
 const existing = () => [{ id: 1, rowKey: 'D00001.01', version: 2, productCode: 'A', productName: 'Tape', cartonCount: 10, qtyPerCarton: 20, supplier: 'NCC', contId: 7 }];
 const fresh = () => ({ productCode: 'A', productName: 'Tape', cartonCount: 5, qtyPerCarton: 20 });
@@ -68,6 +69,48 @@ test('actual workbook roundtrip uses the same columns as frontend', () => {
   const result = prepareWorkbook(file, existing());
   assert.equal(result.valid, true);
   assert(result.operations[0].changes.some(c => c.key === 'cartonCount' && c.after === 7));
+});
+
+test('full snapshot workbook carries revision, complete writable headers and per-column guidance', () => {
+  const file=excel.exportImportSnapshot({rows:[{...fresh(),rowKey:'D00001.01'}],columns,revision:'12:34'});
+  const workbook=excel.read(file),parsed=excel.parseImportSnapshot(file,columns);
+  const guide=XLSX.utils.sheet_to_json(workbook.Sheets['Hướng dẫn'],{header:1,defval:''});
+  const writable=columns.filter(c=>c.k==='rowKey'||!c.d&&!c.m&&!c.ro&& !['container','status'].includes(c.k));
+  assert.ok(workbook.SheetNames.includes('Đặt hàng'));
+  assert.equal(workbook.Workbook.Sheets.find(s=>s.name==='__TOKOSI').Hidden,1);
+  assert.equal(parsed.revision,'12:34');
+  assert.deepEqual(parsed.fields,writable.map(c=>c.k));
+  assert.equal(parsed.rows[0].rowKey,'D00001.01');
+  assert.equal(parsed.rows[0].productNameCn,null);
+  assert.ok(writable.every(c=>guide.some(row=>row.includes(excel.caption(c)))), 'guide must explain every imported column');
+  assert.ok(guide.flat().some(cell=>/ví dụ/i.test(String(cell))), 'example stays on guide sheet');
+});
+
+test('snapshot parser rejects ordinary or incomplete workbooks and accepts an intentionally empty snapshot', () => {
+  const rows=[{...fresh(),rowKey:'D00001.01'}],ordinary=excel.bytes(excel.exportWorkbook(rows,columns));
+  assert.throws(()=>excel.parseImportSnapshot(ordinary,columns),/Tải snapshot/);
+  const file=excel.exportImportSnapshot({rows,columns,revision:'12:34'}),incomplete=excel.read(file);
+  incomplete.Sheets['Đặt hàng'].B1.v='Unknown header';incomplete.Sheets['Đặt hàng'].B1.w='Unknown header';
+  assert.throws(()=>excel.parseImportSnapshot(excel.bytes(incomplete),columns),/Cột không xác định|Mã SP/);
+  const empty=excel.parseImportSnapshot(excel.exportImportSnapshot({rows:[],columns,revision:'12:34'}),columns);
+  assert.equal(empty.rows.length,0);
+});
+
+test('full snapshot clears blank cells and plans omitted current rows for deletion', () => {
+  const current=[existing()[0],{id:2,rowKey:'D00002',version:1,productCode:'B',productName:'Other',cartonCount:1,qtyPerCarton:1}],
+    plan=prepareRows([{rowKey:'D00001.01',productCode:'A',productName:'Tape',cartonCount:10,qtyPerCarton:20,supplier:''}],current,{snapshot:true});
+  assert.equal(plan.valid,true);
+  assert.equal(plan.counts.update,1);
+  assert.equal(plan.counts.delete,1);
+  assert.equal(plan.operations.find(op=>op.action==='delete').id,2);
+  assert.equal(plan.operations.find(op=>op.action==='update').changes.find(change=>change.key==='supplier').after,null);
+  assert.equal(plan.sourceRows[0].supplier,'');
+});
+
+test('stale snapshot is rejected before creating a plan', () => {
+  const current=existing(),file=excel.exportImportSnapshot({rows:current,columns,revision:'12:34'});
+  assert.throws(()=>prepareSnapshotWorkbook(file,current,{currentRevision:'12:35'}),error=>error.code==='IMPORT_SNAPSHOT_STALE');
+  assert.equal(prepareSnapshotWorkbook(file,current,{currentRevision:'12:34'}).snapshotRevision,'12:34');
 });
 
 // Duong ghi cua web (sua o, sua hang loat, import) deu di qua prepareRows, nen

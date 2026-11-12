@@ -41,6 +41,12 @@ test('order columns can be selected for pinning and persist in the user layout',
  assert.deepEqual(JSON.parse(doc.defaultView.sessionStorage.getItem('purchase:buyer:v1')).pinnedColumns,['productCode','productName','supplier']);
  assert.ok(doc.querySelector('#orderTable th[data-key="supplier"].purchase-pinned-column'));
 });
+test('Excel import requires a fresh snapshot download before file selection',async t=>{
+ const p=await page(t),doc=p.w.document;doc.getElementById('import').click();
+ assert.match(doc.getElementById('modalTitle').textContent,/Nhập Excel theo dữ liệu hiện tại/);
+ assert.ok(doc.getElementById('downloadSnapshot'));assert.equal(doc.getElementById('importUploadArea').hidden,true);
+ assert.equal(doc.querySelector('#modalBody #importFile').disabled,true);
+});
 test('pagination shows only pages one to three and arrows navigate the rest',async t=>{
  const extraRows=Array.from({length:150},(_,i)=>({id:String(i+2),rowKey:'D'+String(i+2).padStart(5,'0'),version:1,productCode:'P'+i,productName:'Item '+i,cartonCount:1,qtyPerCarton:1}));
  const p=await page(t,{extraRows}),doc=p.w.document,pages=()=>[...doc.querySelectorAll('#pageNumbers [data-page]')].map(button=>Number(button.dataset.page));

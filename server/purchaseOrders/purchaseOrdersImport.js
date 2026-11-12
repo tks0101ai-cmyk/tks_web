@@ -19,8 +19,8 @@ function version(row) { return row.version ?? row.v; }
 function comparable(value, col) {
   return blank(value) ? null : workbook.numericTypes.has(col.t) ? Number(value) : String(value);
 }
-function prepareRows(sourceRows, existingRows, { listedAt = today() } = {}) {
-  if (!Array.isArray(sourceRows) || !sourceRows.length || sourceRows.length > 10000) throw Error('Đợt nhập phải có 1–10.000 dòng.');
+function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = false, snapshotRevision } = {}) {
+  if (!Array.isArray(sourceRows) || (!sourceRows.length && !snapshot) || sourceRows.length > 10000) throw Error('Đợt nhập phải có 1–10.000 dòng.');
   if (!Array.isArray(existingRows)) throw Error('Thiếu dữ liệu hiện hành để đối chiếu.');
   const existing = new Map(existingRows.map(row => [row.rowKey, row]));
   const counts = new Map();
@@ -37,7 +37,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today() } = {}) {
     const values = {};
     for (const col of writable) {
       const value = source[col.k];
-      if (blank(value)) continue; // Blank imports preserve existing values.
+      if (blank(value)) { if (snapshot) values[col.k] = null; continue; }
       if (workbook.numericTypes.has(col.t)) {
         const number = calculations.parse(value);
         // VC truoc duoc phep am (calculations.SIGNED); cac cot so khac khong am.
@@ -52,6 +52,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today() } = {}) {
         const text = String(value).trim();
         if (text.length > 4000) result.errors.push(col.l + ': tối đa 4.000 ký tự.');
         else if (text) values[col.k] = text;
+        else if (snapshot) values[col.k] = null;
       }
     }
     const effective={...(current||{}),...values};for(const key of calculations.issues(effective).filter(k=>!['qtyPerCarton','cartonCount'].includes(k))){if(!result.errors.some(e=>e.startsWith((byKey.get(key)?.l||key)+':')))result.errors.push((byKey.get(key)?.l||key)+': số liệu vượt giới hạn tính toán hoặc không hợp lệ.')}
@@ -70,19 +71,25 @@ function prepareRows(sourceRows, existingRows, { listedAt = today() } = {}) {
     }
     return result;
   });
+  if (snapshot) {
+    const included = new Set(rows.map(row => row.rowKey).filter(Boolean));
+    for (const current of existingRows) if (!included.has(current.rowKey)) rows.push({ sourceRow: null, rowKey: current.rowKey, action: 'delete', id: current.id, expectedVersion: version(current), errors: [], changes: [], values: { ...current } });
+  }
   const valid = rows.every(row => row.errors.length === 0);
   return {
     valid,
-    counts: { create: rows.filter(r => r.action === 'create' && !r.errors.length).length, update: rows.filter(r => r.action === 'update' && !r.errors.length).length, unchanged: rows.filter(r => r.action === 'unchanged').length, error: rows.filter(r => r.errors.length).length },
+    counts: { create: rows.filter(r => r.action === 'create' && !r.errors.length).length, update: rows.filter(r => r.action === 'update' && !r.errors.length).length, unchanged: rows.filter(r => r.action === 'unchanged').length, delete: rows.filter(r => r.action === 'delete').length, error: rows.filter(r => r.errors.length).length },
     rows,
     // Errors anywhere suppress every write operation, including valid rows.
     operations: valid ? rows.filter(row => row.action !== 'unchanged') : [],
     sourceRows: sourceRows.map(source => {
       const out = { rowKey: source.rowKey, __sourceRow: source.__sourceRow, __cellErrors: { ...(source.__cellErrors || {}) } };
-      writable.forEach(col => { if (!blank(source[col.k])) out[col.k] = source[col.k]; });
+      writable.forEach(col => { if (snapshot || !blank(source[col.k])) out[col.k] = source[col.k] ?? ''; });
       return out;
     }),
-    listedAt
+    listedAt,
+    snapshot,
+    snapshotRevision
   };
 }
 
@@ -92,12 +99,22 @@ function prepareWorkbook(data, existingRows, { sheetName, ...options } = {}) {
   return { ...prepareRows(parsed.rows, existingRows, options), sheetName: parsed.sheetName, ignoredColumns: parsed.ignored };
 }
 
+function prepareSnapshotWorkbook(data, existingRows, { currentRevision, listedAt = today() } = {}) {
+  if (!data || !data.byteLength || data.byteLength > 10 * 1024 * 1024) throw Error('File phải có dữ liệu và không quá 10 MB.');
+  const parsed = workbook.parseImportSnapshot(data, columns);
+  if (parsed.revision !== currentRevision) { const error = Error('Dữ liệu đã thay đổi sau khi tải file. Hãy tải snapshot mới rồi sửa lại.'); error.code = 'IMPORT_SNAPSHOT_STALE'; throw error; }
+  return { ...prepareRows(parsed.rows, existingRows, { listedAt, snapshot: true, snapshotRevision: parsed.revision }), sheetName: 'Đặt hàng', ignoredColumns: [], fields: parsed.fields };
+}
+
 function recheckPreview(preview, currentRows) {
   if (!preview?.valid) throw Error('Toàn bộ file phải hợp lệ trước khi xác nhận.');
   const current = new Map(currentRows.map(row => [row.rowKey, row]));
   const conflicts = preview.rows.filter(row => row.rowKey && (!current.has(row.rowKey) || current.get(row.rowKey).id !== row.id || version(current.get(row.rowKey)) !== row.expectedVersion));
   if (conflicts.length) return { valid: false, code: 'VERSION_CONFLICT', conflicts: conflicts.map(row => ({ rowKey: row.rowKey, sourceRow: row.sourceRow })), operations: [] };
-  return prepareRows(preview.sourceRows, currentRows, { listedAt: preview.listedAt });
+  const currentKeys = new Set(currentRows.map(row => row.rowKey));
+  const missing = preview.snapshot ? preview.rows.filter(row => row.action !== 'delete' && row.rowKey && !currentKeys.has(row.rowKey)) : [];
+  if (missing.length) return { valid: false, code: 'VERSION_CONFLICT', conflicts: missing.map(row => ({ rowKey: row.rowKey, sourceRow: row.sourceRow })), operations: [] };
+  return prepareRows(preview.sourceRows, currentRows, { listedAt: preview.listedAt, snapshot: preview.snapshot, snapshotRevision: preview.snapshotRevision });
 }
 
-module.exports = { prepareRows, prepareWorkbook, recheckPreview };
+module.exports = { prepareRows, prepareWorkbook, prepareSnapshotWorkbook, recheckPreview };

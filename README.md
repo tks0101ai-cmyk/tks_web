@@ -580,3 +580,9 @@ Cập nhật cuối: 12/11/2026.
 Tab của file trung gian "cúc cu test" lỗi IMPORTRANGE (`#REF!` khi file VAT TKS quá nặng, `Loading...`, thiếu cột) hoặc Sheets API lỗi thì Nháp VAT, Tra cứu VAT và Tồn VAT của ORDER VAT tự đọc tab tương ứng của file gốc VAT TKS (cấu hình `vatDraftConfig.fallback`); trang ghi rõ tab nào đang đọc từ file gốc. Service account đã có quyền xem file gốc. Không đổi schema/env/dependency.
 
 Cập nhật cuối: 12/11/2026.
+
+## Thu mua — import snapshot Excel (12/11/2026)
+
+Import luôn bắt đầu bằng tải workbook đầy đủ từ `GET /api/purchase-orders/import/snapshot`; workbook có sheet `Đặt hàng`, hướng dẫn từng cột và manifest revision ẩn. Sửa đúng file đã tải rồi upload `.xlsx` (tối đa 10 MB, 10.000 dòng). Ô trống xóa giá trị; dòng bị bỏ khỏi file được tính xóa mềm và hiện rõ trong preview. Hệ thống từ chối snapshot cũ ở preview hoặc xác nhận, và chỉ áp dụng toàn bộ create/update/delete sau xác nhận hợp lệ. Không cần migration.
+
+Cập nhật cuối: 12/11/2026.

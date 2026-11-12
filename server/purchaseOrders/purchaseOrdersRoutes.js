@@ -50,6 +50,7 @@ function createPurchaseOrdersRouter(dependencies={}) {
   router.post(root+'/transfer',requireFeature('purchase.edit'),handle(async(req,res)=>res.json(await service.transfer(req.user,req.body))));
   router.post(root+'/depart',requireFeature('purchase.depart'),handle(async(req,res)=>res.json(await service.depart(req.user,req.body))));
   router.post(root+'/arrive',requireFeature('purchase.arrive'),handle(async(req,res)=>res.json(await service.arrive(req.user,req.body))));
+  router.get(root+'/import/snapshot',requireFeature('purchase.import'),handle(async(req,res)=>{const snapshot=await service.importSnapshot(req.user);const data=workbook.exportImportSnapshot({...snapshot,columns});res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').set('Content-Disposition','attachment; filename="tokosi-purchase-snapshot.xlsx"').send(Buffer.from(data))}));
   router.post(root+'/import/preview',requireFeature('purchase.import'),(req,res,next)=>upload.single('file')(req,res,error=>{
     if(error)return res.status(400).json({code:'IMPORT_FILE_INVALID',error:'Chỉ chọn một file, tối đa 10 MB.'});next();
   }),handle(async(req,res)=>{

@@ -1279,4 +1279,6 @@ Cập nhật gần nhất: 07/11/2026.
 11/11/2026 — NET theo tab VK-DUNG: cộng Thuế, nhân VC sau CNY với 3,920 (chỉ riêng phí này), giá hàng vẫn dùng tỉ giá dòng; chi phí để trống được tính là 0. Hiển thị giá tệ 2 chữ số và Tổng tệ làm tròn đơn vị; nút Tổng tệ hiện số chính xác 3 chữ số trong cùng ô tới khi mất focus, không mở popup.
 11/11/2026 — Thu mua cho phép ghi đè theo dòng 9 trường thuộc nhóm Đối chiếu Cân đo. `measurement_overrides` (JSONB, migration 0122) chỉ lưu key đã sửa; bỏ key/nhập trống sẽ lấy lại số nguồn hoặc kết quả tính tự động. Không ghi thay đổi ngược vào bảng `shipping_measures` hay Google Sheet; ngày đo vẫn trống nếu nguồn không có ngày.
 
+12/11/2026 — Import Thu mua phải tải workbook snapshot đầy đủ trước khi chọn/tải file. Workbook có hướng dẫn từng cột và revision ẩn; ô trống xóa giá trị, dòng vắng mặt được xóa mềm. UI hiển thị tiến độ tải và preview số dòng thêm/sửa/không đổi/xóa/lỗi; chỉ ghi sau khi xác nhận, theo giao dịch nguyên tử. Nếu revision đổi sau khi tải, preview/xác nhận bị từ chối và người dùng cần tải snapshot mới.
+
 Cập nhật cuối: 12/11/2026.

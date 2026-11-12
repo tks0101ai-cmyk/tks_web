@@ -4,9 +4,11 @@ const express = require('express');
 const { createPurchaseOrdersRouter } = require('./purchaseOrdersRoutes');
 const { ROLES } = require('../auth/userRepository');
 const registry = require('../auth/featureRegistry');
+const workbook = require('../public/shared/purchase-workbook');
+const columns = require('../public/shared/purchase-columns');
 async function start(t,user) {
   const calls=[];
-  const record=name=>async(...args)=>{calls.push({name,args});return name==='revision'?{revision:'9:4'}:{ok:true}};
+  const record=name=>async(...args)=>{calls.push({name,args});return name==='revision'?{revision:'9:4'}:name==='importSnapshot'?{revision:'9:4',rows:[]}:{ok:true}};
   const service=Object.fromEntries(['revision','changes','employees','saveEmployees','createEmployee','updateEmployee','trash','operations','remove','restore','undo','applyPlan','list','history','create','update','createContainer','updateContainer','schedule','changeStatus','bulkEdit','transfer','depart','arrive','previewImport','reviseImport','commitImport'].map(name=>[name,record(name)]));
   const app=express();app.use(express.json());app.use((req,res,next)=>{req.user=user;next()});
   app.use(createPurchaseOrdersRouter({service,requireAuth:(req,res,next)=>req.user?next():res.status(401).json({error:'Chưa đăng nhập'})}));
@@ -25,8 +27,25 @@ test('unauthenticated and unauthorized users never reach service',async t=>{
 test('view permission does not implicitly grant edit, import, export, departure or arrival',async t=>{
   const {base,calls}=await start(t,{id:'buyer',vaiTro:ROLES.NHAN_VIEN_MUA_HANG,featurePermissions:{'purchase.view':true}});
   assert.equal((await fetch(base)).status,200);
-  for(const endpoint of ['', '/depart','/arrive','/import/preview','/import/confirm'])assert.equal((await fetch(base+endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,403);
+  for(const endpoint of ['/depart','/arrive','/import/preview','/import/confirm'])assert.equal((await fetch(base+endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,403);
+  assert.equal((await fetch(base+'/import/snapshot')).status,403);
   assert.equal((await fetch(base+'/export')).status,403);assert.deepEqual(calls.map(x=>x.name),['list']);
+});
+test('snapshot download requires import permission and returns a workbook with headers',async t=>{
+ const reader=await start(t,{id:'reader',vaiTro:ROLES.NHAN_VIEN_MUA_HANG,featurePermissions:{'purchase.view':true}});
+ assert.equal((await fetch(reader.base+'/import/snapshot')).status,403);assert.deepEqual(reader.calls.map(c=>c.name),[]);
+ const manager=await start(t,{id:'manager',vaiTro:ROLES.QUAN_LY}),response=await fetch(manager.base+'/import/snapshot');
+ assert.equal(response.status,200);assert.match(response.headers.get('content-disposition'),/attachment/);assert.match(response.headers.get('content-type'),/spreadsheetml/);
+ const parsed=workbook.parseImportSnapshot(new Uint8Array(await response.arrayBuffer()),columns);assert.equal(parsed.revision,'9:4');assert.equal(parsed.rows.length,0);
+ assert.deepEqual(manager.calls.map(c=>c.name),['importSnapshot']);
+});
+test('snapshot route enforces import capability and sends the generated attachment',async()=>{
+ const user={id:'manager',vaiTro:ROLES.QUAN_LY},calls=[],service={importSnapshot:async actor=>{calls.push(actor);return {revision:'9:4',rows:[]}}};
+ const router=createPurchaseOrdersRouter({service,requireAuth:(req,res,next)=>next()}),route=router.stack.find(layer=>layer.route?.path==='/api/purchase-orders/import/snapshot').route;
+ let denied=0;await route.stack[0].handle({user:{id:'reader',vaiTro:ROLES.NHAN_VIEN_MUA_HANG}}, {status(code){denied=code;return this},json(){return this}},()=>{});assert.equal(denied,403);assert.equal(calls.length,0);
+ const headers={},response={type(value){headers.type=value;return this},set(name,value){headers[name]=value;return this},send(value){this.body=value;return this}},request={user,get:()=>undefined,method:'GET'};
+ await route.stack.at(-1).handle(request,response);assert.equal(calls[0],user);assert.match(headers['Content-Disposition'],/attachment/);assert.match(headers.type,/spreadsheetml/);
+ assert.equal(workbook.parseImportSnapshot(response.body,columns).revision,'9:4');
 });
 test('granting a specific action works while other action grants remain independent',async t=>{
   const {base,calls}=await start(t,{id:'buyer',vaiTro:ROLES.NHAN_VIEN_MUA_HANG,featurePermissions:{'purchase.view':true,'purchase.arrive':true}});

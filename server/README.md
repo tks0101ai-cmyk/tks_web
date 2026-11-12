@@ -1411,3 +1411,12 @@ Cập nhật cuối: 12/11/2026.
 - `vatDraft/sheetsSource.js`: `fetchSheetRecordsWithFallback` — tab file trung gian lỗi API / chỉ còn 1 ô (`#REF!`, `Loading...`) / thiếu cột thì đọc tab tương ứng file gốc VAT TKS (`vatDraftConfig.fallback`, timeout 45 s qua `readSheetValuesById({ timeoutMs })`); dùng ở Nháp VAT, Tra cứu VAT (`vatLookup/lookupSource.js`), Tồn VAT (`vatRequests/stockSource.js`). Meta `/api/vat-draft/meta` và `/api/vat-lookup/*` có thêm `fallbackTabs`.
 
 Cập nhật cuối: 12/11/2026.
+
+## Thu mua — snapshot import Excel (12/11/2026)
+
+- `GET /api/purchase-orders/import/snapshot` (`purchase.import`) tải mọi dòng Thu mua đang hoạt động, không phụ thuộc lọc/trang, dưới dạng `.xlsx` gồm `Đặt hàng`, `Hướng dẫn`, `__TOKOSI` ẩn. Snapshot và revision lịch sử được đọc trong cùng giao dịch `REPEATABLE READ READ ONLY`.
+- `POST /import/preview` chỉ nhận workbook snapshot này (tối đa 10 MB/10.000 dòng), kiểm tra đủ cột và revision. Preview đếm thêm/sửa/không đổi/xóa mềm/lỗi; không ghi dữ liệu.
+- `POST /import/revise` cập nhật lại preview; `POST /import/confirm` xác nhận toàn bộ. Revision được kiểm tra lại khi sửa preview và trước khi ghi; snapshot cũ trả 409 `IMPORT_SNAPSHOT_STALE`.
+- Ô trống xóa giá trị tùy chọn; thiếu Mã dòng tạo mã mới; Mã dòng có sẵn cập nhật; dòng active bị bỏ khỏi workbook được xóa mềm cùng audit, projection và realtime. Một lỗi/xung đột chặn toàn bộ snapshot. Không migration.
+
+Cập nhật cuối: 12/11/2026.

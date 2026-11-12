@@ -11,7 +11,7 @@ const columns = require('../public/shared/purchase-columns');
 let db, service, events;
 const manager = { id: 'manager', hoTen: 'Người quản lý' };
 const input = () => ({ productCode: 'A', productName: 'Hàng A', listedAt: '2026-11-03', qtyPerCarton: 20, cartonCount: 100, unitPriceCny: 2, fxRate: 3920, freightPrepaid: 0, freightPostpaid: 0, freightAmount: 1000 });
-const file = rows => Buffer.from(excel.bytes(excel.exportWorkbook(rows, columns)));
+const snapshotFile = async rows => { const snapshot=await service.importSnapshot(manager);return Buffer.from(excel.exportImportSnapshot({rows,columns,revision:snapshot.revision})); };
 before(async () => {
   db = new PGlite();
   // Danh sach migration Thu mua lay tu FILES de them migration moi khong lam
@@ -118,8 +118,8 @@ test('warehouse liter and m³ measurements project one CÂN ĐO record to every 
  assert.equal(listed.rows.length,2);assert.deepEqual(listed.rows.map(r=>[r.literWarehouse,Number(r.m3Warehouse.toFixed(3))]),[[25,.3],[25,.3]]);
  assert.deepEqual(exported.map(r=>[r.literWarehouse,Number(r.m3Warehouse.toFixed(3))]),[[25,.3],[25,.3]]);
  const latest=await service.latest(manager,'A');assert.deepEqual([latest.literWarehouse,latest.m3Warehouse],[25,.3]);
- const preview=await service.previewImport(manager,{buffer:file(exported)});
- assert.equal(preview.valid,true);assert.equal(preview.counts.unchanged,2);assert.ok(preview.ignoredColumns.includes('L/c (kho)'));assert.ok(preview.ignoredColumns.includes('M³ kho đo'));
+ const preview=await service.previewImport(manager,{buffer:await snapshotFile(exported)});
+ assert.equal(preview.valid,true);assert.equal(preview.counts.unchanged,2);
  await service.remove(manager,{rows:[{id:listed.rows[0].id,version:listed.rows[0].version}]});assert.equal((await service.trash(manager))[0].m3Warehouse,.3);
 });
 test('comparison overrides persist per order row, export effective values, and clear back to shared measurements',async()=>{
@@ -188,7 +188,7 @@ test('departure shortage and arrival keep immutable snapshot and do not change s
 });
 test('invalid import preview never yields partial writes; token is bound to uploader', async () => {
   const row=await service.create(manager,input());
-  const preview=await service.previewImport(manager,{buffer:file([{...input(),rowKey:row.rowKey,cartonCount:7},{...input(),rowKey:'D99999'}])});
+  const preview=await service.previewImport(manager,{buffer:await snapshotFile([{...input(),rowKey:row.rowKey,cartonCount:7},{...input(),rowKey:'D99999'}])});
   assert.equal(preview.valid,false);
   await assert.rejects(service.commitImport(manager,preview.token),e=>e.code==='IMPORT_INVALID');
   await assert.rejects(service.commitImport({id:'other'},preview.token),e=>e.code==='PREVIEW_NOT_FOUND');
@@ -196,17 +196,30 @@ test('invalid import preview never yields partial writes; token is bound to uplo
 });
 test('import confirms all rows and replaying token does not create duplicates', async () => {
   const row=await service.create(manager,input());
-  const preview=await service.previewImport(manager,{buffer:file([{...input(),rowKey:row.rowKey,cartonCount:7},input()])});
+  const preview=await service.previewImport(manager,{buffer:await snapshotFile([{...input(),rowKey:row.rowKey,cartonCount:7},input()])});
   const result=await service.commitImport(manager,preview.token);
   assert.equal(result.counts.create,1);assert.equal(result.counts.update,1);
   assert.deepEqual(await service.commitImport(manager,preview.token),result);
   assert.equal((await service.list(manager)).rows.length,2);
 });
+test('snapshot import clears blanks and soft-deletes rows omitted from the complete file',async()=>{
+ const kept=await service.create(manager,{...input(),supplier:'NCC'}),removed=await service.create(manager,{...input(),productCode:'B'}),cursor=(await service.revision(manager)).revision;
+ const preview=await service.previewImport(manager,{buffer:await snapshotFile([{...kept,supplier:''}])});assert.equal(preview.valid,true);assert.equal(preview.counts.update,1);assert.equal(preview.counts.delete,1);
+ await service.commitImport(manager,preview.token);const listed=await service.list(manager);assert.equal(listed.rows.length,1);assert.equal(listed.rows[0].supplier,null);
+ const trash=(await service.trash(manager))[0];assert.equal(trash.rowKey,removed.rowKey);
+ assert.deepEqual((await db.query("SELECT summary->'deleted' deleted FROM purchase_history WHERE action='import'")).rows[0].deleted,[removed.rowKey]);
+ assert.ok((await service.changes(manager,cursor)).deletedIds.includes(removed.id));await service.restore(manager,{id:removed.id,version:trash.version});assert.equal((await service.list(manager)).rows.length,2);
+});
+test('snapshot changed after download is rejected before preview',async()=>{
+ const row=await service.create(manager,input()),snapshot=await service.importSnapshot(manager),buffer=Buffer.from(excel.exportImportSnapshot({rows:snapshot.rows,columns,revision:snapshot.revision}));
+ await service.update(manager,row.id,{version:row.version,changes:{supplier:'Changed'}});
+ await assert.rejects(service.previewImport(manager,{buffer}),error=>error.code==='IMPORT_SNAPSHOT_STALE');assert.equal((await service.list(manager)).rows[0].supplier,'Changed');
+});
 test('stale import rejects valid creations and updates together', async () => {
   const row=await service.create(manager,input());
-  const preview=await service.previewImport(manager,{buffer:file([{...input(),rowKey:row.rowKey,cartonCount:7},input()])});
+  const preview=await service.previewImport(manager,{buffer:await snapshotFile([{...input(),rowKey:row.rowKey,cartonCount:7},input()])});
   await service.update(manager,row.id,{version:1,changes:{supplier:'Other'}});
-  await assert.rejects(service.commitImport(manager,preview.token),e=>e.code==='VERSION_CONFLICT');
+  await assert.rejects(service.commitImport(manager,preview.token),e=>e.code==='IMPORT_SNAPSHOT_STALE');
   assert.equal((await service.list(manager)).rows.length,1);assert.equal((await service.list(manager)).rows[0].cartonCount,100);
 });
 test('failure while updating read models rolls back rows and audit and emits no success event', async () => {
@@ -234,7 +247,7 @@ test('bulk saves independent rows, reports conflicts individually, and emits one
   assert.equal((await db.query("SELECT count(*)::int n FROM purchase_history WHERE action='bulk_edit'")).rows[0].n,1);
 });
 test('revise import requires every file row and validates all corrected data server-side',async()=>{
-  const preview=await service.previewImport(manager,{buffer:file([{...input(),rowKey:'D99999'},input()])});
+  const preview=await service.previewImport(manager,{buffer:await snapshotFile([{...input(),rowKey:'D99999'},input()])});
   await assert.rejects(service.reviseImport(manager,preview.token,[input()]),e=>e.code==='IMPORT_ROW_COUNT');
   const corrected=await service.reviseImport(manager,preview.token,[input(),input()]);assert.equal(corrected.valid,true);
   await service.commitImport(manager,preview.token);assert.equal((await service.list(manager)).rows.length,2);
@@ -318,7 +331,7 @@ test('two actors merge separate fields, block same-cell overwrite and stale dele
  const other={id:'other',hoTen:'Nhân viên khác'},a=await service.create(manager,input());const first=await service.update(manager,a.id,{version:a.version,changes:{supplier:'A'}});const second=await service.update(other,a.id,{version:a.version,before:{cartonCount:100},changes:{cartonCount:80}});assert.equal(second.supplier,'A');await assert.rejects(service.update(other,a.id,{version:a.version,before:{supplier:null},changes:{supplier:'B'}}),e=>e.code==='VERSION_CONFLICT');await assert.rejects(service.remove(manager,{rows:[{id:a.id,version:first.version}]}),e=>e.code==='VERSION_CONFLICT');assert.equal((await service.list(manager)).rows[0].cartonCount,80);
 });
 test('deleting a row after import preview invalidates the whole import and does not resurrect it',async()=>{
- const a=await service.create(manager,input()),preview=await service.previewImport(manager,{buffer:file([{...a,cartonCount:3},{...input(),productCode:'NEW'}])});await service.remove(manager,{rows:[{id:a.id,version:a.version}]});await assert.rejects(service.commitImport(manager,preview.token));assert.equal((await service.list(manager)).rows.length,0);
+ const a=await service.create(manager,input()),preview=await service.previewImport(manager,{buffer:await snapshotFile([{...a,cartonCount:3},{...input(),productCode:'NEW'}])});await service.remove(manager,{rows:[{id:a.id,version:a.version}]});await assert.rejects(service.commitImport(manager,preview.token));assert.equal((await service.list(manager)).rows.length,0);
 });
 
 test('employee assignment can be cleared using the buyer name field',async()=>{
@@ -398,7 +411,7 @@ test('bulk and plan reject unconfigured or inactive assignments atomically and p
 });
 
 test('imports validate catalog at preview, revision and commit without losing legacy snapshots',async()=>{
- const bad=await service.previewImport(manager,{buffer:file([{...input(),buyer:'Free text'}])});assert.equal(bad.valid,false);assert.equal(bad.counts.error,1);
+ const bad=await service.previewImport(manager,{buffer:await snapshotFile([{...input(),buyer:'Free text'}])});assert.equal(bad.valid,false);assert.equal(bad.counts.error,1);
  await assert.rejects(service.commitImport(manager,bad.token),e=>e.code==='IMPORT_INVALID');
  const revised=await service.reviseImport(manager,bad.token,[{...input(),buyer:'Dung'}]);assert.equal(revised.valid,true);
  await db.query("UPDATE purchase_employees SET is_active=false WHERE name='Dung'");
@@ -406,9 +419,9 @@ test('imports validate catalog at preview, revision and commit without losing le
  await db.query("UPDATE purchase_employees SET is_active=true WHERE name='Dung'");await service.commitImport(manager,bad.token);
  const a=(await service.list(manager)).rows[0];assert.equal(a.buyer,'Dung');assert.equal(a.contId,null);
  await db.query("UPDATE purchase_orders SET buyer='Legacy import' WHERE id=$1",[a.id]);
- const legacy=await service.previewImport(manager,{buffer:file([{...a,buyer:'Legacy import',supplier:'Imported edit'}])});assert.equal(legacy.valid,true);await service.commitImport(manager,legacy.token);
+ const legacy=await service.previewImport(manager,{buffer:await snapshotFile([{...a,buyer:'Legacy import',supplier:'Imported edit'}])});assert.equal(legacy.valid,true);await service.commitImport(manager,legacy.token);
  assert.equal((await service.latest(manager,'A')).buyer,'Legacy import');assert.equal((await service.latest(manager,'A')).supplier,'Imported edit');
- const changed=await service.previewImport(manager,{buffer:file([{...await service.latest(manager,'A'),buyer:'Other'}])});assert.equal(changed.valid,true);
+ const changed=await service.previewImport(manager,{buffer:await snapshotFile([{...await service.latest(manager,'A'),buyer:'Other'}])});assert.equal(changed.valid,true);
  await db.query("UPDATE purchase_employees SET is_active=false WHERE name='Other'");await assert.rejects(service.commitImport(manager,changed.token),e=>e.code==='EMPLOYEE_INVALID');
  assert.equal((await service.latest(manager,'A')).buyer,'Legacy import');
 });

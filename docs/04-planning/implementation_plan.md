@@ -753,3 +753,11 @@ Cập nhật cuối: 12/11/2026.
 Đo sáng 12/11 sau PR #78/#79: khựng ~16 lần/giờ (từ ~50–60), lag tối đa 4,2 s. Đã làm: nghỉ phép bỏ vòng lặp đơn × tài khoản (~200 lần nhanh hơn) + trang Nhân sự bớt tải lại; xuất Excel chạy worker thread; báo cáo kinh doanh / thưởng phạt / tuổi nợ trả bản cũ khi làm mới. Tiếp theo: đọc lại `[loop-stall]`/`[timing]` sau deploy; xem `invoice-price-audit` (1 lần 23,8 s); cân nhắc tránh deploy giờ cao điểm (cache trống sau mỗi lần khởi động lại).
 
 Cập nhật cuối: 12/11/2026.
+
+## Thu mua — import snapshot Excel — 12/11/2026
+
+`GET /api/purchase-orders/import/snapshot` tạo workbook đầy đủ từ cùng một revision `REPEATABLE READ`; popup chỉ mở chọn/kéo file sau khi tải xong snapshot. Sheet `Hướng dẫn` mô tả mọi cột, định dạng và quy tắc dòng; manifest revision được giấu trong `__TOKOSI`. Preview hỗ trợ tạo mới, cập nhật, giữ nguyên, xóa mềm dòng bị thiếu, và xóa giá trị bằng ô trống; một lỗi hoặc revision cũ chặn toàn bộ. Xác nhận áp dụng create/update/soft-delete nguyên tử qua transaction, giữ audit, undo/restore và delta realtime hiện có. Không migration.
+
+Kiểm tra: test importer và service bao gồm blank-clear, stale preview/confirm, soft-delete và tombstone delta; route download cần quyền `purchase.import`; UI yêu cầu download trước, kéo/chọn `.xlsx`, giới hạn 10 MB và hiển thị tiến độ thật. Còn kiểm tra full suite, graphify nếu có và deploy/đồng bộ nhiều phiên trên môi trường chạy thật.
+
+Cập nhật cuối: 12/11/2026.

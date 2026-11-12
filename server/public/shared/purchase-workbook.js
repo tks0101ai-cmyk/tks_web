@@ -7,7 +7,8 @@
   const labels = { productName: 'Tên SP (Việt)', productNameCn: 'Tên SP (Trung)', literDiff: 'Lệch L/c (%)', gramDiff: 'Lệch g/c (%)' };
   const normalize = value => String(value ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
   const caption = col => labels[col.k] || (col.cn ? col.l + ' · ' + col.cn : col.l);
-  const writable = col => !col.d && !col.m && !['container', 'status'].includes(col.k);
+  const writable = col => col.k === 'rowKey' || !col.d && !col.m && !col.ro && !['container', 'status'].includes(col.k);
+  const importColumns = columns => columns.filter(col => writable(col));
 
   function exportWorkbook(rows, columns, visibleKeys) {
     const selected = new Set(visibleKeys || columns.map(col => col.k));
@@ -20,6 +21,34 @@
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, sheet, 'Đặt hàng');
     return workbook;
+  }
+
+  function exportImportSnapshot({rows,columns,revision}) {
+    if(!/^\d+:\d+$/.test(String(revision||'')))throw Error('Phiên bản snapshot không hợp lệ.');
+    const cols=importColumns(columns),keys=cols.filter(col=>col.k!=='rowKey').map(col=>col.k),book=exportWorkbook(rows,columns,keys);
+    const kind=col=>numericTypes.has(col.t)?'Số'+(col.decimals!=null?' · tối đa '+col.decimals+' chữ số thập phân':''):col.t==='datetime'?'Ngày dd/mm/yyyy hoặc dd/mm/yyyy hh:mm':'Văn bản';
+    const required=col=>col.k==='productCode'?'Có · mọi dòng':['productName','qtyPerCarton','cartonCount'].includes(col.k)?'Có · dòng mới':'Không';
+    const hints=cols.map(col=>[caption(col),required(col),kind(col),col.k==='rowKey'?'Có Mã dòng: cập nhật dòng đó. Để trống: tạo mã mới.':col.k==='productCode'?'Bắt buộc; không trùng trong file.':col.k==='productName'?'Bắt buộc khi tạo mã mới.':['qtyPerCarton','cartonCount'].includes(col.k)?'Mã mới cần số nguyên dương.':col.t==='datetime'?'Để trống sẽ xóa ngày hiện tại.':'Để trống sẽ xóa giá trị hiện tại.']);
+    const exampleKeys=['rowKey','productCode','productName','qtyPerCarton','cartonCount','supplier','unitPriceCny','listedAt'],exampleColumns=exampleKeys.map(key=>cols.find(col=>col.k===key));
+    const guide=XLSX.utils.aoa_to_sheet([
+      ['HƯỚNG DẪN SỬA FILE THU MUA'],
+      ['Đây là snapshot đầy đủ tải từ dữ liệu hiện tại. Sửa sheet “Đặt hàng” rồi tải lại chính file này. Không xóa sheet __TOKOSI.'],
+      ['Mỗi dòng là một mã. Mã dòng có sẵn sẽ cập nhật; Mã dòng để trống sẽ tạo mã mới. Mã SP bắt buộc; mã mới cần Tên SP, SL/T và Số thùng.'],
+      ['Giá trị ô trống sẽ xóa giá trị hiện tại. Xóa cả dòng khỏi sheet Đặt hàng sẽ xóa mềm mã đó. Xem lại số dòng xóa ở bước xem trước trước khi xác nhận.'],
+      ['Nếu dữ liệu trên hệ thống đổi sau lúc tải file, snapshot sẽ bị từ chối; hãy tải snapshot mới, áp lại chỉnh sửa và gửi lại. Một lỗi sẽ chặn toàn bộ file.'],
+      [],['CỘT','BẮT BUỘC','KIỂU / ĐỊNH DẠNG','LƯU Ý'],...hints,
+      [],['VÍ DỤ DÒNG MỚI (chỉ để xem, không nằm trong sheet Đặt hàng)'],
+      exampleColumns.map(caption),
+      ['','AC305','Băng dính trong','100','10','Nhà cung cấp mẫu','3.10','12/11/2026']
+    ]);
+    guide['!cols']=[{wch:30},{wch:18},{wch:34},{wch:88}];
+    XLSX.utils.book_append_sheet(book,guide,'Hướng dẫn');
+    const meta=XLSX.utils.aoa_to_sheet([['format','TOKOSI_PURCHASE_SNAPSHOT'],['revision',String(revision)]]);
+    XLSX.utils.book_append_sheet(book,meta,'__TOKOSI');
+    book.Workbook||={};
+    book.Workbook.Sheets||=book.SheetNames.map(name=>({name,Hidden:0}));
+    book.Workbook.Sheets.find(sheet=>sheet.name==='__TOKOSI').Hidden=1;
+    return bytes(book);
   }
 
   function dateValue(value, date1904) {
@@ -43,7 +72,7 @@
     if(!match)return dateValue(text,date1904);
     const date=dateValue(match[1],date1904);return date&&Number(match[2])<24&&Number(match[3])<60?date+'T'+match[2]+':'+match[3]:null;
   }
-  function parseWorkbook(workbook, columns, sheetName) {
+  function parseWorkbook(workbook, columns, sheetName, {includeEmpty=false,allowEmpty=false}={}) {
     const name = sheetName || (workbook.SheetNames.includes('Đặt hàng') ? 'Đặt hàng' : workbook.SheetNames[0]);
     const sheet = workbook.Sheets[name];
     if (!sheet || !sheet['!ref']) throw Error('Trang tính không có dữ liệu.');
@@ -87,7 +116,7 @@
           row.__cellErrors[col.k] = caption(col) + ': công thức lỗi hoặc chưa có kết quả; sửa thành giá trị';
           return;
         }
-        if (value == null || value === '') return;
+        if (value == null || value === '') {if(includeEmpty)row[col.k]=null;return}
         if (numericTypes.has(col.t)) {
           if (!Number.isFinite(C.parse(value))) {
             row[col.k] = String(value); row.__cellErrors[col.k] = caption(col) + ': số không hợp lệ';
@@ -100,10 +129,17 @@
       });
       rows.push(row);
     });
-    if (!rows.length) throw Error('File không có dòng hàng.');
+    if (!rows.length&&!allowEmpty) throw Error('File không có dòng hàng.');
     return { rows, sheetName: name, ignored, fields: mapped.filter(x => writable(x.col)).map(x => x.col.k) };
+  }
+  function parseImportSnapshot(data,columns) {
+    const book=read(data),meta=book.Sheets.__TOKOSI,values=meta&&XLSX.utils.sheet_to_json(meta,{header:1,defval:''}),revision=values?.find(row=>row[0]==='revision')?.[1];
+    if(values?.[0]?.[1]!=='TOKOSI_PURCHASE_SNAPSHOT'||!/^\d+:\d+$/.test(String(revision||'')))throw Error('Tải snapshot dữ liệu hiện tại trước khi import.');
+    const parsed=parseWorkbook(book,columns,'Đặt hàng',{includeEmpty:true,allowEmpty:true}),expected=importColumns(columns).map(col=>col.k);
+    if(parsed.fields.length!==expected.length||expected.some(key=>!parsed.fields.includes(key)))throw Error('File thiếu cột snapshot. Tải lại dữ liệu hiện tại trước khi import.');
+    return {...parsed,revision,fields:expected};
   }
   function read(data) { return XLSX.read(data, { type: 'array', cellDates: false, cellFormula: true }); }
   function bytes(workbook) { return XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }); }
-  return { caption, numericTypes, dateValue, dateTimeValue, exportWorkbook, parseWorkbook, read, bytes };
+  return { caption, numericTypes, dateValue, dateTimeValue, exportWorkbook, exportImportSnapshot, parseWorkbook, parseImportSnapshot, read, bytes };
 });
