@@ -21,11 +21,19 @@ test('order toolbar keeps primary actions first and secondary actions grouped la
   ]);
 });
 
-test('order title stays left and pushes toolbar actions to the right', () => {
+test('filter summary follows the title and pushes toolbar actions to the right', () => {
   assert.ok(
-    /\.purchase-page\s+\.order-actions\s+h2\s*\{[^}]*margin-right:\s*auto/i.test(styles),
-    'the title needs an auto right margin to push actions to the right'
+    /\.purchase-page\s+\.order-actions\s+#orderFilterSummary\s*\{[^}]*margin:\s*0\s+auto\s+0\s+0/i.test(styles),
+    'the summary needs an auto right margin to push actions to the right'
   );
+});
+
+test('filter summary sits beside the order title in the top toolbar', () => {
+  const doc = new JSDOM(page).window.document;
+  const heading = doc.querySelector('.order-actions h2');
+  const summary = doc.getElementById('orderFilterSummary');
+  assert.equal(heading.nextElementSibling, summary);
+  assert.equal(summary.parentElement, doc.querySelector('.order-actions'));
 });
 
 test('bulk and employee buttons keep dark text in light mode', () => {

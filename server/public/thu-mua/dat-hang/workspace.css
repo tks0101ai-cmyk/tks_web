@@ -204,7 +204,7 @@
 
 /* Operations toolbar: clear groups, restrained utility actions, theme-aware controls. */
 .purchase-page .order-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:7px;row-gap:8px;padding:9px 12px}
-.purchase-page .order-actions h2{flex:0 0 auto;margin:0 auto 0 0;white-space:nowrap}
+.purchase-page .order-actions h2{flex:0 0 auto;margin:0;white-space:nowrap}
 .purchase-page .order-actions .purchase-work-tools{display:inline-flex;align-items:center;gap:6px}
 .purchase-page .order-actions #managePurchaseEmployees,
 .purchase-page .order-actions #editedRows,
@@ -415,7 +415,7 @@
 .purchase-page #orderTable th .sort-indicator{display:block;flex:0 0 9px;height:9px;line-height:9px}
 @media(min-width:1101px){
  .purchase-page .order-actions{flex-wrap:nowrap;gap:5px;overflow-x:auto;padding:6px 8px}
- .purchase-page .order-actions h2{flex:0 0 auto;margin-right:auto}
+ .purchase-page .order-actions h2{flex:0 0 auto;margin-right:0}
  .purchase-page .order-actions button{min-height:30px;padding:5px 8px;white-space:nowrap}
  .purchase-page .order-actions #add{margin-left:0}
  .purchase-page .order-filters{grid-template-columns:repeat(12,minmax(72px,1fr));overflow-x:auto}
@@ -425,3 +425,5 @@
  .purchase-page .order-filters .column-tools{display:flex;gap:5px;align-items:center}
  .purchase-page .order-filters .filter-actions button{min-height:30px;padding:5px 7px;white-space:nowrap}
 }
+
+.purchase-page .order-actions #orderFilterSummary{flex:0 1 auto;margin:0 auto 0 0;padding:0;border:0;background:transparent;color:var(--muted);font-size:10px;line-height:1.2;white-space:nowrap}
