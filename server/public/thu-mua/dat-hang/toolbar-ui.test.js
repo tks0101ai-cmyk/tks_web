@@ -52,6 +52,10 @@ test('requested compact date and row key columns reserve a narrower default widt
   assert.match(script, /c\.k==='rowKey'\|\|\['listedAt','orderedNote','shippedNote','etaNote','arrivedNote'\]\.includes\(c\.k\)/);
 });
 
+test('six compact order columns use reduced text size', () => {
+  assert.match(styles, /#orderTable\s+:is\([^{}]*rowKey[^{}]*arrivedNote[^{}]*\)\s*\{font-size:\s*8\.5px\s*!important/i);
+});
+
 test('container panel opens by default and sits 20px below the order grid', () => {
   const doc = new JSDOM(page).window.document;
   assert.equal(doc.querySelector('#containerPanel').hasAttribute('open'), true);

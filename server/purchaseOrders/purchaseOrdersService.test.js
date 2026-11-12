@@ -70,6 +70,14 @@ test('delta changes return authoritative rows, tombstones, containers and employ
  assert.equal(Object.hasOwn(delta,'before_row'),false);
  assert.equal(JSON.stringify(delta).includes('before_row'),false);
 });
+test('container truck name accepts user-entered text on create and edit',async()=>{
+ const created=await service.createContainer(manager,{name:'CUSTOM TRUCK',truckName:'Xe 20 tấn'});
+ assert.equal(created.truck_name,'Xe 20 tấn');
+ const edited=await service.updateContainer(manager,created.id,{version:created.version,changes:{truckName:'  Mooc lùn  '}});
+ assert.equal(edited.truck_name,'Mooc lùn');
+ await assert.rejects(service.updateContainer(manager,created.id,{version:edited.version,changes:{truckName:'x'.repeat(81)}}),e=>e.statusCode===400);
+ await assert.rejects(service.createContainer(manager,{name:'BAD TRUCK',truckName:{}}),e=>e.statusCode===400);
+});
 
 test('delta changes request a reset for malformed, ahead and over-cap cursors',async()=>{
  const one=await service.create(manager,input());
@@ -435,7 +443,7 @@ test('shared container optimistic conflicts and validation roll back every row, 
   const changes={arrivalNote:'2026-11-10',name:'Must not persist'};
   for(const rows of [undefined,[],[{id:r.id,version:1}],[{id:r.id,version:r.version},{id:r.id,version:r.version}]])await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,changes,rows}),e=>e.code==='VERSION_CONFLICT');
   await assert.rejects(service.updateContainer(manager,c.id,{version:999,changes,rows:[r]}),e=>e.code==='VERSION_CONFLICT');
-  for(const changes of [{maxTon:0},{m3Min:200,m3Max:100},{truckName:'invalid'},{ton:100},{m3:100},{count:1},{arrivalDate:'2026-02-30'},{arrivalNote:'sometime'}])await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,rows:[r],changes}),e=>e.statusCode===400);
+  for(const changes of [{maxTon:0},{m3Min:200,m3Max:100},{truckName:'x'.repeat(81)},{ton:100},{m3:100},{count:1},{arrivalDate:'2026-02-30'},{arrivalNote:'sometime'}])await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,rows:[r],changes}),e=>e.statusCode===400);
   const other=await service.createContainer(manager,{name:'DUPLICATE',truckName:'17.5m'});signals=0;
   await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,rows:[r],changes:{arrivalDate:'2026-11-11',name:other.name}}),e=>e.code==='CONTAINER_EXISTS');
   assert.equal(signals,0);assert.equal((await service.latest(manager,'A')).version,r.version);assert.equal((await service.latest(manager,'A')).arrivedNote,null);

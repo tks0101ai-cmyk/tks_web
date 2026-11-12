@@ -394,6 +394,16 @@
 .purchase-page #containerPanel{margin-top:20px;padding:10px 12px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel-2)}
 .purchase-page #containerPanel>summary{padding:2px 0 8px}
 .purchase-page #containerPanel .container-filters{border-radius:6px}
+
+.purchase-page #watchedContainer{margin:4px 0 6px;padding:4px 7px;border:1px solid var(--border);border-radius:6px;background:var(--panel)}
+.purchase-page #watchedContainer .watched-caption{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px;color:var(--muted);font-size:9px;line-height:1.2}
+.purchase-page #watchedContainer .watched-caption button{min-height:22px;padding:2px 7px;font-size:9px}
+.purchase-page #watchedContainer .watched-scroll{max-width:100%;overflow-x:auto}
+.purchase-page #watchedContainer table{width:393px;min-width:393px;table-layout:fixed}
+.purchase-page #watchedContainer :is(th,td){padding:3px 4px;font-size:9px;line-height:1.2}
+.purchase-page #watchedContainer :is(button,select){min-height:22px;padding:2px 4px;font-size:9px;line-height:1.2}
+.purchase-page #orderTable :is(th[data-key="rowKey"],td[data-field="rowKey"],th[data-key="listedAt"],td[data-field="listedAt"],th[data-key="orderedNote"],td[data-field="orderedNote"],th[data-key="shippedNote"],td[data-field="shippedNote"],th[data-key="etaNote"],td[data-field="etaNote"],th[data-key="arrivedNote"],td[data-field="arrivedNote"]){font-size:8.5px!important;line-height:1.15}
+.purchase-page #orderTable td:is([data-field="rowKey"],[data-field="listedAt"],[data-field="orderedNote"],[data-field="shippedNote"],[data-field="etaNote"],[data-field="arrivedNote"]) :is(input,select){font-size:8.5px!important;line-height:1.15}
 .purchase-page #orderTable th[data-key="productCode"],.purchase-page #orderTable td[data-field="productCode"]{position:sticky;left:var(--purchase-code-sticky-left,0px);z-index:10;background:var(--panel)}
 .purchase-page #orderTable th[data-key="productCode"]{z-index:20}
 .purchase-page #orderTable th[data-key="productName"]{left:var(--purchase-name-sticky-left,196px)}

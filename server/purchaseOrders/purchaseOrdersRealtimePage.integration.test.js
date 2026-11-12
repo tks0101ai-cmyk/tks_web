@@ -44,6 +44,27 @@ test('Ctrl+Z undoes a grid paste but leaves native undo alone in the search fiel
  assert.ok(p.drafts()['1']);const currentCell=doc.querySelector('[data-field="literChina"]'),undo=new p.w.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true});currentCell.focus();currentCell.dispatchEvent(undo);assert.equal(undo.defaultPrevented,true);assert.equal(p.drafts()['1'],undefined);assert.equal(p.drafts()['2'],undefined);
  const search=doc.getElementById('search'),nativeUndo=new p.w.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true});search.dispatchEvent(nativeUndo);assert.equal(nativeUndo.defaultPrevented,false);
 });
+test('Ctrl+Z undoes an edited input before it loses focus',async t=>{
+ const p=await page(t),doc=p.w.document,input=doc.querySelector('[data-edit="supplier"]');input.focus();input.value='New supplier';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));
+ assert.equal(p.drafts()['1'].changes.supplier,'New supplier');
+ input.addEventListener('keydown',e=>e.stopPropagation(),{once:true});
+ const undo=new p.w.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true});input.dispatchEvent(undo);
+ assert.equal(undo.defaultPrevented,true);assert.equal(p.drafts()['1'],undefined);assert.equal(doc.activeElement.dataset.edit,'supplier');
+});
+test('container ratio is total tons divided by total cubic meters',async t=>{
+ const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{cartonCount:10,kgPerCarton:2,m3PerCarton:.25});p.listeners.changed();await tick();await tick();
+ assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) td:nth-child(9)').textContent,'0.8%');
+});
+test('pinned container sits under filters and shows only the five compact columns',async t=>{
+ const p=await page(t),doc=p.w.document;doc.querySelector('#containerTable [data-container-filter="2"]').click();
+ const filters=doc.querySelector('.order-filters'),watched=doc.getElementById('watchedContainer');assert.ok(filters.compareDocumentPosition(watched)&p.w.Node.DOCUMENT_POSITION_FOLLOWING);
+ assert.equal(watched.querySelectorAll('thead th').length,5);assert.deepEqual([...watched.querySelectorAll('thead th')].map(th=>th.textContent.trim()),['Tên cont','Trạng thái','Dòng','Tổng tấn','Tổng m³']);assert.equal(watched.querySelectorAll('.sort-indicator').length,0);
+});
+test('vehicle type is free text in the container grid and create dialog',async t=>{
+ const p=await page(t),doc=p.w.document;assert.equal(doc.querySelector('#containerTable [data-container-field="truckName"]').tagName,'INPUT');
+ doc.getElementById('newCont').click();const form=doc.getElementById('contForm');assert.equal(form.elements.truckName.tagName,'INPUT');form.elements.name.value='NEW CONT';form.elements.truckName.value='Xe 20 tấn';form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}));await tick();await tick();
+ const call=p.calls.find(c=>c.url.endsWith('/containers'));assert.deepEqual(JSON.parse(call.options.body),{name:'NEW CONT',truckName:'Xe 20 tấn'});
+});
 test('integrated refresh updates another cell during numeric expression typing, retaining baseline/caret and navigation mode',async t=>{
  const p=await page(t),doc=p.w.document,input=doc.querySelector('[data-edit="cartonCount"]');input.focus();input.value='2*6';input.dataset.gridEditing='true';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));input.setSelectionRange(1,2);
  p.data.rows[0].supplier='Remote supplier';p.data.rows[0].cartonCount=20;p.data.rows[0].version=5;p.listeners.changed();await tick();await tick();
@@ -183,7 +204,7 @@ test('new row submission carries staged comparison overrides',async t=>{
  const p=await page(t,{local:true}),doc=p.w.document;doc.getElementById('columns').click();doc.querySelector('[data-column="literChina"]').checked=true;doc.querySelector('[data-column="literChina"]').dispatchEvent(new p.w.Event('change',{bubbles:true}));
  const input=doc.querySelector('tr[data-id="new-local"] [data-edit="literChina"]');assert.ok(input);input.value='125';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));doc.getElementById('save').click();doc.getElementById('commit').click();await tick();await tick();const call=p.calls.find(c=>c.options.method==='POST'&&c.url==='/api/purchase-orders/plan');assert.ok(call);const body=JSON.parse(call.options.body);assert.equal(body.creates[0].values.literChina,125);
 });
-for(const scope of ['containerTable','watchedContainer'])test('freight '+scope+' sends original focus version after SSE and cannot overwrite remote freight',async t=>{
+for(const scope of ['containerTable'])test('freight '+scope+' sends original focus version after SSE and cannot overwrite remote freight',async t=>{
  const p=await page(t),doc=p.w.document,fetch=p.w.fetch;
  if(scope==='watchedContainer')doc.querySelector('[data-container-filter="2"]').click();
  const input=doc.querySelector('#'+scope+' [data-cont-freight="2"]');input.focus();input.value='1,000';input.setSelectionRange(1,3);
@@ -206,7 +227,7 @@ test('employee manager stages RGB edits and saves once with rendered versions de
  doc.getElementById('savePurchaseEmployees').click();await tick();await tick();const call=p.calls.find(c=>c.url.endsWith('/employees/batch')),body=JSON.parse(call.options.body);
  assert.equal(call.options.method,'PUT');assert.deepEqual(body.entries,[{id:'nv',version:2,name:'Local rename',color:'#E84A5F',isActive:false}]);assert.equal(directory[0].name,'Remote rename');assert.match(doc.getElementById('notice').textContent,/Employee conflict/);assert.equal(input.value,'Local rename');
 });
-for(const scope of ['containerTable','watchedContainer'])for(const field of ['freight','carrier'])test('real focusout without native change commits restored dirty '+field+' in '+scope+' once using original version',async t=>{
+for(const scope of ['containerTable'])for(const field of ['freight','carrier'])test('real focusout without native change commits restored dirty '+field+' in '+scope+' once using original version',async t=>{
  const p=await page(t),doc=p.w.document,fetch=p.w.fetch;
  if(scope==='watchedContainer')doc.querySelector('[data-container-filter="2"]').click();
  const selector='#'+scope+(field==='freight'?' [data-cont-freight="2"]':' [data-container-field="carrier"]'),input=doc.querySelector(selector);
