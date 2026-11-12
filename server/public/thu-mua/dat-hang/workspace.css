@@ -38,11 +38,8 @@
 @media(max-width:1100px){.purchase-filters{grid-template-columns:repeat(4,minmax(0,1fr))}.purchase-filters .wide,.container-filters .wide{grid-column:span 2}.order-filters label:has(#filter),.order-filters label:has(#orderStatus),.order-filters label:has(#orderSupplier){grid-column:span 1}.container-filters>button{justify-self:start}}
 @media(max-width:520px){.purchase-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.purchase-filters .wide{grid-column:1/-1}.filter-actions{flex-wrap:wrap}.filter-actions .column-tools{margin-left:0;flex:1;justify-content:flex-end}.filter-actions .column-tools span{flex-basis:100%;text-align:right}}
 #orderTable{background:var(--panel);border:1px solid var(--border);max-height:67vh;min-height:160px}
-#orderTable td[data-field='productCode']{background:var(--panel);position:sticky;left:0;z-index:10}
-#orderTable th[data-key='productCode']{left:0;z-index:20}
-#orderTable:has(#pickAll) td[data-field='productCode'],#orderTable:has(#pickAll) th[data-key='productCode']{left:36px}
-#orderTable:has(#pickAll) tr>td:first-child,#orderTable:has(#pickAll) tr>th:first-child{position:sticky;left:0;background:var(--panel);z-index:11}
-#orderTable:has(#pickAll) tr>th:first-child{z-index:21}
+#orderTable .purchase-pinned-column{position:sticky!important;background:var(--panel);z-index:10;box-shadow:1px 0 var(--border)}
+#orderTable thead .purchase-pinned-column{z-index:20;background:var(--panel-2)}
 #containerTable{max-height:340px;background:var(--panel)}
 #containerTable table{min-width:100%;table-layout:fixed}
 #containerTable th,#containerTable td{padding:7px 8px;font-size:11px}
@@ -326,8 +323,6 @@
 .purchase-page .order-filters .filter-actions{grid-column:1/-1;grid-row:2}
 .purchase-page #orderTable td[data-field="productCode"]{font-weight:400}
 .purchase-page #orderTable td[data-field="productCode"],.purchase-page #orderTable td[data-field="productCode"] .code-label{text-overflow:clip}
-.purchase-page #orderTable th[data-key="productName"],.purchase-page #orderTable td[data-field="productName"]{position:sticky;left:var(--purchase-name-sticky-left,196px);z-index:9;background:var(--panel)}
-.purchase-page #orderTable th[data-key="productName"]{z-index:19}
 .purchase-page #orderTable .purchase-cny-detail{min-height:0;padding:0;border:0;background:transparent;box-shadow:none;color:inherit;font:inherit;line-height:inherit}
 .purchase-page #orderTable .purchase-cny-detail:hover{background:transparent;color:var(--primary)}
 
@@ -396,16 +391,13 @@
 .purchase-page #containerPanel .container-filters{border-radius:6px}
 
 .purchase-page #watchedContainer{margin:4px 0 6px;padding:4px 7px;border:1px solid var(--border);border-radius:6px;background:var(--panel)}
-.purchase-page #watchedContainer .watched-actions button{min-height:22px;padding:2px 7px;font-size:9px}
+.purchase-page #watchedContainer .watched-unpin{min-height:22px;padding:2px 7px;font-size:9px}
 .purchase-page #watchedContainer .watched-scroll{max-width:100%;overflow-x:auto}
-.purchase-page #watchedContainer table{width:393px;min-width:393px;table-layout:fixed}
+.purchase-page #watchedContainer table{width:475px;min-width:475px;table-layout:fixed}
 .purchase-page #watchedContainer :is(th,td){padding:3px 4px;font-size:9px;line-height:1.2}
 .purchase-page #watchedContainer :is(button,select){min-height:22px;padding:2px 4px;font-size:9px;line-height:1.2}
 .purchase-page #orderTable :is(th[data-key="rowKey"],td[data-field="rowKey"],th[data-key="listedAt"],td[data-field="listedAt"],th[data-key="orderedNote"],td[data-field="orderedNote"],th[data-key="shippedNote"],td[data-field="shippedNote"],th[data-key="etaNote"],td[data-field="etaNote"],th[data-key="arrivedNote"],td[data-field="arrivedNote"]){font-size:8.5px!important;line-height:1.15}
 .purchase-page #orderTable td:is([data-field="rowKey"],[data-field="listedAt"],[data-field="orderedNote"],[data-field="shippedNote"],[data-field="etaNote"],[data-field="arrivedNote"]) :is(input,select){font-size:8.5px!important;line-height:1.15}
-.purchase-page #orderTable th[data-key="productCode"],.purchase-page #orderTable td[data-field="productCode"]{position:sticky;left:var(--purchase-code-sticky-left,0px);z-index:10;background:var(--panel)}
-.purchase-page #orderTable th[data-key="productCode"]{z-index:20}
-.purchase-page #orderTable th[data-key="productName"]{left:var(--purchase-name-sticky-left,196px)}
 .purchase-page #orderTable{max-height:67vh;overflow:auto;scrollbar-gutter:stable}
 .purchase-page .order-actions #containerStatusBoard{flex:0 0 auto;margin:0}
 .purchase-page .order-actions #containerStatusBoard .purchase-container-status{gap:5px;margin:0;padding:0;border:0;border-radius:0;background:transparent}

@@ -28,6 +28,19 @@ test('purchase workspace omits the redundant order and history tab buttons',()=>
  const dom=new JSDOM(fs.readFileSync(path.join(dir,'index.html'),'utf8'));
  try{assert.equal(dom.window.document.querySelector('.purchase-tabs'),null);assert.equal(dom.window.document.getElementById('historyToggle'),null)}finally{dom.window.close()}
 });
+test('inline edits save automatically without opening the draft confirmation',async t=>{
+ const p=await page(t);p.change('[data-edit="supplier"]','B');
+ await new Promise(resolve=>setTimeout(resolve,1200));await tick();await tick();
+ assert.equal(p.current.rows[0].supplier,'B');assert.equal(p.w.document.getElementById('modal').open,false);
+ assert.equal(Object.keys(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).drafts).length,0);
+});
+test('order columns can be selected for pinning and persist in the user layout',async t=>{
+ const p=await page(t),doc=p.w.document;assert.ok(doc.getElementById('pinColumns'));
+ doc.getElementById('pinColumns').click();assert.match(doc.getElementById('modalTitle').textContent,/Ghim cột/);
+ const checkbox=doc.querySelector('[data-pin-column="supplier"]');checkbox.checked=true;checkbox.dispatchEvent(new p.w.Event('change',{bubbles:true}));
+ assert.deepEqual(JSON.parse(doc.defaultView.sessionStorage.getItem('purchase:buyer:v1')).pinnedColumns,['productCode','productName','supplier']);
+ assert.ok(doc.querySelector('#orderTable th[data-key="supplier"].purchase-pinned-column'));
+});
 test('pagination shows only pages one to three and arrows navigate the rest',async t=>{
  const extraRows=Array.from({length:150},(_,i)=>({id:String(i+2),rowKey:'D'+String(i+2).padStart(5,'0'),version:1,productCode:'P'+i,productName:'Item '+i,cartonCount:1,qtyPerCarton:1}));
  const p=await page(t,{extraRows}),doc=p.w.document,pages=()=>[...doc.querySelectorAll('#pageNumbers [data-page]')].map(button=>Number(button.dataset.page));
@@ -63,7 +76,7 @@ async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees
   for(const [key,value] of Object.entries(input.changes))container[aliases[key]||key]=value;
   container.version++;return {ok:true,json:async()=>structuredClone(container)};
  }
- if(url.endsWith('/status')){const input=JSON.parse(options.body),container=current.containers.find(c=>String(c.id)===String(input.containerId));container.status=input.status;container.version++;return {ok:true,json:async()=>structuredClone(container)}}if(url.endsWith('/bulk')){const input=JSON.parse(options.body);return {ok:true,json:async()=>({results:input.rows.map(r=>({id:r.id,status:'updated'}))})}}if(options.method==='PATCH'){const input=JSON.parse(options.body);if(input.before.supplier!==undefined&&current.rows[0].supplier!==input.before.supplier)return {ok:false,status:409,json:async()=>({error:'Ô đã được người khác sửa.'})};current.rows[0]={...current.rows[0],...input.changes,version:current.rows[0].version+1};return {ok:true,json:async()=>current.rows[0]}}return {ok:true,json:async()=>structuredClone(current)}};
+ if(url.endsWith('/plan')&&options.method==='POST'){const plan=JSON.parse(options.body),createdKeys=[];for(const item of plan.rows||[]){const currentRow=current.rows.find(r=>String(r.id)===String(item.id));if(currentRow)Object.assign(currentRow,item.changes,{version:currentRow.version+1})}for(const item of plan.creates||[]){const values=item.values||item;createdKeys.push(values.rowKey);current.rows.push({...values,id:String(100+current.rows.length),version:1})}return {ok:true,json:async()=>({createdKeys,split:[]})}}if(url.endsWith('/status')){const input=JSON.parse(options.body),container=current.containers.find(c=>String(c.id)===String(input.containerId));container.status=input.status;container.version++;return {ok:true,json:async()=>structuredClone(container)}}if(url.endsWith('/bulk')){const input=JSON.parse(options.body);return {ok:true,json:async()=>({results:input.rows.map(r=>({id:r.id,status:'updated'}))})}}if(options.method==='PATCH'){const input=JSON.parse(options.body);if(input.before.supplier!==undefined&&current.rows[0].supplier!==input.before.supplier)return {ok:false,status:409,json:async()=>({error:'Ô đã được người khác sửa.'})};current.rows[0]={...current.rows[0],...input.changes,version:current.rows[0].version+1};return {ok:true,json:async()=>current.rows[0]}}return {ok:true,json:async()=>structuredClone(current)}};
  if(saved)w.sessionStorage.setItem('purchase:buyer:v1',JSON.stringify(saved));if(savedOutbox)w.sessionStorage.setItem('purchase:buyer:v1:outbox',JSON.stringify(savedOutbox));
  w.eval(fs.readFileSync(path.join(dir,'../../shared/table-controls.js'),'utf8'));
  if(onEnhance)w.TKSTables.enhance=onEnhance;
@@ -86,26 +99,16 @@ test('order rows show container status but cannot change it; metrics board updat
 test('status is editable from metrics board and sends one authorized request',async t=>{
  const p=await page(t);p.change('#containerTable [data-status="2"]','4');await tick();await tick();const calls=p.calls.filter(c=>c.url.endsWith('/status'));assert.equal(calls.length,1);assert.equal(JSON.parse(calls[0].options.body).status,4);assert.equal(p.w.document.getElementById('modal').open,false);
 });
-test('adding an arbitrary product reserves a row key, stages a draft and saves it',async t=>{
- const p=await page(t);
- const prior=p.w.fetch;p.w.fetch=async(url,options={})=>{if(url.endsWith('/next-key'))return {ok:true,json:async()=>({rowKey:'D00042'})};if(url.endsWith('/plan')&&options.method==='POST'){p.calls.push({url,options});const plan=JSON.parse(options.body);for(const [i,create] of plan.creates.entries())p.current.rows.push({...create.values,id:String(42+i),version:1});return {ok:true,json:async()=>({createdKeys:plan.creates.map(create=>create.values.rowKey)})}}return prior(url,options)};
- p.w.document.getElementById('add').click();const form=p.w.document.getElementById('addForm');Object.entries({productCode:'ANY',productName:'Hàng thử',qtyPerCarton:'5',cartonCount:'4',kgPerCarton:'100',m3PerCarton:'0.2'}).forEach(([k,v])=>form.elements[k].value=v);form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}));await tick();
- const state=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.equal(Object.keys(state.newRows).length,1);
- // Khoa cap ngay luc them, khong con cho giu cho 'MOI', va van chua ghi dong nao len may chu.
- assert.equal(Object.values(state.newRows)[0].rowKey,'D00042');assert.equal(Object.values(state.newRows)[0].contId,null);assert.equal(form.elements.contId,undefined);
- assert.match(p.w.document.querySelector('#orderTable tbody tr[data-id^="new"] [data-field="rowKey"]').textContent,/D00042/);
- assert.equal(p.calls.filter(c=>c.options.method).length,0);const target=p.w.document.querySelector('[data-container-filter="2"]').closest('tr');assert.equal(target.cells[3].textContent,'0.00');assert.equal(target.cells[4].textContent,'0.00');
- p.w.document.getElementById('save').click();p.w.document.getElementById('commit').click();await tick();await tick();
- const plan=JSON.parse(p.calls.find(c=>c.url.endsWith('/plan')).options.body);assert.equal(plan.creates[0].values.rowKey,'D00042');assert.equal(Object.hasOwn(plan.creates[0].values,'id'),false);assert.equal(Object.hasOwn(plan.creates[0].values,'version'),false);assert.equal(p.current.rows.at(-1).productCode,'ANY');assert.ok(p.w.document.querySelector('tr[data-id="42"] [data-edit="productName"]'));
+test('adding a new product saves it immediately with a reserved row key',async t=>{
+ const p=await page(t);const prior=p.w.fetch;p.w.fetch=async(url,options={})=>{if(url.endsWith('/next-key'))return {ok:true,json:async()=>({rowKey:'D00042'})};if(url.endsWith('/plan')&&options.method==='POST'){p.calls.push({url,options});const plan=JSON.parse(options.body);for(const [i,create] of plan.creates.entries())p.current.rows.push({...create.values,id:String(42+i),version:1});return {ok:true,json:async()=>({createdKeys:plan.creates.map(create=>create.values.rowKey)})}}return prior(url,options)};
+ p.w.document.getElementById('add').click();const form=p.w.document.getElementById('addForm');Object.entries({productCode:'ANY',productName:'Hàng thử',qtyPerCarton:'5',cartonCount:'4',kgPerCarton:'100',m3PerCarton:'0.2'}).forEach(([k,v])=>form.elements[k].value=v);form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}));await new Promise(resolve=>setTimeout(resolve,1200));await tick();await tick();
+ const request=p.calls.find(c=>c.url.endsWith('/plan')),state=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.ok(request,p.w.document.getElementById('notice').textContent+JSON.stringify(state));const plan=JSON.parse(request.options.body);assert.equal(plan.creates[0].values.rowKey,'D00042');assert.equal(Object.hasOwn(plan.creates[0].values,'id'),false);assert.equal(Object.hasOwn(plan.creates[0].values,'version'),false);assert.equal(p.current.rows.at(-1).productCode,'ANY');assert.equal(Object.keys(state.drafts).length,0);assert.equal(Object.keys(state.newRows).length,0);assert.equal(p.w.document.getElementById('modal').open,false);
 });
-test('adding from an existing product code without changing its values still saves as a new row',async t=>{
+test('adding from an existing product code saves the cloned values immediately',async t=>{
  const p=await page(t),prior=p.w.fetch;p.w.fetch=async(url,options={})=>{if(url.endsWith('/next-key'))return {ok:true,json:async()=>({rowKey:'D00042'})};if(url.includes('/latest?code='))return {ok:true,json:async()=>({row:structuredClone(p.current.rows[0])})};if(url.endsWith('/plan')&&options.method==='POST'){p.calls.push({url,options});const plan=JSON.parse(options.body);for(const [i,create] of plan.creates.entries())p.current.rows.push({...create.values,id:String(42+i),version:1});return {ok:true,json:async()=>({createdKeys:plan.creates.map(create=>create.values.rowKey)})}}return prior(url,options)};
- p.w.document.getElementById('add').click();const form=p.w.document.getElementById('addForm');form.elements.productCode.value='AC305';form.elements.productCode.dispatchEvent(new p.w.Event('input',{bubbles:true}));await tick();await tick();
- assert.equal(form.elements.productName.value,'Băng dính');assert.equal(form.elements.cartonCount.value,'10');
- form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}));await tick();p.w.document.getElementById('save').click();p.w.document.getElementById('commit').click();await tick();await tick();
- const plan=JSON.parse(p.calls.find(c=>c.url.endsWith('/plan')).options.body),saved=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.equal(plan.creates[0].values.productCode,'AC305');assert.equal(Object.hasOwn(plan.creates[0].values,'id'),false);assert.equal(Object.hasOwn(plan.creates[0].values,'version'),false);assert.equal(p.current.rows.length,2);assert.equal(Object.keys(saved.drafts).length,0);
-});
-test('numeric cells display comma thousands and accept the same notation without changing magnitude',async t=>{
+ p.w.document.getElementById('add').click();const form=p.w.document.getElementById('addForm');form.elements.productCode.value='AC305';form.elements.productCode.dispatchEvent(new p.w.Event('input',{bubbles:true}));await tick();await tick();assert.equal(form.elements.productName.value,'Băng dính');assert.equal(form.elements.cartonCount.value,'10');
+ form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}));await new Promise(resolve=>setTimeout(resolve,1200));await tick();await tick();const plan=JSON.parse(p.calls.find(c=>c.url.endsWith('/plan')).options.body),saved=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.equal(plan.creates[0].values.productCode,'AC305');assert.equal(Object.hasOwn(plan.creates[0].values,'id'),false);assert.equal(Object.hasOwn(plan.creates[0].values,'version'),false);assert.equal(p.current.rows.length,2);assert.equal(Object.keys(saved.drafts).length,0);
+});test('numeric cells display comma thousands and accept the same notation without changing magnitude',async t=>{
  const p=await page(t,{extraRows:[{id:'4',rowKey:'D00004',version:1,cartonCount:1234,qtyPerCarton:2000,productCode:'LARGE',contId:null}]});
  const input=p.w.document.querySelector('tr[data-id="4"] [data-edit="cartonCount"]');assert.equal(input.value,'1,234');input.focus();assert.equal(input.value,'1234');input.value='2,345';input.dispatchEvent(new p.w.Event('change',{bubbles:true}));
  assert.equal(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).drafts['4'].changes.cartonCount,2345);
@@ -238,10 +241,10 @@ test('pin is under private filters in the orders DOM, remains singular on refres
  p.change('#search','AC305');doc.querySelector('#containerTable [data-container-filter="2"]').click();
  assert.equal(watched.hidden,false);assert.equal(filters.nextElementSibling,watched);assert.equal(doc.getElementById('search').value,'AC305');
  assert.equal(watched.querySelectorAll('tbody tr').length,1);assert.equal(watched.querySelectorAll('[id]').length,0);
- assert.equal(watched.querySelectorAll('thead th').length,5,'the pinned copy stays compact');
- assert.equal(watched.querySelector('.watched-caption'),null);assert.equal(watched.querySelector('.watched-actions button').textContent,'Bỏ ghim');assert.equal(watched.querySelector('.watched-actions').nextElementSibling.className,'watched-scroll');assert.doesNotMatch(watched.textContent,/Đang theo dõi/);
+ assert.equal(watched.querySelectorAll('thead th').length,6,'five data columns and the unpin control stay compact');
+ assert.equal(watched.querySelector('.watched-caption'),null);assert.equal(watched.querySelector('.watched-actions'),null);assert.equal(watched.querySelector('thead button').textContent,'Bỏ ghim');assert.equal(watched.querySelector('thead button').closest('th'),watched.querySelector('thead th:last-child'));assert.doesNotMatch(watched.textContent,/Đang theo dõi/);
  p.listeners.changed();await tick();await tick();assert.equal(doc.querySelectorAll('#watchedContainer').length,1);assert.equal(watched.hidden,false);
- watched.querySelector('.watched-actions button').click();assert.equal(watched.hidden,true);assert.equal(doc.getElementById('search').value,'AC305');
+ watched.querySelector('thead button').click();assert.equal(watched.hidden,true);assert.equal(doc.getElementById('search').value,'AC305');
  assert.equal(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).taskTarget,null);assert.equal(p.calls.filter(c=>c.options.method).length,0);
 });
 
