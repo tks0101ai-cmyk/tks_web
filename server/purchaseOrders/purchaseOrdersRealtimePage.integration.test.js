@@ -63,22 +63,43 @@ test('input burst avoids repeated synchronous cont/task rebuilds while keeping d
  assert.deepEqual(countWrites,{containers:1,tasks:1},'one frame rebuilds each summary once');assert.equal(p.drafts()['1'].changes.cartonCount,13);const values=[...doc.querySelector('#containerTable [data-container-filter="2"]').closest('tr').querySelectorAll('td.num')].slice(0,3).map(td=>td.textContent);assert.deepEqual(values,['1','0.13','1.30']);
  assert.match(doc.querySelector('#purchaseTaskBar strong').textContent,/0\.13 \/ 32 T · 1\.30 \/ 170 m³/);
 });
-test('successful save refresh renders the fresh snapshot once and clears the saved draft',async t=>{
- const p=await page(t),doc=p.w.document; p.data.rows[0].qtyPerCarton=5;const input=doc.querySelector('[data-edit="supplier"]');input.focus();input.value='Saved supplier';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));input.dispatchEvent(new p.w.Event('change',{bubbles:true}));
- doc.getElementById('save').click();const root=doc.getElementById('orderTable');let writes=0,proto=Object.getPrototypeOf(root),descriptor;while(proto&&!descriptor){descriptor=Object.getOwnPropertyDescriptor(proto,'innerHTML');proto=Object.getPrototypeOf(proto)}Object.defineProperty(root,'innerHTML',{configurable:true,get(){return descriptor.get.call(root)},set(value){writes++;descriptor.set.call(root,value)}});
- const fetch=p.w.fetch;p.w.fetch=async(url,options={})=>{if(url==='/api/purchase-orders/1'&&options.method==='PATCH'){p.data.rows[0].supplier='Saved supplier';return {ok:true,json:async()=>({})}}if(url==='/api/purchase-orders'&&!options.method)return {ok:true,json:async()=>structuredClone(p.data)};return fetch(url,options)};
+test('commit announces saving while the write is pending',async t=>{
+ const p=await page(t),doc=p.w.document,input=doc.querySelector('[data-edit="supplier"]');input.focus();input.value='Saved supplier';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));input.dispatchEvent(new p.w.Event('change',{bubbles:true}));doc.getElementById('save').click();
+ let resolveWrite;const write=new Promise(resolve=>{resolveWrite=resolve}),fetch=p.w.fetch;p.w.fetch=async(url,options={})=>url==='/api/purchase-orders/1'&&options.method==='PATCH'?write:fetch(url,options);
+ const commit=doc.getElementById('commit');commit.click();await tick();assert.equal(commit.disabled,true);assert.equal(commit.getAttribute('aria-busy'),'true');assert.match(commit.textContent,/Đang lưu/);assert.equal(doc.querySelector('#modal [role="status"]')?.textContent,'Đang lưu thay đổi…');assert.equal(doc.getElementById('modal').open,true);
+ resolveWrite({ok:true,json:async()=>({})});for(let i=0;i<5;i++)await tick();
+});
+test('successful save closes before snapshot refresh finishes and later applies snapshot',async t=>{
+ const p=await page(t),doc=p.w.document;const input=doc.querySelector('[data-edit="supplier"]');input.focus();input.value='Saved supplier';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));input.dispatchEvent(new p.w.Event('change',{bubbles:true}));doc.getElementById('save').click();
+ let resolveSnapshot;const snapshot=new Promise(resolve=>{resolveSnapshot=resolve});const fetch=p.w.fetch;p.w.fetch=async(url,options={})=>{if(url==='/api/purchase-orders/1'&&options.method==='PATCH'){p.data.rows[0].supplier='Saved supplier';p.data.rows[0].version=5;return {ok:true,json:async()=>({...structuredClone(p.data.rows[0]),operationId:'op-1'})}}if(url==='/api/purchase-orders'&&!options.method)return snapshot;return fetch(url,options)};
+ const root=doc.getElementById('orderTable');let writes=0,proto=Object.getPrototypeOf(root),descriptor;while(proto&&!descriptor){descriptor=Object.getOwnPropertyDescriptor(proto,'innerHTML');proto=Object.getPrototypeOf(proto)}Object.defineProperty(root,'innerHTML',{configurable:true,get(){return descriptor.get.call(root)},set(value){writes++;descriptor.set.call(root,value)}});
  doc.getElementById('commit').click();for(let i=0;i<5;i++)await tick();
- assert.equal(writes,1,'the successful snapshot refresh should perform the only full table render');assert.equal(doc.querySelector('[data-edit="supplier"]').value,'Saved supplier');assert.equal(p.drafts()['1'],undefined);assert.equal(doc.getElementById('save').hidden,true);
+ const supplierCell=()=>doc.querySelector('tr[data-id="1"] [data-field="supplier"]');assert.equal(doc.getElementById('modal').open,false);assert.equal(p.drafts()['1'],undefined);assert.match(doc.getElementById('notice').textContent,/Đang đồng bộ/);assert.equal(supplierCell().querySelector('input')?.value||supplierCell().textContent,'Saved supplier','authoritative PATCH row should render before the background snapshot');assert.equal(writes,1,'the accepted PATCH row renders while the background snapshot is pending');
+ doc.getElementById('notice').textContent='Thông báo mới hơn';
+ resolveSnapshot({ok:true,json:async()=>structuredClone(p.data)});for(let i=0;i<5;i++)await tick();
+ assert.equal(writes,2,'the later snapshot applies after the authoritative PATCH row render');assert.equal(supplierCell().querySelector('input')?.value||supplierCell().textContent,'Saved supplier');assert.equal(p.drafts()['1'],undefined);assert.equal(doc.getElementById('save').hidden,true);assert.equal(doc.getElementById('notice').textContent,'Thông báo mới hơn','background completion must not overwrite a newer notice');
 });
 test('definite save rejection keeps draft and re-enables commit for retry',async t=>{
  const p=await page(t,{local:true}),doc=p.w.document;doc.getElementById('save').click();const commit=doc.getElementById('commit'),fetch=p.w.fetch;p.w.fetch=async(url,options={})=>{if(url==='/api/purchase-orders/plan'&&options.method==='POST'){p.calls.push({url,options});return {ok:false,status:400,json:async()=>({error:'Definite validation rejection'})}}return fetch(url,options)};
  commit.click();for(let i=0;i<5;i++)await tick();
  assert.equal(p.calls.filter(c=>c.url==='/api/purchase-orders/plan'&&c.options.method==='POST').length,1);assert.ok(p.drafts()['new-local']);assert.equal(doc.getElementById('modal').open,true);assert.equal(doc.getElementById('retryWrite').hidden,true);assert.equal(commit.disabled,false);
 });
+test('definite row validation rejection keeps confirmation modal and draft',async t=>{
+ const p=await page(t),doc=p.w.document,input=doc.querySelector('[data-edit="supplier"]');input.focus();input.value='Invalid supplier';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));input.dispatchEvent(new p.w.Event('change',{bubbles:true}));doc.getElementById('save').click();const fetch=p.w.fetch;p.w.fetch=async(url,options={})=>url==='/api/purchase-orders/1'&&options.method==='PATCH'?{ok:false,status:400,json:async()=>({error:'Definite validation rejection'})}:fetch(url,options);
+ doc.getElementById('commit').click();for(let i=0;i<5;i++)await tick();
+ assert.ok(p.drafts()['1']);assert.equal(doc.getElementById('modal').open,true);assert.equal(doc.getElementById('commit').disabled,false);assert.match(doc.getElementById('notice').textContent,/Definite validation rejection/);
+});
 test('ambiguous save failure keeps commit disabled while retry outbox is pending',async t=>{
  const p=await page(t,{local:true}),doc=p.w.document;doc.getElementById('save').click();const commit=doc.getElementById('commit'),fetch=p.w.fetch;p.w.fetch=async(url,options={})=>{if(url==='/api/purchase-orders/plan'&&options.method==='POST'){p.calls.push({url,options});return {ok:false,status:500,json:async()=>({error:'Ambiguous server failure'})}}return fetch(url,options)};
  commit.click();for(let i=0;i<5;i++)await tick();
  assert.ok(p.drafts()['new-local']);assert.equal(doc.getElementById('modal').open,true);assert.equal(doc.getElementById('retryWrite').hidden,false);assert.equal(commit.disabled,true);
+});
+test('successful outbox retry closes modal without waiting for background snapshot',async t=>{
+ const p=await page(t,{local:true}),doc=p.w.document,fetch=p.w.fetch;let writes=0,resolveSnapshot;const snapshot=new Promise(resolve=>{resolveSnapshot=resolve}),keys=[];
+ p.w.fetch=async(url,options={})=>{if(url==='/api/purchase-orders/plan'&&options.method==='POST'){writes++;keys.push(options.headers['Idempotency-Key']);if(writes===1)return {ok:false,status:500,json:async()=>({error:'Ambiguous server failure'})};p.data.rows.push({...p.data.rows[0],id:'new-local',rowKey:'D00002',supplier:'Local'});return {ok:true,json:async()=>({})}}if(url==='/api/purchase-orders'&&!options.method&&writes>1)return snapshot;return fetch(url,options)};
+ doc.getElementById('save').click();doc.getElementById('commit').click();for(let i=0;i<5;i++)await tick();assert.equal(doc.getElementById('modal').open,true);assert.ok(p.drafts()['new-local']);
+ doc.getElementById('retryWrite').click();for(let i=0;i<5;i++)await tick();assert.equal(writes,2);assert.equal(keys[1],keys[0],'outbox retry must reuse the original idempotency key');assert.equal(doc.getElementById('modal').open,false);assert.equal(p.drafts()['new-local'],undefined);assert.match(doc.getElementById('notice').textContent,/Đang đồng bộ/);
+ resolveSnapshot({ok:true,json:async()=>structuredClone(p.data)});for(let i=0;i<5;i++)await tick();const localSupplier=doc.querySelector('tr[data-id="new-local"] [data-field="supplier"]');assert.equal(localSupplier.querySelector('input')?.value||localSupplier.textContent,'Local');
 });
 test('one view-only full render projects each source row once for every summary',async t=>{
  const projectionProbe={count:0},p=await page(t,{projectionProbe});projectionProbe.count=0;p.w.document.getElementById('bulk').click();
