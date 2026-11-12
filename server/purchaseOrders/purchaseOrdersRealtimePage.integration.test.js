@@ -51,6 +51,18 @@ test('pristine focused input retains its original comparison value/version when 
  const input=doc.querySelector('[data-edit="supplier"]');assert.equal(doc.activeElement,input);assert.equal(input.value,'Old');assert.match(input.closest('td').title,/Remote/);
  input.value='My edit';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));assert.equal(p.drafts()['1'].before.supplier,'Old');assert.equal(p.drafts()['1'].version,4);
 });
+test('input burst avoids repeated synchronous cont/task rebuilds while keeping draft and totals current',async t=>{
+ const p=await page(t),doc=p.w.document,row=p.data.rows[0];row.kgPerCarton=10;row.m3PerCarton=.1;p.listeners.changed();await tick();await tick();
+ doc.querySelector('#containerTable [data-container-filter="2"]').click();
+ const frames=new Map();let frameId=0;p.w.requestAnimationFrame=callback=>{const id=++frameId;frames.set(id,callback);return id};p.w.cancelAnimationFrame=id=>frames.delete(id);
+ const countWrites={containers:0,tasks:0},watch=(element,key)=>{let proto=Object.getPrototypeOf(element),descriptor;while(proto&&!descriptor){descriptor=Object.getOwnPropertyDescriptor(proto,'innerHTML');proto=Object.getPrototypeOf(proto)}Object.defineProperty(element,'innerHTML',{configurable:true,get(){return descriptor.get.call(element)},set(value){countWrites[key]++;descriptor.set.call(element,value)}})};
+ watch(doc.getElementById('containerTable'),'containers');watch(doc.getElementById('purchaseTaskBar'),'tasks');
+ const input=doc.querySelector('[data-edit="cartonCount"]');input.focus();
+ for(const value of ['11','12','13']){input.value=value;input.dispatchEvent(new p.w.Event('input',{bubbles:true}))}
+ assert.deepEqual(countWrites,{containers:0,tasks:0},'input burst must not rebuild summary DOM synchronously');const pendingFrames=[...frames.values()];frames.clear();pendingFrames.forEach(callback=>callback(16));
+ assert.deepEqual(countWrites,{containers:1,tasks:1},'one frame rebuilds each summary once');assert.equal(p.drafts()['1'].changes.cartonCount,13);const values=[...doc.querySelector('#containerTable [data-container-filter="2"]').closest('tr').querySelectorAll('td.num')].slice(0,3).map(td=>td.textContent);assert.deepEqual(values,['1','0.13','1.30']);
+ assert.match(doc.querySelector('#purchaseTaskBar strong').textContent,/0\.13 \/ 32 T · 1\.30 \/ 170 m³/);
+});
 test('Đối chiếu overrides are directly editable and sent through the normal versioned row patch',async t=>{
  const p=await page(t),doc=p.w.document;p.data.rows[0].literChina=120;p.data.rows[0].measurementOverrides={literChina:120};p.data.rows.push({...p.data.rows[0],id:'2',rowKey:'D00002',literChina:110,measurementOverrides:{literChina:110}});p.listeners.changed();await tick();await tick();
  doc.getElementById('columns').click();doc.querySelector('[data-column="literChina"]').checked=true;doc.querySelector('[data-column="literChina"]').dispatchEvent(new p.w.Event('change',{bubbles:true}));
