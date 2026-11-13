@@ -1420,3 +1420,15 @@ Cập nhật cuối: 12/11/2026.
 - Ô trống xóa giá trị tùy chọn; thiếu Mã dòng tạo mã mới; Mã dòng có sẵn cập nhật; dòng active bị bỏ khỏi workbook được xóa mềm cùng audit, projection và realtime. Một lỗi/xung đột chặn toàn bộ snapshot. Không migration.
 
 Cập nhật cuối: 12/11/2026.
+
+## Thu mua — Mã dòng tái sử dụng (migration 0123, 13/11/2026)
+
+- `POST /api/purchase-orders/next-key` yêu cầu `purchase.edit`, trả `{rowKey,reservationId,expiresAt}` và giữ mã theo actor trong 30 phút. Hệ thống lấy số trống nhỏ nhất trong pool trước; nếu pool hết thì dùng sequence tăng dần hiện có.
+- `POST /api/purchase-orders/release-key` yêu cầu `purchase.edit`, nhận `{reservationId}` và trả `{released:boolean}`. Chỉ actor tạo giữ chỗ chưa dùng mới nhả được; giữ chỗ hết hạn được thu hồi khi cấp mã.
+- Tạo mới nhận reservation ID cùng draft; `GET /api/purchase-orders/history?orderId=<id>` truy vấn theo ID bất biến, không nhận Mã dòng làm danh tính lịch sử.
+- Migration 0123 thêm `root_order_id`, pool, reservation và lịch sử gán mã bất biến; chỉ `row_key` của dòng chưa xóa bị unique. Mã gốc chỉ vào pool khi mọi nhánh cùng họ đã xóa mềm.
+- Import Excel là snapshot đầy đủ: xóa mềm các dòng active vắng mặt và đưa mã gốc đã đủ điều kiện vào pool trước khi cấp mã cho các dòng mới thiếu Mã dòng, tất cả trong một transaction; revision cũ không ghi dữ liệu.
+
+Migration 0123 được đăng ký trong `ensurePurchaseSchema.FILES`, nhưng chưa áp dụng staging/production và chưa deploy. Phải áp dụng migration sau khi đối chiếu dữ liệu trên staging/copy và trước khi triển khai code; không chạy migration hoặc deploy trong tác vụ này.
+
+Cập nhật cuối: 13/11/2026.

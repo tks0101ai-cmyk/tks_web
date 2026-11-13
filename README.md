@@ -575,6 +575,14 @@ Không đổi schema/dependency/API. Biến môi trường mới (tùy chọn): 
 
 Cập nhật cuối: 12/11/2026.
 
+## Thu mua — tái sử dụng Mã dòng (migration 0123, 13/11/2026)
+
+Mã dòng gốc được cấp theo số trống nhỏ nhất trong pool khi toàn bộ nhánh tách cùng `root_order_id` đã xóa mềm; nếu pool rỗng, cấp tiếp bằng sequence hiện có. Ràng buộc duy nhất chỉ áp dụng cho `row_key` đang hoạt động. `purchase_orders.id` và `root_order_id` là định danh lịch sử bất biến; Mã dòng hiển thị có thể được cấp lại mà không gộp lịch sử.
+
+`POST /api/purchase-orders/next-key` giữ mã cho người dùng hiện tại trong 30 phút; `POST /api/purchase-orders/release-key` nhả giữ chỗ chưa dùng, chỉ chủ giữ chỗ được phép. Xóa, khôi phục, hoàn tác và import snapshot đầy đủ giữ trong transaction/khóa hiện có. Import xử lý các dòng vắng mặt trước rồi mới cấp mã cho dòng mới trống Mã dòng. Migration 0123 phải được áp dụng trước khi triển khai code; hiện code ở `main`, migration chưa áp dụng staging/production và chưa deploy.
+
+Cập nhật cuối: 13/11/2026.
+
 ## Nguồn dự phòng 3 trang VAT (12/11/2026)
 
 Tab của file trung gian "cúc cu test" lỗi IMPORTRANGE (`#REF!` khi file VAT TKS quá nặng, `Loading...`, thiếu cột) hoặc Sheets API lỗi thì Nháp VAT, Tra cứu VAT và Tồn VAT của ORDER VAT tự đọc tab tương ứng của file gốc VAT TKS (cấu hình `vatDraftConfig.fallback`); trang ghi rõ tab nào đang đọc từ file gốc. Service account đã có quyền xem file gốc. Không đổi schema/env/dependency.
@@ -585,4 +593,4 @@ Cập nhật cuối: 12/11/2026.
 
 Import luôn bắt đầu bằng tải workbook đầy đủ từ `GET /api/purchase-orders/import/snapshot`; workbook có sheet `Đặt hàng`, hướng dẫn từng cột và manifest revision ẩn. Sửa đúng file đã tải rồi upload `.xlsx` (tối đa 10 MB, 10.000 dòng). Ô trống xóa giá trị; dòng bị bỏ khỏi file được tính xóa mềm và hiện rõ trong preview. Hệ thống từ chối snapshot cũ ở preview hoặc xác nhận, và chỉ áp dụng toàn bộ create/update/delete sau xác nhận hợp lệ. Không cần migration.
 
-Cập nhật cuối: 12/11/2026.
+Cập nhật cuối: 13/11/2026.

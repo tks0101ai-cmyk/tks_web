@@ -966,6 +966,20 @@ Migrations Thu mua bắt đầu ở 0110–0116 vì main đã dùng 0101–0109 
 - Transaction ghi dùng advisory lock 20531015 chung với sync Sheet. Khi web là nguồn, Sheet sync bỏ qua cả khi force; projection cập nhật dữ liệu Thu mua, snapshot cont, expected và audit nguyên tử. Hàng đã về vẫn đọc lịch sử, không cộng tồn Kiot.
 - Chưa được tự bật source_mode=web trước khi chọn nguồn Sheet chuẩn, seed và đối chiếu đủ dữ liệu. Các bảng mới không cấp SELECT cho reporting_readonly theo default grants cũ.
 
+## Migration 0123 — Thu mua / Mã dòng có thể tái sử dụng (13/11/2026, chưa áp staging/production)
+
+`0123_purchase_recyclable_row_keys.sql` bổ sung các hợp đồng sau cho Thu mua:
+
+- `purchase_orders.root_order_id BIGINT NOT NULL`: ID bất biến của họ đơn gốc/tách; FK tự tham chiếu deferred. Dòng gốc mặc định họ bằng ID vừa tạo; nhánh tách giữ ID họ nguồn.
+- `purchase_orders_active_row_key_uq`: unique partial index trên `row_key WHERE deleted_at IS NULL`; dòng đã xóa mềm có thể giữ mã trùng với lần tái sử dụng hiện hành.
+- `purchase_key_pool(row_key TEXT PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL DEFAULT now())`: các Mã dòng gốc được tái sử dụng sau khi không còn nhánh active nào trong họ.
+- `purchase_key_reservations(reservation_id UUID PRIMARY KEY, row_key TEXT NOT NULL UNIQUE, actor_id TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL)`: giữ mã tạm theo actor trong 30 phút, có index hết hạn; cấp lại mã nhỏ nhất trong pool trước sequence, và hỗ trợ nhả reservation chưa dùng bởi đúng actor.
+- `purchase_key_history` lưu mỗi lần gán mã bằng ID riêng, kèm `order_id`, `root_order_id`, `root_key`, `retired_at`; khóa hiển thị trùng giữa các chu kỳ được phép. `purchase_operation_rows.root_order_id` và snapshot JSON được backfill để audit/undo không nhập nhằng.
+
+Import là snapshot đầy đủ: trong một transaction, các họ bị bỏ khỏi snapshot được xóa mềm và mã đủ điều kiện được trả pool trước khi tạo dòng mới có Mã dòng trống. Stale revision vẫn bị từ chối. Xóa một nhánh không giải phóng mã nếu nhánh khác còn active; khôi phục/undo giữ ID nội bộ và không lấy mã của họ đang hoạt động. Migration phải được áp dụng trước khi deploy code. Migration đã có trong repository/main nhưng chưa chạy trên staging hoặc production; cần kiểm tra backfill trên staging/copy trước rollout.
+
+Cập nhật gần nhất: 13/11/2026.
+
 
 03/11/2026 — Bổ sung vào migration 0101 chưa áp dụng: purchase_presence(connection_id UUID PRIMARY KEY, actor_id TEXT, actor_name TEXT, expires_at TIMESTAMPTZ), index expires_at. Đây là lease ngắn hạn cho SSE/hiện diện liên tiến trình (gia hạn 10s, hết hạn 45s), không chứa bộ lọc hay bản nháp, không ghi vào audit nghiệp vụ. Không cấp reporting_readonly. Mã production UI /thu-mua/dat-hang/ đã nối API; migration/seed/cutover vẫn chưa chạy.
 
@@ -1011,4 +1025,4 @@ JSONB `user_table_prefs.prefs` hỗ trợ `sorts: [{key, dir}]` theo thứ tự 
 
 11/11/2026 — Không đổi bảng/cột/index. Hợp đồng giá NET của Thu mua cập nhật theo VK-DUNG: `(goodsAmount + freightAmount + taxAmount + freightPostpaid*3920) / totalQty`, với phí chưa có coi như 0; cột projection `product_container_lines.vietnam_price` phản ánh cùng công thức.
 
-Cập nhật gần nhất: 11/11/2026.
+Cập nhật gần nhất: 13/11/2026.

@@ -748,6 +748,14 @@ Thiết kế tổng: [purchase delta sync](../superpowers/plans/2026-11-12-purch
 
 Cập nhật cuối: 12/11/2026.
 
+## Thu mua — Mã dòng tái sử dụng (13/11/2026)
+
+Migration 0123 bổ sung `root_order_id` bất biến cho cả họ split, unique partial chỉ trên Mã dòng active, pool số trống và reservation actor-bound 30 phút. API trả/nhả reservation; lịch sử được chọn theo immutable `orderId`. Xóa mềm chỉ trả Mã gốc vào pool khi không còn nhánh active. Khôi phục/undo giữ ID nội bộ và tránh xung đột mã đang hoạt động. Import snapshot đầy đủ xóa mềm các dòng vắng mặt và cấp lại mã trước các dòng mới bỏ trống mã trong cùng transaction. Code nằm trong working tree trên `main`, chưa deploy.
+
+Full `npm test`: 5,052/5,109 đạt, 53 lỗi, 4 bỏ qua; không gán lỗi cho baseline. Focused service+route: 91/91 đạt. Graphify không khả dụng. Migration chưa chạy staging/production. Cần xác minh backfill và mọi họ split trên staging/copy, sau đó operator áp 0123 trước deploy. Xem [spec](../superpowers/specs/2026-11-13-purchase-rowkey-recycling-design.md) và [kế hoạch](../superpowers/plans/2026-11-13-purchase-rowkey-recycling.md).
+
+Cập nhật cuối: 13/11/2026.
+
 ## Hiệu năng đợt 4 — 12/11/2026
 
 Đo sáng 12/11 sau PR #78/#79: khựng ~16 lần/giờ (từ ~50–60), lag tối đa 4,2 s. Đã làm: nghỉ phép bỏ vòng lặp đơn × tài khoản (~200 lần nhanh hơn) + trang Nhân sự bớt tải lại; xuất Excel chạy worker thread; báo cáo kinh doanh / thưởng phạt / tuổi nợ trả bản cũ khi làm mới. Tiếp theo: đọc lại `[loop-stall]`/`[timing]` sau deploy; xem `invoice-price-audit` (1 lần 23,8 s); cân nhắc tránh deploy giờ cao điểm (cache trống sau mỗi lần khởi động lại).
@@ -760,4 +768,4 @@ Cập nhật cuối: 12/11/2026.
 
 Kiểm tra: test importer và service bao gồm blank-clear, stale preview/confirm, soft-delete/restore và tombstone delta; route download cần quyền `purchase.import`; UI yêu cầu download trước, kéo/chọn `.xlsx`, giới hạn 10 MB và hiển thị tiến độ thật. Commit `725e73d5` đã push `main`; xác nhận Render phục vụ JS chứa UI snapshot mới. Còn test workbook với dữ liệu thật và xác minh đồng bộ hai phiên trên production.
 
-Cập nhật cuối: 12/11/2026.
+Cập nhật cuối: 13/11/2026.

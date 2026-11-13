@@ -671,6 +671,7 @@ Mục tiêu nghiệp vụ: bảng nhiều dòng tải nhanh hơn nhưng người
 - Chọn vùng ô kiểu Excel (08/11/2026): người dùng bôi đen khối ô (và nhiều khối bằng Ctrl) trên mọi bảng để xem ngay tổng / trung bình / đếm và chép sang Excel mà không phải xuất file; không đổi dữ liệu. Cũng như Excel, người dùng có thể xóa (Delete), cắt (Ctrl+X) và dán khối từ Excel (Ctrl+V) lên các ô sửa được; riêng bảng VT Hà Nội / VT Sài Gòn lưu thẳng vào Ghi chú / Ngày về / Vị trí.
 
 Cập nhật gần nhất: 10/11/2026.
+
 Cập nhật gần nhất: 08/11/2026.
 
 ## Thu mua — quy tắc nghiệp vụ NV và Chờ xếp (07/11/2026)
@@ -702,3 +703,9 @@ Khi nhiều người cùng mở bảng, sau snapshot ban đầu client đồng b
 12/11/2026 — Người dùng tải toàn bộ dữ liệu Thu mua hiện tại kèm hướng dẫn, sửa cùng workbook rồi upload lại. File là bản thay thế đầy đủ: ô trống xóa giá trị, dòng vắng mặt xóa mềm; preview làm rõ số lượng và phải xác nhận toàn bộ. Nếu dữ liệu có người khác sửa sau khi tải, hệ thống yêu cầu tải snapshot mới để tránh ghi đè.
 
 Cập nhật cuối: 12/11/2026.
+
+## Thu mua — Mã dòng có thể tái sử dụng (13/11/2026)
+
+Khi toàn bộ một đơn và các nhánh tách đã xóa mềm, hệ thống có thể cấp lại Mã dòng gốc theo số trống nhỏ nhất. Mã hiển thị chỉ phải duy nhất giữa các đơn đang hoạt động; ID đơn và ID họ gốc vẫn phân biệt lịch sử qua các chu kỳ tái sử dụng. Mã mới được giữ cho người đang thao tác tối đa 30 phút và có thể nhả khi bỏ dòng chưa lưu. Import Excel thay thế đầy đủ: dòng vắng mặt được xóa mềm, mã được thu hồi trước khi cấp cho dòng mới để trống Mã dòng trong cùng giao dịch. Migration 0123 phải chạy trước khi deploy; code hiện ở `main`, migration chưa áp staging/production và chưa deploy.
+
+Cập nhật cuối: 13/11/2026.

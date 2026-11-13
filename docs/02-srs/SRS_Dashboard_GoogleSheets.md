@@ -1282,3 +1282,13 @@ Cập nhật gần nhất: 07/11/2026.
 12/11/2026 — Import Thu mua phải tải workbook snapshot đầy đủ trước khi chọn/tải file. Workbook có hướng dẫn từng cột và revision ẩn; ô trống xóa giá trị, dòng vắng mặt được xóa mềm. UI hiển thị tiến độ tải và preview số dòng thêm/sửa/không đổi/xóa/lỗi; chỉ ghi sau khi xác nhận, theo giao dịch nguyên tử. Nếu revision đổi sau khi tải, preview/xác nhận bị từ chối và người dùng cần tải snapshot mới.
 
 Cập nhật cuối: 12/11/2026.
+
+## Thu mua — vòng đời Mã dòng tái sử dụng (13/11/2026)
+
+- Hệ thống chỉ bảo đảm duy nhất Mã dòng trong các đơn đang hoạt động. Mã gốc được tái sử dụng theo thứ tự số nhỏ nhất sau khi mọi nhánh tách thuộc cùng họ đơn đã xóa mềm; pool rỗng thì cấp sequence mới, không giảm/reset sequence.
+- Mã được giữ chỗ theo actor tối đa 30 phút. API next-key yêu cầu `purchase.edit`; API release-key chỉ nhả giữ chỗ chưa dùng do chính actor tạo. Server kiểm tra quyền, chủ sở hữu và tình trạng reservation khi ghi.
+- ID đơn và `root_order_id` là định danh nội bộ bất biến. Lịch sử theo họ phải truy vấn bằng ID đơn, không dùng Mã dòng có thể được cấp lại.
+- Import Excel là snapshot đầy đủ. Trong một giao dịch, các dòng active bị bỏ khỏi snapshot được xóa mềm và giải phóng mã đủ điều kiện trước khi cấp mã cho các dòng mới để trống Mã dòng. Revision lỗi thời không tạo thay đổi một phần.
+- Migration 0123 phải được áp dụng trước khi deploy code; cần xác minh backfill trên staging/copy trước rollout. Tại 13/11/2026, code ở `main`, migration chưa áp dụng staging/production và chưa deploy.
+
+Cập nhật cuối: 13/11/2026.
