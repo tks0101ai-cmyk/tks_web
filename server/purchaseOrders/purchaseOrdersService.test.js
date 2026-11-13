@@ -309,6 +309,17 @@ test('manual code split saves independently entered quantities and rejects blank
 test('soft delete and restore update both read models and stale batch writes nothing',async()=>{
  const a=await service.create(manager,input()),b=await service.create(manager,{...input(),productCode:'B'});await assert.rejects(service.remove(manager,{rows:[{id:a.id,version:a.version},{id:b.id,version:999}]}));assert.equal((await service.list(manager)).rows.length,2);const result=await service.remove(manager,{rows:[{id:a.id,version:a.version}]});assert.ok(result.operationId);assert.equal((await service.list(manager)).rows.length,1);assert.equal((await db.query('SELECT count(*)::int n FROM product_container_lines')).rows[0].n,1);const trash=await service.trash(manager);assert.equal(trash.length,1);await service.restore(manager,{id:a.id,version:trash[0].version});assert.equal((await service.list(manager)).rows.length,2);
 });
+
+test('deactivate hides stale rows from order and cont projections while keeping reactivation and undo',async()=>{
+ const old=await service.create(manager,input()),kept=await service.create(manager,{...input(),productCode:'B'});
+ const retired=await service.deactivate(manager,{rows:[{id:old.id,version:old.version}]});assert.ok(retired.operationId);
+ assert.equal((await service.list(manager)).rows.length,1);assert.equal((await service.list(manager)).rows[0].id,kept.id);
+ assert.equal((await service.inactive(manager))[0].rowKey,old.rowKey);assert.equal((await service.inactive(manager))[0].inactiveAt!=null,true);
+ assert.equal((await db.query("SELECT count(*)::int n FROM product_container_lines WHERE product_code='A'")).rows[0].n,0);
+ await assert.rejects(service.remove(manager,{rows:[{id:old.id,version:old.version+1}]}),e=>e.code==='VERSION_CONFLICT');
+ await service.reactivate(manager,{id:old.id,version:(await service.inactive(manager))[0].version});assert.equal((await service.list(manager)).rows.length,2);
+ const operation=(await service.operations(manager))[0];assert.equal(operation.action,'reactivate');await service.undo(manager,{operationId:operation.id});assert.equal((await service.list(manager)).rows.length,1);
+});
 test('undo owns immutable snapshots, handles both split branches atomically and rejects another actor or stale row',async()=>{
  const a=await service.create(manager,input());const op=await service.applyPlan(manager,{splits:[{id:a.id,version:a.version,sourceQty:10,quantity:4,manual:true}]});await assert.rejects(service.undo({id:'other'},{operationId:op.operationId}));await service.undo(manager,{operationId:op.operationId});const rows=(await service.list(manager)).rows;assert.equal(rows.length,1);assert.equal(rows[0].rowKey,a.rowKey);assert.equal(rows[0].cartonCount,100);await assert.rejects(service.undo(manager,{operationId:op.operationId}));const update=await service.update(manager,a.id,{version:rows[0].version,changes:{cartonCount:9}});await service.update(manager,a.id,{version:update.version,changes:{supplier:'New'}});await assert.rejects(service.undo(manager,{operationId:update.operationId}),e=>e.code==='VERSION_CONFLICT');assert.equal((await service.list(manager)).rows[0].cartonCount,9);
 });
