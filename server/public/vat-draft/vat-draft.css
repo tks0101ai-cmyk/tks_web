@@ -19,6 +19,9 @@
 .vd-panel{background:var(--glass-panel);border:1px solid var(--border);border-radius:var(--radius-xl);box-shadow:var(--card-shadow);padding:18px 20px;display:flex;flex-direction:column;gap:16px;min-width:0}
 .vd-panel[hidden],[hidden].vd-panel{display:none}
 .vd-hint{margin:0;color:var(--muted);font-size:13px;line-height:1.5}
+.vd-account-select{display:flex;gap:8px;align-items:center}
+.vd-account-select select{flex:1;min-width:0}
+.vd-account-select [hidden]{display:none}
 #vdDocsPane,#vdPastePane{display:flex;flex-direction:column;gap:14px;min-width:0}
 #vdDocsPane[hidden],#vdPastePane[hidden]{display:none}
 .vd-codes{display:flex;flex-direction:column;gap:8px}

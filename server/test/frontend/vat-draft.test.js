@@ -23,9 +23,11 @@ const allocRow = (status, maSp, sl, nguon, reason = '') => ({
 
 function api(overrides = {}) {
   return {
-    'GET /meta': { masterData: { loadedAt: '2026-10-17T02:00:00Z', stale: false, stockRows: 8432, mappingRows: 2998, error: null },
-      sync: [{ branch: 'hanoi', entity: 'invoices', syncedAt: new Date().toISOString() }],
-      vietqr: { template: 'compact2', commonBankCodes: 'VCB, MB', accounts: [{ key: 'tks_group', label: 'MB TKS — MB 606266688888' }, { key: 'shc', label: 'MB SHC — MB 525345345' }] } },
+    'GET /meta': { vietqr: { template: 'compact2', commonBankCodes: 'VCB, MB',
+      accounts: [{ key: 'tks_group', label: 'MB TKS — MB 606266688888' }, { key: 'shc', label: 'MB SHC — MB 525345345' }],
+      banks: [{ bin: '970416', code: 'ACB', shortName: 'ACB' }, { bin: '970436', code: 'VCB', shortName: 'Vietcombank' }, { bin: '970422', code: 'MB', shortName: 'MBBank' }] } },
+    'GET /master-data/status': { masterData: { loadedAt: '2026-10-17T02:00:00Z', stale: false, stockRows: 8432, mappingRows: 2998, error: null },
+      sync: [{ branch: 'hanoi', entity: 'invoices', syncedAt: new Date().toISOString() }] },
     'POST /documents/resolve': { found: [
       { kind: 'invoice', branch: 'hanoi', code: 'HD028345', date: '16/10/2026 14:54', customerName: 'KH A', customerCode: 'KH1', note: 'thắng thức 16/10', status: 'Hoàn thành', orderCode: 'DH1', total: 82582000, selectable: true, warning: '' },
       { kind: 'order', branch: 'saigon', code: 'DH044391', date: '16/10/2026 11:00', customerName: 'Chị Lan', customerCode: '', note: '', status: 'Phiếu tạm', orderCode: '', total: 45000, selectable: true, warning: 'Đơn đã xuất hóa đơn: HD028345' }
@@ -65,7 +67,8 @@ async function setup(t, { hash = '#xu-ly', responses = api(), vaiTro = 'Quản l
     const key = `${options.method || 'GET'} ${parsed.pathname.replace('/api/vat-draft', '')}`;
     const body = options.body ? JSON.parse(options.body) : undefined;
     calls.push({ key, query: Object.fromEntries(parsed.searchParams), body });
-    const data = responses[key];
+    const entry = responses[key];
+    const data = typeof entry === 'function' ? entry() : entry;
     return {
       ok: data !== undefined, status: data !== undefined ? 200 : 404,
       headers: { get: () => key === 'POST /export' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/json' },
@@ -73,11 +76,17 @@ async function setup(t, { hash = '#xu-ly', responses = api(), vaiTro = 'Quản l
       blob: async () => new window.Blob(['x'])
     };
   };
+  window.TKSVatDraftRetryDelays = [0, 0, 0];
   window.eval(fs.readFileSync(path.join(publicDir, 'vat-draft/cell-select.js'), 'utf8'));
   window.eval(code);
   await window.TKSVatDraft.init();
   await tick();
   return { window, doc: window.document, calls };
+}
+
+/** Cho cac promise / setTimeout(0) chay het (tai lai co thu lai). */
+async function settle(window) {
+  for (let i = 0; i < 20; i += 1) await new Promise(resolve => window.setTimeout(resolve, 0));
 }
 
 /** Dan ma vao o + bam Xu ly (tra ma roi phan bo luon). */
@@ -89,7 +98,7 @@ async function pasteAndRun(doc, text = 'HD999 HD028345 abc DH044391') {
 
 test('tai trang: file trung gian loi -> dong trang thai Sheets bao tab doc tu file goc (mau canh bao)', async t => {
   const base = api();
-  const responses = { ...base, 'GET /meta': { ...base['GET /meta'], masterData: { ...base['GET /meta'].masterData, fallbackTabs: ['Gộp VAT'] } } };
+  const responses = { ...base, 'GET /master-data/status': { ...base['GET /master-data/status'], masterData: { ...base['GET /master-data/status'].masterData, fallbackTabs: ['Gộp VAT'] } } };
   const { doc } = await setup(t, { responses });
   const status = doc.getElementById('vdSheetsStatus');
   assert.match(status.textContent, /Gộp VAT đọc từ file gốc VAT TKS vì file trung gian đang lỗi/);
@@ -99,7 +108,7 @@ test('tai trang: file trung gian loi -> dong trang thai Sheets bao tab doc tu fi
 test('tai trang: trang thai Sheets/KiotViet; chi con o dan ma + Co so + Xu ly, khong con bang tick chon / bo loc', async t => {
   const { doc, calls } = await setup(t);
   assert.match(doc.getElementById('vdSheetsStatus').textContent, /Gộp VAT 8,432 dòng · Khớp mã 2,998 dòng/);
-  assert.deepEqual(calls.map(c => c.key), ['GET /meta'], 'khong tai danh sach chung tu luc mo trang');
+  assert.deepEqual(calls.map(c => c.key), ['GET /meta', 'GET /master-data/status'], 'khong tai danh sach chung tu luc mo trang');
   assert.equal(doc.getElementById('vdBranch').value, 'all', 'user Ca hai -> Co so ca hai');
   assert.equal(doc.getElementById('vdDocList').hidden, true);
   for (const id of ['vdDocsTable', 'vdKind', 'vdFrom', 'vdTo', 'vdSearch', 'vdDocsExport', 'vdDocsPager', 'vdChips', 'vdRunDocs', 'vdAddCodes']) {
@@ -473,4 +482,35 @@ test('allocation headers support three priorities while keeping legacy dropdowns
   assert.equal(doc.querySelector('[data-sort-field="SL"] .sort-indicator').textContent,'▼2');
   click('SL');
   assert.equal(doc.querySelector('[data-sort-field="MÃ SP"] .sort-indicator').textContent,'▲▼');
+});
+
+test('tai danh sach tai khoan: /meta loi thi tu thu lai; trang thai Sheets loi khong anh huong', async t => {
+  let failures = 2;
+  const responses = api();
+  const meta = responses['GET /meta'];
+  responses['GET /meta'] = () => (failures-- > 0 ? undefined : meta);
+  delete responses['GET /master-data/status'];
+  const { doc, calls } = await setup(t, { hash: '#tao-qr', responses });
+  assert.equal(calls.filter(c => c.key === 'GET /meta').length, 3, '2 lan loi + 1 lan thanh cong');
+  assert.ok(doc.getElementById('vdManualAccount').querySelector('option[value="tks_group"]'));
+  assert.equal(doc.getElementById('vdAccountsRetry').hidden, true);
+});
+
+test('tai danh sach tai khoan: het luot thu lai -> bao loi + nut Thu lai; bam Thu lai tai duoc', async t => {
+  const responses = api();
+  const meta = responses['GET /meta'];
+  delete responses['GET /meta'];
+  const { doc, window, calls } = await setup(t, { hash: '#tao-qr', responses });
+  assert.equal(calls.filter(c => c.key === 'GET /meta').length, 4, '1 lan dau + 3 lan thu lai');
+  const select = doc.getElementById('vdManualAccount');
+  assert.equal(select.options.length, 1);
+  assert.equal(select.options[0].textContent, 'Không tải được danh sách tài khoản');
+  assert.equal(doc.getElementById('vdAccountsRetry').hidden, false);
+  assert.equal(doc.getElementById('vdManualGenerate').disabled, true);
+  assert.match(doc.getElementById('vdQrBlocker').textContent, /Chưa có danh sách tài khoản/);
+  responses['GET /meta'] = meta;
+  doc.getElementById('vdAccountsRetry').click();
+  await settle(window);
+  assert.ok(select.querySelector('option[value="tks_group"]'));
+  assert.equal(doc.getElementById('vdAccountsRetry').hidden, true);
 });

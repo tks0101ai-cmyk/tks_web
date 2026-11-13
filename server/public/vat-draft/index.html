@@ -240,7 +240,10 @@
               <div class="vd-form" id="vdQrForm">
                 <div class="vd-field">
                   <label for="vdManualAccount">Tài khoản nhận tiền <span class="vd-ai-chip" id="vdAccountAi" hidden>Gợi ý từ hóa đơn</span></label>
-                  <select id="vdManualAccount"></select>
+                  <div class="vd-account-select">
+                    <select id="vdManualAccount"></select>
+                    <button type="button" class="btn-secondary vd-small-btn" id="vdAccountsRetry" hidden>Thử lại</button>
+                  </div>
                   <p class="vd-account-detail" id="vdAccountDetail" hidden></p>
                 </div>
                 <div class="vd-manual" id="vdManualFields" hidden>

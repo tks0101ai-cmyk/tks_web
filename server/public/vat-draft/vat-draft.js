@@ -29,6 +29,7 @@
     mode: 'docs',
     pasted: [],
     meta: null,
+    accountsFailed: false,
     alloc: null,
     qrMode: 'co_vat',
     matchedAccounts: [],
@@ -180,11 +181,44 @@
     $('vdStatusSummary').textContent = text;
   }
 
-  async function loadMeta() {
+  const ACCOUNT_RETRY_DELAYS = window.TKSVatDraftRetryDelays || [1000, 2000, 4000];
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+  function accountsLoaded() {
+    return !!(state.meta && state.meta.vietqr);
+  }
+
+  /**
+   * Danh sach tai khoan + ngan hang (/meta tra ngay, khong cho Google Sheets). Loi thi thu lai
+   * theo ACCOUNT_RETRY_DELAYS, het luot thi o chon bao loi + nut Thu lai.
+   */
+  async function loadAccounts() {
+    state.accountsFailed = false;
+    $('vdAccountsRetry').hidden = true;
+    renderAccountSelect();
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        const { vietqr } = await api('/meta');
+        state.meta = { ...(state.meta || {}), vietqr };
+        renderAccountSelect();
+        if (state.alloc && state.alloc.qr) renderQr();
+        return;
+      } catch (error) {
+        if (attempt >= ACCOUNT_RETRY_DELAYS.length) break;
+        await wait(ACCOUNT_RETRY_DELAYS[attempt]);
+      }
+    }
+    state.accountsFailed = true;
+    $('vdAccountsRetry').hidden = false;
+    renderAccountSelect();
+  }
+
+  /** Trang thai Sheets / KiotViet (chi tab Xu ly) — tai rieng, cham hay loi khong anh huong o tai khoan. */
+  async function loadSheetsStatus() {
     try {
-      state.meta = await api('/meta');
+      const status = await api('/master-data/status');
+      state.meta = { ...(state.meta || {}), ...status };
       renderMeta();
-      renderAccountSelect();
     } catch (error) {
       $('vdSheetsStatus').textContent = error.message;
       setStatusPill('error', 'Không tải được dữ liệu');
@@ -599,7 +633,7 @@
   // ---------- QR trong kết quả xử lý ----------
 
   function accountOptions(selectedKey, { manual = false, starred = [], placeholder = false } = {}) {
-    const accounts = (state.meta && state.meta.vietqr.accounts) || [];
+    const accounts = (accountsLoaded() && state.meta.vietqr.accounts) || [];
     const option = (a, star) => `<option value="${escapeHtml(a.key)}"${a.key === selectedKey ? ' selected' : ''}>${star ? '★ ' : ''}${escapeHtml(a.label)}</option>`;
     const group = (label, list, star) => (list.length ? `<optgroup label="${label}">${list.map(a => option(a, star)).join('')}</optgroup>` : '');
     const suggested = starred.map(key => accounts.find(a => a.key === key)).filter(Boolean);
@@ -702,7 +736,7 @@
   // ---------- Tạo QR (tab 2) ----------
 
   function accountByKey(key) {
-    return ((state.meta && state.meta.vietqr.accounts) || []).find(a => a.key === key) || null;
+    return ((accountsLoaded() && state.meta.vietqr.accounts) || []).find(a => a.key === key) || null;
   }
 
   /** O Số tiền tab Tao QR: chi so (don vi "đ" o ben phai o), 0 = de trong. */
@@ -717,8 +751,12 @@
 
   function renderAccountSelect() {
     const select = $('vdManualAccount');
-    select.innerHTML = accountOptions(state.matchedAccounts[0] || select.value || '', { manual: true, placeholder: true, starred: state.matchedAccounts });
-    if (state.meta) $('vdBankCodes').textContent = 'Mã ngân hàng VietQR thường gặp: ' + state.meta.vietqr.commonBankCodes + '.';
+    if (!accountsLoaded()) {
+      select.innerHTML = `<option value="">${state.accountsFailed ? 'Không tải được danh sách tài khoản' : 'Đang tải danh sách tài khoản…'}</option>`;
+    } else {
+      select.innerHTML = accountOptions(state.matchedAccounts[0] || select.value || '', { manual: true, placeholder: true, starred: state.matchedAccounts });
+      $('vdBankCodes').textContent = 'Mã ngân hàng VietQR thường gặp: ' + state.meta.vietqr.commonBankCodes + '.';
+    }
     updateManualFields();
   }
 
@@ -755,7 +793,8 @@
       addInfo: $('vdManualContent').value.trim(),
       reason: ''
     };
-    if (!key) values.reason = 'Chọn tài khoản nhận tiền để tạo QR.';
+    if (!accountsLoaded()) values.reason = 'Chưa có danh sách tài khoản — chờ tải xong hoặc bấm Thử lại.';
+    else if (!key) values.reason = 'Chọn tài khoản nhận tiền để tạo QR.';
     else if (manual && !manualFieldsValid()) values.reason = 'Nhập đủ Mã ngân hàng và Số tài khoản.';
     values.key = JSON.stringify([key, values.manual || null, values.amount, values.addInfo]);
     return values;
@@ -1395,6 +1434,7 @@
     // O trang thai du lieu (details): dong khi bam ra ngoai hoac Esc.
     document.addEventListener('click', event => { if ($('vdSourceBar').open && !$('vdSourceBar').contains(event.target)) $('vdSourceBar').open = false; });
     document.addEventListener('keydown', event => { if (event.key === 'Escape' && $('vdSourceBar').open) $('vdSourceBar').open = false; });
+    $('vdAccountsRetry').addEventListener('click', () => { loadAccounts(); });
     $('vdManualAccount').addEventListener('change', () => { $('vdAccountAi').hidden = true; updateManualFields(); });
     ['vdManualBank', 'vdManualNo', 'vdManualName'].forEach(id => $(id).addEventListener('input', updateManualFields));
     ['vdManualBank', 'vdManualNo'].forEach(id => $(id).addEventListener('blur', () => { state.manualTouched = true; updateManualFields(); }));
@@ -1467,7 +1507,7 @@
     selectMode('docs');
     selectTab(window.location.hash.slice(1));
     updateManualFields();
-    await loadMeta();
+    await Promise.all([loadAccounts(), state.canProcess ? loadSheetsStatus() : null]);
   }
 
   window.TKSVatDraft = { init, pyFloatRepr, csvCell, formatAmount, parseAmount, slug, state };
