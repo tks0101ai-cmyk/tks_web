@@ -21,7 +21,7 @@
 .purchase-filters{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));align-items:end;gap:10px 8px;padding:12px;background:#172334;color:#fff;border-top:1px solid #39495f;border-bottom:1px solid #39495f;color-scheme:dark}
 .purchase-filters label{display:grid;gap:5px;font-size:12px;line-height:16px;font-weight:500;color:#fff;min-width:0;margin:0}
 .purchase-filters .wide{grid-column:span 3}
-.order-filters label:has(#filter),.order-filters label:has(#orderStatus),.order-filters label:has(#orderSupplier){grid-column:span 2}
+.order-filters label:has(#filter),.order-filters label:has(#orderStatus),.order-filters label:has(#orderLifecycle){grid-column:span 2}
 .purchase-filters input,.purchase-filters select{height:32px;width:100%;min-width:0;min-height:0;font-size:12px;border-radius:4px;background:#101b2b;color:#fff;border:1px solid #39495f;padding:5px 8px;text-overflow:ellipsis}
 .purchase-filters input::placeholder{color:#c5cfdd;opacity:1}
 .purchase-filters select option{background:#101b2b;color:#fff}
@@ -35,7 +35,7 @@
 .order-actions{min-height:43px;padding:8px 12px;background:var(--panel);border:1px solid var(--border);border-radius:6px 6px 0 0;margin:0}
 .order-filters{border-left:1px solid var(--border);border-right:1px solid var(--border)}
 .filter-summary{padding:6px 12px;color:#fff;font-size:11px;background:#172334;border-left:1px solid var(--border);border-right:1px solid var(--border)}
-@media(max-width:1100px){.purchase-filters{grid-template-columns:repeat(4,minmax(0,1fr))}.purchase-filters .wide,.container-filters .wide{grid-column:span 2}.order-filters label:has(#filter),.order-filters label:has(#orderStatus),.order-filters label:has(#orderSupplier){grid-column:span 1}.container-filters>button{justify-self:start}}
+@media(max-width:1100px){.purchase-filters{grid-template-columns:repeat(4,minmax(0,1fr))}.purchase-filters .wide,.container-filters .wide{grid-column:span 2}.order-filters label:has(#filter),.order-filters label:has(#orderStatus),.order-filters label:has(#orderLifecycle){grid-column:span 1}.container-filters>button{justify-self:start}}
 @media(max-width:520px){.purchase-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.purchase-filters .wide{grid-column:1/-1}.filter-actions{flex-wrap:wrap}.filter-actions .column-tools{margin-left:0;flex:1;justify-content:flex-end}.filter-actions .column-tools span{flex-basis:100%;text-align:right}}
 #orderTable{background:var(--panel);border:1px solid var(--border);max-height:67vh;min-height:160px}
 #orderTable .purchase-pinned-column{position:sticky!important;background-color:var(--panel)!important;background-clip:padding-box;z-index:10;box-shadow:1px 0 var(--border)}
@@ -272,7 +272,7 @@
 .purchase-page .purchase-container-status{margin:0;padding:8px 12px 10px;border:1px solid var(--border);border-top:0;border-radius:0 0 6px 6px;background:var(--panel);gap:6px}
 .purchase-page .order-filters{grid-template-columns:repeat(6,minmax(0,1fr));border-radius:6px 6px 0 0}
 .purchase-page .order-filters .wide{grid-column:span 2}
-.purchase-page .order-filters label:has(#filter),.purchase-page .order-filters label:has(#orderSupplier){grid-column:span 1}
+.purchase-page .order-filters label:has(#filter),.purchase-page .order-filters label:has(#orderLifecycle){grid-column:span 1}
 .purchase-page .pagination{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .purchase-page .page-size-control{display:flex;align-items:center;gap:7px;margin-right:auto;color:var(--muted);font-size:11px}
 .purchase-page #pageSize{min-height:30px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font:500 12px var(--font-body)}
@@ -321,7 +321,7 @@
 /* Keep the compact order filters on one desktop row; narrow columns clip text cleanly. */
 .purchase-page .order-filters{grid-template-columns:repeat(9,minmax(90px,1fr));overflow-x:auto}
 .purchase-page .order-filters label:has(#search){grid-column:1/span 2;grid-row:1}
-.purchase-page .order-filters label:has(#filter),.purchase-page .order-filters label:has(#orderBuyer),.purchase-page .order-filters label:has(#orderSupplier),.purchase-page .order-filters label:has(#orderFrom),.purchase-page .order-filters label:has(#orderTo),.purchase-page .order-filters label:has(#orderFlag),.purchase-page .order-filters label:has(#sort){grid-column:auto;grid-row:1}
+.purchase-page .order-filters label:has(#filter),.purchase-page .order-filters label:has(#orderBuyer),.purchase-page .purchase-page .order-filters label:has(#orderFrom),.purchase-page .order-filters label:has(#orderTo),.purchase-page .order-filters label:has(#orderFlag),.purchase-page .order-filters label:has(#sort){grid-column:auto;grid-row:1}
 .purchase-page .order-filters .filter-actions{grid-column:1/-1;grid-row:2}
 .purchase-page #orderTable td[data-field="productCode"]{font-weight:400}
 .purchase-page #orderTable td[data-field="productCode"],.purchase-page #orderTable td[data-field="productCode"] .code-label{text-overflow:clip}
@@ -420,7 +420,7 @@
  .purchase-page .order-actions #add{margin-left:0}
  .purchase-page .order-filters{grid-template-columns:repeat(12,minmax(72px,1fr));overflow-x:auto}
  .purchase-page .order-filters label:has(#search){grid-column:span 2;grid-row:1}
- .purchase-page .order-filters label:has(#filter),.purchase-page .order-filters label:has(#orderBuyer),.purchase-page .order-filters label:has(#orderSupplier),.purchase-page .order-filters label:has(#orderFrom),.purchase-page .order-filters label:has(#orderTo),.purchase-page .order-filters label:has(#orderFlag),.purchase-page .order-filters label:has(#sort){grid-column:span 1;grid-row:1}
+ .purchase-page .order-filters label:has(#filter),.purchase-page .order-filters label:has(#orderBuyer),.purchase-page .order-filters label:has(#orderFrom),.purchase-page .order-filters label:has(#orderTo),.purchase-page .order-filters label:has(#orderFlag),.purchase-page .order-filters label:has(#sort){grid-column:span 1;grid-row:1}
  .purchase-page .order-filters .filter-actions{grid-column:10/13;grid-row:1;align-self:end;justify-content:flex-end;gap:5px;padding:0;border:0;white-space:nowrap}
  .purchase-page .order-filters .column-tools{display:flex;gap:5px;align-items:center}
  .purchase-page .order-filters .filter-actions button{min-height:30px;padding:5px 7px;white-space:nowrap}
@@ -527,7 +527,7 @@
 @media(max-width:1100px){
   .purchase-page .order-filters{grid-template-columns:repeat(4,minmax(0,1fr));overflow:visible}
   .purchase-page .order-filters label:has(#search){grid-column:span 2;grid-row:auto}
-  .purchase-page .order-filters label:has(#filter),.purchase-page .order-filters label:has(#orderStatus),.purchase-page .order-filters label:has(#orderBuyer),.purchase-page .order-filters label:has(#orderSupplier),.purchase-page .order-filters label:has(#orderFrom),.purchase-page .order-filters label:has(#orderTo),.purchase-page .order-filters label:has(#orderFlag),.purchase-page .order-filters label:has(#sort){grid-column:span 1;grid-row:auto}
+  .purchase-page .order-filters label:has(#filter),.purchase-page .order-filters label:has(#orderStatus),.purchase-page .order-filters label:has(#orderBuyer),.purchase-page .order-filters label:has(#orderLifecycle),.purchase-page .order-filters label:has(#orderFrom),.purchase-page .order-filters label:has(#orderTo),.purchase-page .order-filters label:has(#orderFlag),.purchase-page .order-filters label:has(#sort){grid-column:span 1;grid-row:auto}
   .purchase-page .order-filters .filter-actions{grid-column:1/-1;grid-row:auto;justify-content:space-between}
 }
 @media(max-width:520px){

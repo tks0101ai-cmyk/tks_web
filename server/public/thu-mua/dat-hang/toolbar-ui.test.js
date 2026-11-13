@@ -21,22 +21,28 @@ test('order toolbar keeps primary actions first and secondary actions grouped la
   ]);
 });
 
-test('order lifecycle is a rightmost active/inactive filter and container trash controls remain available', () => {
+test('order lifecycle replaces the supplier dropdown and container trash stays available', () => {
   const doc = new JSDOM(page).window.document;
   assert.equal(doc.getElementById('orderLifecycle').tagName, 'SELECT');
+  assert.equal(doc.getElementById('orderSupplier'), null);
+  assert.ok(doc.querySelector('#orderBuyer').closest('label').nextElementSibling.querySelector('#orderLifecycle'));
   assert.match(script, /data-key="_lifecycle"[^>]*>Trạng thái/);
   assert.deepEqual([...doc.querySelectorAll('#orderLifecycle option')].map(option => [option.value, option.textContent]), [['active','Hoạt động'],['inactive','Ngừng hoạt động']]);
   assert.match(script, /purchase-lifecycle-badge is-active/);
   assert.match(script, /purchase-lifecycle-badge is-inactive/);
   assert.equal(doc.getElementById('contLifecycle')?.options.length, 3);
-  assert.ok(doc.getElementById('containerDeleteSelected'));
-  assert.ok(doc.getElementById('containerInactiveRows'));
+  assert.ok(doc.getElementById('containerSelect'));
+  assert.equal(doc.getElementById('containerDeleteSelected').hidden, true);
+  assert.equal(doc.getElementById('containerInactiveRows'), null);
   assert.ok(doc.getElementById('containerTrashRows'));
 });
 
 test('container selection replaces row actions and container lifecycle can be toggled in place', () => {
-  assert.match(script, /\['Chọn',52\],\['Hoạt động',105\]/);
+  assert.match(script, /containerSelectMode\?\[\['Chọn',52\]\]:\[\]/);
   assert.match(script, /data-container-pick-all/);
+  assert.match(script, /containerSelectMode&&i===0/);
+  assert.match(styles, /#orderLifecycle/);
+  assert.doesNotMatch(styles, /#orderSupplier/);
   assert.match(script, /data-container-lifecycle/);
   assert.match(script, /containerDeleteSelected.*deleteSelectedContainers/s);
 });
