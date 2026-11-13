@@ -97,15 +97,17 @@ async function settle(window) {
  * JSDOM khong tai anh / ve canvas that: Image gia + canvas gia. fail = anh phat loi.
  * Tra ve cac anh da tao, cac blob da dua vao createObjectURL va ten file cua the a[download] da bam.
  */
-function stubQrImage(window, { fail = false } = {}) {
+function stubQrImage(window, { fail = false, decode } = {}) {
   const images = [];
   const blobs = [];
   const downloads = [];
+  const pngRequests = [];
   window.Image = class FakeImage {
     constructor() {
       this.naturalWidth = 540;
       this.naturalHeight = 640;
       this.listeners = {};
+      if (decode) this.decode = () => { this.decodeCalls = (this.decodeCalls || 0) + 1; return decode === 'reject' ? Promise.reject(new Error('decode')) : Promise.resolve(); };
       images.push(this);
     }
     addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); }
@@ -121,10 +123,14 @@ function stubQrImage(window, { fail = false } = {}) {
     get src() { return this.currentSrc; }
   };
   window.HTMLCanvasElement.prototype.getContext = () => ({ fillStyle: '', fillRect() {}, drawImage() {} });
-  window.HTMLCanvasElement.prototype.toBlob = function (callback) { callback(new window.Blob(['png'], { type: 'image/png' })); };
+  // Ghi lai loai anh + kich thuoc canvas luc xuat, tra blob dung loai duoc yeu cau.
+  window.HTMLCanvasElement.prototype.toBlob = function (callback, type) {
+    pngRequests.push({ type, width: this.width, height: this.height });
+    callback(new window.Blob(['png'], { type }));
+  };
   window.URL.createObjectURL = blob => { blobs.push(blob); return 'blob:x'; };
   window.HTMLAnchorElement.prototype.click = function () { downloads.push(this.download); };
-  return { images, blobs, downloads };
+  return { images, blobs, downloads, pngRequests };
 }
 
 /** Dan ma vao o + bam Xu ly (tra ma roi phan bo luon). */
@@ -294,6 +300,7 @@ test('xu ly chung tu: Tai ma QR doi anh SVG sang PNG that tren trinh duyet, khon
   assert.equal(stub.images[0].src, 'https://img.vietqr.io/image/MB-606266688888-compact2.svg?amount=1500000');
   assert.equal(stub.blobs.length, 1);
   assert.equal(stub.blobs[0].type, 'image/png');
+  assert.deepEqual(stub.pngRequests, [{ type: 'image/png', width: 540, height: 640 }]);
   assert.deepEqual(stub.downloads, ['QR_tat-ca-nguon_1500000.png']);
 });
 
@@ -328,8 +335,11 @@ test('tab Tao QR: Sao chep anh dua PNG that (promise) vao clipboard; Tai mat PNG
   doc.getElementById('vdQrCopy').click();
   await settle(window);
   assert.deepEqual(items.map(data => Object.keys(data)), [['image/png']]);
-  const blob = await items[0]['image/png'];
+  const pending = items[0]['image/png'];
+  assert.equal(typeof pending.then, 'function', 'Safari: ClipboardItem phai nhan promise, khong phai blob da await');
+  const blob = await pending;
   assert.equal(blob.type, 'image/png');
+  assert.deepEqual(stub.pngRequests, [{ type: 'image/png', width: 540, height: 640 }]);
   assert.equal(stub.images[0].crossOrigin, 'anonymous');
   assert.match(doc.getElementById('vdQrActionMsg').textContent, /^Đã sao chép ảnh QR/);
   doc.getElementById('vdQrDownload').click();
@@ -337,6 +347,22 @@ test('tab Tao QR: Sao chep anh dua PNG that (promise) vao clipboard; Tai mat PNG
   assert.equal(calls.some(c => c.key.startsWith('GET /image/')), false);
   assert.deepEqual(stub.downloads, ['QR_mb-tks_1500000.png']);
   assert.equal(stub.blobs.at(-1).type, 'image/png');
+  assert.deepEqual(stub.pngRequests.at(-1), { type: 'image/png', width: 540, height: 640 });
+});
+
+test('xu ly chung tu: Tai ma QR cho img.decode() xong moi ve; decode loi van ve va tai tiep', async t => {
+  for (const decode of ['resolve', 'reject']) {
+    const { doc, window } = await setup(t);
+    const stub = stubQrImage(window, { decode });
+    await pasteAndRun(doc);
+    doc.querySelector('[data-qr-mode="khong_vat"]').click();
+    doc.querySelector('[data-qr-generate]').click();
+    await tick(); await tick();
+    doc.querySelector('[data-qr-download]').click();
+    await settle(window);
+    assert.equal(stub.images[0].decodeCalls, 1, 'decode ' + decode + ': da goi img.decode()');
+    assert.deepEqual(stub.downloads, ['QR_tat-ca-nguon_1500000.png'], 'decode ' + decode);
+  }
 });
 
 test('tab Tao QR: Sao chep anh gap anh loi -> bao loi, huong dan dung Tai ma QR', async t => {

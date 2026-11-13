@@ -787,7 +787,14 @@
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      img.onload = () => (img.naturalWidth > 0 ? resolve(img) : reject(new Error('empty image')));
+      img.onload = async () => {
+        if (!(img.naturalWidth > 0)) return reject(new Error('empty image'));
+        // Safari (WebKit) giai ma bat dong bo cac anh data: long trong SVG: cho decode xong moi ve (decode loi van ve tiep).
+        if (typeof img.decode === 'function') {
+          try { await img.decode(); } catch (error) { /* van ve, canvas se lay phan da giai ma */ }
+        }
+        return resolve(img);
+      };
       img.onerror = () => reject(new Error('image'));
       img.src = url;
     });
@@ -811,10 +818,10 @@
   async function downloadQr(url, fileName, button) {
     if (button) button.disabled = true;
     try {
-      // Ảnh VietQR là SVG ở img.vietqr.io: chuyển sang PNG ngay trên trình duyệt rồi lưu đúng tên file PNG.
+      // Anh VietQR la SVG o img.vietqr.io: chuyen sang PNG ngay tren trinh duyet roi luu dung ten file PNG.
       downloadBlob(await qrPngBlob(url), fileName || 'ma_qr.png');
     } catch (error) {
-      // Không chuyển được sang PNG thì mở ảnh ở tab mới để người dùng lưu.
+      // Khong chuyen duoc sang PNG thi mo anh o tab moi de nguoi dung luu.
       window.open(url, '_blank', 'noopener');
     } finally {
       if (button) button.disabled = false;

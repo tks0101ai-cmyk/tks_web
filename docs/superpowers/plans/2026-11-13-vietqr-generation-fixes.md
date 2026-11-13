@@ -25,6 +25,8 @@ Spec: `docs/superpowers/specs/2026-11-13-vietqr-generation-fixes-design.md`
 - Spec ghi tách `state.meta` thành `state.accounts`/`state.status`. Kế hoạch giữ `state.meta` và ghép hai nguồn vào (`{ vietqr }` + `{ masterData, sync }`) — `renderMeta()` đã kiểm tra `meta.masterData`, ít sửa hơn, cùng hành vi.
 - Danh sách ngân hàng chỉ gồm ngân hàng có `transferSupported = 1` trong `api.vietqr.io/v2/banks` (48 ngân hàng): ngân hàng không hỗ trợ chuyển khoản Napas thì QR cũng không chuyển được.
 
+> Cập nhật 13/11/2026: danh sách ngân hàng đã đổi thành đủ 76 ngân hàng và URL ảnh dùng `.svg` — xem spec mục 3.2 và 3.5 (Task 7, ngoài kế hoạch ban đầu).
+
 ## File Structure
 
 | File | Trách nhiệm |
