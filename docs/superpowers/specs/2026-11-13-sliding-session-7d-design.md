@@ -38,7 +38,8 @@ Gom phần cấp phiên đang nằm rải trong `authRoutes.js` để `authMiddl
 - `authCookieOptions()` — `httpOnly`, `sameSite: 'lax'`, `secure` khi production, `path: '/'`, `maxAge: CONFIG.AUTH_SESSION_TTL_MS`.
 - `issueSession(res, user)` — ký token từ `publicUser(user)`, ghi cookie `tks_auth`, trả về `publicUser(user)`.
 - `SESSION_REFRESH_AFTER_MS = 24h` — ngưỡng gia hạn.
-- `shouldRefresh(tokenPayload, now)` — `true` khi `tokenPayload.iat` thiếu hoặc `now - iat*1000 >= SESSION_REFRESH_AFTER_MS`.
+- `shouldRefresh(tokenPayload, now, refreshAfterMs)` — `true` khi `now - iat*1000 >= refreshAfterMs`; thiếu `iat` → `false` (JWT do server ký luôn có `iat`, token không có thì không gia hạn).
+- `refreshSession(req, res, user)` — `issueSession` + ghi lại cookie cơ sở (xem mục 3).
 
 `authSession.js` chỉ phụ thuộc `authService` (signToken), `config`, và `branch/branchMiddleware` (tên + options cookie cơ sở). `AUTH_COOKIE_NAME` được định nghĩa ở `authSession.js`; `authMiddleware.js` import và re-export nó (giữ nguyên export hiện có để test/route không phải đổi). `AUTH_COOKIE_MAX_AGE_MS` bị xóa khỏi `authMiddleware.js`.
 
@@ -80,7 +81,7 @@ Không đổi. Mọi trang tải xong đều gọi `/api/auth/me` (qua `shared-n
 
 Unit test (node --test):
 
-- `authSession`: `authCookieOptions().maxAge === AUTH_SESSION_TTL_MS`; token ký ra có `exp - iat` bằng TTL tính theo giây; `shouldRefresh` đúng ở biên 24h và khi thiếu `iat`.
+- `authSession`: `authCookieOptions().maxAge === AUTH_SESSION_TTL_MS`; token ký ra có `exp - iat` bằng TTL tính theo giây; `shouldRefresh` đúng ở biên 24h, thiếu `iat` → không gia hạn.
 - `authMiddleware`:
   - token `iat` cách hiện tại > 24h, user hợp lệ → response có `Set-Cookie tks_auth` mới, `next()` được gọi.
   - token còn mới (< 24h) → không ghi cookie.
