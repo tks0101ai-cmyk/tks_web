@@ -83,6 +83,8 @@ Module mới / thay đổi:
 - `server/vatDraft/vietqrBanks.js` (mới): danh sách ngân hàng VietQR tĩnh `{ bin, code, shortName, name }`
   lấy một lần từ `https://api.vietqr.io/v2/banks` khi làm; hàm `findBank(input)` trả ngân hàng hoặc null.
   Không gọi API VietQR lúc chạy.
+  Danh sách chỉ gồm ngân hàng có `transferSupported = 1` (48 ngân hàng) — người dùng đã xác nhận ngày 13/11/2026;
+  ngân hàng khác bị từ chối khi nhập tay.
 - `server/vatDraft/vietqr.js`: thêm `normalizeTransferContent(text)` và `MAX_TRANSFER_CONTENT = 50`;
   `isValidManualField` tách thành `isValidAccountNo` (1–19) và kiểm tra mã ngân hàng qua `findBank`;
   thêm kiểm tra số tiền ≤ 13 chữ số.

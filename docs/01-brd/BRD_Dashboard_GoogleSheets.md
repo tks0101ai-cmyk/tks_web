@@ -363,6 +363,7 @@ Phương án B đã duyệt: tập SĐT/KPI Pancake riêng trong PostgreSQL, ng�
 - **Ngoài phạm vi**: chuyển Gộp VAT/Khớp mã vào DB, 2 trang quản trị của app cũ, xuất template hóa đơn điện tử, tra MST, đổi thuật toán; tắt vat-draft-app làm sau khi nghiệm thu.
 - **Điều chỉnh 17/10/2026 (chiều)**: bỏ chức năng Tra cứu nguồn (không còn dùng). Tạo QR hiện mã QR to ở cột phải cho dễ quét. Nhân viên sale được dùng riêng Tạo QR (tạo QR thu tiền cho khách) mà không thấy Xử lý hóa đơn.
 - **Điều chỉnh 19/10/2026**: hóa đơn kế toán nhận thường là ảnh chụp/screenshot hoặc PDF scan nên đọc lớp text PDF không dùng được. Tạo QR chuyển sang cho AI (xKiro, model Qwen vision miễn phí) đọc ảnh/PDF: lấy tên công ty bán hàng và Tổng cộng tiền thanh toán, tự chọn tài khoản công ty và tạo QR; người dùng chỉ kiểm tra lại số tiền. Ảnh hóa đơn (gồm thông tin người mua) đi qua dịch vụ bên thứ ba xKiro — đã được chấp thuận.
+- **Điều chỉnh 13/11/2026**: ô chọn tài khoản nhận tiền luôn có danh sách ngay (không chờ Google Sheets); mã QR chỉ được tạo khi đủ thông tin đúng chuẩn VietQR — nội dung chuyển khoản tự bỏ dấu/ký tự đặc biệt và tối đa 50 ký tự (quá thì chặn), mã ngân hàng nhập tay phải thuộc danh sách VietQR hỗ trợ chuyển khoản, số TK tối đa 19 ký tự, số tiền tối đa 13 chữ số (để trống thì người chuyển tự nhập); tab Xử lý không còn tự chọn VCB TKS cho nguồn chưa cấu hình / chế độ gộp.
 
 19/10/2026 — Tính sẵn báo cáo (migration `0068`–`0070`): doanh số tháng hiện tại Báo cáo kinh doanh, chi phí ADS/doanh số theo tên/tổng hợp SĐT của Báo cáo Marketing, view đọc Sổ quỹ. Chỉ đổi độ tươi dữ liệu và hiệu năng, không đổi quy tắc nghiệp vụ.
 
@@ -701,4 +702,4 @@ Khi nhiều người cùng mở bảng, sau snapshot ban đầu client đồng b
 
 12/11/2026 — Người dùng tải toàn bộ dữ liệu Thu mua hiện tại kèm hướng dẫn, sửa cùng workbook rồi upload lại. File là bản thay thế đầy đủ: ô trống xóa giá trị, dòng vắng mặt xóa mềm; preview làm rõ số lượng và phải xác nhận toàn bộ. Nếu dữ liệu có người khác sửa sau khi tải, hệ thống yêu cầu tải snapshot mới để tránh ghi đè.
 
-Cập nhật cuối: 12/11/2026.
+Cập nhật cuối: 13/11/2026.
