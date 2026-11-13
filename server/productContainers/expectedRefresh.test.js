@@ -271,3 +271,25 @@ test('CONT writer contention returns busy without blocking, staging or writing',
   assert.deepEqual(calls[1].params, [20531015]);
   assert.equal(released, true);
 });
+
+test('phat expectedArrivalsChanged sau COMMIT khi dong state doi (cache trang /api/expected-arrivals doc lai ngay); khong doi thi im', async () => {
+  const { dashboardRollupEvents } = require('../kiotvietSync/dashboardRollupEvents');
+  const seen = [];
+  const onChanged = payload => seen.push(payload);
+  dashboardRollupEvents.on('expectedArrivalsChanged', onChanged);
+  const { db, pool } = await setup();
+  try {
+    await seed(db);
+    const first = await refreshExpected(pool, { log: quiet });
+    assert.deepEqual(seen, [{ version: first.version, changed: true }]);
+    await refreshExpected(pool, { log: quiet });
+    assert.equal(seen.length, 1, 'nguon khong doi => khong ghi state, khong phat');
+    await db.exec(`UPDATE product_container_lines SET quantity = 77 WHERE sheet_name = 'YIWU' AND source_row = 2`);
+    const changed = await refreshExpected(pool, { log: quiet });
+    assert.deepEqual(seen.at(-1), { version: changed.version, changed: true });
+    assert.equal(seen.length, 2);
+  } finally {
+    dashboardRollupEvents.off('expectedArrivalsChanged', onChanged);
+    await db.close();
+  }
+});

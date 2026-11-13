@@ -12,7 +12,10 @@ const {
   formatAccountLabel,
   parseAmountInput,
   buildVietqrImageUrl,
-  isValidManualField
+  normalizeTransferContent,
+  isValidAccountNo,
+  MAX_TRANSFER_CONTENT,
+  MAX_AMOUNT_DIGITS
 } = require('./vietqr');
 const vatDraftConfig = require('./vatDraftConfig');
 
@@ -69,20 +72,39 @@ test('tong gop moi nguon (hoa don khong VAT)', () => {
 test('URL anh QR', () => {
   const account = { key: 'mbbank', bankId: 'MB', accountNo: '0389040222' };
   const url = buildVietqrImageUrl(account, { amount: 1500000, addInfo: 'HD018699', template: 'compact2' });
-  assert.ok(url.startsWith('https://img.vietqr.io/image/MB-0389040222-compact2.png?'));
+  assert.ok(url.startsWith('https://img.vietqr.io/image/MB-0389040222-compact2.svg?'));
   assert.ok(url.includes('amount=1500000'));
   assert.ok(url.includes('addInfo=HD018699'));
   const empty = buildVietqrImageUrl(account, { amount: 0, addInfo: 'HD1 HD2', template: 'compact2' });
   assert.ok(empty.includes('addInfo=HD1%20HD2'));
   assert.ok(empty.includes('amount=&'));
   const named = buildVietqrImageUrl(vatDraftConfig.vietqr.accounts[4], { amount: 10.5, addInfo: '' });
-  assert.equal(named, 'https://img.vietqr.io/image/MB-525345345-compact2.png?amount=10&addInfo=&accountName=CONG%20TY%20SHC');
+  assert.equal(named, 'https://img.vietqr.io/image/MB-525345345-compact2.svg?amount=10&addInfo=&accountName=CONG%20TY%20SHC');
 });
 
-test('nhan tai khoan va kiem tra o nhap tay', () => {
+test('nhan tai khoan va kiem tra so tai khoan nhap tay (toi da 19 chu/so)', () => {
   assert.equal(formatAccountLabel(vatDraftConfig.vietqr.accounts[1]), 'MB TKS — MB 606266688888 (CONG TY CO PHAN THUONG MAI XUAT NHAP KHAU TKS GROUP)');
   assert.equal(formatAccountLabel({ bankId: 'VCB', accountNo: '123', accountName: '' }), 'VCB - 123');
-  assert.ok(isValidManualField('VCB'));
-  assert.ok(!isValidManualField('VCB/../x'));
-  assert.ok(!isValidManualField(''));
+  assert.ok(isValidAccountNo('1'));
+  assert.ok(isValidAccountNo('0034100123456688'));
+  assert.ok(isValidAccountNo('A'.repeat(19)));
+  assert.ok(!isValidAccountNo('1'.repeat(20)));
+  assert.ok(!isValidAccountNo('123/../x'));
+  assert.ok(!isValidAccountNo('123 456'));
+  assert.ok(!isValidAccountNo(''));
+  assert.equal(MAX_AMOUNT_DIGITS, 13);
+});
+
+test('chuan hoa noi dung chuyen khoan theo VietQR: bo dau, bo ky tu dac biet, khong cat', () => {
+  assert.equal(MAX_TRANSFER_CONTENT, 50);
+  assert.equal(normalizeTransferContent('Hóa đơn HD028345, chị Lan'), 'Hoa don HD028345 chi Lan');
+  assert.equal(normalizeTransferContent('ĐẶNG THỊ ÁNH NGUYỆT'), 'DANG THI ANH NGUYET');
+  assert.equal(normalizeTransferContent('  HD1   HD2\tDH3  '), 'HD1 HD2 DH3');
+  assert.equal(normalizeTransferContent('TT #12/11 (gấp)!'), 'TT 12 11 gap');
+  assert.equal(normalizeTransferContent(''), '');
+  assert.equal(normalizeTransferContent(null), '');
+  assert.equal(normalizeTransferContent(undefined), '');
+  const long = Array.from({ length: 8 }, (_, i) => `HD02834${i}`).join(' ');
+  assert.equal(normalizeTransferContent(long), long, 'khong tu cat — kiem tra do dai o noi goi');
+  assert.ok(normalizeTransferContent(long).length > MAX_TRANSFER_CONTENT);
 });

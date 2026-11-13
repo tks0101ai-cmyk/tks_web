@@ -5,7 +5,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const CONFIG = require('../config');
-const { hashPassword, comparePassword, signToken } = require('./authService');
+const { hashPassword, comparePassword } = require('./authService');
 const {
   findActiveUserByUsername,
   findUserByUsername,
@@ -23,7 +23,8 @@ const {
 const { formatDateVN } = require('./localUserStore');
 const { createActiveGuest, activatePendingGuest, updateUserFields, updateUserProfile } = require('./userWriteRepository');
 const { verifyGoogleIdToken } = require('./googleAuthService');
-const { AUTH_COOKIE_NAME, AUTH_COOKIE_MAX_AGE_MS, requireAuth } = require('./authMiddleware');
+const { AUTH_COOKIE_NAME, requireAuth } = require('./authMiddleware');
+const { publicUser, issueSession } = require('./authSession');
 const { selectableBranches, defaultBranch } = require('../branch/branches');
 const { currentBranchFor, BRANCH_COOKIE_NAME, branchCookieOptions } = require('../branch/branchMiddleware');
 const otpService = require('./otpService');
@@ -186,30 +187,6 @@ function fakeSendOtpResponse(identifier, channelType) {
   };
 }
 
-function cookieOptions() {
-  return {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: AUTH_COOKIE_MAX_AGE_MS,
-    path: '/'
-  };
-}
-
-function publicUser(user) {
-  return {
-    id: user.id,
-    username: user.username,
-    hoTen: user.hoTen,
-    email: user.email || '',
-    vaiTro: user.vaiTro,
-    coSo: user.coSo,
-    assignedCoSo: user.assignedCoSo ?? user.coSo ?? '',
-    boPhan: user.boPhan || '',
-    leaveApprovalDepartments: user.leaveApprovalDepartments || []
-  };
-}
-
 // ID Telegram ca nhan chi Quan ly (hoac admin cung) duoc them/sua. Nhan vien khong tu doi
 // duoc o ho so cua minh — Quan ly nhap ho trong "Quan ly nguoi dung" (adminUserRoutes.js).
 function canEditOwnTelegram(user) {
@@ -241,8 +218,7 @@ function publicProfile(user) {
 }
 
 function signIn(res, user, resetBranch = false) {
-  const safeUser = publicUser(user);
-  res.cookie(AUTH_COOKIE_NAME, signToken(safeUser), cookieOptions());
+  const safeUser = issueSession(res, user);
   if (resetBranch) {
     res.cookie(BRANCH_COOKIE_NAME, defaultBranch(user), branchCookieOptions());
   }
@@ -719,6 +695,7 @@ router.post('/api/auth/google', async (req, res) => {
 
 router.post('/api/auth/logout', (req, res) => {
   res.clearCookie(AUTH_COOKIE_NAME, { path: '/' });
+  res.clearCookie(BRANCH_COOKIE_NAME, { path: '/' });
   res.status(200).json({ ok: true });
 });
 
@@ -744,7 +721,7 @@ router.get('/api/auth/me', requireAuth, async (req, res) => {
     //
     // `permissions` + `pageFeatures` la NGUON DUY NHAT cho phia client dung
     // menu va dieu huong (shared-nav.js khong con mang vai tro nao). CO Y
-    // KHONG dua vao JWT: token song 12h, con quyen phai co hieu luc ngay khi
+    // KHONG dua vao JWT: token song toi 7 ngay (phien truot), con quyen phai co hieu luc ngay khi
     // Quan ly bat/tat, giong nhu doi vai tro.
     // `isSeniorAdmin`: Quan ly cap cao (admin cung) — giao dien tai khoan dua vao day de an
     // cac thao tac len Quan ly khac doi voi Quan ly thuong (server accountPolicy van la ranh gioi that).

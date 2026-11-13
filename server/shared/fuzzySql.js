@@ -11,12 +11,14 @@ const foldSql = (expression) => `translate(lower(${expression}), '${VN_FROM}', '
  * @param {string} expression  bieu thuc SQL van ban (co the NULL; se COALESCE)
  * @param {string} query       cau tim cua nguoi dung
  * @param {(value:any)=>string} add  them tham so, tra ve placeholder ($n)
+ * @param {{folded?: boolean}} [options]  folded=true: `expression` DA la foldSql(COALESCE(...,'')) tinh san 1 lan / dong
+ *   (vd cot cua CTE) -> khong boc translate lai cho tung tu (translate tieng Viet ~70 us / lan: 12k dong x 5 lan = 4,4 s, 13/11/2026)
  * @returns {{where:string, score:string}|null}  null khi cau tim rong
  */
-function fuzzySqlParts(expression, query, add) {
+function fuzzySqlParts(expression, query, add, { folded = false } = {}) {
   const words = fuzzy.tokens(query);
   if (!words.length) return null;
-  const text = foldSql(`COALESCE(${expression},'')`);
+  const text = folded ? expression : foldSql(`COALESCE(${expression},'')`);
   const holders = words.map((w) => add(w));
   const hits = holders.map((p) => `(position(${p} in ${text})>0)::int`);
   const matched = `(${hits.join('+')})`;

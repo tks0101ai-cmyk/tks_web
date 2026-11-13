@@ -134,14 +134,27 @@ test('Nhan vien sale (accounting.qr): chi dung duoc Tao QR, /meta chi tra danh s
   assert.equal((await request('/qr/url', { method: 'POST', user: userFor(ROLES.NHAN_VIEN_SALE, { 'accounting.qr': false }), body: { accountKey: 'shc' } })).status, 403);
 });
 
-test('GET /meta: trang thai master data, dong bo, danh sach tai khoan', async () => {
-  const res = await request('/meta');
+test('GET /meta: chi danh sach tai khoan + ngan hang, tra ngay ke ca khi Google Sheets dang treo', async () => {
+  const hanging = { get: () => new Promise(() => {}), refresh: () => new Promise(() => {}) };
+  const started = Date.now();
+  const res = await request('/meta', { masterData: hanging });
+  assert.equal(res.status, 200);
+  assert.ok(Date.now() - started < 2000, 'khong cho Sheets');
+  assert.deepEqual(Object.keys(res.body), ['vietqr']);
+  assert.equal(res.body.vietqr.accounts.length, 18);
+  assert.deepEqual(res.body.vietqr.banks.find(b => b.code === 'VCB'), { bin: '970436', code: 'VCB', shortName: 'Vietcombank' });
+});
+
+test('GET /master-data/status: trang thai Sheets + dong bo; Sheets loi van 200; sale 403', async () => {
+  const res = await request('/master-data/status');
+  assert.equal(res.status, 200);
   assert.deepEqual([res.body.masterData.stockRows, res.body.masterData.mappingRows, res.body.masterData.error], [3, 2, null]);
   assert.equal(res.body.sync[0].entity, 'invoices');
-  assert.equal(res.body.vietqr.accounts.length, 18);
-  const broken = await request('/meta', { masterData: fakeMaster({ fail: true }) });
+  assert.equal(res.body.vietqr, undefined);
+  const broken = await request('/master-data/status', { masterData: fakeMaster({ fail: true }) });
   assert.equal(broken.status, 200);
   assert.match(broken.body.masterData.error, /chia sẻ công khai/);
+  assert.equal((await request('/master-data/status', { user: userFor(ROLES.NHAN_VIEN_SALE) })).status, 403);
 });
 
 test('POST /documents/resolve: o Co so tren trang uu tien hon cookie (Ca hai -> hanoi + saigon)', async () => {
@@ -251,12 +264,52 @@ test('POST /export tra file xlsx; cot la bi tu choi', async () => {
   assert.equal((await request('/export', { method: 'POST', body: { view: 'lookup', columns: ['SL'], rows: [] } })).status, 400);
 });
 
-test('POST /qr/url', async () => {
+test('POST /qr/url: tai khoan cau hinh, nhap tay doi ve BIN, noi dung chuan hoa', async () => {
   const res = await request('/qr/url', { method: 'POST', body: { accountKey: 'shc', amount: '1.134.000 đ', addInfo: 'HD1 HD2' } });
-  assert.equal(res.body.url, 'https://img.vietqr.io/image/MB-525345345-compact2.png?amount=1134000&addInfo=HD1%20HD2&accountName=CONG%20TY%20SHC');
-  assert.equal((await request('/qr/url', { method: 'POST', body: { manual: { bankId: 'VCB/x', accountNo: '1' } } })).status, 400);
-  const manual = await request('/qr/url', { method: 'POST', body: { manual: { bankId: 'ACB', accountNo: '123456' }, amount: '0' } });
-  assert.equal(manual.body.url, 'https://img.vietqr.io/image/ACB-123456-compact2.png?amount=&addInfo=');
+  assert.equal(res.body.url, 'https://img.vietqr.io/image/MB-525345345-compact2.svg?amount=1134000&addInfo=HD1%20HD2&accountName=CONG%20TY%20SHC');
+  const manual = await request('/qr/url', { method: 'POST', body: { manual: { bankId: 'acb', accountNo: '123456' }, amount: '0' } });
+  assert.equal(manual.status, 200);
+  assert.equal(manual.body.url, 'https://img.vietqr.io/image/970416-123456-compact2.svg?amount=&addInfo=');
+  assert.equal(manual.body.accountLabel, 'ACB - 123456');
+  const hsbc = await request('/qr/url', { method: 'POST', body: { manual: { bankId: 'HSBC', accountNo: '001234567' }, amount: '0' } });
+  assert.equal(hsbc.status, 200);
+  assert.ok(hsbc.body.url.startsWith('https://img.vietqr.io/image/458761-001234567-compact2.svg?'));
+  const accented = await request('/qr/url', { method: 'POST', body: { accountKey: 'shc', addInfo: 'Hóa đơn HD1, chị Lan' } });
+  assert.equal(accented.body.addInfo, 'Hoa don HD1 chi Lan');
+  assert.ok(accented.body.url.includes('addInfo=Hoa%20don%20HD1%20chi%20Lan'));
+});
+
+test('POST /qr/url: thieu / sai thong tin -> 400, khong tra URL', async () => {
+  const bad = async (body, code) => {
+    const res = await request('/qr/url', { method: 'POST', body });
+    assert.equal(res.status, 400, JSON.stringify(body));
+    assert.equal(res.body.code, code);
+    assert.equal(res.body.url, undefined);
+  };
+  await bad({ accountKey: 'khong_co' }, 'VAT_DRAFT_INVALID');
+  await bad({}, 'VAT_DRAFT_INVALID');
+  await bad({ manual: { bankId: 'VCB/x', accountNo: '1' } }, 'VAT_DRAFT_QR_BANK');
+  await bad({ manual: { bankId: 'Ngân hàng lạ', accountNo: '1' } }, 'VAT_DRAFT_QR_BANK');
+  await bad({ manual: { bankId: 'VCB', accountNo: '1'.repeat(20) } }, 'VAT_DRAFT_QR_ACCOUNT_NO');
+  await bad({ manual: { bankId: 'VCB', accountNo: '' } }, 'VAT_DRAFT_QR_ACCOUNT_NO');
+  await bad({ accountKey: 'shc', amount: '12345678901234' }, 'VAT_DRAFT_QR_AMOUNT');
+  await bad({ accountKey: 'shc', amount: 1e21 }, 'VAT_DRAFT_QR_AMOUNT'); // JSON number -> "1e+21" khong duoc doc thanh "121"
+  await bad({ accountKey: 'shc', amount: -5 }, 'VAT_DRAFT_QR_AMOUNT');
+  await bad({ accountKey: 'shc', addInfo: Array.from({ length: 8 }, (_, i) => `HD02834${i}`).join(' ') }, 'VAT_DRAFT_QR_CONTENT');
+  const ok = await request('/qr/url', { method: 'POST', body: { accountKey: 'shc', amount: '9999999999999', addInfo: 'x'.repeat(50) } });
+  assert.equal(ok.status, 200, 'dung 13 chu so va dung 50 ky tu van duoc');
+});
+
+test('POST /allocate: nguon khong co tai khoan cau hinh va che do gop -> khong chon san tai khoan', async () => {
+  const strange = {
+    get: async () => ({ ...MASTER, stockRows: [MASTER.stockRows[0], MASTER.stockRows[1], stock(4, 'NGUỒN LẠ', 'VAT02', 'KT3', 100)] }),
+    refresh: async () => MASTER
+  };
+  const res = await request('/allocate', { method: 'POST', masterData: strange, body: { source: 'documents', documents: [{ kind: 'invoice', branch: 'hanoi', code: 'HD1' }, { kind: 'order', branch: 'hanoi', code: 'DH2' }] } });
+  assert.equal(res.status, 200);
+  const byName = Object.fromEntries(res.body.qr.bySource.map(s => [s.nguon, s.defaultAccountKey]));
+  assert.deepEqual(byName, { 'TKS THẤP': 'tks_group', VC: 'mb_vc_ex', 'NGUỒN LẠ': null });
+  assert.equal(res.body.qr.total.defaultAccountKey, null);
 });
 
 test('POST /qr/parse-image: AI doc anh -> so tien + tai khoan cong ty goi y', async () => {
