@@ -39,3 +39,47 @@ test('verifyToken: throw voi token ky bang secret khac', () => {
   const foreignToken = jwt.sign({ id: '1' }, 'secret-khac-hoan-toan');
   assert.throws(() => verifyToken(foreignToken));
 });
+
+const CONFIG = require('../config');
+
+test('signToken: han JWT bang AUTH_SESSION_TTL_MS', () => {
+  const decoded = verifyToken(signToken({ id: '1' }));
+  assert.equal(decoded.exp - decoded.iat, Math.floor(CONFIG.AUTH_SESSION_TTL_MS / 1000));
+});
+
+function loadConfigWithIdleDays(value) {
+  const configPath = require.resolve('../config');
+  const saved = process.env.AUTH_SESSION_IDLE_DAYS;
+  delete require.cache[configPath];
+  if (value === undefined) delete process.env.AUTH_SESSION_IDLE_DAYS;
+  else process.env.AUTH_SESSION_IDLE_DAYS = value;
+  try {
+    return require('../config');
+  } finally {
+    delete require.cache[configPath];
+    if (saved === undefined) delete process.env.AUTH_SESSION_IDLE_DAYS;
+    else process.env.AUTH_SESSION_IDLE_DAYS = saved;
+  }
+}
+
+test('config: AUTH_SESSION_IDLE_DAYS mac dinh 7 ngay', () => {
+  const cfg = loadConfigWithIdleDays(undefined);
+  assert.equal(cfg.AUTH_SESSION_IDLE_DAYS, 7);
+  assert.equal(cfg.AUTH_SESSION_TTL_MS, 7 * 24 * 60 * 60 * 1000);
+});
+
+test('config: AUTH_SESSION_IDLE_DAYS hop le duoc dung', () => {
+  const cfg = loadConfigWithIdleDays('30');
+  assert.equal(cfg.AUTH_SESSION_IDLE_DAYS, 30);
+  assert.equal(cfg.AUTH_SESSION_TTL_MS, 30 * 24 * 60 * 60 * 1000);
+});
+
+test('config: AUTH_SESSION_IDLE_DAYS rac -> 7', () => {
+  for (const bad of ['', 'abc', '0', '-3', '1.5']) {
+    assert.equal(loadConfigWithIdleDays(bad).AUTH_SESSION_IDLE_DAYS, 7, `gia tri ${JSON.stringify(bad)}`);
+  }
+});
+
+test('config: khong con JWT_EXPIRES_IN', () => {
+  assert.equal('JWT_EXPIRES_IN' in loadConfigWithIdleDays(undefined), false);
+});
