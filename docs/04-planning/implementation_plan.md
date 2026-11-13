@@ -752,7 +752,7 @@ Cập nhật cuối: 12/11/2026.
 
 Migration 0123 bổ sung `root_order_id` bất biến cho cả họ split, unique partial chỉ trên Mã dòng active, pool số trống và reservation actor-bound 30 phút. API trả/nhả reservation; lịch sử được chọn theo immutable `orderId`. Xóa mềm chỉ trả Mã gốc vào pool khi không còn nhánh active. Khôi phục/undo giữ ID nội bộ và tránh xung đột mã đang hoạt động. Import snapshot đầy đủ xóa mềm các dòng vắng mặt và cấp lại mã trước các dòng mới bỏ trống mã trong cùng transaction. Code nằm trong working tree trên `main`, chưa deploy.
 
-Full `npm test`: 5,052/5,109 đạt, 53 lỗi, 4 bỏ qua; không gán lỗi cho baseline. Focused service+route: 91/91 đạt. Graphify không khả dụng. Migration chưa chạy staging/production. Cần xác minh backfill và mọi họ split trên staging/copy, sau đó operator áp 0123 trước deploy. Xem [spec](../superpowers/specs/2026-11-13-purchase-rowkey-recycling-design.md) và [kế hoạch](../superpowers/plans/2026-11-13-purchase-rowkey-recycling.md).
+Full `npm test`: 5,052/5,109 đạt, 53 lỗi, 4 bỏ qua; không gán lỗi cho baseline. Focused service+route: 92/92 đạt sau vá thu hồi reservation hết hạn. Graphify không khả dụng. Migration chưa chạy staging/production. Cần xác minh backfill và mọi họ split trên staging/copy, sau đó operator áp 0123 trước deploy. Xem [spec](../superpowers/specs/2026-11-13-purchase-rowkey-recycling-design.md) và [kế hoạch](../superpowers/plans/2026-11-13-purchase-rowkey-recycling.md).
 
 Cập nhật cuối: 13/11/2026.
 
