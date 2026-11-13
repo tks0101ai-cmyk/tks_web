@@ -11,6 +11,17 @@ function required(name) {
   return value;
 }
 
+function positiveIntOr(raw, fallback) {
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+// Phien dang nhap TRUOT: chi het khi khong dung web qua so ngay nay
+// (server/auth/authSession.js gia han moi lan dung, toi da 1 lan/ngay).
+// Hop le 1..365 ngay; gia tri lon hon bi chan o 365.
+const AUTH_SESSION_MAX_IDLE_DAYS = 365;
+const AUTH_SESSION_IDLE_DAYS = Math.min(positiveIntOr(process.env.AUTH_SESSION_IDLE_DAYS, 7), AUTH_SESSION_MAX_IDLE_DAYS);
+
 const CONFIG = {
   // Workbook "Bảng Công nợ" dùng chung cho hai cơ sở, server chỉ đọc hai
   // tab Công nợ HN/SG. Optional để thiếu cấu hình không làm sập dashboard.
@@ -35,7 +46,9 @@ const CONFIG = {
   // Dang nhap/phan quyen — xem server/auth/. JWT_SECRET bat buoc de tranh
   // token gia mao; khong co gia tri mac dinh vi day la secret bao mat.
   JWT_SECRET: required('JWT_SECRET'),
-  JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '12h',
+  // Mot nguon duy nhat cho han JWT va maxAge cookie tks_auth / tks_branch.
+  AUTH_SESSION_IDLE_DAYS,
+  AUTH_SESSION_TTL_MS: AUTH_SESSION_IDLE_DAYS * 24 * 60 * 60 * 1000,
 
   // Dang nhap bang Google (server/auth/googleAuthService.js). OAuth Client ID
   // loai "Web application" tren Google Cloud Console — KHONG phai secret (se

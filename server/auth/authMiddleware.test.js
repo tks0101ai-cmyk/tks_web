@@ -5,7 +5,7 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret';
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { AUTH_COOKIE_NAME, requireAuth, requireRole, requireFeature, createRequireAuth } = require('./authMiddleware');
-const { signToken } = require('./authService');
+const { signToken, verifyToken } = require('./authService');
 
 function fakeRes() {
   const res = { statusCode: null, body: null };
@@ -197,4 +197,110 @@ test('requireAuth gan req.user.permissions da giai san', async () => {
   assert.equal(nextCalled, true);
   assert.ok(Array.isArray(req.user.permissions));
   assert.ok(req.user.permissions.includes('account.permissions'));
+});
+
+const { SESSION_REFRESH_AFTER_MS } = require('./authSession');
+const { BRANCH_COOKIE_NAME } = require('../branch/branchMiddleware');
+
+const NOW = 1_800_000_000_000;
+const OLD_IAT = Math.floor((NOW - SESSION_REFRESH_AFTER_MS - 60_000) / 1000);
+const FRESH_IAT = Math.floor((NOW - 60_000) / 1000);
+
+function cookieRes() {
+  const res = fakeRes();
+  res.cookies = [];
+  res.cookie = (name, value, options) => { res.cookies.push({ name, value, options }); return res; };
+  return res;
+}
+
+function slidingMiddleware({ iat, storedUser, resolveUser, refreshSession } = {}) {
+  const user = { id: 'u1', username: 'nv1', hoTen: 'NV', vaiTro: 'Nhân viên sale', coSo: 'Hà Nội' };
+  return createRequireAuth({
+    verifyToken: () => ({ id: 'u1', iat }),
+    findUserById: async () => (storedUser === undefined ? user : storedUser),
+    resolveUser: resolveUser || (async u => u),
+    now: () => NOW,
+    ...(refreshSession ? { refreshSession } : {})
+  });
+}
+
+test('requireAuth: token cap qua 24h -> cap lai tks_auth va giu co so dang chon', async () => {
+  const req = { cookies: { [AUTH_COOKIE_NAME]: 'valid', [BRANCH_COOKIE_NAME]: 'Sài Gòn' } };
+  const res = cookieRes();
+  let nextCalled = false;
+  await slidingMiddleware({
+    iat: OLD_IAT,
+    resolveUser: async u => ({ ...u, hoTen: 'Ten Moi' })
+  })(req, res, () => { nextCalled = true; });
+  assert.equal(nextCalled, true);
+  assert.deepEqual(res.cookies.map(c => c.name), [AUTH_COOKIE_NAME, BRANCH_COOKIE_NAME]);
+  assert.equal(res.cookies[1].value, 'Sài Gòn');
+  const decoded = verifyToken(res.cookies[0].value);
+  assert.ok(decoded.iat >= Math.floor(Date.now() / 1000) - 5, 'token moi phai co iat moi');
+  assert.equal(decoded.hoTen, 'Ten Moi', 'payload lay tu effectiveUser, khong phai ban luu');
+});
+
+test('requireAuth: token con moi (< 24h) -> khong ghi cookie', async () => {
+  const res = cookieRes();
+  let nextCalled = false;
+  await slidingMiddleware({ iat: FRESH_IAT })({ cookies: { [AUTH_COOKIE_NAME]: 'valid' } }, res, () => { nextCalled = true; });
+  assert.equal(nextCalled, true);
+  assert.equal(res.cookies.length, 0);
+});
+
+test('requireAuth: tai khoan bi khoa -> 403, khong gia han', async () => {
+  const localUserStore = require('./localUserStore');
+  const res = cookieRes();
+  await slidingMiddleware({
+    iat: OLD_IAT,
+    resolveUser: async u => ({ ...u, trangThai: localUserStore.LOCKED_STATUS })
+  })({ cookies: { [AUTH_COOKIE_NAME]: 'valid' } }, res, () => assert.fail('must not continue'));
+  assert.equal(res.statusCode, 403);
+  assert.equal(res.cookies.length, 0);
+});
+
+test('requireAuth: tai khoan khong ton tai -> 401, khong gia han', async () => {
+  const res = cookieRes();
+  await slidingMiddleware({ iat: OLD_IAT, storedUser: null })(
+    { cookies: { [AUTH_COOKIE_NAME]: 'valid' } }, res, () => assert.fail('must not continue'));
+  assert.equal(res.statusCode, 401);
+  assert.equal(res.cookies.length, 0);
+});
+
+test('requireAuth: loi khi gia han khong lam hong request', async () => {
+  const res = cookieRes();
+  let nextCalled = false;
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    await slidingMiddleware({
+      iat: OLD_IAT,
+      refreshSession: () => { throw new Error('ky token loi'); }
+    })({ cookies: { [AUTH_COOKIE_NAME]: 'valid' } }, res, () => { nextCalled = true; });
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.equal(nextCalled, true);
+  assert.equal(res.statusCode, null);
+});
+
+test('requireAuth: request da xu ly (effectiveUserResolved) -> khong gia han lan hai', async () => {
+  const res = cookieRes();
+  const req = { cookies: { [AUTH_COOKIE_NAME]: 'valid' }, user: { id: 'u1' }, effectiveUserResolved: true };
+  let nextCalled = false;
+  await slidingMiddleware({ iat: OLD_IAT })(req, res, () => { nextCalled = true; });
+  assert.equal(nextCalled, true);
+  assert.equal(res.cookies.length, 0);
+});
+
+test('requireAuth: token that do signToken cap qua 24h duoc gia han (khong mock verify)', async () => {
+  const realToken = signToken({ id: 'u1' });
+  const middleware = createRequireAuth({
+    findUserById: async () => ({ id: 'u1', username: 'nv1', vaiTro: 'Nhân viên sale', coSo: 'Hà Nội' }),
+    resolveUser: async u => u,
+    now: () => Date.now() + SESSION_REFRESH_AFTER_MS + 1000
+  });
+  const res = cookieRes();
+  await middleware({ cookies: { [AUTH_COOKIE_NAME]: realToken } }, res, () => {});
+  assert.deepEqual(res.cookies.map(c => c.name), [AUTH_COOKIE_NAME]);
 });

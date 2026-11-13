@@ -77,6 +77,33 @@ function setAssignmentStatus(client, status, { id, branch, orderCode, actor, sum
     [id, actor.id, actor.name, branch, orderCode, JSON.stringify(summary)]);
 }
 
+// Xac nhan nhat: ghi ca don trong 1 cau lenh (cac CTE ghi bang/dong khac nhau; moi vi tri chi 1 dong / chi dinh, UNIQUE 0096).
+//   $1 = [{ord, line_id, position_id, code, location, remove, old_notes, new_notes, picked, snapshot, summary}] theo thu tu dong.
+//   remove -> DELETE dong VT + lich su 'auto_delete'; con lai -> UPDATE ghi chu + lich su 'pick'. Nguoi sua VT = ($2, $3 = ma don).
+//   Lich su VT chen theo `ord` (id tang dan dung thu tu cach cu ghi tung dong). Cuoi cung doi trang thai + order_pick_history 'confirm'
+//   (cung noi dung setAssignmentStatus) voi nguoi bam ($6, $7).
+const CONFIRM_WRITE_SQL = `WITH input AS (
+    SELECT * FROM jsonb_to_recordset($1::jsonb) AS t(ord integer, line_id bigint, position_id bigint, code text, location text,
+      remove boolean, old_notes text, new_notes text, picked numeric, snapshot jsonb, summary jsonb)
+  ), removed AS (
+    DELETE FROM stock_positions s USING input i WHERE i.remove AND s.id = i.position_id RETURNING s.id
+  ), updated AS (
+    UPDATE stock_positions s SET notes = i.new_notes, version = s.version + 1, updated_by_user_id = $2::text, updated_by_name = $3::text, updated_at = now()
+      FROM input i WHERE NOT i.remove AND s.id = i.position_id RETURNING s.id
+  ), history AS (
+    INSERT INTO stock_position_history (branch, position_id, code, location, action, field, old_value, new_value, summary, actor_user_id, actor_name)
+    SELECT $4::text, i.position_id, i.code, i.location, CASE WHEN i.remove THEN 'auto_delete' ELSE 'pick' END, 'notes', i.old_notes, i.new_notes,
+           i.summary, $2::text, $3::text
+      FROM input i ORDER BY i.ord
+  ), lines AS (
+    UPDATE order_pick_lines l SET picked_qty = i.picked, spec_before = i.old_notes, spec_after = i.new_notes, position_snapshot = i.snapshot
+      FROM input i WHERE l.id = i.line_id RETURNING l.id
+  ), changed AS (
+    UPDATE order_pick_assignments SET ${STATUS_UPDATE_SQL.confirmed.set.replace('$2', '$6::text').replace('$3', '$7::text')} WHERE id = $5 RETURNING id
+  )
+  INSERT INTO order_pick_history (assignment_id, branch, order_code, action, summary, actor_user_id, actor_name)
+  SELECT id, $4::text, $8::text, 'confirm', $9::jsonb, $6::text, $7::text FROM changed`;
+
 /* Hoan thung da tru cua 1 dong chi dinh 'confirmed' (THUAN TUY, dung chung cho hoan that va xem truoc "Chi dinh lai"):
    - dong VT con va ghi chu chua bi doi sau lan tru (= spec_after) -> khoi phuc dung chuoi cu spec_before;
    - dong VT con nhung ghi chu da bi doi -> cong tra so da nhat (carton.restore), ghi chu khong doc duoc thi loi;
@@ -317,21 +344,6 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
       'SELECT * FROM order_pick_assignments WHERE branch = $1 AND lower(btrim(order_code)) = $2 ORDER BY id DESC LIMIT 1',
       [branch, codeKey(orderCode)])).rows[0];
     return head ? shapeAssignment(db, head, { supplementPhone }) : null;
-  }
-
-  // Giu cho hien co theo vi tri: chi chi dinh 'picking' cua DON KHAC (exceptOrder bo qua chinh don dang xem/chi dinh).
-  async function heldByPosition(db, branch, positionIds, exceptOrder) {
-    const held = new Map();
-    if (!positionIds.length) return held;
-    const { rows } = await db.query(
-      `SELECT l.position_id, COALESCE(SUM(l.reserved_qty), 0) AS held
-         FROM order_pick_lines l JOIN order_pick_assignments a ON a.id = l.assignment_id
-        WHERE a.status = 'picking' AND a.branch = $1 AND l.position_id = ANY($2::bigint[])
-          AND lower(btrim(a.order_code)) <> $3
-        GROUP BY l.position_id`,
-      [branch, positionIds, codeKey(exceptOrder)]);
-    for (const row of rows) held.set(Number(row.position_id), Number(row.held));
-    return held;
   }
 
   function shapeCandidate(row, held) {
@@ -768,14 +780,24 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
     const db = getDb();
     await withTransaction(db, async client => {
       const head = await lockAssignment(client, ctx, id, body.version, [STATUS.PICKING]);
-      const jobs = (await client.query('SELECT * FROM order_pick_lines WHERE assignment_id = $1 ORDER BY position_id', [id])).rows;
-      const positions = await lockPositions(client, head.branch, jobs);
-      const held = await heldByPosition(client, head.branch, [...positions.keys()], head.order_code);
+      const jobs = (await timedQuery(client, 'pickJobs', 'SELECT * FROM order_pick_lines WHERE assignment_id = $1 ORDER BY position_id', [id])).rows;
+      // Khoa dong VT (FOR UPDATE theo id) + giu cho cua don KHAC trong 1 cau (truoc la 2 vong: lockPositions + heldByPosition).
+      const ids = jobs.map(job => Number(job.position_id)).sort((a, b) => a - b);
+      const held = new Map();
+      const positions = new Map();
+      if (ids.length) {
+        for (const { held: amount, ...row } of (await timedQuery(client, 'pickPositionsLock', LOCK_POSITIONS_WITH_HELD_SQL,
+          [head.branch, ids, codeKey(head.order_code)])).rows) {
+          held.set(Number(row.id), Number(amount) || 0);
+          positions.set(Number(row.id), row);
+        }
+      }
       // Ton that do don hang tru: nguoi sua (lich su VT + cot Nguoi sua cuoi) la MA DON; ten nguoi bam that nam trong summary
       // (rong khi job Kiot tu dong, actor.id === null). order_pick_history van ghi nguoi bam.
       const stockActor = { id: actor.id, name: head.order_code };
       const summary = { orderCode: head.order_code, assignmentId: Number(head.id), confirmedBy: actor.id === null ? '' : actor.name };
-      for (const job of jobs) {
+      // Kiem MOI dong truoc (loi dau tien theo thu tu dong nhu cach cu), roi ghi ca don bang 1 cau (truoc la ~3 vong DB / dong).
+      const writes = jobs.map((job, ord) => {
         const row = positions.get(Number(job.position_id));
         if (!row) throw stockChanged(job, 'không còn tồn tại');
         const planned = Number(job.planned_qty);
@@ -784,21 +806,17 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
         if (!result) {
           throw stockChanged(job, 'đã đổi mã/vị trí/quy cách hoặc phiếu cũ thiếu dấu vết để xác nhận an toàn');
         }
-        const snapshot = { code: row.code, name: row.name, notes: row.notes, arrivalDate: row.arrival_date, location: row.location };
-        if (isEmptyNote(result.text) && !held.get(Number(row.id))) {
-          await removeRow(client, head.branch, stockActor, row, 'auto_delete', { newValue: result.text, summary: { ...summary, picked: planned } });
-        } else {
-          await client.query(
-            `UPDATE stock_positions SET notes = $2, version = version + 1, updated_by_user_id = $3, updated_by_name = $4, updated_at = now() WHERE id = $1`,
-            [row.id, result.text, stockActor.id, stockActor.name]);
-          await writeHistory(client, head.branch, stockActor, [{ positionId: row.id, code: row.code, location: row.location, action: 'pick', field: 'notes', oldValue: row.notes, newValue: result.text, summary: { ...summary, picked: planned } }]);
-        }
-        await client.query(
-          `UPDATE order_pick_lines SET picked_qty = $2, spec_before = $3, spec_after = $4, position_snapshot = $5::jsonb WHERE id = $1`,
-          [job.id, planned, row.notes, result.text, JSON.stringify(snapshot)]);
-      }
-      await setAssignmentStatus(client, STATUS.CONFIRMED, { id, branch: head.branch, orderCode: head.order_code, actor,
-        summary: { positions: jobs.length } });
+        return {
+          ord, line_id: job.id, position_id: row.id, code: row.code, location: row.location,
+          // Het hang va khong don nao khac con giu cho -> xoa dong VT ('auto_delete'), con lai ghi ghi chu moi ('pick').
+          remove: isEmptyNote(result.text) && !held.get(Number(row.id)),
+          old_notes: row.notes, new_notes: result.text ?? null, picked: planned,
+          snapshot: { code: row.code, name: row.name, notes: row.notes, arrivalDate: row.arrival_date, location: row.location },
+          summary: { ...summary, picked: planned }
+        };
+      });
+      await timedQuery(client, 'pickConfirmWrite', CONFIRM_WRITE_SQL, [JSON.stringify(writes), stockActor.id, stockActor.name, head.branch,
+        id, actor.id, actor.name, head.order_code, JSON.stringify({ positions: jobs.length })]);
     });
     return { assignment: await readAssignment(db, id) };
   }

@@ -33,9 +33,10 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 - [ ] 12/11 — 3 trang VAT đọc file gốc VAT TKS làm dự phòng khi tab trung gian lỗi `#REF!` (nhánh `claude/sheet-ref-error-3eeb99`, không migration) — merge + deploy
 
 - [ ] 11/11 — Vị trí hàng cho xác nhận bốc âm, đổi tên vị trí đồng bộ đơn chỉ định và đối soát đơn Kiot hoàn thành (không migration) — deploy web/worker rồi kiểm số đơn chuyển và số còn lỗi đối soát
-- [ ] 12/11 — Hiệu năng: PR #77–#79 đã deploy (khựng ~50–60 → ~16 lần/giờ); đợt 4 (nghỉ phép, Excel worker, trả bản cũ khi làm mới — nhánh `claude/friendly-ride-y0uwwk`, không migration) — merge + deploy (ngoài giờ cao điểm), rồi đọc `[loop-stall]`/`[timing]`
+- [ ] 13/11 — Hiệu năng đợt 5: Dự kiến hàng về (cache theo version, SQL nhẹ, tab không tải lại) + xác nhận nhặt đơn nhiều dòng gộp 1 câu (nhánh `claude/funny-volta-vity7t`, không migration; PR #77–#81 đã deploy) — merge + deploy ngoài giờ cao điểm, rồi so `[loop-stall]`/`[timing]` giờ cao điểm với số gốc sáng 13/11
 - [ ] 12/11 — Thu mua: endpoint delta + client đồng bộ sau SSE/revision/lưu, giữ version/draft và reset fallback (không migration) — kiểm nhiều tab/reconnect, deploy rồi đo p50/p95 và payload production; xem [kế hoạch](docs/superpowers/plans/2026-11-12-purchase-delta-sync.md)
 - [ ] 12/11 — Thu mua: import Excel snapshot đã push `main` (`725e73d5`) và Render đã phục vụ JS mới — người dùng thử workbook thật và đồng bộ giữa 2 phiên; xem [kế hoạch](docs/superpowers/plans/2026-11-12-purchase-excel-snapshot-import.md)
+- [ ] 13/11 — Phiên đăng nhập trượt 7 ngày (nhánh `claude/extend-session-timeout-63d7e1`, không migration) — merge + deploy, xóa biến `JWT_EXPIRES_IN` trên Render (web + worker) nếu có
 
 ## Chỉ người vận hành làm được
 

@@ -277,7 +277,7 @@ Giao diện (23/10/2026, chiều): bảng tự co / giãn cột vừa khung lầ
 - **Trang quản trị người dùng** (`POST`/`PUT /api/admin/users`, từ 2026-10-05): không ai ngoài Quản lý cấp cao được đặt email/username/SĐT trùng định danh admin cứng (403 `PROTECTED_IDENTITY`); không tự đổi email/SĐT của chính mình qua trang này (403 `SELF_CONTACT_CHANGE`, trừ cấp cao); người không phải Quản lý không được tạo/sửa/nâng tài khoản mang bất kỳ định danh nào (email, SĐT, username) trùng nhân sự có vai trò cao hơn mức họ được cấp (403 `HR_ROLE_ESCALATION`; danh bạ lỗi → 503). Đổi email/SĐT tài khoản không gắn nhân sự đặt lại `verifiedEmail`/`verifiedPhone = false`; đổi liên hệ tài khoản nhân sự chỉ ghi sau khi mọi kiểm tra khác đã qua. Quản lý thường không đổi trạng thái (mọi giá trị, kể cả "Chờ duyệt") hay cơ sở của Quản lý khác.
 - **Đăng nhập Google liên kết nhân sự**: chỉ tự liên kết vào tài khoản chưa gắn khi tài khoản đó khớp **theo email** với email Google; khớp chỉ qua SĐT/username, hoặc tài khoản đã gắn dòng nhân sự khác → 409 `HR_IDENTITY_CONFLICT`, không ghi gì. Quản lý tạo sẵn tài khoản cho nhân sự phải dùng đúng email của họ.
 - **Phân quyền** nằm ở `auth/featureRegistry.js` (quyền mặc định theo vai trò + ghi đè riêng từng tài khoản trong `app_users.feature_permissions`, và `requires` cho quyền phụ thuộc). Nhóm: Báo cáo tổng hợp (`reports.*`), Quản lý đơn hàng (`shipment.*`), Vị trí hàng (`stockLocationsV2.view/export` mặc định mọi vai trò kể cả Khách, `stockLocationsV2.edit/historyDelete` mặc định Quản lý), Quản lý nhân sự (`hr.*`), Sổ quỹ (`cashbook.view`, `cashbook.manage`), Kế toán (`accounting.vatDraft` — trang `/vat-draft/`, mặc định chỉ Quản lý, Khách bị cấm; `accounting.qr` — chỉ tab Tạo QR, mặc định Quản lý + Nhân viên sale), Quản lý tài khoản (`account.*`), Hệ thống (`system.syncStatus`). Sổ quỹ đặt ngay sau Nhân sự; mặc định chỉ Quản lý có quyền, chốt số dư cần quyền xem. Sidebar có liên kết cấp 1 `/cashbook/` ngay dưới Quản lý nhân sự, hiện theo quyền xem và không phụ thuộc cơ sở. `GET /api/auth/me` trả `permissions`, `pageFeatures`, `isSeniorAdmin`; `auth/pageGuard.js` chặn trang theo quyền, bao gồm `/cashbook`, `/cashbook/` và `/cashbook/index.html` trước static.
-- Đăng nhập: JWT cookie `tks_auth`; sai mật khẩu 5 lần khóa 5 phút; quên mật khẩu qua OTP 6 số hiệu lực 5 phút, tối đa 5 lần nhập, giãn cách gửi lại 60 giây, giới hạn 8 yêu cầu/10 phút theo định danh và 20/10 phút theo IP (`/api/auth/forgot-password/*`).
+- Đăng nhập: JWT cookie `tks_auth`, phiên trượt: hết hạn sau `AUTH_SESSION_IDLE_DAYS` ngày không dùng (mặc định 7), `requireAuth` gia hạn tối đa 1 lần/ngày (`auth/authSession.js`); sai mật khẩu 5 lần khóa 5 phút; quên mật khẩu qua OTP 6 số hiệu lực 5 phút, tối đa 5 lần nhập, giãn cách gửi lại 60 giây, giới hạn 8 yêu cầu/10 phút theo định danh và 20/10 phút theo IP (`/api/auth/forgot-password/*`).
 
 ## Báo cáo hàng hóa (`/api/product-report`) — 34 cột theo sheet BC CHUNG (19/10/2026)
 
@@ -1408,6 +1408,15 @@ Cập nhật cuối: 11/11/2026.
 - `debtSchedule/debtAgingRepository.js`: quá 60 s → trả bản cũ, đọc lại nền; `clearCache()` vẫn chờ bản mới.
 
 Cập nhật cuối: 12/11/2026.
+
+## Hiệu năng — 13/11/2026 (đợt 5)
+
+- `productContainers/expectedRepository.js`: `createExpectedRepository({ queryCache, events, stateTtlMs, staleMaxMs })` — bản dùng chung của web bật `queryCache` (tắt bằng `EXPECTED_ARRIVALS_CACHE=off`). Khóa cache = quyền (`fullAccess`, `otherNoteAccess`) + tham số trang/lọc/tìm/sắp xếp; hợp lệ theo `product_container_expected_state.version`, `meta.computedAt/rowCount` lấy theo state hiện tại nên phản hồi giống hệt chạy lại SQL. Xuất file (`exportAll`, `countOnly`) không qua cache. SQL trang đọc cột trực tiếp, lỗi `42703` (DB chưa áp 0078) thì dùng bản `to_jsonb(e)` cũ. Tìm kiếm mờ: cột `search_folded` (bỏ dấu 1 lần / dòng trong CTE `base`) + `fuzzySqlParts(..., { folded: true })`. Log `[timing]` có bước `expectedState` / `expectedQuery`.
+- `shared/fuzzySql.js`: `fuzzySqlParts(expression, query, add, { folded })` — `folded: true` dùng thẳng biểu thức đã `foldSql` (không bọc `translate` cho từng từ); mặc định giữ cách cũ cho các module khác.
+- `productContainers/expectedRefresh.js`: sau `COMMIT`, nếu dòng state đổi thì phát `expectedArrivalsChanged` trên `dashboardRollupEvents` (worker → `pg_notify` → web). SSE trình duyệt không chuyển sự kiện này.
+- `pickAssignments/pickAssignmentsService.js` `confirm()`: `LOCK_POSITIONS_WITH_HELD_SQL` (khóa VT + giữ chỗ đơn khác) thay `lockPositions` + `heldByPosition` (đã gỡ hàm này); ghi cả đơn bằng `CONFIRM_WRITE_SQL`. Giữ nguyên khóa advisory theo cơ sở + `FOR UPDATE`, lỗi `STOCK_CHANGED` báo dòng đầu tiên, nhánh `auto_delete`, nội dung `stock_position_history` (action `pick`, summary, người sửa = mã đơn), `order_pick_history` `confirm`. Log `[timing]` có bước `pickJobs` / `pickPositionsLock` / `pickConfirmWrite`.
+
+Cập nhật cuối: 13/11/2026.
 
 ## Nguồn dự phòng 3 trang VAT — 12/11/2026
 

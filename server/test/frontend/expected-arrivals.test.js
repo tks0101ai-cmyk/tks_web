@@ -51,7 +51,7 @@ const FIELDS = {
 };
 
 // `real: true` mo phong TKSNav that: co getPermissions + authGuard nap quyen roi moi tai (trang cho quyen).
-function createPage({ permissions = null, can = () => true, hash = '#products', real = false, respond = SAMPLE } = {}) {
+function createPage({ permissions = null, can = () => true, hash = '#products', real = false, respond = SAMPLE, beforeScripts = null } = {}) {
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://tokosi.example/reports/' + hash });
   dom.window.HTMLCanvasElement.prototype.getContext = () => ({});
   dom.window.Chart = class FakeChart {
@@ -101,6 +101,7 @@ function createPage({ permissions = null, can = () => true, hash = '#products', 
     return new Promise(() => {}); // cac API khac khong tra loi
   };
 
+  if (beforeScripts) beforeScripts(dom);
   ['pagination.js', 'table-explorer.js'].forEach(file => {
     dom.window.eval(fs.readFileSync(path.join(publicDir, 'js', file), 'utf8'));
   });
@@ -886,4 +887,43 @@ test('server pages prefetch the next page and serve pager clicks from cache; oth
   page.run("setTableSort('expectedArrivalsRows', 10, {shiftKey:false})"); await settle();
   assert.ok(calls.length > before);
   assert.equal(calls.at(-1).get('page'), '1');
+});
+
+// Toi uu 13/11/2026: chuyen qua lai giua cac tab tung goi lai /api/expected-arrivals (+ tai truoc trang ke) moi lan.
+test('mo lai tab Hang hoa trong 60 giay khong goi lai may chu; qua 60 giay hoac quay lai cua so thi tai 1 lan', async t => {
+  const page = createPage();
+  t.after(() => page.dom.window.close());
+  const listCalls = () => page.urls.filter(u => u.startsWith('/api/expected-arrivals?')).length;
+  const realNow = page.dom.window.Date.now;
+  let offset = 0;
+  page.dom.window.Date.now = () => realNow() + offset;
+  page.run("switchView('products')"); await settle();
+  assert.equal(listCalls(), 1);
+  page.run("switchView('overview')"); page.run("switchView('products')"); await settle();
+  page.run("switchView('invoices')"); page.run("switchView('products')"); await settle();
+  assert.equal(listCalls(), 1, 'du lieu < 60 s: giu bang dang co');
+  assert.equal(bodyRows(page).length, 4);
+  offset = 61000;
+  page.run("switchView('overview')"); page.run("switchView('products')"); await settle();
+  assert.equal(listCalls(), 2, 'qua 60 s: tai lai khi mo tab');
+  offset = 130000;
+  page.dom.window.dispatchEvent(new page.dom.window.Event('focus'));
+  page.doc.dispatchEvent(new page.dom.window.Event('visibilitychange'));
+  await settle();
+  assert.equal(listCalls(), 3, 'focus + visibilitychange cung luc chi tai 1 lan');
+});
+
+test('trang mo o tab nen (an): chua goi /api/expected-arrivals; hien lai thi tai dung 1 lan', async t => {
+  let hidden = true;
+  const page = createPage({ beforeScripts: dom => Object.defineProperty(dom.window.document, 'visibilityState', { configurable: true, get: () => (hidden ? 'hidden' : 'visible') }) });
+  t.after(() => page.dom.window.close());
+  const listCalls = () => page.urls.filter(u => u.startsWith('/api/expected-arrivals?')).length;
+  page.run("switchView('products')"); await settle();
+  assert.equal(listCalls(), 0);
+  hidden = false;
+  page.doc.dispatchEvent(new page.dom.window.Event('visibilitychange'));
+  page.dom.window.dispatchEvent(new page.dom.window.Event('focus'));
+  await settle();
+  assert.equal(listCalls(), 1);
+  assert.equal(bodyRows(page).length, 4);
 });

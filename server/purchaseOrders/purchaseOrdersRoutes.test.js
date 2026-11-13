@@ -9,7 +9,7 @@ const columns = require('../public/shared/purchase-columns');
 async function start(t,user) {
   const calls=[];
   const record=name=>async(...args)=>{calls.push({name,args});return name==='revision'?{revision:'9:4'}:name==='importSnapshot'?{revision:'9:4',rows:[]}:{ok:true}};
-  const service=Object.fromEntries(['revision','changes','employees','saveEmployees','createEmployee','updateEmployee','trash','operations','remove','restore','undo','applyPlan','list','history','create','update','createContainer','updateContainer','schedule','changeStatus','bulkEdit','transfer','depart','arrive','previewImport','reviseImport','commitImport'].map(name=>[name,record(name)]));
+  const service=Object.fromEntries(['revision','changes','employees','saveEmployees','createEmployee','updateEmployee','trash','inactive','operations','remove','deactivate','reactivate','restore','undo','applyPlan','list','history','create','update','createContainer','updateContainer','schedule','changeStatus','bulkEdit','transfer','depart','arrive','importSnapshot','previewImport','reviseImport','commitImport'].map(name=>[name,record(name)]));
   const app=express();app.use(express.json());app.use((req,res,next)=>{req.user=user;next()});
   app.use(createPurchaseOrdersRouter({service,requireAuth:(req,res,next)=>req.user?next():res.status(401).json({error:'Chưa đăng nhập'})}));
   const server=await new Promise(resolve=>{const server=app.listen(0,'127.0.0.1',()=>resolve(server))});t.after(()=>server.close());
@@ -62,7 +62,7 @@ test('import commit accepts a token only, never client-generated write operation
 });
 
 test('delete restore and undo require edit permission, directory requires purchase view only',async t=>{
- const {base,calls}=await start(t,{id:'reader',vaiTro:ROLES.NHAN_VIEN_MUA_HANG,featurePermissions:{'purchase.view':true}});for(const path of ['/delete','/restore','/undo','/plan'])assert.equal((await fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,403);assert.equal((await fetch(base+'/employees')).status,200);assert.deepEqual(calls.map(c=>c.name),['employees']);
+ const {base,calls}=await start(t,{id:'reader',vaiTro:ROLES.NHAN_VIEN_MUA_HANG,featurePermissions:{'purchase.view':true}});for(const path of ['/delete','/deactivate','/reactivate','/restore','/undo','/plan'])assert.equal((await fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,403);assert.equal((await fetch(base+'/employees')).status,200);assert.deepEqual(calls.map(c=>c.name),['employees']);
 });
 
 test('invalid request keys are rejected before a mutation reaches the service',async t=>{

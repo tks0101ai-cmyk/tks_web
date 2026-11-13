@@ -7622,7 +7622,7 @@
         }
         applyProductsViewPermissions();
         loadProductGrowth();
-        loadExpectedArrivals();
+        loadExpectedArrivalsOnOpen();
         // Muc 4 "Hang hoa 90 ngay" (bang Khach hang theo san pham): API rieng /api/product-report/customer-growth, tu kiem quyen
         // (reports.products + .sales) truoc khi goi.
         if (window.TKSProductCustomerGrowth) window.TKSProductCustomerGrowth.load(false);
@@ -9196,12 +9196,27 @@
         });
     }
 
-    // Quay lại tab / cửa sổ sau một lúc: tải lại nếu đang xem mục này và dữ liệu đã quá 60 giây.
+    // Mở (lại) tab Hàng hóa: bảng còn trên trang và mới tải < 60 giây thì giữ nguyên, không gọi lại máy chủ
+    // (chuyển qua lại giữa các tab từng gọi /api/expected-arrivals + tải trước trang kế mỗi lần, 13/11/2026).
+    // Trình duyệt đang ẩn tab (mở trang ở tab nền): chưa tải, chờ quay lại thì tải 1 lần (refreshExpectedArrivalsIfStale).
+    const EXPECTED_ARRIVALS_FRESH_MS = 60000;
+    function loadExpectedArrivalsOnOpen() {
+      if (!hasFeature('reports.products.expected')) return loadExpectedArrivals();
+      if (document.visibilityState === 'hidden') { expectedArrivals.pendingWhileHidden = true; return Promise.resolve(); }
+      if (expectedArrivals.loading) return expectedArrivals.promise;
+      if (expectedArrivals.loaded && Date.now() - expectedArrivals.loadedAt < EXPECTED_ARRIVALS_FRESH_MS) return Promise.resolve();
+      return loadExpectedArrivals();
+    }
+
+    // Quay lại tab / cửa sổ sau một lúc: tải lại nếu đang xem mục này và dữ liệu đã quá 60 giây
+    // (hoặc lúc ẩn đã bỏ qua một lần tải). focus + visibilitychange cùng bắn khi quay lại: lần sau dùng chung request đang chạy.
     function refreshExpectedArrivalsIfStale() {
       const section = document.getElementById('expectedArrivalsSection');
       const view = document.getElementById('view-products');
       if (document.visibilityState === 'hidden' || section.hidden || !view.classList.contains('active')) return;
-      if (Date.now() - expectedArrivals.loadedAt < 60000) return;
+      if (!expectedArrivals.pendingWhileHidden && Date.now() - expectedArrivals.loadedAt < EXPECTED_ARRIVALS_FRESH_MS) return;
+      expectedArrivals.pendingWhileHidden = false;
+      if (expectedArrivals.loading) return;
       loadExpectedArrivals();
     }
     window.addEventListener('focus', refreshExpectedArrivalsIfStale);
