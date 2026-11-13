@@ -33,6 +33,7 @@
     alloc: null,
     qrMode: 'co_vat',
     matchedAccounts: [],
+    lastInvoiceParsed: null, // { parsed, needConfirm } — ve lai panel AI khi danh sach tai khoan toi muon
     invoiceBusy: false,
     invoiceThumbUrl: null,
     invoiceViewerReturn: null,
@@ -234,18 +235,28 @@
     state.accountsFailed = false;
     $('vdAccountsRetry').hidden = true;
     renderAccountSelect();
+    let lastError = null;
     for (let attempt = 0; ; attempt += 1) {
       try {
         const { vietqr } = await api('/meta');
         state.meta = { ...(state.meta || {}), vietqr };
-        renderAccountSelect();
-        if (state.alloc && state.alloc.qr) renderQr();
-        return;
+        lastError = null;
+        break;
       } catch (error) {
+        lastError = error;
         if (attempt >= ACCOUNT_RETRY_DELAYS.length) break;
         await wait(ACCOUNT_RETRY_DELAYS[attempt]);
       }
     }
+    if (!lastError) {
+      renderAccountSelect();
+      if (state.alloc && state.alloc.qr) renderQr();
+      // Hoa don doc xong truoc khi tai khoan ve: ve lai panel AI voi ten tai khoan that (khong tu tao QR).
+      const last = state.lastInvoiceParsed;
+      if (last && !state.invoiceBusy) renderAiResult(last.parsed, { autoGenerate: false, needConfirm: last.needConfirm && !$('vdAmountConfirm').hidden });
+      return;
+    }
+    console.warn('[vat-draft] khong tai duoc danh sach tai khoan', lastError);
     state.accountsFailed = true;
     $('vdAccountsRetry').hidden = false;
     renderAccountSelect();
@@ -699,7 +710,8 @@
   function refreshQrCards() {
     const content = renderContentPreview($('vdTransfer'), $('vdTransferPreview'));
     document.querySelectorAll('#vdQrCards [data-qr-card]').forEach(card => {
-      const reason = !card.querySelector('[data-qr-account]').value ? 'Chọn tài khoản nhận tiền.'
+      const reason = !accountsLoaded() ? (state.accountsFailed ? 'Không tải được danh sách tài khoản — tải lại trang.' : 'Đang tải danh sách tài khoản…')
+        : !card.querySelector('[data-qr-account]').value ? 'Chọn tài khoản nhận tiền.'
         : parseAmount(card.querySelector('[data-qr-amount]').value) > MAX_AMOUNT ? AMOUNT_TOO_LONG
           : content.tooLong ? CONTENT_TOO_LONG : '';
       card.querySelector('[data-qr-generate]').disabled = !!reason;
@@ -745,7 +757,10 @@
       figure.dataset.url = data.url;
       figure.dataset.caption = text;
       figure.dataset.fileName = `QR_${slug(label)}_${data.amount}.png`;
-      resultEl.querySelector('img').addEventListener('error', () => {
+      const img = resultEl.querySelector('img');
+      img.addEventListener('error', () => {
+        // Anh cu da bi thay bang ket qua moi thi bo qua loi cua no.
+        if (!img.isConnected) return;
         resultEl.innerHTML = `<p class="vd-message vd-error">${escapeHtml(QR_IMAGE_ERROR)}</p>`;
       });
     } catch (error) {
@@ -864,7 +879,7 @@
     const manualReason = manual ? manualFieldsReason() : '';
     if (!accountsLoaded()) values.reason = 'Chưa có danh sách tài khoản — chờ tải xong hoặc bấm Thử lại.';
     else if (!key) { values.reason = 'Chọn tài khoản nhận tiền để tạo QR.'; values.focus = 'vdManualAccount'; }
-    else if (manualReason) { values.reason = manualReason; values.focus = 'vdManualBank'; }
+    else if (manualReason) { values.reason = manualReason; values.focus = findBank($('vdManualBank').value) ? 'vdManualNo' : 'vdManualBank'; }
     else if (values.amount > MAX_AMOUNT) { values.reason = AMOUNT_TOO_LONG; values.focus = 'vdManualAmount'; }
     else if (content.tooLong) { values.reason = CONTENT_TOO_LONG; values.focus = 'vdManualContent'; }
     values.key = JSON.stringify([key, values.manual || null, values.amount, values.addInfo]);
@@ -1132,6 +1147,7 @@
   /** Xoa so tien / tai khoan / QR / o xac nhan cua hoa don truoc: tranh tao QR nham. */
   function resetInvoiceResult() {
     state.matchedAccounts = [];
+    state.lastInvoiceParsed = null;
     state.qr = { status: 'idle' };
     state.manualTouched = false;
     $('vdManualAmount').value = '';
@@ -1194,7 +1210,8 @@
         : parsed.amountStatus === 'corrected' ? '<span class="vd-pill vd-pill--warn">Đã sửa theo số bằng chữ</span>'
           : '<span class="vd-pill vd-pill--warn">Cần xác nhận</span>';
     const notes = (parsed.warnings || []).map(warning => calloutHtml('warning', warning));
-    if (!matched.length) notes.push(calloutHtml('warning', 'Không có tài khoản khớp với công ty bán — chọn tài khoản nhận tiền ở bên dưới.'));
+    const loaded = accountsLoaded();
+    if (loaded && !matched.length) notes.push(calloutHtml('warning', 'Không có tài khoản khớp với công ty bán — chọn tài khoản nhận tiền ở bên dưới.'));
     if (needConfirm) notes.push(calloutHtml('warning', 'Chưa tạo QR: xác nhận số tiền ở mục bên dưới.', 'confirm'));
     else if (autoGenerate) notes.push(calloutHtml('info', 'Đã chọn tài khoản và tạo mã QR — kiểm tra lại trước khi gửi khách.'));
     if (parsed.source === 'pdf-text') notes.push(calloutHtml('info', 'Đọc trực tiếp chữ trong file PDF (không qua AI).'));
@@ -1202,7 +1219,7 @@
     info.innerHTML = `<dl class="vd-ai-grid">
       <div><dt>Công ty bán</dt><dd>${escapeHtml(parsed.sellerName || 'Không nhận diện được')}</dd></div>
       <div><dt>Tổng thanh toán</dt><dd class="num">${parsed.totalPayment !== null ? escapeHtml(intFormat.format(parsed.totalPayment)) + ' đ' : 'Không đọc được'}</dd>${pill ? `<dd>${pill}</dd>` : ''}</div>
-      <div><dt>Tài khoản gợi ý</dt><dd>${matched.length ? matched.map(a => escapeHtml(String(a.label).split(' — ')[0])).join(', ') : 'Không khớp'}</dd></div>
+      <div><dt>Tài khoản gợi ý</dt><dd>${!loaded ? (state.accountsFailed ? 'Chưa tải được danh sách tài khoản' : 'Đang tải danh sách tài khoản…') : matched.length ? matched.map(a => escapeHtml(String(a.label).split(' — ')[0])).join(', ') : 'Không khớp'}</dd></div>
     </dl>${notes.length ? `<ul class="vd-callouts">${notes.join('')}</ul>` : ''}`;
     info.hidden = false;
   }
@@ -1298,6 +1315,7 @@
     let autoGenerate = false;
     let needConfirm = false;
     let parsed = null;
+    let showResult = false;
     try {
       // PDF co lop chu (hoa don dien tu luu tu trinh duyet): doc chu moi trang, chinh xac va khong ton AI.
       // PDF scan / khong dung mau -> doc anh bang AI nhu anh chup.
@@ -1329,7 +1347,7 @@
         // Chi tu tao QR khi so tien da doi chieu duoc; con lai bat nguoi dung xac nhan.
         needConfirm = parsed.totalPayment !== null && parsed.amountStatus !== 'ok';
         autoGenerate = state.matchedAccounts.length > 0 && parsed.totalPayment > 0 && !needConfirm;
-        renderAiResult(parsed, { autoGenerate, needConfirm });
+        showResult = true; // ve panel sau khi o tai khoan da chon xong (quyet dinh tu tao QR can form hop le)
       }
     } catch (error) {
       // Khong mo duoc file -> quay ve vung dan; loi AI -> giu anh de thu lai / xoa.
@@ -1345,6 +1363,12 @@
     }
     $('vdAccountAi').hidden = !state.matchedAccounts.length;
     renderAccountSelect();
+    if (showResult) {
+      // Chi tu tao QR khi danh sach tai khoan da co va form hop le (o tai khoan da duoc chon o tren).
+      autoGenerate = autoGenerate && accountsLoaded() && !qrFormValues().reason;
+      state.lastInvoiceParsed = { parsed, needConfirm };
+      renderAiResult(parsed, { autoGenerate, needConfirm });
+    }
     if (needConfirm && showAmountConfirm(parsed)) {
       $('vdManualAmount').classList.add('vd-input--check');
       refreshQrPanel();

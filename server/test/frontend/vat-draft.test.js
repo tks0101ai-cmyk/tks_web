@@ -50,7 +50,7 @@ function api(overrides = {}) {
   };
 }
 
-async function setup(t, { hash = '#xu-ly', responses = api(), vaiTro = 'Quản lý' } = {}) {
+async function setup(t, { hash = '#xu-ly', responses = api(), vaiTro = 'Quản lý', awaitInit = true } = {}) {
   const dom = new JSDOM(html, { url: 'https://tokosi.test/vat-draft/' + hash, runScripts: 'outside-only', pretendToBeVisual: true });
   t.after(() => dom.window.close());
   const window = dom.window;
@@ -62,14 +62,16 @@ async function setup(t, { hash = '#xu-ly', responses = api(), vaiTro = 'Quản l
   const user = { vaiTro, branch: 'Cả hai', permissions: resolvePermissions({ vaiTro }), pageFeatures: PAGE_FEATURES };
   window.TKSNav.authGuard = async () => { window.TKSNav.setPermissions(user); return user; };
   const calls = [];
+  const warns = [];
+  window.console.warn = (...args) => { warns.push(args); }; // giu output test sach (loi tai tai khoan co console.warn)
   window.fetch = async (url, options = {}) => {
     const parsed = new URL(url, window.location.href);
     if (parsed.pathname === '/api/me/table-prefs') return { ok: true, status: 200, json: async () => ({ tables: {} }) };
     const key = `${options.method || 'GET'} ${parsed.pathname.replace('/api/vat-draft', '')}`;
-    const body = options.body ? JSON.parse(options.body) : undefined;
+    const body = typeof options.body === 'string' ? JSON.parse(options.body) : undefined;
     calls.push({ key, query: Object.fromEntries(parsed.searchParams), body });
     const entry = responses[key];
-    const data = typeof entry === 'function' ? entry() : entry;
+    const data = typeof entry === 'function' ? await entry() : entry;
     return {
       ok: data !== undefined, status: data !== undefined ? 200 : 404,
       headers: { get: () => key === 'POST /export' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/json' },
@@ -80,9 +82,10 @@ async function setup(t, { hash = '#xu-ly', responses = api(), vaiTro = 'Quản l
   window.TKSVatDraftRetryDelays = [0, 0, 0];
   window.eval(fs.readFileSync(path.join(publicDir, 'vat-draft/cell-select.js'), 'utf8'));
   window.eval(code);
-  await window.TKSVatDraft.init();
+  const init = window.TKSVatDraft.init();
+  if (awaitInit) await init;
   await tick();
-  return { window, doc: window.document, calls };
+  return { window, doc: window.document, calls, warns, init };
 }
 
 /** Cho cac promise / setTimeout(0) chay het (tai lai co thu lai). */
@@ -569,10 +572,15 @@ test('tab Tao QR: nhap tay sai ma ngan hang / so TK qua 19 ky tu / so tien qua 1
   set('vdManualBank', 'Ngân hàng lạ');
   assert.equal(button.disabled, true);
   assert.match(blocker.textContent, /không có trong danh sách VietQR/);
+  const pressEnter = () => doc.getElementById('vdManualAmount').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  pressEnter();
+  assert.equal(doc.activeElement.id, 'vdManualBank', 'ma ngan hang sai -> focus o ngan hang');
   set('vdManualBank', 'vcb');
   set('vdManualNo', '1'.repeat(20));
   assert.equal(button.disabled, true);
   assert.match(blocker.textContent, /tối đa 19 ký tự/);
+  pressEnter();
+  assert.equal(doc.activeElement.id, 'vdManualNo', 'ngan hang dung, so TK sai -> focus o so TK');
   set('vdManualNo', '1069579742');
   set('vdManualAmount', '12345678901234');
   assert.equal(button.disabled, true);
@@ -643,4 +651,92 @@ test('xu ly chung tu: noi dung chuyen khoan qua 50 ky tu -> moi nut tao QR khoa;
   card.querySelector('[data-qr-result] img').dispatchEvent(new window.Event('error'));
   assert.equal(card.querySelector('[data-qr-result]').textContent.trim(), 'Không tải được ảnh QR từ VietQR — thử lại.');
   assert.equal(card.querySelector('[data-qr-download]'), null);
+});
+
+test('xu ly chung tu: the QR khi chua tai duoc tai khoan -> ly do dung (khong noi "Chon tai khoan"); tai duoc thi het', async t => {
+  const responses = api();
+  const meta = responses['GET /meta'];
+  delete responses['GET /meta'];
+  const { doc, window, warns } = await setup(t, { responses });
+  assert.equal(warns.length, 1, 'het luot thu lai thi ghi 1 console.warn');
+  assert.match(String(warns[0][0]), /khong tai duoc danh sach tai khoan/);
+  await pasteAndRun(doc);
+  const card = doc.querySelector('[data-qr-card]');
+  assert.equal(card.querySelector('[data-qr-generate]').disabled, true);
+  assert.equal(card.querySelector('[data-qr-reason]').textContent, 'Không tải được danh sách tài khoản — tải lại trang.');
+  responses['GET /meta'] = meta;
+  doc.getElementById('vdAccountsRetry').click();
+  await settle(window);
+  assert.equal(doc.querySelector('[data-qr-card] [data-qr-generate]').disabled, false);
+  assert.equal(doc.querySelector('[data-qr-card] [data-qr-reason]').hidden, true);
+});
+
+test('xu ly chung tu: anh QR cu bao loi sau khi da co QR moi -> khong ghi de QR moi', async t => {
+  const { doc, window } = await setup(t);
+  await pasteAndRun(doc);
+  const card = doc.querySelector('[data-qr-card]');
+  const result = card.querySelector('[data-qr-result]');
+  card.querySelector('[data-qr-generate]').click();
+  await tick(); await tick();
+  const oldImg = result.querySelector('img');
+  card.querySelector('[data-qr-generate]').click();
+  await tick(); await tick();
+  const newImg = result.querySelector('img');
+  assert.notEqual(oldImg, newImg);
+  oldImg.dispatchEvent(new window.Event('error'));
+  assert.equal(result.querySelector('img'), newImg, 'loi cua anh cu bi bo qua');
+  assert.equal(result.querySelector('.vd-error'), null);
+});
+
+/** Dan 1 anh hoa don (Ctrl+V) vao tab Tao QR; parse-image tra theo responses. */
+async function pasteInvoice(window) {
+  window.createImageBitmap = async () => ({ width: 10, height: 10, close() {} });
+  window.HTMLCanvasElement.prototype.getContext = () => ({ fillRect() {}, drawImage() {}, fillStyle: '' });
+  window.HTMLCanvasElement.prototype.toBlob = function (callback) { callback(new window.Blob(['x'], { type: 'image/jpeg' })); };
+  const event = new window.Event('paste', { bubbles: true, cancelable: true });
+  const file = new window.File(['x'], 'a.png', { type: 'image/png' });
+  Object.defineProperty(event, 'clipboardData', { value: { items: [{ kind: 'file', type: 'image/png', getAsFile: () => file }] } });
+  window.document.dispatchEvent(event);
+  await settle(window);
+}
+
+test('tab Tao QR: hoa don doc xong truoc khi tai khoan ve -> panel khong tu mau thuan, ve sau thi hien dung tai khoan goi y', async t => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const responses = api({
+    'POST /qr/parse-image': { sellerName: 'CONG TY SHC', totalPayment: 1500000, amountStatus: 'ok', matchedAccountKeys: ['shc'], warnings: [] }
+  });
+  const meta = responses['GET /meta'];
+  responses['GET /meta'] = () => gate.then(() => meta);
+  const { doc, calls, init } = await setup(t, { hash: '#tao-qr', responses, awaitInit: false });
+  const window = doc.defaultView;
+  await pasteInvoice(window);
+  const info = doc.getElementById('vdInvoiceInfo');
+  assert.equal(info.hidden, false);
+  assert.match(info.textContent, /CONG TY SHC/);
+  assert.match(info.textContent, /Đang tải danh sách tài khoản…/);
+  assert.doesNotMatch(info.textContent, /Đã chọn tài khoản và tạo mã QR/);
+  assert.doesNotMatch(info.textContent, /Không khớp/);
+  assert.doesNotMatch(info.textContent, /Không có tài khoản khớp/);
+  assert.equal(calls.filter(c => c.key === 'POST /qr/url').length, 0);
+  release();
+  await init;
+  await settle(window);
+  assert.equal(doc.getElementById('vdManualAccount').value, 'shc');
+  assert.match(info.textContent, /Tài khoản gợi ý/);
+  assert.match(info.textContent, /MB SHC/);
+  assert.doesNotMatch(info.textContent, /Đang tải danh sách tài khoản/);
+  assert.doesNotMatch(info.textContent, /Đã chọn tài khoản và tạo mã QR/, 'khong tu tao QR khi tai khoan ve muon');
+  assert.equal(calls.filter(c => c.key === 'POST /qr/url').length, 0);
+});
+
+test('tab Tao QR: hoa don doc khi tai khoan da co -> van tu chon tai khoan + tao QR nhu cu', async t => {
+  const responses = api({
+    'POST /qr/parse-image': { sellerName: 'CONG TY SHC', totalPayment: 1500000, amountStatus: 'ok', matchedAccountKeys: ['shc'], warnings: [] }
+  });
+  const { doc, window, calls } = await setup(t, { hash: '#tao-qr', responses });
+  await pasteInvoice(window);
+  assert.equal(doc.getElementById('vdManualAccount').value, 'shc');
+  assert.match(doc.getElementById('vdInvoiceInfo').textContent, /Đã chọn tài khoản và tạo mã QR/);
+  assert.equal(calls.filter(c => c.key === 'POST /qr/url').length, 1);
 });
