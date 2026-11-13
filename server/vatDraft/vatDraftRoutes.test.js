@@ -266,11 +266,14 @@ test('POST /export tra file xlsx; cot la bi tu choi', async () => {
 
 test('POST /qr/url: tai khoan cau hinh, nhap tay doi ve BIN, noi dung chuan hoa', async () => {
   const res = await request('/qr/url', { method: 'POST', body: { accountKey: 'shc', amount: '1.134.000 đ', addInfo: 'HD1 HD2' } });
-  assert.equal(res.body.url, 'https://img.vietqr.io/image/MB-525345345-compact2.png?amount=1134000&addInfo=HD1%20HD2&accountName=CONG%20TY%20SHC');
+  assert.equal(res.body.url, 'https://img.vietqr.io/image/MB-525345345-compact2.svg?amount=1134000&addInfo=HD1%20HD2&accountName=CONG%20TY%20SHC');
   const manual = await request('/qr/url', { method: 'POST', body: { manual: { bankId: 'acb', accountNo: '123456' }, amount: '0' } });
   assert.equal(manual.status, 200);
-  assert.equal(manual.body.url, 'https://img.vietqr.io/image/970416-123456-compact2.png?amount=&addInfo=');
+  assert.equal(manual.body.url, 'https://img.vietqr.io/image/970416-123456-compact2.svg?amount=&addInfo=');
   assert.equal(manual.body.accountLabel, 'ACB - 123456');
+  const hsbc = await request('/qr/url', { method: 'POST', body: { manual: { bankId: 'HSBC', accountNo: '001234567' }, amount: '0' } });
+  assert.equal(hsbc.status, 200);
+  assert.ok(hsbc.body.url.startsWith('https://img.vietqr.io/image/458761-001234567-compact2.svg?'));
   const accented = await request('/qr/url', { method: 'POST', body: { accountKey: 'shc', addInfo: 'Hóa đơn HD1, chị Lan' } });
   assert.equal(accented.body.addInfo, 'Hoa don HD1 chi Lan');
   assert.ok(accented.body.url.includes('addInfo=Hoa%20don%20HD1%20chi%20Lan'));

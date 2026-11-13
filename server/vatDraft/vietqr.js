@@ -95,7 +95,8 @@ function buildVietqrImageUrl(account, { amount, addInfo, template = vatDraftConf
   const amountStr = amount && amount > 0 ? String(pyRound(amount)) : '';
   let query = `amount=${amountStr}&addInfo=${pyQuote(addInfo || '')}`;
   if (account.accountName) query += `&accountName=${pyQuote(account.accountName)}`;
-  return `${VIETQR_IMAGE_BASE}/${account.bankId}-${account.accountNo}-${template}.png?${query}`;
+  // Duoi .svg: thong bao VietQR 10/2026 chuyen Quick Link sang SVG; .png bi chuyen huong 301 va phan hoi 301 khong co CORS.
+  return `${VIETQR_IMAGE_BASE}/${account.bankId}-${account.accountNo}-${template}.svg?${query}`;
 }
 
 /** So tai khoan nhap tay: di thang vao duong dan URL nen chi cho chu + so, toi da 19 ky tu. */

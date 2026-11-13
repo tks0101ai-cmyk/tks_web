@@ -1,7 +1,8 @@
 'use strict';
 
-// Danh sach ngan hang VietQR (chi ngan hang ho tro chuyen khoan Napas, transferSupported = 1),
-// chep tu https://api.vietqr.io/v2/banks ngay 13/11/2026. Khong goi API luc chay.
+// Danh sach day du 76 ngan hang cua https://api.vietqr.io/v2/banks (chep ngay 13/11/2026). Khong goi API luc chay.
+// Co transferSupported cua API chi noi APP ngan hang do co quet VietQR de TRA tien hay khong,
+// khong lien quan viec tai khoan o ngan hang do NHAN tien -> khong dung de loc tai khoan nhan.
 // Them / bot ngan hang = sua file nay qua PR.
 
 const BANK_ROWS = [
@@ -52,7 +53,35 @@ const BANK_ROWS = [
   ['970444', 'CBB', 'CBBank'],
   ['970457', 'WVN', 'Woori'],
   ['970462', 'KBHN', 'KookminHN'],
-  ['970463', 'KBHCM', 'KookminHCM']
+  ['970463', 'KBHCM', 'KookminHCM'],
+  ['971005', 'VTLMONEY', 'ViettelMoney'],
+  ['971011', 'VNPTMONEY', 'VNPTMoney'],
+  ['970466', 'KEBHANAHCM', 'KEBHanaHCM'],
+  ['970467', 'KEBHANAHN', 'KEBHANAHN'],
+  ['977777', 'MAFC', 'MAFC'],
+  ['999888', 'VBSP', 'VBSP'],
+  ['963668', 'BNP HN', 'BNP HN'],
+  ['555666', 'BIDC', 'BIDC'],
+  ['963666', 'BNP HCM', 'BNP HCM'],
+  ['963688', 'BOCHK', 'BOCHK'],
+  ['970465', 'BSP', 'BSP'],
+  ['168999', 'CUBHCM', 'CUBHCM'],
+  ['963686', 'ESUN', 'ESUN'],
+  ['963669', 'ICBC', 'ICBC'],
+  ['963326', 'TNEX', 'TNEX'],
+  ['458761', 'HSBC', 'HSBC'],
+  ['970442', 'HLBVN', 'HongLeong'],
+  ['970455', 'IBK - HN', 'IBKHN'],
+  ['970456', 'IBK - HCM', 'IBKHCM'],
+  ['970406', 'Vikki', 'Vikki'],
+  ['801011', 'NHB HN', 'Nonghyup'],
+  ['796500', 'DBS', 'DBSBank'],
+  ['970439', 'PBVN', 'PublicBank'],
+  ['970410', 'SCVN', 'StandardChartered'],
+  ['533948', 'CITIBANK', 'Citibank'],
+  ['970458', 'UOB', 'UnitedOverseas'],
+  ['970408', 'GPB', 'GPBank'],
+  ['970421', 'VRB', 'VRB']
 ];
 
 const VIETQR_BANKS = Object.freeze(BANK_ROWS.map(([bin, code, shortName]) => Object.freeze({ bin, code, shortName })));

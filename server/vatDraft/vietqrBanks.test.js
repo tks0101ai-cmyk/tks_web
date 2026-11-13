@@ -25,3 +25,12 @@ test('moi tai khoan cau hinh dung ma ngan hang co trong danh sach VietQR', () =>
   }
   assert.equal(new Set(VIETQR_BANKS.map(b => b.bin)).size, VIETQR_BANKS.length, 'bin khong trung');
 });
+
+test('danh sach day du 76 ngan hang VietQR, tim duoc ma co khoang trang, khong trung code / bin', () => {
+  assert.equal(VIETQR_BANKS.length, 76);
+  assert.equal(findBank('HSBC').bin, '458761');
+  assert.equal(findBank('standardchartered').code, 'SCVN');
+  assert.equal(findBank('IBK - HN').bin, '970455');
+  assert.equal(new Set(VIETQR_BANKS.map(b => b.code.toLowerCase())).size, VIETQR_BANKS.length, 'code khong trung');
+  assert.equal(new Set(VIETQR_BANKS.map(b => b.bin)).size, VIETQR_BANKS.length, 'bin khong trung');
+});

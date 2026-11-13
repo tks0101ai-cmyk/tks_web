@@ -72,14 +72,14 @@ test('tong gop moi nguon (hoa don khong VAT)', () => {
 test('URL anh QR', () => {
   const account = { key: 'mbbank', bankId: 'MB', accountNo: '0389040222' };
   const url = buildVietqrImageUrl(account, { amount: 1500000, addInfo: 'HD018699', template: 'compact2' });
-  assert.ok(url.startsWith('https://img.vietqr.io/image/MB-0389040222-compact2.png?'));
+  assert.ok(url.startsWith('https://img.vietqr.io/image/MB-0389040222-compact2.svg?'));
   assert.ok(url.includes('amount=1500000'));
   assert.ok(url.includes('addInfo=HD018699'));
   const empty = buildVietqrImageUrl(account, { amount: 0, addInfo: 'HD1 HD2', template: 'compact2' });
   assert.ok(empty.includes('addInfo=HD1%20HD2'));
   assert.ok(empty.includes('amount=&'));
   const named = buildVietqrImageUrl(vatDraftConfig.vietqr.accounts[4], { amount: 10.5, addInfo: '' });
-  assert.equal(named, 'https://img.vietqr.io/image/MB-525345345-compact2.png?amount=10&addInfo=&accountName=CONG%20TY%20SHC');
+  assert.equal(named, 'https://img.vietqr.io/image/MB-525345345-compact2.svg?amount=10&addInfo=&accountName=CONG%20TY%20SHC');
 });
 
 test('nhan tai khoan va kiem tra so tai khoan nhap tay (toi da 19 chu/so)', () => {
