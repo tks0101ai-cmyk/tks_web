@@ -270,6 +270,12 @@ test('NV manager stages RGB, status and new entries then saves the whole directo
  assert.equal(p.current.rows[0].buyer,undefined,'directory changes do not save order drafts');
 });
 
+test('employee colors appear on the first page load after the directory arrives without rerendering the table',async t=>{
+ const p=await page(t,{employees:[{id:'7',name:'An',color:'#2563EB',version:1,isActive:true}],extraRows:[{id:'3',rowKey:'D00003',productCode:'B',buyer:'An'}]}),cell=p.w.document.querySelector('#orderTable tr[data-id="3"] td[data-field="buyer"]'),select=cell.querySelector('select[data-edit="buyer"]');
+ assert.equal(cell.style.getPropertyValue('--buyer-color'),'#2563EB');assert.equal(select.style.getPropertyValue('--buyer-color'),'#2563EB');
+ assert.equal(p.w.document.querySelectorAll('#orderTable tr[data-id]').length,2,'the color update should not rebuild or drop order rows');
+});
+
 test('measurement colors include exact plus/minus ten percent as good and only larger magnitudes as bad',async t=>{
  const cases=[['minus10',.09,9,'measure-good','-10%'],['plus10',.11,11,'measure-good','+10%'],['minusBeyond',.089,8.9,'measure-bad','-11%'],['plusBeyond',.111,11.1,'measure-bad','+11%'],['minusWithin',.095,9.5,'measure-good','-5%'],['zero',.1,10,'measure-good','0%']];
  const columns=require('../public/shared/purchase-columns');
