@@ -38,8 +38,8 @@
 @media(max-width:1100px){.purchase-filters{grid-template-columns:repeat(4,minmax(0,1fr))}.purchase-filters .wide,.container-filters .wide{grid-column:span 2}.order-filters label:has(#filter),.order-filters label:has(#orderStatus),.order-filters label:has(#orderSupplier){grid-column:span 1}.container-filters>button{justify-self:start}}
 @media(max-width:520px){.purchase-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.purchase-filters .wide{grid-column:1/-1}.filter-actions{flex-wrap:wrap}.filter-actions .column-tools{margin-left:0;flex:1;justify-content:flex-end}.filter-actions .column-tools span{flex-basis:100%;text-align:right}}
 #orderTable{background:var(--panel);border:1px solid var(--border);max-height:67vh;min-height:160px}
-#orderTable .purchase-pinned-column{position:sticky!important;background:var(--panel);z-index:10;box-shadow:1px 0 var(--border)}
-#orderTable thead .purchase-pinned-column{z-index:20;background:var(--panel-2)}
+#orderTable .purchase-pinned-column{position:sticky!important;background-color:var(--panel)!important;background-clip:padding-box;z-index:10;box-shadow:1px 0 var(--border)}
+#orderTable thead .purchase-pinned-column{z-index:20;background-color:var(--panel-2)!important}
 #orderTable tbody>tr>td.purchase-pinned-column{background-color:var(--panel)!important}
 #orderTable tbody>tr>td.purchase-pinned-column.draft{background-color:color-mix(in srgb,var(--primary) 13%,var(--panel))!important}
 #containerTable{max-height:340px;background:var(--panel)}

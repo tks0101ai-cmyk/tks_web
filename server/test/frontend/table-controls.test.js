@@ -451,6 +451,20 @@ test('dragging a column or toggling visibility is saved once, debounced, for the
   assert.deepEqual(ctx.puts[0].body, { columns: { name: { width: 290 }, qty: { hidden: true } } });
 });
 
+test('double-clicking a column divider fits its header and visible cell contents', t => {
+  const html = '<table data-min-column-width="24"><thead><tr><th data-column-key="supplier" style="width:280px">Supplier</th><th data-column-key="qty" style="width:80px">Qty</th></tr></thead><tbody><tr><td>Short</td><td>2</td></tr><tr><td>A much longer supplier name</td><td>10</td></tr></tbody></table>';
+  const ctx = setup(t, html);
+  ctx.window.HTMLCanvasElement.prototype.getContext = () => ({ measureText: text => ({ width: text.length * 8 }) });
+  ctx.api.enhance(ctx.table);
+  let resized;
+  ctx.table.addEventListener('tks:column-resized', event => { resized = event.detail; });
+  ctx.table.querySelector('.tks-column-resizer').dispatchEvent(new ctx.window.MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+  const width = state(ctx).columns[0].width;
+  assert.ok(width > 64 && width < 280, 'the wide column should fit the longest visible value');
+  assert.equal(resized.key, 'supplier');
+  assert.equal(resized.width, width);
+});
+
 test('nothing is saved before the preferences have loaded (for example when signed out)', t => {
   const ctx = prefsContext(t);
   const handle = ctx.table.querySelectorAll('.tks-column-resizer')[1];

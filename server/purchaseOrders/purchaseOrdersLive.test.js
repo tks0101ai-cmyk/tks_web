@@ -41,6 +41,12 @@ test('order columns can be selected for pinning and persist in the user layout',
  assert.deepEqual(JSON.parse(doc.defaultView.sessionStorage.getItem('purchase:buyer:v1')).pinnedColumns,['productCode','productName','supplier']);
  assert.ok(doc.querySelector('#orderTable th[data-key="supplier"].purchase-pinned-column'));
 });
+test('pinned column offsets follow a resized column so pinned headers stay flush',async t=>{
+ const p=await page(t),doc=p.w.document,table=doc.querySelector('#orderTable table'),right=table.querySelector('th[data-key="productName"]');
+ const before=parseFloat(right.style.left),handle=table.querySelector('th[data-key="productCode"] .tks-column-resizer');
+ handle.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));await tick();await tick();
+ assert.equal(parseFloat(right.style.left),before+10);assert.ok(table.querySelector('tbody td[data-field="productCode"]').classList.contains('purchase-pinned-column'));
+});
 test('Excel import requires a fresh snapshot download before file selection',async t=>{
  const p=await page(t),doc=p.w.document;doc.getElementById('import').click();
  assert.match(doc.getElementById('modalTitle').textContent,/Nhập Excel theo dữ liệu hiện tại/);
