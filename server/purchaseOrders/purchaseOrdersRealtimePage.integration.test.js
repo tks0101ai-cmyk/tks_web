@@ -68,12 +68,12 @@ test('container ratio is total tons divided by total cubic meters',async t=>{
  const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{cartonCount:10,kgPerCarton:2,m3PerCarton:.25});p.listeners.changed();await tick();await tick();
  assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) td:nth-child(9)').textContent,'0.8%');
 });
-test('row and container lifecycle columns show HĐ and container deactivation uses its current version',async t=>{
+test('order lifecycle sits last and container lifecycle is confirmed with the current version',async t=>{
  const p=await page(t),doc=p.w.document;
- assert.match(doc.querySelector('#orderTable thead').textContent,/HĐ\/NHĐ/);
- assert.equal(doc.querySelector('#orderTable tbody .purchase-lifecycle-badge').textContent,'HĐ');
- assert.match(doc.querySelector('#containerTable thead tr th:last-child').textContent,/^HĐ\/NHĐ/);assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) td:last-child .purchase-lifecycle-badge').textContent,'HĐ');
- doc.querySelector('#containerTable [data-container-action="deactivate"]').click();doc.getElementById('confirmContainerLifecycle').click();await tick();await tick();
+ assert.equal(doc.querySelector('#orderTable thead th:last-child').textContent,'Trạng thái');
+ assert.equal(doc.querySelector('#orderTable tbody .purchase-lifecycle-badge').textContent,'Hoạt động');
+ assert.equal(doc.querySelector('#containerTable thead tr th:nth-last-child(2)').textContent.replace(/[▲▼]/g,'').trim(),'Chọn');assert.equal(doc.querySelector('#containerTable thead tr th:last-child').textContent.replace(/[▲▼]/g,'').trim(),'Hoạt động');assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) td:last-child .purchase-lifecycle-badge').textContent,'Hoạt động');
+ doc.querySelector('#containerTable [data-container-lifecycle]').click();assert.equal(p.calls.some(call=>call.url.endsWith('/containers/deactivate')),false);doc.getElementById('confirmContainerLifecycle').click();await tick();await tick();
  const request=p.calls.find(call=>call.url.endsWith('/containers/deactivate'));
  assert.deepEqual(JSON.parse(request.options.body),{id:'2',version:3});
 });

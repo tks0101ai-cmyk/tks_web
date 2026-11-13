@@ -16,23 +16,32 @@ test('order toolbar keeps primary actions first and secondary actions grouped la
     .map(node => node.matches('h2') ? 'heading' : node.id);
 
   assert.deepEqual(order, [
-    'heading', 'add', 'bulk', 'inactiveRows', 'trashRows', 'import', 'export',
+    'heading', 'add', 'bulk', 'trashRows', 'import', 'export',
     'managePurchaseEmployees'
   ]);
 });
 
-test('order and container tables expose the HĐ/NHĐ lifecycle and container trash controls', () => {
+test('order lifecycle is a rightmost active/inactive filter and container trash controls remain available', () => {
   const doc = new JSDOM(page).window.document;
-  assert.match(script, /data-key="_lifecycle"[^>]*>HĐ\/NHĐ/);
+  assert.equal(doc.getElementById('orderLifecycle').tagName, 'SELECT');
+  assert.match(script, /data-key="_lifecycle"[^>]*>Trạng thái/);
+  assert.deepEqual([...doc.querySelectorAll('#orderLifecycle option')].map(option => [option.value, option.textContent]), [['active','Hoạt động'],['inactive','Ngừng hoạt động']]);
   assert.match(script, /purchase-lifecycle-badge is-active/);
   assert.match(script, /purchase-lifecycle-badge is-inactive/);
   assert.equal(doc.getElementById('contLifecycle')?.options.length, 3);
+  assert.ok(doc.getElementById('containerDeleteSelected'));
   assert.ok(doc.getElementById('containerInactiveRows'));
   assert.ok(doc.getElementById('containerTrashRows'));
 });
 
-test('container lifecycle column is last and container filters fit in a compact desktop row', () => {
-  assert.match(script, /\['Thao tác',118\],\['HĐ\/NHĐ',58\]/);
+test('container selection replaces row actions and container lifecycle can be toggled in place', () => {
+  assert.match(script, /\['Chọn',52\],\['Hoạt động',105\]/);
+  assert.match(script, /data-container-pick-all/);
+  assert.match(script, /data-container-lifecycle/);
+  assert.match(script, /containerDeleteSelected.*deleteSelectedContainers/s);
+});
+
+test('container filters fit in a compact desktop row', () => {
   assert.match(styles, /#containerPanel \.container-filters\{grid-template-columns:minmax\(260px,3fr\) repeat\(4,minmax\(110px,1fr\)\) minmax\(92px,auto\)/);
   assert.match(styles, /#containerPanel \.container-filters>button\{grid-column:6;grid-row:1/);
 });
