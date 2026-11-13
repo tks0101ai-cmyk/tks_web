@@ -111,7 +111,7 @@ function isValidAccountNo(value) {
 function normalizeTransferContent(text) {
   return String(text ?? '')
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/đ/g, 'd')
     .replace(/Đ/g, 'D')
     .replace(/[^A-Za-z0-9]+/g, ' ')
