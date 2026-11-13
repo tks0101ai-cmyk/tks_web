@@ -46,6 +46,9 @@ test('Excel import requires a fresh snapshot download before file selection',asy
  assert.match(doc.getElementById('modalTitle').textContent,/Nhập Excel theo dữ liệu hiện tại/);
  assert.ok(doc.getElementById('downloadSnapshot'));assert.equal(doc.getElementById('importUploadArea').hidden,true);
  assert.equal(doc.querySelector('#modalBody #importFile').disabled,true);
+ assert.ok(doc.querySelector('#importDrop .import-drop-icon'));assert.match(doc.querySelector('#importDrop').textContent,/Kéo thả file Excel vào đây/);assert.match(doc.querySelector('#importDrop .import-choose').textContent,/Chọn file/);
+ p.w.URL.createObjectURL=()=> 'blob:test';p.w.URL.revokeObjectURL=()=>{};p.w.HTMLAnchorElement.prototype.click=function(){};p.w.fetch=async()=>({ok:true,blob:async()=>new p.w.Blob()});doc.getElementById('downloadSnapshot').click();for(let i=0;i<4;i++)await tick();
+ assert.equal(doc.getElementById('importUploadArea').hidden,false);assert.equal(doc.querySelector('#importFile').disabled,false);assert.match(doc.getElementById('importStatus').textContent,/Đã tải snapshot/);
 });
 test('pagination shows only pages one to three and arrows navigate the rest',async t=>{
  const extraRows=Array.from({length:150},(_,i)=>({id:String(i+2),rowKey:'D'+String(i+2).padStart(5,'0'),version:1,productCode:'P'+i,productName:'Item '+i,cartonCount:1,qtyPerCarton:1}));

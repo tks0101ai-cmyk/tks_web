@@ -210,6 +210,27 @@ test('snapshot import clears blanks and soft-deletes rows omitted from the compl
  assert.deepEqual((await db.query("SELECT summary->'deleted' deleted FROM purchase_history WHERE action='import'")).rows[0].deleted,[removed.rowKey]);
  assert.ok((await service.changes(manager,cursor)).deletedIds.includes(removed.id));await service.restore(manager,{id:removed.id,version:trash.version});assert.equal((await service.list(manager)).rows.length,2);
 });
+test('snapshot creates a new line alongside inactive and deleted rows with the same product code',async()=>{
+ const inactive=await service.create(manager,input()),deleted=await service.create(manager,{...input(),productCode:'B'});
+ await service.deactivate(manager,{rows:[{id:inactive.id,version:inactive.version}]});await service.remove(manager,{rows:[{id:deleted.id,version:deleted.version}]});
+ const rows=[input(),{...input(),productCode:'B'}],preview=await service.previewImport(manager,{buffer:await snapshotFile(rows)});
+ assert.equal(preview.valid,true);assert.equal(preview.counts.create,2);assert.equal(preview.counts.archivedSkip,0);
+ await service.commitImport(manager,preview.token);const active=await service.list(manager);
+ assert.equal(active.rows.length,2);assert.equal(new Set(active.rows.map(row=>row.rowKey)).size,2);
+ assert.equal(active.rows.some(row=>[inactive.rowKey,deleted.rowKey].includes(row.rowKey)),false);
+ assert.equal((await service.inactive(manager)).some(row=>row.rowKey===inactive.rowKey),true);
+ assert.equal((await service.trash(manager)).some(row=>row.rowKey===deleted.rowKey),true);
+});
+test('snapshot can explicitly reactivate an archived row by its exact row key',async()=>{
+ const inactive=await service.create(manager,input());await service.deactivate(manager,{rows:[{id:inactive.id,version:inactive.version}]});
+ const row={...inactive,cartonCount:77},preview=await service.previewImport(manager,{buffer:await snapshotFile([row])});
+ assert.equal(preview.valid,true);assert.equal(preview.counts.archivedSkip,1);
+ const revised=await service.reviseImport(manager,preview.token,[{...row,recoverArchived:true,recoverRowKey:inactive.rowKey}]);
+ assert.equal(revised.valid,true);assert.equal(revised.counts.reactivate,1);
+ await service.commitImport(manager,preview.token);const active=await service.list(manager);
+ assert.equal(active.rows.length,1);assert.equal(active.rows[0].rowKey,inactive.rowKey);assert.equal(active.rows[0].cartonCount,77);
+ assert.equal((await service.inactive(manager)).length,0);
+});
 test('snapshot changed after download is rejected before preview',async()=>{
  const row=await service.create(manager,input()),snapshot=await service.importSnapshot(manager),buffer=Buffer.from(excel.exportImportSnapshot({rows:snapshot.rows,columns,revision:snapshot.revision}));
  await service.update(manager,row.id,{version:row.version,changes:{supplier:'Changed'}});

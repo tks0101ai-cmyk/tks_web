@@ -116,6 +116,25 @@ test('full snapshot clears blank cells and plans omitted current rows for deleti
   assert.equal(plan.sourceRows[0].supplier,'');
 });
 
+test('archived matches stay archived unless the preview explicitly opts in to recovery',()=>{
+  const inactive={...existing()[0],id:3,rowKey:'D00003',productCode:'ARCHIVED',version:4,inactiveAt:'2026-11-10T00:00:00Z',deletedAt:null};
+  const source={rowKey:'D00003',productCode:'ARCHIVED',productName:'Tape',cartonCount:7,qtyPerCarton:20};
+  const skipped=prepareRows([source],[],{snapshot:true,archivedRows:[inactive]});
+  assert.equal(skipped.valid,true);assert.equal(skipped.rows[0].action,'archived_skip');assert.equal(skipped.counts.archivedSkip,1);assert.equal(skipped.operations.length,0);
+  const selected=prepareRows([{...source,recoverArchived:true}],[],{snapshot:true,archivedRows:[inactive]});
+  assert.equal(selected.valid,true);assert.equal(selected.rows[0].action,'reactivate');assert.equal(selected.operations[0].expectedVersion,4);assert.equal(selected.counts.reactivate,1);
+});
+
+test('a new row with the same product code is separate from archived rows',()=>{
+  const archived=[{...existing()[0],id:3,rowKey:'D00003',productCode:'ARCHIVED',inactiveAt:null,deletedAt:'2026-11-10T00:00:00Z'}, {...existing()[0],id:4,rowKey:'D00004',productCode:'ARCHIVED',inactiveAt:'2026-11-11T00:00:00Z',deletedAt:null}];
+  const source={...fresh(),productCode:'ARCHIVED'};
+  const added=prepareRows([source],[],{archivedRows:archived});
+  assert.equal(added.valid,true);assert.equal(added.rows[0].action,'create');assert.equal(added.counts.create,1);assert.equal(added.rows[0].archivedCandidates,undefined);
+  const selected=prepareRows([{...source,recoverArchived:true,recoverRowKey:'D00003'}],[],{archivedRows:archived});
+  assert.equal(selected.valid,true);assert.equal(selected.rows[0].action,'restore');assert.equal(selected.rows[0].id,3);assert.equal(selected.rows[0].rowKey,'D00003');
+  assert.equal(recheckPreview(selected,[],archived).operations[0].action,'restore');
+});
+
 test('stale snapshot is rejected before creating a plan', () => {
   const current=existing(),file=excel.exportImportSnapshot({rows:current,columns,revision:'12:34'});
   assert.throws(()=>prepareSnapshotWorkbook(file,current,{currentRevision:'12:35'}),error=>error.code==='IMPORT_SNAPSHOT_STALE');

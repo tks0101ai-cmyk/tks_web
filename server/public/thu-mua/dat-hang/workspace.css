@@ -551,3 +551,48 @@
 
 /* Keep the order grid in its own fixed-height viewport with a visible vertical rail. */
 .purchase-page #orderTable{height:min(67vh,680px);overflow-x:auto;overflow-y:scroll}
+/* purchase.js chen workTools (Hoan tac/Tac vu/Loc nhanh) vao sau #bulk bang innerHTML; span do
+   chua co CSS nen 3 control chi cach nhau mot khoang trang ky tu, dinh sat hon han cac nut khac
+   trong cung toolbar (von duoc gian deu boi flex-gap cua .toolbar). */
+.order-actions .purchase-work-tools{display:inline-flex;align-items:center;gap:6px}
+
+/* Toolbar Dat hang gop 9-11 nut khong phan nhom. Tach thanh cum theo y nghia (che do chon /
+   cong cu dong da chon / quan tri / ban nhap / them-nhap-xuat) bang vach border-left; nut it
+   dung hang ngay (Danh sach NV, Import, Xuat, Hoan tac) chuyen kieu ghost de khong tranh chu y
+   voi Luu thay doi va + Them ma (da la nut primary trong purchase-workspace.css). */
+.order-actions{flex-wrap:wrap;row-gap:6px}
+.order-actions .purchase-work-tools,
+.order-actions #managePurchaseEmployees,
+.order-actions #editedRows,
+.order-actions #add{margin-left:10px;padding-left:10px;border-left:1px solid var(--border)}
+.order-actions #managePurchaseEmployees,
+.order-actions #import,
+.order-actions #export,
+.order-actions .purchase-work-tools #undoWork{background:transparent;color:var(--muted)}
+.order-actions #managePurchaseEmployees:hover:not(:disabled),
+.order-actions #import:hover:not(:disabled),
+.order-actions #export:hover:not(:disabled),
+.order-actions .purchase-work-tools #undoWork:hover:not(:disabled){color:var(--text)}
+
+/* Import: vùng chọn file thành một bề mặt rõ ràng, không để lộ nút file mặc định của trình duyệt. */
+#modalBody .import-status{display:flex;align-items:center;gap:9px;margin:14px 0;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel-2);color:var(--muted)}
+#modalBody .import-status-dot{width:8px;height:8px;flex:none;border-radius:50%;background:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 16%,transparent)}
+#modalBody .import-upload-area{margin-top:12px}
+#modalBody .import-drop{position:relative;display:flex;min-height:176px;box-sizing:border-box;flex-direction:column;align-items:center;justify-content:center;gap:9px;margin:0;padding:22px;border:1px dashed color-mix(in srgb,var(--primary) 65%,var(--border));border-radius:12px;background:linear-gradient(145deg,color-mix(in srgb,var(--primary) 9%,var(--panel-2)),var(--panel-2) 68%);text-align:center;transition:border-color .16s ease,background .16s ease,transform .16s ease}
+#modalBody .import-drop:hover,#modalBody .import-drop.dragging{border-style:solid;border-color:var(--primary);background:color-mix(in srgb,var(--primary) 13%,var(--panel-2))}
+#modalBody .import-drop.dragging{transform:scale(1.005)}
+#modalBody .import-drop-icon{display:grid;width:40px;height:40px;place-items:center;border:1px solid color-mix(in srgb,var(--primary) 35%,var(--border));border-radius:12px;background:var(--panel);color:var(--primary);font-size:22px;font-weight:700}
+#modalBody .import-drop strong{font-size:13px;color:var(--text)}
+#modalBody .import-drop-hint{font-size:11px;color:var(--muted)}
+#modalBody .import-choose{display:inline-flex;align-items:center;min-height:30px;margin-top:2px;padding:0 13px;border:1px solid var(--border);border-radius:7px;background:var(--panel);color:var(--text);font-size:11px;font-weight:700}
+#modalBody .import-drop:hover .import-choose{border-color:var(--primary);color:var(--primary)}
+#modalBody .import-drop input[type=file]{position:absolute;inset:0;width:100%;height:100%;padding:0;opacity:0;cursor:pointer}
+#modalBody #importProgress{display:block;width:100%;height:8px;margin-top:10px;accent-color:var(--primary)}
+#modalBody .import-recovery{display:grid;gap:5px;min-width:210px;max-width:300px;margin-top:7px;padding:8px;border:1px solid var(--border);border-radius:7px;background:var(--panel)}
+#modalBody .import-recovery strong{white-space:normal;color:var(--text);font-size:10px}
+#modalBody .import-recovery select{max-width:100%;font-size:10px}
+#modalBody .import-recovery label{display:flex;width:auto;align-items:center;gap:6px;margin:0;font-size:10px;color:var(--text)}
+#modalBody .import-recovery label input{width:auto;margin:0}
+#modalBody .import-recovery small{font-size:9px;color:var(--muted)}
+#modalBody .import-archived{background:color-mix(in srgb,var(--primary) 5%,transparent)}
+@media(max-width:620px){#modalBody .import-drop{min-height:150px;padding:18px}}
