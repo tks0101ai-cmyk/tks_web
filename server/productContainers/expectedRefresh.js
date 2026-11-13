@@ -93,6 +93,14 @@ const STATE_SQL = `
 
 const VERSION_SQL = 'SELECT version::text AS version FROM product_container_expected_state WHERE id = 1';
 
+function notifyExpectedChanged(payload) {
+  try {
+    require('../kiotvietSync/dashboardRollupEvents').dashboardRollupEvents.emit('expectedArrivalsChanged', payload);
+  } catch (error) {
+    console.error('[ProductContainerExpected] Khong phat duoc su kien doi du lieu:', error && error.message);
+  }
+}
+
 let running = null;
 let rerunRequested = false;
 
@@ -154,10 +162,13 @@ async function refreshOnce(pool, { log }) {
       const deleted = (await client.query(DELETE_SQL)).rowCount || 0;
       const written = (await client.query(UPSERT_SQL)).rowCount || 0;
       const changed = written + deleted > 0;
-      await client.query(STATE_SQL, [changed]);
+      const stateWritten = ((await client.query(STATE_SQL, [changed])).rowCount || 0) > 0;
       const version = Number((await client.query(VERSION_SQL)).rows[0]?.version);
       await client.query('COMMIT');
       result = { status: changed ? 'updated' : 'unchanged', rows: staged, written, deleted, changed, version };
+      // Cache trang /api/expected-arrivals (expectedRepository) doc lai version/computed_at ngay. Worker: emit con
+      // gui pg_notify sang web (publishToPostgres). Chi phat khi dong state that su doi.
+      if (stateWritten) notifyExpectedChanged({ version, changed });
     }
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});

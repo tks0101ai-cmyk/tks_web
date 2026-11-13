@@ -115,7 +115,7 @@ test('row key reservation is consumed once and concurrent reservations are uniqu
  assert.notEqual(reservations[0].rowKey,reservations[1].rowKey);
 });
 
-test('migration 0123 backfills legacy import families, undo snapshots, and exact pool contents',async t=>{
+test('migration 0125 backfills legacy import families, undo snapshots, and exact pool contents',async t=>{
  const legacyDb=new PGlite();
  try {
   for(const name of ['0053_product_containers.sql','0072_product_container_unit_price_cny.sql','0075_product_container_expected.sql','0078_product_container_expected_prices.sql','0086_product_container_other_note.sql',...PURCHASE_FILES.slice(0,-1)]) await legacyDb.exec(fs.readFileSync(path.join(__dirname,'../db/migrations',name),'utf8'));
@@ -139,7 +139,7 @@ test('migration 0123 backfills legacy import families, undo snapshots, and exact
   await legacyDb.query('INSERT INTO purchase_operation_rows(operation_id,row_id,before_row,after_row) VALUES($1,$2,$3,NULL)',[operation,missingRow,JSON.stringify(orphanSnapshot)]);
   await legacyDb.query('INSERT INTO purchase_undo_expected(operation_id,row_id,expected_row) VALUES($1,$2,$3)',[operation,missingRow,JSON.stringify(orphanSnapshot)]);
 
-  await legacyDb.exec(fs.readFileSync(path.join(__dirname,'../db/migrations/0123_purchase_recyclable_row_keys.sql'),'utf8'));
+  await legacyDb.exec(fs.readFileSync(path.join(__dirname,'../db/migrations/0125_purchase_recyclable_row_keys.sql'),'utf8'));
   const families=(await legacyDb.query("SELECT root_key,array_agg(root_order_id ORDER BY id) ids FROM purchase_orders GROUP BY root_key ORDER BY root_key")).rows;
   const byKey=new Map(families.map(f=>[f.root_key,f.ids.map(String)]));
   await t.test('legacy split and suffix-only import rows share one root identity',async()=>{
@@ -334,6 +334,7 @@ test('snapshot import clears blanks and soft-deletes rows omitted from the compl
  assert.deepEqual((await db.query("SELECT summary->'deleted' deleted FROM purchase_history WHERE action='import'")).rows[0].deleted,[removed.rowKey]);
  assert.ok((await service.changes(manager,cursor)).deletedIds.includes(removed.id));await service.restore(manager,{id:removed.id,version:trash.version});assert.equal((await service.list(manager)).rows.length,2);
 });
+
 test('snapshot import recycles omitted keys before creating rows and rolls back atomically',async()=>{
  const first=await service.create(manager,input()),second=await service.create(manager,{...input(),productCode:'B'});
  const preview=await service.previewImport(manager,{buffer:await snapshotFile([{...input(),productCode:'C',rowKey:''},{...input(),productCode:'D',rowKey:''}])});
@@ -362,6 +363,48 @@ test('snapshot import retirement keeps operation-less history isolated after reu
  const trash=(await service.trash(manager)).find(row=>row.id===old.id);await service.restore(manager,{id:old.id,version:trash.version});
  const restored=(await service.list(manager)).rows.find(row=>row.id===old.id);assert.notEqual(restored.rowKey,current.rowKey);
  assert.ok(!(await service.history(manager,current.id)).some(row=>row.action==='legacy_edit'));
+});
+
+
+test('snapshot creates a new line alongside inactive and deleted rows with the same product code',async()=>{
+ const inactive=await service.create(manager,input()),deleted=await service.create(manager,{...input(),productCode:'B'});
+ await service.deactivate(manager,{rows:[{id:inactive.id,version:inactive.version}]});await service.remove(manager,{rows:[{id:deleted.id,version:deleted.version}]});
+ const rows=[input(),{...input(),productCode:'B'}],preview=await service.previewImport(manager,{buffer:await snapshotFile(rows)});
+ assert.equal(preview.valid,true);assert.equal(preview.counts.create,2);assert.equal(preview.counts.archivedSkip,0);
+ await service.commitImport(manager,preview.token);const active=await service.list(manager);
+ assert.equal(active.rows.length,2);assert.equal(new Set(active.rows.map(row=>row.rowKey)).size,2);
+ assert.equal(active.rows.some(row=>row.rowKey===inactive.rowKey),false);
+ assert.equal((await service.inactive(manager)).some(row=>row.rowKey===inactive.rowKey),true);
+ assert.equal((await service.trash(manager)).some(row=>row.rowKey===deleted.rowKey),true);
+});
+test('snapshot can explicitly reactivate an archived row by its exact row key',async()=>{
+ const inactive=await service.create(manager,input());await service.deactivate(manager,{rows:[{id:inactive.id,version:inactive.version}]});
+ const row={...inactive,cartonCount:77},preview=await service.previewImport(manager,{buffer:await snapshotFile([row])});
+ assert.equal(preview.valid,true);assert.equal(preview.counts.archivedSkip,1);
+ const revised=await service.reviseImport(manager,preview.token,[{...row,recoverArchived:true,recoverRowKey:inactive.rowKey}]);
+ assert.equal(revised.valid,true);assert.equal(revised.counts.reactivate,1);
+ await service.commitImport(manager,preview.token);const active=await service.list(manager);
+ assert.equal(active.rows.length,1);assert.equal(active.rows[0].rowKey,inactive.rowKey);assert.equal(active.rows[0].cartonCount,77);
+ assert.equal((await service.inactive(manager)).length,0);
+
+});
+test('snapshot restores deleted families sequentially when a reused root key has multiple archived owners',async()=>{
+ const first=await service.reserveKey(manager),familyA=await service.create(manager,{...input(),productCode:'FAMILY-A',rowKey:first.rowKey,reservationId:first.reservationId});
+ await service.remove(manager,{rows:[{id:familyA.id,version:familyA.version}]});
+ const reused=await service.reserveKey(manager),familyB=await service.create(manager,{...input(),productCode:'FAMILY-B',rowKey:reused.rowKey,reservationId:reused.reservationId});
+ await service.applyPlan(manager,{splits:[{id:familyB.id,version:familyB.version,sourceQty:10,quantity:4,manual:true}]});
+ const branches=(await db.query('SELECT id,version,row_key FROM purchase_orders WHERE root_order_id=$1 ORDER BY row_key',[familyB.id])).rows;
+ await service.remove(manager,{rows:branches.map(row=>({id:row.id,version:row.version}))});
+ const archived=await service.trash(manager),restoreA=archived.find(row=>row.id===familyA.id),restoreB=archived.find(row=>row.rowKey.endsWith('.01'));
+ const preview=await service.previewImport(manager,{buffer:await snapshotFile([restoreA,restoreB])});
+ const revised=await service.reviseImport(manager,preview.token,[{...restoreA,recoverArchived:true,recoverRowKey:restoreA.rowKey},{...restoreB,recoverArchived:true,recoverRowKey:restoreB.rowKey}]);
+ assert.equal(revised.valid,true);assert.equal(revised.counts.restore,2);
+ await service.commitImport(manager,preview.token);
+ const active=(await db.query('SELECT id,row_key,root_key,root_order_id FROM purchase_orders WHERE deleted_at IS NULL ORDER BY id')).rows;
+ const rootA=active.find(row=>String(row.id)===String(familyA.id)),branchB=active.find(row=>String(row.id)===String(restoreB.id));
+ assert.ok(rootA);assert.ok(branchB);assert.notEqual(rootA.root_key,branchB.root_key);
+ const activeFamilies=new Map(active.map(row=>[String(row.root_order_id),row.root_key]));assert.equal(new Set(activeFamilies.values()).size,activeFamilies.size);
+ assert.equal((await db.query('SELECT count(*)::int n FROM purchase_key_pool p WHERE EXISTS(SELECT 1 FROM purchase_orders o WHERE o.root_key=p.row_key AND o.deleted_at IS NULL)')).rows[0].n,0);
 });
 test('snapshot changed after download is rejected before preview',async()=>{
  const row=await service.create(manager,input()),snapshot=await service.importSnapshot(manager),buffer=Buffer.from(excel.exportImportSnapshot({rows:snapshot.rows,columns,revision:snapshot.revision}));
@@ -463,6 +506,7 @@ test('manual code split saves independently entered quantities and rejects blank
 test('soft delete and restore update both read models and stale batch writes nothing',async()=>{
  const a=await service.create(manager,input()),b=await service.create(manager,{...input(),productCode:'B'});await assert.rejects(service.remove(manager,{rows:[{id:a.id,version:a.version},{id:b.id,version:999}]}));assert.equal((await service.list(manager)).rows.length,2);const result=await service.remove(manager,{rows:[{id:a.id,version:a.version}]});assert.ok(result.operationId);assert.equal((await service.list(manager)).rows.length,1);assert.equal((await db.query('SELECT count(*)::int n FROM product_container_lines')).rows[0].n,1);const trash=await service.trash(manager);assert.equal(trash.length,1);await service.restore(manager,{id:a.id,version:trash[0].version});assert.equal((await service.list(manager)).rows.length,2);
 });
+
 
 test('recyclable keys return after root deletion and only after the final split branch is deleted',async()=>{
  const rootReservation=await service.reserveKey(manager),root=await service.create(manager,{...input(),rowKey:rootReservation.rowKey,reservationId:rootReservation.reservationId});
@@ -566,6 +610,30 @@ test('legacy history only follows a display key while its family assignment is u
  assert.equal(current.rowKey,old.rowKey);
  assert.ok(!(await service.history(manager,old.id)).some(row=>row.action==='legacy_edit'));
  assert.ok(!(await service.history(manager,current.id)).some(row=>row.action==='legacy_edit'));
+ });
+
+test('deactivate hides stale rows from order and cont projections while keeping reactivation and undo',async()=>{
+ const old=await service.create(manager,input()),kept=await service.create(manager,{...input(),productCode:'B'});
+ const retired=await service.deactivate(manager,{rows:[{id:old.id,version:old.version}]});assert.ok(retired.operationId);
+ assert.equal((await service.list(manager)).rows.length,1);assert.equal((await service.list(manager)).rows[0].id,kept.id);
+ assert.equal((await service.inactive(manager))[0].rowKey,old.rowKey);assert.equal((await service.inactive(manager))[0].inactiveAt!=null,true);
+ assert.equal((await db.query("SELECT count(*)::int n FROM product_container_lines WHERE product_code='A'")).rows[0].n,0);
+ await assert.rejects(service.remove(manager,{rows:[{id:old.id,version:old.version+1}]}),e=>e.code==='VERSION_CONFLICT');
+ await service.reactivate(manager,{id:old.id,version:(await service.inactive(manager))[0].version});assert.equal((await service.list(manager)).rows.length,2);
+ const operation=(await service.operations(manager))[0];assert.equal(operation.action,'reactivate');await service.undo(manager,{operationId:operation.id});assert.equal((await service.list(manager)).rows.length,1);
+
+});
+test('undo supports both deactivate and reactivate actions',async()=>{
+ const row=await service.create(manager,input());
+ const deactivated=await service.deactivate(manager,{rows:[{id:row.id,version:row.version}]});
+ await service.undo(manager,{operationId:deactivated.operationId});
+ assert.equal((await service.list(manager)).rows.length,1);assert.equal((await service.inactive(manager)).length,0);
+ const active=(await service.list(manager)).rows[0],deactivatedAgain=await service.deactivate(manager,{rows:[{id:active.id,version:active.version}]});
+ const inactive=(await service.inactive(manager))[0],reactivated=await service.reactivate(manager,{id:inactive.id,version:inactive.version});
+ await service.undo(manager,{operationId:reactivated.operationId});
+ assert.equal((await service.list(manager)).rows.length,0);assert.equal((await service.inactive(manager)).length,1);
+ await service.undo(manager,{operationId:deactivatedAgain.operationId});
+ assert.equal((await service.list(manager)).rows.length,1);assert.equal((await service.inactive(manager)).length,0);
 });
 test('undo owns immutable snapshots, handles both split branches atomically and rejects another actor or stale row',async()=>{
  const a=await service.create(manager,input());const op=await service.applyPlan(manager,{splits:[{id:a.id,version:a.version,sourceQty:10,quantity:4,manual:true}]});await assert.rejects(service.undo({id:'other'},{operationId:op.operationId}));await service.undo(manager,{operationId:op.operationId});const rows=(await service.list(manager)).rows;assert.equal(rows.length,1);assert.equal(rows[0].rowKey,a.rowKey);assert.equal(rows[0].cartonCount,100);await assert.rejects(service.undo(manager,{operationId:op.operationId}));const update=await service.update(manager,a.id,{version:rows[0].version,changes:{cartonCount:9}});await service.update(manager,a.id,{version:update.version,changes:{supplier:'New'}});await assert.rejects(service.undo(manager,{operationId:update.operationId}),e=>e.code==='VERSION_CONFLICT');assert.equal((await service.list(manager)).rows[0].cartonCount,9);
@@ -746,4 +814,22 @@ test('shared container edits reject membership changed after the editor opened',
  await service.transfer(manager,{id:b.id,version:b.version,quantity:b.cartonCount,destinationId:c.id});
  await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,rows:[first],changes:{arrivalDate:'2026-11-12'}}),e=>e.code==='VERSION_CONFLICT');
  assert.ok((await service.list(manager)).rows.every(r=>r.arrivedNote===null));
+});
+
+test('container lifecycle shows HĐ and NHĐ without changing shipment status and supports trash restore',async()=>{
+ const container=await service.createContainer(manager,{name:'LIFECYCLE CONT',truckName:'17.5m'});
+ const product=await service.create(manager,input());const assigned=await service.transfer(manager,{id:product.id,version:product.version,quantity:product.cartonCount,destinationId:container.id});
+ const inactive=await service.deactivateContainer(manager,{id:container.id,version:container.version});
+ assert.ok(inactive.inactive_at);assert.equal(inactive.status,1);
+ assert.deepEqual((await service.inactiveContainers(manager)).map(c=>c.id),[container.id]);
+ const active=await service.reactivateContainer(manager,{id:container.id,version:inactive.version});
+ assert.equal(active.inactive_at,null);assert.equal(active.status,1);
+ const deleted=await service.removeContainer(manager,{id:container.id,version:active.version});
+ assert.ok(deleted.deleted_at);assert.equal((await service.containerTrash(manager))[0].id,container.id);
+ assert.equal(String((await service.list(manager)).rows[0].contId),String(container.id),'trashing a container preserves product assignments');
+ await assert.rejects(service.transfer(manager,{id:assigned.row.id,version:assigned.row.version,quantity:assigned.row.cartonCount,destinationId:container.id}),e=>e.code==='VERSION_CONFLICT');
+ const restored=await service.restoreContainer(manager,{id:container.id,version:deleted.version});
+ assert.equal(restored.deleted_at,null);assert.equal(restored.inactive_at,null);
+ assert.equal((await service.list(manager)).containers.find(c=>c.id===container.id).name,'LIFECYCLE CONT');
+ assert.deepEqual((await db.query("SELECT action FROM purchase_history WHERE action LIKE 'container_%' ORDER BY id")).rows.map(r=>r.action),['container_create','container_deactivate','container_reactivate','container_delete','container_restore']);
 });

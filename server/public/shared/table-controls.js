@@ -128,6 +128,40 @@
     copy.querySelectorAll('.tks-column-resizer,.sort-indicator,.picking-sort-indicator,.sort-ind,.sort,.locations-sort-icon').forEach(function (node) { node.remove(); });
     return copy.textContent.replace(/[↕▲▼↑↓]+$/g, '').replace(/\s+/g, ' ').trim();
   }
+  function textWidth(text, style) {
+    var lines = String(text || '').split(/\r?\n/), spacing = parseFloat(style.letterSpacing) || 0, width = 0;
+    if (textContext === undefined) textContext = document.createElement('canvas').getContext('2d');
+    if (textContext && typeof textContext.measureText === 'function') {
+      textContext.font = style.font || [style.fontStyle, style.fontWeight, style.fontSize, style.fontFamily].join(' ');
+      lines.forEach(function (line) { width = Math.max(width, textContext.measureText(line).width + Math.max(0, line.length - 1) * spacing); });
+    } else lines.forEach(function (line) { width = Math.max(width, Array.from(line).length * (parseFloat(style.fontSize) || 12) * 0.58); });
+    return width;
+  }
+  function boxWidth(style) {
+    return ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce(function (sum, key) { return sum + (parseFloat(style[key]) || 0); }, 0);
+  }
+  function fitContentWidth(ctrl, column) {
+    if (!column) return;
+    var index = ctrl.columns.indexOf(column), header = ctrl.head.leaves[index], widest = 0;
+    if (index < 0 || !header) return;
+    var headerStyle = window.getComputedStyle(header.cell), sortSpace = header.cell.querySelector('.sort-indicator') ? 26 : 0;
+    widest = textWidth(labelOf(header.cell), headerStyle) + boxWidth(headerStyle) + sortSpace + 12;
+    [ctrl.table.tHead].concat(Array.from(ctrl.table.tBodies), [ctrl.table.tFoot]).filter(Boolean).slice(1).forEach(function (section) {
+      grid(section).entries.forEach(function (entry) {
+        if (entry.start !== index || entry.span !== 1 || entry.cell.hidden || entry.cell.closest('.tks-row-hidden')) return;
+        var cell = entry.cell, cellStyle = window.getComputedStyle(cell), cellPad = boxWidth(cellStyle), controls = Array.from(cell.querySelectorAll('input:not([type="checkbox"]),select,textarea,button')).filter(function (node) { return !node.hidden && window.getComputedStyle(node).display !== 'none'; }), content = '';
+        if (controls.length) {
+          controls.forEach(function (node) {
+            var style = window.getComputedStyle(node), text = node.tagName === 'SELECT' ? Array.from(node.selectedOptions).map(function (option) { return option.textContent; }).join(' ') : node.tagName === 'BUTTON' ? node.getAttribute('aria-label') || node.title || node.textContent : node.value || node.placeholder;
+            widest = Math.max(widest, textWidth(text, style) + boxWidth(style) + cellPad + 12);
+          });
+          content = Array.from(cell.childNodes).filter(function (node) { return node.nodeType === 3; }).map(function (node) { return node.textContent; }).join(' ').trim();
+        } else content = cell.textContent.replace(/\s+/g, ' ').trim();
+        if (content) widest = Math.max(widest, textWidth(content, cellStyle) + cellPad + 12);
+      });
+    });
+    resize(ctrl, column, Math.min(MAX_SAVED_WIDTH, Math.max(column.minWidth || column.floor || MIN_WIDTH, Math.ceil(widest))), renderedWidths(ctrl));
+  }
   function defaultWidth(key, label, cell) {
     var text = (key + ' ' + label).toLowerCase();
     if (/note|ghi chú|nội dung|lý do|reason/.test(text)) return 280;
@@ -321,7 +355,11 @@
     if (!wiredHandles.has(handle)) {
       wiredHandles.add(handle);
       handle.addEventListener('click', function (event) { event.preventDefault(); event.stopPropagation(); });
-      handle.addEventListener('dblclick', function (event) { event.preventDefault(); event.stopPropagation(); });
+      handle.addEventListener('dblclick', function (event) {
+        event.preventDefault(); event.stopPropagation();
+        var current = controllers.get(ctrl.table), col = current && current.columns.find(function (item) { return item.key === handle.dataset.columnKey; });
+        if (current) fitContentWidth(current, col);
+      });
       handle.addEventListener('keydown', function (event) {
         if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
         event.preventDefault(); event.stopPropagation();
@@ -344,7 +382,8 @@
       handle.addEventListener('lostpointercapture', finishDrag);
     }
     handle.dataset.columnKey = column.key;
-    handle.setAttribute('aria-label', 'Độ rộng cột ' + column.label);
+    handle.setAttribute('aria-label', 'Độ rộng cột ' + column.label + ' · nháy đúp để tự căn theo nội dung');
+    handle.title = 'Kéo để đổi độ rộng · nháy đúp để tự căn theo nội dung';
     handle.setAttribute('aria-valuemin', String(column.minWidth || MIN_WIDTH));
     handle.setAttribute('aria-valuenow', String(Math.round(column.width)));
   }
@@ -431,6 +470,7 @@
     });
     apply(ctrl);
     remember(ctrl, column, { width: column.width });
+    ctrl.table.dispatchEvent(new window.CustomEvent('tks:column-resized', { bubbles: true, detail: { key: column.key, width: column.width } }));
   }
   function finishDrag() {
     if (!drag) return;

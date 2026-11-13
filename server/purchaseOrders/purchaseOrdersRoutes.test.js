@@ -9,7 +9,7 @@ const columns = require('../public/shared/purchase-columns');
 async function start(t,user) {
   const calls=[];
   const record=name=>async(...args)=>{calls.push({name,args});return name==='revision'?{revision:'9:4'}:name==='importSnapshot'?{revision:'9:4',rows:[]}:name==='history'?[]:{ok:true}};
-  const service=Object.fromEntries(['revision','changes','employees','saveEmployees','createEmployee','updateEmployee','trash','operations','remove','restore','undo','applyPlan','list','history','create','update','createContainer','updateContainer','schedule','changeStatus','bulkEdit','transfer','depart','arrive','importSnapshot','previewImport','reviseImport','commitImport','reserveKey','releaseKey'].map(name=>[name,record(name)]));
+  const service=Object.fromEntries(['revision','changes','employees','saveEmployees','createEmployee','updateEmployee','trash','inactive','containerTrash','inactiveContainers','deactivateContainer','reactivateContainer','removeContainer','restoreContainer','operations','remove','deactivate','reactivate','restore','undo','applyPlan','list','history','create','update','createContainer','updateContainer','schedule','changeStatus','bulkEdit','transfer','depart','arrive','importSnapshot','previewImport','reviseImport','commitImport','reserveKey','releaseKey'].map(name=>[name,record(name)]));
   const app=express();app.use(express.json());app.use((req,res,next)=>{req.user=user;next()});
   app.use(createPurchaseOrdersRouter({service,requireAuth:(req,res,next)=>req.user?next():res.status(401).json({error:'Chưa đăng nhập'})}));
   const server=await new Promise(resolve=>{const server=app.listen(0,'127.0.0.1',()=>resolve(server))});t.after(()=>server.close());
@@ -62,7 +62,7 @@ test('import commit accepts a token only, never client-generated write operation
 });
 
 test('delete restore and undo require edit permission, directory requires purchase view only',async t=>{
- const {base,calls}=await start(t,{id:'reader',vaiTro:ROLES.NHAN_VIEN_MUA_HANG,featurePermissions:{'purchase.view':true}});for(const path of ['/delete','/restore','/undo','/plan'])assert.equal((await fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,403);assert.equal((await fetch(base+'/employees')).status,200);assert.deepEqual(calls.map(c=>c.name),['employees']);
+ const {base,calls}=await start(t,{id:'reader',vaiTro:ROLES.NHAN_VIEN_MUA_HANG,featurePermissions:{'purchase.view':true}});for(const path of ['/delete','/deactivate','/reactivate','/restore','/undo','/plan'])assert.equal((await fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,403);assert.equal((await fetch(base+'/employees')).status,200);assert.deepEqual(calls.map(c=>c.name),['employees']);
 });
 
 test('row key release requires edit permission and validates reservation ID',async t=>{
@@ -105,6 +105,16 @@ test('container patch forwards the complete shared row version snapshot',async t
  const body={version:3,changes:{arrivalNote:'2026-11-10',arrivalDate:'2026-11-11',truckName:'18.5m',maxTon:35,m3Min:150,m3Max:180},rows:[{id:'1',version:4}]};
  assert.equal((await fetch(base+'/containers/9',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).status,200);
  assert.equal(calls[0].name,'updateContainer');assert.equal(calls[0].args[1],'9');assert.deepEqual(calls[0].args[2],body);
+});
+test('container lifecycle routes require edit and expose inactive and trash collections',async t=>{
+ const reader=await start(t,{id:'reader',vaiTro:ROLES.NHAN_VIEN_MUA_HANG,featurePermissions:{'purchase.view':true}});
+ for(const path of ['/containers/deactivate','/containers/reactivate','/containers/delete','/containers/restore'])assert.equal((await fetch(reader.base+path,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,403);
+ assert.equal((await fetch(reader.base+'/containers/inactive')).status,200);assert.equal((await fetch(reader.base+'/containers/trash')).status,200);
+ const manager=await start(t,{id:'manager',vaiTro:ROLES.QUAN_LY});
+ for(const [path,method] of [['/containers/deactivate','deactivateContainer'],['/containers/reactivate','reactivateContainer'],['/containers/delete','removeContainer'],['/containers/restore','restoreContainer']]){
+  assert.equal((await fetch(manager.base+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:'9',version:4})})).status,200);
+ }
+ assert.deepEqual(manager.calls.map(call=>call.name),['deactivateContainer','reactivateContainer','removeContainer','restoreContainer']);
 });
 test('revision endpoint requires purchase view and returns only the lightweight fingerprint',async t=>{
  for(const [user,status] of [[null,401],[{id:'buyer',vaiTro:ROLES.NHAN_VIEN_MUA_HANG},403],[{id:'guest',vaiTro:ROLES.KHACH,featurePermissions:{'purchase.view':true}},403]]){

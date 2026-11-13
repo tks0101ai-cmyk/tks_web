@@ -1,3 +1,5 @@
+13/11/2026 — Nháp VAT: sửa lỗi tạo mã QR (danh sách tài khoản tải ngay, chặn QR sai chuẩn VietQR).
+
 09/11/2026 — **Chỉ định lại đơn Đã bốc: tồn các vị trí hiện như thể thùng đã bốc được trả lại (không migration, chưa deploy):** Gốc lỗi: bấm **Chỉ định lại** ở đơn Đã bốc chỉ mở khóa hộp, còn danh sách vị trí và tồn khả dụng vẫn lấy từ tồn SAU khi đã trừ — dòng VT bị tự xóa vì hết hàng (DB 09/11: 108/193 dòng đã bốc gần đây) hiện "chưa xác định" bị khóa, vị trí còn một phần hàng báo "vượt số lượng khả dụng", nên nút lưu tắt và không chọn lại được. Đơn **Đang bốc** không bị lỗi này vì chỉ treo số lượng (`reserved_qty`), tồn thật chưa trừ và `candidates` đã bỏ phần giữ của chính đơn (đối chiếu DB: 105 đơn Đang bốc đều khớp, không dòng nào thiếu hàng/bị xóa). Sửa: `GET /api/shipment/pick/candidates?...&reopen=1` (chỉ khi chỉ định mới nhất là `confirmed`) trả tồn NHƯ ĐÃ HOÀN THÙNG, không ghi DB — dòng VT đã xóa được dựng lại (kèm `returned`, `recreated`), dòng cùng mã + vị trí vừa nhập lại thì cộng vào đó và `assignment.lines[].positionId` đổi sang id hiện có — kèm `reopen {blocked, returned}` (`blocked` = dòng ghi chú sai định dạng, lúc lưu sẽ `STOCK_CHANGED`). Logic hoàn thùng tách thành hàm thuần `planRevert` dùng chung cho xem trước và `revertJob` thật nên hai bên luôn khớp; `assign` reassign đổi id vị trí cũ của dòng bị tạo lại sang id mới trong phân bổ trước khi kiểm. Giao diện `pick-assign.js` (`?v=20261109-1`): `reopenConfirmed` gọi `reopen=1`, gợi ý lại trên tồn đã hoàn, giữ phân bổ cũ và hiện "Đã cộng lại N đã bốc vào tồn". Test: `pickStatusFlow.test.js` (2 ca mới), `pickAssignmentsRoutes.test.js`, `test/frontend/lifecycle-pick.test.js` (1 ca mới), 77 + 59 test xanh.
 
 09/11/2026 — **Nghỉ phép: thêm cột Thời hạn đăng ký + Hạn đăng ký vào bảng, điền nhãn cho đơn cũ (migration `0119`, ĐÃ áp DB):** bảng Yêu cầu nghỉ phép (HR) có thêm 2 cột sau Trạng thái (nhãn `Đúng hạn`/`Xin muộn`/`Vi phạm` hoặc `Chưa phân loại`, và ngày hạn; sort được, xuất Excel theo cột mới). Migration `0119_hr_leave_backfill_timing.sql` tính nhãn/hạn cho 17 đơn `Xin nghỉ phép` gửi trước 0038 bằng đúng `hr_leave_calculate_timing` với giờ mặc định (Sáng 07:45, Chiều 12:30) — ước tính vì đơn cũ không có lịch riêng; tắt tạm trigger `hr_leave_00_submission` + `hr_leave_department_snapshot` để chỉ ghi 5 cột nhãn/hạn, KHÔNG đổi `thoi_gian_gui`/trạng thái duyệt/`submission_revision`/lịch sử `hr_leave_submissions`; chạy lại an toàn. Test: `server/hr/hrLeaveBackfillTimingMigration.test.js` (mới), cập nhật `hr-leave-realtime-status` (11 cột) và `hr-leave-deadlines`. Chưa commit/deploy web.
@@ -132,7 +134,7 @@ Mở `http://localhost:3000`.
 | `BUSINESS_CURRENT_MONTH_ENABLED`, `BUSINESS_CURRENT_MONTH_MIN_INTERVAL_MS` | Tính sẵn doanh số **tháng hiện tại** của Báo cáo kinh doanh vào `business_current_month_*` (migration `0068`). Mặc định bật (thiếu migration thì tự bỏ qua), `false` để tắt (báo cáo lại tính live); sàn giữa hai lượt tính nhanh mặc định 600000 ms (10 phút) |
 | `ORDER_LIFECYCLE_SPREADSHEET_ID` | Workbook vòng đời đơn hàng (`DonHang_HN`, `DonHang_SG`, `DonHang_MienNam` = đơn Bắc-Nam tính như đơn Hà Nội, `Khách_HN`/`Khách_SG` = khách/ship lấy tại kho, `KeToan_ChungTu` = đơn kế toán/chứng từ dùng chung HN+SG, `Lịch sử cập nhật`) |
 | `HR_SPREADSHEET_ID`, `HR_SPREADSHEET_ID_SG` | **Đã gỡ khỏi `config.js` và `.env.example` (2026-10-05)** — danh sách nhân sự nay ở Postgres `hr_employees`; biến còn trong môi trường cũ thì bỏ qua được |
-| `JWT_SECRET`, `JWT_EXPIRES_IN` | Ký phiên đăng nhập (bắt buộc / mặc định `12h`) |
+| `JWT_SECRET`, `AUTH_SESSION_IDLE_DAYS` | Ký phiên đăng nhập (bắt buộc) / số ngày không dùng web thì phiên hết hạn (mặc định `7`, phiên trượt) |
 | `GOOGLE_CLIENT_ID` | Đăng nhập Google (tùy chọn; thiếu thì ẩn nút) |
 | `ALLOW_SELF_REGISTRATION` | `true` để mở lại tự đăng ký tài khoản; mặc định khóa từ 2026-10-03 |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_APP_PASSWORD`, `SMTP_FROM_NAME` | Gửi email OTP (thiếu thì OTP ghi ra console) |
@@ -143,6 +145,7 @@ Mở `http://localhost:3000`.
 | `HR_LEAVE_DB_REALTIME_ENABLED` | Cầu thay đổi Postgres → SSE của HR, mặc định `true`, độc lập với công tắc bot |
 | `SPECIAL_DAYS_NOTIFY_ENABLED` | Báo ngày lễ/sinh nhật lên chuông thông báo; mặc định `true`, `false` để tắt |
 | `EXPORT_EXCEL_WORKER` | Dựng file Excel xuất (`POST /api/export`) trong worker thread để không chặn web; mặc định bật, `off` để dựng trong luồng chính |
+| `EXPECTED_ARRIVALS_CACHE` | Cache trang `GET /api/expected-arrivals` theo version bảng tính sẵn (gom request trùng, trả bản cũ khi làm mới nền); mặc định bật, `off` để mỗi request chạy SQL như cũ |
 | `VAT_REQUEST_NOTIFY_ENABLED` | Báo chuông cho sale ~10 phút sau khi kế toán ngừng sửa yêu cầu ORDER VAT của họ; mặc định `true`, `false` để tắt (cần migration `0080`) |
 | `BACKGROUND_JOBS` | `inline` (mặc định): job nền chạy chung web; `worker`: web chỉ nghe sự kiện, job chạy ở `npm run worker` (`worker.js`) |
 | `INVOICE_PRICE_AUDIT_ENABLED` | Bật job 23:00 (giờ Việt Nam) của **Kiểm tra giá bán**: chụp hóa đơn chưa quét trong cửa sổ 7 ngày và đối chiếu giá min; mặc định `false`. Rollout: áp migration `0077` → deploy khi còn `false` → chạy tay lần đầu `npm run invoices:price-audit -- --date <hôm nay> --apply` → mới bật `true` |
@@ -575,11 +578,19 @@ Không đổi schema/dependency/API. Biến môi trường mới (tùy chọn): 
 
 Cập nhật cuối: 12/11/2026.
 
-## Thu mua — tái sử dụng Mã dòng (migration 0123, 13/11/2026)
+## Thu mua — tái sử dụng Mã dòng (migration 0125, 13/11/2026)
 
 Mã dòng gốc được cấp theo số trống nhỏ nhất trong pool khi toàn bộ nhánh tách cùng `root_order_id` đã xóa mềm; nếu pool rỗng, cấp tiếp bằng sequence hiện có. Ràng buộc duy nhất chỉ áp dụng cho `row_key` đang hoạt động. `purchase_orders.id` và `root_order_id` là định danh lịch sử bất biến; Mã dòng hiển thị có thể được cấp lại mà không gộp lịch sử.
 
-`POST /api/purchase-orders/next-key` giữ mã cho người dùng hiện tại trong 30 phút; `POST /api/purchase-orders/release-key` nhả giữ chỗ chưa dùng, chỉ chủ giữ chỗ được phép. Xóa, khôi phục, hoàn tác và import snapshot đầy đủ giữ trong transaction/khóa hiện có. Import xử lý các dòng vắng mặt trước rồi mới cấp mã cho dòng mới trống Mã dòng. Migration 0123 phải được áp dụng trước khi triển khai code; hiện code ở `main`, migration chưa áp dụng staging/production và chưa deploy.
+`POST /api/purchase-orders/next-key` giữ mã cho người dùng hiện tại trong 30 phút; `POST /api/purchase-orders/release-key` nhả giữ chỗ chưa dùng, chỉ chủ giữ chỗ được phép. Xóa, khôi phục, hoàn tác và import snapshot đầy đủ giữ trong transaction/khóa hiện có. Import xử lý các dòng vắng mặt trước rồi mới cấp mã cho dòng mới trống Mã dòng. Migration 0125 phải được áp dụng trước khi triển khai code; hiện code ở `main`, migration chưa áp dụng staging/production và chưa deploy.
+## Hiệu năng đợt 5: Dự kiến hàng về, xác nhận nhặt đơn nhiều dòng (13/11/2026)
+
+Log sáng 13/11 (08:00–10:30): `GET /api/expected-arrivals` là chỗ chậm nhất còn lại — riêng 08:00–08:15 có ~100 request ≥ 0,5 s, mỗi lần 1,7–10,9 s; `POST /api/shipment/pick/:id/confirm` đơn nhiều dòng 5,8–5,9 s (đơn ít dòng 1,4 s).
+- Dự kiến hàng về (máy chủ): câu SQL trang đọc thẳng cột tùy chọn thay vì `to_jsonb(e)` 4 lần / dòng (DB thật 12.185 dòng: 1.175 → 427 ms; DB cũ thiếu cột vẫn tự dùng bản dự phòng); tìm kiếm bỏ dấu chữ 1 lần / dòng thay vì mỗi từ × cả lọc lẫn xếp điểm ("quat mini": 4.407 → 763 ms). Cache kết quả trang theo `version` của bảng tính sẵn + quyền + tham số; request trùng dùng chung 1 lượt; version đọc tối đa 1 lần / 15 s và đọc lại ngay khi có sự kiện `containersChanged` / `expectedArrivalsChanged` (job làm mới phát, worker gửi qua `pg_notify`); dữ liệu vừa đổi thì trả bản cũ (≤ 5 phút) và làm mới nền. Phản hồi API không đổi.
+- Dự kiến hàng về (trình duyệt): mở lại tab Hàng hóa khi bảng mới tải < 60 s không gọi lại máy chủ; trang mở ở tab nền chưa tải, hiện lại thì tải 1 lần.
+- Xác nhận nhặt: kiểm mọi dòng trước, rồi ghi cả đơn bằng 1 câu (CTE + `jsonb_to_recordset`: xóa dòng hết hàng / cập nhật ghi chú, lịch sử vị trí theo đúng thứ tự dòng, dòng chỉ định, trạng thái + lịch sử chỉ định); khóa + đọc giữ chỗ của đơn khác gộp 1 câu. Đơn 6 dòng: 25 → 6 câu SQL trong giao dịch, kết quả DB giống hệt cách cũ (test đối chiếu).
+
+Không đổi schema/dependency/API. Biến môi trường mới (tùy chọn): `EXPECTED_ARRIVALS_CACHE`.
 
 Cập nhật cuối: 13/11/2026.
 
@@ -594,3 +605,9 @@ Cập nhật cuối: 12/11/2026.
 Import luôn bắt đầu bằng tải workbook đầy đủ từ `GET /api/purchase-orders/import/snapshot`; workbook có sheet `Đặt hàng`, hướng dẫn từng cột và manifest revision ẩn. Sửa đúng file đã tải rồi upload `.xlsx` (tối đa 10 MB, 10.000 dòng). Ô trống xóa giá trị; dòng bị bỏ khỏi file được tính xóa mềm và hiện rõ trong preview. Hệ thống từ chối snapshot cũ ở preview hoặc xác nhận, và chỉ áp dụng toàn bộ create/update/delete sau xác nhận hợp lệ. Không cần migration.
 
 Cập nhật cuối: 13/11/2026.
+
+## Phiên đăng nhập trượt 7 ngày (13/11/2026)
+
+Trước đây phiên (cookie `tks_auth`) sống cố định 12 giờ nên ngày nào cũng phải đăng nhập lại. Nay phiên **trượt**: `requireAuth` cấp lại token đủ hạn khi token đã cấp quá ngưỡng gia hạn (nhỏ hơn trong 24 giờ và nửa hạn phiên, để hạn ngắn vẫn trượt được) và tài khoản vẫn tồn tại, không bị khóa; chỉ khi không dùng web `AUTH_SESSION_IDLE_DAYS` ngày (mặc định 7, hợp lệ 1–365, lớn hơn bị chặn ở 365) mới phải đăng nhập lại. Cookie cơ sở `tks_branch` sống và gia hạn cùng phiên. Module mới `server/auth/authSession.js` (cấp/gia hạn phiên). Bỏ biến `JWT_EXPIRES_IN` — **xóa biến này trên Render nếu có**. Không migration. Đăng xuất chỉ xóa cookie (`tks_auth`, `tks_branch`) trên thiết bị đó: token đã sao chép vẫn dùng được tới khi hết hạn — chưa có thu hồi phiên, cùng việc sau với đổi mật khẩu (chưa đăng xuất thiết bị khác).
+
+Cập nhật gần nhất: 13/11/2026.

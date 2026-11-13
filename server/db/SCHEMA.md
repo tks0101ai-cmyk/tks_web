@@ -1,5 +1,13 @@
 # Supabase schema cho đồng bộ KiotViet
 
+## Migration 0123 — Thu mua: tắt dòng cũ (13/11/2026)
+
+`0123_purchase_inactive_rows.sql` thêm `purchase_orders.inactive_at TIMESTAMPTZ`. Tắt dòng là trạng thái lưu trữ có thể bật lại; dòng tắt bị loại khỏi danh sách Đặt hàng, tính cont, dự kiến hàng về và projection dùng chung. Khác với xóa mềm (`deleted_at`), dòng tắt không vào thùng rác và vẫn có thể bật lại từ danh sách **Dòng đã tắt**. Xóa dòng vẫn là xóa mềm, có thể khôi phục trong **Thùng rác**. Cả hai thao tác lưu actor/lịch sử, kiểm phiên bản, hỗ trợ hoàn tác và chỉ cho chọn tối đa 500 dòng/lần. Migration đăng ký trong `db/ensurePurchaseSchema.js`.
+
+## Migration 0124 — Thu mua: vòng đời cont (13/11/2026)
+
+`0124_purchase_container_lifecycle.sql` thêm `product_containers.inactive_at` và `deleted_at`, cùng các partial index cho cont đang hoạt động, ngừng hoạt động và thùng rác. Trạng thái vòng đời tách biệt với trạng thái vận chuyển; cont đã xóa mềm vẫn giữ liên kết dòng hàng để khôi phục không làm đổi lịch sử gán.
+
 ## Migration 0122 — Thu mua: số đo đối chiếu ghi đè theo dòng (11/11/2026, chưa xác minh DB production)
 
 `0122_purchase_measurement_overrides.sql` thêm `purchase_orders.measurement_overrides JSONB NOT NULL DEFAULT '{}'::jsonb`. JSONB lưu riêng giá trị người dùng sửa cho 9 trường nhóm Đối chiếu Cân đo (`literWarehouse`, `m3Warehouse`, `literChina`, `literDiff`, `gramWarehouse`, `gramChina`, `gramDiff`, `measuredOn`, `ratio`). Khi key không có, UI dùng giá trị tự động từ nguồn/ phép tính hiện hành; xóa hoặc nhập trống gỡ key để trở về tự động. Không đổi bảng nguồn `shipping_measures` hay dữ liệu Sheet. Migration được đăng ký trong `db/ensurePurchaseSchema.js`; cần có trên DB trước khi dùng bản UI ghi đè.
@@ -966,9 +974,9 @@ Migrations Thu mua bắt đầu ở 0110–0116 vì main đã dùng 0101–0109 
 - Transaction ghi dùng advisory lock 20531015 chung với sync Sheet. Khi web là nguồn, Sheet sync bỏ qua cả khi force; projection cập nhật dữ liệu Thu mua, snapshot cont, expected và audit nguyên tử. Hàng đã về vẫn đọc lịch sử, không cộng tồn Kiot.
 - Chưa được tự bật source_mode=web trước khi chọn nguồn Sheet chuẩn, seed và đối chiếu đủ dữ liệu. Các bảng mới không cấp SELECT cho reporting_readonly theo default grants cũ.
 
-## Migration 0123 — Thu mua / Mã dòng có thể tái sử dụng (13/11/2026, chưa áp staging/production)
+## Migration 0125 — Thu mua / Mã dòng có thể tái sử dụng (13/11/2026, chưa áp staging/production)
 
-`0123_purchase_recyclable_row_keys.sql` bổ sung các hợp đồng sau cho Thu mua:
+`0125_purchase_recyclable_row_keys.sql` bổ sung các hợp đồng sau cho Thu mua:
 
 - `purchase_orders.root_order_id BIGINT NOT NULL`: ID bất biến của họ đơn gốc/tách; FK tự tham chiếu deferred. Dòng gốc mặc định họ bằng ID vừa tạo; nhánh tách giữ ID họ nguồn.
 - `purchase_orders_active_row_key_uq`: unique partial index trên `row_key WHERE deleted_at IS NULL`; dòng đã xóa mềm có thể giữ mã trùng với lần tái sử dụng hiện hành.

@@ -19,20 +19,32 @@ function version(row) { return row.version ?? row.v; }
 function comparable(value, col) {
   return blank(value) ? null : workbook.numericTypes.has(col.t) ? Number(value) : String(value);
 }
-function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = false, snapshotRevision } = {}) {
+function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = false, snapshotRevision, archivedRows = [] } = {}) {
   if (!Array.isArray(sourceRows) || (!sourceRows.length && !snapshot) || sourceRows.length > 10000) throw Error('Đợt nhập phải có 1–10.000 dòng.');
   if (!Array.isArray(existingRows)) throw Error('Thiếu dữ liệu hiện hành để đối chiếu.');
   const existing = new Map(existingRows.map(row => [row.rowKey, row]));
   const counts = new Map();
+  const recoveryCounts = new Map();
   sourceRows.forEach(row => { const key = String(row.rowKey ?? '').trim(); if (key) counts.set(key, (counts.get(key) || 0) + 1); });
+  sourceRows.forEach(row=>{if(row.recoverArchived===true){const key=String(row.recoverRowKey||row.rowKey||'').trim();if(key)recoveryCounts.set(key,(recoveryCounts.get(key)||0)+1)}});
   const rows = sourceRows.map((source, index) => {
     const rowKey = blank(source.rowKey) ? null : String(source.rowKey).trim();
-    const result = { sourceRow: source.__sourceRow || index + 2, rowKey, action: rowKey ? 'update' : 'create', errors: [], changes: [] };
+    const archivedByKey=rowKey?archivedRows.find(row=>row.rowKey===rowKey):null;
+    const selectedArchived=source.recoverRowKey?archivedRows.find(row=>row.rowKey===source.recoverRowKey):null;
+    const archived=selectedArchived||archivedByKey;
+    const candidates=archived?[archived]:[];
+    const requestedKey=source.recoverArchived===true?(source.recoverRowKey||archived?.rowKey):null;
     const current = rowKey ? existing.get(rowKey) : null;
+    const recovered = !current&&archived&&requestedKey===archived.rowKey;
+    const effectiveKey=recovered?archived.rowKey:rowKey;
+    const result = { sourceRow: source.__sourceRow || index + 2, rowKey: effectiveKey, action: recovered?(archived.deletedAt?'restore':'reactivate'):rowKey ? 'update' : 'create', errors: [], changes: [] };
+    if(archived||candidates.length){result.archivedCandidate=archived?{rowKey:archived.rowKey,productCode:archived.productCode,productName:archived.productName,state:archived.deletedAt?'deleted':'inactive'}:null;result.archivedCandidates=candidates.map(row=>({rowKey:row.rowKey,productCode:row.productCode,productName:row.productName,state:row.deletedAt?'deleted':'inactive'}));if(!recovered)result.action='archived_skip'}
+    const matched = current || (recovered?archived:null);
     if (rowKey && !keyPattern.test(rowKey)) result.errors.push('Khóa dòng sai định dạng.');
     if (rowKey && counts.get(rowKey) > 1) result.errors.push('Khóa dòng trùng trong file.');
-    if (rowKey && !current) result.errors.push(existingRows.some(row => row.rowKey.startsWith(rowKey + '.')) ? 'Khóa đã tách; xuất lại các nhánh hiện hành.' : 'Khóa dòng không tồn tại.');
-    if (current && (!Number.isSafeInteger(version(current)) || version(current) < 1)) result.errors.push('Không đọc được phiên bản dòng hiện hành.');
+    if(recovered&&(recoveryCounts.get(archived.rowKey)||0)>1)result.errors.push('Một dòng lưu trữ chỉ được chọn khôi phục một lần.');
+    if (rowKey && !current&&!archivedByKey) result.errors.push(existingRows.some(row => row.rowKey.startsWith(rowKey + '.')) ? 'Khóa đã tách; xuất lại các nhánh hiện hành.' : archivedRows.some(row=>row.rowKey.startsWith(rowKey+'.'))?'Khóa đã tách; chọn đúng nhánh đang tắt/đã xóa.':'Khóa dòng không tồn tại.');
+    if (matched && (!Number.isSafeInteger(version(matched)) || version(matched) < 1)) result.errors.push('Không đọc được phiên bản dòng hiện hành.');
     for (const message of Object.values(source.__cellErrors || {})) result.errors.push(String(message));
     const values = {};
     for (const col of writable) {
@@ -45,7 +57,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
         else if (integerFields.has(col.k) && (!Number.isSafeInteger(number) || number <= 0)) result.errors.push(col.l + ': phải là số nguyên dương.');
         else if(col.k==='fxRate'&&number===0)result.errors.push(col.l+': phải lớn hơn 0 hoặc để trống.');else values[col.k] = number;
       } else if ((col.t === 'date'||col.t==='datetime')) {
-        const date = (col.t==='datetime'?workbook.dateTimeValue:workbook.dateValue)(value, false);
+        const date = col.t==='datetime'&&['orderedNote','shippedNote','etaNote','arrivedNote'].includes(col.k)?workbook.dateNoteValue(value,false):(col.t==='datetime'?workbook.dateTimeValue:workbook.dateValue)(value, false);
         if (!date) result.errors.push(col.l + ': ngày không hợp lệ.');
         else values[col.k] = date;
       } else {
@@ -55,19 +67,19 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
         else if (snapshot) values[col.k] = null;
       }
     }
-    const effective={...(current||{}),...values};for(const key of calculations.issues(effective).filter(k=>!['qtyPerCarton','cartonCount'].includes(k))){if(!result.errors.some(e=>e.startsWith((byKey.get(key)?.l||key)+':')))result.errors.push((byKey.get(key)?.l||key)+': số liệu vượt giới hạn tính toán hoặc không hợp lệ.')}
+    const effective={...(matched||{}),...values};for(const key of calculations.issues(effective).filter(k=>!['qtyPerCarton','cartonCount'].includes(k))){if(!result.errors.some(e=>e.startsWith((byKey.get(key)?.l||key)+':')))result.errors.push((byKey.get(key)?.l||key)+': số liệu vượt giới hạn tính toán hoặc không hợp lệ.')}
     if (!values.productCode) result.errors.push('Thiếu Mã SP.');
-    if (!rowKey) {
+    if (!effectiveKey && !matched) {
       for (const key of ['productName', 'qtyPerCarton', 'cartonCount']) if (blank(values[key])) result.errors.push('Thiếu ' + byKey.get(key).l + '.');
       if (!values.listedAt) values.listedAt = listedAt;
       result.values = { ...values, contId: null };
-    } else if (current) {
-      result.id = current.id;
-      result.expectedVersion = version(current);
+    } else if (matched) {
+      result.id = matched.id;
+      result.expectedVersion = version(matched);
       for (const [key, next] of Object.entries(values)) {
-        if (comparable(current[key], byKey.get(key)) !== comparable(next, byKey.get(key))) result.changes.push({ key, label: byKey.get(key).l, before: current[key] ?? null, after: next });
+        if (comparable(matched[key], byKey.get(key)) !== comparable(next, byKey.get(key))) result.changes.push({ key, label: byKey.get(key).l, before: matched[key] ?? null, after: next });
       }
-      if (!result.changes.length && !result.errors.length) result.action = 'unchanged';
+      if (!recovered&&!result.changes.length && !result.errors.length) result.action = 'unchanged';
     }
     return result;
   });
@@ -78,12 +90,14 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
   const valid = rows.every(row => row.errors.length === 0);
   return {
     valid,
-    counts: { create: rows.filter(r => r.action === 'create' && !r.errors.length).length, update: rows.filter(r => r.action === 'update' && !r.errors.length).length, unchanged: rows.filter(r => r.action === 'unchanged').length, delete: rows.filter(r => r.action === 'delete').length, error: rows.filter(r => r.errors.length).length },
+    counts: { create: rows.filter(r => r.action === 'create' && !r.errors.length).length, update: rows.filter(r => r.action === 'update' && !r.errors.length).length, unchanged: rows.filter(r => r.action === 'unchanged').length, reactivate:rows.filter(r=>r.action==='reactivate'&&!r.errors.length).length,restore:rows.filter(r=>r.action==='restore'&&!r.errors.length).length,archivedSkip:rows.filter(r=>r.action==='archived_skip'&&!r.errors.length).length, delete: rows.filter(r => r.action === 'delete').length, error: rows.filter(r => r.errors.length).length },
     rows,
     // Errors anywhere suppress every write operation, including valid rows.
-    operations: valid ? rows.filter(row => row.action !== 'unchanged') : [],
+    operations: valid ? rows.filter(row => !['unchanged','archived_skip'].includes(row.action)) : [],
     sourceRows: sourceRows.map(source => {
       const out = { rowKey: source.rowKey, __sourceRow: source.__sourceRow, __cellErrors: { ...(source.__cellErrors || {}) } };
+      if(source.recoverArchived===true)out.recoverArchived=true;
+      if(source.recoverRowKey)out.recoverRowKey=String(source.recoverRowKey);
       writable.forEach(col => { if (snapshot || !blank(source[col.k])) out[col.k] = source[col.k] ?? ''; });
       return out;
     }),
@@ -99,22 +113,22 @@ function prepareWorkbook(data, existingRows, { sheetName, ...options } = {}) {
   return { ...prepareRows(parsed.rows, existingRows, options), sheetName: parsed.sheetName, ignoredColumns: parsed.ignored };
 }
 
-function prepareSnapshotWorkbook(data, existingRows, { currentRevision, listedAt = today() } = {}) {
+function prepareSnapshotWorkbook(data, existingRows, { currentRevision, listedAt = today(), archivedRows = [] } = {}) {
   if (!data || !data.byteLength || data.byteLength > 10 * 1024 * 1024) throw Error('File phải có dữ liệu và không quá 10 MB.');
   const parsed = workbook.parseImportSnapshot(data, columns);
   if (parsed.revision !== currentRevision) { const error = Error('Dữ liệu đã thay đổi sau khi tải file. Hãy tải snapshot mới rồi sửa lại.'); error.code = 'IMPORT_SNAPSHOT_STALE'; throw error; }
-  return { ...prepareRows(parsed.rows, existingRows, { listedAt, snapshot: true, snapshotRevision: parsed.revision }), sheetName: 'Đặt hàng', ignoredColumns: [], fields: parsed.fields };
+  return { ...prepareRows(parsed.rows, existingRows, { listedAt, snapshot: true, snapshotRevision: parsed.revision, archivedRows }), sheetName: 'Đặt hàng', ignoredColumns: [], fields: parsed.fields };
 }
 
-function recheckPreview(preview, currentRows) {
+function recheckPreview(preview, currentRows, archivedRows = []) {
   if (!preview?.valid) throw Error('Toàn bộ file phải hợp lệ trước khi xác nhận.');
-  const current = new Map(currentRows.map(row => [row.rowKey, row]));
-  const conflicts = preview.rows.filter(row => row.rowKey && (!current.has(row.rowKey) || current.get(row.rowKey).id !== row.id || version(current.get(row.rowKey)) !== row.expectedVersion));
+  const current = new Map([...currentRows,...archivedRows].map(row => [row.rowKey, row]));
+  const conflicts = preview.rows.filter(row => row.id&&row.rowKey && (!current.has(row.rowKey) || current.get(row.rowKey).id !== row.id || version(current.get(row.rowKey)) !== row.expectedVersion));
   if (conflicts.length) return { valid: false, code: 'VERSION_CONFLICT', conflicts: conflicts.map(row => ({ rowKey: row.rowKey, sourceRow: row.sourceRow })), operations: [] };
-  const currentKeys = new Set(currentRows.map(row => row.rowKey));
-  const missing = preview.snapshot ? preview.rows.filter(row => row.action !== 'delete' && row.rowKey && !currentKeys.has(row.rowKey)) : [];
+  const currentKeys = new Set([...currentRows,...archivedRows].map(row => row.rowKey));
+  const missing = preview.snapshot ? preview.rows.filter(row => !['delete','archived_skip'].includes(row.action) && row.rowKey && !currentKeys.has(row.rowKey)) : [];
   if (missing.length) return { valid: false, code: 'VERSION_CONFLICT', conflicts: missing.map(row => ({ rowKey: row.rowKey, sourceRow: row.sourceRow })), operations: [] };
-  return prepareRows(preview.sourceRows, currentRows, { listedAt: preview.listedAt, snapshot: preview.snapshot, snapshotRevision: preview.snapshotRevision });
+  return prepareRows(preview.sourceRows, currentRows, { listedAt: preview.listedAt, snapshot: preview.snapshot, snapshotRevision: preview.snapshotRevision, archivedRows });
 }
 
 module.exports = { prepareRows, prepareWorkbook, prepareSnapshotWorkbook, recheckPreview };

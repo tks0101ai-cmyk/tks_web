@@ -25,6 +25,8 @@ function fakeRes() {
   res.status = code => { res.statusCode = code; return res; };
   res.json = payload => { res.body = payload; return res; };
   res.cookie = (name, value, options) => { res.cookies.push({ name, value, options }); return res; };
+  res.cleared = [];
+  res.clearCookie = (name, options) => { res.cleared.push({ name, options }); return res; };
   return res;
 }
 
@@ -304,6 +306,15 @@ test('luong dang ky nhan su bang OTP da go: /register/{channels,send-otp,verify}
     assert.equal(paths.includes(removed), false, removed);
   }
   assert.ok(getRouteHandler(router, 'post', '/api/auth/register'));
+});
+
+test('logout: xoa ca cookie dang nhap tks_auth va cookie co so tks_branch', () => {
+  const router = freshAuthRoutes({ verifyGoogleIdToken: NEVER_CALL, findUserByEmail: NEVER_CALL, createActiveGuest: NEVER_CALL });
+  const res = fakeRes();
+  getRouteHandler(router, 'post', '/api/auth/logout')({}, res);
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.cleared.map(c => c.name).sort(), ['tks_auth', 'tks_branch']);
+  for (const c of res.cleared) assert.deepEqual(c.options, { path: '/' });
 });
 
 test('password login returns the live role resolved from HR instead of the stored role', async () => {

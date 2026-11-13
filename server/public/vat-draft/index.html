@@ -16,7 +16,7 @@
   <link rel="stylesheet" href="/shared/shared.css?v=20261107-3">
   <script src="/shared/motion.js?v=20261111-calm-1" defer></script>
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261016">
-  <link rel="stylesheet" href="/vat-draft/vat-draft.css?v=20261023-2">
+  <link rel="stylesheet" href="/vat-draft/vat-draft.css?v=20261113-1">
   <link rel="stylesheet" href="/shared/table-controls.css?v=20261108-1">
 </head>
 <body>
@@ -170,7 +170,8 @@
           <h4>Thanh toán qua QR</h4>
           <p class="vd-hint">Chọn loại hóa đơn trước: có VAT sẽ tách QR theo từng nguồn, không VAT sẽ gộp tất cả nguồn thành 1 QR duy nhất.</p>
           <label for="vdTransfer">Nội dung chuyển khoản</label>
-          <input type="text" id="vdTransfer" class="vd-input" autocomplete="off">
+          <input type="text" id="vdTransfer" class="vd-input" autocomplete="off" aria-describedby="vdTransferPreview">
+          <p class="vd-content-preview" id="vdTransferPreview" aria-live="polite" hidden></p>
           <p class="vd-message vd-warning" id="vdTransferHint" hidden>Chưa có mã chứng từ — hãy nhập nội dung chuyển khoản thủ công.</p>
           <div class="vd-modetabs vd-qr-mode" role="tablist" aria-label="Loại hóa đơn">
             <button type="button" class="vd-modetab" role="tab" data-qr-mode="co_vat" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h8M9 17h6"/></svg>Hóa đơn có VAT</button>
@@ -240,11 +241,15 @@
               <div class="vd-form" id="vdQrForm">
                 <div class="vd-field">
                   <label for="vdManualAccount">Tài khoản nhận tiền <span class="vd-ai-chip" id="vdAccountAi" hidden>Gợi ý từ hóa đơn</span></label>
-                  <select id="vdManualAccount"></select>
+                  <div class="vd-account-select">
+                    <select id="vdManualAccount"></select>
+                    <button type="button" class="btn-secondary vd-small-btn" id="vdAccountsRetry" hidden>Thử lại</button>
+                  </div>
                   <p class="vd-account-detail" id="vdAccountDetail" hidden></p>
                 </div>
                 <div class="vd-manual" id="vdManualFields" hidden>
-                  <label>Mã ngân hàng <input type="text" id="vdManualBank" class="vd-input" autocomplete="off" placeholder="VD: VCB, MB, ACB"></label>
+                  <label>Mã ngân hàng <input type="text" id="vdManualBank" class="vd-input" autocomplete="off" placeholder="VD: VCB, MB, ACB" list="vdBankList"></label>
+                  <datalist id="vdBankList"></datalist>
                   <label>Số tài khoản <input type="text" id="vdManualNo" class="vd-input" inputmode="numeric" autocomplete="off"></label>
                   <label class="vd-manual-wide">Tên chủ tài khoản <span class="vd-optional">không bắt buộc</span> <input type="text" id="vdManualName" class="vd-input" autocomplete="off"></label>
                   <p class="vd-hint vd-manual-wide" id="vdBankCodes"></p>
@@ -270,7 +275,8 @@
                 </fieldset>
                 <div class="vd-field">
                   <label for="vdManualContent">Nội dung chuyển khoản <span class="vd-optional">không bắt buộc</span></label>
-                  <input type="text" id="vdManualContent" class="vd-input" autocomplete="off" maxlength="200" placeholder="VD: mã hóa đơn, tên khách">
+                  <input type="text" id="vdManualContent" class="vd-input" autocomplete="off" placeholder="VD: mã hóa đơn" aria-describedby="vdManualContentPreview">
+                  <p class="vd-content-preview" id="vdManualContentPreview" aria-live="polite" hidden></p>
                 </div>
               </div>
             </div>
@@ -338,7 +344,7 @@
   </div>
   <div class="vd-qr-viewer" id="vdQrViewer" role="dialog" aria-modal="true" aria-label="Mã QR phóng to" hidden>
     <div class="vd-qr-viewer-box">
-      <img id="vdQrViewerImg" alt="Mã QR chuyển khoản phóng to">
+      <img id="vdQrViewerImg" crossorigin="anonymous" alt="Mã QR chuyển khoản phóng to">
       <p id="vdQrViewerCaption"></p>
       <div class="vd-actions">
         <button class="btn-primary" id="vdQrViewerDownload" type="button">Tải mã QR</button>
@@ -370,12 +376,12 @@
       <div class="doc-modal-body dp-body" id="vdDocModalBody" aria-live="polite"></div>
     </section>
   </div>
-  <script src="/shared/table-controls.js?v=20261108-2"></script>
+  <script src="/shared/table-controls.js?v=20261114-autofit-pinned-r1"></script>
   <script src="/shared/dateInput.js?v=20260912"></script>
   <script src="/shared/shared-nav.js?v=20261111-nofx"></script>
   <script src="/vat-draft/cell-select.js?v=20261017-1"></script>
   <script src="/vat-draft/vnd-words.js?v=20261019-1"></script>
-  <script src="/vat-draft/vat-draft.js?v=20261112-1"></script>
+  <script src="/vat-draft/vat-draft.js?v=20261113-1"></script>
   <script>window.addEventListener('DOMContentLoaded', function () { TKSVatDraft.init(); });</script>
 </body>
 </html>

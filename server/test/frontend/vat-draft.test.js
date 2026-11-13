@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
 const { resolvePermissions, PAGE_FEATURES } = require('../../auth/featureRegistry');
+const vietqr = require('../../vatDraft/vietqr');
 
 const publicDir = path.join(__dirname, '../../public');
 const html = fs.readFileSync(path.join(publicDir, 'vat-draft/index.html'), 'utf8');
@@ -23,9 +24,11 @@ const allocRow = (status, maSp, sl, nguon, reason = '') => ({
 
 function api(overrides = {}) {
   return {
-    'GET /meta': { masterData: { loadedAt: '2026-10-17T02:00:00Z', stale: false, stockRows: 8432, mappingRows: 2998, error: null },
-      sync: [{ branch: 'hanoi', entity: 'invoices', syncedAt: new Date().toISOString() }],
-      vietqr: { template: 'compact2', commonBankCodes: 'VCB, MB', accounts: [{ key: 'tks_group', label: 'MB TKS — MB 606266688888' }, { key: 'shc', label: 'MB SHC — MB 525345345' }] } },
+    'GET /meta': { vietqr: { template: 'compact2', commonBankCodes: 'VCB, MB',
+      accounts: [{ key: 'tks_group', label: 'MB TKS — MB 606266688888' }, { key: 'shc', label: 'MB SHC — MB 525345345' }],
+      banks: [{ bin: '970416', code: 'ACB', shortName: 'ACB' }, { bin: '970436', code: 'VCB', shortName: 'Vietcombank' }, { bin: '970422', code: 'MB', shortName: 'MBBank' }] } },
+    'GET /master-data/status': { masterData: { loadedAt: '2026-10-17T02:00:00Z', stale: false, stockRows: 8432, mappingRows: 2998, error: null },
+      sync: [{ branch: 'hanoi', entity: 'invoices', syncedAt: new Date().toISOString() }] },
     'POST /documents/resolve': { found: [
       { kind: 'invoice', branch: 'hanoi', code: 'HD028345', date: '16/10/2026 14:54', customerName: 'KH A', customerCode: 'KH1', note: 'thắng thức 16/10', status: 'Hoàn thành', orderCode: 'DH1', total: 82582000, selectable: true, warning: '' },
       { kind: 'order', branch: 'saigon', code: 'DH044391', date: '16/10/2026 11:00', customerName: 'Chị Lan', customerCode: '', note: '', status: 'Phiếu tạm', orderCode: '', total: 45000, selectable: true, warning: 'Đơn đã xuất hóa đơn: HD028345' }
@@ -42,12 +45,12 @@ function api(overrides = {}) {
           { nguon: 'VC', soDong: 1, tongGiaNhap: 500000, thieuDonGia: true, defaultAccountKey: 'shc', defaultAmount: 500000 }],
         total: { soDong: 2, tongGiaBan: 2160000, thieuDonGia: false, defaultAccountKey: 'tks_group', defaultAmount: 2160000 } },
       masterData: { stockRows: 8432, mappingRows: 2998 } },
-    'POST /qr/url': { url: 'https://img.vietqr.io/image/MB-606266688888-compact2.png?amount=1500000', amount: 1500000, accountLabel: 'MB TKS', addInfo: 'HD028345 DH050000' },
+    'POST /qr/url': { url: 'https://img.vietqr.io/image/MB-606266688888-compact2.svg?amount=1500000', amount: 1500000, accountLabel: 'MB TKS', addInfo: 'HD028345 DH050000' },
     ...overrides
   };
 }
 
-async function setup(t, { hash = '#xu-ly', responses = api(), vaiTro = 'Quản lý' } = {}) {
+async function setup(t, { hash = '#xu-ly', responses = api(), vaiTro = 'Quản lý', awaitInit = true } = {}) {
   const dom = new JSDOM(html, { url: 'https://tokosi.test/vat-draft/' + hash, runScripts: 'outside-only', pretendToBeVisual: true });
   t.after(() => dom.window.close());
   const window = dom.window;
@@ -59,13 +62,16 @@ async function setup(t, { hash = '#xu-ly', responses = api(), vaiTro = 'Quản l
   const user = { vaiTro, branch: 'Cả hai', permissions: resolvePermissions({ vaiTro }), pageFeatures: PAGE_FEATURES };
   window.TKSNav.authGuard = async () => { window.TKSNav.setPermissions(user); return user; };
   const calls = [];
+  const warns = [];
+  window.console.warn = (...args) => { warns.push(args); }; // giu output test sach (loi tai tai khoan co console.warn)
   window.fetch = async (url, options = {}) => {
     const parsed = new URL(url, window.location.href);
     if (parsed.pathname === '/api/me/table-prefs') return { ok: true, status: 200, json: async () => ({ tables: {} }) };
     const key = `${options.method || 'GET'} ${parsed.pathname.replace('/api/vat-draft', '')}`;
-    const body = options.body ? JSON.parse(options.body) : undefined;
+    const body = typeof options.body === 'string' ? JSON.parse(options.body) : undefined;
     calls.push({ key, query: Object.fromEntries(parsed.searchParams), body });
-    const data = responses[key];
+    const entry = responses[key];
+    const data = typeof entry === 'function' ? await entry() : entry;
     return {
       ok: data !== undefined, status: data !== undefined ? 200 : 404,
       headers: { get: () => key === 'POST /export' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/json' },
@@ -73,11 +79,58 @@ async function setup(t, { hash = '#xu-ly', responses = api(), vaiTro = 'Quản l
       blob: async () => new window.Blob(['x'])
     };
   };
+  window.TKSVatDraftRetryDelays = [0, 0, 0];
   window.eval(fs.readFileSync(path.join(publicDir, 'vat-draft/cell-select.js'), 'utf8'));
   window.eval(code);
-  await window.TKSVatDraft.init();
+  const init = window.TKSVatDraft.init();
+  if (awaitInit) await init;
   await tick();
-  return { window, doc: window.document, calls };
+  return { window, doc: window.document, calls, warns, init };
+}
+
+/** Cho cac promise / setTimeout(0) chay het (tai lai co thu lai). */
+async function settle(window) {
+  for (let i = 0; i < 20; i += 1) await new Promise(resolve => window.setTimeout(resolve, 0));
+}
+
+/**
+ * JSDOM khong tai anh / ve canvas that: Image gia + canvas gia. fail = anh phat loi.
+ * Tra ve cac anh da tao, cac blob da dua vao createObjectURL va ten file cua the a[download] da bam.
+ */
+function stubQrImage(window, { fail = false, decode } = {}) {
+  const images = [];
+  const blobs = [];
+  const downloads = [];
+  const pngRequests = [];
+  window.Image = class FakeImage {
+    constructor() {
+      this.naturalWidth = 540;
+      this.naturalHeight = 640;
+      this.listeners = {};
+      if (decode) this.decode = () => { this.decodeCalls = (this.decodeCalls || 0) + 1; return decode === 'reject' ? Promise.reject(new Error('decode')) : Promise.resolve(); };
+      images.push(this);
+    }
+    addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); }
+    set src(value) {
+      this.currentSrc = value;
+      window.setTimeout(() => {
+        const type = fail ? 'error' : 'load';
+        const handler = fail ? this.onerror : this.onload;
+        if (handler) handler.call(this, { type });
+        for (const fn of this.listeners[type] || []) fn.call(this, { type });
+      }, 0);
+    }
+    get src() { return this.currentSrc; }
+  };
+  window.HTMLCanvasElement.prototype.getContext = () => ({ fillStyle: '', fillRect() {}, drawImage() {} });
+  // Ghi lai loai anh + kich thuoc canvas luc xuat, tra blob dung loai duoc yeu cau.
+  window.HTMLCanvasElement.prototype.toBlob = function (callback, type) {
+    pngRequests.push({ type, width: this.width, height: this.height });
+    callback(new window.Blob(['png'], { type }));
+  };
+  window.URL.createObjectURL = blob => { blobs.push(blob); return 'blob:x'; };
+  window.HTMLAnchorElement.prototype.click = function () { downloads.push(this.download); };
+  return { images, blobs, downloads, pngRequests };
 }
 
 /** Dan ma vao o + bam Xu ly (tra ma roi phan bo luon). */
@@ -89,7 +142,7 @@ async function pasteAndRun(doc, text = 'HD999 HD028345 abc DH044391') {
 
 test('tai trang: file trung gian loi -> dong trang thai Sheets bao tab doc tu file goc (mau canh bao)', async t => {
   const base = api();
-  const responses = { ...base, 'GET /meta': { ...base['GET /meta'], masterData: { ...base['GET /meta'].masterData, fallbackTabs: ['Gộp VAT'] } } };
+  const responses = { ...base, 'GET /master-data/status': { ...base['GET /master-data/status'], masterData: { ...base['GET /master-data/status'].masterData, fallbackTabs: ['Gộp VAT'] } } };
   const { doc } = await setup(t, { responses });
   const status = doc.getElementById('vdSheetsStatus');
   assert.match(status.textContent, /Gộp VAT đọc từ file gốc VAT TKS vì file trung gian đang lỗi/);
@@ -99,7 +152,7 @@ test('tai trang: file trung gian loi -> dong trang thai Sheets bao tab doc tu fi
 test('tai trang: trang thai Sheets/KiotViet; chi con o dan ma + Co so + Xu ly, khong con bang tick chon / bo loc', async t => {
   const { doc, calls } = await setup(t);
   assert.match(doc.getElementById('vdSheetsStatus').textContent, /Gộp VAT 8,432 dòng · Khớp mã 2,998 dòng/);
-  assert.deepEqual(calls.map(c => c.key), ['GET /meta'], 'khong tai danh sach chung tu luc mo trang');
+  assert.deepEqual(calls.map(c => c.key), ['GET /meta', 'GET /master-data/status'], 'khong tai danh sach chung tu luc mo trang');
   assert.equal(doc.getElementById('vdBranch').value, 'all', 'user Ca hai -> Co so ca hai');
   assert.equal(doc.getElementById('vdDocList').hidden, true);
   for (const id of ['vdDocsTable', 'vdKind', 'vdFrom', 'vdTo', 'vdSearch', 'vdDocsExport', 'vdDocsPager', 'vdChips', 'vdRunDocs', 'vdAddCodes']) {
@@ -224,13 +277,108 @@ test('xu ly chung tu: bang co Ghi chu tong canh Ghi chu hang hoa, ly do khi re c
   doc.querySelector('[data-qr-zoom]').click();
   const viewer = doc.getElementById('vdQrViewer');
   assert.equal(viewer.hidden, false);
-  assert.equal(doc.getElementById('vdQrViewerImg').src, 'https://img.vietqr.io/image/MB-606266688888-compact2.png?amount=1500000');
+  assert.equal(doc.getElementById('vdQrViewerImg').src, 'https://img.vietqr.io/image/MB-606266688888-compact2.svg?amount=1500000');
   assert.match(doc.getElementById('vdQrViewerCaption').textContent, /Tất cả nguồn — 1,500,000đ/);
   doc.dispatchEvent(new doc.defaultView.KeyboardEvent('keydown', { key: 'Escape' }));
   assert.equal(viewer.hidden, true);
-  doc.querySelector('[data-qr-download]').click();
+});
+
+test('xu ly chung tu: Tai ma QR doi anh SVG sang PNG that tren trinh duyet, khong fetch img.vietqr.io', async t => {
+  const { doc, window, calls } = await setup(t);
+  const stub = stubQrImage(window);
+  await pasteAndRun(doc);
+  doc.querySelector('[data-qr-mode="khong_vat"]').click();
+  doc.querySelector('[data-qr-generate]').click();
   await tick(); await tick();
-  assert.ok(calls.some(c => c.key.startsWith('GET /image/MB-606266688888-compact2.png')), 'tai anh QR ve');
+  const shown = doc.querySelector('[data-qr-result] img');
+  assert.equal(shown.getAttribute('crossorigin'), 'anonymous', 'anh hien thi cung che do CORS voi anh chuyen PNG');
+  doc.querySelector('[data-qr-download]').click();
+  await settle(window);
+  assert.equal(calls.some(c => c.key.startsWith('GET /image/')), false, 'khong fetch anh VietQR');
+  assert.equal(stub.images.length, 1);
+  assert.equal(stub.images[0].crossOrigin, 'anonymous');
+  assert.equal(stub.images[0].src, 'https://img.vietqr.io/image/MB-606266688888-compact2.svg?amount=1500000');
+  assert.equal(stub.blobs.length, 1);
+  assert.equal(stub.blobs[0].type, 'image/png');
+  assert.deepEqual(stub.pngRequests, [{ type: 'image/png', width: 540, height: 640 }]);
+  assert.deepEqual(stub.downloads, ['QR_tat-ca-nguon_1500000.png']);
+});
+
+test('xu ly chung tu: Tai ma QR gap anh loi -> mo anh o tab moi (du phong)', async t => {
+  const { doc, window } = await setup(t);
+  const stub = stubQrImage(window, { fail: true });
+  const opened = [];
+  window.open = (...args) => { opened.push(args); };
+  await pasteAndRun(doc);
+  doc.querySelector('[data-qr-mode="khong_vat"]').click();
+  doc.querySelector('[data-qr-generate]').click();
+  await tick(); await tick();
+  doc.querySelector('[data-qr-download]').click();
+  await settle(window);
+  assert.deepEqual(stub.downloads, []);
+  assert.deepEqual(opened, [['https://img.vietqr.io/image/MB-606266688888-compact2.svg?amount=1500000', '_blank', 'noopener']]);
+});
+
+test('tab Tao QR: Sao chep anh dua PNG that (promise) vao clipboard; Tai mat PNG; anh hien thi co crossorigin', async t => {
+  const { doc, window, calls } = await setup(t, { hash: '#tao-qr' });
+  const stub = stubQrImage(window);
+  const items = [];
+  window.ClipboardItem = class { constructor(data) { this.data = data; items.push(data); } };
+  Object.defineProperty(window.navigator, 'clipboard', { configurable: true, value: { write: async list => { await Promise.all(Object.values(list[0].data)); } } });
+  const select = doc.getElementById('vdManualAccount');
+  select.value = 'tks_group';
+  select.dispatchEvent(new window.Event('change'));
+  doc.getElementById('vdManualGenerate').click();
+  await tick(); await tick();
+  assert.equal(doc.querySelector('#vdManualResult img').getAttribute('crossorigin'), 'anonymous');
+  assert.equal(doc.getElementById('vdQrViewerImg').getAttribute('crossorigin'), 'anonymous');
+  doc.getElementById('vdQrCopy').click();
+  await settle(window);
+  assert.deepEqual(items.map(data => Object.keys(data)), [['image/png']]);
+  const pending = items[0]['image/png'];
+  assert.equal(typeof pending.then, 'function', 'Safari: ClipboardItem phai nhan promise, khong phai blob da await');
+  const blob = await pending;
+  assert.equal(blob.type, 'image/png');
+  assert.deepEqual(stub.pngRequests, [{ type: 'image/png', width: 540, height: 640 }]);
+  assert.equal(stub.images[0].crossOrigin, 'anonymous');
+  assert.match(doc.getElementById('vdQrActionMsg').textContent, /^Đã sao chép ảnh QR/);
+  doc.getElementById('vdQrDownload').click();
+  await settle(window);
+  assert.equal(calls.some(c => c.key.startsWith('GET /image/')), false);
+  assert.deepEqual(stub.downloads, ['QR_mb-tks_1500000.png']);
+  assert.equal(stub.blobs.at(-1).type, 'image/png');
+  assert.deepEqual(stub.pngRequests.at(-1), { type: 'image/png', width: 540, height: 640 });
+});
+
+test('xu ly chung tu: Tai ma QR cho img.decode() xong moi ve; decode loi van ve va tai tiep', async t => {
+  for (const decode of ['resolve', 'reject']) {
+    const { doc, window } = await setup(t);
+    const stub = stubQrImage(window, { decode });
+    await pasteAndRun(doc);
+    doc.querySelector('[data-qr-mode="khong_vat"]').click();
+    doc.querySelector('[data-qr-generate]').click();
+    await tick(); await tick();
+    doc.querySelector('[data-qr-download]').click();
+    await settle(window);
+    assert.equal(stub.images[0].decodeCalls, 1, 'decode ' + decode + ': da goi img.decode()');
+    assert.deepEqual(stub.downloads, ['QR_tat-ca-nguon_1500000.png'], 'decode ' + decode);
+  }
+});
+
+test('tab Tao QR: Sao chep anh gap anh loi -> bao loi, huong dan dung Tai ma QR', async t => {
+  const { doc, window } = await setup(t, { hash: '#tao-qr' });
+  stubQrImage(window, { fail: true });
+  window.ClipboardItem = class { constructor(data) { this.data = data; } };
+  Object.defineProperty(window.navigator, 'clipboard', { configurable: true, value: { write: async list => { await Promise.all(Object.values(list[0].data)); } } });
+  const select = doc.getElementById('vdManualAccount');
+  select.value = 'tks_group';
+  select.dispatchEvent(new window.Event('change'));
+  doc.getElementById('vdManualGenerate').click();
+  await tick(); await tick();
+  doc.getElementById('vdQrCopy').click();
+  await settle(window);
+  assert.equal(doc.getElementById('vdQrActionMsg').dataset.tone, 'error');
+  assert.match(doc.getElementById('vdQrActionMsg').textContent, /Trình duyệt không cho sao chép ảnh/);
 });
 
 test('sap xep 2 cot nhu app cu, xuat Excel theo dung thu tu dang hien thi', async t => {
@@ -473,4 +621,257 @@ test('allocation headers support three priorities while keeping legacy dropdowns
   assert.equal(doc.querySelector('[data-sort-field="SL"] .sort-indicator').textContent,'▼2');
   click('SL');
   assert.equal(doc.querySelector('[data-sort-field="MÃ SP"] .sort-indicator').textContent,'▲▼');
+});
+
+test('tai danh sach tai khoan: /meta loi thi tu thu lai; trang thai Sheets loi khong anh huong', async t => {
+  let failures = 2;
+  const responses = api();
+  const meta = responses['GET /meta'];
+  responses['GET /meta'] = () => (failures-- > 0 ? undefined : meta);
+  delete responses['GET /master-data/status'];
+  const { doc, calls } = await setup(t, { hash: '#tao-qr', responses });
+  assert.equal(calls.filter(c => c.key === 'GET /meta').length, 3, '2 lan loi + 1 lan thanh cong');
+  assert.ok(doc.getElementById('vdManualAccount').querySelector('option[value="tks_group"]'));
+  assert.equal(doc.getElementById('vdAccountsRetry').hidden, true);
+});
+
+test('tai danh sach tai khoan: het luot thu lai -> bao loi + nut Thu lai; bam Thu lai tai duoc', async t => {
+  const responses = api();
+  const meta = responses['GET /meta'];
+  delete responses['GET /meta'];
+  const { doc, window, calls } = await setup(t, { hash: '#tao-qr', responses });
+  assert.equal(calls.filter(c => c.key === 'GET /meta').length, 4, '1 lan dau + 3 lan thu lai');
+  const select = doc.getElementById('vdManualAccount');
+  assert.equal(select.options.length, 1);
+  assert.equal(select.options[0].textContent, 'Không tải được danh sách tài khoản');
+  assert.equal(doc.getElementById('vdAccountsRetry').hidden, false);
+  assert.equal(doc.getElementById('vdManualGenerate').disabled, true);
+  assert.match(doc.getElementById('vdQrBlocker').textContent, /Chưa có danh sách tài khoản/);
+  responses['GET /meta'] = meta;
+  doc.getElementById('vdAccountsRetry').click();
+  await settle(window);
+  assert.ok(select.querySelector('option[value="tks_group"]'));
+  assert.equal(doc.getElementById('vdAccountsRetry').hidden, true);
+});
+
+test('chuan hoa noi dung o trang giong het may chu', async t => {
+  const { window } = await setup(t, { hash: '#tao-qr' });
+  const samples = ['Hóa đơn HD028345, chị Lan', 'ĐẶNG THỊ ÁNH NGUYỆT', '  HD1   HD2\tDH3  ', 'TT #12/11 (gấp)!', '', 'Ưu đãi — 10% ✓'];
+  for (const sample of samples) {
+    assert.equal(window.TKSVatDraft.normalizeTransferContent(sample), vietqr.normalizeTransferContent(sample), sample);
+  }
+});
+
+test('tab Tao QR: noi dung xem truoc + qua 50 ky tu thi khoa nut; so tien de trong van tao duoc', async t => {
+  const { doc, window, calls } = await setup(t, { hash: '#tao-qr' });
+  const select = doc.getElementById('vdManualAccount');
+  select.value = 'shc';
+  select.dispatchEvent(new window.Event('change'));
+  const content = doc.getElementById('vdManualContent');
+  const preview = doc.getElementById('vdManualContentPreview');
+  assert.equal(content.hasAttribute('maxlength'), false);
+  assert.equal(preview.hidden, true, 'chua nhap thi an');
+  content.value = 'Hóa đơn HD1, chị Lan';
+  content.dispatchEvent(new window.Event('input'));
+  assert.equal(preview.hidden, false);
+  assert.equal(preview.textContent, 'Nội dung trong QR: Hoa don HD1 chi Lan (19/50)');
+  assert.equal(doc.getElementById('vdManualGenerate').disabled, false, 'so tien trong van tao duoc');
+  content.value = Array.from({ length: 8 }, (_, i) => `HD02834${i}`).join(', ');
+  content.dispatchEvent(new window.Event('input'));
+  assert.equal(preview.dataset.tone, 'warning');
+  assert.match(preview.textContent, /\(71\/50\) — tối đa 50 ký tự/);
+  assert.equal(doc.getElementById('vdManualGenerate').disabled, true);
+  assert.match(doc.getElementById('vdQrBlocker').textContent, /tối đa 50 ký tự/);
+  doc.getElementById('vdManualGenerate').click();
+  await tick();
+  assert.equal(calls.filter(c => c.key === 'POST /qr/url').length, 0, 'khong goi tao QR');
+  content.value = 'HD1 HD2';
+  content.dispatchEvent(new window.Event('input'));
+  doc.getElementById('vdManualGenerate').click();
+  await tick(); await tick();
+  assert.equal(calls.find(c => c.key === 'POST /qr/url').body.addInfo, 'HD1 HD2');
+});
+
+test('tab Tao QR: nhap tay sai ma ngan hang / so TK qua 19 ky tu / so tien qua 13 chu so thi khoa nut', async t => {
+  const { doc, window } = await setup(t, { hash: '#tao-qr' });
+  const select = doc.getElementById('vdManualAccount');
+  select.value = '__manual__';
+  select.dispatchEvent(new window.Event('change'));
+  const set = (id, value) => { doc.getElementById(id).value = value; doc.getElementById(id).dispatchEvent(new window.Event('input')); };
+  const button = doc.getElementById('vdManualGenerate');
+  const blocker = doc.getElementById('vdQrBlocker');
+  set('vdManualBank', 'Vietcombank');
+  set('vdManualNo', '1069579742');
+  assert.equal(button.disabled, false, 'ten ngan ngan hang cung hop le');
+  assert.ok(doc.querySelector('#vdBankList option[value="VCB"]'), 'goi y ma ngan hang');
+  set('vdManualBank', 'Ngân hàng lạ');
+  assert.equal(button.disabled, true);
+  assert.match(blocker.textContent, /không có trong danh sách VietQR/);
+  const pressEnter = () => doc.getElementById('vdManualAmount').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  pressEnter();
+  assert.equal(doc.activeElement.id, 'vdManualBank', 'ma ngan hang sai -> focus o ngan hang');
+  set('vdManualBank', 'vcb');
+  set('vdManualNo', '1'.repeat(20));
+  assert.equal(button.disabled, true);
+  assert.match(blocker.textContent, /tối đa 19 ký tự/);
+  pressEnter();
+  assert.equal(doc.activeElement.id, 'vdManualNo', 'ngan hang dung, so TK sai -> focus o so TK');
+  set('vdManualNo', '1069579742');
+  set('vdManualAmount', '12345678901234');
+  assert.equal(button.disabled, true);
+  assert.match(blocker.textContent, /tối đa 13 chữ số/);
+  set('vdManualAmount', '1000000');
+  assert.equal(button.disabled, false);
+});
+
+test('tab Tao QR: anh QR khong tai duoc -> bao loi, an anh va nut Sao chep / Tai', async t => {
+  const { doc, window } = await setup(t, { hash: '#tao-qr' });
+  const select = doc.getElementById('vdManualAccount');
+  select.value = 'tks_group';
+  select.dispatchEvent(new window.Event('change'));
+  doc.getElementById('vdManualGenerate').click();
+  await tick(); await tick();
+  assert.equal(doc.getElementById('vdQrPanel').dataset.state, 'success');
+  doc.querySelector('#vdManualResult img').dispatchEvent(new window.Event('error'));
+  assert.equal(doc.getElementById('vdQrPanel').dataset.state, 'error');
+  assert.equal(doc.getElementById('vdQrError').textContent, 'Không tải được ảnh QR từ VietQR — thử lại.');
+  assert.equal(doc.getElementById('vdManualResult').hidden, true);
+  assert.equal(doc.getElementById('vdQrActions').hidden, true);
+  assert.equal(doc.getElementById('vdManualGenerate').disabled, false, 'bam tao lai duoc');
+});
+
+test('xu ly chung tu: nguon khong co tai khoan cau hinh / che do gop -> o tai khoan trong, nut tao QR khoa', async t => {
+  const responses = api();
+  const alloc = responses['POST /allocate'];
+  responses['POST /allocate'] = { ...alloc, qr: { ...alloc.qr,
+    bySource: [alloc.qr.bySource[0], { ...alloc.qr.bySource[1], nguon: 'NGUỒN LẠ', defaultAccountKey: null }],
+    total: { ...alloc.qr.total, defaultAccountKey: null } } };
+  const { doc, window, calls } = await setup(t, { responses });
+  await pasteAndRun(doc);
+  const cards = doc.querySelectorAll('[data-qr-card]');
+  assert.equal(cards[0].querySelector('[data-qr-account]').value, 'tks_group');
+  assert.equal(cards[0].querySelector('[data-qr-generate]').disabled, false);
+  const strange = cards[1];
+  assert.equal(strange.querySelector('[data-qr-account]').value, '');
+  assert.equal(strange.querySelector('[data-qr-account] option').textContent, '— Chọn tài khoản nhận tiền —');
+  assert.equal(strange.querySelector('[data-qr-generate]').disabled, true);
+  assert.equal(strange.querySelector('[data-qr-reason]').textContent, 'Chọn tài khoản nhận tiền.');
+  const select = strange.querySelector('[data-qr-account]');
+  select.value = 'shc';
+  select.dispatchEvent(new window.Event('change', { bubbles: true }));
+  assert.equal(strange.querySelector('[data-qr-generate]').disabled, false);
+  assert.equal(strange.querySelector('[data-qr-reason]').hidden, true);
+  doc.querySelector('[data-qr-mode="khong_vat"]').click();
+  assert.equal(doc.querySelector('[data-qr-account]').value, '');
+  assert.equal(doc.querySelector('[data-qr-generate]').disabled, true);
+  assert.equal(calls.filter(c => c.key === 'POST /qr/url').length, 0);
+});
+
+test('xu ly chung tu: noi dung chuyen khoan qua 50 ky tu -> moi nut tao QR khoa; anh QR loi -> bao loi', async t => {
+  const { doc, window } = await setup(t);
+  await pasteAndRun(doc);
+  const transfer = doc.getElementById('vdTransfer');
+  const preview = doc.getElementById('vdTransferPreview');
+  assert.equal(preview.textContent, 'Nội dung trong QR: HD028345 DH050000 (17/50)');
+  transfer.value = Array.from({ length: 8 }, (_, i) => `HD02834${i}`).join(' ');
+  transfer.dispatchEvent(new window.Event('input'));
+  assert.equal(preview.dataset.tone, 'warning');
+  for (const button of doc.querySelectorAll('[data-qr-generate]')) assert.equal(button.disabled, true);
+  assert.equal(doc.querySelector('[data-qr-reason]').textContent, 'Nội dung trong QR tối đa 50 ký tự — rút gọn bớt.');
+  transfer.value = 'HD028345';
+  transfer.dispatchEvent(new window.Event('input'));
+  const card = doc.querySelector('[data-qr-card]');
+  card.querySelector('[data-qr-generate]').click();
+  await tick(); await tick();
+  card.querySelector('[data-qr-result] img').dispatchEvent(new window.Event('error'));
+  assert.equal(card.querySelector('[data-qr-result]').textContent.trim(), 'Không tải được ảnh QR từ VietQR — thử lại.');
+  assert.equal(card.querySelector('[data-qr-download]'), null);
+});
+
+test('xu ly chung tu: the QR khi chua tai duoc tai khoan -> ly do dung (khong noi "Chon tai khoan"); tai duoc thi het', async t => {
+  const responses = api();
+  const meta = responses['GET /meta'];
+  delete responses['GET /meta'];
+  const { doc, window, warns } = await setup(t, { responses });
+  assert.equal(warns.length, 1, 'het luot thu lai thi ghi 1 console.warn');
+  assert.match(String(warns[0][0]), /khong tai duoc danh sach tai khoan/);
+  await pasteAndRun(doc);
+  const card = doc.querySelector('[data-qr-card]');
+  assert.equal(card.querySelector('[data-qr-generate]').disabled, true);
+  assert.equal(card.querySelector('[data-qr-reason]').textContent, 'Không tải được danh sách tài khoản — tải lại trang.');
+  responses['GET /meta'] = meta;
+  doc.getElementById('vdAccountsRetry').click();
+  await settle(window);
+  assert.equal(doc.querySelector('[data-qr-card] [data-qr-generate]').disabled, false);
+  assert.equal(doc.querySelector('[data-qr-card] [data-qr-reason]').hidden, true);
+});
+
+test('xu ly chung tu: anh QR cu bao loi sau khi da co QR moi -> khong ghi de QR moi', async t => {
+  const { doc, window } = await setup(t);
+  await pasteAndRun(doc);
+  const card = doc.querySelector('[data-qr-card]');
+  const result = card.querySelector('[data-qr-result]');
+  card.querySelector('[data-qr-generate]').click();
+  await tick(); await tick();
+  const oldImg = result.querySelector('img');
+  card.querySelector('[data-qr-generate]').click();
+  await tick(); await tick();
+  const newImg = result.querySelector('img');
+  assert.notEqual(oldImg, newImg);
+  oldImg.dispatchEvent(new window.Event('error'));
+  assert.equal(result.querySelector('img'), newImg, 'loi cua anh cu bi bo qua');
+  assert.equal(result.querySelector('.vd-error'), null);
+});
+
+/** Dan 1 anh hoa don (Ctrl+V) vao tab Tao QR; parse-image tra theo responses. */
+async function pasteInvoice(window) {
+  window.createImageBitmap = async () => ({ width: 10, height: 10, close() {} });
+  window.HTMLCanvasElement.prototype.getContext = () => ({ fillRect() {}, drawImage() {}, fillStyle: '' });
+  window.HTMLCanvasElement.prototype.toBlob = function (callback) { callback(new window.Blob(['x'], { type: 'image/jpeg' })); };
+  const event = new window.Event('paste', { bubbles: true, cancelable: true });
+  const file = new window.File(['x'], 'a.png', { type: 'image/png' });
+  Object.defineProperty(event, 'clipboardData', { value: { items: [{ kind: 'file', type: 'image/png', getAsFile: () => file }] } });
+  window.document.dispatchEvent(event);
+  await settle(window);
+}
+
+test('tab Tao QR: hoa don doc xong truoc khi tai khoan ve -> panel khong tu mau thuan, ve sau thi hien dung tai khoan goi y', async t => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const responses = api({
+    'POST /qr/parse-image': { sellerName: 'CONG TY SHC', totalPayment: 1500000, amountStatus: 'ok', matchedAccountKeys: ['shc'], warnings: [] }
+  });
+  const meta = responses['GET /meta'];
+  responses['GET /meta'] = () => gate.then(() => meta);
+  const { doc, calls, init } = await setup(t, { hash: '#tao-qr', responses, awaitInit: false });
+  const window = doc.defaultView;
+  await pasteInvoice(window);
+  const info = doc.getElementById('vdInvoiceInfo');
+  assert.equal(info.hidden, false);
+  assert.match(info.textContent, /CONG TY SHC/);
+  assert.match(info.textContent, /Đang tải danh sách tài khoản…/);
+  assert.doesNotMatch(info.textContent, /Đã chọn tài khoản và tạo mã QR/);
+  assert.doesNotMatch(info.textContent, /Không khớp/);
+  assert.doesNotMatch(info.textContent, /Không có tài khoản khớp/);
+  assert.equal(calls.filter(c => c.key === 'POST /qr/url').length, 0);
+  release();
+  await init;
+  await settle(window);
+  assert.equal(doc.getElementById('vdManualAccount').value, 'shc');
+  assert.match(info.textContent, /Tài khoản gợi ý/);
+  assert.match(info.textContent, /MB SHC/);
+  assert.doesNotMatch(info.textContent, /Đang tải danh sách tài khoản/);
+  assert.doesNotMatch(info.textContent, /Đã chọn tài khoản và tạo mã QR/, 'khong tu tao QR khi tai khoan ve muon');
+  assert.equal(calls.filter(c => c.key === 'POST /qr/url').length, 0);
+});
+
+test('tab Tao QR: hoa don doc khi tai khoan da co -> van tu chon tai khoan + tao QR nhu cu', async t => {
+  const responses = api({
+    'POST /qr/parse-image': { sellerName: 'CONG TY SHC', totalPayment: 1500000, amountStatus: 'ok', matchedAccountKeys: ['shc'], warnings: [] }
+  });
+  const { doc, window, calls } = await setup(t, { hash: '#tao-qr', responses });
+  await pasteInvoice(window);
+  assert.equal(doc.getElementById('vdManualAccount').value, 'shc');
+  assert.match(doc.getElementById('vdInvoiceInfo').textContent, /Đã chọn tài khoản và tạo mã QR/);
+  assert.equal(calls.filter(c => c.key === 'POST /qr/url').length, 1);
 });

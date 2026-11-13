@@ -11,7 +11,11 @@ const VIETQR_IMAGE_BASE = 'https://img.vietqr.io/image';
 const COMMON_BANK_CODES = 'VCB (Vietcombank), MB (MBBank), ACB, TPB (TPBank), VIB, SHB, '
   + 'VPB (VPBank), MSB, OCB, BIDV, TCB (Techcombank), AGRIBANK, '
   + 'STB (Sacombank), VBA, ICB (VietinBank)';
-const MANUAL_FIELD_RE = /^[A-Za-z0-9]{2,25}$/;
+// Gioi han cua VietQR Quick Link: addInfo toi da 50 ky tu khong ky tu dac biet, so TK toi da 19
+// chu/so, so tien toi da 13 chu so. Vuot gioi han thi anh van ra nhung app ngan hang tu choi.
+const MAX_TRANSFER_CONTENT = 50;
+const MAX_AMOUNT_DIGITS = 13;
+const ACCOUNT_NO_RE = /^[A-Za-z0-9]{1,19}$/;
 
 function accountsByKey(config = vatDraftConfig) {
   return new Map(config.vietqr.accounts.map(account => [account.key, account]));
@@ -91,16 +95,34 @@ function buildVietqrImageUrl(account, { amount, addInfo, template = vatDraftConf
   const amountStr = amount && amount > 0 ? String(pyRound(amount)) : '';
   let query = `amount=${amountStr}&addInfo=${pyQuote(addInfo || '')}`;
   if (account.accountName) query += `&accountName=${pyQuote(account.accountName)}`;
-  return `${VIETQR_IMAGE_BASE}/${account.bankId}-${account.accountNo}-${template}.png?${query}`;
+  // Duoi .svg: thong bao VietQR 10/2026 chuyen Quick Link sang SVG; .png bi chuyen huong 301 va phan hoi 301 khong co CORS.
+  return `${VIETQR_IMAGE_BASE}/${account.bankId}-${account.accountNo}-${template}.svg?${query}`;
 }
 
-/** Ma ngan hang / so tai khoan nhap tay di thang vao duong dan URL nen chi cho chu + so. */
-function isValidManualField(value) {
-  return MANUAL_FIELD_RE.test(String(value || ''));
+/** So tai khoan nhap tay: di thang vao duong dan URL nen chi cho chu + so, toi da 19 ky tu. */
+function isValidAccountNo(value) {
+  return ACCOUNT_NO_RE.test(String(value ?? ''));
+}
+
+/**
+ * Noi dung chuyen khoan theo chuan VietQR: bo dau tieng Viet, doi ky tu khong phai chu/so thanh
+ * dau cach, gop dau cach. KHONG cat do dai — noi goi so voi MAX_TRANSFER_CONTENT va chan neu qua.
+ * public/vat-draft/vat-draft.js chep dung quy tac nay.
+ */
+function normalizeTransferContent(text) {
+  return String(text ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .replace(/[^A-Za-z0-9]+/g, ' ')
+    .trim();
 }
 
 module.exports = {
   COMMON_BANK_CODES,
+  MAX_TRANSFER_CONTENT,
+  MAX_AMOUNT_DIGITS,
   getAccountForSource,
   getAccountsForSeller,
   computeSourceAmounts,
@@ -108,5 +130,6 @@ module.exports = {
   formatAccountLabel,
   parseAmountInput,
   buildVietqrImageUrl,
-  isValidManualField
+  normalizeTransferContent,
+  isValidAccountNo
 };

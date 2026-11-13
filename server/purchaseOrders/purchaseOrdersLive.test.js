@@ -41,11 +41,20 @@ test('order columns can be selected for pinning and persist in the user layout',
  assert.deepEqual(JSON.parse(doc.defaultView.sessionStorage.getItem('purchase:buyer:v1')).pinnedColumns,['productCode','productName','supplier']);
  assert.ok(doc.querySelector('#orderTable th[data-key="supplier"].purchase-pinned-column'));
 });
+test('pinned column offsets follow a resized column so pinned headers stay flush',async t=>{
+ const p=await page(t),doc=p.w.document,table=doc.querySelector('#orderTable table'),right=table.querySelector('th[data-key="productName"]');
+ const before=parseFloat(right.style.left),handle=table.querySelector('th[data-key="productCode"] .tks-column-resizer');
+ handle.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));await tick();await tick();
+ assert.equal(parseFloat(right.style.left),before+10);assert.ok(table.querySelector('tbody td[data-field="productCode"]').classList.contains('purchase-pinned-column'));
+});
 test('Excel import requires a fresh snapshot download before file selection',async t=>{
  const p=await page(t),doc=p.w.document;doc.getElementById('import').click();
  assert.match(doc.getElementById('modalTitle').textContent,/Nhập Excel theo dữ liệu hiện tại/);
  assert.ok(doc.getElementById('downloadSnapshot'));assert.equal(doc.getElementById('importUploadArea').hidden,true);
  assert.equal(doc.querySelector('#modalBody #importFile').disabled,true);
+ assert.ok(doc.querySelector('#importDrop .import-drop-icon'));assert.match(doc.querySelector('#importDrop').textContent,/Kéo thả file Excel vào đây/);assert.match(doc.querySelector('#importDrop .import-choose').textContent,/Chọn file/);
+ p.w.URL.createObjectURL=()=> 'blob:test';p.w.URL.revokeObjectURL=()=>{};p.w.HTMLAnchorElement.prototype.click=function(){};p.w.fetch=async()=>({ok:true,blob:async()=>new p.w.Blob()});doc.getElementById('downloadSnapshot').click();for(let i=0;i<4;i++)await tick();
+ assert.equal(doc.getElementById('importUploadArea').hidden,false);assert.equal(doc.querySelector('#importFile').disabled,false);assert.match(doc.getElementById('importStatus').textContent,/Đã tải snapshot/);
 });
 test('pagination shows only pages one to three and arrows navigate the rest',async t=>{
  const extraRows=Array.from({length:150},(_,i)=>({id:String(i+2),rowKey:'D'+String(i+2).padStart(5,'0'),version:1,productCode:'P'+i,productName:'Item '+i,cartonCount:1,qtyPerCarton:1}));
@@ -265,6 +274,12 @@ test('NV manager stages RGB, status and new entries then saves the whole directo
  assert.equal(writes().length,1);assert.equal(writes()[0].options.method,'PUT');assert.match(writes()[0].url,/\/employees\/batch$/);
  const body=JSON.parse(writes()[0].options.body);assert.equal(body.entries.length,2);assert.deepEqual(body.entries.find(e=>e.id==='7'),{id:'7',version:4,name:'An mới',color:'#123456',isActive:false});assert.equal(body.entries.find(e=>e.id===null).name,'Bình');assert.ok(names().includes('Bình'));assert.equal(names().includes('An'),false);
  assert.equal(p.current.rows[0].buyer,undefined,'directory changes do not save order drafts');
+});
+
+test('employee colors appear on the first page load after the directory arrives without rerendering the table',async t=>{
+ const p=await page(t,{employees:[{id:'7',name:'An',color:'#2563EB',version:1,isActive:true}],extraRows:[{id:'3',rowKey:'D00003',productCode:'B',buyer:'An'}]}),cell=p.w.document.querySelector('#orderTable tr[data-id="3"] td[data-field="buyer"]'),select=cell.querySelector('select[data-edit="buyer"]');
+ assert.equal(cell.style.getPropertyValue('--buyer-color'),'#2563EB');assert.equal(select.style.getPropertyValue('--buyer-color'),'#2563EB');
+ assert.equal(p.w.document.querySelectorAll('#orderTable tr[data-id]').length,2,'the color update should not rebuild or drop order rows');
 });
 
 test('measurement colors include exact plus/minus ten percent as good and only larger magnitudes as bad',async t=>{

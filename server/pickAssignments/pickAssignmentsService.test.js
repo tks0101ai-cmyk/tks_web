@@ -680,3 +680,87 @@ test('createOrderLoader: bang gop va chi tiet Kiot (lite) doc song song; ma chua
   assert.equal(loaded.status.code, 'SENT_TO_ACCOUNTANT');
   assert.equal(await loader({ branch: 'HN', orderCode: 'none' }), null);
 });
+
+// Toi uu 13/11/2026: confirm ghi ca don bang 1 cau (truoc ~3 vong DB / dong: don 10+ dong mat 5,8 s tren production).
+// Gia tri ky vong duoi day chup tu cach cu (lap tung dong) tren cung kich ban — cach moi phai cho DB giong het.
+test('confirm don nhieu dong: so cau SQL trong giao dich khong tang theo so dong; DB giong het cach ghi tung dong (pick, le, auto_delete, het hang con giu cho, ton am)', async () => {
+  const lines = [['AAA1', 250], ['BBB2', 50], ['CCC3', 20], ['DDD4', 20], ['EEE5', 20]]
+    .map(([productCode, quantity]) => ({ productCode, productName: 'Hàng ' + productCode, quantity, price: 10, discount: 0, note: '' }));
+  const orders = { DH001: order({ lines }), DH002: order({ orderCode: 'DH002', lines: [{ productCode: 'CCC3', quantity: 10, price: 10 }] }) };
+  const { db } = await fixture({ orders, positions: [
+    { code: 'AAA1', location: 'A01', notes: '3T x 100' }, { code: 'AAA1', location: 'B02', notes: '2T x 100' },
+    { code: 'BBB2', location: 'C03', notes: '5T x 10' }, { code: 'CCC3', location: 'D04', notes: '3T x 10' },
+    { code: 'DDD4', location: 'E05', notes: '2T x 10' }, { code: 'EEE5', location: 'F06', notes: '4T x 5' }
+  ] });
+  try {
+    let inTransaction = false;
+    const statements = [];
+    const query = (sql, params) => {
+      if (sql === 'BEGIN') inTransaction = true;
+      if (inTransaction) statements.push(sql);
+      if (sql === 'COMMIT' || sql === 'ROLLBACK') inTransaction = false;
+      return db.query(sql, params);
+    };
+    const pool = { query, connect: async () => ({ query, release() {} }) };
+    const service = createPickAssignmentsService({ getDb: () => pool, loadOrder: async ({ orderCode }) => orders[orderCode] || null });
+    const actor = { user: { id: 'ql-1', hoTen: 'Quản Lý A - 123', username: 'ql' } };
+    await service.assign(actor, assignBody([{ productCode: 'CCC3', positionId: 4, qty: 10 }], { orderCode: 'DH002' }));
+    const { assignment } = await service.assign(actor, assignBody([
+      { productCode: 'AAA1', positionId: 1, qty: 200 }, { productCode: 'AAA1', positionId: 2, qty: 50 }, { productCode: 'BBB2', positionId: 3, qty: 50 },
+      { productCode: 'CCC3', positionId: 4, qty: 20 }, { productCode: 'DDD4', positionId: 5, qty: 20 }, { productCode: 'EEE5', positionId: 6, qty: 20 }]));
+    // Sau khi giu cho: kho lay bot 1 thung o D04 (DH002 van giu 10) va o E05 (con 10 < 20 can nhat -> ghi ton am).
+    await db.query(`UPDATE stock_positions SET notes = '2T x 10' WHERE id = 4`);
+    await db.query(`UPDATE stock_positions SET notes = '1T x 10' WHERE id = 5`);
+    statements.length = 0;
+    const done = (await service.confirm(actor, assignment.id, { version: 1 })).assignment;
+    const writes = statements.filter(sql => !/^(BEGIN|COMMIT)$/.test(sql));
+    assert.equal(writes.length, 6, 'xac dinh co so + khoa co so + khoa chi dinh + doc dong + khoa VT/giu cho + 1 cau ghi ca don');
+    assert.equal(statements.at(-1), 'COMMIT');
+
+    const positions = (await db.query('SELECT id, notes, version, updated_by_user_id, updated_by_name FROM stock_positions ORDER BY id')).rows;
+    assert.deepEqual(positions.map(r => [Number(r.id), r.notes, r.version, r.updated_by_user_id, r.updated_by_name]), [
+      [1, '1T x 100', 2, 'ql-1', 'DH001'], [2, '2T x 100 - 50', 2, 'ql-1', 'DH001'],
+      [4, 'Hết hàng', 2, 'ql-1', 'DH001'], [5, '-1T x 10', 2, 'ql-1', 'DH001']
+    ], 'C03 / F06 het hang bi xoa; D04 het hang nhung DH002 con giu cho nen giu dong');
+    const history = (await db.query(`SELECT id, branch, position_id, code, location, action, field, old_value, new_value, summary, actor_user_id, actor_name
+      FROM stock_position_history ORDER BY id`)).rows;
+    const summary = picked => ({ orderCode: 'DH001', assignmentId: assignment.id, confirmedBy: 'Quản Lý A - 123', picked });
+    assert.deepEqual(history.map(r => [Number(r.id), r.branch, Number(r.position_id), r.code, r.location, r.action, r.field, r.old_value, r.new_value, r.summary, r.actor_user_id, r.actor_name]), [
+      [1, 'HN', 1, 'AAA1', 'A01', 'pick', 'notes', '3T x 100', '1T x 100', summary(200), 'ql-1', 'DH001'],
+      [2, 'HN', 2, 'AAA1', 'B02', 'pick', 'notes', '2T x 100', '2T x 100 - 50', summary(50), 'ql-1', 'DH001'],
+      [3, 'HN', 3, 'BBB2', 'C03', 'auto_delete', 'notes', '5T x 10', 'Hết hàng', summary(50), 'ql-1', 'DH001'],
+      [4, 'HN', 4, 'CCC3', 'D04', 'pick', 'notes', '2T x 10', 'Hết hàng', summary(20), 'ql-1', 'DH001'],
+      [5, 'HN', 5, 'DDD4', 'E05', 'pick', 'notes', '1T x 10', '-1T x 10', summary(20), 'ql-1', 'DH001'],
+      [6, 'HN', 6, 'EEE5', 'F06', 'auto_delete', 'notes', '4T x 5', 'Hết hàng', summary(20), 'ql-1', 'DH001']
+    ]);
+    const pickLines = (await db.query('SELECT position_id, picked_qty, spec_before, spec_after, position_snapshot FROM order_pick_lines WHERE assignment_id = $1 ORDER BY id', [assignment.id])).rows;
+    const snap = (code, notes, location) => ({ code, name: 'Tên ' + code, notes, location, arrivalDate: '' });
+    assert.deepEqual(pickLines.map(r => [Number(r.position_id), Number(r.picked_qty), r.spec_before, r.spec_after, r.position_snapshot]), [
+      [1, 200, '3T x 100', '1T x 100', snap('AAA1', '3T x 100', 'A01')], [2, 50, '2T x 100', '2T x 100 - 50', snap('AAA1', '2T x 100', 'B02')],
+      [3, 50, '5T x 10', 'Hết hàng', snap('BBB2', '5T x 10', 'C03')], [4, 20, '2T x 10', 'Hết hàng', snap('CCC3', '2T x 10', 'D04')],
+      [5, 20, '1T x 10', '-1T x 10', snap('DDD4', '1T x 10', 'E05')], [6, 20, '4T x 5', 'Hết hàng', snap('EEE5', '4T x 5', 'F06')]
+    ]);
+    assert.deepEqual([done.status, done.version, done.confirmedByName], ['confirmed', 2, 'Quản Lý A - 123']);
+    assert.deepEqual(done.history.map(h => [h.action, h.actorName, h.summary]), [
+      ['assign', 'Quản Lý A - 123', { lines: 5, quantity: 360, positions: 6 }], ['confirm', 'Quản Lý A - 123', { positions: 6 }]]);
+    const pickHistory = (await db.query(`SELECT assignment_id, branch, order_code, action, actor_user_id FROM order_pick_history WHERE action = 'confirm'`)).rows;
+    assert.deepEqual(pickHistory.map(r => [Number(r.assignment_id), r.branch, r.order_code, r.action, r.actor_user_id]), [[assignment.id, 'HN', 'DH001', 'confirm', 'ql-1']]);
+    const other = (await service.get(actor, { branch: 'HN', orderCode: 'DH002' })).assignment;
+    assert.deepEqual([other.status, other.lines[0].reservedQty], ['picking', 10], 'giu cho cua don khac khong bi dong');
+  } finally { await db.close(); }
+});
+
+test('confirm don nhieu dong: dong loi o giua thi khong ghi gi (rollback), loi bao dung dong dau tien theo thu tu', async () => {
+  const lines = [{ productCode: 'AAA1', quantity: 250, price: 10 }, { productCode: 'BBB2', quantity: 20, price: 10 }];
+  const { db, service, notesOf } = await fixture({ orders: { DH001: order({ lines }) } });
+  try {
+    const { assignment } = await service.assign(ctx(), assignBody([{ productCode: 'AAA1', positionId: 1, qty: 200 }, { productCode: 'AAA1', positionId: 2, qty: 50 }, { productCode: 'BBB2', positionId: 3, qty: 20 }]));
+    await db.query(`UPDATE stock_positions SET notes = 'rác' WHERE id = 2`);
+    await db.query(`DELETE FROM stock_positions WHERE id = 3`);
+    await assert.rejects(() => service.confirm(ctx(), assignment.id, { version: 1 }), error => error.code === 'STOCK_CHANGED' && /Vị trí B02 của mã AAA1/.test(error.message));
+    assert.equal(await notesOf(1), '3T x 100');
+    assert.equal((await db.query(`SELECT count(*)::int AS n FROM stock_position_history`)).rows[0].n, 0);
+    assert.equal((await db.query(`SELECT count(*)::int AS n FROM order_pick_lines WHERE picked_qty IS NOT NULL`)).rows[0].n, 0);
+    assert.equal((await service.get(ctx(), { branch: 'HN', orderCode: 'DH001' })).assignment.status, 'picking');
+  } finally { await db.close(); }
+});
