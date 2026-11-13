@@ -37,7 +37,6 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 - [ ] 12/11 — Thu mua: endpoint delta + client đồng bộ sau SSE/revision/lưu, giữ version/draft và reset fallback (không migration) — kiểm nhiều tab/reconnect, deploy rồi đo p50/p95 và payload production; xem [kế hoạch](docs/superpowers/plans/2026-11-12-purchase-delta-sync.md)
 - [ ] 12/11 — Thu mua: import Excel snapshot đã push `main` (`725e73d5`) và Render đã phục vụ JS mới — người dùng thử workbook thật và đồng bộ giữa 2 phiên; xem [kế hoạch](docs/superpowers/plans/2026-11-12-purchase-excel-snapshot-import.md)
 - [ ] 13/11 — Phiên đăng nhập trượt 7 ngày (nhánh `claude/extend-session-timeout-63d7e1`, không migration) — merge + deploy, xóa biến `JWT_EXPIRES_IN` trên Render (web + worker) nếu có
-- [ ] 13/11 — Nháp VAT: sửa lỗi tạo mã QR — tài khoản trống, QR sai chuẩn VietQR, ảnh SVG (PR #85, không migration) — merge + deploy, rồi thử tay trên Chrome và iPhone/Safari: Sao chép dán Zalo, Tải mã QR, quét bằng app ngân hàng
 
 ## Chỉ người vận hành làm được
 
