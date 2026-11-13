@@ -103,10 +103,10 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
   async function recordRetiredKey(client,row) {
     await client.query('INSERT INTO purchase_key_history(row_key,order_id,root_order_id,root_key) VALUES($1,$2,$3,$4)',[row.row_key,row.id,row.root_order_id,row.root_key]);
   }
-  async function releaseInactiveFamilyKey(client,rootOrderId,rootKey) {
+  async function releaseInactiveFamilyKey(client,rootOrderId,rootKey,exactKey=false) {
     const family=(await client.query('SELECT min(root_key) AS root_key,bool_or(deleted_at IS NULL) AS active FROM purchase_orders WHERE root_order_id=$1 GROUP BY root_order_id',[rootOrderId])).rows[0];
     if(family?.active)return false;
-    const key=family?.root_key||rootKey;
+    const key=exactKey?rootKey:family?.root_key||rootKey;
     if(!key)return false;
     const used=(await client.query(`SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE root_key=$1 AND root_order_id<>$2 AND deleted_at IS NULL)
       OR EXISTS(SELECT 1 FROM purchase_key_reservations WHERE row_key=$1 AND expires_at>now()) AS used`,[key,rootOrderId])).rows[0].used;
@@ -245,6 +245,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         const b=x.before_row,rootId=String(b.root_order_id??x.root_order_id);
         if(!familyKeys.has(rootId))familyKeys.set(rootId,await ensureFamilyKey(client,rootId,b.root_key));
       }
+      const displacedKeys=new Map(changes.filter(x=>x.before_row?.deleted_at&&x.after_row&&!x.after_row.deleted_at&&x.before_row.root_key!==x.after_row.root_key).map(x=>[String(x.before_row.root_order_id??x.root_order_id),x.after_row.root_key]));
       for(const x of changes.filter(x=>!x.before_row)){
         const current=(await client.query('SELECT * FROM purchase_orders WHERE id=$1',[x.row_id])).rows[0];
         if(current){await recordRetiredKey(client,current);await client.query('DELETE FROM purchase_orders WHERE id=$1',[x.row_id]);await releaseInactiveFamilyKey(client,current.root_order_id,current.root_key)}
@@ -257,6 +258,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         if(x.after_row&&!x.after_row.deleted_at&&b.deleted_at)await recordRetiredKey(client,{...b,id:x.row_id});
       }
       for(const family of new Map(changes.filter(x=>x.before_row?.deleted_at).map(x=>[String(x.before_row.root_order_id??x.root_order_id),x.before_row])).values())await releaseInactiveFamilyKey(client,family.root_order_id,family.root_key);
+      for(const [rootId,key] of displacedKeys)await releaseInactiveFamilyKey(client,rootId,key,true);
       await client.query("UPDATE purchase_operations SET undone_by=current_setting('purchase.operation_id')::uuid WHERE id=$1",[operationId]);
       await client.query("INSERT INTO purchase_undo_expected(operation_id,row_id,expected_row) SELECT p.id,r.row_id,to_jsonb(o) FROM purchase_operations p JOIN purchase_operation_rows r ON r.operation_id=p.id JOIN purchase_orders o ON o.id=r.row_id WHERE p.actor_id=$1 AND p.undone_by IS NULL AND p.id<>$2 AND r.row_id=ANY($3::bigint[]) AND (r.after_row-'version'-'updated_at')=(to_jsonb(o)-'version'-'updated_at') ON CONFLICT(operation_id,row_id) DO UPDATE SET expected_row=EXCLUDED.expected_row",[actor(user).id,operationId,changes.map(x=>x.row_id)]);
       await audit(client,user,'undo',{operationId,rows:changes.map(x=>({rowKey:x.before_row?.row_key||x.after_row?.row_key}))});

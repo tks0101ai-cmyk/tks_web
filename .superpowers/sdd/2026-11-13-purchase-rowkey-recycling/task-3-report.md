@@ -33,3 +33,9 @@ A follow-up review found three lifecycle gaps, now fixed:
 Failure-first results before the fix: all 3 new regressions failed (missing undo-create history, active D00001 incorrectly entered the pool after undo-restore, and unambiguous legacy history was omitted). After the fix, the focused regressions pass **3/3**.
 
 Final command result: **89 passed, 0 failed, 0 skipped** for `node --test purchaseOrders/purchaseOrdersService.test.js purchaseOrders/purchaseOrdersRoutes.test.js` (includes 3 nested migration assertions). No production migration or deployment was run.
+
+## Review follow-up: displaced replacement key
+
+A second undo-restore regression reproduced the leak: after restoring family A under D00002 because family B owns D00001, undoing A's restore left D00002 out of the pool and the next reservation returned D00003. Undo now captures the active after-snapshot root code before restoring the deleted snapshot, then offers that exact displaced code back only if the family has no active rows and no active family or live reservation owns it. The regression now confirms the next reservation receives D00002, B remains active on D00001, and creating another row plus splitting B succeeds.
+
+Failure-first: expected D00002, received D00003. After the fix, the focused regression passes. Final service+route command: **89 passed, 0 failed, 0 skipped** (includes 3 nested migration assertions).

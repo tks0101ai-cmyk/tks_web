@@ -506,7 +506,7 @@ test('undo restore never pools a root key now owned by another active family',as
  assert.notEqual((await service.list(manager)).rows.find(row=>row.id===old.id).rootKey,current.rootKey);
  await service.undo(manager,{operationId:restored.operationId});
  assert.equal((await db.query('SELECT count(*)::int n FROM purchase_key_pool WHERE row_key=$1',[current.rowKey])).rows[0].n,0);
- const next=await service.reserveKey(manager);assert.notEqual(next.rowKey,current.rowKey);
+ const next=await service.reserveKey(manager);assert.equal(next.rowKey,'D00002');assert.notEqual(next.rowKey,current.rowKey);
  const fresh=await service.create(manager,{...input(),productCode:'FRESH',rowKey:next.rowKey,reservationId:next.reservationId});
  const live=(await service.list(manager)).rows.find(row=>row.id===current.id);
  await service.applyPlan(manager,{splits:[{id:live.id,version:live.version,sourceQty:10,quantity:4,manual:true}]});
