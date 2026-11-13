@@ -247,7 +247,8 @@
                   <p class="vd-account-detail" id="vdAccountDetail" hidden></p>
                 </div>
                 <div class="vd-manual" id="vdManualFields" hidden>
-                  <label>Mã ngân hàng <input type="text" id="vdManualBank" class="vd-input" autocomplete="off" placeholder="VD: VCB, MB, ACB"></label>
+                  <label>Mã ngân hàng <input type="text" id="vdManualBank" class="vd-input" autocomplete="off" placeholder="VD: VCB, MB, ACB" list="vdBankList"></label>
+                  <datalist id="vdBankList"></datalist>
                   <label>Số tài khoản <input type="text" id="vdManualNo" class="vd-input" inputmode="numeric" autocomplete="off"></label>
                   <label class="vd-manual-wide">Tên chủ tài khoản <span class="vd-optional">không bắt buộc</span> <input type="text" id="vdManualName" class="vd-input" autocomplete="off"></label>
                   <p class="vd-hint vd-manual-wide" id="vdBankCodes"></p>
@@ -273,7 +274,8 @@
                 </fieldset>
                 <div class="vd-field">
                   <label for="vdManualContent">Nội dung chuyển khoản <span class="vd-optional">không bắt buộc</span></label>
-                  <input type="text" id="vdManualContent" class="vd-input" autocomplete="off" maxlength="200" placeholder="VD: mã hóa đơn, tên khách">
+                  <input type="text" id="vdManualContent" class="vd-input" autocomplete="off" placeholder="VD: mã hóa đơn" aria-describedby="vdManualContentPreview">
+                  <p class="vd-content-preview" id="vdManualContentPreview" aria-live="polite" hidden></p>
                 </div>
               </div>
             </div>

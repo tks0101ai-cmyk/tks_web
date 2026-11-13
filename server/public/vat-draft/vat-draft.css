@@ -372,3 +372,6 @@
 .vd-mono{font-family:var(--font-data)}
 @media(max-width:640px){.doc-modal-backdrop{padding:10px}.doc-modal{max-height:94vh}}
 @media(prefers-reduced-motion:reduce){.doc-modal{animation:none}}
+.vd-content-preview{margin:4px 0 0;font-size:12.5px;color:var(--muted);overflow-wrap:anywhere}
+.vd-content-preview[data-tone="warning"]{color:var(--amber);font-weight:600}
+.vd-content-preview[hidden]{display:none}

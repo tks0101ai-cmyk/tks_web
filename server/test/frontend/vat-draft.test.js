@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
 const { resolvePermissions, PAGE_FEATURES } = require('../../auth/featureRegistry');
+const vietqr = require('../../vatDraft/vietqr');
 
 const publicDir = path.join(__dirname, '../../public');
 const html = fs.readFileSync(path.join(publicDir, 'vat-draft/index.html'), 'utf8');
@@ -513,4 +514,85 @@ test('tai danh sach tai khoan: het luot thu lai -> bao loi + nut Thu lai; bam Th
   await settle(window);
   assert.ok(select.querySelector('option[value="tks_group"]'));
   assert.equal(doc.getElementById('vdAccountsRetry').hidden, true);
+});
+
+test('chuan hoa noi dung o trang giong het may chu', async t => {
+  const { window } = await setup(t, { hash: '#tao-qr' });
+  const samples = ['Hóa đơn HD028345, chị Lan', 'ĐẶNG THỊ ÁNH NGUYỆT', '  HD1   HD2\tDH3  ', 'TT #12/11 (gấp)!', '', 'Ưu đãi — 10% ✓'];
+  for (const sample of samples) {
+    assert.equal(window.TKSVatDraft.normalizeTransferContent(sample), vietqr.normalizeTransferContent(sample), sample);
+  }
+});
+
+test('tab Tao QR: noi dung xem truoc + qua 50 ky tu thi khoa nut; so tien de trong van tao duoc', async t => {
+  const { doc, window, calls } = await setup(t, { hash: '#tao-qr' });
+  const select = doc.getElementById('vdManualAccount');
+  select.value = 'shc';
+  select.dispatchEvent(new window.Event('change'));
+  const content = doc.getElementById('vdManualContent');
+  const preview = doc.getElementById('vdManualContentPreview');
+  assert.equal(content.hasAttribute('maxlength'), false);
+  assert.equal(preview.hidden, true, 'chua nhap thi an');
+  content.value = 'Hóa đơn HD1, chị Lan';
+  content.dispatchEvent(new window.Event('input'));
+  assert.equal(preview.hidden, false);
+  assert.equal(preview.textContent, 'Nội dung trong QR: Hoa don HD1 chi Lan (19/50)');
+  assert.equal(doc.getElementById('vdManualGenerate').disabled, false, 'so tien trong van tao duoc');
+  content.value = Array.from({ length: 8 }, (_, i) => `HD02834${i}`).join(', ');
+  content.dispatchEvent(new window.Event('input'));
+  assert.equal(preview.dataset.tone, 'warning');
+  assert.match(preview.textContent, /\(71\/50\) — tối đa 50 ký tự/);
+  assert.equal(doc.getElementById('vdManualGenerate').disabled, true);
+  assert.match(doc.getElementById('vdQrBlocker').textContent, /tối đa 50 ký tự/);
+  doc.getElementById('vdManualGenerate').click();
+  await tick();
+  assert.equal(calls.filter(c => c.key === 'POST /qr/url').length, 0, 'khong goi tao QR');
+  content.value = 'HD1 HD2';
+  content.dispatchEvent(new window.Event('input'));
+  doc.getElementById('vdManualGenerate').click();
+  await tick(); await tick();
+  assert.equal(calls.find(c => c.key === 'POST /qr/url').body.addInfo, 'HD1 HD2');
+});
+
+test('tab Tao QR: nhap tay sai ma ngan hang / so TK qua 19 ky tu / so tien qua 13 chu so thi khoa nut', async t => {
+  const { doc, window } = await setup(t, { hash: '#tao-qr' });
+  const select = doc.getElementById('vdManualAccount');
+  select.value = '__manual__';
+  select.dispatchEvent(new window.Event('change'));
+  const set = (id, value) => { doc.getElementById(id).value = value; doc.getElementById(id).dispatchEvent(new window.Event('input')); };
+  const button = doc.getElementById('vdManualGenerate');
+  const blocker = doc.getElementById('vdQrBlocker');
+  set('vdManualBank', 'Vietcombank');
+  set('vdManualNo', '1069579742');
+  assert.equal(button.disabled, false, 'ten ngan ngan hang cung hop le');
+  assert.ok(doc.querySelector('#vdBankList option[value="VCB"]'), 'goi y ma ngan hang');
+  set('vdManualBank', 'Ngân hàng lạ');
+  assert.equal(button.disabled, true);
+  assert.match(blocker.textContent, /không có trong danh sách VietQR/);
+  set('vdManualBank', 'vcb');
+  set('vdManualNo', '1'.repeat(20));
+  assert.equal(button.disabled, true);
+  assert.match(blocker.textContent, /tối đa 19 ký tự/);
+  set('vdManualNo', '1069579742');
+  set('vdManualAmount', '12345678901234');
+  assert.equal(button.disabled, true);
+  assert.match(blocker.textContent, /tối đa 13 chữ số/);
+  set('vdManualAmount', '1000000');
+  assert.equal(button.disabled, false);
+});
+
+test('tab Tao QR: anh QR khong tai duoc -> bao loi, an anh va nut Sao chep / Tai', async t => {
+  const { doc, window } = await setup(t, { hash: '#tao-qr' });
+  const select = doc.getElementById('vdManualAccount');
+  select.value = 'tks_group';
+  select.dispatchEvent(new window.Event('change'));
+  doc.getElementById('vdManualGenerate').click();
+  await tick(); await tick();
+  assert.equal(doc.getElementById('vdQrPanel').dataset.state, 'success');
+  doc.querySelector('#vdManualResult img').dispatchEvent(new window.Event('error'));
+  assert.equal(doc.getElementById('vdQrPanel').dataset.state, 'error');
+  assert.equal(doc.getElementById('vdQrError').textContent, 'Không tải được ảnh QR từ VietQR — thử lại.');
+  assert.equal(doc.getElementById('vdManualResult').hidden, true);
+  assert.equal(doc.getElementById('vdQrActions').hidden, true);
+  assert.equal(doc.getElementById('vdManualGenerate').disabled, false, 'bam tao lai duoc');
 });

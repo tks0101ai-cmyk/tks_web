@@ -75,6 +75,44 @@
     return digits ? Number(digits) : 0;
   }
 
+  // Gioi han VietQR — cung quy tac voi may chu (server/vatDraft/vietqr.js).
+  const MAX_TRANSFER_CONTENT = 50;
+  const MAX_AMOUNT = 9999999999999; // 13 chu so
+  const CONTENT_TOO_LONG = 'Nội dung trong QR tối đa 50 ký tự — rút gọn bớt.';
+  const AMOUNT_TOO_LONG = 'Số tiền tối đa 13 chữ số.';
+  const QR_IMAGE_ERROR = 'Không tải được ảnh QR từ VietQR — thử lại.';
+
+  /** Ban sao vietqr.normalizeTransferContent: bo dau, ky tu khong phai chu/so -> dau cach, khong cat. */
+  function normalizeTransferContent(text) {
+    return String(text ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D')
+      .replace(/[^A-Za-z0-9]+/g, ' ')
+      .trim();
+  }
+
+  /** Dong "Nội dung trong QR: … (n/50)" duoi o nhap; tra noi dung da chuan hoa + qua dai hay khong. */
+  function renderContentPreview(input, preview) {
+    const text = normalizeTransferContent(input.value);
+    const tooLong = text.length > MAX_TRANSFER_CONTENT;
+    preview.hidden = !text;
+    preview.dataset.tone = tooLong ? 'warning' : '';
+    preview.textContent = text
+      ? `Nội dung trong QR: ${text} (${text.length}/${MAX_TRANSFER_CONTENT})${tooLong ? ' — tối đa 50 ký tự, hãy rút gọn.' : ''}`
+      : '';
+    return { text, tooLong };
+  }
+
+  /** Ngan hang VietQR khop ma / ten ngan / BIN (danh sach tu /meta), khong phan biet hoa/thuong. */
+  function findBank(value) {
+    const target = String(value ?? '').trim().toLowerCase();
+    const banks = (state.meta && state.meta.vietqr && state.meta.vietqr.banks) || [];
+    if (!target) return null;
+    return banks.find(bank => [bank.bin, bank.code, bank.shortName].some(v => String(v).toLowerCase() === target)) || null;
+  }
+
   /** repr(float) của Python — CSV giữ đúng định dạng file của app cũ (pandas to_csv). */
   function pyFloatRepr(x) {
     if (Number.isNaN(x)) return 'nan';
@@ -756,21 +794,29 @@
     } else {
       select.innerHTML = accountOptions(state.matchedAccounts[0] || select.value || '', { manual: true, placeholder: true, starred: state.matchedAccounts });
       $('vdBankCodes').textContent = 'Mã ngân hàng VietQR thường gặp: ' + state.meta.vietqr.commonBankCodes + '.';
+      $('vdBankList').innerHTML = (state.meta.vietqr.banks || [])
+        .map(bank => `<option value="${escapeHtml(bank.code)}">${escapeHtml(bank.shortName)}</option>`).join('');
     }
     updateManualFields();
   }
 
-  /** Cung quy tac voi may chu (vietqr.isValidManualField): 2-25 chu/so. */
-  function manualFieldsValid() {
-    const ok = value => /^[A-Za-z0-9]{2,25}$/.test(String(value || '').trim());
-    return ok($('vdManualBank').value) && ok($('vdManualNo').value);
+  /** Ly do o nhap tay chua hop le ('' = hop le). Cung quy tac voi may chu (findBank + isValidAccountNo). */
+  function manualFieldsReason() {
+    const bank = $('vdManualBank').value.trim();
+    const accountNo = $('vdManualNo').value.trim();
+    if (!bank || !accountNo) return 'Nhập đủ Mã ngân hàng và Số tài khoản.';
+    if (!findBank(bank)) return 'Mã ngân hàng không có trong danh sách VietQR.';
+    if (!/^[A-Za-z0-9]{1,19}$/.test(accountNo)) return 'Số tài khoản chỉ gồm chữ và số, tối đa 19 ký tự.';
+    return '';
   }
 
   function updateManualFields() {
     const manual = $('vdManualAccount').value === MANUAL;
     $('vdManualFields').hidden = !manual;
     // Chi bao loi sau khi nguoi dung da roi o / bam tao — khong bao loi truoc khi thao tac.
-    $('vdManualInvalid').hidden = !(manual && state.manualTouched && !manualFieldsValid());
+    const manualReason = manual ? manualFieldsReason() : '';
+    $('vdManualInvalid').hidden = !(state.manualTouched && manualReason);
+    if (manualReason) $('vdManualInvalid').textContent = manualReason;
     const account = manual ? null : accountByKey($('vdManualAccount').value);
     const detail = $('vdAccountDetail');
     detail.hidden = !account;
@@ -786,16 +832,21 @@
   function qrFormValues() {
     const key = $('vdManualAccount').value;
     const manual = key === MANUAL;
+    const content = renderContentPreview($('vdManualContent'), $('vdManualContentPreview'));
     const values = {
       accountKey: manual || !key ? undefined : key,
       manual: manual ? { bankId: $('vdManualBank').value.trim(), accountNo: $('vdManualNo').value.trim(), accountName: $('vdManualName').value.trim() } : undefined,
       amount: parseAmount($('vdManualAmount').value),
-      addInfo: $('vdManualContent').value.trim(),
-      reason: ''
+      addInfo: content.text,
+      reason: '',
+      focus: null
     };
+    const manualReason = manual ? manualFieldsReason() : '';
     if (!accountsLoaded()) values.reason = 'Chưa có danh sách tài khoản — chờ tải xong hoặc bấm Thử lại.';
-    else if (!key) values.reason = 'Chọn tài khoản nhận tiền để tạo QR.';
-    else if (manual && !manualFieldsValid()) values.reason = 'Nhập đủ Mã ngân hàng và Số tài khoản.';
+    else if (!key) { values.reason = 'Chọn tài khoản nhận tiền để tạo QR.'; values.focus = 'vdManualAccount'; }
+    else if (manualReason) { values.reason = manualReason; values.focus = 'vdManualBank'; }
+    else if (values.amount > MAX_AMOUNT) { values.reason = AMOUNT_TOO_LONG; values.focus = 'vdManualAmount'; }
+    else if (content.tooLong) { values.reason = CONTENT_TOO_LONG; values.focus = 'vdManualContent'; }
     values.key = JSON.stringify([key, values.manual || null, values.amount, values.addInfo]);
     return values;
   }
@@ -879,7 +930,7 @@
     if (values.reason) {
       state.manualTouched = true;
       updateManualFields();
-      ($('vdManualAccount').value === MANUAL ? $('vdManualBank') : $('vdManualAccount')).focus();
+      if (values.focus) $(values.focus).focus();
       return;
     }
     if (state.invoiceBusy || state.qr.status === 'busy') return;
@@ -900,6 +951,13 @@
         <button type="button" class="vd-qr-zoom" data-qr-zoom title="Bấm để phóng to"><img src="${escapeHtml(data.url)}" alt="Mã QR chuyển khoản ${escapeHtml(intFormat.format(data.amount))}đ cho ${escapeHtml(label)}"></button>
         <div class="vd-qr-stale" hidden>Thông tin đã thay đổi —<br>bấm “Tạo lại mã QR”</div>
       </figure>`;
+      // Anh do img.vietqr.io tra: tai loi (mang / VietQR tu choi) thi bao loi, khong de khung anh vo.
+      $('vdManualResult').querySelector('img').addEventListener('error', () => {
+        if (state.qr.status !== 'done' || state.qr.url !== data.url) return;
+        state.qr = { status: 'error', key: values.key, error: QR_IMAGE_ERROR };
+        $('vdManualResult').innerHTML = '';
+        refreshQrPanel();
+      });
     } catch (error) {
       state.qr = { status: 'error', key: values.key, error: error.message };
     }
@@ -1510,5 +1568,5 @@
     await Promise.all([loadAccounts(), state.canProcess ? loadSheetsStatus() : null]);
   }
 
-  window.TKSVatDraft = { init, pyFloatRepr, csvCell, formatAmount, parseAmount, slug, state };
+  window.TKSVatDraft = { init, pyFloatRepr, csvCell, formatAmount, parseAmount, slug, normalizeTransferContent, state };
 })();
