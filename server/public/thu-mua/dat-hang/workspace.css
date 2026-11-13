@@ -528,7 +528,7 @@
 }
 .purchase-page #watchedContainer{top:calc(var(--tks-header-h,52px) + 4px)}
 .purchase-page #modal .dp-close{display:grid;place-items:center;flex:0 0 34px;width:34px;height:34px;padding:0;line-height:1}
-.purchase-page #modal:has(#downloadSnapshot){width:min(680px,calc(100vw - 32px))}
+.purchase-page #modal:has(#downloadSnapshot){width:min(900px,calc(100vw - 32px))}
 .purchase-page #modal:has(#downloadSnapshot) .dp-body{max-height:62dvh}
 .purchase-page #modal:has(#confirmImport){width:min(96vw,1800px);max-height:95dvh}
 .purchase-page #modal:has(#confirmImport) .dp-body{max-height:calc(95dvh - 74px)}
@@ -577,14 +577,14 @@
 /* Import: vùng chọn file thành một bề mặt rõ ràng, không để lộ nút file mặc định của trình duyệt. */
 #modalBody .import-status{display:flex;align-items:center;gap:9px;margin:14px 0;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel-2);color:var(--muted)}
 #modalBody .import-status-dot{width:8px;height:8px;flex:none;border-radius:50%;background:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 16%,transparent)}
-#modalBody .import-upload-area{margin-top:12px}
-#modalBody .import-drop{position:relative;display:flex;min-height:176px;box-sizing:border-box;flex-direction:column;align-items:center;justify-content:center;gap:9px;margin:0;padding:22px;border:1px dashed color-mix(in srgb,var(--primary) 65%,var(--border));border-radius:12px;background:linear-gradient(145deg,color-mix(in srgb,var(--primary) 9%,var(--panel-2)),var(--panel-2) 68%);text-align:center;transition:border-color .16s ease,background .16s ease,transform .16s ease}
+#modalBody .import-upload-area{width:100%;margin-top:12px}
+.purchase-page #modalBody label.import-drop{position:relative;display:flex;width:100%;min-height:230px;box-sizing:border-box;flex-direction:column;align-items:center;justify-content:center;gap:12px;margin:0;padding:28px;border:1px dashed color-mix(in srgb,var(--primary) 65%,var(--border));border-radius:12px;background:linear-gradient(145deg,color-mix(in srgb,var(--primary) 9%,var(--panel-2)),var(--panel-2) 68%);text-align:center;transition:border-color .16s ease,background .16s ease,transform .16s ease}
 #modalBody .import-drop:hover,#modalBody .import-drop.dragging{border-style:solid;border-color:var(--primary);background:color-mix(in srgb,var(--primary) 13%,var(--panel-2))}
 #modalBody .import-drop.dragging{transform:scale(1.005)}
-#modalBody .import-drop-icon{display:grid;width:40px;height:40px;place-items:center;border:1px solid color-mix(in srgb,var(--primary) 35%,var(--border));border-radius:12px;background:var(--panel);color:var(--primary);font-size:22px;font-weight:700}
-#modalBody .import-drop strong{font-size:13px;color:var(--text)}
-#modalBody .import-drop-hint{font-size:11px;color:var(--muted)}
-#modalBody .import-choose{display:inline-flex;align-items:center;min-height:30px;margin-top:2px;padding:0 13px;border:1px solid var(--border);border-radius:7px;background:var(--panel);color:var(--text);font-size:11px;font-weight:700}
+.purchase-page #modalBody .import-drop-icon{display:grid;width:48px;height:48px;place-items:center;border:1px solid color-mix(in srgb,var(--primary) 35%,var(--border));border-radius:14px;background:var(--panel);color:var(--primary);font-size:25px;font-weight:700}
+.purchase-page #modalBody .import-drop strong{font-size:15px;color:var(--text)}
+.purchase-page #modalBody .import-drop-hint{font-size:12px;color:var(--muted)}
+.purchase-page #modalBody .import-choose{display:inline-flex;align-items:center;min-height:36px;margin-top:2px;padding:0 16px;border:1px solid var(--border);border-radius:7px;background:var(--panel);color:var(--text);font-size:12px;font-weight:700}
 #modalBody .import-drop:hover .import-choose{border-color:var(--primary);color:var(--primary)}
 #modalBody .import-drop input[type=file]{position:absolute;inset:0;width:100%;height:100%;padding:0;opacity:0;cursor:pointer}
 #modalBody #importProgress{display:block;width:100%;height:8px;margin-top:10px;accent-color:var(--primary)}
@@ -595,4 +595,4 @@
 #modalBody .import-recovery label input{width:auto;margin:0}
 #modalBody .import-recovery small{font-size:9px;color:var(--muted)}
 #modalBody .import-archived{background:color-mix(in srgb,var(--primary) 5%,transparent)}
-@media(max-width:620px){#modalBody .import-drop{min-height:150px;padding:18px}}
+@media(max-width:620px){.purchase-page #modalBody label.import-drop{min-height:170px;padding:18px}}
