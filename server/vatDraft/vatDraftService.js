@@ -208,6 +208,10 @@ function createVatDraftService({ repository, masterData, vision = null, config =
       if (!account) throw badRequest('Tài khoản nhận tiền không hợp lệ.');
       accountLabel = vietqr.formatAccountLabel(account);
     }
+    // So JSON (1e21 -> "1e+21") khong duoc bien thanh chuoi chu so sai: chi nhan so nguyen an toan, khong am.
+    if (typeof amount === 'number' && (!Number.isSafeInteger(amount) || amount < 0)) {
+      throw badRequest('Số tiền không hợp lệ.', 'VAT_DRAFT_QR_AMOUNT');
+    }
     const amountDigits = String(amount ?? '').replace(/[^\d]/g, '').replace(/^0+/, '');
     if (amountDigits.length > vietqr.MAX_AMOUNT_DIGITS) {
       throw badRequest(`Số tiền tối đa ${vietqr.MAX_AMOUNT_DIGITS} chữ số.`, 'VAT_DRAFT_QR_AMOUNT');

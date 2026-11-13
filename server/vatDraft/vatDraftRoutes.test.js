@@ -290,6 +290,8 @@ test('POST /qr/url: thieu / sai thong tin -> 400, khong tra URL', async () => {
   await bad({ manual: { bankId: 'VCB', accountNo: '1'.repeat(20) } }, 'VAT_DRAFT_QR_ACCOUNT_NO');
   await bad({ manual: { bankId: 'VCB', accountNo: '' } }, 'VAT_DRAFT_QR_ACCOUNT_NO');
   await bad({ accountKey: 'shc', amount: '12345678901234' }, 'VAT_DRAFT_QR_AMOUNT');
+  await bad({ accountKey: 'shc', amount: 1e21 }, 'VAT_DRAFT_QR_AMOUNT'); // JSON number -> "1e+21" khong duoc doc thanh "121"
+  await bad({ accountKey: 'shc', amount: -5 }, 'VAT_DRAFT_QR_AMOUNT');
   await bad({ accountKey: 'shc', addInfo: Array.from({ length: 8 }, (_, i) => `HD02834${i}`).join(' ') }, 'VAT_DRAFT_QR_CONTENT');
   const ok = await request('/qr/url', { method: 'POST', body: { accountKey: 'shc', amount: '9999999999999', addInfo: 'x'.repeat(50) } });
   assert.equal(ok.status, 200, 'dung 13 chu so va dung 50 ky tu van duoc');
