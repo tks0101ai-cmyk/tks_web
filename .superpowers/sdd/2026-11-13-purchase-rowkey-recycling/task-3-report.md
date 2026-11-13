@@ -21,3 +21,15 @@ Result: **86 tests passed, 0 failed, 0 skipped** (includes 3 nested migration as
 ## Handoff / scope
 
 The existing browser history caller in `server/public/thu-mua/dat-hang/purchase.js` still sends `rowKey`; Task 4 must switch it to `orderId` before this route change is deployed. That file was already dirty and was intentionally left untouched. No production migration or deploy was run.
+
+## Review follow-up fix
+
+A follow-up review found three lifecycle gaps, now fixed:
+
+- History by an `orderId` continues to work after undo-create physically removes the row by resolving `root_order_id` from immutable `purchase_operation_rows` snapshots. Reused display codes remain isolated by family ID.
+- Releasing an inactive family key now checks for another active family or an unexpired reservation using that code. Undoing a restore cannot put another family's live key back into the pool.
+- Legacy history entries without `operationId` are included only when candidate keys from current orders and immutable key assignments resolve to exactly one distinct `root_order_id`. Once another family has used that visible key, the legacy event is omitted for both families rather than attributed by display code alone.
+
+Failure-first results before the fix: all 3 new regressions failed (missing undo-create history, active D00001 incorrectly entered the pool after undo-restore, and unambiguous legacy history was omitted). After the fix, the focused regressions pass **3/3**.
+
+Final command result: **89 passed, 0 failed, 0 skipped** for `node --test purchaseOrders/purchaseOrdersService.test.js purchaseOrders/purchaseOrdersRoutes.test.js` (includes 3 nested migration assertions). No production migration or deployment was run.

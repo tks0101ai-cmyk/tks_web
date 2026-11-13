@@ -108,6 +108,9 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
     if(family?.active)return false;
     const key=family?.root_key||rootKey;
     if(!key)return false;
+    const used=(await client.query(`SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE root_key=$1 AND root_order_id<>$2 AND deleted_at IS NULL)
+      OR EXISTS(SELECT 1 FROM purchase_key_reservations WHERE row_key=$1 AND expires_at>now()) AS used`,[key,rootOrderId])).rows[0].used;
+    if(used)return false;
     await client.query('INSERT INTO purchase_key_pool(row_key) VALUES($1) ON CONFLICT(row_key) DO NOTHING',[key]);
     return true;
   }
@@ -369,7 +372,19 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
       actor(user);const containers=(await pool.query('SELECT * FROM product_containers')).rows,rows=withFreight(await readRows(pool),containers);
       const byId=new Map(containers.map(c=>[String(c.id),c]));return rows.map(row=>{const c=byId.get(String(row.contId));return {...row,container:c?.name||'CONT CHỜ XẾP',status:c?.status||0,...calculations.row(row,row.freightAmount)}});
     },
-    async history(user,orderId) {actor(user);if(!/^[1-9]\d*$/.test(String(orderId||''))||BigInt(orderId)>9223372036854775807n)throw fail(400,'ORDER_ID_INVALID','Mã dòng nội bộ không hợp lệ.');const root=(await pool.query('SELECT root_order_id FROM purchase_orders WHERE id=$1',[String(orderId)])).rows[0]?.root_order_id;if(root==null)return [];return (await pool.query("SELECT h.* FROM purchase_history h WHERE EXISTS(SELECT 1 FROM purchase_operation_rows r WHERE r.operation_id::text=h.summary->>'operationId' AND r.root_order_id=$1) ORDER BY h.id DESC LIMIT 500",[root])).rows}
+    async history(user,orderId) {actor(user);if(!/^[1-9]\d*$/.test(String(orderId||''))||BigInt(orderId)>9223372036854775807n)throw fail(400,'ORDER_ID_INVALID','Mã dòng nội bộ không hợp lệ.');const root=(await pool.query('SELECT COALESCE((SELECT root_order_id FROM purchase_orders WHERE id=$1),(SELECT root_order_id FROM purchase_operation_rows WHERE row_id=$1 ORDER BY operation_id LIMIT 1)) AS root_order_id',[String(orderId)])).rows[0]?.root_order_id;if(root==null)return [];return (await pool.query(`SELECT h.* FROM purchase_history h WHERE EXISTS(
+        SELECT 1 FROM purchase_operation_rows row_history WHERE row_history.operation_id::text=h.summary->>'operationId' AND row_history.root_order_id=$1
+      ) OR (h.summary->>'operationId' IS NULL AND EXISTS(
+        SELECT 1 FROM (
+          SELECT root_key FROM purchase_orders WHERE root_order_id=$1
+          UNION SELECT root_key FROM purchase_key_history WHERE root_order_id=$1
+        ) AS family_keys
+        WHERE h.summary::text ~ ('"'||family_keys.root_key||'(\\.(01|02))*"')
+          AND (SELECT count(DISTINCT assignments.root_order_id) FROM (
+            SELECT root_order_id FROM purchase_orders WHERE root_key=family_keys.root_key
+            UNION SELECT root_order_id FROM purchase_key_history WHERE root_key=family_keys.root_key
+          ) AS assignments)=1
+      )) ORDER BY h.id DESC LIMIT 500`,[root])).rows}
   };
 }
 module.exports = { createPurchaseOrdersService, jsRow, normalizeName };

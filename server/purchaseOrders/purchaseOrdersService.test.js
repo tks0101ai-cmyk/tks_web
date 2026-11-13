@@ -488,6 +488,41 @@ test('undoing a newly created row returns its key to the pool',async()=>{
  assert.equal((await db.query('SELECT count(*)::int n FROM purchase_orders WHERE id=$1',[created.id])).rows[0].n,0);
  const next=await service.reserveKey(manager);assert.equal(next.rowKey,created.rowKey);
 });
+test('history by immutable ID survives undo-create and remains isolated after key reuse',async()=>{
+ const reservation=await service.reserveKey(manager),removed=await service.create(manager,{...input(),rowKey:reservation.rowKey,reservationId:reservation.reservationId});
+ await service.undo(manager,{operationId:removed.operationId});
+ const afterUndo=await service.history(manager,removed.id);assert.ok(afterUndo.some(row=>row.action==='create'));assert.ok(afterUndo.some(row=>row.action==='undo'));
+ const reused=await service.reserveKey(manager),current=await service.create(manager,{...input(),productCode:'CURRENT',rowKey:reused.rowKey,reservationId:reused.reservationId});
+ assert.equal(current.rowKey,removed.rowKey);
+ const oldHistory=await service.history(manager,removed.id),currentHistory=await service.history(manager,current.id);
+ assert.ok(oldHistory.some(row=>row.action==='create'));assert.ok(oldHistory.every(row=>row.summary.operationId!==current.operationId));
+ assert.ok(currentHistory.some(row=>row.summary.operationId===current.operationId));assert.ok(currentHistory.every(row=>row.summary.operationId!==removed.operationId));
+});
+test('undo restore never pools a root key now owned by another active family',async()=>{
+ const first=await service.reserveKey(manager),old=await service.create(manager,{...input(),rowKey:first.rowKey,reservationId:first.reservationId});
+ await service.remove(manager,{rows:[{id:old.id,version:old.version}]});
+ const reused=await service.reserveKey(manager),current=await service.create(manager,{...input(),productCode:'CURRENT',rowKey:reused.rowKey,reservationId:reused.reservationId});
+ const trash=(await service.trash(manager)).find(row=>row.id===old.id),restored=await service.restore(manager,{id:old.id,version:trash.version});
+ assert.notEqual((await service.list(manager)).rows.find(row=>row.id===old.id).rootKey,current.rootKey);
+ await service.undo(manager,{operationId:restored.operationId});
+ assert.equal((await db.query('SELECT count(*)::int n FROM purchase_key_pool WHERE row_key=$1',[current.rowKey])).rows[0].n,0);
+ const next=await service.reserveKey(manager);assert.notEqual(next.rowKey,current.rowKey);
+ const fresh=await service.create(manager,{...input(),productCode:'FRESH',rowKey:next.rowKey,reservationId:next.reservationId});
+ const live=(await service.list(manager)).rows.find(row=>row.id===current.id);
+ await service.applyPlan(manager,{splits:[{id:live.id,version:live.version,sourceQty:10,quantity:4,manual:true}]});
+ assert.equal((await db.query('SELECT count(*)::int n FROM purchase_orders WHERE root_order_id=$1 AND deleted_at IS NULL',[current.id])).rows[0].n,2);
+ assert.notEqual(fresh.rowKey,current.rowKey);
+});
+test('legacy history only follows a display key while its family assignment is unambiguous',async()=>{
+ const first=await service.reserveKey(manager),old=await service.create(manager,{...input(),rowKey:first.rowKey,reservationId:first.reservationId});
+ await db.query("INSERT INTO purchase_history(action,actor_id,actor_name,summary) VALUES('legacy_edit',$1,$2,$3)",[manager.id,manager.hoTen,JSON.stringify({rowKey:old.rowKey})]);
+ assert.ok((await service.history(manager,old.id)).some(row=>row.action==='legacy_edit'));
+ await service.remove(manager,{rows:[{id:old.id,version:old.version}]});
+ const reused=await service.reserveKey(manager),current=await service.create(manager,{...input(),productCode:'CURRENT',rowKey:reused.rowKey,reservationId:reused.reservationId});
+ assert.equal(current.rowKey,old.rowKey);
+ assert.ok(!(await service.history(manager,old.id)).some(row=>row.action==='legacy_edit'));
+ assert.ok(!(await service.history(manager,current.id)).some(row=>row.action==='legacy_edit'));
+});
 test('undo owns immutable snapshots, handles both split branches atomically and rejects another actor or stale row',async()=>{
  const a=await service.create(manager,input());const op=await service.applyPlan(manager,{splits:[{id:a.id,version:a.version,sourceQty:10,quantity:4,manual:true}]});await assert.rejects(service.undo({id:'other'},{operationId:op.operationId}));await service.undo(manager,{operationId:op.operationId});const rows=(await service.list(manager)).rows;assert.equal(rows.length,1);assert.equal(rows[0].rowKey,a.rowKey);assert.equal(rows[0].cartonCount,100);await assert.rejects(service.undo(manager,{operationId:op.operationId}));const update=await service.update(manager,a.id,{version:rows[0].version,changes:{cartonCount:9}});await service.update(manager,a.id,{version:update.version,changes:{supplier:'New'}});await assert.rejects(service.undo(manager,{operationId:update.operationId}),e=>e.code==='VERSION_CONFLICT');assert.equal((await service.list(manager)).rows[0].cartonCount,9);
 });
