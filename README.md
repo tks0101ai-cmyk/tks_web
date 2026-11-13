@@ -132,7 +132,7 @@ Mở `http://localhost:3000`.
 | `BUSINESS_CURRENT_MONTH_ENABLED`, `BUSINESS_CURRENT_MONTH_MIN_INTERVAL_MS` | Tính sẵn doanh số **tháng hiện tại** của Báo cáo kinh doanh vào `business_current_month_*` (migration `0068`). Mặc định bật (thiếu migration thì tự bỏ qua), `false` để tắt (báo cáo lại tính live); sàn giữa hai lượt tính nhanh mặc định 600000 ms (10 phút) |
 | `ORDER_LIFECYCLE_SPREADSHEET_ID` | Workbook vòng đời đơn hàng (`DonHang_HN`, `DonHang_SG`, `DonHang_MienNam` = đơn Bắc-Nam tính như đơn Hà Nội, `Khách_HN`/`Khách_SG` = khách/ship lấy tại kho, `KeToan_ChungTu` = đơn kế toán/chứng từ dùng chung HN+SG, `Lịch sử cập nhật`) |
 | `HR_SPREADSHEET_ID`, `HR_SPREADSHEET_ID_SG` | **Đã gỡ khỏi `config.js` và `.env.example` (2026-10-05)** — danh sách nhân sự nay ở Postgres `hr_employees`; biến còn trong môi trường cũ thì bỏ qua được |
-| `JWT_SECRET`, `JWT_EXPIRES_IN` | Ký phiên đăng nhập (bắt buộc / mặc định `12h`) |
+| `JWT_SECRET`, `AUTH_SESSION_IDLE_DAYS` | Ký phiên đăng nhập (bắt buộc) / số ngày không dùng web thì phiên hết hạn (mặc định `7`, phiên trượt) |
 | `GOOGLE_CLIENT_ID` | Đăng nhập Google (tùy chọn; thiếu thì ẩn nút) |
 | `ALLOW_SELF_REGISTRATION` | `true` để mở lại tự đăng ký tài khoản; mặc định khóa từ 2026-10-03 |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_APP_PASSWORD`, `SMTP_FROM_NAME` | Gửi email OTP (thiếu thì OTP ghi ra console) |
@@ -586,3 +586,9 @@ Cập nhật cuối: 12/11/2026.
 Import luôn bắt đầu bằng tải workbook đầy đủ từ `GET /api/purchase-orders/import/snapshot`; workbook có sheet `Đặt hàng`, hướng dẫn từng cột và manifest revision ẩn. Sửa đúng file đã tải rồi upload `.xlsx` (tối đa 10 MB, 10.000 dòng). Ô trống xóa giá trị; dòng bị bỏ khỏi file được tính xóa mềm và hiện rõ trong preview. Hệ thống từ chối snapshot cũ ở preview hoặc xác nhận, và chỉ áp dụng toàn bộ create/update/delete sau xác nhận hợp lệ. Không cần migration.
 
 Cập nhật cuối: 12/11/2026.
+
+## Phiên đăng nhập trượt 7 ngày (13/11/2026)
+
+Trước đây phiên (cookie `tks_auth`) sống cố định 12 giờ nên ngày nào cũng phải đăng nhập lại. Nay phiên **trượt**: `requireAuth` cấp lại token đủ hạn khi token đã cấp quá 24 giờ và tài khoản vẫn tồn tại, không bị khóa; chỉ khi không dùng web `AUTH_SESSION_IDLE_DAYS` ngày (mặc định 7) mới phải đăng nhập lại. Cookie cơ sở `tks_branch` sống và gia hạn cùng phiên. Module mới `server/auth/authSession.js` (cấp/gia hạn phiên). Bỏ biến `JWT_EXPIRES_IN` — **xóa biến này trên Render nếu có**. Không migration. Đổi mật khẩu chưa đăng xuất thiết bị khác (việc sau).
+
+Cập nhật gần nhất: 13/11/2026.

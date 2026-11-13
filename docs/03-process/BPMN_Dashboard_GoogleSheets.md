@@ -239,7 +239,7 @@ Bảng xuất được: Chi tiết giao dịch, Danh sách mã mới, Sản ph�
 ```
 --- Nhánh D1: Đăng nhập & khóa tạm ---
 [D1.1] POST /api/auth/login (tên tài khoản/email/SĐT + mật khẩu)
-       |-- Đúng -> cấp JWT cookie `tks_auth` (mặc định 12 giờ), xóa bộ đếm sai
+       |-- Đúng -> cấp JWT cookie `tks_auth` (phiên trượt 7 ngày không dùng), xóa bộ đếm sai
        |-- Tài khoản bị khóa -> 403 ACCOUNT_LOCKED
        `-- Sai -> tăng bộ đếm; sai 5 lần liên tiếp -> khóa đăng nhập 5 phút (trả thời gian đếm ngược)
 [D1.2] Đăng nhập Google (POST /api/auth/google, Google Identity ID token): chỉ vào được tài khoản ĐÃ CÓ (liên kết theo email/nhân sự);
@@ -384,4 +384,4 @@ Bảng xuất được: Chi tiết giao dịch, Danh sách mã mới, Sản ph�
 
 *Hết tài liệu BPMN v3.0*
 
-Cập nhật gần nhất: 30/10/2026 (Luồng G Vị trí hàng: gỡ module cũ đọc Google Sheets, chuyển sang VT Hà Nội/Sài Gòn trên Postgres).
+Cập nhật gần nhất: 13/11/2026 (phiên đăng nhập trượt 7 ngày; trước đó 30/10/2026: Luồng G Vị trí hàng gỡ module cũ đọc Google Sheets, chuyển sang VT Hà Nội/Sài Gòn trên Postgres).

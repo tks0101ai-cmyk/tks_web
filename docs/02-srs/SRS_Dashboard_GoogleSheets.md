@@ -272,7 +272,7 @@ Quyền mặc định ở trên tính từ `featureRegistry.js`; Quản lý có 
 
 | **Mã** | **Mô tả** | **Ưu tiên** | **Trạng thái** |
 |--------|-----------|-------------|----------------|
-| FR-08.1 | Đăng nhập `POST /api/auth/login` (tên tài khoản/email/SĐT + mật khẩu bcrypt), JWT cookie `tks_auth` (mặc định 12 giờ, `httpOnly`); sai mật khẩu 5 lần liên tiếp khóa 5 phút (HTTP 423, trả thời gian đếm ngược); tài khoản bị khóa → 403 `ACCOUNT_LOCKED`. | Cao | Hoàn thành |
+| FR-08.1 | Đăng nhập `POST /api/auth/login` (tên tài khoản/email/SĐT + mật khẩu bcrypt), JWT cookie `tks_auth` (`httpOnly`, phiên trượt: hết hạn sau 7 ngày không dùng — `AUTH_SESSION_IDLE_DAYS`, tự gia hạn tối đa 1 lần/ngày); sai mật khẩu 5 lần liên tiếp khóa 5 phút (HTTP 423, trả thời gian đếm ngược); tài khoản bị khóa → 403 `ACCOUNT_LOCKED`. | Cao | Hoàn thành |
 | FR-08.2 | Đăng nhập Google (`POST /api/auth/google`, Google Identity ID token; `GOOGLE_CLIENT_ID` tùy chọn): chỉ liên kết/đăng nhập tài khoản **đã có** (theo email hoặc dòng nhân sự); email lạ không tạo tài khoản khi tự đăng ký đang khóa. | Cao | Hoàn thành |
 | FR-08.3 | **Tự đăng ký bị khóa từ 03/10/2026** (`ALLOW_SELF_REGISTRATION`, mặc định tắt): `POST /api/auth/register` trả 403 `REGISTRATION_DISABLED`; admin cứng luôn đăng ký/đăng nhập được; `GET /api/auth/google-config` trả `{ clientId, registrationOpen }` để trang login ẩn link và trang register khóa form. Bật lại: Khách đăng ký bằng email + mật khẩu. Luồng đăng ký nhân sự bằng OTP (`/register/channels`, `/register/send-otp`, `/register/verify`) **đã gỡ 2026-10-05**. Tài khoản mới thông thường do Quản lý tạo (`POST /api/admin/users`). | Cao | Hoàn thành |
 | FR-08.4 | Quên mật khẩu qua OTP 6 số: `POST /api/auth/forgot-password/channels` → `/send-otp` → `/verify` (OTP + mật khẩu mới 8–128 ký tự). OTP hiệu lực 5 phút, tối đa 5 lần nhập, gửi lại cách nhau ≥ 60 giây; định danh lạ nhận phản hồi giả (không lộ tài khoản); giới hạn 8 yêu cầu/10 phút theo định danh và 20/10 phút theo IP; thành công xóa khóa đăng nhập tạm. Email gửi qua SMTP (thiếu cấu hình thì in OTP ra console). | Cao | Hoàn thành |
@@ -1281,4 +1281,4 @@ Cập nhật gần nhất: 07/11/2026.
 
 12/11/2026 — Import Thu mua phải tải workbook snapshot đầy đủ trước khi chọn/tải file. Workbook có hướng dẫn từng cột và revision ẩn; ô trống xóa giá trị, dòng vắng mặt được xóa mềm. UI hiển thị tiến độ tải và preview số dòng thêm/sửa/không đổi/xóa/lỗi; chỉ ghi sau khi xác nhận, theo giao dịch nguyên tử. Nếu revision đổi sau khi tải, preview/xác nhận bị từ chối và người dùng cần tải snapshot mới.
 
-Cập nhật cuối: 12/11/2026.
+Cập nhật cuối: 13/11/2026.
