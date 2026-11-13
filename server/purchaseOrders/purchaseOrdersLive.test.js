@@ -62,6 +62,19 @@ test('pagination shows only pages one to three and arrows navigate the rest',asy
  assert.deepEqual(pages(),[1,2,3]);assert.match(doc.getElementById('pageNumbers').textContent,/…/);assert.equal(doc.getElementById('pageLabel').textContent,'Trang 1/4');
  for(const [button,label] of [['next','Trang 2/4'],['next','Trang 3/4'],['next','Trang 4/4'],['previous','Trang 3/4']]){doc.getElementById(button).click();assert.equal(doc.getElementById('pageLabel').textContent,label);assert.deepEqual(pages(),[1,2,3])}
 });
+test('sorting by row key orders split siblings together across containers, without waiting-first priority',async t=>{
+ const extraRows=[{id:'10',rowKey:'D00010',contId:'2',productCode:'Z'},{id:'11',rowKey:'D00001.01',contId:'2',productCode:'P'},{id:'12',rowKey:'D00001.02',contId:'2',productCode:'P'},{id:'13',rowKey:'D00002',contId:null,productCode:'A'}],p=await page(t,{extraRows}),doc=p.w.document,keys=()=>[...doc.querySelectorAll('#orderTable tbody tr[data-id] td[data-field="rowKey"]')].map(td=>td.textContent.trim());
+ doc.querySelector('#orderTable th[data-key="rowKey"] .sort-button').click();
+ assert.deepEqual(keys(),['D00001','D00001.01','D00001.02','D00002','D00010']);
+ doc.querySelector('#orderTable th[data-key="rowKey"] .sort-button').click();
+ assert.deepEqual(keys(),['D00010','D00002','D00001','D00001.01','D00001.02']);
+});
+test('order milestone columns are editable text while listed date keeps compact date behavior',async t=>{
+ const visible=['rowKey','productCode','listedAt','orderedNote','shippedNote','etaNote','arrivedNote'],p=await page(t,{saved:{columnLayout:7,visible}}),doc=p.w.document,notes={orderedNote:'đã đặt qua WeChat',shippedNote:'xe rời kho 31-32/11',etaNote:'dự kiến tuần sau',arrivedNote:'chưa kiểm đếm'};
+ for(const [key,value] of Object.entries(notes)){const input=doc.querySelector('#orderTable td[data-field="'+key+'"] input[data-edit="'+key+'"]');assert.ok(input,key+' is an editable text input');p.change('#orderTable td[data-field="'+key+'"] input',value)}
+ await new Promise(resolve=>setTimeout(resolve,300));const changes=JSON.parse(doc.defaultView.sessionStorage.getItem('purchase:buyer:v1')).drafts['1'].changes;for(const [key,value] of Object.entries(notes))assert.equal(changes[key],value);
+ assert.equal(doc.querySelector('#orderTable td[data-field="listedAt"] .date-label')!==null,true);
+});
 async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees=[],integrationEnabled=true,onEnhance}={}){
  const dom=new JSDOM(fs.readFileSync(path.join(dir,'index.html'),'utf8'),{url:'https://example.test/thu-mua/dat-hang/',runScripts:'outside-only'}),w=dom.window;
  t.after(()=>w.close());

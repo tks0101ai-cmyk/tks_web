@@ -71,13 +71,11 @@ test('actual workbook roundtrip uses the same columns as frontend', () => {
   assert(result.operations[0].changes.some(c => c.key === 'cartonCount' && c.after === 7));
 });
 
-test('purchase note dates preserve temporary ranges but reject invalid month days',()=>{
-  const ok=prepareRows([{...fresh(),etaNote:'11-12/11'}],[]);
-  assert.equal(ok.valid,true,ok.rows[0].errors.join('; '));
-  assert.equal(ok.operations[0].values.etaNote,'11-12/11');
-  const invalid=prepareRows([{...fresh(),etaNote:'31-32/11'}],[]);
-  assert.equal(invalid.valid,false);
-  assert.match(invalid.rows[0].errors.join('; '),/ngày không hợp lệ/);
+test('purchase order milestone fields accept and preserve free text',()=>{
+  const notes={orderedNote:'đã đặt qua WeChat',shippedNote:'xe rời kho 31-32/11',etaNote:'dự kiến tuần sau',arrivedNote:'chưa kiểm đếm'};
+  const result=prepareRows([{...fresh(),...notes}],[]);
+  assert.equal(result.valid,true,result.rows[0].errors.join('; '));
+  for(const [key,value] of Object.entries(notes))assert.equal(result.operations[0].values[key],value);
 });
 
 test('full snapshot workbook carries revision, complete writable headers and per-column guidance', () => {

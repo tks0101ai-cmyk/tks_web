@@ -224,11 +224,11 @@ test('delta changes request a reset for malformed, ahead and over-cap cursors',a
  assert.ok(one.id);
 });
 
-test('order date-times keep hours and minutes through database writes, updates and import validation',async()=>{
- const created=await service.create(manager,{...input(),listedAt:'2026-11-03T14:25',orderedNote:'2026-11-03T15:30',etaNote:'2026-11-08T09:15'});
- assert.equal(created.listedAt,'2026-11-03T14:25');assert.equal(created.orderedNote,'2026-11-03T15:30');
- const updated=await service.update(manager,created.id,{version:created.version,changes:{shippedNote:'2026-11-04T08:45'}});assert.equal(updated.shippedNote,'2026-11-04T08:45');
- await assert.rejects(service.create(manager,{...input(),etaNote:'đợi xưởng báo'}),e=>e.code==='VALIDATION_ERROR');
+test('listed date remains validated while order milestone fields accept free text',async()=>{
+  const created=await service.create(manager,{...input(),listedAt:'2026-11-03T14:25',orderedNote:'đã đặt qua WeChat',etaNote:'dự kiến tuần sau'});
+  assert.equal(created.listedAt,'2026-11-03T14:25');assert.equal(created.orderedNote,'đã đặt qua WeChat');
+  const updated=await service.update(manager,created.id,{version:created.version,changes:{shippedNote:'xe rời kho 31-32/11',arrivedNote:'chưa kiểm đếm'}});assert.equal(updated.shippedNote,'xe rời kho 31-32/11');assert.equal(updated.arrivedNote,'chưa kiểm đếm');
+  await assert.rejects(service.create(manager,{...input(),listedAt:'31/02/2026'}),e=>e.code==='VALIDATION_ERROR');
 });
 test('confirmed row changes quantity and destination in one transaction; manual status uses version and audit only',async()=>{
  const a=await service.createContainer(manager,{name:'CONT PLAN',truckName:'17.5m'});const r=await service.create(manager,{...input(),contId:a.id});assert.equal(r.contId,null);
