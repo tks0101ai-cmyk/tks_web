@@ -45,7 +45,7 @@ function api(overrides = {}) {
           { nguon: 'VC', soDong: 1, tongGiaNhap: 500000, thieuDonGia: true, defaultAccountKey: 'shc', defaultAmount: 500000 }],
         total: { soDong: 2, tongGiaBan: 2160000, thieuDonGia: false, defaultAccountKey: 'tks_group', defaultAmount: 2160000 } },
       masterData: { stockRows: 8432, mappingRows: 2998 } },
-    'POST /qr/url': { url: 'https://img.vietqr.io/image/MB-606266688888-compact2.png?amount=1500000', amount: 1500000, accountLabel: 'MB TKS', addInfo: 'HD028345 DH050000' },
+    'POST /qr/url': { url: 'https://img.vietqr.io/image/MB-606266688888-compact2.svg?amount=1500000', amount: 1500000, accountLabel: 'MB TKS', addInfo: 'HD028345 DH050000' },
     ...overrides
   };
 }
@@ -91,6 +91,40 @@ async function setup(t, { hash = '#xu-ly', responses = api(), vaiTro = 'Quản l
 /** Cho cac promise / setTimeout(0) chay het (tai lai co thu lai). */
 async function settle(window) {
   for (let i = 0; i < 20; i += 1) await new Promise(resolve => window.setTimeout(resolve, 0));
+}
+
+/**
+ * JSDOM khong tai anh / ve canvas that: Image gia + canvas gia. fail = anh phat loi.
+ * Tra ve cac anh da tao, cac blob da dua vao createObjectURL va ten file cua the a[download] da bam.
+ */
+function stubQrImage(window, { fail = false } = {}) {
+  const images = [];
+  const blobs = [];
+  const downloads = [];
+  window.Image = class FakeImage {
+    constructor() {
+      this.naturalWidth = 540;
+      this.naturalHeight = 640;
+      this.listeners = {};
+      images.push(this);
+    }
+    addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); }
+    set src(value) {
+      this.currentSrc = value;
+      window.setTimeout(() => {
+        const type = fail ? 'error' : 'load';
+        const handler = fail ? this.onerror : this.onload;
+        if (handler) handler.call(this, { type });
+        for (const fn of this.listeners[type] || []) fn.call(this, { type });
+      }, 0);
+    }
+    get src() { return this.currentSrc; }
+  };
+  window.HTMLCanvasElement.prototype.getContext = () => ({ fillStyle: '', fillRect() {}, drawImage() {} });
+  window.HTMLCanvasElement.prototype.toBlob = function (callback) { callback(new window.Blob(['png'], { type: 'image/png' })); };
+  window.URL.createObjectURL = blob => { blobs.push(blob); return 'blob:x'; };
+  window.HTMLAnchorElement.prototype.click = function () { downloads.push(this.download); };
+  return { images, blobs, downloads };
 }
 
 /** Dan ma vao o + bam Xu ly (tra ma roi phan bo luon). */
@@ -237,13 +271,88 @@ test('xu ly chung tu: bang co Ghi chu tong canh Ghi chu hang hoa, ly do khi re c
   doc.querySelector('[data-qr-zoom]').click();
   const viewer = doc.getElementById('vdQrViewer');
   assert.equal(viewer.hidden, false);
-  assert.equal(doc.getElementById('vdQrViewerImg').src, 'https://img.vietqr.io/image/MB-606266688888-compact2.png?amount=1500000');
+  assert.equal(doc.getElementById('vdQrViewerImg').src, 'https://img.vietqr.io/image/MB-606266688888-compact2.svg?amount=1500000');
   assert.match(doc.getElementById('vdQrViewerCaption').textContent, /Tất cả nguồn — 1,500,000đ/);
   doc.dispatchEvent(new doc.defaultView.KeyboardEvent('keydown', { key: 'Escape' }));
   assert.equal(viewer.hidden, true);
-  doc.querySelector('[data-qr-download]').click();
+});
+
+test('xu ly chung tu: Tai ma QR doi anh SVG sang PNG that tren trinh duyet, khong fetch img.vietqr.io', async t => {
+  const { doc, window, calls } = await setup(t);
+  const stub = stubQrImage(window);
+  await pasteAndRun(doc);
+  doc.querySelector('[data-qr-mode="khong_vat"]').click();
+  doc.querySelector('[data-qr-generate]').click();
   await tick(); await tick();
-  assert.ok(calls.some(c => c.key.startsWith('GET /image/MB-606266688888-compact2.png')), 'tai anh QR ve');
+  const shown = doc.querySelector('[data-qr-result] img');
+  assert.equal(shown.getAttribute('crossorigin'), 'anonymous', 'anh hien thi cung che do CORS voi anh chuyen PNG');
+  doc.querySelector('[data-qr-download]').click();
+  await settle(window);
+  assert.equal(calls.some(c => c.key.startsWith('GET /image/')), false, 'khong fetch anh VietQR');
+  assert.equal(stub.images.length, 1);
+  assert.equal(stub.images[0].crossOrigin, 'anonymous');
+  assert.equal(stub.images[0].src, 'https://img.vietqr.io/image/MB-606266688888-compact2.svg?amount=1500000');
+  assert.equal(stub.blobs.length, 1);
+  assert.equal(stub.blobs[0].type, 'image/png');
+  assert.deepEqual(stub.downloads, ['QR_tat-ca-nguon_1500000.png']);
+});
+
+test('xu ly chung tu: Tai ma QR gap anh loi -> mo anh o tab moi (du phong)', async t => {
+  const { doc, window } = await setup(t);
+  const stub = stubQrImage(window, { fail: true });
+  const opened = [];
+  window.open = (...args) => { opened.push(args); };
+  await pasteAndRun(doc);
+  doc.querySelector('[data-qr-mode="khong_vat"]').click();
+  doc.querySelector('[data-qr-generate]').click();
+  await tick(); await tick();
+  doc.querySelector('[data-qr-download]').click();
+  await settle(window);
+  assert.deepEqual(stub.downloads, []);
+  assert.deepEqual(opened, [['https://img.vietqr.io/image/MB-606266688888-compact2.svg?amount=1500000', '_blank', 'noopener']]);
+});
+
+test('tab Tao QR: Sao chep anh dua PNG that (promise) vao clipboard; Tai mat PNG; anh hien thi co crossorigin', async t => {
+  const { doc, window, calls } = await setup(t, { hash: '#tao-qr' });
+  const stub = stubQrImage(window);
+  const items = [];
+  window.ClipboardItem = class { constructor(data) { this.data = data; items.push(data); } };
+  Object.defineProperty(window.navigator, 'clipboard', { configurable: true, value: { write: async list => { await Promise.all(Object.values(list[0].data)); } } });
+  const select = doc.getElementById('vdManualAccount');
+  select.value = 'tks_group';
+  select.dispatchEvent(new window.Event('change'));
+  doc.getElementById('vdManualGenerate').click();
+  await tick(); await tick();
+  assert.equal(doc.querySelector('#vdManualResult img').getAttribute('crossorigin'), 'anonymous');
+  assert.equal(doc.getElementById('vdQrViewerImg').getAttribute('crossorigin'), 'anonymous');
+  doc.getElementById('vdQrCopy').click();
+  await settle(window);
+  assert.deepEqual(items.map(data => Object.keys(data)), [['image/png']]);
+  const blob = await items[0]['image/png'];
+  assert.equal(blob.type, 'image/png');
+  assert.equal(stub.images[0].crossOrigin, 'anonymous');
+  assert.match(doc.getElementById('vdQrActionMsg').textContent, /^Đã sao chép ảnh QR/);
+  doc.getElementById('vdQrDownload').click();
+  await settle(window);
+  assert.equal(calls.some(c => c.key.startsWith('GET /image/')), false);
+  assert.deepEqual(stub.downloads, ['QR_mb-tks_1500000.png']);
+  assert.equal(stub.blobs.at(-1).type, 'image/png');
+});
+
+test('tab Tao QR: Sao chep anh gap anh loi -> bao loi, huong dan dung Tai ma QR', async t => {
+  const { doc, window } = await setup(t, { hash: '#tao-qr' });
+  stubQrImage(window, { fail: true });
+  window.ClipboardItem = class { constructor(data) { this.data = data; } };
+  Object.defineProperty(window.navigator, 'clipboard', { configurable: true, value: { write: async list => { await Promise.all(Object.values(list[0].data)); } } });
+  const select = doc.getElementById('vdManualAccount');
+  select.value = 'tks_group';
+  select.dispatchEvent(new window.Event('change'));
+  doc.getElementById('vdManualGenerate').click();
+  await tick(); await tick();
+  doc.getElementById('vdQrCopy').click();
+  await settle(window);
+  assert.equal(doc.getElementById('vdQrActionMsg').dataset.tone, 'error');
+  assert.match(doc.getElementById('vdQrActionMsg').textContent, /Trình duyệt không cho sao chép ảnh/);
 });
 
 test('sap xep 2 cot nhu app cu, xuat Excel theo dung thu tu dang hien thi', async t => {

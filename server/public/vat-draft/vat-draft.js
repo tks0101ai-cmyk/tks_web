@@ -750,7 +750,7 @@
       const label = caption || data.accountLabel;
       const text = `${label} — ${intFormat.format(data.amount)}đ${data.addInfo && !caption ? ' — ' + data.addInfo : ''}`;
       resultEl.innerHTML = `<figure class="vd-qr-result">
-        <button type="button" class="vd-qr-zoom" data-qr-zoom title="Bấm để phóng to"><img src="${escapeHtml(data.url)}" alt="Mã QR chuyển khoản ${escapeHtml(intFormat.format(data.amount))}đ"></button>
+        <button type="button" class="vd-qr-zoom" data-qr-zoom title="Bấm để phóng to"><img src="${escapeHtml(data.url)}" crossorigin="anonymous" alt="Mã QR chuyển khoản ${escapeHtml(intFormat.format(data.amount))}đ"></button>
         <figcaption>${escapeHtml(text)}</figcaption>
         <button type="button" class="btn-secondary vd-small-btn" data-qr-download>${ICON.download}Tải mã QR</button></figure>`;
       const figure = resultEl.querySelector('figure');
@@ -782,15 +782,39 @@
     $('vdQrViewer').hidden = true;
   }
 
+  /** Tai anh QR (crossOrigin anonymous nhu the <img> dang hien thi de dung lai cache, VietQR gioi han 10 QR / 10 giay / IP). */
+  function loadQrImage(url) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => (img.naturalWidth > 0 ? resolve(img) : reject(new Error('empty image')));
+      img.onerror = () => reject(new Error('image'));
+      img.src = url;
+    });
+  }
+
+  /** VietQR tra anh SVG: ve len canvas (nen trang) roi xuat PNG that de Sao chep / Tai (Zalo, dien thoai mo duoc). */
+  async function qrPngBlob(url) {
+    const img = await loadQrImage(url);
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#fff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(img, 0, 0);
+    return new Promise((resolve, reject) => {
+      canvas.toBlob(blob => (blob && blob.size > 0 ? resolve(blob) : reject(new Error('png'))), 'image/png');
+    });
+  }
+
   async function downloadQr(url, fileName, button) {
     if (button) button.disabled = true;
     try {
-      // Ảnh nằm ở img.vietqr.io: tải về dạng blob để lưu đúng tên file PNG.
-      const res = await fetch(url, { mode: 'cors' });
-      if (!res.ok) throw new Error('fetch');
-      downloadBlob(await res.blob(), fileName || 'ma_qr.png');
+      // Ảnh VietQR là SVG ở img.vietqr.io: chuyển sang PNG ngay trên trình duyệt rồi lưu đúng tên file PNG.
+      downloadBlob(await qrPngBlob(url), fileName || 'ma_qr.png');
     } catch (error) {
-      // Máy chủ ảnh chặn tải trực tiếp thì mở ảnh ở tab mới để người dùng lưu.
+      // Không chuyển được sang PNG thì mở ảnh ở tab mới để người dùng lưu.
       window.open(url, '_blank', 'noopener');
     } finally {
       if (button) button.disabled = false;
@@ -983,7 +1007,7 @@
         fileName: `QR_${slug(label)}_${data.amount}.png`
       };
       $('vdManualResult').innerHTML = `<figure class="vd-qr-figure">
-        <button type="button" class="vd-qr-zoom" data-qr-zoom title="Bấm để phóng to"><img src="${escapeHtml(data.url)}" alt="Mã QR chuyển khoản ${escapeHtml(intFormat.format(data.amount))}đ cho ${escapeHtml(label)}"></button>
+        <button type="button" class="vd-qr-zoom" data-qr-zoom title="Bấm để phóng to"><img src="${escapeHtml(data.url)}" crossorigin="anonymous" alt="Mã QR chuyển khoản ${escapeHtml(intFormat.format(data.amount))}đ cho ${escapeHtml(label)}"></button>
         <div class="vd-qr-stale" hidden>Thông tin đã thay đổi —<br>bấm “Tạo lại mã QR”</div>
       </figure>`;
       // Anh do img.vietqr.io tra: tai loi (mang / VietQR tu choi) thi bao loi, khong de khung anh vo.
@@ -1013,14 +1037,13 @@
     msg.textContent = text;
   }
 
-  /** Sao chep anh QR vao clipboard (img.vietqr.io cho phep CORS) de dan thang vao Zalo / email. */
+  /** Sao chep anh QR (PNG chuyen tu SVG cua VietQR) vao clipboard de dan thang vao Zalo / email. */
   async function copyQrImage() {
     if (!state.qr.url) return;
     try {
       if (!navigator.clipboard || !window.ClipboardItem) throw new Error('unsupported');
-      const blob = fetch(state.qr.url, { mode: 'cors' })
-        .then(res => { if (!res.ok) throw new Error('fetch'); return res.blob(); })
-        .then(data => (data.type === 'image/png' ? data : new Blob([data], { type: 'image/png' })));
+      // Truyen promise (khong await) de clipboard.write van chay ngay trong thao tac bam (Safari yeu cau).
+      const blob = qrPngBlob(state.qr.url);
       await navigator.clipboard.write([new window.ClipboardItem({ 'image/png': blob })]);
       // Nho kich thuoc anh vua chep: lo tay Ctrl+V lai tren trang thi khong gui QR cho AI doc nhu hoa don.
       const img = $('vdManualResult').querySelector('img');
