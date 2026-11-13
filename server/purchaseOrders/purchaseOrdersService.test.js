@@ -338,6 +338,16 @@ test('snapshot import recycles omitted keys before creating rows and rolls back 
  assert.deepEqual((await db.query('SELECT id,row_key,deleted_at FROM purchase_orders ORDER BY id')).rows,activeBefore);
  assert.deepEqual((await db.query('SELECT row_key FROM purchase_key_pool ORDER BY row_key')).rows,poolBefore);
 });
+test('snapshot import retirement keeps operation-less history isolated after reuse and restore',async()=>{
+ const old=await service.create(manager,input());
+ await db.query("INSERT INTO purchase_history(action,actor_id,actor_name,summary) VALUES('legacy_edit',$1,$2,$3)",[manager.id,manager.hoTen,JSON.stringify({rowKey:old.rowKey})]);
+ const empty=await service.previewImport(manager,{buffer:await snapshotFile([])});assert.equal(empty.valid,true);await service.commitImport(manager,empty.token);
+ const reservation=await service.reserveKey(manager),current=await service.create(manager,{...input(),productCode:'CURRENT',rowKey:reservation.rowKey,reservationId:reservation.reservationId});
+ assert.equal(current.rowKey,old.rowKey);
+ const trash=(await service.trash(manager)).find(row=>row.id===old.id);await service.restore(manager,{id:old.id,version:trash.version});
+ const restored=(await service.list(manager)).rows.find(row=>row.id===old.id);assert.notEqual(restored.rowKey,current.rowKey);
+ assert.ok(!(await service.history(manager,current.id)).some(row=>row.action==='legacy_edit'));
+});
 test('snapshot changed after download is rejected before preview',async()=>{
  const row=await service.create(manager,input()),snapshot=await service.importSnapshot(manager),buffer=Buffer.from(excel.exportImportSnapshot({rows:snapshot.rows,columns,revision:snapshot.revision}));
  await service.update(manager,row.id,{version:row.version,changes:{supplier:'Changed'}});

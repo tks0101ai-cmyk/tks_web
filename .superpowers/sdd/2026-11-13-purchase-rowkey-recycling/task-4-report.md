@@ -2,19 +2,19 @@
 
 ## Changes
 
-- `commitImport` now soft-deletes all omitted rows, releases each fully inactive root family once, then allocates keys for blank-key creates from the pool in the same transaction. Preview validation, revision checks, idempotent replay, and transaction rollback remain intact.
-- Discarding local new-row drafts releases their reservation before clearing local state. Current UI does not put new-row creation itself on the undo stack, so discard is the only present user action that removes a new row.
+- `commitImport` records each omitted row's retired key before soft-delete, releases each fully inactive root family once, then allocates keys for blank-key creates from the pool in the same transaction. Preview validation, revision checks, idempotent replay, and transaction rollback remain intact.
+- Discard rejects while a write or autosave is in flight. When idle, it clears the scheduled autosave before awaiting reservation release, and clears local drafts only after release succeeds.
 - Row history now requests `/history?orderId=<immutable id>`.
-- Added PGlite regression for omission/key reuse ordering, projection-failure rollback, and stale revision preserving both rows and pool; added jsdom assertions for discard release and ID-based history lookup.
+- Added PGlite regressions for omission/key reuse ordering, projection-failure rollback, stale revision preserving both rows and pool, and operation-less history isolation after reuse/restore. Added jsdom assertions for release, autosave cancellation, in-flight write rejection, retained delta-resurrection coverage, and ID-based history lookup.
 
 ## Verification
 
 Test-only environment values used: `GOOGLE_SERVICE_ACCOUNT_JSON={}` and `JWT_SECRET=test-only-secret`.
 
-- Focused Task 4 regressions: 3 passed, 0 failed.
+- Focused Task 4 regressions: 7 passed, 0 failed.
 - Required command: `node --test purchaseOrders/purchaseOrdersService.test.js purchaseOrders/purchaseOrdersRoutes.test.js purchaseOrders/purchaseOrdersRealtimePage.integration.test.js purchaseOrders/purchaseOrdersLive.test.js`
-- Required command totals: 202 tests, 164 passed, 38 failed, 0 cancelled, 0 skipped; duration 120.5 seconds.
-- The Task 4 regressions passed in the full run. The 38 failures were in live/page UI tests; no clean-baseline run was done, so they are reported without attributing them as pre-existing.
+- Required command totals: 206 tests, 169 passed, 37 failed, 0 cancelled, 0 skipped; duration 121.3 seconds.
+- All Task 4 regressions passed in the full run. The other 37 failures are listed below; no clean-baseline run was done, so they are reported without attributing them as pre-existing.
 - `git diff --check` passed.
 
 Failed test names from the required run:
@@ -39,21 +39,20 @@ Failed test names from the required run:
 18. Ctrl+D reads current typed draft rather than stale rendered row and remains a private undo step
 19. page size 10 slices the table and keeps next-page navigation
 20. Ctrl+Z undoes a grid paste but leaves native undo alone in the search field
-21. Ctrl+Z undoes an edited input before it loses focus
-22. container ratio is total tons divided by total cubic meters
-23. pinned container sits under filters and shows only the five compact columns
-24. integrated refresh updates another cell during numeric expression typing, retaining baseline/caret and navigation mode
-25. SSE refresh loads newly added employees while retaining draft baseline and tolerating absent or failed directory responses
-26. pristine focused input retains its original comparison value/version when first edited after remote refresh
-27. input burst avoids repeated synchronous cont/task rebuilds while keeping draft and totals current
-28. successful save closes before delta refresh finishes and later applies authoritative row delta
-29. automatic invalidation uses changes and only reset falls back to full snapshot
-30. successful outbox retry closes modal without waiting for background delta
-31. Đối chiếu overrides are directly editable and sent through the normal versioned row patch
-32. measurement inputs show agreed precision and focus/blur alone creates no draft
-33. calculated ratio is shown as a rounded percentage in edit and view modes
-34. percentage overrides edit in displayed percentage points; blank clears a value override
-35. staged override changes and clears recalculate dependent comparison fields from fallback
-36. a hung employee directory cannot block first rows or subsequent row refresh
-37. automatic invalidation checks lightweight revision and skips full rows when already current
-38. background refresh preserves row order and selected stable ids while new rows remain in their container group
+21. container ratio is total tons divided by total cubic meters
+22. pinned container sits under filters and shows only the five compact columns
+23. integrated refresh updates another cell during numeric expression typing, retaining baseline/caret and navigation mode
+24. SSE refresh loads newly added employees while retaining draft baseline and tolerating absent or failed directory responses
+25. pristine focused input retains its original comparison value/version when first edited after remote refresh
+26. input burst avoids repeated synchronous cont/task rebuilds while keeping draft and totals current
+27. successful save closes before delta refresh finishes and later applies authoritative row delta
+28. automatic invalidation uses changes and only reset falls back to full snapshot
+29. successful outbox retry closes modal without waiting for background delta
+30. Đối chiếu overrides are directly editable and sent through the normal versioned row patch
+31. measurement inputs show agreed precision and focus/blur alone creates no draft
+32. calculated ratio is shown as a rounded percentage in edit and view modes
+33. percentage overrides edit in displayed percentage points; blank clears a value override
+34. staged override changes and clears recalculate dependent comparison fields from fallback
+35. a hung employee directory cannot block first rows or subsequent row refresh
+36. automatic invalidation checks lightweight revision and skips full rows when already current
+37. background refresh preserves row order and selected stable ids while new rows remain in their container group

@@ -253,7 +253,7 @@
   });
   $('previous').onclick=()=>{page--;render()};$('next').onclick=()=>{page++;render()};$('pageNumbers').onclick=e=>{const n=Number(e.target.closest('[data-page]')?.dataset.page);if(Number.isInteger(n)){page=n;render()}};$('pageSize').onchange=()=>{pageSize=Number($('pageSize').value)||50;page=1;persist();render()};
   $('bulk').onclick=()=>{bulk=!bulk;selected.clear();render()};
-  $('cancel').onclick=()=>{modal('<h2>Hủy '+Object.keys(drafts).length+' bản nháp?</h2><p>Các thay đổi chưa lưu sẽ bị bỏ.</p><button id="discard">Hủy bản nháp</button>');$('discard').onclick=guarded(async()=>{await releaseRowKeys(Object.values(newRows));if(autoSaveTimer){clearTimeout(autoSaveTimer);autoSaveTimer=null}drafts={};data.rows=data.rows.filter(r=>!newRows[r.id]);newRows={};persist();close();render()})};
+  $('cancel').onclick=()=>{modal('<h2>Hủy '+Object.keys(drafts).length+' bản nháp?</h2><p>Các thay đổi chưa lưu sẽ bị bỏ.</p><button id="discard">Hủy bản nháp</button>');$('discard').onclick=guarded(async()=>{if(writing||autoSaving)throw Error('Đang lưu thay đổi. Hãy thử hủy sau khi lưu xong.');if(autoSaveTimer){clearTimeout(autoSaveTimer);autoSaveTimer=null}await releaseRowKeys(Object.values(newRows));drafts={};data.rows=data.rows.filter(r=>!newRows[r.id]);newRows={};persist();close();render()})};
   $('editedRows').onclick=()=>{onlyDirty=!onlyDirty;page=1;persist();render()};
   $('save').onclick=()=>{if(autoSaveTimer){clearTimeout(autoSaveTimer);autoSaveTimer=null}cellHistory.flush();persist();
     if(Object.values(drafts).some(d=>d.split&&(!Number.isSafeInteger(d.split.quantity)||d.split.quantity<=0))){notice('Nhập số thùng nguyên dương cho mã con trước khi lưu.');return}

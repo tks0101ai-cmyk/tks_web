@@ -159,11 +159,33 @@ test('successful outbox retry closes modal without waiting for background delta'
  doc.getElementById('retryWrite').click();for(let i=0;i<5;i++)await tick();assert.equal(writes,2);assert.equal(keys[1],keys[0],'outbox retry must reuse the original idempotency key');assert.equal(doc.getElementById('modal').open,false);assert.equal(p.drafts()['new-local'],undefined);assert.match(doc.getElementById('notice').textContent,/Đang đồng bộ/);assert.ok(p.calls.some(c=>c.url==='/api/purchase-orders/changes?after=8%3A1'));
  resolveDelta({ok:true,json:async()=>({revision:'8:2',rows:[{...p.data.rows.at(-1),version:1}],deletedIds:[],containers:p.data.containers,sourceMode:'web',integrationEnabled:true,employeesChanged:false,reset:false})});for(let i=0;i<5;i++)await tick();const localSupplier=doc.querySelector('tr[data-id="new-local"] [data-field="supplier"]');assert.equal(localSupplier.querySelector('input')?.value||localSupplier.textContent,'Local');
 });
-test('discarded local row releases its reservation and stays removed',async t=>{
- const p=await page(t,{local:true}),doc=p.w.document;
+test('discarded local row is not resurrected by an otherwise empty delta',async t=>{
+ const p=await page(t,{local:true,revision:'8:1'}),doc=p.w.document,fetch=p.w.fetch;let changeCalls=0;
+ p.w.fetch=async(url,options={})=>{if(url==='/api/purchase-orders/revision')return {ok:true,json:async()=>({revision:'8:2'})};if(url.startsWith('/api/purchase-orders/changes?')){changeCalls++;return {ok:true,json:async()=>({revision:'8:2',rows:[],deletedIds:[],containers:p.data.containers,sourceMode:'web',integrationEnabled:true,employeesChanged:false,reset:false})}}return fetch(url,options)};
  assert.ok(doc.querySelector('tr[data-id="new-local"]'));doc.getElementById('cancel').click();doc.getElementById('discard').click();await tick();assert.equal(doc.querySelector('tr[data-id="new-local"]'),null);
+ p.listeners.changed();await new Promise(resolve=>setTimeout(resolve,500));for(let i=0;i<10;i++)await tick();assert.equal(changeCalls,1);assert.equal(doc.querySelector('tr[data-id="new-local"]'),null);
+});
+test('discard releases the local row reservation',async t=>{
+ const p=await page(t,{local:true}),doc=p.w.document;doc.getElementById('cancel').click();doc.getElementById('discard').click();await tick();
  const release=p.calls.find(c=>c.url==='/api/purchase-orders/release-key');assert.ok(release);assert.deepEqual(JSON.parse(release.options.body),{reservationId:'00000000-0000-4000-8000-000000000001'});
  assert.equal(doc.querySelector('tr[data-id="new-local"]'),null);
+});
+test('discard cancels autosave before waiting for release and keeps drafts when release fails',async t=>{
+ const p=await page(t,{local:true}),doc=p.w.document,fetch=p.w.fetch;let releaseCount=0,finishRelease;
+ p.w.fetch=async(url,options={})=>{if(url==='/api/purchase-orders/release-key'){releaseCount++;if(releaseCount===1)return new Promise(resolve=>{finishRelease=resolve});return {ok:true,json:async()=>({released:true})}}return fetch(url,options)};
+ doc.getElementById('cancel').click();doc.getElementById('discard').click();await tick();assert.equal(releaseCount,1);
+ await new Promise(resolve=>setTimeout(resolve,500));assert.equal(p.calls.some(c=>c.url==='/api/purchase-orders/plan'),false,'discard must stop the scheduled autosave before awaiting release');
+ finishRelease({ok:false,json:async()=>({error:'release failed'})});for(let i=0;i<5;i++)await tick();assert.ok(doc.querySelector('tr[data-id="new-local"]'));assert.ok(p.drafts()['new-local']);
+ doc.getElementById('discard').click();for(let i=0;i<5;i++)await tick();assert.equal(doc.querySelector('tr[data-id="new-local"]'),null);
+});
+test('discard refuses while an autosaved create is in flight',async t=>{
+ const p=await page(t,{local:true}),doc=p.w.document,fetch=p.w.fetch;let finishPlan;
+ p.w.fetch=async(url,options={})=>url==='/api/purchase-orders/plan'&&options.method==='POST'?new Promise(resolve=>{finishPlan=resolve}):fetch(url,options);
+ await new Promise(resolve=>setTimeout(resolve,500));assert.ok(finishPlan,'autosave should have started');
+ doc.getElementById('cancel').click();doc.getElementById('discard').click();await tick();
+ assert.ok(doc.querySelector('tr[data-id="new-local"]'));assert.ok(!p.calls.some(c=>c.url==='/api/purchase-orders/release-key'));assert.match(doc.getElementById('notice').textContent,/lưu xong/);
+ p.data.rows.push({...p.data.rows[0],id:'2',rowKey:'D00002',supplier:'Local'});finishPlan({ok:true,json:async()=>({createdRows:[{clientId:'new-local',id:'2',rowKey:'D00002'}]})});
+ for(let i=0;i<10;i++)await tick();assert.ok(doc.querySelector('tr[data-id="2"]'));
 });
 test('row history is requested by immutable order ID',async t=>{
  const p=await page(t),doc=p.w.document,fetch=p.w.fetch;p.w.fetch=async(url,options)=>{p.calls.push({url,options});return url==='/api/purchase-orders/history?orderId=1'?{ok:true,json:async()=>({rows:[]})}:fetch(url,options)};
