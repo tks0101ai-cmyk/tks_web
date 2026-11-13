@@ -80,8 +80,9 @@ test('row key reservation requires web source mode',async()=>{
 test('row key reservation reclaims expired keys and rejects expired claims',async()=>{
  const expired=await service.reserveKey(manager);
  await db.query('UPDATE purchase_key_reservations SET expires_at=now()-interval \'1 minute\' WHERE reservation_id=$1',[expired.reservationId]);
+ await assert.rejects(service.create(manager,{...input(),rowKey:expired.rowKey,reservationId:expired.reservationId}),e=>e.code==='RESERVATION_EXPIRED');
  const next=await service.reserveKey(manager);assert.equal(next.rowKey,expired.rowKey);
- await assert.rejects(service.create(manager,{...input(),rowKey:expired.rowKey,reservationId:expired.reservationId}),e=>e.code==='ROW_KEY_UNKNOWN');
+ await assert.rejects(service.create({id:'other'},{...input(),rowKey:next.rowKey,reservationId:next.reservationId}),e=>e.code==='ROW_KEY_UNKNOWN');
 });
 
 test('row key reservation is consumed once and concurrent reservations are unique',async()=>{
@@ -399,8 +400,8 @@ test('balance plan commits edits, recursive split and new code together; stale s
 
 test('balance plan ignores client-only id and version on a new row',async()=>{
  await db.query("SELECT setval('purchase_order_key_seq',1,false)");
- const result=await service.applyPlan(manager,{creates:[{values:{...input(),id:'new123',version:1,contId:null}}]});
- const created=(await service.list(manager)).rows[0];assert.deepEqual(result.createdKeys,['D00001']);assert.equal(created.rowKey,'D00001');assert.equal(created.version,1);assert.notEqual(created.id,'new123');
+ const result=await service.applyPlan(manager,{creates:[{clientId:'new123',values:{...input(),id:'new123',version:1,contId:null}}]});
+ const created=(await service.list(manager)).rows[0];assert.deepEqual(result.createdKeys,['D00001']);assert.deepEqual(result.createdRows,[{clientId:'new123',id:created.id,rowKey:'D00001'}]);assert.equal(created.rowKey,'D00001');assert.equal(created.version,1);assert.notEqual(created.id,'new123');
  await assert.rejects(service.applyPlan(manager,{creates:[{values:{...input(),productCode:'UNRESERVED',rowKey:'D00002'}}]}),e=>e.code==='ROW_KEY_UNKNOWN');
 });
 

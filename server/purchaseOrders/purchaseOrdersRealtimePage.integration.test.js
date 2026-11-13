@@ -11,7 +11,7 @@ async function page(t,{local=false,directory=null,projectionProbe=null,revision=
  w.setInterval=fn=>{timers.add(fn);return fn};w.clearInterval=id=>timers.delete(id);
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false};
  w.fetch=async(url,options={})=>{if(url.startsWith('/api/me/table-prefs'))return {ok:true,json:async()=>({tables:{}})};calls.push({url,options});if(url.endsWith('/employees')&&directory)return {ok:true,json:()=>directory};return {ok:true,json:async()=>{if(url.endsWith('/employees'))return {rows:[]};if(options.method==='PATCH')return {};const snapshot=structuredClone(data);if(projectionProbe&&snapshot.rows[0])Object.defineProperty(snapshot.rows[0],'__projectionProbe',{enumerable:true,get(){projectionProbe.count++;return true}});return snapshot}}};
- if(local){const row={...data.rows[0],id:'new-local',rowKey:'D00002',version:1,qtyPerCarton:5};w.sessionStorage.setItem('purchase:buyer:v1',JSON.stringify({newRows:{'new-local':row},drafts:{'new-local':{version:1,before:{supplier:''},changes:{supplier:'Local'}}}}))}
+ if(local){const row={...data.rows[0],id:'new-local',rowKey:'D00002',reservationId:'00000000-0000-4000-8000-000000000001',version:1,qtyPerCarton:5};w.sessionStorage.setItem('purchase:buyer:v1',JSON.stringify({newRows:{'new-local':row},drafts:{'new-local':{version:1,before:{supplier:''},changes:{supplier:'Local'}}}}))}
  w.eval(fs.readFileSync(path.join(dir,'../../shared/table-controls.js'),'utf8'));w.PurchaseGrid=require('../public/shared/purchase-grid');w.PurchaseGridUI=require('../public/shared/purchase-grid-ui');Object.defineProperty(w.document,'hidden',{value:false,configurable:true});const realtimeAPI=w.PurchaseRealtime;w.PurchaseRealtime={...realtimeAPI,createScheduler:options=>realtimeAPI.createScheduler({...options,gapMs:0})};w.eval(fs.readFileSync(path.join(dir,'purchase.js'),'utf8'));await tick();await tick();
  return {w,data,calls,listeners,timers,get closed(){return closed},drafts:()=>JSON.parse(w.sessionStorage.getItem('purchase:buyer:v1')).drafts};
 }
@@ -212,6 +212,22 @@ test('new row reservation survives add and autosave outside the order values',as
  form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}));await tick();await new Promise(resolve=>setTimeout(resolve,550));await tick();await tick();
  const call=p.calls.find(c=>c.url==='/api/purchase-orders/plan'&&c.options.method==='POST');assert.ok(call);const body=JSON.parse(call.options.body),create=body.creates[0];
  assert.equal(create.values.rowKey,'D00042');assert.equal(create.reservationId,reservationId);assert.equal(Object.hasOwn(create.values,'reservationId'),false);
+});
+test('autosave replaces an owned expired reservation and preserves the saved local draft',async t=>{
+ const p=await page(t,{local:true}),fetch=p.w.fetch,replacement='12345678-1234-4234-8234-123456789abc';let writes=0;
+ p.w.fetch=async(url,options={})=>{if(url==='/api/purchase-orders/next-key')return {ok:true,json:async()=>({rowKey:'D00003',reservationId:replacement,expiresAt:'2026-11-13T13:00:00.000Z'})};if(url==='/api/purchase-orders/plan'&&options.method==='POST'){const body=JSON.parse(options.body);p.calls.push({url,options,body});if(++writes===1)return {ok:false,status:409,json:async()=>({code:'RESERVATION_EXPIRED',clientId:'new-local',error:'Reservation expired'})};p.data.rows.push({...body.creates[0].values,id:'42',version:1});return {ok:true,json:async()=>({createdRows:[{clientId:'new-local',id:'42',rowKey:'D00003'}]})}}return fetch(url,options)};
+ await new Promise(resolve=>setTimeout(resolve,1000));await tick();await tick();
+ const plans=p.calls.filter(c=>c.url==='/api/purchase-orders/plan'),retried=plans[1]?.body.creates[0];assert.equal(plans.length,2);assert.equal(retried.reservationId,replacement);assert.equal(retried.values.rowKey,'D00003');assert.equal(retried.values.supplier,'Local');assert.equal(Object.hasOwn(retried.values,'reservationId'),false);assert.equal(p.drafts()['new-local'],undefined);
+});
+test('new row reconciliation follows immutable ID when another row reuses its key',async t=>{
+ const p=await page(t,{local:true}),doc=p.w.document,fetch=p.w.fetch;let resolveCreate;const writes=[];
+ p.w.fetch=async(url,options={})=>{if(url==='/api/purchase-orders/plan'&&options.method==='POST'){const body=JSON.parse(options.body);p.calls.push({url,options,body});writes.push(body);if(writes.length===1)return new Promise(resolve=>{resolveCreate=resolve});return {ok:true,json:async()=>({})}}return fetch(url,options)};
+ await new Promise(resolve=>setTimeout(resolve,500));const edit=doc.querySelector('tr[data-id="new-local"] [data-edit="supplier"]');assert.ok(edit);edit.value='Later';edit.dispatchEvent(new p.w.Event('input',{bubbles:true}));
+ p.data.rows.push({...p.data.rows[0],id:'42',rowKey:'D00002',version:1,supplier:'Local'},{...p.data.rows[0],id:'99',rowKey:'D00002',version:1,supplier:'Other'});
+ resolveCreate({ok:true,json:async()=>({createdRows:[{clientId:'new-local',id:'42',rowKey:'D00002'}],createdKeys:['D00002']})});
+ await new Promise(resolve=>setTimeout(resolve,50));await tick();assert.equal(p.drafts()['42']?.changes.supplier,'Later');assert.equal(p.drafts()['99'],undefined);
+ await new Promise(resolve=>setTimeout(resolve,600));await tick();await tick();
+ assert.ok(writes.some(body=>body.creates?.[0]?.clientId==='new-local'));assert.ok(writes.some(body=>body.rows?.some(row=>String(row.id)==='42')),JSON.stringify(writes));assert.ok(writes.every(body=>!(body.rows||[]).some(row=>String(row.id)==='99')));
 });
 for(const scope of ['containerTable'])test('freight '+scope+' sends original focus version after SSE and cannot overwrite remote freight',async t=>{
  const p=await page(t),doc=p.w.document,fetch=p.w.fetch;
