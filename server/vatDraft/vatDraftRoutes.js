@@ -9,7 +9,6 @@ const express = require('express');
 const multer = require('multer');
 const appConfig = require('../config');
 const { requireAuth, requireFeature } = require('../auth/authMiddleware');
-const { hasFeature } = require('../auth/featureRegistry');
 const { resolveBranch } = require('../branch/branchMiddleware');
 const { branchLabelToCode, resolveBranchScope } = require('../branch/branches');
 const { createDocumentsRepository } = require('./documentsRepository');
@@ -89,11 +88,16 @@ function createVatDraftRouter({
     }
   }
 
+  // Danh sach tai khoan + ngan hang: tra NGAY, khong cho Google Sheets (truoc 13/11/2026 /meta cho
+  // doc Sheets toi ~60 giay khi het cache -> o chon tai khoan trong).
   router.get('/meta', ...qrGuard, handle(async (req, res) => {
-    // Chi co quyen Tao QR (sale): chi tra danh sach tai khoan, khong lo trang thai Sheets/KiotViet.
-    if (!hasFeature(req.user, 'accounting.vatDraft')) return res.json({ vietqr: service.accountsMeta() });
+    res.json({ vietqr: service.accountsMeta() });
+  }));
+
+  // Trang thai Sheets / KiotViet cho thanh trang thai tab Xu ly (duoc phep cham).
+  router.get('/master-data/status', ...guard, handle(async (req, res) => {
     const [master, sync] = await Promise.all([masterDataStatus(false), repository.syncStatus().catch(() => [])]);
-    res.json({ masterData: master, sync, vietqr: service.accountsMeta() });
+    res.json({ masterData: master, sync });
   }));
 
   router.post('/master-data/refresh', ...guard, handle(async (req, res) => {

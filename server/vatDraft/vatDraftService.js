@@ -9,6 +9,7 @@ const { pyStrip, pyRound } = require('./pyCompat');
 const { allocateInvoiceSources, buildUnifiedColumns, buildUnifiedDisplayRows } = require('./allocation');
 const { parseInvoicePasteRows, rowsToQueries, parseDocumentCodes } = require('./pasteParser');
 const vietqr = require('./vietqr');
+const { VIETQR_BANKS, findBank } = require('./vietqrBanks');
 const { parseInvoiceAmount, parseInvoiceText } = require('./invoicePdfText');
 const { parseVietnameseAmountWords } = require('./amountWords');
 const vatDraftConfig = require('./vatDraftConfig');
@@ -150,7 +151,8 @@ function createVatDraftService({ repository, masterData, vision = null, config =
           tongGiaBan: amount.tongGiaBan,
           tongGiaNhap: amount.tongGiaNhap,
           thieuDonGia: amount.thieuDonGia,
-          defaultAccountKey: account && accountKeys.includes(account.key) ? account.key : accountKeys[0] || null,
+          // Nguon khong co trong sourceAccountMap: de trong, bat nguoi dung chon (tranh QR vao nham tai khoan).
+          defaultAccountKey: account && accountKeys.includes(account.key) ? account.key : null,
           // int(round(x)) cua Python (banker's), khong am.
           defaultAmount: Math.max(pyRound(amount.tongGiaNhap), 0)
         };
@@ -163,7 +165,8 @@ function createVatDraftService({ repository, masterData, vision = null, config =
           soDong: total.soDong,
           tongGiaBan: total.tongGiaBan,
           thieuDonGia: total.thieuDonGia,
-          defaultAccountKey: accountKeys[0] || null,
+          // Gop khong VAT: khong co tai khoan mac dinh, nguoi dung tu chon.
+          defaultAccountKey: null,
           defaultAmount: Math.max(pyRound(total.tongGiaBan), 0)
         }
       };
@@ -185,26 +188,35 @@ function createVatDraftService({ repository, masterData, vision = null, config =
     };
   }
 
-  /** Chuc nang 2 — URL anh QR (tai khoan cau hinh hoac nhap tay). */
+  /** Chuc nang 2 — URL anh QR (tai khoan cau hinh hoac nhap tay). Sai chuan VietQR -> 400, khong tra URL. */
   function qrUrl({ accountKey, manual, amount, addInfo } = {}) {
     let account;
     let accountLabel;
     if (manual) {
-      const bankId = String(manual.bankId || '').trim();
+      const bank = findBank(manual.bankId);
       const accountNo = String(manual.accountNo || '').trim();
       const accountName = String(manual.accountName || '').trim().slice(0, 100);
-      if (!vietqr.isValidManualField(bankId) || !vietqr.isValidManualField(accountNo)) {
-        throw badRequest('Nhập đủ Mã ngân hàng và Số tài khoản (chỉ chữ và số) để tạo QR.');
+      if (!bank) throw badRequest('Mã ngân hàng không có trong danh sách VietQR.', 'VAT_DRAFT_QR_BANK');
+      if (!vietqr.isValidAccountNo(accountNo)) {
+        throw badRequest('Số tài khoản chỉ gồm chữ và số, tối đa 19 ký tự.', 'VAT_DRAFT_QR_ACCOUNT_NO');
       }
-      account = { bankId, accountNo, accountName };
-      accountLabel = `${bankId} - ${accountNo}${accountName ? ` (${accountName})` : ''}`;
+      // Dung BIN trong URL: ma nguoi dung go (VCB, vietcombank, 970436) deu ve cung 1 ngan hang.
+      account = { bankId: bank.bin, accountNo, accountName };
+      accountLabel = `${bank.code} - ${accountNo}${accountName ? ` (${accountName})` : ''}`;
     } else {
       account = config.vietqr.accounts.find(a => a.key === accountKey);
       if (!account) throw badRequest('Tài khoản nhận tiền không hợp lệ.');
       accountLabel = vietqr.formatAccountLabel(account);
     }
-    const value = vietqr.parseAmountInput(String(amount ?? ''));
-    const info = pyStrip(String(addInfo || '')).slice(0, 200);
+    const amountDigits = String(amount ?? '').replace(/[^\d]/g, '').replace(/^0+/, '');
+    if (amountDigits.length > vietqr.MAX_AMOUNT_DIGITS) {
+      throw badRequest(`Số tiền tối đa ${vietqr.MAX_AMOUNT_DIGITS} chữ số.`, 'VAT_DRAFT_QR_AMOUNT');
+    }
+    const value = vietqr.parseAmountInput(amountDigits);
+    const info = vietqr.normalizeTransferContent(addInfo);
+    if (info.length > vietqr.MAX_TRANSFER_CONTENT) {
+      throw badRequest(`Nội dung trong QR tối đa ${vietqr.MAX_TRANSFER_CONTENT} ký tự (đang có ${info.length}) — rút gọn bớt.`, 'VAT_DRAFT_QR_CONTENT');
+    }
     return {
       url: vietqr.buildVietqrImageUrl(account, { amount: value, addInfo: info, template: config.vietqr.template }),
       amount: value,
@@ -296,7 +308,9 @@ function createVatDraftService({ repository, masterData, vision = null, config =
         accountNo: a.accountNo,
         accountName: a.accountName || '',
         group: /^CONG TY\b/i.test(a.accountName || '') ? 'company' : 'personal'
-      }))
+      })),
+      // Danh sach ngan hang VietQR: trang kiem tra ma ngan hang nhap tay + goi y trong o nhap.
+      banks: VIETQR_BANKS.map(({ bin, code, shortName }) => ({ bin, code, shortName }))
     };
   }
 
