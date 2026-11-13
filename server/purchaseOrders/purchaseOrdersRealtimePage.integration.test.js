@@ -159,11 +159,17 @@ test('successful outbox retry closes modal without waiting for background delta'
  doc.getElementById('retryWrite').click();for(let i=0;i<5;i++)await tick();assert.equal(writes,2);assert.equal(keys[1],keys[0],'outbox retry must reuse the original idempotency key');assert.equal(doc.getElementById('modal').open,false);assert.equal(p.drafts()['new-local'],undefined);assert.match(doc.getElementById('notice').textContent,/Đang đồng bộ/);assert.ok(p.calls.some(c=>c.url==='/api/purchase-orders/changes?after=8%3A1'));
  resolveDelta({ok:true,json:async()=>({revision:'8:2',rows:[{...p.data.rows.at(-1),version:1}],deletedIds:[],containers:p.data.containers,sourceMode:'web',integrationEnabled:true,employeesChanged:false,reset:false})});for(let i=0;i<5;i++)await tick();const localSupplier=doc.querySelector('tr[data-id="new-local"] [data-field="supplier"]');assert.equal(localSupplier.querySelector('input')?.value||localSupplier.textContent,'Local');
 });
-test('discarded local row is not resurrected by an otherwise empty delta',async t=>{
- const p=await page(t,{local:true,revision:'8:1'}),doc=p.w.document,fetch=p.w.fetch;let changeCalls=0;
- p.w.fetch=async(url,options={})=>{if(url==='/api/purchase-orders/revision')return {ok:true,json:async()=>({revision:'8:2'})};if(url.startsWith('/api/purchase-orders/changes?')){changeCalls++;return {ok:true,json:async()=>({revision:'8:2',rows:[],deletedIds:[],containers:p.data.containers,sourceMode:'web',integrationEnabled:true,employeesChanged:false,reset:false})}}return fetch(url,options)};
- assert.ok(doc.querySelector('tr[data-id="new-local"]'));doc.getElementById('cancel').click();doc.getElementById('discard').click();assert.equal(doc.querySelector('tr[data-id="new-local"]'),null);
- p.listeners.changed();for(let i=0;i<10;i++)await tick();assert.equal(changeCalls,1);assert.equal(doc.querySelector('tr[data-id="new-local"]'),null);
+test('discarded local row releases its reservation and stays removed',async t=>{
+ const p=await page(t,{local:true}),doc=p.w.document;
+ assert.ok(doc.querySelector('tr[data-id="new-local"]'));doc.getElementById('cancel').click();doc.getElementById('discard').click();await tick();assert.equal(doc.querySelector('tr[data-id="new-local"]'),null);
+ const release=p.calls.find(c=>c.url==='/api/purchase-orders/release-key');assert.ok(release);assert.deepEqual(JSON.parse(release.options.body),{reservationId:'00000000-0000-4000-8000-000000000001'});
+ assert.equal(doc.querySelector('tr[data-id="new-local"]'),null);
+});
+test('row history is requested by immutable order ID',async t=>{
+ const p=await page(t),doc=p.w.document,fetch=p.w.fetch;p.w.fetch=async(url,options)=>{p.calls.push({url,options});return url==='/api/purchase-orders/history?orderId=1'?{ok:true,json:async()=>({rows:[]})}:fetch(url,options)};
+ doc.querySelector('tr[data-id="1"] [data-field="productCode"] .code-label').dispatchEvent(new p.w.MouseEvent('dblclick',{bubbles:true}));await tick();
+ assert.ok(p.calls.some(c=>c.url==='/api/purchase-orders/history?orderId=1'));
+ assert.ok(!p.calls.some(c=>c.url.includes('history?rowKey=')));
 });
 test('one view-only full render projects each source row once for every summary',async t=>{
  const projectionProbe={count:0},p=await page(t,{projectionProbe});projectionProbe.count=0;p.w.document.getElementById('bulk').click();

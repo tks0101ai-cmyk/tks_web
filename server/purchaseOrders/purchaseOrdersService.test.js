@@ -319,6 +319,25 @@ test('snapshot import clears blanks and soft-deletes rows omitted from the compl
  assert.deepEqual((await db.query("SELECT summary->'deleted' deleted FROM purchase_history WHERE action='import'")).rows[0].deleted,[removed.rowKey]);
  assert.ok((await service.changes(manager,cursor)).deletedIds.includes(removed.id));await service.restore(manager,{id:removed.id,version:trash.version});assert.equal((await service.list(manager)).rows.length,2);
 });
+test('snapshot import recycles omitted keys before creating rows and rolls back atomically',async()=>{
+ const first=await service.create(manager,input()),second=await service.create(manager,{...input(),productCode:'B'});
+ const preview=await service.previewImport(manager,{buffer:await snapshotFile([{...input(),productCode:'C',rowKey:''},{...input(),productCode:'D',rowKey:''}])});
+ assert.equal(preview.valid,true);
+ const query=(sql,params)=>db.query(sql,params),failing=createPurchaseOrdersService({pool:{query,connect:async()=>({query,release(){}})},events,project:async()=>{throw Error('projection failed')}});
+ await assert.rejects(failing.commitImport(manager,preview.token),/projection failed/);
+ assert.deepEqual((await service.list(manager)).rows.map(row=>row.id).sort(),[first.id,second.id].sort());
+ assert.equal((await db.query('SELECT count(*)::int n FROM purchase_key_pool')).rows[0].n,0);
+ const result=await service.commitImport(manager,preview.token);
+ assert.deepEqual(result.createdKeys,['D00001','D00002']);
+ assert.deepEqual((await service.list(manager)).rows.map(row=>row.rowKey).sort(),['D00001','D00002']);
+ const stale=await service.previewImport(manager,{buffer:await snapshotFile([{...input(),productCode:'E',rowKey:''}])});
+ const current=(await service.list(manager)).rows[0];await service.update(manager,current.id,{version:current.version,changes:{supplier:'Changed'}});
+ const activeBefore=(await db.query('SELECT id,row_key,deleted_at FROM purchase_orders ORDER BY id')).rows;
+ const poolBefore=(await db.query('SELECT row_key FROM purchase_key_pool ORDER BY row_key')).rows;
+ await assert.rejects(service.commitImport(manager,stale.token),error=>error.code==='IMPORT_SNAPSHOT_STALE');
+ assert.deepEqual((await db.query('SELECT id,row_key,deleted_at FROM purchase_orders ORDER BY id')).rows,activeBefore);
+ assert.deepEqual((await db.query('SELECT row_key FROM purchase_key_pool ORDER BY row_key')).rows,poolBefore);
+});
 test('snapshot changed after download is rejected before preview',async()=>{
  const row=await service.create(manager,input()),snapshot=await service.importSnapshot(manager),buffer=Buffer.from(excel.exportImportSnapshot({rows:snapshot.rows,columns,revision:snapshot.revision}));
  await service.update(manager,row.id,{version:row.version,changes:{supplier:'Changed'}});
