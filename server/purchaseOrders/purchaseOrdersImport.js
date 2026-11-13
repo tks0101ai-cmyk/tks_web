@@ -45,7 +45,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
         else if (integerFields.has(col.k) && (!Number.isSafeInteger(number) || number <= 0)) result.errors.push(col.l + ': phải là số nguyên dương.');
         else if(col.k==='fxRate'&&number===0)result.errors.push(col.l+': phải lớn hơn 0 hoặc để trống.');else values[col.k] = number;
       } else if ((col.t === 'date'||col.t==='datetime')) {
-        const date = (col.t==='datetime'?workbook.dateTimeValue:workbook.dateValue)(value, false);
+        const date = col.t==='datetime'&&['orderedNote','shippedNote','etaNote','arrivedNote'].includes(col.k)?workbook.dateNoteValue(value,false):(col.t==='datetime'?workbook.dateTimeValue:workbook.dateValue)(value, false);
         if (!date) result.errors.push(col.l + ': ngày không hợp lệ.');
         else values[col.k] = date;
       } else {

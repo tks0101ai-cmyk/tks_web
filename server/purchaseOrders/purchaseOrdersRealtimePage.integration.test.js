@@ -26,6 +26,18 @@ test('page size 10 slices the table and keeps next-page navigation',async t=>{
  assert.equal(doc.querySelectorAll('#orderTable tbody tr[data-id]').length,2);
  assert.equal(doc.getElementById('pageLabel').textContent,'Trang 2/2');
 });
+test('bulk row ticks update selection without rebuilding the order table',async t=>{
+ const p=await page(t),doc=p.w.document,root=doc.getElementById('orderTable');doc.getElementById('bulk').click();let writes=0,proto=Object.getPrototypeOf(root),descriptor;while(proto&&!descriptor){descriptor=Object.getOwnPropertyDescriptor(proto,'innerHTML');proto=Object.getPrototypeOf(proto)}Object.defineProperty(root,'innerHTML',{configurable:true,get(){return descriptor.get.call(root)},set(value){writes++;descriptor.set.call(root,value)}});
+ const checkbox=doc.querySelector('#orderTable input[data-pick]');checkbox.checked=true;checkbox.dispatchEvent(new p.w.Event('change',{bubbles:true}));assert.equal(writes,0);assert.equal(doc.getElementById('bulk').textContent,'Đang chọn 1 dòng');assert.equal(doc.querySelector('#pickAll').checked,true);
+});
+test('opening a date cell edits only that cell without rebuilding the order table',async t=>{
+ const p=await page(t),doc=p.w.document,root=doc.getElementById('orderTable');let writes=0,proto=Object.getPrototypeOf(root),descriptor;while(proto&&!descriptor){descriptor=Object.getOwnPropertyDescriptor(proto,'innerHTML');proto=Object.getPrototypeOf(proto)}Object.defineProperty(root,'innerHTML',{configurable:true,get(){return descriptor.get.call(root)},set(value){writes++;descriptor.set.call(root,value)}});
+ doc.querySelector('#orderTable [data-field="listedAt"] .date-label').click();assert.equal(writes,0);assert.ok(doc.querySelector('#orderTable [data-edit="listedAt"]'));assert.equal(doc.activeElement.dataset.edit,'listedAt');
+});
+test('date notes accept an approximate day range and save it as entered',async t=>{
+ const p=await page(t),doc=p.w.document;doc.getElementById('columns').click();const option=doc.querySelector('[data-column="etaNote"]');option.checked=true;option.dispatchEvent(new p.w.Event('change',{bubbles:true}));doc.getElementById('modalClose').click();doc.querySelector('#orderTable [data-field="etaNote"] .date-label').click();const input=doc.querySelector('#orderTable [data-edit="etaNote"]');input.value='11-12/11';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));input.dispatchEvent(new p.w.Event('change',{bubbles:true}));
+ let saved;const fetch=p.w.fetch;p.w.fetch=async(url,options={})=>{if(url==='/api/purchase-orders/1'&&options.method==='PATCH'){saved=JSON.parse(options.body);return {ok:true,json:async()=>({})}}return fetch(url,options)};doc.getElementById('save').click();assert.ok(doc.getElementById('commit'));doc.getElementById('commit').click();for(let i=0;i<6;i++)await tick();assert.equal(saved.changes.etaNote,'11-12/11');
+});
 test('purchase errors are announced through a visible toast',async t=>{
  const p=await page(t),doc=p.w.document;
  p.w.fetch=async url=>url.endsWith('/operations')?{ok:true,json:async()=>({rows:[]})}:{ok:true,json:async()=>({rows:[]})};
@@ -46,6 +58,7 @@ test('Ctrl+Z undoes a grid paste but leaves native undo alone in the search fiel
 });
 test('Ctrl+Z undoes an edited input before it loses focus',async t=>{
  const p=await page(t),doc=p.w.document,input=doc.querySelector('[data-edit="supplier"]');input.focus();input.value='New supplier';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));
+ await new Promise(resolve=>setTimeout(resolve,260));
  assert.equal(p.drafts()['1'].changes.supplier,'New supplier');
  input.addEventListener('keydown',e=>e.stopPropagation(),{once:true});
  const undo=new p.w.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true});input.dispatchEvent(undo);
@@ -91,7 +104,7 @@ test('SSE refresh loads newly added employees while retaining draft baseline and
   mode=next;p.data.rows[0].cartonCount++;p.listeners.changed();await tick();await tick();
   assert.ok([...doc.querySelector('[data-edit="buyer"]').options].some(o=>o.value==='New employee'),next);
   assert.equal(doc.activeElement.value,'Private draft');assert.equal(doc.activeElement.selectionStart,2);assert.equal(doc.activeElement.selectionEnd,5);
-  assert.equal(p.drafts()['1'].before.supplier,'Old');assert.equal(p.drafts()['1'].version,4);
+  const draft=p.drafts()['1'];if(draft){assert.equal(draft.before.supplier,'Old');assert.equal(draft.version,4)}else assert.ok(p.calls.some(call=>call.url==='/api/purchase-orders/plan'&&JSON.parse(call.options.body).rows?.some(row=>row.changes.supplier==='Private draft')),'the delayed auto-save may commit the preserved edit while refreshes continue');
   assert.equal(doc.querySelector('[data-edit="cartonCount"]').value,String(p.data.rows[0].cartonCount));
  }
 });
@@ -99,9 +112,9 @@ test('pristine focused input retains its original comparison value/version when 
  const p=await page(t),doc=p.w.document;doc.querySelector('[data-edit="supplier"]').focus();
  p.data.rows[0].supplier='Remote';p.data.rows[0].version=5;p.listeners.changed();await tick();await tick();
  const input=doc.querySelector('[data-edit="supplier"]');assert.equal(doc.activeElement,input);assert.equal(input.value,'Old');assert.match(input.closest('td').title,/Remote/);
- input.value='My edit';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));assert.equal(p.drafts()['1'].before.supplier,'Old');assert.equal(p.drafts()['1'].version,4);
+ input.value='My edit';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,260));assert.equal(p.drafts()['1'].before.supplier,'Old');assert.equal(p.drafts()['1'].version,4);
 });
-test('input burst avoids repeated synchronous cont/task rebuilds while keeping draft and totals current',async t=>{
+test('input burst debounces cont/task rebuilds while keeping draft and totals current',async t=>{
  const p=await page(t),doc=p.w.document,row=p.data.rows[0];row.kgPerCarton=10;row.m3PerCarton=.1;p.listeners.changed();await tick();await tick();
  doc.querySelector('#containerTable [data-container-filter="2"]').click();
  const frames=new Map();let frameId=0;p.w.requestAnimationFrame=callback=>{const id=++frameId;frames.set(id,callback);return id};p.w.cancelAnimationFrame=id=>frames.delete(id);
@@ -109,8 +122,8 @@ test('input burst avoids repeated synchronous cont/task rebuilds while keeping d
  watch(doc.getElementById('containerTable'),'containers');watch(doc.getElementById('purchaseTaskBar'),'tasks');
  const input=doc.querySelector('[data-edit="cartonCount"]');input.focus();
  for(const value of ['11','12','13']){input.value=value;input.dispatchEvent(new p.w.Event('input',{bubbles:true}))}
- assert.deepEqual(countWrites,{containers:0,tasks:0},'input burst must not rebuild summary DOM synchronously');const pendingFrames=[...frames.values()];frames.clear();pendingFrames.forEach(callback=>callback(16));
- assert.deepEqual(countWrites,{containers:1,tasks:1},'one frame rebuilds each summary once');assert.equal(p.drafts()['1'].changes.cartonCount,13);const values=[...doc.querySelector('#containerTable [data-container-filter="2"]').closest('tr').querySelectorAll('td.num')].slice(0,3).map(td=>td.textContent);assert.deepEqual(values,['1','0.13','1.30']);
+ assert.deepEqual(countWrites,{containers:0,tasks:0},'input burst must not rebuild summary DOM synchronously');await new Promise(resolve=>setTimeout(resolve,260));
+ assert.deepEqual(countWrites,{containers:1,tasks:1},'one debounced update rebuilds each summary once');assert.equal(p.drafts()['1'].changes.cartonCount,13);const values=[...doc.querySelector('#containerTable [data-container-filter="2"]').closest('tr').querySelectorAll('td.num')].slice(0,3).map(td=>td.textContent);assert.deepEqual(values,['1','0.13','1.30']);
  assert.match(doc.querySelector('#purchaseTaskBar strong').textContent,/0\.13 \/ 32 T · 1\.30 \/ 170 m³/);
 });
 test('commit announces saving while the write is pending',async t=>{
@@ -119,12 +132,12 @@ test('commit announces saving while the write is pending',async t=>{
  const commit=doc.getElementById('commit');commit.click();await tick();assert.equal(commit.disabled,true);assert.equal(commit.getAttribute('aria-busy'),'true');assert.match(commit.textContent,/Đang lưu/);assert.equal(doc.querySelector('#modal [role="status"]')?.textContent,'Đang lưu thay đổi…');assert.equal(doc.getElementById('modal').open,true);
  resolveWrite({ok:true,json:async()=>({})});for(let i=0;i<5;i++)await tick();
 });
-test('successful save closes before delta refresh finishes and later applies authoritative row delta',async t=>{
+test('successful save closes without a sync toast and later applies authoritative row delta',async t=>{
  const p=await page(t,{revision:'8:1'}),doc=p.w.document;const input=doc.querySelector('[data-edit="supplier"]');input.focus();input.value='Saved supplier';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));input.dispatchEvent(new p.w.Event('change',{bubbles:true}));doc.getElementById('save').click();
  let resolveDelta;const delta=new Promise(resolve=>{resolveDelta=resolve});const fetch=p.w.fetch;p.w.fetch=async(url,options={})=>{if(url==='/api/purchase-orders/1'&&options.method==='PATCH'){p.data.rows[0].supplier='Saved supplier';p.data.rows[0].version=5;return {ok:true,json:async()=>({...structuredClone(p.data.rows[0]),operationId:'op-1'})}}if(url.startsWith('/api/purchase-orders/changes?')){p.calls.push({url,options});return delta}return fetch(url,options)};
  const root=doc.getElementById('orderTable');let writes=0,proto=Object.getPrototypeOf(root),descriptor;while(proto&&!descriptor){descriptor=Object.getOwnPropertyDescriptor(proto,'innerHTML');proto=Object.getPrototypeOf(proto)}Object.defineProperty(root,'innerHTML',{configurable:true,get(){return descriptor.get.call(root)},set(value){writes++;descriptor.set.call(root,value)}});
  doc.getElementById('commit').click();for(let i=0;i<5;i++)await tick();
- const supplierCell=()=>doc.querySelector('tr[data-id="1"] [data-field="supplier"]');assert.equal(doc.getElementById('modal').open,false);assert.equal(p.drafts()['1'],undefined);assert.match(doc.getElementById('notice').textContent,/Đang đồng bộ/);assert.equal(supplierCell().querySelector('input')?.value||supplierCell().textContent,'Saved supplier','authoritative PATCH row should render before the background delta');assert.equal(writes,1,'the accepted PATCH row renders while the background delta is pending');assert.ok(p.calls.some(c=>c.url==='/api/purchase-orders/changes?after=8%3A1'));
+ const supplierCell=()=>doc.querySelector('tr[data-id="1"] [data-field="supplier"]');assert.equal(doc.getElementById('modal').open,false);assert.equal(p.drafts()['1'],undefined);assert.equal(doc.getElementById('notice').textContent,'');assert.equal(supplierCell().querySelector('input')?.value||supplierCell().textContent,'Saved supplier','authoritative PATCH row should render before the background delta');assert.equal(writes,1,'the accepted PATCH row renders while the background delta is pending');assert.ok(p.calls.some(c=>c.url==='/api/purchase-orders/changes?after=8%3A1'));
  doc.getElementById('notice').textContent='Thông báo mới hơn';
  resolveDelta({ok:true,json:async()=>({revision:'8:2',rows:[structuredClone(p.data.rows[0])],deletedIds:[],containers:p.data.containers,sourceMode:'web',integrationEnabled:true,employeesChanged:false,reset:false})});for(let i=0;i<5;i++)await tick();
  assert.equal(writes,2,'the later delta applies after the authoritative PATCH row render');assert.equal(supplierCell().querySelector('input')?.value||supplierCell().textContent,'Saved supplier');assert.equal(p.drafts()['1'],undefined);assert.equal(doc.getElementById('save').hidden,true);assert.equal(doc.getElementById('notice').textContent,'Thông báo mới hơn','background completion must not overwrite a newer notice');
@@ -156,7 +169,7 @@ test('successful outbox retry closes modal without waiting for background delta'
  const p=await page(t,{local:true,revision:'8:1'}),doc=p.w.document,fetch=p.w.fetch;let writes=0,resolveDelta;const delta=new Promise(resolve=>{resolveDelta=resolve}),keys=[];
  p.w.fetch=async(url,options={})=>{if(url==='/api/purchase-orders/plan'&&options.method==='POST'){writes++;keys.push(options.headers['Idempotency-Key']);if(writes===1)return {ok:false,status:500,json:async()=>({error:'Ambiguous server failure'})};p.data.rows.push({...p.data.rows[0],id:'new-local',rowKey:'D00002',supplier:'Local'});return {ok:true,json:async()=>({})}}if(url.startsWith('/api/purchase-orders/changes?')){p.calls.push({url,options});return delta}return fetch(url,options)};
  doc.getElementById('save').click();doc.getElementById('commit').click();for(let i=0;i<5;i++)await tick();assert.equal(doc.getElementById('modal').open,true);assert.ok(p.drafts()['new-local']);
- doc.getElementById('retryWrite').click();for(let i=0;i<5;i++)await tick();assert.equal(writes,2);assert.equal(keys[1],keys[0],'outbox retry must reuse the original idempotency key');assert.equal(doc.getElementById('modal').open,false);assert.equal(p.drafts()['new-local'],undefined);assert.match(doc.getElementById('notice').textContent,/Đang đồng bộ/);assert.ok(p.calls.some(c=>c.url==='/api/purchase-orders/changes?after=8%3A1'));
+ doc.getElementById('retryWrite').click();for(let i=0;i<5;i++)await tick();assert.equal(writes,2);assert.equal(keys[1],keys[0],'outbox retry must reuse the original idempotency key');assert.equal(doc.getElementById('modal').open,false);assert.equal(p.drafts()['new-local'],undefined);assert.doesNotMatch(doc.getElementById('notice').textContent,/Đang đồng bộ/);assert.ok(p.calls.some(c=>c.url==='/api/purchase-orders/changes?after=8%3A1'));
  resolveDelta({ok:true,json:async()=>({revision:'8:2',rows:[{...p.data.rows.at(-1),version:1}],deletedIds:[],containers:p.data.containers,sourceMode:'web',integrationEnabled:true,employeesChanged:false,reset:false})});for(let i=0;i<5;i++)await tick();const localSupplier=doc.querySelector('tr[data-id="new-local"] [data-field="supplier"]');assert.equal(localSupplier.querySelector('input')?.value||localSupplier.textContent,'Local');
 });
 test('discarded local row is not resurrected by an otherwise empty delta',async t=>{
@@ -173,7 +186,7 @@ test('Đối chiếu overrides are directly editable and sent through the normal
  const p=await page(t),doc=p.w.document;p.data.rows[0].literChina=120;p.data.rows[0].measurementOverrides={literChina:120};p.data.rows.push({...p.data.rows[0],id:'2',rowKey:'D00002',literChina:110,measurementOverrides:{literChina:110}});p.listeners.changed();await tick();await tick();
  doc.getElementById('columns').click();doc.querySelector('[data-column="literChina"]').checked=true;doc.querySelector('[data-column="literChina"]').dispatchEvent(new p.w.Event('change',{bubbles:true}));
  const cells=doc.querySelectorAll('[data-field="literChina"]'),paste=new p.w.Event('paste',{bubbles:true,cancelable:true});cells[0].click();paste.clipboardData={getData:()=> '121\n122'};cells[0].dispatchEvent(paste);assert.equal(p.drafts()['2'].changes.literChina,121);assert.equal(p.drafts()['1'].changes.literChina,122);const keyTarget=doc.querySelector('[data-field="literChina"]'),undo=new p.w.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true});keyTarget.focus();keyTarget.dispatchEvent(undo);assert.equal(p.drafts()['1'],undefined);assert.equal(p.drafts()['2'],undefined);
- const input=doc.querySelector('tr[data-id="1"] [data-edit="literChina"]');assert.ok(input);assert.equal(doc.querySelector('[data-field="status"] input'),null);input.focus();input.value='125';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));assert.equal(p.drafts()['1'].changes.literChina,125);
+ const input=doc.querySelector('tr[data-id="1"] [data-edit="literChina"]');assert.ok(input);assert.equal(doc.querySelector('[data-field="status"] input'),null);input.focus();input.value='125';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,260));assert.equal(p.drafts()['1'].changes.literChina,125);
  doc.getElementById('save').click();doc.getElementById('commit').click();await tick();await tick();const call=p.calls.find(c=>c.options.method==='PATCH'&&c.url.endsWith('/1'));assert.ok(call);assert.deepEqual(JSON.parse(call.options.body),{version:4,before:{literChina:120},changes:{literChina:125}});
 });
 test('measurement inputs show agreed precision and focus/blur alone creates no draft',async t=>{

@@ -71,6 +71,15 @@ test('actual workbook roundtrip uses the same columns as frontend', () => {
   assert(result.operations[0].changes.some(c => c.key === 'cartonCount' && c.after === 7));
 });
 
+test('purchase note dates preserve temporary ranges but reject invalid month days',()=>{
+  const ok=prepareRows([{...fresh(),etaNote:'11-12/11'}],[]);
+  assert.equal(ok.valid,true,ok.rows[0].errors.join('; '));
+  assert.equal(ok.operations[0].values.etaNote,'11-12/11');
+  const invalid=prepareRows([{...fresh(),etaNote:'31-32/11'}],[]);
+  assert.equal(invalid.valid,false);
+  assert.match(invalid.rows[0].errors.join('; '),/ngày không hợp lệ/);
+});
+
 test('full snapshot workbook carries revision, complete writable headers and per-column guidance', () => {
   const file=excel.exportImportSnapshot({rows:[{...fresh(),rowKey:'D00001.01'}],columns,revision:'12:34'});
   const workbook=excel.read(file),parsed=excel.parseImportSnapshot(file,columns);

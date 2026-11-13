@@ -26,7 +26,7 @@
   function exportImportSnapshot({rows,columns,revision}) {
     if(!/^\d+:\d+$/.test(String(revision||'')))throw Error('Phiên bản snapshot không hợp lệ.');
     const cols=importColumns(columns),keys=cols.filter(col=>col.k!=='rowKey').map(col=>col.k),book=exportWorkbook(rows,columns,keys);
-    const kind=col=>numericTypes.has(col.t)?'Số'+(col.decimals!=null?' · tối đa '+col.decimals+' chữ số thập phân':''):col.t==='datetime'?'Ngày dd/mm/yyyy hoặc dd/mm/yyyy hh:mm':'Văn bản';
+    const kind=col=>numericTypes.has(col.t)?'Số'+(col.decimals!=null?' · tối đa '+col.decimals+' chữ số thập phân':''):['orderedNote','shippedNote','etaNote','arrivedNote'].includes(col.k)?'Ngày ghi chú hoặc khoảng, ví dụ 11-12/11':col.t==='datetime'?'Ngày dd/mm/yyyy hoặc dd/mm/yyyy hh:mm':'Văn bản';
     const required=col=>col.k==='productCode'?'Có · mọi dòng':['productName','qtyPerCarton','cartonCount'].includes(col.k)?'Có · dòng mới':'Không';
     const hints=cols.map(col=>[caption(col),required(col),kind(col),col.k==='rowKey'?'Có Mã dòng: cập nhật dòng đó. Để trống: tạo mã mới.':col.k==='productCode'?'Bắt buộc; không trùng trong file.':col.k==='productName'?'Bắt buộc khi tạo mã mới.':['qtyPerCarton','cartonCount'].includes(col.k)?'Mã mới cần số nguyên dương.':col.t==='datetime'?'Để trống sẽ xóa ngày hiện tại.':'Để trống sẽ xóa giá trị hiện tại.']);
     const exampleKeys=['rowKey','productCode','productName','qtyPerCarton','cartonCount','supplier','unitPriceCny','listedAt'],exampleColumns=exampleKeys.map(key=>cols.find(col=>col.k===key));
@@ -71,6 +71,11 @@
     const text=String(value??'').trim(),match=/^(.*?)[T ](\d{2}):(\d{2})(?::00(?:\.000)?)?$/.exec(text);
     if(!match)return dateValue(text,date1904);
     const date=dateValue(match[1],date1904);return date&&Number(match[2])<24&&Number(match[3])<60?date+'T'+match[2]+':'+match[3]:null;
+  }
+  function dateNoteValue(value,date1904=false){
+    const text=String(value??'').trim(),range=/^(\d{1,2})\s*-\s*(\d{1,2})\s*\/\s*(\d{1,2})(?:\/(\d{4}))?$/.exec(text);
+    if(range){const from=Number(range[1]),to=Number(range[2]),month=Number(range[3]),year=Number(range[4]),maxDays=month<1||month>12?0:year?new Date(Date.UTC(year,month,0)).getUTCDate():month===2?29:[4,6,9,11].includes(month)?30:31;if(from<1||to<from||to>maxDays)return null;return from+'-'+to+'/'+month+(range[4]?'/'+range[4]:'')}
+    return dateTimeValue(value,date1904);
   }
   function parseWorkbook(workbook, columns, sheetName, {includeEmpty=false,allowEmpty=false}={}) {
     const name = sheetName || (workbook.SheetNames.includes('Đặt hàng') ? 'Đặt hàng' : workbook.SheetNames[0]);
@@ -122,7 +127,7 @@
             row[col.k] = String(value); row.__cellErrors[col.k] = caption(col) + ': số không hợp lệ';
           } else row[col.k] = C.parse(value);
         } else if ((col.t === 'date'||col.t==='datetime')) {
-          const date = (col.t==='datetime'?dateTimeValue:dateValue)(value, !!workbook.Workbook?.WBProps?.date1904);
+          const date = col.t==='datetime'&&['orderedNote','shippedNote','etaNote','arrivedNote'].includes(col.k)?dateNoteValue(value,!!workbook.Workbook?.WBProps?.date1904):(col.t==='datetime'?dateTimeValue:dateValue)(value, !!workbook.Workbook?.WBProps?.date1904);
           row[col.k] = date || String(value);
           if (!date) row.__cellErrors[col.k] = caption(col) + ': ngày không hợp lệ';
         } else row[col.k] = String(value).trim();
@@ -141,5 +146,5 @@
   }
   function read(data) { return XLSX.read(data, { type: 'array', cellDates: false, cellFormula: true }); }
   function bytes(workbook) { return XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }); }
-  return { caption, numericTypes, dateValue, dateTimeValue, exportWorkbook, exportImportSnapshot, parseWorkbook, parseImportSnapshot, read, bytes };
+  return { caption, numericTypes, dateValue, dateTimeValue, dateNoteValue, exportWorkbook, exportImportSnapshot, parseWorkbook, parseImportSnapshot, read, bytes };
 });
