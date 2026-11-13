@@ -85,6 +85,13 @@ test('row key reservation reclaims expired keys and rejects expired claims',asyn
  await assert.rejects(service.create({id:'other'},{...input(),rowKey:next.rowKey,reservationId:next.reservationId}),e=>e.code==='ROW_KEY_UNKNOWN');
 });
 
+test('row key claim rejects a token removed by another reservation cleanup',async()=>{
+ const expired=await service.reserveKey(manager),other={id:'other'};
+ await db.query('UPDATE purchase_key_reservations SET expires_at=now()-interval \'1 minute\' WHERE reservation_id=$1',[expired.reservationId]);
+ const reclaimed=await service.reserveKey(other);assert.equal(reclaimed.rowKey,expired.rowKey);
+ await assert.rejects(service.create(manager,{...input(),rowKey:expired.rowKey,reservationId:expired.reservationId}),e=>e.code==='ROW_KEY_UNKNOWN');
+});
+
 test('row key reservation is consumed once and concurrent reservations are unique',async()=>{
  const reservation=await service.reserveKey(manager),row=await service.create(manager,{...input(),rowKey:reservation.rowKey,reservationId:reservation.reservationId});
  assert.equal(row.rowKey,reservation.rowKey);
