@@ -384,4 +384,4 @@ Bảng xuất được: Chi tiết giao dịch, Danh sách mã mới, Sản ph�
 
 *Hết tài liệu BPMN v3.0*
 
-Cập nhật gần nhất: 13/11/2026 (phiên đăng nhập trượt 7 ngày; trước đó 30/10/2026: Luồng G Vị trí hàng gỡ module cũ đọc Google Sheets, chuyển sang VT Hà Nội/Sài Gòn trên Postgres).
+Cập nhật gần nhất: 13/11/2026 (phiên đăng nhập trượt 7 ngày; trước đó 30/10/2026: Luồng G Vị trí hàng: gỡ module cũ đọc Google Sheets, chuyển sang VT Hà Nội/Sài Gòn trên Postgres).

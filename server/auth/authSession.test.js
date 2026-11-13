@@ -33,6 +33,22 @@ test('authSession: ten cookie va nguong gia han', () => {
   assert.equal(SESSION_REFRESH_AFTER_MS, 24 * 60 * 60 * 1000);
 });
 
+test('SESSION_REFRESH_AFTER_MS: TTL 1 ngay -> nguong gia han bang nua TTL (12h) de van truot', () => {
+  const paths = ['../config', './authSession', './authService', '../branch/branchMiddleware'].map(p => require.resolve(p));
+  const saved = process.env.AUTH_SESSION_IDLE_DAYS;
+  const clear = () => paths.forEach(p => { delete require.cache[p]; });
+  clear();
+  process.env.AUTH_SESSION_IDLE_DAYS = '1';
+  try {
+    assert.equal(require('./authSession').SESSION_REFRESH_AFTER_MS, 12 * 60 * 60 * 1000);
+  } finally {
+    if (saved === undefined) delete process.env.AUTH_SESSION_IDLE_DAYS;
+    else process.env.AUTH_SESSION_IDLE_DAYS = saved;
+    clear();
+    paths.forEach(p => { try { require(p); } catch (_) { /* nap lai ban mac dinh */ } });
+  }
+});
+
 test('authCookieOptions: maxAge bang AUTH_SESSION_TTL_MS, httpOnly, path /', () => {
   const options = authCookieOptions();
   assert.equal(options.maxAge, CONFIG.AUTH_SESSION_TTL_MS);

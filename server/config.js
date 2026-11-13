@@ -18,7 +18,9 @@ function positiveIntOr(raw, fallback) {
 
 // Phien dang nhap TRUOT: chi het khi khong dung web qua so ngay nay
 // (server/auth/authSession.js gia han moi lan dung, toi da 1 lan/ngay).
-const AUTH_SESSION_IDLE_DAYS = positiveIntOr(process.env.AUTH_SESSION_IDLE_DAYS, 7);
+// Hop le 1..365 ngay; gia tri lon hon bi chan o 365.
+const AUTH_SESSION_MAX_IDLE_DAYS = 365;
+const AUTH_SESSION_IDLE_DAYS = Math.min(positiveIntOr(process.env.AUTH_SESSION_IDLE_DAYS, 7), AUTH_SESSION_MAX_IDLE_DAYS);
 
 const CONFIG = {
   // Workbook "Bảng Công nợ" dùng chung cho hai cơ sở, server chỉ đọc hai

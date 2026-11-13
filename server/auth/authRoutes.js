@@ -695,6 +695,7 @@ router.post('/api/auth/google', async (req, res) => {
 
 router.post('/api/auth/logout', (req, res) => {
   res.clearCookie(AUTH_COOKIE_NAME, { path: '/' });
+  res.clearCookie(BRANCH_COOKIE_NAME, { path: '/' });
   res.status(200).json({ ok: true });
 });
 

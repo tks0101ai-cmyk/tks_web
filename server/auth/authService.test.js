@@ -74,6 +74,13 @@ test('config: AUTH_SESSION_IDLE_DAYS hop le duoc dung', () => {
   assert.equal(cfg.AUTH_SESSION_TTL_MS, 30 * 24 * 60 * 60 * 1000);
 });
 
+test('config: AUTH_SESSION_IDLE_DAYS bi chan tren o 365 ngay', () => {
+  assert.equal(loadConfigWithIdleDays('1000').AUTH_SESSION_IDLE_DAYS, 365);
+  assert.equal(loadConfigWithIdleDays('366').AUTH_SESSION_IDLE_DAYS, 365);
+  assert.equal(loadConfigWithIdleDays('365').AUTH_SESSION_IDLE_DAYS, 365);
+  assert.equal(loadConfigWithIdleDays('365').AUTH_SESSION_TTL_MS, 365 * 24 * 60 * 60 * 1000);
+});
+
 test('config: AUTH_SESSION_IDLE_DAYS rac -> 7', () => {
   for (const bad of ['', 'abc', '0', '-3', '1.5']) {
     assert.equal(loadConfigWithIdleDays(bad).AUTH_SESSION_IDLE_DAYS, 7, `gia tri ${JSON.stringify(bad)}`);

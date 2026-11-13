@@ -12,7 +12,9 @@ const { BRANCH_COOKIE_NAME, branchCookieOptions } = require('../branch/branchMid
 const { isBranchSelectable } = require('../branch/branches');
 
 const AUTH_COOKIE_NAME = 'tks_auth';
-const SESSION_REFRESH_AFTER_MS = 24 * 60 * 60 * 1000;
+// Gia han toi da 1 lan/ngay, nhung khong bao gio tre hon nua TTL: TTL ngan (vd 1 ngay)
+// van phai truot, neu khong token da het han truoc khi kip gia han.
+const SESSION_REFRESH_AFTER_MS = Math.min(24 * 60 * 60 * 1000, Math.floor(CONFIG.AUTH_SESSION_TTL_MS / 2));
 
 /** Payload JWT + du lieu tra ve client. KHONG duoc chua passwordHash. */
 function publicUser(user) {

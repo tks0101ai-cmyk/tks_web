@@ -589,6 +589,6 @@ Cập nhật cuối: 12/11/2026.
 
 ## Phiên đăng nhập trượt 7 ngày (13/11/2026)
 
-Trước đây phiên (cookie `tks_auth`) sống cố định 12 giờ nên ngày nào cũng phải đăng nhập lại. Nay phiên **trượt**: `requireAuth` cấp lại token đủ hạn khi token đã cấp quá 24 giờ và tài khoản vẫn tồn tại, không bị khóa; chỉ khi không dùng web `AUTH_SESSION_IDLE_DAYS` ngày (mặc định 7) mới phải đăng nhập lại. Cookie cơ sở `tks_branch` sống và gia hạn cùng phiên. Module mới `server/auth/authSession.js` (cấp/gia hạn phiên). Bỏ biến `JWT_EXPIRES_IN` — **xóa biến này trên Render nếu có**. Không migration. Đổi mật khẩu chưa đăng xuất thiết bị khác (việc sau).
+Trước đây phiên (cookie `tks_auth`) sống cố định 12 giờ nên ngày nào cũng phải đăng nhập lại. Nay phiên **trượt**: `requireAuth` cấp lại token đủ hạn khi token đã cấp quá ngưỡng gia hạn (nhỏ hơn trong 24 giờ và nửa hạn phiên, để hạn ngắn vẫn trượt được) và tài khoản vẫn tồn tại, không bị khóa; chỉ khi không dùng web `AUTH_SESSION_IDLE_DAYS` ngày (mặc định 7, hợp lệ 1–365, lớn hơn bị chặn ở 365) mới phải đăng nhập lại. Cookie cơ sở `tks_branch` sống và gia hạn cùng phiên. Module mới `server/auth/authSession.js` (cấp/gia hạn phiên). Bỏ biến `JWT_EXPIRES_IN` — **xóa biến này trên Render nếu có**. Không migration. Đăng xuất chỉ xóa cookie (`tks_auth`, `tks_branch`) trên thiết bị đó: token đã sao chép vẫn dùng được tới khi hết hạn — chưa có thu hồi phiên, cùng việc sau với đổi mật khẩu (chưa đăng xuất thiết bị khác).
 
 Cập nhật gần nhất: 13/11/2026.

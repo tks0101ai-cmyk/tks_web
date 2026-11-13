@@ -5,7 +5,7 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret';
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { AUTH_COOKIE_NAME, requireAuth, requireRole, requireFeature, createRequireAuth } = require('./authMiddleware');
-const { signToken } = require('./authService');
+const { signToken, verifyToken } = require('./authService');
 
 function fakeRes() {
   const res = { statusCode: null, body: null };
@@ -228,10 +228,16 @@ test('requireAuth: token cap qua 24h -> cap lai tks_auth va giu co so dang chon'
   const req = { cookies: { [AUTH_COOKIE_NAME]: 'valid', [BRANCH_COOKIE_NAME]: 'Sài Gòn' } };
   const res = cookieRes();
   let nextCalled = false;
-  await slidingMiddleware({ iat: OLD_IAT })(req, res, () => { nextCalled = true; });
+  await slidingMiddleware({
+    iat: OLD_IAT,
+    resolveUser: async u => ({ ...u, hoTen: 'Ten Moi' })
+  })(req, res, () => { nextCalled = true; });
   assert.equal(nextCalled, true);
   assert.deepEqual(res.cookies.map(c => c.name), [AUTH_COOKIE_NAME, BRANCH_COOKIE_NAME]);
   assert.equal(res.cookies[1].value, 'Sài Gòn');
+  const decoded = verifyToken(res.cookies[0].value);
+  assert.ok(decoded.iat >= Math.floor(Date.now() / 1000) - 5, 'token moi phai co iat moi');
+  assert.equal(decoded.hoTen, 'Ten Moi', 'payload lay tu effectiveUser, khong phai ban luu');
 });
 
 test('requireAuth: token con moi (< 24h) -> khong ghi cookie', async () => {
