@@ -83,8 +83,9 @@ Module mới / thay đổi:
 - `server/vatDraft/vietqrBanks.js` (mới): danh sách ngân hàng VietQR tĩnh `{ bin, code, shortName, name }`
   lấy một lần từ `https://api.vietqr.io/v2/banks` khi làm; hàm `findBank(input)` trả ngân hàng hoặc null.
   Không gọi API VietQR lúc chạy.
-  Danh sách chỉ gồm ngân hàng có `transferSupported = 1` (48 ngân hàng) — người dùng đã xác nhận ngày 13/11/2026;
-  ngân hàng khác bị từ chối khi nhập tay.
+  Danh sách đầy đủ 76 ngân hàng của API; người dùng đổi quyết định ngày 13/11/2026 sau khi làm rõ nghĩa cờ
+  `transferSupported` (chỉ nói app ngân hàng đó có quét VietQR để trả tiền, không liên quan việc tài khoản ở ngân hàng
+  đó nhận tiền) nên không dùng cờ này để lọc. Mã ngân hàng ngoài danh sách bị từ chối khi nhập tay.
 - `server/vatDraft/vietqr.js`: thêm `normalizeTransferContent(text)` và `MAX_TRANSFER_CONTENT = 50`;
   `isValidManualField` tách thành `isValidAccountNo` (1–19) và kiểm tra mã ngân hàng qua `findBank`;
   thêm kiểm tra số tiền ≤ 13 chữ số.
@@ -125,6 +126,15 @@ Máy chủ luôn dựng URL từ nội dung đã chuẩn hóa và trả lại `a
   (bỏ dự phòng `accountKeys[0]`). `total.defaultAccountKey` = `null`.
 - `accountOptions()` nhận `placeholder: true` cho thẻ QR tab Xử lý → option "— Chọn tài khoản —"
   được chọn khi `accountKey` rỗng. Nguồn có trong cấu hình vẫn tự chọn như cũ.
+
+### 3.5 Ảnh QR SVG
+
+- VietQR (thông báo 10/2026) chuyển Quick Link sang SVG; đường dẫn `.png` bị chuyển hướng 301 và phản hồi 301
+  không có header CORS. `buildVietqrImageUrl` vì vậy dựng URL đuôi `.svg` (trả 200 `image/svg+xml`, có CORS).
+- Trang chuyển SVG sang PNG thật ngay trên trình duyệt (`loadQrImage` + `qrPngBlob`: vẽ lên canvas nền trắng, xuất
+  `image/png`) cho nút Sao chép (truyền promise vào `ClipboardItem`) và Tải mã QR (file `.png`; lỗi thì mở ảnh ở tab mới).
+- Các thẻ `<img>` QR và `#vdQrViewerImg` đặt `crossorigin="anonymous"` để ảnh đang hiển thị và ảnh dùng khi chuyển PNG
+  cùng chế độ CORS, trình duyệt dùng lại cache (VietQR giới hạn 10 QR / 10 giây / IP).
 
 ## 4. Xử lý lỗi
 
