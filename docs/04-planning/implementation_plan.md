@@ -761,3 +761,9 @@ Cập nhật cuối: 12/11/2026.
 Kiểm tra: test importer và service bao gồm blank-clear, stale preview/confirm, soft-delete/restore và tombstone delta; route download cần quyền `purchase.import`; UI yêu cầu download trước, kéo/chọn `.xlsx`, giới hạn 10 MB và hiển thị tiến độ thật. Commit `725e73d5` đã push `main`; xác nhận Render phục vụ JS chứa UI snapshot mới. Còn test workbook với dữ liệu thật và xác minh đồng bộ hai phiên trên production.
 
 Cập nhật cuối: 12/11/2026.
+
+## Hiệu năng đợt 5 — 13/11/2026
+
+Đo sáng 13/11: `GET /api/expected-arrivals` 1,7–10,9 s và bị gọi dày (~100 lần ≥ 0,5 s trong 15 phút đầu giờ); xác nhận nhặt đơn nhiều dòng 5,8 s. Đã làm: Dự kiến hàng về — SQL trang bỏ `to_jsonb` từng dòng (DB 1,2 s → 0,43 s), tìm kiếm bỏ dấu 1 lần / dòng (4,4 s → 0,76 s), cache trang theo version + gom request trùng + trả bản cũ khi làm mới nền, sự kiện `expectedArrivalsChanged` xóa cache ngay; trình duyệt không tải lại khi mở lại tab trong 60 s, tab nền chờ hiện lại mới tải. Xác nhận nhặt — ghi cả đơn bằng 1 câu CTE (`jsonb_to_recordset`), số câu SQL không còn tăng theo số dòng; kết quả DB đối chiếu giống hệt cách cũ. Không đổi schema/API.
+
+Cập nhật cuối: 13/11/2026.

@@ -113,3 +113,161 @@ test('real SQL route/export parity and complete detail beyond current page', asy
   assert.equal(tooLarge.statusCode, 400);
   assert.equal(tooLarge.body.code, 'TOO_MANY_ROWS');
 });
+
+// ── Toi uu 13/11/2026: SQL doc cot truc tiep + cache trang theo version (queryCache) ──────────────────────
+const { EventEmitter } = require('node:events');
+
+// Dem cau SQL thuc chay (state 1 dong vs cau trang nang) de kiem cache / gom request.
+function countingPool(db) {
+  const calls = { state: 0, page: 0, sql: [] };
+  return {
+    calls,
+    query(sql, params) {
+      calls.sql.push(sql);
+      if (/^SELECT version::text AS version, computed_at, row_count/.test(sql)) calls.state++;
+      else if (/^WITH base AS/.test(sql)) calls.page++;
+      return db.query(sql, params);
+    }
+  };
+}
+
+test('SQL trang doc cot tuy chon truc tiep (khong to_jsonb tung dong); DB cu thieu cot van chay qua ban du phong', async t => {
+  const { db } = await fixture(t);
+  const pool = countingPool(db);
+  const repo = createExpectedRepository({ pool });
+  await db.exec(`UPDATE product_container_expected SET other_note='ghi chu',listed_at='15/10',unit_price_cny=1.5,vietnam_price=26000 WHERE source_row=1`);
+  const result = await repo.queryExpected({ pageSize: 1 }, { fullAccess: true, otherNoteAccess: true });
+  assert.deepEqual([result.rows[0].otherNote, result.rows[0].listedAt, result.rows[0].unitPriceCny, result.rows[0].vietnamPrice], ['ghi chu', '15/10', 1.5, 26000]);
+  assert.equal(pool.calls.page, 1);
+  assert.doesNotMatch(pool.calls.sql.join('\n'), /to_jsonb\(e\)/);
+
+  const legacy = await fixture(t, true);
+  const legacyPool = countingPool(legacy.db);
+  const legacyRepo = createExpectedRepository({ pool: legacyPool });
+  const first = await legacyRepo.queryExpected({ pageSize: 1 }, { fullAccess: true, otherNoteAccess: true });
+  assert.deepEqual([first.rows[0].otherNote, first.rows[0].unitPriceCny], ['', null]);
+  await legacyRepo.queryExpected({ pageSize: 1, page: 2 });
+  assert.equal(legacyPool.calls.page, 3, 'lan dau thu ban moi (loi 42703) roi nho dung ban du phong');
+});
+
+test('queryCache: cung version tra ket qua giong het SQL, khong chay lai cau nang; gom request dong thoi; quyen tach khoa', async t => {
+  const { db } = await fixture(t);
+  const pool = countingPool(db);
+  let clock = 1000;
+  const repo = createExpectedRepository({ pool, queryCache: true, now: () => clock });
+  const plain = createExpectedRepository({ pool: db });
+  const query = { page: '2', pageSize: '50', q: 'ao', sorts: JSON.stringify([{ key: 'tong-so-luong', dir: 'desc' }]) };
+
+  const [a, b, c] = await Promise.all([repo.queryExpected(query), repo.queryExpected(query), repo.queryExpected({ ...query })]);
+  assert.equal(pool.calls.page, 1, '3 request dong thoi cung khoa => 1 cau SQL');
+  assert.equal(pool.calls.state, 1, 'doc state cung dung chung');
+  assert.deepEqual(a, await plain.queryExpected(query));
+  assert.deepEqual(b, a);
+  assert.deepEqual(c, a);
+
+  clock += 5000;
+  assert.deepEqual(await repo.queryExpected(query), a);
+  assert.equal(pool.calls.page, 1);
+  assert.equal(pool.calls.state, 1, 'trong stateTtlMs khong hoi lai DB');
+
+  // computed_at doi ma version giu nguyen (lam moi khong doi noi dung): ket qua cache mang meta moi, giong SQL.
+  await db.exec(`UPDATE product_container_expected_state SET computed_at = '2026-11-13T02:00:00Z' WHERE id = 1`);
+  clock += 20000;
+  const refreshedMeta = await repo.queryExpected(query);
+  assert.equal(pool.calls.page, 1);
+  assert.equal(pool.calls.state, 2);
+  assert.deepEqual(refreshedMeta, await plain.queryExpected(query));
+  assert.equal(refreshedMeta.meta.computedAt, '2026-11-13T02:00:00.000Z');
+
+  // Khac quyen => khac khoa (khong lo cot gia / ghi chu cho nguoi khong co quyen).
+  const full = await repo.queryExpected(query, { fullAccess: true, otherNoteAccess: true });
+  assert.equal(pool.calls.page, 2);
+  assert.deepEqual(full, await plain.queryExpected(query, { fullAccess: true, otherNoteAccess: true }));
+  assert.equal('unitPriceCny' in (await repo.queryExpected(query)).rows[0], false);
+  // Xuat file / dem dong khong qua cache.
+  await repo.queryExpected(query, { countOnly: true });
+  await repo.queryExpected(query, { countOnly: true });
+  assert.equal(pool.calls.page, 4);
+});
+
+test('queryCache: doi version qua su kien => tra ban cu 1 lan va lam moi nen, request sau nhan ban moi; qua staleMaxMs thi cho ban moi', async t => {
+  const { db } = await fixture(t);
+  const pool = countingPool(db);
+  const events = new EventEmitter();
+  let clock = 1000;
+  const repo = createExpectedRepository({ pool, queryCache: true, events, now: () => clock, staleMaxMs: 60000 });
+  const before = await repo.queryExpected({ pageSize: 5 });
+  assert.equal(before.rows[0].productName, 'Áo đỏ');
+
+  await db.exec(`UPDATE product_container_expected SET product_name='Áo xanh'; UPDATE product_container_expected_state SET version = 10 WHERE id = 1`);
+  // Chua co su kien, con trong stateTtlMs: van la ban da cache (chap nhan tre toi da 15 s neu mat su kien).
+  assert.equal((await repo.queryExpected({ pageSize: 5 })).rows[0].productName, 'Áo đỏ');
+  assert.equal(pool.calls.page, 1);
+
+  events.emit('expectedArrivalsChanged', { version: 10 });
+  const stale = await repo.queryExpected({ pageSize: 5 });
+  assert.equal(stale.rows[0].productName, 'Áo đỏ', 'tra ban cu ngay, khong bat nguoi dung cho cau SQL');
+  assert.equal(stale.meta.version, '9');
+  // Hoi lai trong luc lam moi nen: van ban cu va KHONG chay them cau SQL (gom vao luot dang chay).
+  let fresh = stale;
+  for (let i = 0; i < 400 && fresh.meta.version === '9'; i++) {
+    await new Promise(resolve => setTimeout(resolve, 5));
+    fresh = await repo.queryExpected({ pageSize: 5 });
+  }
+  assert.equal(fresh.rows[0].productName, 'Áo xanh');
+  assert.equal(fresh.meta.version, '10');
+  assert.equal(pool.calls.page, 2);
+
+  // containersChanged (dong bo CONT / Thu mua) cung lam moi; ban cache qua staleMaxMs thi cho ban moi luon.
+  await db.exec(`UPDATE product_container_expected SET product_name='Áo vàng'; UPDATE product_container_expected_state SET version = 11 WHERE id = 1`);
+  clock += 120000;
+  events.emit('containersChanged', { remote: true });
+  assert.equal((await repo.queryExpected({ pageSize: 5 })).rows[0].productName, 'Áo vàng');
+});
+
+test('queryCache: getExpected (hop chi tiet) dung chung state da nho; thieu bang van rong', async t => {
+  const { db } = await fixture(t);
+  const pool = countingPool(db);
+  const repo = createExpectedRepository({ pool, queryCache: true, now: () => 1000 });
+  await repo.queryExpected({ pageSize: 5 });
+  const detail = await repo.getExpected();
+  assert.equal(detail.rows.length, 205);
+  assert.equal((await repo.getExpected()).rows, detail.rows);
+  assert.equal(pool.calls.state, 1, 'bam xem chi tiet khong ton them vong DB doc state');
+  const bare = new PGlite(); t.after(() => bare.close());
+  const empty = createExpectedRepository({ pool: bare, queryCache: true });
+  assert.equal((await empty.queryExpected({ pageSize: 5 })).totalRows, 0);
+  assert.equal((await empty.getExpected()).rows.length, 0);
+});
+
+test('tim kiem mo: bo dau 1 lan / dong (khong lap translate cho tung tu); ket qua + thu tu diem giong cach boc tung tu, ke ca ghi chu NULL', async t => {
+  const { fuzzySqlParts } = require('../shared/fuzzySql');
+  const { db } = await fixture(t);
+  await db.exec(`UPDATE product_container_expected SET product_name = 'Quạt mini để bàn' WHERE source_row IN (7, 150);
+    UPDATE product_container_expected SET color = 'Quạt', sale_note = 'mini' WHERE source_row = 20;
+    UPDATE product_container_expected SET other_note = '', sale_note = 'quạt', ordered_by = 'MINI' WHERE source_row = 30;
+    UPDATE product_container_expected SET other_note = 'quat mini' WHERE source_row = 40`);
+  const pool = countingPool(db);
+  const repo = createExpectedRepository({ pool });
+  // Tham chieu = cach cu: fuzzySqlParts boc translate quanh concat_ws cac cot (other_note da COALESCE '').
+  const reference = async (q, otherNoteAccess) => {
+    const values = [];
+    const columns = ['schedule_label', 'container_name', 'product_code', 'product_name', 'color', 'sale_note', ...(otherNoteAccess ? ["COALESCE(other_note,'')"] : []), 'ordered_by'];
+    const parts = fuzzySqlParts(`concat_ws(' ',${columns.join(',')})`, q, value => { values.push(value); return '$' + values.length; });
+    const { rows } = await db.query(`SELECT source_row FROM product_container_expected WHERE ${parts.where}
+      ORDER BY ${parts.score} DESC, sheet_order, container_row, source_row, sheet_name`, values);
+    return rows.map(row => Number(row.source_row));
+  };
+  for (const [q, otherNoteAccess] of [['quat mini', false], ['quat mini', true], ['QUẠT', false], ['mini quat', true], ['ao do', false], ['zzz', false]]) {
+    pool.calls.sql.length = 0;
+    const result = await repo.queryExpected({ q, pageSize: 500 }, { otherNoteAccess });
+    assert.deepEqual(result.rows.map(row => row.sourceRow), await reference(q, otherNoteAccess), q + ' / ghi chu ' + otherNoteAccess);
+    assert.equal(result.totalRows, result.rows.length);
+    // Khop nguyen cum xep truoc; co quyen ghi chu: ghi chu '' chen giua "quạt" va "MINI" (dong 30) lam mat cum -> tut hang.
+    if (q === 'quat mini') {
+      assert.deepEqual(result.rows.map(row => row.sourceRow), otherNoteAccess ? [7, 20, 40, 150, 30] : [7, 20, 30, 150]);
+    }
+    const pageSql = pool.calls.sql.find(sql => /^WITH base AS/.test(sql));
+    assert.equal(pageSql.split('translate(').length - 1, 1, 'chi bo dau 1 lan / dong: ' + q);
+  }
+});

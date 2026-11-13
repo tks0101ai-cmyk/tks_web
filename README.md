@@ -143,6 +143,7 @@ Mở `http://localhost:3000`.
 | `HR_LEAVE_DB_REALTIME_ENABLED` | Cầu thay đổi Postgres → SSE của HR, mặc định `true`, độc lập với công tắc bot |
 | `SPECIAL_DAYS_NOTIFY_ENABLED` | Báo ngày lễ/sinh nhật lên chuông thông báo; mặc định `true`, `false` để tắt |
 | `EXPORT_EXCEL_WORKER` | Dựng file Excel xuất (`POST /api/export`) trong worker thread để không chặn web; mặc định bật, `off` để dựng trong luồng chính |
+| `EXPECTED_ARRIVALS_CACHE` | Cache trang `GET /api/expected-arrivals` theo version bảng tính sẵn (gom request trùng, trả bản cũ khi làm mới nền); mặc định bật, `off` để mỗi request chạy SQL như cũ |
 | `VAT_REQUEST_NOTIFY_ENABLED` | Báo chuông cho sale ~10 phút sau khi kế toán ngừng sửa yêu cầu ORDER VAT của họ; mặc định `true`, `false` để tắt (cần migration `0080`) |
 | `BACKGROUND_JOBS` | `inline` (mặc định): job nền chạy chung web; `worker`: web chỉ nghe sự kiện, job chạy ở `npm run worker` (`worker.js`) |
 | `INVOICE_PRICE_AUDIT_ENABLED` | Bật job 23:00 (giờ Việt Nam) của **Kiểm tra giá bán**: chụp hóa đơn chưa quét trong cửa sổ 7 ngày và đối chiếu giá min; mặc định `false`. Rollout: áp migration `0077` → deploy khi còn `false` → chạy tay lần đầu `npm run invoices:price-audit -- --date <hôm nay> --apply` → mới bật `true` |
@@ -574,6 +575,17 @@ Log sáng 12/11 (sau PR #78, #79: web khựng ~16 lần/giờ, từ ~50–60): t
 Không đổi schema/dependency/API. Biến môi trường mới (tùy chọn): `EXPORT_EXCEL_WORKER`.
 
 Cập nhật cuối: 12/11/2026.
+
+## Hiệu năng đợt 5: Dự kiến hàng về, xác nhận nhặt đơn nhiều dòng (13/11/2026)
+
+Log sáng 13/11 (08:00–10:30): `GET /api/expected-arrivals` là chỗ chậm nhất còn lại — riêng 08:00–08:15 có ~100 request ≥ 0,5 s, mỗi lần 1,7–10,9 s; `POST /api/shipment/pick/:id/confirm` đơn nhiều dòng 5,8–5,9 s (đơn ít dòng 1,4 s).
+- Dự kiến hàng về (máy chủ): câu SQL trang đọc thẳng cột tùy chọn thay vì `to_jsonb(e)` 4 lần / dòng (DB thật 12.185 dòng: 1.175 → 427 ms; DB cũ thiếu cột vẫn tự dùng bản dự phòng); tìm kiếm bỏ dấu chữ 1 lần / dòng thay vì mỗi từ × cả lọc lẫn xếp điểm ("quat mini": 4.407 → 763 ms). Cache kết quả trang theo `version` của bảng tính sẵn + quyền + tham số; request trùng dùng chung 1 lượt; version đọc tối đa 1 lần / 15 s và đọc lại ngay khi có sự kiện `containersChanged` / `expectedArrivalsChanged` (job làm mới phát, worker gửi qua `pg_notify`); dữ liệu vừa đổi thì trả bản cũ (≤ 5 phút) và làm mới nền. Phản hồi API không đổi.
+- Dự kiến hàng về (trình duyệt): mở lại tab Hàng hóa khi bảng mới tải < 60 s không gọi lại máy chủ; trang mở ở tab nền chưa tải, hiện lại thì tải 1 lần.
+- Xác nhận nhặt: kiểm mọi dòng trước, rồi ghi cả đơn bằng 1 câu (CTE + `jsonb_to_recordset`: xóa dòng hết hàng / cập nhật ghi chú, lịch sử vị trí theo đúng thứ tự dòng, dòng chỉ định, trạng thái + lịch sử chỉ định); khóa + đọc giữ chỗ của đơn khác gộp 1 câu. Đơn 6 dòng: 25 → 6 câu SQL trong giao dịch, kết quả DB giống hệt cách cũ (test đối chiếu).
+
+Không đổi schema/dependency/API. Biến môi trường mới (tùy chọn): `EXPECTED_ARRIVALS_CACHE`.
+
+Cập nhật cuối: 13/11/2026.
 
 ## Nguồn dự phòng 3 trang VAT (12/11/2026)
 

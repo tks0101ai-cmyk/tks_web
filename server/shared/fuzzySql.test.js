@@ -37,3 +37,22 @@ test('SQL: mọi từ phải khớp, cùng kết quả JS (không còn ngưỡng
   }
   assert.deepEqual((await (async () => { const params = []; const p = fuzzySqlParts('t', 'a b c d e zzz', (v) => { params.push(v); return `$${params.length}`; }); return db.query(`SELECT 1 FROM (SELECT $${params.length + 1}::text AS t) s WHERE ${p.where}`, [...params, 'a b c d e']); })()).rows, []);
 });
+
+test('folded: true dùng thẳng biểu thức đã bỏ dấu (tính 1 lần / dòng), cùng kết quả + điểm với cách bọc translate từng từ', async () => {
+  const { foldSql } = require('./fuzzySql');
+  const db = new PGlite();
+  const texts = ['Nguyễn Văn Đạt', 'Lê Văn Nam', 'Trần Thị Hoa', 'Hà Nội Văn Phòng', null, 'van  dat'];
+  const run = async (q, folded) => {
+    const params = [];
+    const add = (v) => { params.push(v); return `$${params.length}`; };
+    const p = folded ? fuzzySqlParts('f', q, add, { folded: true }) : fuzzySqlParts('t', q, add);
+    const { rows } = await db.query(`SELECT i, ${p.score} AS score FROM (SELECT t, i, ${foldSql("COALESCE(t,'')")} AS f
+        FROM unnest($${params.length + 1}::text[]) WITH ORDINALITY AS x(t,i)) s WHERE ${p.where} ORDER BY ${p.score} DESC, i`, [...params, texts]);
+    return rows.map((r) => [Number(r.i), Number(r.score)]);
+  };
+  for (const q of ['van', 'NGUYEN VAN', 'van dat', 'van zzz', 'hoa thi tran', 'ha noi van']) {
+    assert.deepEqual(await run(q, true), await run(q, false), q);
+  }
+  const params = [];
+  assert.doesNotMatch(fuzzySqlParts('f', 'van dat', (v) => { params.push(v); return `$${params.length}`; }, { folded: true }).score, /translate/);
+});
