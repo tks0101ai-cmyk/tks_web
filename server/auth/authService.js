@@ -22,7 +22,7 @@ function comparePassword(plainPassword, passwordHash) {
  * KHONG duoc dua passwordHash vao token.
  */
 function signToken(payload) {
-  return jwt.sign(payload, CONFIG.JWT_SECRET, { expiresIn: CONFIG.JWT_EXPIRES_IN });
+  return jwt.sign(payload, CONFIG.JWT_SECRET, { expiresIn: Math.floor(CONFIG.AUTH_SESSION_TTL_MS / 1000) });
 }
 
 /**

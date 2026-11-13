@@ -6,10 +6,11 @@
 // lai (chi nhan Hà Nội / Sài Gòn / Cả hai), sai thi rot ve co so mac dinh cua
 // tai khoan (luon la Cả hai).
 // ==========================================
+const CONFIG = require('../config');
 const { BRANCHES, isBranchSelectable, defaultBranch } = require('./branches');
 
 const BRANCH_COOKIE_NAME = 'tks_branch';
-const BRANCH_COOKIE_MAX_AGE_MS = 12 * 60 * 60 * 1000; // khop tuoi tho cookie dang nhap (JWT_EXPIRES_IN mac dinh 12h)
+const BRANCH_COOKIE_MAX_AGE_MS = CONFIG.AUTH_SESSION_TTL_MS; // song cung phien dang nhap (authSession gia han ca hai)
 
 function branchCookieOptions() {
   return {
