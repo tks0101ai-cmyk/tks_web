@@ -8,7 +8,7 @@ const localUserStore = require('./localUserStore');
 const effectiveUserResolver = require('./effectiveUserResolver');
 const featureRegistry = require('./featureRegistry');
 
-const { AUTH_COOKIE_NAME } = require('./authSession');
+const { AUTH_COOKIE_NAME, SESSION_REFRESH_AFTER_MS, shouldRefresh, refreshSession } = require('./authSession');
 
 function readTokenFromRequest(req) {
   return (req.cookies && req.cookies[AUTH_COOKIE_NAME]) || null;
@@ -24,6 +24,9 @@ function createRequireAuth(dependencies = {}) {
   const findUserById = dependencies.findUserById || localUserStore.getUserById;
   const resolveUser = dependencies.resolveUser || effectiveUserResolver.resolveUser;
   const ensureTelegramLink = dependencies.ensureTelegramLink || null;
+  const now = dependencies.now || Date.now;
+  const refreshAfterMs = dependencies.refreshAfterMs ?? SESSION_REFRESH_AFTER_MS;
+  const refresh = dependencies.refreshSession || refreshSession;
 
   return async function liveAuthGuard(req, res, next) {
     if (req.effectiveUserResolved && req.user) return next();
@@ -54,6 +57,15 @@ function createRequireAuth(dependencies = {}) {
         permissions: featureRegistry.resolvePermissions(effectiveUser)
       });
       req.effectiveUserResolved = true;
+      // Phien TRUOT: user con ton tai + khong bi khoa va token da cap qua 24h
+      // thi cap lai du han (authSession). Loi o day khong duoc chan request.
+      if (shouldRefresh(tokenUser, now(), refreshAfterMs)) {
+        try {
+          refresh(req, res, effectiveUser);
+        } catch (refreshErr) {
+          console.warn('[Auth] Khong gia han duoc phien dang nhap:', refreshErr.message);
+        }
+      }
       return next();
     } catch (err) {
       if (err && err.statusCode && err.statusCode < 500) {
