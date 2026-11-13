@@ -12,13 +12,23 @@ test('order toolbar keeps primary actions first and secondary actions grouped la
   const doc = new JSDOM(page).window.document;
   const toolbar = doc.querySelector('#orders .order-actions');
   const order = [...toolbar.children]
-    .filter(node => node.matches('h2, button'))
+    .filter(node => node.matches('h2') || node.matches('button') && !node.hidden)
     .map(node => node.matches('h2') ? 'heading' : node.id);
 
   assert.deepEqual(order, [
-    'heading', 'add', 'bulk', 'import', 'export',
-    'managePurchaseEmployees', 'editedRows', 'save', 'cancel'
+    'heading', 'add', 'bulk', 'inactiveRows', 'trashRows', 'import', 'export',
+    'managePurchaseEmployees'
   ]);
+});
+
+test('order and container tables expose the HĐ/NHĐ lifecycle and container trash controls', () => {
+  const doc = new JSDOM(page).window.document;
+  assert.match(script, /data-key="_lifecycle"[^>]*>HĐ\/NHĐ/);
+  assert.match(script, /purchase-lifecycle-badge is-active/);
+  assert.match(script, /purchase-lifecycle-badge is-inactive/);
+  assert.equal(doc.getElementById('contLifecycle')?.options.length, 3);
+  assert.ok(doc.getElementById('containerInactiveRows'));
+  assert.ok(doc.getElementById('containerTrashRows'));
 });
 
 test('filter summary follows the title and pushes toolbar actions to the right', () => {

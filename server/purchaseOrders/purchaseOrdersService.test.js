@@ -521,3 +521,21 @@ test('shared container edits reject membership changed after the editor opened',
  await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,rows:[first],changes:{arrivalDate:'2026-11-12'}}),e=>e.code==='VERSION_CONFLICT');
  assert.ok((await service.list(manager)).rows.every(r=>r.arrivedNote===null));
 });
+
+test('container lifecycle shows HĐ and NHĐ without changing shipment status and supports trash restore',async()=>{
+ const container=await service.createContainer(manager,{name:'LIFECYCLE CONT',truckName:'17.5m'});
+ const product=await service.create(manager,input());const assigned=await service.transfer(manager,{id:product.id,version:product.version,quantity:product.cartonCount,destinationId:container.id});
+ const inactive=await service.deactivateContainer(manager,{id:container.id,version:container.version});
+ assert.ok(inactive.inactive_at);assert.equal(inactive.status,1);
+ assert.deepEqual((await service.inactiveContainers(manager)).map(c=>c.id),[container.id]);
+ const active=await service.reactivateContainer(manager,{id:container.id,version:inactive.version});
+ assert.equal(active.inactive_at,null);assert.equal(active.status,1);
+ const deleted=await service.removeContainer(manager,{id:container.id,version:active.version});
+ assert.ok(deleted.deleted_at);assert.equal((await service.containerTrash(manager))[0].id,container.id);
+ assert.equal(String((await service.list(manager)).rows[0].contId),String(container.id),'trashing a container preserves product assignments');
+ await assert.rejects(service.transfer(manager,{id:assigned.row.id,version:assigned.row.version,quantity:assigned.row.cartonCount,destinationId:container.id}),e=>e.code==='VERSION_CONFLICT');
+ const restored=await service.restoreContainer(manager,{id:container.id,version:deleted.version});
+ assert.equal(restored.deleted_at,null);assert.equal(restored.inactive_at,null);
+ assert.equal((await service.list(manager)).containers.find(c=>c.id===container.id).name,'LIFECYCLE CONT');
+ assert.deepEqual((await db.query("SELECT action FROM purchase_history WHERE action LIKE 'container_%' ORDER BY id")).rows.map(r=>r.action),['container_create','container_deactivate','container_reactivate','container_delete','container_restore']);
+});

@@ -461,6 +461,13 @@
 .purchase-page :is(#save,#commit,#add,#savePurchaseEmployees,#transfer,#depart,#arrive,#schedule,#newCont,.btn-primary,.tks-btn-primary):hover:not(:disabled){background:var(--primary-hover);border-color:var(--primary);color:var(--primary-text);}
 .purchase-page .purchase-container-status button{background:var(--panel-2);border-color:var(--border);color:var(--text-secondary);}
 .purchase-page .purchase-container-status button[aria-pressed="true"]{background:color-mix(in srgb,var(--primary) 14%,var(--panel));border-color:var(--primary);color:var(--primary);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--primary) 20%,transparent);}
+.purchase-page .purchase-lifecycle-badge{display:inline-flex;align-items:center;justify-content:center;min-width:32px;padding:2px 6px;border:1px solid currentColor;border-radius:999px;font-size:10px;font-weight:700;line-height:1.35;white-space:nowrap}
+.purchase-page .purchase-lifecycle-badge.is-active{color:#16a34a;background:rgba(34,197,94,.12)}
+.purchase-page .purchase-lifecycle-badge.is-inactive,.purchase-page .purchase-lifecycle-badge.is-deleted{color:#ef4444;background:rgba(239,68,68,.12)}
+.purchase-page .container-inactive-row>td{opacity:.78}
+.purchase-page .container-lifecycle-actions{white-space:nowrap}
+.purchase-page .container-lifecycle-actions button{padding:3px 6px;margin:1px;font-size:10px}
+.purchase-page .container-lifecycle-actions .danger,.purchase-page #confirmContainerDelete{color:#ef4444;border-color:rgba(239,68,68,.45)}
 
 /* The single shared dialog is used by add/edit, import, history, column and confirm flows. */
 .purchase-page #modal{width:min(980px,calc(100vw - 32px));max-height:min(88dvh,900px);overflow:hidden;padding:0;border:1px solid var(--border);border-top:3px solid var(--primary);border-radius:var(--radius-xl);background:var(--panel);color:var(--text);box-shadow:var(--shadow-modal);}
@@ -566,11 +573,9 @@
 .order-actions #editedRows,
 .order-actions #add{margin-left:10px;padding-left:10px;border-left:1px solid var(--border)}
 .order-actions #managePurchaseEmployees,
-.order-actions #import,
 .order-actions #export,
 .order-actions .purchase-work-tools #undoWork{background:transparent;color:var(--muted)}
 .order-actions #managePurchaseEmployees:hover:not(:disabled),
-.order-actions #import:hover:not(:disabled),
 .order-actions #export:hover:not(:disabled),
 .order-actions .purchase-work-tools #undoWork:hover:not(:disabled){color:var(--text)}
 

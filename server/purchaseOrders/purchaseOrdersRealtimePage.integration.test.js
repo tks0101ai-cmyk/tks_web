@@ -66,12 +66,21 @@ test('Ctrl+Z undoes an edited input before it loses focus',async t=>{
 });
 test('container ratio is total tons divided by total cubic meters',async t=>{
  const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{cartonCount:10,kgPerCarton:2,m3PerCarton:.25});p.listeners.changed();await tick();await tick();
- assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) td:nth-child(9)').textContent,'0.8%');
+ assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) td:nth-child(10)').textContent,'0.8%');
 });
-test('pinned container sits under filters and shows only the five compact columns',async t=>{
+test('row and container lifecycle columns show HĐ and container deactivation uses its current version',async t=>{
+ const p=await page(t),doc=p.w.document;
+ assert.match(doc.querySelector('#orderTable thead').textContent,/HĐ\/NHĐ/);
+ assert.equal(doc.querySelector('#orderTable tbody .purchase-lifecycle-badge').textContent,'HĐ');
+ assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) .purchase-lifecycle-badge').textContent,'HĐ');
+ doc.querySelector('#containerTable [data-container-action="deactivate"]').click();doc.getElementById('confirmContainerLifecycle').click();await tick();await tick();
+ const request=p.calls.find(call=>call.url.endsWith('/containers/deactivate'));
+ assert.deepEqual(JSON.parse(request.options.body),{id:'2',version:3});
+});
+test('pinned container sits under filters and shows the six compact identity and metrics columns',async t=>{
  const p=await page(t),doc=p.w.document;doc.querySelector('#containerTable [data-container-filter="2"]').click();
  const filters=doc.querySelector('.order-filters'),watched=doc.getElementById('watchedContainer');assert.ok(filters.compareDocumentPosition(watched)&p.w.Node.DOCUMENT_POSITION_FOLLOWING);
- assert.equal(watched.querySelectorAll('thead th').length,5);assert.deepEqual([...watched.querySelectorAll('thead th')].map(th=>th.textContent.trim()),['Tên cont','Trạng thái','Dòng','Tổng tấn','Tổng m³']);assert.equal(watched.querySelectorAll('.sort-indicator').length,0);
+ assert.equal(watched.querySelectorAll('thead th').length,7);assert.deepEqual([...watched.querySelectorAll('thead th')].slice(0,6).map(th=>th.textContent.trim()),['Tên cont','HĐ/NHĐ','Trạng thái','Dòng','Tổng tấn','Tổng m³']);assert.equal(watched.querySelectorAll('.sort-indicator').length,0);
 });
 test('vehicle type is free text in the container grid and create dialog',async t=>{
  const p=await page(t),doc=p.w.document;assert.equal(doc.querySelector('#containerTable [data-container-field="truckName"]').tagName,'INPUT');
