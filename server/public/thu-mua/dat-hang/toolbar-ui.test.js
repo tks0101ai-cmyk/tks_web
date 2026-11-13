@@ -31,6 +31,12 @@ test('order and container tables expose the HĐ/NHĐ lifecycle and container tra
   assert.ok(doc.getElementById('containerTrashRows'));
 });
 
+test('container lifecycle column is last and container filters fit in a compact desktop row', () => {
+  assert.match(script, /\['Thao tác',118\],\['HĐ\/NHĐ',58\]/);
+  assert.match(styles, /#containerPanel \.container-filters\{grid-template-columns:minmax\(260px,3fr\) repeat\(4,minmax\(110px,1fr\)\) minmax\(92px,auto\)/);
+  assert.match(styles, /#containerPanel \.container-filters>button\{grid-column:6;grid-row:1/);
+});
+
 test('filter summary follows the title and pushes toolbar actions to the right', () => {
   assert.ok(
     /\.purchase-page\s+\.order-actions\s+#orderFilterSummary\s*\{[^}]*margin:\s*0\s+auto\s+0\s+0/i.test(styles),

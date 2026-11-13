@@ -391,6 +391,13 @@
 .purchase-page #containerPanel{margin-top:20px;padding:10px 12px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel-2)}
 .purchase-page #containerPanel>summary{padding:2px 0 8px}
 .purchase-page #containerPanel .container-filters{border-radius:6px}
+.purchase-page #containerPanel .container-filters{grid-template-columns:minmax(260px,3fr) repeat(4,minmax(110px,1fr)) minmax(92px,auto);gap:6px;padding:8px 10px;align-items:end}
+.purchase-page #containerPanel .container-filters .wide{grid-column:auto}
+.purchase-page #containerPanel .container-filters>button{grid-column:6;grid-row:1;min-height:29px;padding:4px 10px;align-self:end}
+.purchase-page #containerPanel .container-filters label{gap:3px;font-size:10px;line-height:13px}
+.purchase-page #containerPanel .container-filters input,.purchase-page #containerPanel .container-filters select{height:28px;padding:3px 7px;font-size:11px}
+@media(max-width:1100px){.purchase-page #containerPanel .container-filters{grid-template-columns:repeat(4,minmax(0,1fr))}.purchase-page #containerPanel .container-filters .wide{grid-column:span 2}.purchase-page #containerPanel .container-filters>button{grid-column:auto;grid-row:auto}}
+@media(max-width:520px){.purchase-page #containerPanel .container-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.purchase-page #containerPanel .container-filters .wide{grid-column:1/-1}}
 
 .purchase-page #watchedContainer{margin:4px 0 6px;padding:4px 7px;border:1px solid var(--border);border-radius:6px;background:var(--panel)}
 .purchase-page #watchedContainer .watched-unpin{min-height:22px;padding:2px 7px;font-size:9px}
