@@ -27,7 +27,7 @@ function createPurchaseOrdersRouter(dependencies={}) {
   router.get(root+'/latest',handle(async(req,res)=>res.json({row:await service.latest(req.user,req.query.code)})));
   router.post(root+'/next-key',requireFeature('purchase.edit'),handle(async(req,res)=>res.json(await service.reserveKey(req.user))));
   router.post(root+'/release-key',requireFeature('purchase.edit'),handle(async(req,res)=>{if(!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(req.body?.reservationId||''))return res.status(400).json({code:'RESERVATION_ID_INVALID',error:'Mã giữ chỗ không hợp lệ.'});res.json(await service.releaseKey(req.user,{reservationId:req.body.reservationId}))}));
-  router.get(root+'/history',handle(async(req,res)=>res.json({rows:await service.history(req.user,req.query.rowKey)})));
+  router.get(root+'/history',handle(async(req,res)=>{const id=req.query.orderId;if(!/^[1-9]\d*$/.test(String(id||''))||BigInt(id)>9223372036854775807n)return res.status(400).json({code:'ORDER_ID_INVALID',error:'Mã dòng nội bộ không hợp lệ.'});res.json({rows:await service.history(req.user,id)})}));
   router.post(root+'/export',requireFeature('purchase.export'),handle(async(req,res)=>{
     const allowed=new Set(columns.map(c=>c.k)),fields=req.body.fields,ids=req.body.ids;
     if(!Array.isArray(fields)||!fields.length||fields.some(k=>!allowed.has(k))||!Array.isArray(ids)||ids.length>10000||ids.some(id=>!/^\d+$/.test(String(id))))return res.status(400).json({code:'EXPORT_INVALID',error:'Danh sách dòng hoặc cột không hợp lệ.'});

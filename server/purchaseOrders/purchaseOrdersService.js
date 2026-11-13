@@ -67,7 +67,7 @@ async function readRows(client,lock=false) { return (await client.query(`SELECT 
 async function audit(client,user,action,summary) { const who=actor(user);client.purchaseAction=action;await client.query('INSERT INTO purchase_history(action,actor_id,actor_name,summary) VALUES($1,$2,$3,$4)',[action,who.id,who.name,JSON.stringify({...summary,operationId:client.purchaseOperation})]); }
 async function insertMany(client,records) {
   if(!records.length)return [];
-  const cols=['row_key','root_key','split_from_key','container_id',...dbCols];
+  const cols=['row_key','root_key','root_order_id','split_from_key','container_id',...dbCols];
   return (await client.query(`INSERT INTO purchase_orders(${cols.join(',')}) SELECT ${cols.join(',')} FROM jsonb_populate_recordset(NULL::purchase_orders,$1::jsonb) RETURNING *`,[JSON.stringify(records)])).rows;
 }
 async function patchRow(client,row,changes) {
@@ -100,6 +100,30 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
     const pooled=(await client.query("DELETE FROM purchase_key_pool WHERE row_key=(SELECT row_key FROM purchase_key_pool ORDER BY substring(row_key FROM 2)::bigint LIMIT 1) RETURNING row_key")).rows[0];
     return pooled?.row_key||newKey(client);
   }
+  async function recordRetiredKey(client,row) {
+    await client.query('INSERT INTO purchase_key_history(row_key,order_id,root_order_id,root_key) VALUES($1,$2,$3,$4)',[row.row_key,row.id,row.root_order_id,row.root_key]);
+  }
+  async function releaseInactiveFamilyKey(client,rootOrderId,rootKey) {
+    const family=(await client.query('SELECT min(root_key) AS root_key,bool_or(deleted_at IS NULL) AS active FROM purchase_orders WHERE root_order_id=$1 GROUP BY root_order_id',[rootOrderId])).rows[0];
+    if(family?.active)return false;
+    const key=family?.root_key||rootKey;
+    if(!key)return false;
+    await client.query('INSERT INTO purchase_key_pool(row_key) VALUES($1) ON CONFLICT(row_key) DO NOTHING',[key]);
+    return true;
+  }
+  async function ensureFamilyKey(client,rootOrderId,rootKey) {
+    const conflict=(await client.query(`SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE root_key=$1 AND deleted_at IS NULL AND root_order_id<>$2)
+      OR EXISTS(SELECT 1 FROM purchase_key_reservations WHERE row_key=$1 AND expires_at>now()) AS used`,[rootKey,rootOrderId])).rows[0].used;
+    if(!conflict){await client.query('DELETE FROM purchase_key_pool WHERE row_key=$1',[rootKey]);return rootKey;}
+    await client.query('DELETE FROM purchase_key_pool WHERE row_key=$1',[rootKey]);
+    const next=await allocateKey(client);
+    const rows=(await client.query('SELECT id,row_key,split_from_key FROM purchase_orders WHERE root_order_id=$1 FOR UPDATE',[rootOrderId])).rows;
+    for(const row of rows){
+      const remap=value=>value===rootKey?next:typeof value==='string'&&value.startsWith(rootKey+'.')?next+value.slice(rootKey.length):value;
+      await client.query('UPDATE purchase_orders SET row_key=$2,root_key=$3,split_from_key=$4 WHERE id=$1',[row.id,remap(row.row_key),next,remap(row.split_from_key)]);
+    }
+    return next;
+  }
   async function claimKey(client,userId,requested,reservationId,clientId) {
     if(requested==null||String(requested).trim()==='')return allocateKey(client);
     const key=String(requested).trim();
@@ -129,9 +153,9 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
   async function split(client,row,quantity,destination) {
     if(!Number.isSafeInteger(quantity)||quantity<=0||quantity>=Number(row.carton_count))throw fail(400,'SPLIT_QUANTITY_INVALID','Số thùng tách phải nhỏ hơn số hiện có.');
     const before=row.row_key,root=row.root_key;
-    await client.query('INSERT INTO purchase_key_history(row_key,order_id,root_key) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[before,row.id,root]);
+    await recordRetiredKey(client,row);
     const remaining=await patchRow(client,row,{row_key:before+'.01',split_from_key:before,carton_count:Number(row.carton_count)-quantity,freight_prepaid:null,freight_postpaid:null,freight_amount:null});
-    const child={...row,row_key:before+'.02',root_key:root,split_from_key:before,container_id:destination,carton_count:quantity,freight_prepaid:null,freight_postpaid:null,freight_amount:null};
+    const child={...row,row_key:before+'.02',root_key:root,root_order_id:row.root_order_id,split_from_key:before,container_id:destination,carton_count:quantity,freight_prepaid:null,freight_postpaid:null,freight_amount:null};
     const created=(await insertMany(client,[child]))[0];return {remaining,created,previousKey:before,previousCosts:{freightPrepaid:row.freight_prepaid,freightPostpaid:row.freight_postpaid,freightAmount:row.freight_amount}};
   }
   async function resolveEmployee(client,changes,current=null){
@@ -201,9 +225,40 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
     })},
     async trash(user){actor(user);return (await pool.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE p.deleted_at IS NOT NULL ORDER BY p.deleted_at DESC LIMIT 500`)).rows.map(jsRow)},
     async operations(user){const items=(await pool.query("SELECT id,action,created_at,(SELECT jsonb_agg(COALESCE(r.after_row->>'row_key',r.before_row->>'row_key')) FROM purchase_operation_rows r WHERE r.operation_id=p.id) row_keys FROM purchase_operations p WHERE actor_id=$1 AND undone_by IS NULL AND action IN ('create','edit','bulk_edit','transfer','balance_plan','delete','restore') AND EXISTS(SELECT 1 FROM purchase_operation_rows r WHERE r.operation_id=p.id) ORDER BY created_at DESC LIMIT 50",[actor(user).id])).rows;if(items[0]){const changes=(await pool.query('SELECT before_row,after_row FROM purchase_operation_rows WHERE operation_id=$1 ORDER BY row_id',[items[0].id])).rows;items[0].preview=changes.map(x=>{const before=x.before_row?jsRow(x.before_row):null,after=x.after_row?jsRow(x.after_row):null;const diff=before&&after?[...writable,...overrideColumns,{k:'contId',l:'Tên cont'},{k:'rowKey',l:'Mã dòng'}].filter(c=>String(before[c.k]??'')!==String(after[c.k]??'')).map(c=>({field:c.k,label:c.l||c.k,from:after[c.k],to:before[c.k]})):[];if(x.before_row&&x.after_row&&!!x.before_row.deleted_at!==!!x.after_row.deleted_at)diff.push({field:'deleted',label:'Trạng thái dòng',from:x.after_row.deleted_at?'Đã xóa':'Đang dùng',to:x.before_row.deleted_at?'Đã xóa':'Đang dùng'});return {rowKey:after?.rowKey||before?.rowKey,productCode:after?.productCode||before?.productCode,action:!before?'Xóa mã mới':'Khôi phục trước thao tác',changes:diff}})}return items},
-    async remove(user,{rows}){return transaction(user,async client=>{if(!Array.isArray(rows)||!rows.length||rows.length>500||rows.some(r=>!r||!Number.isSafeInteger(Number(r.id))||Number(r.id)<1||!Number.isSafeInteger(Number(r.version))||Number(r.version)<1)||new Set(rows.map(r=>String(r.id))).size!==rows.length)throw fail(400,'DELETE_INVALID','Chọn 1–500 dòng không trùng.');const locked=[];for(const r of rows)locked.push(await getRow(client,r.id,r.version));for(const r of locked)await client.query('UPDATE purchase_orders SET deleted_at=now(),version=version+1,updated_at=now() WHERE id=$1',[r.id]);await audit(client,user,'delete',{rows:locked.map(r=>({id:String(r.id),rowKey:r.row_key,productCode:r.product_code}))});return {changed:true,value:{deleted:locked.length}}})},
-    async restore(user,{id,version}){return transaction(user,async client=>{const r=(await client.query('SELECT * FROM purchase_orders WHERE id=$1 FOR UPDATE',[id])).rows[0];if(!r?.deleted_at||Number(r.version)!==Number(version))throw fail(409,'VERSION_CONFLICT','Dòng đã thay đổi hoặc đã khôi phục.');await client.query('UPDATE purchase_orders SET deleted_at=NULL,version=version+1,updated_at=now() WHERE id=$1',[id]);await audit(client,user,'restore',{rowKey:r.row_key});return {changed:true,value:{restored:String(id)}}})},
-    async undo(user,{operationId}){return transaction(user,async client=>{const op=(await client.query('SELECT * FROM purchase_operations WHERE id=$1 FOR UPDATE',[operationId])).rows[0];if(!op||op.actor_id!==actor(user).id||op.undone_by||!['create','edit','bulk_edit','transfer','balance_plan','delete','restore'].includes(op.action))throw fail(409,'UNDO_INVALID','Không thể hoàn tác thao tác này.');const changes=(await client.query('SELECT * FROM purchase_operation_rows WHERE operation_id=$1 ORDER BY row_id',[operationId])).rows;if(!changes.length)throw fail(409,'UNDO_INVALID','Thao tác không thay đổi dòng.');for(const x of changes){const r=(await client.query('SELECT to_jsonb(o) snapshot FROM purchase_orders o WHERE id=$1 FOR UPDATE',[x.row_id])).rows[0]?.snapshot||null;const expected=(await client.query('SELECT expected_row FROM purchase_undo_expected WHERE operation_id=$1 AND row_id=$2',[operationId,x.row_id])).rows[0]?.expected_row||x.after_row;if(JSON.stringify(r)!==JSON.stringify(expected))throw fail(409,'VERSION_CONFLICT','Dòng đã được sửa tiếp; chưa hoàn tác.')}for(const x of changes.filter(x=>!x.before_row))await client.query('DELETE FROM purchase_orders WHERE id=$1',[x.row_id]);for(const x of changes.filter(x=>x.before_row)){const b=x.before_row,keys=Object.keys(b).filter(k=>!['id','version','updated_at','created_at'].includes(k));await client.query('UPDATE purchase_orders SET '+keys.map((k,i)=>k+'=$'+(i+2)).join(',')+',version=version+1,updated_at=now() WHERE id=$1',[x.row_id,...keys.map(k=>b[k])])}await client.query("UPDATE purchase_operations SET undone_by=current_setting('purchase.operation_id')::uuid WHERE id=$1",[operationId]);await client.query("INSERT INTO purchase_undo_expected(operation_id,row_id,expected_row) SELECT p.id,r.row_id,to_jsonb(o) FROM purchase_operations p JOIN purchase_operation_rows r ON r.operation_id=p.id JOIN purchase_orders o ON o.id=r.row_id WHERE p.actor_id=$1 AND p.undone_by IS NULL AND p.id<>$2 AND r.row_id=ANY($3::bigint[]) AND (r.after_row-'version'-'updated_at')=(to_jsonb(o)-'version'-'updated_at') ON CONFLICT(operation_id,row_id) DO UPDATE SET expected_row=EXCLUDED.expected_row",[actor(user).id,operationId,changes.map(x=>x.row_id)]);await audit(client,user,'undo',{operationId,rows:changes.map(x=>({rowKey:x.before_row?.row_key||x.after_row?.row_key}))});return {changed:true,value:{undone:operationId}}})},
+    async remove(user,{rows}){return transaction(user,async client=>{if(!Array.isArray(rows)||!rows.length||rows.length>500||rows.some(r=>!r||!Number.isSafeInteger(Number(r.id))||Number(r.id)<1||!Number.isSafeInteger(Number(r.version))||Number(r.version)<1)||new Set(rows.map(r=>String(r.id))).size!==rows.length)throw fail(400,'DELETE_INVALID','Chọn 1–500 dòng không trùng.');const locked=[];for(const r of rows)locked.push(await getRow(client,r.id,r.version));for(const r of locked){await recordRetiredKey(client,r);await client.query('UPDATE purchase_orders SET deleted_at=now(),version=version+1,updated_at=now() WHERE id=$1',[r.id])}for(const family of new Map(locked.map(r=>[String(r.root_order_id),r])).values())await releaseInactiveFamilyKey(client,family.root_order_id,family.root_key);await audit(client,user,'delete',{rows:locked.map(r=>({id:String(r.id),rowKey:r.row_key,productCode:r.product_code}))});return {changed:true,value:{deleted:locked.length}}})},
+    async restore(user,{id,version}){return transaction(user,async client=>{const r=(await client.query('SELECT * FROM purchase_orders WHERE id=$1 FOR UPDATE',[id])).rows[0];if(!r?.deleted_at||Number(r.version)!==Number(version))throw fail(409,'VERSION_CONFLICT','Dòng đã thay đổi hoặc đã khôi phục.');await ensureFamilyKey(client,r.root_order_id,r.root_key);await client.query('UPDATE purchase_orders SET deleted_at=NULL,version=version+1,updated_at=now() WHERE id=$1',[id]);await audit(client,user,'restore',{id:String(id),rootOrderId:String(r.root_order_id),rowKey:r.row_key});return {changed:true,value:{restored:String(id)}}})},
+    async undo(user,{operationId}){return transaction(user,async client=>{
+      const op=(await client.query('SELECT * FROM purchase_operations WHERE id=$1 FOR UPDATE',[operationId])).rows[0];
+      if(!op||op.actor_id!==actor(user).id||op.undone_by||!['create','edit','bulk_edit','transfer','balance_plan','delete','restore'].includes(op.action))throw fail(409,'UNDO_INVALID','Không thể hoàn tác thao tác này.');
+      const changes=(await client.query('SELECT * FROM purchase_operation_rows WHERE operation_id=$1 ORDER BY row_id',[operationId])).rows;
+      if(!changes.length)throw fail(409,'UNDO_INVALID','Thao tác không thay đổi dòng.');
+      for(const x of changes){
+        const current=(await client.query('SELECT to_jsonb(o) snapshot FROM purchase_orders o WHERE id=$1 FOR UPDATE',[x.row_id])).rows[0]?.snapshot||null;
+        const expected=(await client.query('SELECT expected_row FROM purchase_undo_expected WHERE operation_id=$1 AND row_id=$2',[operationId,x.row_id])).rows[0]?.expected_row||x.after_row;
+        if(JSON.stringify(current)!==JSON.stringify(expected))throw fail(409,'VERSION_CONFLICT','Dòng đã được sửa tiếp; chưa hoàn tác.');
+      }
+      const familyKeys=new Map();
+      for(const x of changes.filter(x=>x.before_row&&!x.before_row.deleted_at)){
+        const b=x.before_row,rootId=String(b.root_order_id??x.root_order_id);
+        if(!familyKeys.has(rootId))familyKeys.set(rootId,await ensureFamilyKey(client,rootId,b.root_key));
+      }
+      for(const x of changes.filter(x=>!x.before_row)){
+        const current=(await client.query('SELECT * FROM purchase_orders WHERE id=$1',[x.row_id])).rows[0];
+        if(current){await recordRetiredKey(client,current);await client.query('DELETE FROM purchase_orders WHERE id=$1',[x.row_id]);await releaseInactiveFamilyKey(client,current.root_order_id,current.root_key)}
+      }
+      for(const x of changes.filter(x=>x.before_row)){
+        const b={...x.before_row},rootId=String(b.root_order_id??x.root_order_id),next=familyKeys.get(rootId);
+        if(next&&next!==b.root_key){const oldRoot=b.root_key,remap=value=>value===oldRoot?next:typeof value==='string'&&value.startsWith(oldRoot+'.')?next+value.slice(oldRoot.length):value;b.row_key=remap(b.row_key);b.split_from_key=remap(b.split_from_key);b.root_key=next}
+        const keys=Object.keys(b).filter(k=>!['id','version','updated_at','created_at'].includes(k));
+        await client.query('UPDATE purchase_orders SET '+keys.map((k,i)=>k+'=$'+(i+2)).join(',')+',version=version+1,updated_at=now() WHERE id=$1',[x.row_id,...keys.map(k=>b[k])]);
+        if(x.after_row&&!x.after_row.deleted_at&&b.deleted_at)await recordRetiredKey(client,{...b,id:x.row_id});
+      }
+      for(const family of new Map(changes.filter(x=>x.before_row?.deleted_at).map(x=>[String(x.before_row.root_order_id??x.root_order_id),x.before_row])).values())await releaseInactiveFamilyKey(client,family.root_order_id,family.root_key);
+      await client.query("UPDATE purchase_operations SET undone_by=current_setting('purchase.operation_id')::uuid WHERE id=$1",[operationId]);
+      await client.query("INSERT INTO purchase_undo_expected(operation_id,row_id,expected_row) SELECT p.id,r.row_id,to_jsonb(o) FROM purchase_operations p JOIN purchase_operation_rows r ON r.operation_id=p.id JOIN purchase_orders o ON o.id=r.row_id WHERE p.actor_id=$1 AND p.undone_by IS NULL AND p.id<>$2 AND r.row_id=ANY($3::bigint[]) AND (r.after_row-'version'-'updated_at')=(to_jsonb(o)-'version'-'updated_at') ON CONFLICT(operation_id,row_id) DO UPDATE SET expected_row=EXCLUDED.expected_row",[actor(user).id,operationId,changes.map(x=>x.row_id)]);
+      await audit(client,user,'undo',{operationId,rows:changes.map(x=>({rowKey:x.before_row?.row_key||x.after_row?.row_key}))});
+      return {changed:true,value:{undone:operationId}};
+    })},
     async revision(user) {actor(user);return {revision:(await pool.query("SELECT COALESCE(max(id),0)::text || ':' || count(*)::text AS version FROM purchase_history")).rows[0].version}},
     async changes(user,after) {
       actor(user);const client=await pool.connect();let committed=false;
@@ -314,7 +369,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
       actor(user);const containers=(await pool.query('SELECT * FROM product_containers')).rows,rows=withFreight(await readRows(pool),containers);
       const byId=new Map(containers.map(c=>[String(c.id),c]));return rows.map(row=>{const c=byId.get(String(row.contId));return {...row,container:c?.name||'CONT CHỜ XẾP',status:c?.status||0,...calculations.row(row,row.freightAmount)}});
     },
-    async history(user,rowKey) {actor(user);if(rowKey){if(!/^D[0-9]{5,}(\.(01|02))*$/.test(rowKey))throw fail(400,'ROW_KEY_INVALID','Khóa dòng không hợp lệ.');const root=rowKey.split('.')[0];return (await pool.query("SELECT h.* FROM purchase_history h WHERE EXISTS(SELECT 1 FROM purchase_operation_rows r WHERE r.operation_id::text=h.summary->>'operationId' AND (r.before_row->>'root_key'=$1 OR r.after_row->>'root_key'=$1)) OR (h.summary->>'operationId' IS NULL AND h.summary::text ~ $2) ORDER BY h.id DESC LIMIT 500",[root,'"'+root+'(\\.(01|02))*"'])).rows}return (await pool.query('SELECT * FROM purchase_history ORDER BY id DESC LIMIT 500')).rows}
+    async history(user,orderId) {actor(user);if(!/^[1-9]\d*$/.test(String(orderId||''))||BigInt(orderId)>9223372036854775807n)throw fail(400,'ORDER_ID_INVALID','Mã dòng nội bộ không hợp lệ.');const root=(await pool.query('SELECT root_order_id FROM purchase_orders WHERE id=$1',[String(orderId)])).rows[0]?.root_order_id;if(root==null)return [];return (await pool.query("SELECT h.* FROM purchase_history h WHERE EXISTS(SELECT 1 FROM purchase_operation_rows r WHERE r.operation_id::text=h.summary->>'operationId' AND r.root_order_id=$1) ORDER BY h.id DESC LIMIT 500",[root])).rows}
   };
 }
 module.exports = { createPurchaseOrdersService, jsRow, normalizeName };

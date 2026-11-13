@@ -419,6 +419,75 @@ test('manual code split saves independently entered quantities and rejects blank
 test('soft delete and restore update both read models and stale batch writes nothing',async()=>{
  const a=await service.create(manager,input()),b=await service.create(manager,{...input(),productCode:'B'});await assert.rejects(service.remove(manager,{rows:[{id:a.id,version:a.version},{id:b.id,version:999}]}));assert.equal((await service.list(manager)).rows.length,2);const result=await service.remove(manager,{rows:[{id:a.id,version:a.version}]});assert.ok(result.operationId);assert.equal((await service.list(manager)).rows.length,1);assert.equal((await db.query('SELECT count(*)::int n FROM product_container_lines')).rows[0].n,1);const trash=await service.trash(manager);assert.equal(trash.length,1);await service.restore(manager,{id:a.id,version:trash[0].version});assert.equal((await service.list(manager)).rows.length,2);
 });
+
+test('recyclable keys return after root deletion and only after the final split branch is deleted',async()=>{
+ const rootReservation=await service.reserveKey(manager),root=await service.create(manager,{...input(),rowKey:rootReservation.rowKey,reservationId:rootReservation.reservationId});
+ await service.remove(manager,{rows:[{id:root.id,version:root.version}]});
+ const recycled=await service.reserveKey(manager);assert.equal(recycled.rowKey,root.rowKey);await service.releaseKey(manager,{reservationId:recycled.reservationId});
+ const splitReservation=await service.reserveKey(manager),splitRoot=await service.create(manager,{...input(),productCode:'SPLIT',rowKey:splitReservation.rowKey,reservationId:splitReservation.reservationId});
+ const plan=await service.applyPlan(manager,{splits:[{id:splitRoot.id,version:splitRoot.version,sourceQty:10,quantity:4,manual:true}]});
+ const branches=(await db.query('SELECT id,row_key,root_order_id,version FROM purchase_orders WHERE root_order_id=$1 ORDER BY row_key',[splitRoot.id])).rows;
+ assert.equal(branches.length,2);assert.ok(branches.every(row=>Number(row.root_order_id)===Number(splitRoot.id)));
+ const remaining=branches.find(row=>row.row_key.endsWith('.01')),child=branches.find(row=>row.row_key.endsWith('.02'));
+ await service.remove(manager,{rows:[{id:remaining.id,version:remaining.version}]});
+ const held=await service.reserveKey(manager);assert.notEqual(held.rowKey,splitRoot.rowKey);await service.releaseKey(manager,{reservationId:held.reservationId});
+ await service.remove(manager,{rows:[{id:child.id,version:child.version}]});
+ const available=await service.reserveKey(manager);assert.equal(available.rowKey,splitRoot.rowKey);
+ assert.equal((await db.query('SELECT count(*)::int n FROM purchase_key_history WHERE root_order_id=$1',[splitRoot.id])).rows[0].n,3);
+ assert.ok(plan.operationId);
+});
+
+test('split family identity survives key reuse and history isolates reused keys',async()=>{
+ const firstReservation=await service.reserveKey(manager),first=await service.create(manager,{...input(),rowKey:firstReservation.rowKey,reservationId:firstReservation.reservationId});
+ await service.remove(manager,{rows:[{id:first.id,version:first.version}]});
+ const secondReservation=await service.reserveKey(manager),second=await service.create(manager,{...input(),productCode:'SECOND',rowKey:secondReservation.rowKey,reservationId:secondReservation.reservationId});
+ assert.equal(second.rowKey,first.rowKey);assert.notEqual(second.id,first.id);
+ const firstHistory=await service.history(manager,first.id),secondHistory=await service.history(manager,second.id);
+ assert.ok(firstHistory.length>=2);assert.ok(firstHistory.every(row=>row.summary.operationId!==second.operationId));
+ assert.ok(secondHistory.length>=1);assert.ok(secondHistory.every(row=>row.summary.operationId!==first.operationId));
+});
+
+test('restore after key reuse remaps the old family while preserving its row ID',async()=>{
+ const reservation=await service.reserveKey(manager),old=await service.create(manager,{...input(),rowKey:reservation.rowKey,reservationId:reservation.reservationId});
+ await service.remove(manager,{rows:[{id:old.id,version:old.version}]});
+ const reused=await service.reserveKey(manager),current=await service.create(manager,{...input(),productCode:'CURRENT',rowKey:reused.rowKey,reservationId:reused.reservationId});
+ const trash=(await service.trash(manager)).find(row=>row.id===old.id);await service.restore(manager,{id:old.id,version:trash.version});
+ const restored=(await service.list(manager)).rows.find(row=>row.id===old.id);
+ assert.equal(restored.id,old.id);assert.equal(Number((await db.query('SELECT root_order_id FROM purchase_orders WHERE id=$1',[old.id])).rows[0].root_order_id),Number(old.id));assert.notEqual(restored.rootKey,current.rootKey);assert.notEqual(restored.rowKey,current.rowKey);
+ assert.equal((await service.list(manager)).rows.length,2);
+});
+
+test('undo delete after key reuse remaps the old family without replacing the current row',async()=>{
+ const reservation=await service.reserveKey(manager),old=await service.create(manager,{...input(),rowKey:reservation.rowKey,reservationId:reservation.reservationId});
+ const deletion=await service.remove(manager,{rows:[{id:old.id,version:old.version}]});
+ const reused=await service.reserveKey(manager),current=await service.create(manager,{...input(),productCode:'CURRENT',rowKey:reused.rowKey,reservationId:reused.reservationId});
+ await service.undo(manager,{operationId:deletion.operationId});
+ const rows=(await service.list(manager)).rows,restored=rows.find(row=>row.id===old.id);
+ assert.equal(rows.length,2);assert.equal(restored.id,old.id);assert.notEqual(restored.rowKey,current.rowKey);
+ assert.equal(Number((await db.query('SELECT root_order_id FROM purchase_orders WHERE id=$1',[old.id])).rows[0].root_order_id),Number(old.id));
+});
+
+test('partial restore remaps every old split row but activates only requested IDs',async()=>{
+ const reservation=await service.reserveKey(manager),old=await service.create(manager,{...input(),rowKey:reservation.rowKey,reservationId:reservation.reservationId});
+ await service.applyPlan(manager,{splits:[{id:old.id,version:old.version,sourceQty:10,quantity:4,manual:true}]});
+ const oldBranches=(await db.query('SELECT id,row_key,version FROM purchase_orders WHERE root_order_id=$1 ORDER BY row_key',[old.id])).rows;
+ await service.remove(manager,{rows:oldBranches.map(row=>({id:row.id,version:row.version}))});
+ const reused=await service.reserveKey(manager),current=await service.create(manager,{...input(),productCode:'CURRENT',rowKey:reused.rowKey,reservationId:reused.reservationId});
+ await service.applyPlan(manager,{splits:[{id:current.id,version:current.version,sourceQty:10,quantity:4,manual:true}]});
+ const requested=oldBranches.find(row=>row.row_key.endsWith('.01'));
+ const trash=(await service.trash(manager)).find(row=>row.id===String(requested.id));await service.restore(manager,{id:requested.id,version:trash.version});
+ const remapped=(await db.query('SELECT id,row_key,root_key,deleted_at FROM purchase_orders WHERE root_order_id=$1 ORDER BY row_key',[old.id])).rows;
+ assert.equal(remapped.length,2);assert.ok(remapped.every(row=>row.root_key==='D00002'));
+ assert.equal(remapped.filter(row=>row.deleted_at===null).length,1);assert.equal(Number(remapped.find(row=>row.deleted_at===null).id),Number(requested.id));
+ assert.ok((await service.list(manager)).rows.some(row=>row.id===current.id&&row.rootKey===current.rootKey));
+});
+
+test('undoing a newly created row returns its key to the pool',async()=>{
+ const reservation=await service.reserveKey(manager),created=await service.create(manager,{...input(),rowKey:reservation.rowKey,reservationId:reservation.reservationId});
+ await service.undo(manager,{operationId:created.operationId});
+ assert.equal((await db.query('SELECT count(*)::int n FROM purchase_orders WHERE id=$1',[created.id])).rows[0].n,0);
+ const next=await service.reserveKey(manager);assert.equal(next.rowKey,created.rowKey);
+});
 test('undo owns immutable snapshots, handles both split branches atomically and rejects another actor or stale row',async()=>{
  const a=await service.create(manager,input());const op=await service.applyPlan(manager,{splits:[{id:a.id,version:a.version,sourceQty:10,quantity:4,manual:true}]});await assert.rejects(service.undo({id:'other'},{operationId:op.operationId}));await service.undo(manager,{operationId:op.operationId});const rows=(await service.list(manager)).rows;assert.equal(rows.length,1);assert.equal(rows[0].rowKey,a.rowKey);assert.equal(rows[0].cartonCount,100);await assert.rejects(service.undo(manager,{operationId:op.operationId}));const update=await service.update(manager,a.id,{version:rows[0].version,changes:{cartonCount:9}});await service.update(manager,a.id,{version:update.version,changes:{supplier:'New'}});await assert.rejects(service.undo(manager,{operationId:update.operationId}),e=>e.code==='VERSION_CONFLICT');assert.equal((await service.list(manager)).rows[0].cartonCount,9);
 });
@@ -456,7 +525,7 @@ test('a rolled back request can retry and commits its cache only after projectio
 });
 
 test('row history filters the complete split family without unrelated product rows',async()=>{
- const a=await service.create(manager,input());await service.create(manager,{...input(),productCode:'B'});const result=await service.applyPlan(manager,{splits:[{id:a.id,version:a.version,sourceQty:8,quantity:2,manual:true}]});const history=await service.history(manager,a.rowKey+'.02');assert.ok(history.length>=2);assert.ok(history.every(h=>!h.summary.row||h.summary.row.productCode==='A'));assert.ok(history.some(h=>h.action==='balance_plan'));await assert.rejects(service.history(manager,'invalid'),e=>e.code==='ROW_KEY_INVALID');
+ const a=await service.create(manager,input());await service.create(manager,{...input(),productCode:'B'});const result=await service.applyPlan(manager,{splits:[{id:a.id,version:a.version,sourceQty:8,quantity:2,manual:true}]});const history=await service.history(manager,a.id);assert.ok(history.length>=2);assert.ok(history.every(h=>!h.summary.row||h.summary.row.productCode==='A'));assert.ok(history.some(h=>h.action==='balance_plan'));await assert.rejects(service.history(manager,'invalid'),e=>e.code==='ORDER_ID_INVALID');
 });
 
 test('undo preview names the exact fields and values that will be restored',async()=>{

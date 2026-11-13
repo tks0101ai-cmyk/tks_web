@@ -8,8 +8,8 @@ const workbook = require('../public/shared/purchase-workbook');
 const columns = require('../public/shared/purchase-columns');
 async function start(t,user) {
   const calls=[];
-  const record=name=>async(...args)=>{calls.push({name,args});return name==='revision'?{revision:'9:4'}:name==='importSnapshot'?{revision:'9:4',rows:[]}:{ok:true}};
-  const service=Object.fromEntries(['revision','changes','employees','saveEmployees','createEmployee','updateEmployee','trash','operations','remove','restore','undo','applyPlan','list','history','create','update','createContainer','updateContainer','schedule','changeStatus','bulkEdit','transfer','depart','arrive','previewImport','reviseImport','commitImport','reserveKey','releaseKey'].map(name=>[name,record(name)]));
+  const record=name=>async(...args)=>{calls.push({name,args});return name==='revision'?{revision:'9:4'}:name==='importSnapshot'?{revision:'9:4',rows:[]}:name==='history'?[]:{ok:true}};
+  const service=Object.fromEntries(['revision','changes','employees','saveEmployees','createEmployee','updateEmployee','trash','operations','remove','restore','undo','applyPlan','list','history','create','update','createContainer','updateContainer','schedule','changeStatus','bulkEdit','transfer','depart','arrive','importSnapshot','previewImport','reviseImport','commitImport','reserveKey','releaseKey'].map(name=>[name,record(name)]));
   const app=express();app.use(express.json());app.use((req,res,next)=>{req.user=user;next()});
   app.use(createPurchaseOrdersRouter({service,requireAuth:(req,res,next)=>req.user?next():res.status(401).json({error:'Chưa đăng nhập'})}));
   const server=await new Promise(resolve=>{const server=app.listen(0,'127.0.0.1',()=>resolve(server))});t.after(()=>server.close());
@@ -74,6 +74,14 @@ test('row key release requires edit permission and validates reservation ID',asy
  const response=await fetch(manager.base+'/release-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reservationId:id})});
  assert.equal(response.status,200);assert.deepEqual(await response.json(),{ok:true});
  assert.equal(manager.calls[0].name,'releaseKey');assert.deepEqual(manager.calls[0].args,[{id:'manager',vaiTro:ROLES.QUAN_LY},{reservationId:id}]);
+});
+
+test('history requires a positive internal order ID and forwards only that identity',async t=>{
+ const {base,calls}=await start(t,{id:'manager',vaiTro:ROLES.QUAN_LY});
+ for(const query of ['', '?orderId=0', '?orderId=-1', '?orderId=abc', '?rowKey=D00001'])assert.equal((await fetch(base+'/history'+query)).status,400);
+ assert.equal(calls.length,0);
+ const response=await fetch(base+'/history?orderId=123');assert.equal(response.status,200);assert.deepEqual(await response.json(),{rows:[]});
+ assert.deepEqual(calls.map(call=>call.name),['history']);assert.deepEqual(calls[0].args,[{id:'manager',vaiTro:ROLES.QUAN_LY},'123']);
 });
 
 test('invalid request keys are rejected before a mutation reaches the service',async t=>{
