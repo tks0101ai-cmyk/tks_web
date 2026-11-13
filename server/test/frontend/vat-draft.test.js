@@ -596,3 +596,51 @@ test('tab Tao QR: anh QR khong tai duoc -> bao loi, an anh va nut Sao chep / Tai
   assert.equal(doc.getElementById('vdQrActions').hidden, true);
   assert.equal(doc.getElementById('vdManualGenerate').disabled, false, 'bam tao lai duoc');
 });
+
+test('xu ly chung tu: nguon khong co tai khoan cau hinh / che do gop -> o tai khoan trong, nut tao QR khoa', async t => {
+  const responses = api();
+  const alloc = responses['POST /allocate'];
+  responses['POST /allocate'] = { ...alloc, qr: { ...alloc.qr,
+    bySource: [alloc.qr.bySource[0], { ...alloc.qr.bySource[1], nguon: 'NGUỒN LẠ', defaultAccountKey: null }],
+    total: { ...alloc.qr.total, defaultAccountKey: null } } };
+  const { doc, window, calls } = await setup(t, { responses });
+  await pasteAndRun(doc);
+  const cards = doc.querySelectorAll('[data-qr-card]');
+  assert.equal(cards[0].querySelector('[data-qr-account]').value, 'tks_group');
+  assert.equal(cards[0].querySelector('[data-qr-generate]').disabled, false);
+  const strange = cards[1];
+  assert.equal(strange.querySelector('[data-qr-account]').value, '');
+  assert.equal(strange.querySelector('[data-qr-account] option').textContent, '— Chọn tài khoản nhận tiền —');
+  assert.equal(strange.querySelector('[data-qr-generate]').disabled, true);
+  assert.equal(strange.querySelector('[data-qr-reason]').textContent, 'Chọn tài khoản nhận tiền.');
+  const select = strange.querySelector('[data-qr-account]');
+  select.value = 'shc';
+  select.dispatchEvent(new window.Event('change', { bubbles: true }));
+  assert.equal(strange.querySelector('[data-qr-generate]').disabled, false);
+  assert.equal(strange.querySelector('[data-qr-reason]').hidden, true);
+  doc.querySelector('[data-qr-mode="khong_vat"]').click();
+  assert.equal(doc.querySelector('[data-qr-account]').value, '');
+  assert.equal(doc.querySelector('[data-qr-generate]').disabled, true);
+  assert.equal(calls.filter(c => c.key === 'POST /qr/url').length, 0);
+});
+
+test('xu ly chung tu: noi dung chuyen khoan qua 50 ky tu -> moi nut tao QR khoa; anh QR loi -> bao loi', async t => {
+  const { doc, window } = await setup(t);
+  await pasteAndRun(doc);
+  const transfer = doc.getElementById('vdTransfer');
+  const preview = doc.getElementById('vdTransferPreview');
+  assert.equal(preview.textContent, 'Nội dung trong QR: HD028345 DH050000 (17/50)');
+  transfer.value = Array.from({ length: 8 }, (_, i) => `HD02834${i}`).join(' ');
+  transfer.dispatchEvent(new window.Event('input'));
+  assert.equal(preview.dataset.tone, 'warning');
+  for (const button of doc.querySelectorAll('[data-qr-generate]')) assert.equal(button.disabled, true);
+  assert.equal(doc.querySelector('[data-qr-reason]').textContent, 'Nội dung trong QR tối đa 50 ký tự — rút gọn bớt.');
+  transfer.value = 'HD028345';
+  transfer.dispatchEvent(new window.Event('input'));
+  const card = doc.querySelector('[data-qr-card]');
+  card.querySelector('[data-qr-generate]').click();
+  await tick(); await tick();
+  card.querySelector('[data-qr-result] img').dispatchEvent(new window.Event('error'));
+  assert.equal(card.querySelector('[data-qr-result]').textContent.trim(), 'Không tải được ảnh QR từ VietQR — thử lại.');
+  assert.equal(card.querySelector('[data-qr-download]'), null);
+});

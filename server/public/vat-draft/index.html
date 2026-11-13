@@ -170,7 +170,8 @@
           <h4>Thanh toán qua QR</h4>
           <p class="vd-hint">Chọn loại hóa đơn trước: có VAT sẽ tách QR theo từng nguồn, không VAT sẽ gộp tất cả nguồn thành 1 QR duy nhất.</p>
           <label for="vdTransfer">Nội dung chuyển khoản</label>
-          <input type="text" id="vdTransfer" class="vd-input" autocomplete="off">
+          <input type="text" id="vdTransfer" class="vd-input" autocomplete="off" aria-describedby="vdTransferPreview">
+          <p class="vd-content-preview" id="vdTransferPreview" aria-live="polite" hidden></p>
           <p class="vd-message vd-warning" id="vdTransferHint" hidden>Chưa có mã chứng từ — hãy nhập nội dung chuyển khoản thủ công.</p>
           <div class="vd-modetabs vd-qr-mode" role="tablist" aria-label="Loại hóa đơn">
             <button type="button" class="vd-modetab" role="tab" data-qr-mode="co_vat" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h8M9 17h6"/></svg>Hóa đơn có VAT</button>

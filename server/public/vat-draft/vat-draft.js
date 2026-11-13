@@ -687,11 +687,27 @@
     return `<div class="vd-qr-card" data-qr-card="${id}">
       <h5>${escapeHtml(title)}</h5>
       ${warning ? `<p class="vd-message vd-warning">${ICON.warn} Một số dòng thiếu Giá bán/Giá nhập, số tiền QR có thể chưa đầy đủ.</p>` : ''}
-      <label>Tài khoản nhận tiền <select data-qr-account>${accountOptions(accountKey)}</select></label>
+      <label>Tài khoản nhận tiền <select data-qr-account>${accountOptions(accountKey || '', { placeholder: true })}</select></label>
       <label>Số tiền <input type="text" class="vd-input" data-qr-amount inputmode="numeric" value="${escapeHtml(formatAmount(amount))}"></label>
+      <p class="vd-message vd-warning" data-qr-reason hidden></p>
       <button class="btn-primary" type="button" data-qr-generate>${ICON.qr}Tạo mã QR — ${escapeHtml(intFormat.format(amount))}đ</button>
       <div class="vd-qr-result" data-qr-result hidden></div>
     </div>`;
+  }
+
+  /** Khoa nut Tao ma QR tung the khi chua chon tai khoan / so tien qua 13 chu so / noi dung qua 50 ky tu. */
+  function refreshQrCards() {
+    const content = renderContentPreview($('vdTransfer'), $('vdTransferPreview'));
+    document.querySelectorAll('#vdQrCards [data-qr-card]').forEach(card => {
+      const reason = !card.querySelector('[data-qr-account]').value ? 'Chọn tài khoản nhận tiền.'
+        : parseAmount(card.querySelector('[data-qr-amount]').value) > MAX_AMOUNT ? AMOUNT_TOO_LONG
+          : content.tooLong ? CONTENT_TOO_LONG : '';
+      card.querySelector('[data-qr-generate]').disabled = !!reason;
+      const note = card.querySelector('[data-qr-reason]');
+      note.hidden = !reason;
+      note.textContent = reason;
+    });
+    return content;
   }
 
   function renderQr() {
@@ -711,6 +727,7 @@
       $('vdQrCards').innerHTML = qrCardHtml('total', 'Tất cả nguồn', qr.total.defaultAmount, qr.total.defaultAccountKey, qr.total.thieuDonGia);
       $('vdQrCards').dataset.captions = JSON.stringify(['Tất cả nguồn']);
     }
+    refreshQrCards();
   }
 
   async function generateQr({ accountKey, manual, amount, addInfo, resultEl, caption }) {
@@ -728,6 +745,9 @@
       figure.dataset.url = data.url;
       figure.dataset.caption = text;
       figure.dataset.fileName = `QR_${slug(label)}_${data.amount}.png`;
+      resultEl.querySelector('img').addEventListener('error', () => {
+        resultEl.innerHTML = `<p class="vd-message vd-error">${escapeHtml(QR_IMAGE_ERROR)}</p>`;
+      });
     } catch (error) {
       resultEl.innerHTML = `<p class="vd-message vd-error">${escapeHtml(error.message)}</p>`;
     }
@@ -1456,26 +1476,31 @@
     $('vdAllocCsv').addEventListener('click', () => downloadCsv(state.alloc.columns, orderedRows('vdAllocRows', state.alloc.rows).map(r => r.values), 'ket_qua_xu_ly_hoa_don.csv'));
 
     document.querySelectorAll('[data-qr-mode]').forEach(b => b.addEventListener('click', () => { state.qrMode = b.dataset.qrMode; renderQr(); }));
-    $('vdTransfer').addEventListener('input', () => { $('vdTransferHint').hidden = !!$('vdTransfer').value.trim(); });
+    $('vdTransfer').addEventListener('input', () => {
+      $('vdTransferHint').hidden = !!$('vdTransfer').value.trim();
+      refreshQrCards();
+    });
     $('vdQrCards').addEventListener('change', event => {
-      if (!event.target.matches('[data-qr-amount]')) return;
-      event.target.value = formatAmount(parseAmount(event.target.value));
+      if (event.target.matches('[data-qr-amount]')) event.target.value = formatAmount(parseAmount(event.target.value));
+      if (event.target.matches('[data-qr-amount], [data-qr-account]')) refreshQrCards();
     });
     $('vdQrCards').addEventListener('input', event => {
       if (!event.target.matches('[data-qr-amount]')) return;
       const card = event.target.closest('[data-qr-card]');
       card.querySelector('[data-qr-generate]').innerHTML = `${ICON.qr}Tạo mã QR — ${intFormat.format(parseAmount(event.target.value))}đ`;
+      refreshQrCards();
     });
     $('vdQrCards').addEventListener('click', event => {
       const button = event.target.closest('[data-qr-generate]');
       if (!button) return;
+      if (button.disabled) return;
       const card = button.closest('[data-qr-card]');
       const index = [...$('vdQrCards').children].indexOf(card);
       const captions = JSON.parse($('vdQrCards').dataset.captions || '[]');
       generateQr({
         accountKey: card.querySelector('[data-qr-account]').value,
         amount: parseAmount(card.querySelector('[data-qr-amount]').value),
-        addInfo: $('vdTransfer').value.trim(),
+        addInfo: refreshQrCards().text,
         resultEl: card.querySelector('[data-qr-result]'),
         caption: captions[index]
       });
