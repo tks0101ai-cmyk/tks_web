@@ -138,7 +138,10 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
   async function reserveKey(user) {
     const who=actor(user),client=await pool.connect();let committed=false;
     try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock($1)',[lockKey]);const settings=await client.query('SELECT source_mode FROM purchase_settings WHERE id=1 FOR UPDATE');if(settings.rows[0]?.source_mode!=='web')throw fail(503,'PURCHASE_SOURCE_NOT_ACTIVE','Thu mua chưa chuyển nguồn sang web.');
-      const expired=(await client.query('DELETE FROM purchase_key_reservations WHERE expires_at<=now() RETURNING row_key')).rows;for(const row of expired)await client.query('INSERT INTO purchase_key_pool(row_key) VALUES($1) ON CONFLICT(row_key) DO NOTHING',[row.row_key]);
+      await client.query(`WITH expired AS (DELETE FROM purchase_key_reservations WHERE expires_at<=now() RETURNING row_key)
+        INSERT INTO purchase_key_pool(row_key) SELECT expired.row_key FROM expired
+        WHERE NOT EXISTS(SELECT 1 FROM purchase_orders WHERE root_key=expired.row_key AND deleted_at IS NULL)
+        ON CONFLICT(row_key) DO NOTHING`);
       const rowKey=await allocateKey(client),reservationId=randomUUID(),reservation=(await client.query("INSERT INTO purchase_key_reservations(reservation_id,row_key,actor_id,expires_at) VALUES($1,$2,$3,now()+interval '30 minutes') RETURNING expires_at",[reservationId,rowKey,who.id])).rows[0];
       await client.query('COMMIT');committed=true;return {rowKey,reservationId,expiresAt:reservation.expires_at};
     }catch(error){if(!committed)await client.query('ROLLBACK').catch(()=>{});if(error.code==='42P01')throw fail(503,'PURCHASE_MIGRATION_REQUIRED','Chưa áp dụng migration Thu mua.');throw error}finally{client.release()}

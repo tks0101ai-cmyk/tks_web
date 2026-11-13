@@ -85,6 +85,21 @@ test('row key reservation reclaims expired keys and rejects expired claims',asyn
  await assert.rejects(service.create({id:'other'},{...input(),rowKey:next.rowKey,reservationId:next.reservationId}),e=>e.code==='ROW_KEY_UNKNOWN');
 });
 
+test('expired reservation cleanup does not pool a key restored to an active family',async()=>{
+ const first=await service.reserveKey(manager),old=await service.create(manager,{...input(),rowKey:first.rowKey,reservationId:first.reservationId});
+ await service.remove(manager,{rows:[{id:old.id,version:old.version}]});
+ const stale=await service.reserveKey(manager);
+ await db.query("UPDATE purchase_key_reservations SET expires_at=now()-interval '1 minute' WHERE reservation_id=$1",[stale.reservationId]);
+ const trash=(await service.trash(manager)).find(row=>row.id===old.id);await service.restore(manager,{id:old.id,version:trash.version});
+ const next=await service.reserveKey(manager);assert.notEqual(next.rowKey,old.rowKey);
+ const fresh=await service.create(manager,{...input(),productCode:'FRESH',rowKey:next.rowKey,reservationId:next.reservationId});
+ const live=(await service.list(manager)).rows.find(row=>row.id===old.id);
+ assert.equal(live.rowKey,old.rowKey);
+ await service.applyPlan(manager,{splits:[{id:live.id,version:live.version,sourceQty:10,quantity:4,manual:true}]});
+ assert.equal((await db.query('SELECT count(*)::int n FROM purchase_orders WHERE root_order_id=$1 AND deleted_at IS NULL',[old.id])).rows[0].n,2);
+ assert.notEqual(fresh.rowKey,old.rowKey);
+});
+
 test('row key claim rejects a token removed by another reservation cleanup',async()=>{
  const expired=await service.reserveKey(manager),other={id:'other'};
  await db.query('UPDATE purchase_key_reservations SET expires_at=now()-interval \'1 minute\' WHERE reservation_id=$1',[expired.reservationId]);

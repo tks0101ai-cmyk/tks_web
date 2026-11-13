@@ -39,3 +39,9 @@ Final command result: **89 passed, 0 failed, 0 skipped** for `node --test purcha
 A second undo-restore regression reproduced the leak: after restoring family A under D00002 because family B owns D00001, undoing A's restore left D00002 out of the pool and the next reservation returned D00003. Undo now captures the active after-snapshot root code before restoring the deleted snapshot, then offers that exact displaced code back only if the family has no active rows and no active family or live reservation owns it. The regression now confirms the next reservation receives D00002, B remains active on D00001, and creating another row plus splitting B succeeds.
 
 Failure-first: expected D00002, received D00003. After the fix, the focused regression passes. Final service+route command: **89 passed, 0 failed, 0 skipped** (includes 3 nested migration assertions).
+
+## Review follow-up: expired reservation cleanup
+
+A regression reproduced a stale reservation reclaiming D00001 after a deleted family had been restored under that code. Cleanup now deletes expired reservations and inserts their keys into the pool only when no active `purchase_orders` row has that root code. The regression verifies the next reservation is different from D00001, a fresh order can be created, and the restored D00001 family can still split.
+
+Failure-first: next reservation incorrectly returned D00001. After the fix, expiry/claim-focused tests pass **3/3**. Latest full service+route command: **92 passed, 0 failed, 0 skipped** (includes 3 nested migration assertions).
