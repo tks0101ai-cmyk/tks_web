@@ -1406,6 +1406,15 @@ Cập nhật cuối: 11/11/2026.
 
 Cập nhật cuối: 12/11/2026.
 
+## Hiệu năng — 13/11/2026 (đợt 5)
+
+- `productContainers/expectedRepository.js`: `createExpectedRepository({ queryCache, events, stateTtlMs, staleMaxMs })` — bản dùng chung của web bật `queryCache` (tắt bằng `EXPECTED_ARRIVALS_CACHE=off`). Khóa cache = quyền (`fullAccess`, `otherNoteAccess`) + tham số trang/lọc/tìm/sắp xếp; hợp lệ theo `product_container_expected_state.version`, `meta.computedAt/rowCount` lấy theo state hiện tại nên phản hồi giống hệt chạy lại SQL. Xuất file (`exportAll`, `countOnly`) không qua cache. SQL trang đọc cột trực tiếp, lỗi `42703` (DB chưa áp 0078) thì dùng bản `to_jsonb(e)` cũ. Tìm kiếm mờ: cột `search_folded` (bỏ dấu 1 lần / dòng trong CTE `base`) + `fuzzySqlParts(..., { folded: true })`. Log `[timing]` có bước `expectedState` / `expectedQuery`.
+- `shared/fuzzySql.js`: `fuzzySqlParts(expression, query, add, { folded })` — `folded: true` dùng thẳng biểu thức đã `foldSql` (không bọc `translate` cho từng từ); mặc định giữ cách cũ cho các module khác.
+- `productContainers/expectedRefresh.js`: sau `COMMIT`, nếu dòng state đổi thì phát `expectedArrivalsChanged` trên `dashboardRollupEvents` (worker → `pg_notify` → web). SSE trình duyệt không chuyển sự kiện này.
+- `pickAssignments/pickAssignmentsService.js` `confirm()`: `LOCK_POSITIONS_WITH_HELD_SQL` (khóa VT + giữ chỗ đơn khác) thay `lockPositions` + `heldByPosition` (đã gỡ hàm này); ghi cả đơn bằng `CONFIRM_WRITE_SQL`. Giữ nguyên khóa advisory theo cơ sở + `FOR UPDATE`, lỗi `STOCK_CHANGED` báo dòng đầu tiên, nhánh `auto_delete`, nội dung `stock_position_history` (action `pick`, summary, người sửa = mã đơn), `order_pick_history` `confirm`. Log `[timing]` có bước `pickJobs` / `pickPositionsLock` / `pickConfirmWrite`.
+
+Cập nhật cuối: 13/11/2026.
+
 ## Nguồn dự phòng 3 trang VAT — 12/11/2026
 
 - `vatDraft/sheetsSource.js`: `fetchSheetRecordsWithFallback` — tab file trung gian lỗi API / chỉ còn 1 ô (`#REF!`, `Loading...`) / thiếu cột thì đọc tab tương ứng file gốc VAT TKS (`vatDraftConfig.fallback`, timeout 45 s qua `readSheetValuesById({ timeoutMs })`); dùng ở Nháp VAT, Tra cứu VAT (`vatLookup/lookupSource.js`), Tồn VAT (`vatRequests/stockSource.js`). Meta `/api/vat-draft/meta` và `/api/vat-lookup/*` có thêm `fallbackTabs`.
