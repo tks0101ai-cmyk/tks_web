@@ -530,6 +530,12 @@
 .purchase-page #modal .dp-close{display:grid;place-items:center;flex:0 0 34px;width:34px;height:34px;padding:0;line-height:1}
 .purchase-page #modal:has(#downloadSnapshot){width:min(680px,calc(100vw - 32px))}
 .purchase-page #modal:has(#downloadSnapshot) .dp-body{max-height:62dvh}
+.purchase-page #modal:has(#confirmImport){width:min(96vw,1800px);max-height:95dvh}
+.purchase-page #modal:has(#confirmImport) .dp-body{max-height:calc(95dvh - 74px)}
+.purchase-page #modalBody .purchase-import-preview-table{width:100%;max-height:min(72dvh,760px);overflow:auto}
+.purchase-page #modalBody .purchase-import-preview-table table{min-width:max-content}
+.purchase-page #modalBody .purchase-import-preview-table th:nth-child(n+3),.purchase-page #modalBody .purchase-import-preview-table td:nth-child(n+3){min-width:170px}
+.purchase-page #modalBody .purchase-import-preview-table td input[data-import-key]{min-width:150px;min-height:38px;font-size:12px}
 .purchase-page #modalBody .purchase-modal-actions{position:sticky;bottom:-20px;background:var(--panel);padding-bottom:4px}
 .purchase-page .import-drop{background:var(--panel-2);line-height:1.5}
 .purchase-page #purchaseTaskDialog{position:relative;width:min(720px,92vw);max-height:min(86dvh,900px);overflow:auto;padding:54px 18px 18px;border-radius:var(--radius-xl);box-shadow:var(--shadow-modal)}

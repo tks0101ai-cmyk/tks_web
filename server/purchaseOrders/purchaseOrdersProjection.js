@@ -27,9 +27,9 @@ async function projectContainers(client) {
         ELSE NULL END AS vietnam_price,
       o.unit_price_cny,COALESCE(o.buy_note,'') AS other_note
     FROM purchase_orders o LEFT JOIN product_containers c ON c.id=o.container_id
-    LEFT JOIN (SELECT container_id,sum(carton_count*m3_per_carton) volume,bool_and(m3_per_carton>0 AND carton_count>0 AND m3_per_carton IS NOT NULL) complete FROM purchase_orders WHERE deleted_at IS NULL GROUP BY container_id) totals ON totals.container_id IS NOT DISTINCT FROM o.container_id
+    LEFT JOIN (SELECT container_id,sum(carton_count*m3_per_carton) volume,bool_and(m3_per_carton>0 AND carton_count>0 AND m3_per_carton IS NOT NULL) complete FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL GROUP BY container_id) totals ON totals.container_id IS NOT DISTINCT FROM o.container_id
     LEFT JOIN LATERAL(SELECT CASE WHEN o.m3_per_carton>0 AND o.carton_count>0 THEN o.carton_count*o.m3_per_carton*CASE WHEN c.id IS NULL OR c.freight_mode='formula' THEN COALESCE(c.freight_base,202000000)/COALESCE(c.freight_capacity,170) WHEN totals.complete AND totals.volume>0 THEN c.freight/totals.volume ELSE NULL END ELSE NULL END AS freight) cost ON true
-    WHERE o.deleted_at IS NULL${ownsAll ? '' : ' AND o.container_id IS NOT NULL'}`);
+    WHERE o.deleted_at IS NULL AND o.inactive_at IS NULL${ownsAll ? '' : ' AND o.container_id IS NOT NULL'}`);
   const cols = ['sheet_name','sheet_order','container_row','source_row','product_code','product_key','container_name','status','status_label','eta','color','sale_note','ordered_by','listed_at','units_per_package','package_count','quantity','vietnam_price','unit_price_cny','other_note'];
   // Dong 'THU MUA' khong con trong ban chieu thi bo, o ca hai pham vi. Dong cua
   // sheet khac: toan phan thi xoa het; mot phan thi chi xoa cont ma Thu mua da

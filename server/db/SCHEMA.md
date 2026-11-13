@@ -1,5 +1,9 @@
 # Supabase schema cho đồng bộ KiotViet
 
+## Migration 0123 — Thu mua: tắt dòng cũ (13/11/2026)
+
+`0123_purchase_inactive_rows.sql` thêm `purchase_orders.inactive_at TIMESTAMPTZ`. Tắt dòng là trạng thái lưu trữ có thể bật lại; dòng tắt bị loại khỏi danh sách Đặt hàng, tính cont, dự kiến hàng về và projection dùng chung. Khác với xóa mềm (`deleted_at`), dòng tắt không vào thùng rác và vẫn có thể bật lại từ danh sách **Dòng đã tắt**. Xóa dòng vẫn là xóa mềm, có thể khôi phục trong **Thùng rác**. Cả hai thao tác lưu actor/lịch sử, kiểm phiên bản, hỗ trợ hoàn tác và chỉ cho chọn tối đa 500 dòng/lần. Migration đăng ký trong `db/ensurePurchaseSchema.js`.
+
 ## Migration 0122 — Thu mua: số đo đối chiếu ghi đè theo dòng (11/11/2026, chưa xác minh DB production)
 
 `0122_purchase_measurement_overrides.sql` thêm `purchase_orders.measurement_overrides JSONB NOT NULL DEFAULT '{}'::jsonb`. JSONB lưu riêng giá trị người dùng sửa cho 9 trường nhóm Đối chiếu Cân đo (`literWarehouse`, `m3Warehouse`, `literChina`, `literDiff`, `gramWarehouse`, `gramChina`, `gramDiff`, `measuredOn`, `ratio`). Khi key không có, UI dùng giá trị tự động từ nguồn/ phép tính hiện hành; xóa hoặc nhập trống gỡ key để trở về tự động. Không đổi bảng nguồn `shipping_measures` hay dữ liệu Sheet. Migration được đăng ký trong `db/ensurePurchaseSchema.js`; cần có trên DB trước khi dùng bản UI ghi đè.
