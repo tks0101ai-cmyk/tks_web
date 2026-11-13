@@ -8,8 +8,7 @@ const localUserStore = require('./localUserStore');
 const effectiveUserResolver = require('./effectiveUserResolver');
 const featureRegistry = require('./featureRegistry');
 
-const AUTH_COOKIE_NAME = 'tks_auth';
-const AUTH_COOKIE_MAX_AGE_MS = 12 * 60 * 60 * 1000; // khop JWT_EXPIRES_IN mac dinh (12h)
+const { AUTH_COOKIE_NAME } = require('./authSession');
 
 function readTokenFromRequest(req) {
   return (req.cookies && req.cookies[AUTH_COOKIE_NAME]) || null;
@@ -110,4 +109,4 @@ function requireRole(...allowedRoles) {
   };
 }
 
-module.exports = { AUTH_COOKIE_NAME, AUTH_COOKIE_MAX_AGE_MS, createRequireAuth, requireAuth, requireRole, requireFeature };
+module.exports = { AUTH_COOKIE_NAME, createRequireAuth, requireAuth, requireRole, requireFeature };
