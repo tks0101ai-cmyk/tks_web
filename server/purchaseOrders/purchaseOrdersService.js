@@ -351,7 +351,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
           if(!fields[key])throw fail(400,'FIELD_NOT_WRITABLE','Trường cont không được sửa.');
           if(key==='freightMode'&&!['manual','formula'].includes(value))throw fail(400,'VALIDATION_ERROR','Chọn chế độ cước hợp lệ.');
           if(key==='freightFormula'&&(value!==null&&(typeof value!=='string'||value.length>512)))throw fail(400,'VALIDATION_ERROR','Công thức cước tối đa 512 ký tự.');
-          if(key==='assumedM3'&&value!=null&&(calculations.positive(value)==null||value===''))throw fail(400,'VALIDATION_ERROR','Tổng m³ giả định phải lớn hơn 0 hoặc để trống.');
+          if(key==='assumedM3'&&value!=null&&value!==''&&calculations.positive(value)==null)throw fail(400,'VALIDATION_ERROR','Tổng m³ giả định phải lớn hơn 0 hoặc để trống.');
           if(['freightBase','freightCapacity'].includes(key)&&(calculations.number(value)==null||Number(value)<0||key==='freightCapacity'&&Number(value)<=0||value===''||value==null))throw fail(400,'VALIDATION_ERROR','Tiền chuẩn không âm và m³ chuẩn phải lớn hơn 0.');
           if(key==='freight'&&value!==null&&(!Number.isFinite(Number(value))||Number(value)<0))throw fail(400,'VALIDATION_ERROR','Cước cont không hợp lệ.');
           if(key==='name'&&(!String(value||'').trim()||String(value).length>200))throw fail(400,'VALIDATION_ERROR','Tên cont không hợp lệ.');

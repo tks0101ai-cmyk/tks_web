@@ -199,9 +199,12 @@ test('container requires a positive assumed m3 at creation and allows clearing i
  assert.equal(Number(created.assumed_m3),170);
  const edited=await service.updateContainer(manager,created.id,{version:created.version,changes:{assumedM3:185}});
  assert.equal(Number(edited.assumed_m3),185);
- const cleared=await service.updateContainer(manager,created.id,{version:edited.version,changes:{assumedM3:null}});
+ const cleared=await service.updateContainer(manager,created.id,{version:edited.version,changes:{assumedM3:''}});
  assert.equal(cleared.assumed_m3,null);
- await assert.rejects(service.updateContainer(manager,created.id,{version:cleared.version,changes:{assumedM3:-1}}),e=>e.statusCode===400);
+ const restored=await service.updateContainer(manager,created.id,{version:cleared.version,changes:{assumedM3:185}});
+ const clearedNull=await service.updateContainer(manager,created.id,{version:restored.version,changes:{assumedM3:null}});
+ assert.equal(clearedNull.assumed_m3,null);
+ await assert.rejects(service.updateContainer(manager,created.id,{version:clearedNull.version,changes:{assumedM3:-1}}),e=>e.statusCode===400);
  await assert.rejects(service.createContainer(manager,{name:'MISSING ESTIMATE'}),e=>e.statusCode===400);
 });
 

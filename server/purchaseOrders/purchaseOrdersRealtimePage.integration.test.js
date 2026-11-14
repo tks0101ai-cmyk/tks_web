@@ -87,6 +87,9 @@ test('assumed m3 is editable in the container grid and required by the create di
  doc.getElementById('newCont').click();const form=doc.getElementById('contForm');assert.equal(form.elements.assumedM3.tagName,'INPUT');form.elements.name.value='NEW CONT';form.elements.assumedM3.value='170';form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}));await tick();await tick();
  const call=p.calls.find(c=>c.url.endsWith('/containers'));assert.deepEqual(JSON.parse(call.options.body),{name:'NEW CONT',assumedM3:'170'});
 });
+test('clearing assumed m3 sends null and negative assumed m3 is rejected',async t=>{
+ const p=await page(t),doc=p.w.document;p.data.containers[0].assumed_m3=170;p.listeners.changed();await tick();await tick();const input=doc.querySelector('#containerTable [data-container-field="assumedM3"]');input.focus();input.value='';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));input.dispatchEvent(new p.w.Event('change',{bubbles:true}));await tick();await tick();const calls=()=>p.calls.filter(c=>c.url.endsWith('/containers/2')&&c.options.method==='PATCH');assert.equal(JSON.parse(calls()[0].options.body).changes.assumedM3,null);assert.equal(doc.getElementById('notice').textContent,'');const updated=doc.querySelector('#containerTable [data-container-field="assumedM3"]');updated.focus();updated.value='-1';updated.dispatchEvent(new p.w.Event('change',{bubbles:true}));await tick();assert.equal(calls().length,1);assert.match(doc.getElementById('notice').textContent,/lớn hơn 0 hoặc để trống/);
+});
 test('integrated refresh updates another cell during numeric expression typing, retaining baseline/caret and navigation mode',async t=>{
  const p=await page(t),doc=p.w.document,input=doc.querySelector('[data-edit="cartonCount"]');input.focus();input.value='2*6';input.dataset.gridEditing='true';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));input.setSelectionRange(1,2);
  p.data.rows[0].supplier='Remote supplier';p.data.rows[0].cartonCount=20;p.data.rows[0].version=5;p.listeners.changed();await tick();await tick();
@@ -235,9 +238,9 @@ test('manual container freight previews assumed and actual m3 allocation immedia
  const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{m3PerCarton:.2,cartonCount:10});Object.assign(p.data.containers[0],{assumed_m3:10,freight:1000,freight_mode:'manual'});p.listeners.changed();await tick();await tick();
  doc.getElementById('columns').click();const option=doc.querySelector('[data-column="freightAmount"]');option.checked=true;option.dispatchEvent(new p.w.Event('change',{bubbles:true}));doc.getElementById('modalClose').click();
  assert.equal(doc.querySelector('[data-field="freightAmount"]').textContent,'200');
- const assumed=doc.querySelector('#containerTable [data-container-field="assumedM3"]');assumed.focus();assumed.value='20';assumed.dispatchEvent(new p.w.Event('input',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,100));
+ const assumed=doc.querySelector('#containerTable [data-container-field="assumedM3"]');assumed.focus();assumed.value='20';assumed.dispatchEvent(new p.w.Event('input',{bubbles:true}));
  assert.equal(doc.querySelector('[data-field="freightAmount"]').textContent,'100');assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) td:nth-child(8)').textContent,'50');
- assumed.value='';assumed.dispatchEvent(new p.w.Event('input',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,100));assert.equal(doc.querySelector('[data-field="freightAmount"]').textContent,'1,000');assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) td:nth-child(8)').textContent,'500');
+ assumed.value='';assumed.dispatchEvent(new p.w.Event('input',{bubbles:true}));assert.equal(doc.querySelector('[data-field="freightAmount"]').textContent,'1,000');assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) td:nth-child(8)').textContent,'500');
 });
 test('entering container freight previews per-item allocation against assumed m3',async t=>{
  const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{m3PerCarton:.2,cartonCount:10});Object.assign(p.data.containers[0],{assumed_m3:10,freight:0,freight_mode:'manual'});p.listeners.changed();await tick();await tick();
