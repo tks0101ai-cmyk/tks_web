@@ -1423,6 +1423,17 @@ Cập nhật cuối: 12/11/2026.
 
 Cập nhật cuối: 13/11/2026.
 
+## Hiệu năng — 14/11/2026 (đợt 6)
+
+- `sheets/sheetsClient.js` `readSheetValuesById`: gọi Sheets API với `{ timeout, retry: false }` (googleapis mặc định thử lại 3 lần khi hết giờ: 45 s × 3 ≈ 136 s).
+- `vatDraft/sheetsSource.js`: bộ đọc mặc định `sharedReadSheetValues` — lần đọc trùng tab (cùng spreadsheetId/sheetId/range/timeoutMs) đang chạy hoặc xong trong 60 s dùng chung kết quả; lỗi không giữ lại.
+- `lib/ttlSnapshotCache.js`: `backgroundRefresh` + đọc nền lỗi → bản đang giữ được đánh dấu `stale: true` (giữ `loadedAt`, lần sau đọc lại). Bật `backgroundRefresh` cho `vatRequests/stockSource.js`, `createMasterDataSource` (Nhập VAT), `vatLookup/lookupSource.js`.
+- `vatRequests/service.js`: `readStock({ waitMs })` — số liệu hiển thị (list, metrics, lookup, gợi ý mã) chờ tối đa `stockWaitMs` (3 s), quá thì `stockStatus = { available: false, loading: true, error }`; `resolveProducts` (tạo yêu cầu) vẫn chờ đủ. `public/vat-request/vat-request.js`: báo "đang tải" và tự tải lại khi rảnh (tối đa 12 lần, mỗi 10 s).
+- `routes.js`: tạo sẵn 3 nguồn Sheets VAT và `router.warmUpVatSheets()`; `index.js` gọi sau khi `listen` 2 s (`VAT_SHEETS_WARMUP=off` để tắt).
+- `dashboard/exportExcelTasks.js` (danh sách loại file: `dataset`, `expectedArrivals`), `exportExcelPool.runExcelTaskInWorker(task, payload)`; `productContainers/expectedExcel.js` dựng .xlsx Dự kiến hàng về (thuần ExcelJS) — `expectedExport.createExportFile` chuẩn bị giá trị ô rồi dựng trong worker.
+
+Cập nhật cuối: 14/11/2026.
+
 ## Nguồn dự phòng 3 trang VAT — 12/11/2026
 
 - `vatDraft/sheetsSource.js`: `fetchSheetRecordsWithFallback` — tab file trung gian lỗi API / chỉ còn 1 ô (`#REF!`, `Loading...`) / thiếu cột thì đọc tab tương ứng file gốc VAT TKS (`vatDraftConfig.fallback`, timeout 45 s qua `readSheetValuesById({ timeoutMs })`); dùng ở Nháp VAT, Tra cứu VAT (`vatLookup/lookupSource.js`), Tồn VAT (`vatRequests/stockSource.js`). `/api/vat-draft/master-data/status` và `/api/vat-lookup/*` có thêm `fallbackTabs`.

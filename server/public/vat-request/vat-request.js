@@ -645,6 +645,11 @@
     const status = state.stockStatus;
     const el = $('vrSource');
     if (!status) { el.textContent = ''; el.dataset.kind = ''; return; }
+    if (!status.available && status.loading) {
+      el.textContent = status.error || 'Đang tải tồn VAT từ Google Sheets…';
+      el.dataset.kind = 'warn';
+      return;
+    }
     if (!status.available) {
       el.textContent = `Không đọc được sheet tồn VAT: ${status.error || 'lỗi không rõ'}. Cột Tồn VAT tạm để trống.`;
       el.dataset.kind = 'error';
@@ -711,6 +716,29 @@
     queryTimer = setTimeout(() => { queryTimer = null; load(); }, 300);
   }
 
+  // Máy chủ trả danh sách trước khi đọc xong Tồn VAT (Google Sheets chậm, thường ngay sau khi web khởi động lại):
+  // tự tải lại khi rảnh để điền cột Tồn VAT — không đang tải, tab đang xem, không có ô đang sửa / đang lưu,
+  // không mở hộp thoại. Tối đa STOCK_RETRY_MAX lần (~2 phút).
+  const STOCK_RETRY_MS = 10000, STOCK_RETRY_BUSY_MS = 5000, STOCK_RETRY_MAX = 12;
+  let stockRetryTimer = null, stockRetries = 0;
+  function stockRetryBusy() {
+    return state.loading || document.visibilityState === 'hidden' || pendingFields.size > 0 ||
+      !!document.querySelector('#vrTable td [data-inline]') || !!document.querySelector('dialog[open]');
+  }
+  function scheduleStockRetry(loading) {
+    clearTimeout(stockRetryTimer);
+    stockRetryTimer = null;
+    if (!loading) { stockRetries = 0; return; }
+    if (stockRetries >= STOCK_RETRY_MAX) return;
+    const attempt = () => {
+      stockRetryTimer = null;
+      if (stockRetryBusy()) { stockRetryTimer = setTimeout(attempt, STOCK_RETRY_BUSY_MS); return; }
+      stockRetries += 1;
+      load();
+    };
+    stockRetryTimer = setTimeout(attempt, STOCK_RETRY_MS);
+  }
+
   async function load() {
     clearTimeout(queryTimer);
     queryTimer = null;
@@ -742,6 +770,7 @@
       state.sales = data.sales || [];
       state.statuses = data.statuses || state.statuses;
       state.stockStatus = data.stockStatus || null;
+      scheduleStockRetry(!!(state.stockStatus && state.stockStatus.loading));
       state.truncated = !!data.truncated;
       state.rowOrder = data.rowOrder !== false;
       state.isManager = !!(data.viewer && data.viewer.isManager);

@@ -118,6 +118,12 @@ test('POST /refresh ep tai lai; Sheets loi sau do -> tra ban cu danh dau stale',
   assert.equal(base.calls.length, 3);
   fail = true;
   clock = 11 * 60 * 1000;
+  // Het 10 phut: tra NGAY ban dang co (khong cho Google Sheets), doc lai o nen.
+  const first = await request('/meta', { source });
+  assert.equal(first.status, 200);
+  assert.equal(first.body.products, 1);
+  // Lan doc nen loi -> cac request sau thay ban cu danh dau stale.
+  for (let i = 0; i < 20; i++) await new Promise(resolve => setImmediate(resolve));
   const res = await request('/meta', { source });
   assert.equal(res.status, 200);
   assert.equal(res.body.stale, true);

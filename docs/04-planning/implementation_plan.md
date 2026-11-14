@@ -789,3 +789,9 @@ Thay phân loại Loại xe bằng Tổng m³ giả định trên cont. Bắt bu
 Migrations `0127_purchase_container_assumed_m3.sql` và `0128_purchase_surcharge_percent.sql` tự đăng ký trong schema Thu mua; migration thứ hai bỏ `tax_amount` theo yêu cầu. Unit/service/projection/UI test và UAT giao diện mô phỏng đã kiểm tạo cont bắt nhập m³ giả định, xóa giá trị để chuyển mẫu số, phụ phí theo phần trăm và NET. Cần kiểm trên staging sau khi có schema; chưa áp migration production/deploy.
 
 Cập nhật gần nhất: 14/11/2026.
+
+## Hiệu năng đợt 6 — 14/11/2026
+
+ORDER VAT / Tra cứu VAT / Nhập VAT treo 82–138 s: tab file trung gian lỗi `#REF!` → đọc file gốc VAT TKS (45 s × 3 lần thử lại tự động), mọi request chờ lần đọc đó. Đã làm: tắt tự thử lại khi đọc Sheets theo sheetId, dùng chung lần đọc trùng tab giữa 3 trang, cache trả bản cũ + làm mới nền (đọc nền lỗi thì báo bản cũ), ORDER VAT chờ Tồn VAT tối đa 3 s rồi tự tải lại, đọc trước Sheets khi web khởi động. Xuất Excel Dự kiến hàng về chạy worker thread (event loop không còn đứng ~0,4–1,9 s). Không đổi schema/API.
+
+Cập nhật gần nhất: 14/11/2026.
