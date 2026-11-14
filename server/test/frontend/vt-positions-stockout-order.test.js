@@ -115,27 +115,24 @@ test('thêm dòng chưa chọn hàng trong gợi ý hoặc thiếu vị trí: b�
   assert.equal(calls.some(call => call.method === 'POST'), false);
 });
 
-test('chốt đơn: hộp xác nhận nêu dòng âm và dòng chưa có VT; đồng ý mới POST confirm kèm version, rồi báo và tải lại bảng', async t => {
-  const negative = line(2, { code: 'BBB2', name: 'Sữa rửa mặt', location: 'B1', notes: '7T x 100', quantity: 700, preview: { before: '5T x 100', after: '-2T x 100', quantity: -200, negative: true, missing: false, held: 0, blocked: false } });
-  const missing = line(3, { code: 'CCC3', name: 'Hàng mới', location: 'Z9', notes: '1T x 20', quantity: 20, preview: { before: '', after: '-1T x 20', quantity: -20, negative: true, missing: true, held: 0, blocked: false } });
+test('chốt đơn: hộp xác nhận tóm tắt số dòng/vị trí; đồng ý mới POST confirm kèm version, rồi báo và tải lại bảng', async t => {
+  const second = line(2, { code: 'BBB2', name: 'Sữa rửa mặt', location: 'B1', notes: '2T x 100', quantity: 200, preview: { before: '5T x 100', after: '3T x 100', quantity: 300, negative: false, over: false, maxQty: 500, missing: false, held: 0, blocked: false } });
   const { doc, calls, current } = await setup(t, {
-    order: draft([line(1), negative, missing]),
+    order: draft([line(1), second]),
     handler: async (parsed, options, state) => {
       if (parsed.pathname === '/api/stock-positions/stock-out-orders/7/confirm') {
         state.order = draft([], { id: 8, code: 'XK-HN-00002', version: 1 });
-        return json({ order: draft([], { status: 'confirmed' }), stats: { positions: 3, lines: 3, quantity: 420, negative: 2, removed: 0, created: 1 } });
+        return json({ order: draft([], { status: 'confirmed' }), stats: { positions: 2, lines: 2, quantity: 420, negative: 0, removed: 0, created: 0 } });
       }
       return null;
     }
   });
   await openDialog(doc);
-  assert.match(doc.querySelector('#vtOrderRows tr[data-line-id="2"] .vt-order-neg').textContent, /-2T x 100/);
+  assert.equal(doc.getElementById('vtOrderConfirm').disabled, false);
   doc.getElementById('vtOrderConfirm').click();
   await settle();
   const message = doc.getElementById('vtConfirmMessage').textContent;
-  assert.match(message, /Chốt đơn XK-HN-00001: 3 dòng, 3 vị trí/);
-  assert.match(message, /2 vị trí sẽ ra số ÂM/);
-  assert.match(message, /1 vị trí chưa có dòng VT/);
+  assert.match(message, /Chốt đơn XK-HN-00001: 2 dòng, 2 vị trí/);
   assert.equal(calls.some(call => call.path.endsWith('/confirm')), false, 'chưa bấm Chốt đơn thì chưa gửi');
   doc.getElementById('vtConfirmOk').click();
   await settle();
@@ -145,6 +142,25 @@ test('chốt đơn: hộp xác nhận nêu dòng âm và dòng chưa có VT; đ�
   assert.equal(current.order.code, 'XK-HN-00002');
   assert.equal(doc.getElementById('vtOrderConfirm').disabled, true, 'đơn mới trống chưa chốt được');
   assert.ok(calls.filter(call => call.method === 'GET' && call.path === '/api/stock-positions').length >= 2, 'bảng VT tải lại sau khi chốt');
+});
+
+test('dòng xuất vượt số có thể bốc (kể cả chưa có dòng VT): báo đỏ kèm mức tối đa, khóa nút Chốt đơn, không gửi confirm', async t => {
+  const over = line(2, { code: 'BBB2', name: 'Sữa rửa mặt', location: 'B1', notes: '7T x 100', quantity: 700, preview: { before: '5T x 100', after: '-2T x 100', quantity: -200, negative: true, over: true, maxQty: 500, missing: false, held: 0, blocked: false } });
+  const missing = line(3, { code: 'CCC3', name: 'Hàng mới', location: 'Z9', notes: '1T x 20', quantity: 20, preview: { before: '', after: '-1T x 20', quantity: -20, negative: true, over: true, maxQty: 0, missing: true, held: 0, blocked: false } });
+  const { doc, calls } = await setup(t, { order: draft([line(1), over, missing]) });
+  await openDialog(doc);
+  const row = id => doc.querySelector(`#vtOrderRows tr[data-line-id="${id}"]`);
+  assert.equal(row(1).classList.contains('is-over'), false);
+  assert.equal(row(2).classList.contains('is-over'), true);
+  assert.match(row(2).querySelector('.vt-order-tag.is-error').textContent, /Vượt · tối đa 500/);
+  assert.match(row(3).querySelector('.vt-order-tag.is-error').textContent, /Vượt · tối đa 0/);
+  const button = doc.getElementById('vtOrderConfirm');
+  assert.equal(button.disabled, true);
+  assert.match(button.title, /2 dòng xuất vượt số có thể bốc/);
+  button.click();
+  await settle();
+  assert.equal(doc.getElementById('vtConfirmMessage').textContent, '', 'không mở hộp xác nhận');
+  assert.equal(calls.some(call => call.path.endsWith('/confirm')), false);
 });
 
 test('Hủy hộp xác nhận thì không chốt', async t => {

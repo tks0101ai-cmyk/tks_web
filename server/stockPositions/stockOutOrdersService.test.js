@@ -112,7 +112,7 @@ test('lưu vết: thêm/sửa/xóa dòng ghi ai làm gì, dòng đã xóa còn �
   } finally { await db.close(); }
 });
 
-test('chốt đơn: trừ gộp theo (mã, vị trí), dòng âm, tạo dòng VT chưa có, xóa dòng về 0, lịch sử kèm mã đơn', async () => {
+test('chốt đơn: trừ gộp theo (mã, vị trí), xóa dòng về 0, lịch sử kèm mã đơn', async () => {
   const { db, orders } = await fixture({ positions: [
     { code: 'AAA1', notes: '5T x 100', location: 'A1' },
     { code: 'BBB2', notes: '1T x 50', location: 'CONT' },
@@ -121,23 +121,21 @@ test('chốt đơn: trừ gộp theo (mã, vị trí), dòng âm, tạo dòng VT
   try {
     const { order } = await orders.getCurrent(ctx(), 'HN', { create: true });
     await orders.addLine(ctx(), order.id, { code: 'AAA1', location: 'A1', notes: '3T x 100' });
-    await orders.addLine(ctx(), order.id, { code: 'AAA1', location: 'A1', notes: '4T x 100' }); // tổng 7T x 100 > 5T x 100 -> -2T x 100
+    await orders.addLine(ctx(), order.id, { code: 'AAA1', location: 'A1', notes: '1T x 100' }); // tổng 4T x 100 -> còn 1T x 100
     await orders.addLine(ctx(), order.id, { code: 'BBB2', location: 'CONT', notes: '1T x 50' }); // về 0 -> xóa
-    await orders.addLine(ctx(), order.id, { code: 'BBB2', location: 'B9', notes: '1T x 20' }); // chưa có dòng VT -> tạo dòng âm
     const version = (await orders.getCurrent(ctx(), 'HN')).order.version;
 
     await assert.rejects(orders.confirm(ctx(), order.id, { version: version - 1 }), { code: 'VERSION_CONFLICT' });
     const done = await orders.confirm(ctx(), order.id, { version });
     assert.equal(done.order.status, 'confirmed');
     assert.equal(done.order.confirmedByName, 'Quản Lý A');
-    assert.deepEqual(done.stats, { positions: 3, lines: 4, quantity: 770, negative: 2, removed: 1, created: 1 });
+    assert.deepEqual(done.stats, { positions: 2, lines: 3, quantity: 450, negative: 0, removed: 1, created: 0 });
     assert.deepEqual(await rowsOf(db), [
-      { code: 'AAA1', location: 'A1', notes: '-2T x 100' },
-      { code: 'AAA1', location: 'CONT', notes: '3T x 100' },
-      { code: 'BBB2', location: 'B9', notes: '-1T x 20' }
+      { code: 'AAA1', location: 'A1', notes: '1T x 100' },
+      { code: 'AAA1', location: 'CONT', notes: '3T x 100' }
     ]);
     const history = (await db.query(`SELECT code, location, action, old_value, new_value, summary, actor_name FROM stock_position_history WHERE action = 'stock_out' ORDER BY id`)).rows;
-    assert.equal(history.length, 3);
+    assert.equal(history.length, 2);
     for (const entry of history) {
       assert.equal(entry.summary.source, 'order');
       assert.equal(entry.summary.orderCode, 'XK-HN-00001');
@@ -146,13 +144,13 @@ test('chốt đơn: trừ gộp theo (mã, vị trí), dòng âm, tạo dòng VT
     }
     const a1 = history.find(entry => entry.location === 'A1');
     assert.equal(a1.old_value, '5T x 100');
-    assert.equal(a1.new_value, '-2T x 100');
-    assert.equal(a1.summary.negative, true);
+    assert.equal(a1.new_value, '1T x 100');
+    assert.equal(a1.summary.negative, false);
     assert.equal(history.find(entry => entry.location === 'CONT').new_value, null, 'dòng về 0 bị xóa');
 
     const detail = (await orders.get(ctx(), order.id)).order;
-    assert.equal(detail.lines[1].result.negative, true);
-    assert.equal(detail.lines[1].result.after, '-2T x 100');
+    assert.equal(detail.lines[1].result.negative, false);
+    assert.equal(detail.lines[1].result.after, '1T x 100');
 
     await assert.rejects(orders.confirm(ctx(), order.id, {}), { code: 'ORDER_CONFIRMED' });
     await assert.rejects(orders.addLine(ctx(), order.id, { code: 'AAA1', location: 'A1', notes: '1T x 5' }), { code: 'ORDER_CONFIRMED' });
@@ -160,16 +158,13 @@ test('chốt đơn: trừ gộp theo (mã, vị trí), dòng âm, tạo dòng VT
     assert.equal(next.code, 'XK-HN-00002', 'chốt xong có đơn tạm mới, mã tăng dần');
     assert.equal(next.lines.length, 0);
     const listed = await orders.list(ctx(), 'HN');
-    assert.deepEqual(listed.orders.map(o => [o.code, o.lineCount]), [['XK-HN-00001', 4]]);
+    assert.deepEqual(listed.orders.map(o => [o.code, o.lineCount]), [['XK-HN-00001', 3]]);
   } finally { await db.close(); }
 });
 
-test('dòng âm tự bù khi cộng hàng vào đúng vị trí (Thêm dòng VT)', async () => {
-  const { db, orders, positions } = await fixture({ positions: [{ code: 'AAA1', notes: '5T x 100', location: 'A1' }] });
+test('dòng âm có sẵn (dữ liệu cũ) tự bù khi cộng hàng vào đúng vị trí (Thêm dòng VT)', async () => {
+  const { db, positions } = await fixture({ positions: [{ code: 'AAA1', notes: '-2T x 100', location: 'A1' }] });
   try {
-    const { order } = await orders.getCurrent(ctx(), 'HN', { create: true });
-    await orders.addLine(ctx(), order.id, { code: 'AAA1', location: 'A1', notes: '7T x 100' });
-    await orders.confirm(ctx(), order.id, {});
     const [row] = (await positions.list(ctx(), 'HN')).rows;
     assert.equal(row.notes, '-2T x 100');
     assert.equal(row.quantity, -200);
@@ -200,18 +195,48 @@ test('chốt chặn dòng VT ghi chú không đọc được; import Excel liệ
   } finally { await db.close(); }
 });
 
-test('dòng bị đơn Đang bốc giữ chỗ: vẫn trừ, về 0 thì giữ dòng (không xóa) để phiếu bốc còn trỏ vào', async () => {
+test('chốt chặn xuất vượt số có thể bốc (âm, chưa có dòng VT, đang giữ chỗ); không trừ gì cả', async () => {
+  const { db, orders } = await fixture({ pickTables: true, positions: [
+    { code: 'AAA1', notes: '2T x 100', location: 'A1' },
+    { code: 'BBB2', notes: '1T x 50', location: 'CONT' }
+  ] });
+  try {
+    const id = Number((await db.query(`SELECT id FROM stock_positions WHERE code = 'BBB2'`)).rows[0].id);
+    const a = (await db.query(`INSERT INTO order_pick_assignments (branch, order_code, status) VALUES ('HN', 'DH1', 'picking') RETURNING id`)).rows[0].id;
+    await db.query(`INSERT INTO order_pick_lines (assignment_id, product_code, position_id, location, planned_qty, reserved_qty) VALUES ($1, 'BBB2', $2, 'CONT', 20, 20)`, [a, id]);
+    const { order } = await orders.getCurrent(ctx(), 'HN', { create: true });
+    await orders.addLine(ctx(), order.id, { code: 'AAA1', location: 'A1', notes: '3T x 100' });  // 300 > 200 -> âm
+    await orders.addLine(ctx(), order.id, { code: 'ZZZ9', location: 'Z9', notes: '1T x 20' });    // chưa có dòng VT -> có thể bốc 0
+    await orders.addLine(ctx(), order.id, { code: 'BBB2', location: 'CONT', notes: '1T x 40' });  // 40 > 50 - 20 giữ chỗ = 30
+    const lines = (await orders.getCurrent(ctx(), 'HN')).order.lines;
+    assert.deepEqual(lines.map(line => [line.preview.over, line.preview.maxQty]), [[true, 200], [true, 0], [true, 30]]);
+    await assert.rejects(orders.confirm(ctx(), order.id, {}), error => {
+      assert.equal(error.code, 'ORDER_OVER_AVAILABLE');
+      assert.deepEqual(error.over.map(item => [item.code, item.available, item.requested, item.missing]), [['AAA1', 200, 300, false], ['ZZZ9', 0, 20, true], ['BBB2', 30, 40, false]]);
+      return true;
+    });
+    assert.deepEqual(await rowsOf(db), [
+      { code: 'AAA1', location: 'A1', notes: '2T x 100' },
+      { code: 'BBB2', location: 'CONT', notes: '1T x 50' }
+    ], 'không trừ bừa');
+    assert.equal((await orders.getCurrent(ctx(), 'HN')).order.status, 'draft', 'đơn vẫn là đơn tạm');
+  } finally { await db.close(); }
+});
+
+test('dòng bị đơn Đang bốc giữ chỗ: xuất tới đúng mức có thể bốc thì được, giữ dòng (không xóa) để phiếu bốc còn trỏ vào', async () => {
   const { db, orders } = await fixture({ pickTables: true, positions: [{ code: 'AAA1', notes: '2T x 100', location: 'A1' }] });
   try {
     const id = Number((await db.query('SELECT id FROM stock_positions')).rows[0].id);
     const a = (await db.query(`INSERT INTO order_pick_assignments (branch, order_code, status) VALUES ('HN', 'DH1', 'picking') RETURNING id`)).rows[0].id;
     await db.query(`INSERT INTO order_pick_lines (assignment_id, product_code, position_id, location, planned_qty, reserved_qty) VALUES ($1, 'AAA1', $2, 'A1', 100, 100)`, [a, id]);
     const { order } = await orders.getCurrent(ctx(), 'HN', { create: true });
-    await orders.addLine(ctx(), order.id, { code: 'AAA1', location: 'A1', notes: '2T x 100' });
+    await orders.addLine(ctx(), order.id, { code: 'AAA1', location: 'A1', notes: '1T x 100' });
     const preview = (await orders.getCurrent(ctx(), 'HN')).order.lines[0].preview;
     assert.equal(preview.held, 100);
+    assert.equal(preview.over, false);
+    assert.equal(preview.maxQty, 100);
     await orders.confirm(ctx(), order.id, {});
-    assert.deepEqual(await rowsOf(db), [{ code: 'AAA1', location: 'A1', notes: 'Hết hàng' }]);
+    assert.deepEqual(await rowsOf(db), [{ code: 'AAA1', location: 'A1', notes: '1T x 100' }]);
   } finally { await db.close(); }
 });
 
@@ -228,6 +253,8 @@ test('buildPlan thuần: tuần tự theo thứ tự dòng, dòng sai chặn c�
   assert.equal(x.negative, true);
   assert.equal(plan.perLine.get(1).after, 'Hết hàng');
   assert.equal(plan.perLine.get(2).negative, true);
+  assert.equal(x.over, true);
+  assert.deepEqual([1, 2].map(id => [plan.perLine.get(id).over, plan.perLine.get(id).maxQty]), [[false, 50], [true, 0]]);
   assert.equal(plan.groups.find(group => group.code === 'Y').blocked, true);
 });
 

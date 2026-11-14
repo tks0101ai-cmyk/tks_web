@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   // Đơn xuất kho của VT Hà Nội / VT Sài Gòn (migration 0104). Mỗi cơ sở có MỘT đơn tạm dùng chung: ghi lại hàng đã bốc thật (gõ theo tên,
-  // gợi ý), CHƯA trừ tồn; bấm "Chốt đơn" (có hộp xác nhận) mới trừ tồn VT, cho phép ra số lượng âm. Đóng tab/mở lại đơn tạm vẫn còn.
+  // gợi ý), CHƯA trừ tồn; bấm "Chốt đơn" (có hộp xác nhận) mới trừ tồn VT; không chốt được nếu có dòng xuất vượt số "Có thể bốc" (tồn VT trừ giữ chỗ). Đóng tab/mở lại đơn tạm vẫn còn.
   // Hộp có 3 tab: Đơn tạm · Danh sách đơn (đơn tạm + đơn đã chốt) · Xuất kho Excel (trừ tồn ngay theo file, logic nằm ở vt-positions.js).
   // Trang vt-positions.js truyền vào các hàm dùng chung (request, confirmBox, openDialog...) qua init(hooks).
   const API = '/api/stock-positions/stock-out-orders';
@@ -105,6 +105,8 @@
 
   // ---------- Dựng giao diện ----------
   function preview(line) { return line.preview || null; }
+  // Dòng xuất vượt "Có thể bốc" (server cũng chặn chốt: ORDER_OVER_AVAILABLE).
+  const overLines = order => (order ? order.lines.filter(line => preview(line) && preview(line).over) : []);
 
   function afterCell(line) {
     const td = el('td', 'vt-order-after');
@@ -115,8 +117,12 @@
       td.title = info.reason || '';
       return td;
     }
-    td.appendChild(el('span', info.negative ? 'vt-order-neg' : '', info.after));
-    if (info.negative) td.appendChild(el('span', 'vt-order-tag is-neg', 'Âm'));
+    td.appendChild(el('span', info.over || info.negative ? 'vt-order-neg' : '', info.after));
+    if (info.over) {
+      const tag = el('span', 'vt-order-tag is-error', 'Vượt · tối đa ' + formatNumber(info.maxQty || 0));
+      tag.title = info.missing ? 'Chưa có dòng VT nên không có gì để bốc' : 'Chỉ xuất được tối đa số "Có thể bốc" (tồn VT trừ phần giữ chỗ)';
+      td.appendChild(tag);
+    }
     if (info.held > 0) {
       const tag = el('span', 'vt-order-tag is-held', 'Giữ chỗ ' + formatNumber(info.held));
       tag.title = 'Vị trí này đang được đơn Đang bốc giữ chỗ';
@@ -129,6 +135,7 @@
     const tr = el('tr', 'vt-order-row');
     tr.dataset.lineId = String(line.id);
     const info = preview(line);
+    if (info && info.over) tr.classList.add('is-over');
     tr.appendChild(el('td', 'num', String(index + 1)));
     const name = el('td', 'vt-order-name');
     name.appendChild(el('span', 'vt-order-title', line.name || line.code));
@@ -324,14 +331,16 @@
     const order = state.order;
     const editable = state.canEdit && order && order.status === 'draft';
     $('vtOrderConfirm').hidden = !(view === 'current' && editable);
-    $('vtOrderConfirm').disabled = state.busy || !order || !order.lines.length;
+    const over = overLines(order);
+    $('vtOrderConfirm').disabled = state.busy || !order || !order.lines.length || over.length > 0;
+    $('vtOrderConfirm').title = over.length ? `Có ${over.length} dòng xuất vượt số có thể bốc. Hãy giảm số lượng hoặc xóa dòng đó.` : '';
     $('vtOrderImport').hidden = !(view === 'current' && editable);
     $('vtOrderTemplate').hidden = $('vtOrderImport').hidden;
     const exportable = view === 'detail' ? state.detail : (view === 'current' ? order : null);
     $('vtOrderExport').hidden = !(state.canExport && exportable && exportable.lines.length);
     $('vtOrderHint').textContent = !state.canEdit
       ? 'Bạn chỉ xem được đơn. Người có quyền sửa VT mới thêm dòng và chốt đơn.'
-      : 'Đơn tạm dùng chung: ghi hàng đã bốc thật (gõ theo tên). Tồn VT chỉ bị trừ khi bấm Chốt đơn; dòng nào trừ quá tồn sẽ thành số âm.';
+      : 'Đơn tạm dùng chung: ghi hàng đã bốc thật (gõ theo tên). Tồn VT chỉ bị trừ khi bấm Chốt đơn; chỉ xuất được tối đa số "Có thể bốc", dòng vượt sẽ báo đỏ và chưa chốt được.';
 
     if (view === 'current') {
       const body = $('vtOrderRows');
@@ -465,26 +474,16 @@
     });
   }
 
-  // Tóm tắt trước khi chốt: mỗi (mã, vị trí) chỉ tính một lần theo kết quả cuối cùng của nhóm.
+  // Tóm tắt trước khi chốt: mỗi (mã, vị trí) chỉ tính một lần. Dòng vượt "Có thể bốc" không tới được bước này (nút Chốt đơn bị khóa).
   function confirmMessage(order) {
-    const last = new Map();
-    order.lines.forEach(line => last.set(keyOf(line), line));
-    const groups = [...last.values()];
-    const label = line => (line.name || line.code) + ' @ ' + line.location;
-    const negatives = groups.filter(line => preview(line) && preview(line).negative);
-    const missing = groups.filter(line => preview(line) && preview(line).missing);
-    const held = groups.filter(line => preview(line) && preview(line).held > 0 && preview(line).quantity < preview(line).held);
-    const list = items => items.slice(0, 5).map(label).join('; ') + (items.length > 5 ? '…' : '');
-    const text = [`Chốt đơn ${order.code}: ${order.lines.length} dòng, ${groups.length} vị trí sẽ bị TRỪ tồn thật. Không hoàn tác được.`];
-    if (negatives.length) text.push(`• ${negatives.length} vị trí sẽ ra số ÂM: ${list(negatives)}`);
-    if (missing.length) text.push(`• ${missing.length} vị trí chưa có dòng VT, sẽ tạo mới với số âm: ${list(missing)}`);
-    if (held.length) text.push(`• ${held.length} vị trí đang được đơn Đang bốc giữ chỗ, tồn sau chốt thấp hơn phần giữ: ${list(held)}`);
-    return text.join('\n');
+    const groups = new Set(order.lines.map(keyOf));
+    return `Chốt đơn ${order.code}: ${order.lines.length} dòng, ${groups.size} vị trí sẽ bị TRỪ tồn thật. Không hoàn tác được.`;
   }
 
   async function confirmOrder() {
     const order = state.order;
     if (!order || !order.lines.length || state.busy) return;
+    if (overLines(order).length) { setError('Có dòng xuất vượt số có thể bốc. Hãy giảm số lượng hoặc xóa dòng đó rồi chốt lại.'); return; }
     if (!await state.hooks.confirmBox(confirmMessage(order), 'Chốt đơn')) return;
     await guarded(async () => {
       const { response, payload } = await call(API + '/' + order.id + '/confirm', state.hooks.jsonOptions('POST', { version: order.version }));

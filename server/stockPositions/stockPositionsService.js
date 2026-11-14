@@ -848,7 +848,8 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
 
   // Thuan tuy: tu dong file + dong hien co + gioi han giu cho -> ke hoach tru. Dong sai thi bo qua, dong dung van tru.
   // Dong trung (ma, vi tri) trong file xu ly TUAN TU theo thu tu file tren ghi chu dang con lai: moi dong tru theo dung quy cach cua no,
-  // dong nao tru qua so con lai (da tru cac dong truoc) thi bi bo qua rieng; tong da tru khong bao gio vuot ton.
+  // dong nao tru qua so con lai (da tru cac dong truoc) thi bi bo qua rieng; tong da tru khong bao gio vuot "Co the boc" (ton - giu cho cua don Dang boc),
+  // nen khong bao gio ra so AM.
   function planStockOut(fileRows, existing, held) {
     const byKey = new Map(); // (ma, vi tri) -> cac dong luu tru (du lieu dau co the trung), theo id
     for (const row of existing) {
@@ -869,7 +870,7 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
       if (!spec || !Number.isSafeInteger(quantity) || quantity <= 0) { reject('Ghi chú sai định dạng hoặc không có số lượng (vd 1T x 50).'); continue; }
       const candidates = byKey.get(keyOf(code, location));
       if (!candidates) { reject('Không có dòng nào cùng mã hàng và vị trí trong cơ sở này.'); continue; }
-      // Cho phep xuat ca khi dong dang bi don Dang boc giu cho va cho phep ve so AM ("-2T x 100"): tru tuan tu tren dong dau tien doc duoc.
+      // Tru tuan tu tren dong dau tien doc duoc; chi xuat toi da "Co the boc" = ton cua dong - phan don Dang boc giu cho (het ton/chua du thi bo qua dong file).
       let target = null;
       let result = null;
       let reason = '';
@@ -879,6 +880,11 @@ function createStockPositionsService({ getDb = getPool, now = () => Date.now() }
         reason = reason || 'Ghi chú của dòng đang lưu không đọc được nên không trừ được.';
       }
       if (!target) { reject(reason); continue; }
+      const reserved = held.get(Number(target.row.id)) || 0;
+      if (result.quantity < reserved) {
+        reject(`Vượt số có thể bốc (tối đa ${Math.max(0, result.quantity + quantity - reserved)}, file xuất ${quantity}).`);
+        continue;
+      }
       target.notes = result.text;
       target.deducted += quantity;
       target.fileRows.push(line.row);

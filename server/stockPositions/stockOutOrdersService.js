@@ -1,7 +1,7 @@
 'use strict';
 
 // Don xuat kho cua VT Ha Noi / VT Sai Gon (migration 0104): MOI co so co DUNG MOT don tam dung chung, nhieu nguoi cung them/sua/xoa dong.
-// Don tam KHONG dong vao ton VT; chi "Chot don" moi tru ton that (cho phep SL am: public/shared/carton.js subtractNotes) va ghi lich su
+// Don tam KHONG dong vao ton VT; chi "Chot don" moi tru ton that (KHONG cho chot khi SL xuat vuot "co the boc" = ton VT - giu cho) va ghi lich su
 // stock_position_history action 'stock_out' kem summary { source: 'order', orderId, orderCode } de bam ma don xem chi tiet.
 // Dong trong don tam giu nguyen theo y nguoi nhap (khong gop); luc chot moi tru lan luot tung dong tren cung (ma, vi tri).
 const { getPool } = require('../db/pool');
@@ -53,7 +53,9 @@ function textOf(body, field, label) {
 /* Thuan tuy: tu cac dong cua don + dong VT hien co + giu cho -> ke hoach chot.
    positions: Map(keyOf) -> dong VT; heldById: Map(id dong VT) -> SL giu cho cua don Dang boc.
    Moi (ma, vi tri) la 1 nhom, cac dong tru lan luot theo thu tu dong tren ghi chu dang con lai. Chua co dong VT thi coi ton 0 (ra dong am).
-   Nhom co ghi chu VT khong doc duoc (hoac dong don sai) bi chan (blocked) de khong tru bua. */
+   Nhom co ghi chu VT khong doc duoc (hoac dong don sai) bi chan (blocked) de khong tru bua.
+   over = SL xuat vuot "co the boc" (ton VT - giu cho; chua co dong VT thi 0): dong do va ca nhom bi chan khi chot (ORDER_OVER_AVAILABLE).
+   maxQty (moi dong) = so toi da dong do con xuat duoc sau cac dong tren cung nhom. */
 function buildPlan(lines, positions, heldById) {
   const groups = new Map();
   const perLine = new Map();
@@ -81,14 +83,19 @@ function buildPlan(lines, positions, heldById) {
       perLine.set(Number(line.id), { before: group.existing ? before : '', after: null, blocked: true, missing: !group.existing, held: group.held, reason: group.reason });
       continue;
     }
+    const maxQty = Math.max(0, group.quantity - group.held);
     group.notes = result.text;
     group.quantity = result.quantity;
     group.deducted += quantity;
     group.lineIds.push(Number(line.id));
-    perLine.set(Number(line.id), { before: group.existing ? before : '', after: result.text, quantity: result.quantity, negative: result.quantity < 0, missing: !group.existing, held: group.held, blocked: false });
+    perLine.set(Number(line.id), {
+      before: group.existing ? before : '', after: result.text, quantity: result.quantity, negative: result.quantity < 0, missing: !group.existing, held: group.held,
+      over: result.quantity < group.held, maxQty, blocked: false
+    });
   }
   for (const group of groups.values()) {
     group.negative = !group.blocked && group.quantity < 0;
+    group.over = !group.blocked && group.quantity < group.held;
     group.removed = !group.blocked && group.quantity === 0 && group.held === 0 && Boolean(group.existing);
     group.heldShort = !group.blocked && group.held > 0 && group.quantity < group.held;
   }
@@ -342,6 +349,12 @@ function createStockOutOrdersService({ getDb = getPool, now = () => Date.now() }
       const blocked = plan.groups.filter(group => group.blocked);
       if (blocked.length) {
         throw fail(400, 'ORDER_BLOCKED', `Có ${blocked.length} vị trí không trừ được: ${blocked.slice(0, 5).map(g => `${g.code} @ ${g.location}`).join(', ')}. Hãy sửa dòng đó rồi chốt lại.`, { blocked: blocked.map(g => ({ code: g.code, location: g.location, reason: g.reason })) });
+      }
+      const over = plan.groups.filter(group => group.over);
+      if (over.length) {
+        const describe = group => `${group.code} @ ${group.location} (tối đa ${Math.max(0, group.startQuantity - group.held)}, đơn xuất ${group.deducted})`;
+        throw fail(400, 'ORDER_OVER_AVAILABLE', `Có ${over.length} vị trí xuất vượt số có thể bốc: ${over.slice(0, 5).map(describe).join('; ')}${over.length > 5 ? '…' : ''}. Hãy giảm số lượng hoặc xóa dòng đó rồi chốt lại.`,
+          { over: over.map(group => ({ code: group.code, location: group.location, available: Math.max(0, group.startQuantity - group.held), requested: group.deducted, missing: !group.existing })) });
       }
       const productNames = await resolveCodes(client, order.branch, plan.groups.map(group => group.code));
       const entries = [];
