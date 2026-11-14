@@ -777,3 +777,7 @@ Cập nhật cuối: 12/11/2026.
 Đo sáng 13/11: `GET /api/expected-arrivals` 1,7–10,9 s và bị gọi dày (~100 lần ≥ 0,5 s trong 15 phút đầu giờ); xác nhận nhặt đơn nhiều dòng 5,8 s. Đã làm: Dự kiến hàng về — SQL trang bỏ `to_jsonb` từng dòng (DB 1,2 s → 0,43 s), tìm kiếm bỏ dấu 1 lần / dòng (4,4 s → 0,76 s), cache trang theo version + gom request trùng + trả bản cũ khi làm mới nền, sự kiện `expectedArrivalsChanged` xóa cache ngay; trình duyệt không tải lại khi mở lại tab trong 60 s, tab nền chờ hiện lại mới tải. Xác nhận nhặt — ghi cả đơn bằng 1 câu CTE (`jsonb_to_recordset`), số câu SQL không còn tăng theo số dòng; kết quả DB đối chiếu giống hệt cách cũ. Không đổi schema/API.
 
 Cập nhật cuối: 13/11/2026.
+
+## Thu mua — công thức cước cont do người dùng chỉnh (14/11/2026)
+Cho phép nhập biểu thức Excel-style trực tiếp tại ô Tiền VC của cont. Lưu biểu thức tối đa 512 ký tự, parser an toàn chỉ nhận số học, `D2`/`M3_CONT` (tổng m³ cont), `M3_XE`, và `SUM`/`ROUND`/`MIN`/`MAX`/`ABS`; không dùng `eval`. Công thức cho tổng cước cont hiện tại; kết quả chia tổng m³ thành VC/m³, rồi cùng phép chiếu phân bổ cước dòng và NET trong thao tác thay đổi. Số tiền nhập trực tiếp tiếp tục là chế độ thủ công. Migration `0126_purchase_container_freight_formula.sql` thêm trường công thức, được nạp khi khởi tạo schema Thu mua. Test unit/service/projection/UI phải xác nhận parser, lưu/sửa chế độ, m³ đổi, từ chối kết quả không hợp lệ kèm rollback và công thức hiển thị khi focus.
+Cập nhật gần nhất: 14/11/2026.

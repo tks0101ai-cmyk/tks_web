@@ -709,3 +709,7 @@ Cập nhật cuối: 12/11/2026.
 
 Khi toàn bộ một đơn và các nhánh tách đã xóa mềm, hệ thống có thể cấp lại Mã dòng gốc theo số trống nhỏ nhất. Mã hiển thị chỉ phải duy nhất giữa các đơn đang hoạt động; ID đơn và ID họ gốc vẫn phân biệt lịch sử qua các chu kỳ tái sử dụng. Mã mới được giữ cho người đang thao tác tối đa 30 phút và có thể nhả khi bỏ dòng chưa lưu. Import Excel thay thế đầy đủ: dòng vắng mặt được xóa mềm, mã được thu hồi trước khi cấp cho dòng mới để trống Mã dòng trong cùng giao dịch. Migration 0125 phải chạy trước khi deploy; code hiện ở `main`, migration chưa áp staging/production và chưa deploy.
 Cập nhật cuối: 13/11/2026.
+
+## Thu mua — chỉnh công thức tiền vận chuyển cont (14/11/2026)
+Người dùng cần thay đổi linh hoạt các thành phần của cước cont (ví dụ phí cố định, tỉ giá, sức chứa) ngay tại ô Tiền VC. Hệ thống cho nhập công thức theo cont; khi tổng m³ thay đổi, tiền vận chuyển/m³, tiền VC từng mã và giá NET được tính lại. Nhập số tiền vẫn dùng cách nhập thủ công hiện tại.
+Cập nhật gần nhất: 14/11/2026.

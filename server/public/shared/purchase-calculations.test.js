@@ -33,6 +33,15 @@ test('numeric expressions respect precedence and reject code, invalid syntax and
  for(const value of ['1/0','2**3','AA11*2','globalThis.x=1','(1+2','2 3','()'])assert.ok(Number.isNaN(evaluate(value)),value);
 });
 
+test('saved freight formulas accept Excel arithmetic, safe functions and current-container variables',()=>{
+ const {evaluateFormula}=require('./purchase-calculations');
+ const variables={M3_CONT:140,M3_XE:170};
+ assert.ok(Math.abs(evaluateFormula('=(195000000+4*500*3930)/M3_XE*M3_CONT',variables)-167061176.47058824)<1e-7);
+ assert.equal(evaluateFormula('=ROUND(SUM(195000000,4*500*3930)/M3_XE*M3_CONT,0)',variables),167061176);
+ assert.equal(evaluateFormula('=(195000000+4*500*3930)/170*D2',{...variables,D2:140}),167061176.47058824);
+ for(const value of ['=M3_CONT/0','=process.exit()','=WEBSERVICE("x")','=UNKNOWN+1','=1+2;3','=ROUND(1,99)'])assert.ok(Number.isNaN(evaluateFormula(value,variables)),value);
+});
+
 for(const [label,prepaid,expected] of [['omitted',undefined,1620],['null',null,1620],['empty','',1620],['whitespace','  ',1620],['zero',0,1620],['positive',10,1630],['negative',-23,1597]]){
  test('row handles '+label+' prepaid freight',()=>{
   const input={...row,freightPrepaid:prepaid};if(label==='omitted')delete input.freightPrepaid;

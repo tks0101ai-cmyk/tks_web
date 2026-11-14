@@ -1,6 +1,7 @@
 'use strict';
 const { randomUUID } = require('node:crypto');
 const expected = require('../productContainers/expectedRefresh').__test__;
+const freightModel = require('../public/shared/purchase-freight');
 const LABELS = { 1: '1.Chưa có lịch', 2: '2.Chưa bốc', 3: '3.Đã bốc', 4: '4.Đã về' };
 async function projectContainers(client) {
   // Called inside the same locked transaction as canonical changes. Legacy
@@ -10,6 +11,12 @@ async function projectContainers(client) {
   //   false — so huu mot phan: chi thay the cont co trong product_containers,
   //           dong cua sheet khac giu nguyen, khong day hang cho xep sang.
   //   true  — so huu toan phan: Thu mua la nguon duy nhat.
+  const containers=(await client.query('SELECT * FROM product_containers')).rows;
+  const volumeRows=(await client.query('SELECT container_id AS "containerId",COALESCE(sum(carton_count*m3_per_carton),0)::numeric AS volume,COALESCE(bool_and(m3_per_carton>0 AND carton_count>0 AND m3_per_carton IS NOT NULL),false) AS complete FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL GROUP BY container_id')).rows;
+  const stats=new Map(volumeRows.map(row=>[String(row.containerId??''),{volume:Number(row.volume),complete:row.complete}])),rates=new Map();
+  for(const container of [{id:null,freightMode:'formula'},...containers]){const key=String(container.id??''),summary=stats.get(key)||{volume:0,complete:true},fee=freightModel.calculate(container,summary.volume),rate=fee.mode==='manual'&&(!summary.complete||!summary.volume||fee.amount==null)?null:fee.rate;if(container.freight_formula&&summary.volume>0&&rate==null)throw Object.assign(new Error(`Công thức cước cont ${container.name} cho kết quả không hợp lệ với tổng m³ hiện tại. Sửa công thức hoặc chuyển sang nhập số tiền.`),{statusCode:400,code:'FREIGHT_FORMULA_INVALID'});rates.set(key,rate)}
+  await client.query('CREATE TEMP TABLE purchase_container_freight_rates(container_id BIGINT, rate NUMERIC) ON COMMIT DROP');
+  for(const [containerId,rate] of rates)await client.query('INSERT INTO purchase_container_freight_rates(container_id,rate) VALUES($1,$2)',[containerId===''?null:containerId,rate]);
   const ownsAll = (await client.query('SELECT projection_owns_all FROM purchase_settings WHERE id=1')).rows[0]?.projection_owns_all === true;
   await client.query(`CREATE TEMP TABLE purchase_line_projection ON COMMIT DROP AS
     SELECT 'THU MUA'::text AS sheet_name, 0::integer AS sheet_order,
@@ -27,8 +34,8 @@ async function projectContainers(client) {
         ELSE NULL END AS vietnam_price,
       o.unit_price_cny,COALESCE(o.buy_note,'') AS other_note
     FROM purchase_orders o LEFT JOIN product_containers c ON c.id=o.container_id
-    LEFT JOIN (SELECT container_id,sum(carton_count*m3_per_carton) volume,bool_and(m3_per_carton>0 AND carton_count>0 AND m3_per_carton IS NOT NULL) complete FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL GROUP BY container_id) totals ON totals.container_id IS NOT DISTINCT FROM o.container_id
-    LEFT JOIN LATERAL(SELECT CASE WHEN o.m3_per_carton>0 AND o.carton_count>0 THEN o.carton_count*o.m3_per_carton*CASE WHEN c.id IS NULL OR c.freight_mode='formula' THEN COALESCE(c.freight_base,202000000)/COALESCE(c.freight_capacity,170) WHEN totals.complete AND totals.volume>0 THEN c.freight/totals.volume ELSE NULL END ELSE NULL END AS freight) cost ON true
+    LEFT JOIN purchase_container_freight_rates freight_rate ON freight_rate.container_id IS NOT DISTINCT FROM o.container_id
+    LEFT JOIN LATERAL(SELECT CASE WHEN o.m3_per_carton>0 AND o.carton_count>0 THEN o.carton_count*o.m3_per_carton*freight_rate.rate ELSE NULL END AS freight) cost ON true
     WHERE o.deleted_at IS NULL AND o.inactive_at IS NULL${ownsAll ? '' : ' AND o.container_id IS NOT NULL'}`);
   const cols = ['sheet_name','sheet_order','container_row','source_row','product_code','product_key','container_name','status','status_label','eta','color','sale_note','ordered_by','listed_at','units_per_package','package_count','quantity','vietnam_price','unit_price_cny','other_note'];
   // Dong 'THU MUA' khong con trong ban chieu thi bo, o ca hai pham vi. Dong cua

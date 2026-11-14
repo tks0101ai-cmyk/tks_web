@@ -960,7 +960,7 @@ Cập nhật gần nhất: 04/11/2026.
 
 Thêm /thu-mua/dat-hang/ và /api/purchase-orders với quyền purchase.view/edit/import/export/depart/arrive; mặc định chỉ Quản lý, quyền mở rộng qua cơ chế cấp quyền hiện có. Module có bảng Chỉ số cont và Đặt hàng sửa trực tiếp, lọc riêng theo tài khoản, dropdown NV/cont/trạng thái, tách .01/.02 đệ quy, sửa hàng loạt, undo/xóa mềm/khôi phục, import toàn bộ hợp lệ mới ghi, audit/realtime và bộ công thức dùng chung. Source gate ngăn job Sheet và web ghi đè nhau.
 
-Migrations Thu mua bắt đầu ở 0110–0116 vì main đã dùng 0101–0109 và 0114 (`0114_stocktake_frozen_lines.sql`). `db/ensurePurchaseSchema.js` áp các migration Thu mua đã đăng ký trong một giao dịch/advisory lock, không chạy migration module khác; hiện có tới `0122_purchase_measurement_overrides.sql`. Nguồn mặc định Sheets được giữ nguyên; không seed/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
+Migrations Thu mua bắt đầu ở 0110–0116 vì main đã dùng 0101–0109 và 0114 (`0114_stocktake_frozen_lines.sql`). `db/ensurePurchaseSchema.js` áp các migration Thu mua đã đăng ký trong một giao dịch/advisory lock, không chạy migration module khác; hiện có tới `0126_purchase_container_freight_formula.sql`. Nguồn mặc định Sheets được giữ nguyên; không seed/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
 
 
 
@@ -1034,3 +1034,7 @@ JSONB `user_table_prefs.prefs` hỗ trợ `sorts: [{key, dir}]` theo thứ tự 
 11/11/2026 — Không đổi bảng/cột/index. Hợp đồng giá NET của Thu mua cập nhật theo VK-DUNG: `(goodsAmount + freightAmount + taxAmount + freightPostpaid*3920) / totalQty`, với phí chưa có coi như 0; cột projection `product_container_lines.vietnam_price` phản ánh cùng công thức.
 
 Cập nhật gần nhất: 13/11/2026.
+
+## Thu mua — công thức cước cont (migration 0126, 14/11/2026)
+`product_containers.freight_formula TEXT NULL`, tối đa 512 ký tự. Khi có công thức, `freight_mode='formula'`, biểu thức lưu ở cột này và được đánh giá theo tổng m³ cont hiện hoạt (`D2`/`M3_CONT`) cùng sức chứa xe (`M3_XE`); khi không có công thức, cách tính chuẩn theo `freight_base/freight_capacity` không đổi. Chuyển sang cước nhập tay xóa biểu thức; migration chỉ thêm cột, không backfill hoặc sửa dữ liệu cước hiện có. Đăng ký trong `ensurePurchaseSchema.FILES`; chưa xác minh DB staging/production.
+Cập nhật gần nhất: 14/11/2026.

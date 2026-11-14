@@ -1108,7 +1108,7 @@ Cập nhật gần nhất: 04/11/2026.
 
 Thêm /thu-mua/dat-hang/ và /api/purchase-orders với quyền purchase.view/edit/import/export/depart/arrive; mặc định chỉ Quản lý, quyền mở rộng qua cơ chế cấp quyền hiện có. Module có bảng Chỉ số cont và Đặt hàng sửa trực tiếp, lọc riêng theo tài khoản, dropdown NV/cont/trạng thái, tách .01/.02 đệ quy, sửa hàng loạt, undo/xóa mềm/khôi phục, import toàn bộ hợp lệ mới ghi, audit/realtime và bộ công thức dùng chung. Source gate ngăn job Sheet và web ghi đè nhau.
 
-Migrations Thu mua được đổi sang 0110–0116 vì main đã dùng 0101–0109 và 0114 (0114_stocktake_frozen_lines.sql). db/ensurePurchaseSchema.js hiện đăng ký 9 migration Thu mua 0110–0113, 0115–0119 khi web startup (0119 seed riêng danh mục NV từ buyer hiện có), transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed đơn hàng/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
+Migrations Thu mua được đổi sang 0110–0116 vì main đã dùng 0101–0109 và 0114 (0114_stocktake_frozen_lines.sql). db/ensurePurchaseSchema.js đăng ký các migration Thu mua 0110–0113, 0115–0126 khi web startup (0119 seed riêng danh mục NV từ buyer hiện có; 0126 thêm công thức cước cont), transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed đơn hàng/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
 
 
 
@@ -1307,7 +1307,7 @@ Dòng hàng gửi `buyer` là **chuỗi tên được chọn** từ danh mục �
 
 Mọi mã hàng mới từ create trực tiếp, `plan.creates` hoặc import đều lưu `container_id=NULL` (**Chờ xếp**), kể cả request create gửi `contId`. Việc xếp/chuyển/tách cont là thao tác riêng có xác nhận và kiểm phiên bản. Tên legacy vẫn đọc được; chỉ lựa chọn buyer mới/đổi mới bắt buộc danh mục đang hoạt động.
 
-`PATCH /api/purchase-orders/containers/:id` nhận `{version,changes,rows?}`; version cont đang xem là bắt buộc. Các trường trong `changes`: `name`, `truckName`, `carrier`, `loader`, `nameCn`, `loading`, `arrivalNote`, `arrivalDate`, `maxTon`, `m3Min`, `m3Max`, `freight`, `freightMode`, `freightBase`, `freightCapacity`. Response là bản ghi cont dạng DB (ví dụ `truck_name`, `arrival_note`, `arrival_date`), không phải toàn bộ dòng con.
+`PATCH /api/purchase-orders/containers/:id` nhận `{version,changes,rows?}`; version cont đang xem là bắt buộc. Các trường trong `changes`: `name`, `truckName`, `carrier`, `loader`, `nameCn`, `loading`, `arrivalNote`, `arrivalDate`, `maxTon`, `m3Min`, `m3Max`, `freight`, `freightMode`, `freightFormula`, `freightBase`, `freightCapacity`. Response là bản ghi cont dạng DB (ví dụ `truck_name`, `arrival_note`, `arrival_date`), không phải toàn bộ dòng con.
 
 Khi có `arrivalNote` hoặc `arrivalDate`, phải gửi `rows:[{id,version}]` cho **toàn bộ dòng đã lưu, chưa xóa trong cont**, không chỉ các dòng đang lọc/hiển thị; cont rỗng gửi `rows:[]`. Ví dụ:
 
@@ -1324,6 +1324,7 @@ Loại xe nhận `17.5m` hoặc `18.5m`; tải trọng tối đa > 0, khối kh�
 ```text
 server/
 ├── db/migrations/0119_purchase_employees.sql
+├── db/migrations/0126_purchase_container_freight_formula.sql
 ├── purchaseOrders/purchaseOrdersService.js
 ├── purchaseOrders/purchaseOrdersRoutes.js
 ├── purchaseOrders/purchaseOrdersRealtime.js
@@ -1444,3 +1445,6 @@ Cập nhật cuối: 12/11/2026.
 Migration 0125 được đăng ký trong `ensurePurchaseSchema.FILES`, nhưng chưa áp dụng staging/production và chưa deploy. Phải áp dụng migration sau khi đối chiếu dữ liệu trên staging/copy và trước khi triển khai code; không chạy migration hoặc deploy trong tác vụ này.
 
 Cập nhật cuối: 13/11/2026.
+
+## Thu mua — công thức cước cont (migration 0126, 14/11/2026)
+`PATCH /api/purchase-orders/containers/:id` nhận thêm `changes.freightFormula`. Nhập công thức bắt đầu `=` ở ô Tiền VC để lưu biểu thức theo cont; `D2` là alias của tổng m³ cont đang hoạt động, ngoài ra có `M3_CONT`, `M3_XE` và các hàm `SUM`, `ROUND`, `MIN`, `MAX`, `ABS`. Parser chỉ cho phép số học/hàm trên, tối đa 512 ký tự, không thực thi JavaScript. Công thức tính tổng cước cont hiện thời; VC/m³ = kết quả / tổng m³. Khi m³ hoặc dòng hàng đổi, VC từng mã và Giá NET được chiếu lại trong transaction. Nhập số thường vẫn là cước thủ công; xóa ô khôi phục chuẩn 202.000.000 / 170. Migration `0126_purchase_container_freight_formula.sql` thêm cột nullable `product_containers.freight_formula` và chạy qua `ensurePurchaseSchema`. Nếu công thức cho kết quả âm/không hợp lệ sau khi m³ đổi, thao tác bị rollback và API trả 400 `FREIGHT_FORMULA_INVALID` để người dùng sửa công thức hoặc chuyển sang cước thủ công. Cần xác minh migration và công thức trên staging trước production; chưa deploy.

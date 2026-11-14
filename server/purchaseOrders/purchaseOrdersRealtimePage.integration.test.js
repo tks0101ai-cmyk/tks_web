@@ -72,7 +72,7 @@ test('order lifecycle sits last and container lifecycle is confirmed with the cu
  const p=await page(t),doc=p.w.document;
  assert.equal(doc.querySelector('#orderTable thead th:last-child').textContent,'Trạng thái');
  assert.equal(doc.querySelector('#orderTable tbody .purchase-lifecycle-badge').textContent,'Hoạt động');
- assert.equal(doc.querySelector('#containerTable thead tr th:nth-last-child(2)').textContent.replace(/[▲▼]/g,'').trim(),'Chọn');assert.equal(doc.querySelector('#containerTable thead tr th:last-child').textContent.replace(/[▲▼]/g,'').trim(),'Hoạt động');assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) td:last-child .purchase-lifecycle-badge').textContent,'Hoạt động');
+ assert.equal(doc.querySelector('#containerTable thead tr th:nth-last-child(2)').textContent.replace(/[▲▼]/g,'').trim(),'Người xếp');assert.equal(doc.querySelector('#containerTable thead tr th:last-child').textContent.replace(/[▲▼]/g,'').trim(),'Hoạt động');assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) td:last-child .purchase-lifecycle-badge').textContent,'Hoạt động');
  doc.querySelector('#containerTable [data-container-lifecycle]').click();assert.equal(p.calls.some(call=>call.url.endsWith('/containers/deactivate')),false);doc.getElementById('confirmContainerLifecycle').click();await tick();await tick();
  const request=p.calls.find(call=>call.url.endsWith('/containers/deactivate'));
  assert.deepEqual(JSON.parse(request.options.body),{id:'2',version:3});
@@ -80,7 +80,7 @@ test('order lifecycle sits last and container lifecycle is confirmed with the cu
 test('pinned container sits under filters and shows the six compact identity and metrics columns',async t=>{
  const p=await page(t),doc=p.w.document;doc.querySelector('#containerTable [data-container-filter="2"]').click();
  const filters=doc.querySelector('.order-filters'),watched=doc.getElementById('watchedContainer');assert.ok(filters.compareDocumentPosition(watched)&p.w.Node.DOCUMENT_POSITION_FOLLOWING);
- assert.equal(watched.querySelectorAll('thead th').length,7);assert.deepEqual([...watched.querySelectorAll('thead th')].slice(0,6).map(th=>th.textContent.trim()),['Tên cont','HĐ/NHĐ','Trạng thái','Dòng','Tổng tấn','Tổng m³']);assert.equal(watched.querySelectorAll('.sort-indicator').length,0);
+ assert.equal(watched.querySelectorAll('thead th').length,7);assert.deepEqual([...watched.querySelectorAll('thead th')].slice(0,6).map(th=>th.textContent.trim()),['Tên cont','Hoạt động','Trạng thái','Dòng','Tổng tấn','Tổng m³']);assert.equal(watched.querySelectorAll('.sort-indicator').length,0);
 });
 test('vehicle type is free text in the container grid and create dialog',async t=>{
  const p=await page(t),doc=p.w.document;assert.equal(doc.querySelector('#containerTable [data-container-field="truckName"]').tagName,'INPUT');
@@ -305,6 +305,16 @@ for(const scope of ['containerTable'])test('freight '+scope+' sends original foc
  p.w.fetch=async(url,options={})=>{if(options.method!=='PATCH')return fetch(url,options);p.calls.push({url,options});const body=JSON.parse(options.body),ok=body.version===9;if(ok)p.data.containers[0].freight=body.changes.freight;return {ok,status:ok?200:409,json:async()=>ok?{}:{error:'Freight conflict'}}};
  doc.activeElement.dispatchEvent(new p.w.Event('change',{bubbles:true}));await tick();await tick();const body=JSON.parse(p.calls.find(c=>c.options.method==='PATCH').options.body);
  assert.equal(body.version,3);assert.equal(p.data.containers[0].freight,9000);assert.match(doc.getElementById('notice').textContent,/Freight conflict/);assert.equal(doc.activeElement.value,'1,000');
+});
+test('container freight cell saves an Excel-style formula instead of discarding its expression',async t=>{
+ const p=await page(t),doc=p.w.document,formula='=(195000000+4*500*3930)/170*D2',input=doc.querySelector('#containerTable [data-cont-freight="2"]');
+ input.focus();input.value=formula;input.dispatchEvent(new p.w.Event('change',{bubbles:true}));await tick();await tick();
+ const call=p.calls.find(c=>c.url.endsWith('/containers/2')&&c.options.method==='PATCH');assert.ok(call);
+ assert.deepEqual(JSON.parse(call.options.body),{version:3,changes:{freight:null,freightMode:'formula',freightFormula:formula}});
+});
+test('freight formula remains visible while editing and returns to the calculated amount on blur',async t=>{
+ const p=await page(t),doc=p.w.document,formula='=(195000000+4*500*3920)/170*M3_CONT';p.data.containers[0].freight_formula=formula;p.data.containers[0].freight_mode='formula';p.listeners.changed();await tick();await tick();
+ const input=doc.querySelector('#containerTable [data-cont-freight="2"]');assert.notEqual(input.value,formula);input.focus();assert.equal(input.value,formula);input.blur();assert.notEqual(input.value,formula);
 });
 test('employee manager stages RGB edits and saves once with rendered versions despite SSE refresh',async t=>{
  const p=await page(t),doc=p.w.document,fetch=p.w.fetch;let directory=[{id:'nv',name:'Original name',color:'#2563EB',version:2,isActive:true}];

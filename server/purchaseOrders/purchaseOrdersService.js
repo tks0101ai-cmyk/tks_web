@@ -336,14 +336,21 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
     async updateContainer(user,id,{version,changes={},rows}) {
       return transaction(user,async client=>{
         if(!changes||typeof changes!=='object'||Array.isArray(changes))throw fail(400,'VALIDATION_ERROR','Thay đổi cont không hợp lệ.');
-        if(Object.hasOwn(changes,'freight')&&changes.freight===null){changes.freightMode='formula';changes.freightBase=202000000;changes.freightCapacity=170}else if(Object.hasOwn(changes,'freight')&&!Object.hasOwn(changes,'freightMode'))changes.freightMode='manual';
+        if(Object.hasOwn(changes,'freightFormula')&&changes.freightFormula!=null){changes.freightMode='formula';changes.freight=null}else if(Object.hasOwn(changes,'freight')&&changes.freight===null){changes.freightMode='formula';changes.freightFormula=null;changes.freightBase=202000000;changes.freightCapacity=170}else if(Object.hasOwn(changes,'freight')){changes.freightMode='manual';changes.freightFormula=null}else if(changes.freightMode==='manual')changes.freightFormula=null;
         const container=await getContainer(client,id,version);
         if(!container)throw fail(404,'CONTAINER_NOT_FOUND','Không có cont.');
-        const fields={truckName:'truck_name',arrivalNote:'arrival_note',arrivalDate:'arrival_date',maxTon:'max_ton',m3Min:'m3_min',m3Max:'m3_max',name:'name',carrier:'carrier',loader:'loader',nameCn:'name_cn',loading:'loading',freight:'freight',freightMode:'freight_mode',freightBase:'freight_base',freightCapacity:'freight_capacity'};
+        const fields={truckName:'truck_name',arrivalNote:'arrival_note',arrivalDate:'arrival_date',maxTon:'max_ton',m3Min:'m3_min',m3Max:'m3_max',name:'name',carrier:'carrier',loader:'loader',nameCn:'name_cn',loading:'loading',freight:'freight',freightMode:'freight_mode',freightFormula:'freight_formula',freightBase:'freight_base',freightCapacity:'freight_capacity'};
+        if(Object.hasOwn(changes,'freightFormula')&&changes.freightFormula!=null){
+          const formula=changes.freightFormula,capacity=calculations.positive(changes.freightCapacity??container.freight_capacity??170);
+          const volume=(await client.query('SELECT COALESCE(sum(carton_count*m3_per_carton),0)::numeric AS volume FROM purchase_orders WHERE container_id=$1 AND deleted_at IS NULL AND inactive_at IS NULL',[id])).rows[0].volume;
+          const actual=Number(volume)||0,probe=actual||1,result=typeof formula==='string'&&formula.trim().startsWith('=')&&formula.length<=512?calculations.evaluateFormula(formula,{M3_CONT:probe,M3_XE:capacity,D2:probe}):NaN;
+          if(!Number.isFinite(result)||result<0)throw fail(400,'VALIDATION_ERROR','Công thức cước phải bắt đầu bằng = và chỉ dùng phép tính, biến và hàm được hỗ trợ.');
+        }
         const entries=[];
         for(const [key,value] of Object.entries(changes)){
           if(!fields[key])throw fail(400,'FIELD_NOT_WRITABLE','Trường cont không được sửa.');
           if(key==='freightMode'&&!['manual','formula'].includes(value))throw fail(400,'VALIDATION_ERROR','Chọn chế độ cước hợp lệ.');
+          if(key==='freightFormula'&&(value!==null&&(typeof value!=='string'||value.length>512)))throw fail(400,'VALIDATION_ERROR','Công thức cước tối đa 512 ký tự.');
           if(['freightBase','freightCapacity'].includes(key)&&(calculations.number(value)==null||Number(value)<0||key==='freightCapacity'&&Number(value)<=0||value===''||value==null))throw fail(400,'VALIDATION_ERROR','Tiền chuẩn không âm và m³ chuẩn phải lớn hơn 0.');
           if(key==='freight'&&value!==null&&(!Number.isFinite(Number(value))||Number(value)<0))throw fail(400,'VALIDATION_ERROR','Cước cont không hợp lệ.');
           if(key==='name'&&(!String(value||'').trim()||String(value).length>200))throw fail(400,'VALIDATION_ERROR','Tên cont không hợp lệ.');

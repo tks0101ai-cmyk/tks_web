@@ -380,7 +380,7 @@ Cập nhật gần nhất: 04/11/2026.
 
 Thêm /thu-mua/dat-hang/ và /api/purchase-orders với quyền purchase.view/edit/import/export/depart/arrive; mặc định chỉ Quản lý, quyền mở rộng qua cơ chế cấp quyền hiện có. Module có bảng Chỉ số cont và Đặt hàng sửa trực tiếp, lọc riêng theo tài khoản, dropdown NV/cont/trạng thái, tách .01/.02 đệ quy, sửa hàng loạt, undo/xóa mềm/khôi phục, import toàn bộ hợp lệ mới ghi, audit/realtime và bộ công thức dùng chung. Source gate ngăn job Sheet và web ghi đè nhau.
 
-Migrations Thu mua được đổi sang 0110–0116 vì main đã dùng 0101–0109 và 0114 (0114_stocktake_frozen_lines.sql). db/ensurePurchaseSchema.js hiện đăng ký 9 migration Thu mua 0110–0113, 0115–0119 khi web startup (0119 seed riêng danh mục NV từ buyer hiện có), transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed đơn hàng/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
+Migrations Thu mua được đổi sang 0110–0116 vì main đã dùng 0101–0109 và 0114 (0114_stocktake_frozen_lines.sql). db/ensurePurchaseSchema.js đăng ký các migration Thu mua 0110–0113, 0115–0126 khi web startup (0119 seed riêng danh mục NV từ buyer hiện có; 0126 thêm công thức cước cont), transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed đơn hàng/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
 
 
 
@@ -611,3 +611,7 @@ Cập nhật cuối: 13/11/2026.
 Trước đây phiên (cookie `tks_auth`) sống cố định 12 giờ nên ngày nào cũng phải đăng nhập lại. Nay phiên **trượt**: `requireAuth` cấp lại token đủ hạn khi token đã cấp quá ngưỡng gia hạn (nhỏ hơn trong 24 giờ và nửa hạn phiên, để hạn ngắn vẫn trượt được) và tài khoản vẫn tồn tại, không bị khóa; chỉ khi không dùng web `AUTH_SESSION_IDLE_DAYS` ngày (mặc định 7, hợp lệ 1–365, lớn hơn bị chặn ở 365) mới phải đăng nhập lại. Cookie cơ sở `tks_branch` sống và gia hạn cùng phiên. Module mới `server/auth/authSession.js` (cấp/gia hạn phiên). Bỏ biến `JWT_EXPIRES_IN` — **xóa biến này trên Render nếu có**. Không migration. Đăng xuất chỉ xóa cookie (`tks_auth`, `tks_branch`) trên thiết bị đó: token đã sao chép vẫn dùng được tới khi hết hạn — chưa có thu hồi phiên, cùng việc sau với đổi mật khẩu (chưa đăng xuất thiết bị khác).
 
 Cập nhật gần nhất: 13/11/2026.
+
+## Thu mua — công thức cước cont linh hoạt (14/11/2026)
+Ô Tiền VC trong Chỉ số cont chấp nhận số tiền thủ công như trước hoặc công thức bắt đầu bằng `=`. Công thức lưu theo cont, hỗ trợ phép tính, ngoặc, `D2`/`M3_CONT` (tổng m³ hiện tại), `M3_XE` và các hàm `SUM`, `ROUND`, `MIN`, `MAX`, `ABS`; thay đổi tổng m³ sẽ tính lại VC/m³, phân bổ Tiền VC từng mã và NET. Migration `0126` thêm `product_containers.freight_formula`, được đăng ký trong `ensurePurchaseSchema`. Chưa áp DB thật hoặc deploy.
+Cập nhật gần nhất: 14/11/2026.

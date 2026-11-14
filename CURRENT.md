@@ -52,3 +52,4 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 
 ---
 Cập nhật: 13/11/2026
+- [ ] 14/11 — Thu mua: công thức cước cont trực tiếp tại ô Tiền VC (migration `0126`) — 120 test liên quan xanh; full `npm test` dừng do test workflow prototype dùng gần 2 GB RAM, graphify không có trong môi trường; cần kiểm staging/copy DB trước khi deploy; chưa áp production
