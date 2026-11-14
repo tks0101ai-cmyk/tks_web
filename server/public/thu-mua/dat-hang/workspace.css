@@ -418,11 +418,20 @@
  .purchase-page .order-actions h2{flex:0 0 auto;margin-right:0}
  .purchase-page .order-actions button{min-height:30px;padding:5px 8px;white-space:nowrap}
  .purchase-page .order-actions #add{margin-left:0}
- .purchase-page .order-filters{grid-template-columns:repeat(12,minmax(72px,1fr));overflow-x:auto}
- .purchase-page .order-filters label:has(#search){grid-column:span 2;grid-row:1}
- .purchase-page .order-filters label:has(#filter),.purchase-page .order-filters label:has(#orderRegion),.purchase-page .order-filters label:has(#orderLifecycle),.purchase-page .order-filters label:has(#orderStatus),.purchase-page .order-filters label:has(#orderBuyer),.purchase-page .order-filters label:has(#orderFrom),.purchase-page .order-filters label:has(#orderTo),.purchase-page .order-filters label:has(#orderFlag),.purchase-page .order-filters label:has(#sort){grid-column:span 1;grid-row:1}
- .purchase-page .order-filters .filter-actions{grid-column:12/15;grid-row:1;align-self:end;justify-content:flex-end;gap:5px;padding:0;border:0;white-space:nowrap}
- .purchase-page .order-filters .column-tools{display:flex;gap:5px;align-items:center}
+ .purchase-page .order-filters{grid-template-columns:repeat(15,minmax(64px,1fr));overflow-x:auto}
+ .purchase-page .order-filters label:has(#search){grid-column:1/span 2;grid-row:1}
+ .purchase-page .order-filters label:has(#filter){grid-column:3;grid-row:1}
+ .purchase-page .order-filters label:has(#orderRegion){grid-column:4;grid-row:1}
+ .purchase-page .order-filters label:has(#orderLifecycle){grid-column:5;grid-row:1}
+ .purchase-page .order-filters label:has(#orderStatus){grid-column:6;grid-row:1}
+ .purchase-page .order-filters label:has(#orderBuyer){grid-column:7;grid-row:1}
+ .purchase-page .order-filters label:has(#orderFrom){grid-column:8;grid-row:1}
+ .purchase-page .order-filters label:has(#orderTo){grid-column:9;grid-row:1}
+ .purchase-page .order-filters label:has(#orderFlag){grid-column:10;grid-row:1}
+ .purchase-page .order-filters label:has(#sort){grid-column:11;grid-row:1}
+ .purchase-page .order-filters .filter-actions{grid-column:12/16;grid-row:1;align-self:end;justify-content:flex-end;gap:5px;padding:0;border:0;white-space:nowrap}
+ .purchase-page .order-filters .column-tools{display:flex;flex-wrap:nowrap;min-width:0;gap:5px;align-items:center}
+ .purchase-page .order-filters .column-tools span{display:none}
  .purchase-page .order-filters .filter-actions button{min-height:30px;padding:5px 7px;white-space:nowrap}
 }
 
