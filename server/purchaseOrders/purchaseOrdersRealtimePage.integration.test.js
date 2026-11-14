@@ -69,6 +69,16 @@ test('container index uses requested ordered columns and keeps the expense/rate 
  assert.deepEqual([...doc.querySelectorAll('#containerTable thead th')].map(th=>th.textContent.replace(/[▲▼]/g,'').trim()),['Tên cont','Trạng thái cont','Tổng tấn','Tổng m³ đang xếp','Tổng m³ giả định','Đơn giá cont','Phụ phí','Đơn giá quy đổi','Tiền VC/m³','Ngày bốc','Ngày về','Nhà VC','Tên cont TQ','Loại xe','Ghi chú','Người xếp cont','KQ nhận','Trạng thái nhập']);
  const row=doc.querySelector('#containerTable tbody tr:nth-child(2)');assert.ok(row.querySelector('[data-cont-freight]'));assert.ok(row.querySelector('[data-container-column=rate]'));assert.equal(row.querySelector('[data-cont-freight]').dataset.contFreight,'2');
 });
+test('waiting container stays first by default but moves when sorting the container name header',async t=>{
+ const p=await page(t),doc=p.w.document,rows=()=>[...doc.querySelectorAll('#containerTable tbody tr')];
+ assert.match(rows()[0].querySelector('[data-container-column="name"]').textContent,/Cont chờ xếp/);
+ const sort=doc.getElementById('contSort');sort.value='name';sort.dispatchEvent(new p.w.Event('change',{bubbles:true}));
+ assert.equal(rows()[0].querySelector('[data-container-column="name"]').textContent,'11-1V');
+ sort.value='status';sort.dispatchEvent(new p.w.Event('change',{bubbles:true}));
+ assert.match(rows()[0].querySelector('[data-container-column="name"]').textContent,/Cont chờ xếp/);
+ doc.querySelector('#containerTable thead [data-container-column="name"] .sort-button').click();
+ assert.equal(rows()[0].querySelector('[data-container-column="name"]').textContent,'11-1V');
+});
 test('order lifecycle sits last and container lifecycle is confirmed with the current version',async t=>{
  const p=await page(t),doc=p.w.document;
  assert.equal(doc.querySelector('#orderTable thead th:last-child').textContent,'Trạng thái');
