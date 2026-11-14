@@ -367,6 +367,7 @@ Nút **Xuất kho** trên `/vt-positions/` trừ SL hàng loạt theo file Excel
 - **Chỉ định lại đơn Đã bốc xem trước tồn đã hoàn thùng (09/11/2026, không migration, chưa deploy):** `candidates?reopen=1` + `planRevert` dùng chung với `revertJob`; xem mục 09/11/2026 ở đầu `README.md`.
 
 - **VT: Đơn xuất kho + số lượng âm (02/11/2026, migration `0104` chưa áp DB, chưa commit/deploy):** đơn tạm dùng chung mỗi cơ sở (`stock_out_orders` + `stock_out_order_lines`), chỉ trừ tồn VT khi chốt (`stockPositions/stockOutOrdersService.js`: `buildPlan` thuần trừ tuần tự theo (mã, vị trí), `confirm` một giao dịch dưới `lockBranch`, preview trước/sau ở `getCurrent`); số âm = ghi chú `-kT x size` (`carton.parseSigned`/`subtractNotes`/`negativeNote`, `mergeNotes` tự bù); lịch sử `stock_out` kèm `orderId`/`orderCode` để bấm xem đơn; hộp UI `vt-stockout-order.js`. Hộp Xuất kho Excel cũ giữ nguyên.
+- **VT: chặn chốt đơn xuất kho vượt số có thể bốc (14/11/2026, không migration):** `stockOutOrdersService.buildPlan` thêm `over`/`maxQty` (quantity sau trừ < giữ chỗ), `confirm` ném 400 `ORDER_OVER_AVAILABLE` trước khi ghi; `vt-stockout-order.js` báo đỏ dòng vượt và khóa nút Chốt đơn; `planStockOut` (Xuất kho Excel) bỏ qua dòng file vượt Có thể bốc.
 
 ## 04/11/2026 — Kiểm kê: chọn đợt KK trước, hủy / khôi phục đợt, nạp lại sheet (migration 0109, đã áp DB 04/11/2026)
 

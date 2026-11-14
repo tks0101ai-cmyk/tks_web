@@ -32,6 +32,7 @@ input.vt-order-inline,.vt-order-addrow input{box-sizing:border-box;width:100%;mi
 .vt-order-tag.is-neg,.vt-order-tag.is-error{border-color:var(--red);color:var(--red);background:color-mix(in srgb,var(--red) 10%,transparent)}
 .vt-order-tag.is-held{border-color:var(--amber);color:var(--amber);background:color-mix(in srgb,var(--amber) 12%,transparent)}
 .vt-order-neg{color:var(--red);font-weight:700}
+.vt-order-row.is-over{background:color-mix(in srgb,var(--red) 6%,transparent)}
 .vt-order-tag.is-draft{border-color:var(--amber);color:var(--amber);background:color-mix(in srgb,var(--amber) 12%,transparent)}
 .vt-order-tag.is-done{border-color:var(--green);color:var(--green);background:color-mix(in srgb,var(--green) 10%,transparent)}
 .vt-order-tabs button[hidden]{display:none}
