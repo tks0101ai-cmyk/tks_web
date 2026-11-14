@@ -56,7 +56,7 @@
   ];
   return '<div class="purchase-container-editor" data-container-editor="'+esc(c.id)+'">'+fields.map(([name,label,type,v])=>{
    const attrs=' name="'+name+'" data-container-field="'+name+'" aria-label="'+label+'"';
-   const options=name==='regionId'?[['','Chưa gán vùng'],...regions.filter(r=>r.isActive!==false||String(r.id)===String(v)).map(r=>[String(r.id),r.name])]:[['formula','Tự tính theo m³'],['manual','Nhập tay']];
+   const options=name==='regionId'?[['','-'],...regions.filter(r=>r.isActive!==false||String(r.id)===String(v)).map(r=>[String(r.id),r.name])]:[['formula','Tự tính theo m³'],['manual','Nhập tay']];
    const control=type==='select'?'<select'+attrs+'>'+options.map(([id,text])=>'<option value="'+esc(id)+'"'+(String(v??'')===String(id)?' selected':'')+'>'+esc(text)+'</option>').join('')+'</select>':'<input type="'+type+'"'+attrs+(type==='number'?' step="any"':'')+' value="'+esc(v)+'">';
    return '<label>'+label+control+'</label>';
   }).join('')+[['count','Số dòng'],['ton','Tấn'],['m3','m³']].map(([name,label])=>'<label>'+label+'<output data-container-computed="'+name+'">'+esc(stats[name])+'</output></label>').join('')+'</div>';

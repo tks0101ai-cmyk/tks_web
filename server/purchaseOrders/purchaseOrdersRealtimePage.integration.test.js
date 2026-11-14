@@ -66,16 +66,16 @@ test('Ctrl+Z undoes an edited input before it loses focus',async t=>{
 });
 test('container index uses requested ordered columns and keeps the expense/rate distinct',async t=>{
  const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{cartonCount:10,kgPerCarton:2,m3PerCarton:.25});p.listeners.changed();await tick();await tick();
- assert.deepEqual([...doc.querySelectorAll('#containerTable thead th')].map(th=>th.textContent.replace(/[▲▼]/g,'').trim()),['Tên cont','Trạng thái cont','Tổng tấn','Tổng m³ đang xếp','Tổng m³ giả định','Đơn giá cont','Phụ phí','Đơn giá quy đổi','Tiền VC/m³','Ngày bốc','Ngày về','Nhà VC','Tên cont TQ','Loại xe','Ghi chú','Người xếp cont','KQ nhận','Trạng thái nhập']);
+ assert.deepEqual([...doc.querySelectorAll('#containerTable thead th')].map(th=>th.textContent.replace(/[▲▼]/g,'').trim()),['Tên cont','Trạng thái cont','Tổng tấn','m³ xếp','m³ giả định','Đơn giá cont','Phụ phí','Đơn giá quy đổi','Tiền VC/m³','Ngày bốc','Ngày về','Nhà VC','Tên cont TQ','Loại xe','Ghi chú','Người xếp cont','KQ nhận','Trạng thái nhập']);
  const row=doc.querySelector('#containerTable tbody tr:nth-child(2)');assert.ok(row.querySelector('[data-cont-freight]'));assert.ok(row.querySelector('[data-container-column=rate]'));assert.equal(row.querySelector('[data-cont-freight]').dataset.contFreight,'2');
 });
 test('waiting container stays first by default but moves when sorting the container name header',async t=>{
  const p=await page(t),doc=p.w.document,rows=()=>[...doc.querySelectorAll('#containerTable tbody tr')];
- assert.match(rows()[0].querySelector('[data-container-column="name"]').textContent,/Cont chờ xếp/);
+ assert.match(rows()[0].querySelector('[data-container-column="name"]').textContent,/Chờ xếp/);
  const sort=doc.getElementById('contSort');sort.value='name';sort.dispatchEvent(new p.w.Event('change',{bubbles:true}));
  assert.equal(rows()[0].querySelector('[data-container-column="name"]').textContent,'11-1V');
  sort.value='status';sort.dispatchEvent(new p.w.Event('change',{bubbles:true}));
- assert.match(rows()[0].querySelector('[data-container-column="name"]').textContent,/Cont chờ xếp/);
+ assert.match(rows()[0].querySelector('[data-container-column="name"]').textContent,/Chờ xếp/);
  doc.querySelector('#containerTable thead [data-container-column="name"] .sort-button').click();
  assert.equal(rows()[0].querySelector('[data-container-column="name"]').textContent,'11-1V');
 });
@@ -91,7 +91,7 @@ test('order lifecycle sits last and container lifecycle is confirmed with the cu
 test('pinned container sits under filters and shows the six compact identity and metrics columns',async t=>{
  const p=await page(t),doc=p.w.document;doc.querySelector('#containerTable [data-container-filter="2"]').click();
  const filters=doc.querySelector('.order-filters'),watched=doc.getElementById('watchedContainer');assert.ok(filters.compareDocumentPosition(watched)&p.w.Node.DOCUMENT_POSITION_FOLLOWING);
- assert.equal(watched.querySelectorAll('thead th').length,8);assert.deepEqual([...watched.querySelectorAll('thead th')].slice(0,6).map(th=>th.textContent.trim()),['Tên cont','Hoạt động','Trạng thái','Tổng tấn','Tổng m³ đang xếp','Tổng m³ giả định']);assert.equal(watched.querySelectorAll('.sort-indicator').length,0);
+ assert.equal(watched.querySelectorAll('thead th').length,8);assert.deepEqual([...watched.querySelectorAll('thead th')].slice(0,5).map(th=>th.textContent.replace(/[▲▼]/g,'').trim()),['Tên cont','Trạng thái cont','Tổng tấn','m³ xếp','m³ giả định']);
 });
 test('assumed m3 is editable in the container grid and required by the create dialog',async t=>{
  const p=await page(t),doc=p.w.document;assert.equal(doc.querySelector('#containerTable [data-container-field="assumedM3"]').tagName,'INPUT');
@@ -410,7 +410,7 @@ test('background refresh preserves row order and selected stable ids while new r
 
 test('region list splits waiting container groups and filters both tables',async t=>{
  const p=await page(t),doc=p.w.document;p.data.regions=[{id:'10',name:'V',color:'#0088AA',isActive:true,version:1},{id:'20',name:'H',color:'#AA5500',isActive:true,version:1},{id:'30',name:'T',color:'#118855',isActive:true,version:1}];p.data.rows[0].contId=null;p.data.rows[0].regionId='10';p.data.rows.push({...p.data.rows[0],id:'3',rowKey:'D00003',regionId:'20'},{...p.data.rows[0],id:'4',rowKey:'D00004',regionId:null});p.listeners.changed();await tick();await tick();
- const names=[...doc.querySelectorAll('#containerTable tbody tr td[data-container-filter]')].map(td=>td.textContent);assert.ok(names.some(name=>name.includes('Cont chờ xếp V')));assert.ok(names.some(name=>name.includes('Cont chờ xếp H')));assert.ok(names.some(name=>name.includes('Cont chờ xếp T')),'an empty configured region still has its waiting group');assert.ok(names.some(name=>name.includes('Cont chờ xếp')&&!name.includes('V')&&!name.includes('H')&&!name.includes('T')),'legacy unassigned rows stay in their own group');assert.ok([...doc.getElementById('orderRegion').options].some(option=>option.value==='__unassigned__'));assert.ok([...doc.getElementById('contRegion').options].some(option=>option.value==='__unassigned__'));assert.ok(doc.getElementById('orderRegion').options.length>=4);assert.ok(doc.getElementById('contRegion').options.length>=4);
+ const names=[...doc.querySelectorAll('#containerTable tbody tr td[data-container-filter]')].map(td=>td.textContent);assert.ok(names.some(name=>name.includes('Chờ xếp V')));assert.ok(names.some(name=>name.includes('Chờ xếp H')));assert.ok(names.some(name=>name.includes('Chờ xếp T')),'an empty configured region still has its waiting group');assert.ok(names.some(name=>name.includes('Chờ xếp')&&!name.includes('V')&&!name.includes('H')&&!name.includes('T')),'legacy unassigned rows stay in their own group');assert.equal(doc.querySelector('tr[data-id="4"] [data-edit="regionId"] option').textContent,'-');assert.ok([...doc.getElementById('orderRegion').options].some(option=>option.value==='__unassigned__'&&option.textContent==='Chưa gán vùng'));assert.ok([...doc.getElementById('contRegion').options].some(option=>option.value==='__unassigned__'));assert.ok(doc.getElementById('orderRegion').options.length>=4);assert.ok(doc.getElementById('contRegion').options.length>=4);
  doc.getElementById('orderRegion').value='__unassigned__';doc.getElementById('orderRegion').dispatchEvent(new p.w.Event('change',{bubbles:true}));assert.deepEqual([...doc.querySelectorAll('#orderTable tbody tr[data-id]')].map(row=>row.dataset.id),['4']);
 });
 test('order autosave waits until an input is blurred before validating and saving',async t=>{

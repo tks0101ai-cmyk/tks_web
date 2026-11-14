@@ -33,6 +33,7 @@ test('containerEditorMarkup supports snake-case data, safe fields and readonly c
  const fields=['name','assumedM3','carrier','loader','nameCn','loading','arrivalNote','arrivalDate','freight','freightMode','freightBase','freightCapacity','maxTon','m3Min','m3Max'];
  for(const field of fields)assert.ok(editors[0].querySelector('[name="'+field+'"][data-container-field="'+field+'"]'),field);
  assert.equal(editors[0].querySelector('[name=name]').value,c.name);assert.equal(editors[0].querySelector('[name=assumedM3]').value,'185');
+ assert.equal(editors[0].querySelector('[name=regionId] option').textContent,'-');
  assert.equal(editors[0].querySelector('[name=maxTon]').value,'30');assert.equal(editors[0].querySelector('[name=freightMode]').value,'manual');
  for(const key of ['count','ton','m3'])assert.ok(editors[0].querySelector('output[data-container-computed="'+key+'"]'));
  assert.equal(editors[0].querySelector('[data-container-computed=ton]').textContent,'0.2');
