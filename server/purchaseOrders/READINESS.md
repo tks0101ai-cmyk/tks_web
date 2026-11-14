@@ -83,7 +83,7 @@ Nguồn kiểm chứng: công thức Sheet đã ghi nhận trong memory phiên d
 | VC cont tự tính | 202,000,000 / 170 × tổng m³ (hoặc định mức đã sửa) |
 | VC/m³ | Tự tính: tiền chuẩn / m³ chuẩn; nhập tay: tiền cont / tổng m³ đầy đủ của cont |
 | Tiền VC mã | Tổng m³ mã × VC/m³ cont |
-| Giá NET VND/cái | (Tiền hàng + Tiền VC mã + Thuế + VC sau CNY × 3,920) / Tổng SL; hằng số 3,920 chỉ áp dụng VC sau, giá hàng dùng tỉ giá dòng |
+| Giá NET VND/cái | (Tiền hàng + Tiền VC mã + Phụ phí % trên tổng tiền hàng CNY + VC sau CNY × 3,920) / Tổng SL; hằng số 3,920 chỉ áp dụng VC sau, giá hàng dùng tỉ giá dòng |
 | L/c TQ; g/c TQ | m³/thùng × 1,000 / SL/thùng; kg/thùng × 1,000 / SL/thùng |
 | Lệch số đo | (Số đo TQ − số đo kho) / số đo kho; hiển thị % |
 | Tỉ lệ | Tổng tấn / tổng m³; hiển thị % |
@@ -92,9 +92,9 @@ Nguồn kiểm chứng: công thức Sheet đã ghi nhận trong memory phiên d
 
 Chuẩn nhập/xuất: 1,234.56; số Excel thật giữ nguyên độ chính xác. Giá tệ hiển thị 2 chữ số thập phân; Tổng tệ hiển thị làm tròn đến đơn vị và bấm/nhấn Enter hoặc Space để hiện 3 chữ số ngay trong ô; khi mất focus trở về số làm tròn. VND hiển thị đồng. Không làm tròn giữa chừng hoặc lấy số đã hiển thị làm đầu vào phép tính. Tổng các dòng đã làm tròn hiển thị có thể chênh vài đồng với tổng làm tròn một lần; dữ liệu gốc không bị điều chỉnh để bù chênh. Xóa tiền cont khôi phục chuẩn 202,000,000 / 170; nhập 0 là cước 0. Tách mã con chưa nhập số thùng thì chưa cộng vào tải/khối/cước. Đổi cont cập nhật cả nguồn và đích.
 
-Mã dùng chung: public/shared/purchase-calculations.js và purchase-freight.js; mockup/live/export dùng cùng phép tính, SQL projection kiểm chéo với export qua PGlite. Bộ đối soát bổ sung FX, VC sau, Thuế và số đo kho. Chưa migrate/cutover/deploy.
+Mã dùng chung: public/shared/purchase-calculations.js và purchase-freight.js; mockup/live/export dùng cùng phép tính, SQL projection kiểm chéo với export qua PGlite. Bộ đối soát bổ sung FX, VC sau, Phụ phí và số đo kho. Chưa migrate/cutover/deploy.
 
-11/11/2026 — Công thức NET đồng bộ tab VK-DUNG: giá hàng dùng tỉ giá dòng, VC sau nhân 3,920, Thuế được cộng; VC/thuế/postpaid trống được coi là 0 trong NET. Giá tệ hiển thị 2 chữ số, Tổng tệ làm tròn đến đơn vị; bấm/Enter/Space hiện phần lẻ 3 chữ số trong ô tới khi blur. M³/thùng hiển thị 3 chữ số.
+14/11/2026 — Thuế đã được thay bằng Phụ phí %. Nhập số phần trăm, tính trên tiền hàng CNY từng dòng rồi nhân tỉ giá dòng; VC sau tiếp tục nhân 3,920. Migrations 0127–0128 và UAT trước rollout là bước tiếp theo. Giá tệ hiển thị 2 chữ số, Tổng tệ làm tròn đến đơn vị; bấm/Enter/Space hiện phần lẻ 3 chữ số trong ô tới khi blur. M³/thùng hiển thị 3 chữ số.
 11/11/2026 — Migration 0122 thêm `purchase_orders.measurement_overrides` để sửa riêng 9 trường nhóm Đối chiếu theo dòng; bỏ giá trị riêng thì dùng lại nguồn/tự tính. Nguồn Cân đo không bị ghi. Migration được đăng ký ở startup; chưa áp hoặc kiểm chứng DB production.
 
 Cập nhật gần nhất: 11/11/2026.

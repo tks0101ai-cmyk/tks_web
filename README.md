@@ -380,7 +380,7 @@ Cập nhật gần nhất: 04/11/2026.
 
 Thêm /thu-mua/dat-hang/ và /api/purchase-orders với quyền purchase.view/edit/import/export/depart/arrive; mặc định chỉ Quản lý, quyền mở rộng qua cơ chế cấp quyền hiện có. Module có bảng Chỉ số cont và Đặt hàng sửa trực tiếp, lọc riêng theo tài khoản, dropdown NV/cont/trạng thái, tách .01/.02 đệ quy, sửa hàng loạt, undo/xóa mềm/khôi phục, import toàn bộ hợp lệ mới ghi, audit/realtime và bộ công thức dùng chung. Source gate ngăn job Sheet và web ghi đè nhau.
 
-Migrations Thu mua được đổi sang 0110–0116 vì main đã dùng 0101–0109 và 0114 (0114_stocktake_frozen_lines.sql). db/ensurePurchaseSchema.js đăng ký các migration Thu mua 0110–0113, 0115–0126 khi web startup (0119 seed riêng danh mục NV từ buyer hiện có; 0126 thêm công thức cước cont), transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed đơn hàng/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
+Migrations Thu mua được đổi sang 0110–0116 vì main đã dùng 0101–0109 và 0114 (0114_stocktake_frozen_lines.sql). db/ensurePurchaseSchema.js đăng ký các migration Thu mua 0110–0113, 0115–0128 khi web startup (0119 seed riêng danh mục NV từ buyer hiện có; 0126 công thức cước cont; 0127 m³ giả định; 0128 đổi Thuế thành Phụ phí %), transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed đơn hàng/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
 
 
 
@@ -614,4 +614,12 @@ Cập nhật gần nhất: 13/11/2026.
 
 ## Thu mua — công thức cước cont linh hoạt (14/11/2026)
 Ô Tiền VC trong Chỉ số cont chấp nhận số tiền thủ công như trước hoặc công thức bắt đầu bằng `=`. Công thức lưu theo cont, hỗ trợ phép tính, ngoặc, `D2`/`M3_CONT` (tổng m³ hiện tại), `M3_XE` và các hàm `SUM`, `ROUND`, `MIN`, `MAX`, `ABS`; thay đổi tổng m³ sẽ tính lại VC/m³, phân bổ Tiền VC từng mã và NET. Migration `0126` thêm `product_containers.freight_formula`, được đăng ký trong `ensurePurchaseSchema`. Chưa áp DB thật hoặc deploy.
+Cập nhật gần nhất: 14/11/2026.
+
+## Thu mua — m³ giả định và phụ phí (migrations 0127–0128, 14/11/2026)
+- Khi tạo cont, bắt buộc nhập Tổng m³ giả định. Bảng Chỉ số cont hiển thị riêng Tổng m³ giả định và Tổng m³ đang xếp (thể tích hàng thực tế). Xóa m³ giả định sẽ chuyển mẫu số cước sang m³ đang xếp.
+- Công thức ở ô Tiền VC được tính thành VC/m³ bằng cách chia biểu thức cho m³ giả định; nếu giá trị giả định đã xóa thì chia cho m³ đang xếp. `M3_XE` tham chiếu mẫu số đang hiệu lực. Thay đổi m³ sẽ tính lại VC/m³, phần VC phân bổ theo thể tích thực tế từng dòng và Giá NET. Nhập số thường vẫn là tổng cước thủ công.
+- Đặt hàng ưu tiên m³ giả định cho quy đổi cước cont; khi xóa giá trị giả định, hệ thống tự dùng thể tích đang xếp. Phụ phí nhận số phần trăm (ví dụ nhập `5` là 5%), tính trên tổng tiền hàng CNY của dòng rồi quy đổi theo tỉ giá dòng để vào Giá NET.
+- `0127_purchase_container_assumed_m3.sql` thêm `product_containers.assumed_m3`; `0128_purchase_surcharge_percent.sql` xóa `purchase_orders.tax_amount` theo yêu cầu và thêm `surcharge_percent`. Cả hai được đăng ký trong `ensurePurchaseSchema.FILES`. Migrations mới đã có trong mã nhưng chưa áp production; không deploy trong bước này.
+
 Cập nhật gần nhất: 14/11/2026.

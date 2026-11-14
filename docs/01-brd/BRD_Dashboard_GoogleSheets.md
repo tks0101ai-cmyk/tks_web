@@ -713,3 +713,8 @@ Cập nhật cuối: 13/11/2026.
 ## Thu mua — chỉnh công thức tiền vận chuyển cont (14/11/2026)
 Người dùng cần thay đổi linh hoạt các thành phần của cước cont (ví dụ phí cố định, tỉ giá, sức chứa) ngay tại ô Tiền VC. Hệ thống cho nhập công thức theo cont; khi tổng m³ thay đổi, tiền vận chuyển/m³, tiền VC từng mã và giá NET được tính lại. Nhập số tiền vẫn dùng cách nhập thủ công hiện tại.
 Cập nhật gần nhất: 14/11/2026.
+
+## Thu mua — thể tích giả định và phụ phí (14/11/2026)
+Người dùng tạo cont với Tổng m³ giả định để dự tính cước. Khi đang xếp hàng, hệ thống theo dõi Tổng m³ đang xếp từ số đo và số thùng của từng mã. Cước/m³ dùng m³ giả định cho tới khi người dùng xóa giá trị này; sau đó chuyển sang m³ đang xếp. Phụ phí thay Thuế, được nhập theo phần trăm và tính trên tổng tiền hàng CNY của từng mã.
+
+Cập nhật gần nhất: 14/11/2026.

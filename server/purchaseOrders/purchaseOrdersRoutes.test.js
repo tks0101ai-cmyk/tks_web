@@ -102,7 +102,7 @@ test('catalog writes require purchase edit and manager routes forward exact requ
 
 test('container patch forwards the complete shared row version snapshot',async t=>{
  const {base,calls}=await start(t,{id:'manager',vaiTro:ROLES.QUAN_LY});
- const body={version:3,changes:{arrivalNote:'2026-11-10',arrivalDate:'2026-11-11',truckName:'18.5m',maxTon:35,m3Min:150,m3Max:180},rows:[{id:'1',version:4}]};
+ const body={version:3,changes:{arrivalNote:'2026-11-10',arrivalDate:'2026-11-11',assumedM3:185,maxTon:35,m3Min:150,m3Max:180},rows:[{id:'1',version:4}]};
  assert.equal((await fetch(base+'/containers/9',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).status,200);
  assert.equal(calls[0].name,'updateContainer');assert.equal(calls[0].args[1],'9');assert.deepEqual(calls[0].args[2],body);
 });

@@ -26,21 +26,21 @@ test('statusMarkup renders accessible filter hooks and accepts numeric selected 
  assert.equal(new JSDOM(W.statusMarkup({selectedStatus:'waiting'})).window.document.querySelector('button').getAttribute('aria-pressed'),'true');
 });
 test('containerEditorMarkup supports snake-case data, safe fields and readonly computed values in both clones',()=>{
- const c={id:'<bad>',name:'\"/><script>bad()</script>',truck_name:'18.5m',name_cn:'中',freight_mode:'manual',freight:123,max_ton:30,m3_min:150,m3_max:180};
+ const c={id:'<bad>',name:'\"/><script>bad()</script>',assumed_m3:185,name_cn:'中',freight_mode:'manual',freight:123,max_ton:30,m3_min:150,m3_max:180};
  const markup=W.containerEditorMarkup(c,{rows:[{...rows[0],contId:c.id}]});const doc=new JSDOM(markup+markup).window.document;
  assert.equal(doc.querySelectorAll('script').length,0);assert.equal(doc.querySelectorAll('[id]').length,0);
  const editors=doc.querySelectorAll('[data-container-editor]');assert.equal(editors.length,2);
- const fields=['name','truckName','carrier','loader','nameCn','loading','arrivalNote','arrivalDate','freight','freightMode','freightBase','freightCapacity','maxTon','m3Min','m3Max'];
+ const fields=['name','assumedM3','carrier','loader','nameCn','loading','arrivalNote','arrivalDate','freight','freightMode','freightBase','freightCapacity','maxTon','m3Min','m3Max'];
  for(const field of fields)assert.ok(editors[0].querySelector('[name="'+field+'"][data-container-field="'+field+'"]'),field);
- assert.equal(editors[0].querySelector('[name=name]').value,c.name);assert.equal(editors[0].querySelector('[name=truckName]').value,'18.5m');
+ assert.equal(editors[0].querySelector('[name=name]').value,c.name);assert.equal(editors[0].querySelector('[name=assumedM3]').value,'185');
  assert.equal(editors[0].querySelector('[name=maxTon]').value,'30');assert.equal(editors[0].querySelector('[name=freightMode]').value,'manual');
  for(const key of ['count','ton','m3'])assert.ok(editors[0].querySelector('output[data-container-computed="'+key+'"]'));
  assert.equal(editors[0].querySelector('[data-container-computed=ton]').textContent,'0.2');
  assert.equal(editors[0].querySelector('[data-container-computed=count]').textContent,'1');
 });
-test('containerEditorMarkup preserves camel-case zero values and derives formula freight',()=>{
- const doc=new JSDOM(W.containerEditorMarkup({id:1,freightMode:'formula',freightBase:100,freightCapacity:2,maxTon:0},{rows})).window.document;
- assert.equal(doc.querySelector('[name=freight]').value,'15');assert.equal(doc.querySelector('[name=maxTon]').value,'0');
+test('containerEditorMarkup preserves camel-case zero values and derives formula freight from assumed m3',()=>{
+ const doc=new JSDOM(W.containerEditorMarkup({id:1,freightMode:'formula',freightBase:100,freightCapacity:2,assumedM3:20,maxTon:0},{rows})).window.document;
+ assert.equal(doc.querySelector('[name=freight]').value,'5');assert.equal(doc.querySelector('[name=maxTon]').value,'0');
  assert.equal(doc.querySelector('[name=freightMode]').value,'formula');
 });
 test('browser UMD exposes same API using existing calculation and freight globals',()=>{

@@ -1060,7 +1060,7 @@ Cập nhật gần nhất: 04/11/2026.
 
 Thêm /thu-mua/dat-hang/ và /api/purchase-orders với quyền purchase.view/edit/import/export/depart/arrive; mặc định chỉ Quản lý, quyền mở rộng qua cơ chế cấp quyền hiện có. Module có bảng Chỉ số cont và Đặt hàng sửa trực tiếp, lọc riêng theo tài khoản, dropdown NV/cont/trạng thái, tách .01/.02 đệ quy, sửa hàng loạt, undo/xóa mềm/khôi phục, import toàn bộ hợp lệ mới ghi, audit/realtime và bộ công thức dùng chung. Source gate ngăn job Sheet và web ghi đè nhau.
 
-Migrations Thu mua được đổi sang 0110–0116 vì main đã dùng 0101–0109 và 0114 (0114_stocktake_frozen_lines.sql). db/ensurePurchaseSchema.js đăng ký các migration Thu mua 0110–0113, 0115–0126 khi web startup (0119 seed riêng danh mục NV từ buyer hiện có; 0126 thêm công thức cước cont), transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed đơn hàng/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
+Migrations Thu mua được đổi sang 0110–0116 vì main đã dùng 0101–0109 và 0114 (0114_stocktake_frozen_lines.sql). db/ensurePurchaseSchema.js đăng ký các migration Thu mua 0110–0113, 0115–0128 khi web startup (0119 seed riêng danh mục NV từ buyer hiện có; 0126 công thức cước cont; 0127 m³ giả định; 0128 đổi Thuế thành Phụ phí %), transaction/advisory lock/rollback, không chạy migration khác. Nguồn mặc định Sheets được giữ nguyên; không seed đơn hàng/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
 
 
 
@@ -1229,7 +1229,7 @@ Mục này thay yêu cầu cũ về dropdown HR, nhập tên buyer tự do, gắ
 
 - **FR-PUR-NV:** danh mục NV Thu mua độc lập, thêm/đổi tên/ngừng/kích hoạt bằng quyền purchase.edit; không xóa cứng. Row lưu tên snapshot, không cần HR linkage. Chỉ chọn mới/đổi sang tên catalog active; legacy/inactive không đổi vẫn đọc và sửa các ô khác. Đổi catalog không ghi lại lịch sử buyer trên đơn. Migration 0119 seed tên hiện có sau trim/khử trùng.
 - **FR-PUR-WAIT:** Mọi mã hàng mới từ create trực tiếp, `plan.creates` hoặc import đều lưu `container_id=NULL` (**Chờ xếp**), kể cả request create gửi `contId`. Việc xếp/chuyển/tách cont là thao tác riêng có xác nhận và kiểm phiên bản. Tên legacy vẫn đọc được; chỉ lựa chọn buyer mới/đổi mới bắt buộc danh mục đang hoạt động.
-- **FR-PUR-CONT:** `PATCH /api/purchase-orders/containers/:id` nhận `{version,changes,rows?}`; version cont đang xem là bắt buộc. Các trường trong `changes`: `name`, `truckName`, `carrier`, `loader`, `nameCn`, `loading`, `arrivalNote`, `arrivalDate`, `maxTon`, `m3Min`, `m3Max`, `freight`, `freightMode`, `freightFormula`, `freightBase`, `freightCapacity`. Response là bản ghi cont dạng DB (ví dụ `truck_name`, `arrival_note`, `arrival_date`), không phải toàn bộ dòng con.
+- **FR-PUR-CONT:** `PATCH /api/purchase-orders/containers/:id` nhận `{version,changes,rows?}`; version cont đang xem là bắt buộc. Các trường trong `changes`: `name`, `assumedM3` (số dương hoặc `null` để xóa), `carrier`, `loader`, `nameCn`, `loading`, `arrivalNote`, `arrivalDate`, `maxTon`, `m3Min`, `m3Max`, `freight`, `freightMode`, `freightFormula`, `freightBase`, `freightCapacity`. Response là bản ghi cont dạng DB (ví dụ `assumed_m3`, `arrival_note`, `arrival_date`), không phải toàn bộ dòng con.
 
 Khi có `arrivalNote` hoặc `arrivalDate`, phải gửi `rows:[{id,version}]` cho **toàn bộ dòng đã lưu, chưa xóa trong cont**, không chỉ các dòng đang lọc/hiển thị; cont rỗng gửi `rows:[]`. Ví dụ:
 
@@ -1239,7 +1239,7 @@ Khi có `arrivalNote` hoặc `arrivalDate`, phải gửi `rows:[{id,version}]` c
 
 Thiếu snapshot, thay đổi thành viên cont hoặc sai version bất kỳ trả 409 `VERSION_CONFLICT`, không ghi một phần. Server khóa/kiểm cont và toàn bộ dòng, truyền `arrivalNote → etaNote`, `arrivalDate → arrivedNote`, tăng version từng dòng và cont, ghi ảnh trước/sau trong audit cùng transaction. Ngày dự kiến nhận ISO ngày hoặc ngày-giờ, ngày về nhận ISO ngày; xóa bằng arrivalNote rỗng, arrivalDate rỗng/null. Sau lưu phải tải lại snapshot để nhận version mới.
 
-Loại xe nhận `17.5m` hoặc `18.5m`; tải trọng tối đa > 0, khối không âm và `m3Max >= m3Min`. Tấn/m³/số dòng vẫn suy ra từ hàng, không ghi đè số thùng, SL/thùng hay số đo vật lý. Tên/trạng thái cont hiển thị dùng chung cho mọi dòng thuộc cont; trạng thái vẫn qua `POST /status` và quyền depart/arrive hiện có. Cước cont đổi làm phân bổ VC/giá NET các dòng tính lại; projection chỉ chạy khi `integration_enabled=true`. Không tự sửa tồn kho.
+Khi tạo cont, `assumedM3` bắt buộc > 0; khi sửa có thể gửi `null` để chuyển sang m³ đang xếp thực tế. Tải trọng tối đa > 0, khối không âm và `m3Max >= m3Min`. Tấn/m³/số dòng vẫn suy ra từ hàng, không ghi đè số thùng, SL/thùng hay số đo vật lý. Tên/trạng thái cont hiển thị dùng chung cho mọi dòng thuộc cont; trạng thái vẫn qua `POST /status` và quyền depart/arrive hiện có. Cước cont đổi làm phân bổ VC/giá NET các dòng tính lại; projection chỉ chạy khi `integration_enabled=true`. Không tự sửa tồn kho.
 
 
 ### API danh mục NV
@@ -1299,4 +1299,13 @@ Cập nhật cuối: 13/11/2026.
 - VC/m³ = kết quả công thức / tổng m³ cont. Tiền VC mã = m³ mã × VC/m³; Giá NET và projection dùng cùng kết quả. Mọi lần sửa dòng làm đổi m³ sẽ tính lại trong projection; không thay đổi công thức đã lưu.
 - Nhập số thường chuyển về chế độ cước thủ công và xóa công thức; xóa ô về chuẩn cũ 202.000.000 / 170. Các cont hiện hữu không đổi trước khi người dùng nhập công thức. Nếu lần sửa m³ làm công thức cho kết quả âm/không hợp lệ, toàn bộ thao tác bị rollback và API trả lỗi validation 400 để người dùng sửa công thức hoặc chọn cước thủ công.
 - Migration `0126_purchase_container_freight_formula.sql` thêm `product_containers.freight_formula`, đăng ký trong `ensurePurchaseSchema.FILES`. Cần kiểm staging trước khi áp vào production; chưa deploy.
+Cập nhật gần nhất: 14/11/2026.
+
+## Thu mua — m³ giả định và phụ phí (14/11/2026)
+- Khi tạo cont, `assumedM3` là bắt buộc và phải lớn hơn 0. Khi sửa, giá trị có thể để trống để xóa giả định. Cont cũ không được backfill.
+- Bảng Chỉ số cont hiển thị `Tổng m³ đang xếp` từ tổng `m3PerCarton × cartonCount` và `Tổng m³ giả định` từ cont. Bỏ nhãn Loại xe khỏi bộ lọc và bảng.
+- Ở chế độ công thức, mẫu số hiệu lực là `assumed_m3` nếu có, nếu không là tổng m³ đang xếp. `M3_XE` trỏ tới mẫu số này; `D2`/`M3_CONT` tiếp tục trỏ tới tổng m³ thực tế cho tương thích công thức cũ. Tiền VC dạng công thức là đơn giá/m³; từng dòng nhận `m³ dòng thực tế × đơn giá/m³`. Cước thủ công tiếp tục được phân bổ theo m³ thực tế.
+- Thuế được thay bằng `surchargePercent`: người dùng nhập số phần trăm (5 nghĩa là 5%), lưu tỷ lệ thập phân `0.05`. Phụ phí = tổng tiền hàng CNY của dòng × tỷ lệ × tỉ giá dòng; không cộng VC trước vào cơ sở phụ phí. Giá NET và SQL projection phải khớp.
+- Migrations `0127` và `0128` được đăng ký ở `ensurePurchaseSchema`; `0128` xóa cột dữ liệu thuế cũ theo yêu cầu. Chưa áp production.
+
 Cập nhật gần nhất: 14/11/2026.

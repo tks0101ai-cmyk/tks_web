@@ -22,13 +22,13 @@ test('projectContainers and exportRows agree for optional signed prepaid and mis
  const expected=new Map();
  for(const [label,prepaid,missing,price=1.35] of cases){
   const row={qtyPerCarton:300,cartonCount:4,unitPriceCny:price,freightPostpaid:20,fxRate:3920,m3PerCarton:.073};
-  row.taxAmount=label==='zero-price'?7:0;
+  row.surchargePercent=label==='zero-price'?.05:0;
   if(label!=='omitted')row.freightPrepaid=prepaid;
   if(missing)row[missing]=null;
   const total=missing&&missing!=='freightPostpaid'?null:1200*price+(Number(prepaid)||0);
   expected.set(label,{total,row});
   // Empty and omitted numeric fields reach PostgreSQL as NULL via the existing shared parser.
-  await db.query('INSERT INTO purchase_orders(row_key,root_key,product_code,product_name,qty_per_carton,carton_count,unit_price_cny,freight_prepaid,freight_postpaid,fx_rate,m3_per_carton,tax_amount) VALUES($9,$9,$1,$1,$2,$3,$4,$5,$6,$7,$8,$10)',[label,row.qtyPerCarton,row.cartonCount,row.unitPriceCny,C.number(row.freightPrepaid),row.freightPostpaid,row.fxRate,row.m3PerCarton,'D'+String(expected.size).padStart(5,'0'),row.taxAmount]);
+  await db.query('INSERT INTO purchase_orders(row_key,root_key,product_code,product_name,qty_per_carton,carton_count,unit_price_cny,freight_prepaid,freight_postpaid,fx_rate,m3_per_carton,surcharge_percent) VALUES($9,$9,$1,$1,$2,$3,$4,$5,$6,$7,$8,$10)',[label,row.qtyPerCarton,row.cartonCount,row.unitPriceCny,C.number(row.freightPrepaid),row.freightPostpaid,row.fxRate,row.m3PerCarton,'D'+String(expected.size).padStart(5,'0'),row.surchargePercent]);
  }
  await db.exec('BEGIN');
  try{await projectContainers({query:(sql,params)=>/CREATE TEMP/.test(sql)?db.exec(sql):db.query(sql,params)});await db.exec('COMMIT');}catch(e){await db.exec('ROLLBACK');throw e;}
@@ -39,6 +39,6 @@ test('projectContainers and exportRows agree for optional signed prepaid and mis
   const out=exported.find(r=>r.productCode===label),sql=projected.find(r=>r.product_code===label);
   assert.equal(out.totalCny,total,label+' totalCny');assert.equal(out.goodsAmount,total==null?null:total*3920,label+' goodsAmount');
   if(total==null){assert.equal(out.netPrice,null,label);assert.equal(sql.vietnam_price,null,label);}
-  else{const net=(total*3920+(out.freightAmount||0)+(row.taxAmount||0)+(Number(row.freightPostpaid)||0)*3920)/1200;assert.equal(out.netPrice,net,label);assert.ok(Math.abs(Number(sql.vietnam_price)-net)<1e-7,label+' SQL parity');}
+  else{const net=(total*3920+(out.freightAmount||0)+(out.surchargeAmount||0)+(Number(row.freightPostpaid)||0)*3920)/1200;assert.equal(out.netPrice,net,label);assert.ok(Math.abs(Number(sql.vietnam_price)-net)<1e-7,label+' SQL parity');}
  }
 });

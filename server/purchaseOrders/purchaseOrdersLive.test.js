@@ -100,7 +100,7 @@ async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees
   const contained=current.rows.filter(r=>String(r.contId)===String(container?.id)&&!r.deletedAt&&!r.deleted_at);
   const matches=Array.isArray(input.rows)&&input.rows.length===contained.length&&contained.every(r=>input.rows.some(ref=>String(ref.id)===String(r.id)&&ref.version===r.version));
   if(!container||input.version!==container.version||arrival&&!matches)return {ok:false,status:409,json:async()=>({error:'Cont hoặc dòng trong cont đã được người khác sửa.'})};
-  const aliases={arrivalNote:'arrival_note',arrivalDate:'arrival_date',truckName:'truck_name',nameCn:'name_cn'};
+  const aliases={arrivalNote:'arrival_note',arrivalDate:'arrival_date',nameCn:'name_cn'};
   for(const [key,value] of Object.entries(input.changes))container[aliases[key]||key]=value;
   container.version++;return {ok:true,json:async()=>structuredClone(container)};
  }

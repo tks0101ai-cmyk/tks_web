@@ -43,7 +43,7 @@
  function containerEditorMarkup(c={}, {rows=[]}={}){
   const stats=C.stats(rows.filter(r=>key(r.contId)===key(c.id))),fee=F.calculate(c,stats.m3);
   const fields=[
-   ['name','Tên cont','text',c.name],['truckName','Loại xe','text',value(c,'truckName','truck_name')],
+   ['name','Tên cont','text',c.name],['assumedM3','Tổng m³ giả định','number',value(c,'assumedM3','assumed_m3')],
    ['carrier','Nhà vận chuyển','text',c.carrier],['loader','Người xếp','text',c.loader],
    ['nameCn','Tên cont TQ','text',value(c,'nameCn','name_cn')],['loading','Lịch bốc','text',c.loading],
    ['arrivalNote','Dự kiến đến','text',value(c,'arrivalNote','arrival_note')],

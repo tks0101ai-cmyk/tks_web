@@ -151,7 +151,7 @@ test('prepaid freight may be negative on import and edits while other amounts ma
   const edit = prepareRows([{ rowKey: 'D00001.01', productCode: 'A', supplier: 'NCC khac' }], current);
   assert.equal(edit.valid, true, edit.rows[0].errors.join('; '));
 
-  for (const patch of [{ freightPostpaid: -1 }, { unitPriceCny: -1 }, { taxAmount: -1 }, { kgPerCarton: -1 }]) {
+  for (const patch of [{ freightPostpaid: -1 }, { unitPriceCny: -1 }, { surchargePercent: -1 }, { kgPerCarton: -1 }]) {
     assert.equal(prepareRows([{ ...fresh(), ...patch }], []).valid, false, JSON.stringify(patch));
   }
 });

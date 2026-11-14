@@ -80,12 +80,12 @@ test('order lifecycle sits last and container lifecycle is confirmed with the cu
 test('pinned container sits under filters and shows the six compact identity and metrics columns',async t=>{
  const p=await page(t),doc=p.w.document;doc.querySelector('#containerTable [data-container-filter="2"]').click();
  const filters=doc.querySelector('.order-filters'),watched=doc.getElementById('watchedContainer');assert.ok(filters.compareDocumentPosition(watched)&p.w.Node.DOCUMENT_POSITION_FOLLOWING);
- assert.equal(watched.querySelectorAll('thead th').length,7);assert.deepEqual([...watched.querySelectorAll('thead th')].slice(0,6).map(th=>th.textContent.trim()),['Tên cont','Hoạt động','Trạng thái','Dòng','Tổng tấn','Tổng m³']);assert.equal(watched.querySelectorAll('.sort-indicator').length,0);
+ assert.equal(watched.querySelectorAll('thead th').length,7);assert.deepEqual([...watched.querySelectorAll('thead th')].slice(0,6).map(th=>th.textContent.trim()),['Tên cont','Hoạt động','Trạng thái','Dòng','Tổng tấn','Tổng m³ đang xếp']);assert.equal(watched.querySelectorAll('.sort-indicator').length,0);
 });
-test('vehicle type is free text in the container grid and create dialog',async t=>{
- const p=await page(t),doc=p.w.document;assert.equal(doc.querySelector('#containerTable [data-container-field="truckName"]').tagName,'INPUT');
- doc.getElementById('newCont').click();const form=doc.getElementById('contForm');assert.equal(form.elements.truckName.tagName,'INPUT');form.elements.name.value='NEW CONT';form.elements.truckName.value='Xe 20 tấn';form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}));await tick();await tick();
- const call=p.calls.find(c=>c.url.endsWith('/containers'));assert.deepEqual(JSON.parse(call.options.body),{name:'NEW CONT',truckName:'Xe 20 tấn'});
+test('assumed m3 is editable in the container grid and required by the create dialog',async t=>{
+ const p=await page(t),doc=p.w.document;assert.equal(doc.querySelector('#containerTable [data-container-field="assumedM3"]').tagName,'INPUT');
+ doc.getElementById('newCont').click();const form=doc.getElementById('contForm');assert.equal(form.elements.assumedM3.tagName,'INPUT');form.elements.name.value='NEW CONT';form.elements.assumedM3.value='170';form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}));await tick();await tick();
+ const call=p.calls.find(c=>c.url.endsWith('/containers'));assert.deepEqual(JSON.parse(call.options.body),{name:'NEW CONT',assumedM3:'170'});
 });
 test('integrated refresh updates another cell during numeric expression typing, retaining baseline/caret and navigation mode',async t=>{
  const p=await page(t),doc=p.w.document,input=doc.querySelector('[data-edit="cartonCount"]');input.focus();input.value='2*6';input.dataset.gridEditing='true';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));input.setSelectionRange(1,2);

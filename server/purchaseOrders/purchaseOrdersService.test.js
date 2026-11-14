@@ -118,7 +118,7 @@ test('row key reservation is consumed once and concurrent reservations are uniqu
 test('migration 0125 backfills legacy import families, undo snapshots, and exact pool contents',async t=>{
  const legacyDb=new PGlite();
  try {
-  for(const name of ['0053_product_containers.sql','0072_product_container_unit_price_cny.sql','0075_product_container_expected.sql','0078_product_container_expected_prices.sql','0086_product_container_other_note.sql',...PURCHASE_FILES.slice(0,-2)]) await legacyDb.exec(fs.readFileSync(path.join(__dirname,'../db/migrations',name),'utf8'));
+  for(const name of ['0053_product_containers.sql','0072_product_container_unit_price_cny.sql','0075_product_container_expected.sql','0078_product_container_expected_prices.sql','0086_product_container_other_note.sql',...PURCHASE_FILES.filter(filename=>filename<'0125_purchase_recyclable_row_keys.sql')]) await legacyDb.exec(fs.readFileSync(path.join(__dirname,'../db/migrations',name),'utf8'));
   const insertRoot="INSERT INTO purchase_orders(row_key,root_key,split_from_key,deleted_at,product_code,product_name,qty_per_carton,carton_count) VALUES($1,$2,$3,$4,$5,$6,1,1) RETURNING id";
   const root=Number((await legacyDb.query(insertRoot,['D88000','D88000',null,null,'ROOT','Gốc'])).rows[0].id);
   await legacyDb.query(insertRoot,['D88000.01','D88000','D88000',null,'CHILD','Nhánh']);
@@ -175,7 +175,7 @@ test('presence leases are shared between connections, expire, and expose only id
 test('delta changes return authoritative rows, tombstones, containers and employee invalidation',async()=>{
  const original=await service.create(manager,input());
  const baseline=await service.revision(manager);
- const container=await service.createContainer(manager,{name:'DELTA CONT',truckName:'17.5m'});
+ const container=await service.createContainer(manager,{name:'DELTA CONT',assumedM3:170});
  const updated=await service.update(manager,original.id,{version:original.version,changes:{cartonCount:80}});
  const deleted=await service.create(manager,{...input(),productCode:'B'});
  await service.remove(manager,{rows:[{id:deleted.id,version:deleted.version}]});
@@ -194,13 +194,15 @@ test('delta changes return authoritative rows, tombstones, containers and employ
  assert.equal(Object.hasOwn(delta,'before_row'),false);
  assert.equal(JSON.stringify(delta).includes('before_row'),false);
 });
-test('container truck name accepts user-entered text on create and edit',async()=>{
- const created=await service.createContainer(manager,{name:'CUSTOM TRUCK',truckName:'Xe 20 tấn'});
- assert.equal(created.truck_name,'Xe 20 tấn');
- const edited=await service.updateContainer(manager,created.id,{version:created.version,changes:{truckName:'  Mooc lùn  '}});
- assert.equal(edited.truck_name,'Mooc lùn');
- await assert.rejects(service.updateContainer(manager,created.id,{version:edited.version,changes:{truckName:'x'.repeat(81)}}),e=>e.statusCode===400);
- await assert.rejects(service.createContainer(manager,{name:'BAD TRUCK',truckName:{}}),e=>e.statusCode===400);
+test('container requires a positive assumed m3 at creation and allows clearing it later',async()=>{
+ const created=await service.createContainer(manager,{name:'ESTIMATED CONT',assumedM3:170});
+ assert.equal(Number(created.assumed_m3),170);
+ const edited=await service.updateContainer(manager,created.id,{version:created.version,changes:{assumedM3:185}});
+ assert.equal(Number(edited.assumed_m3),185);
+ const cleared=await service.updateContainer(manager,created.id,{version:edited.version,changes:{assumedM3:null}});
+ assert.equal(cleared.assumed_m3,null);
+ await assert.rejects(service.updateContainer(manager,created.id,{version:cleared.version,changes:{assumedM3:-1}}),e=>e.statusCode===400);
+ await assert.rejects(service.createContainer(manager,{name:'MISSING ESTIMATE'}),e=>e.statusCode===400);
 });
 
 test('delta changes request a reset for malformed, ahead and over-cap cursors',async()=>{
@@ -231,7 +233,7 @@ test('listed date remains validated while order milestone fields accept free tex
   await assert.rejects(service.create(manager,{...input(),listedAt:'31/02/2026'}),e=>e.code==='VALIDATION_ERROR');
 });
 test('confirmed row changes quantity and destination in one transaction; manual status uses version and audit only',async()=>{
- const a=await service.createContainer(manager,{name:'CONT PLAN',truckName:'17.5m'});const r=await service.create(manager,{...input(),contId:a.id});assert.equal(r.contId,null);
+ const a=await service.createContainer(manager,{name:'CONT PLAN',assumedM3:170});const r=await service.create(manager,{...input(),contId:a.id});assert.equal(r.contId,null);
  const updated=await service.update(manager,r.id,{version:r.version,before:{contId:r.contId},changes:{cartonCount:50,contId:null}});assert.equal(updated.contId,null);assert.equal(updated.cartonCount,50);
  const changed=await service.changeStatus(manager,{containerId:a.id,version:a.version,status:4});assert.equal(changed.status,4);await assert.rejects(service.changeStatus(manager,{containerId:a.id,version:a.version,status:2}),e=>e.statusCode===409);assert.equal((await db.query('SELECT count(*)::int n FROM purchase_history WHERE action=\'status_edit\'')).rows[0].n,1);
 });
@@ -272,7 +274,7 @@ test('migration leaves Sheets as default and writes are blocked before cutover',
 });
 test('create and transfer update canonical and both legacy read models atomically', async () => {
   const row=await service.create(manager,input());
-  const cont=await service.createContainer(manager,{name:'CONT A',truckName:'17.5m'});
+  const cont=await service.createContainer(manager,{name:'CONT A',assumedM3:170});
   await service.transfer(manager,{id:row.id,version:row.version,quantity:100,destinationId:cont.id});
   const source=(await db.query('SELECT * FROM product_container_lines')).rows[0];
   const expected=(await db.query('SELECT * FROM product_container_expected')).rows[0];
@@ -280,7 +282,7 @@ test('create and transfer update canonical and both legacy read models atomicall
   assert.equal(expected.product_name,'Hàng A');assert.equal(Number(expected.quantity),2000);
 });
 test('repeated split keys preserve totals, retire old keys, and clear manual costs', async () => {
-  const row=await service.create(manager,input()),cont=await service.createContainer(manager,{name:'CONT A',truckName:'18.5m'});
+  const row=await service.create(manager,input()),cont=await service.createContainer(manager,{name:'CONT A',assumedM3:185});
   const split=await service.transfer(manager,{id:row.id,version:1,quantity:20,destinationId:cont.id});
   assert.equal(split.remaining.rowKey,'D00001.01');assert.equal(split.created.rowKey,'D00001.02');
   assert.equal(split.remaining.freightAmount,null);
@@ -297,7 +299,7 @@ test('same-field conflict rejects; different-field stale edit can merge', async 
   assert.equal((await service.list(manager)).rows[0].supplier,'NCC');
 });
 test('departure shortage and arrival keep immutable snapshot and do not change stock or prices', async () => {
-  const row=await service.create(manager,{...input(),m3PerCarton:.2}),cont=await service.createContainer(manager,{name:'CONT A',truckName:'17.5m'});
+  const row=await service.create(manager,{...input(),m3PerCarton:.2}),cont=await service.createContainer(manager,{name:'CONT A',assumedM3:170});
   await service.transfer(manager,{id:row.id,version:1,quantity:100,destinationId:cont.id});
   await service.depart(manager,{containerId:cont.id,version:1,rows:[{id:row.id,version:2,actual:80}]});
   const list=await service.list(manager),shipped=list.rows.find(r=>r.contId===String(cont.id));
@@ -428,7 +430,7 @@ test('failure while updating read models rolls back rows and audit and emits no 
 });
 
 test('scheduling preserves freight while a manual container amount reallocates by volume',async()=>{
-  const row=await service.create(manager,{...input(),m3PerCarton:.2}),cont=await service.createContainer(manager,{name:'CONT A',truckName:'17.5m'});
+  const row=await service.create(manager,{...input(),m3PerCarton:.2}),cont=await service.createContainer(manager,{name:'CONT A',assumedM3:170});
   await service.transfer(manager,{id:row.id,version:1,quantity:100,destinationId:cont.id});
   await service.schedule(manager,{containerId:cont.id,version:1,loading:'DK 05/11 bốc'});
   await service.updateContainer(manager,cont.id,{version:2,changes:{freight:99999999,name:'CONT NEW'}});
@@ -456,7 +458,7 @@ test('manual edit can clear optional notes and costs without changing required f
 });
 
 test('container writes require the version seen by the user',async()=>{
-  const cont=await service.createContainer(manager,{name:'CONT A',truckName:'17.5m'});
+  const cont=await service.createContainer(manager,{name:'CONT A',assumedM3:170});
   await assert.rejects(service.schedule(manager,{containerId:cont.id,loading:'Tomorrow'}),e=>e.code==='VERSION_REQUIRED');
   await service.schedule(manager,{containerId:cont.id,version:1,loading:'Tomorrow'});
   await assert.rejects(service.updateContainer(manager,cont.id,{version:1,changes:{name:'STALE'}}),e=>e.code==='VERSION_CONFLICT');
@@ -470,7 +472,7 @@ test('latest listing has no time cutoff and uses listing date rather than insert
 });
 
 test('server export uses volume allocation consistently with row NET',async()=>{
-  const row=await service.create(manager,{...input(),m3PerCarton:.2}),cont=await service.createContainer(manager,{name:'CONT A',truckName:'17.5m'});
+  const row=await service.create(manager,{...input(),m3PerCarton:.2}),cont=await service.createContainer(manager,{name:'CONT A',assumedM3:170});
   await service.transfer(manager,{id:row.id,version:1,quantity:100,destinationId:cont.id});
   await service.updateContainer(manager,cont.id,{version:1,changes:{freight:999999}});
   const exported=(await service.exportRows(manager))[0];
@@ -486,7 +488,7 @@ test('periodic expected-arrivals refresh preserves canonical names for products 
 });
 
 test('balance plan commits edits, recursive split and new code together; stale split rolls everything back',async()=>{
- const c=await service.createContainer(manager,{name:'CONT TASK',truckName:'17.5m'}),a=await service.create(manager,input()),b=await service.create(manager,{...input(),productCode:'B'});
+ const c=await service.createContainer(manager,{name:'CONT TASK',assumedM3:170}),a=await service.create(manager,input()),b=await service.create(manager,{...input(),productCode:'B'});
  await service.applyPlan(manager,{rows:[{id:b.id,version:b.version,changes:{cartonCount:30}}],splits:[{id:a.id,version:a.version,sourceQty:100,quantity:40,destinationId:c.id}],creates:[{values:{...input(),productCode:'C',contId:c.id}}]});
  const all=(await service.list(manager)).rows;const branches=all.filter(r=>r.rowKey.startsWith(a.rowKey+'.'));assert.equal(branches.length,2);assert.equal(branches.reduce((s,r)=>s+r.cartonCount,0),100);assert.ok(branches.some(r=>r.rowKey===a.rowKey+'.02'&&String(r.contId)===String(c.id)));assert.equal((await db.query("SELECT count(*)::int n FROM purchase_history WHERE action='balance_plan'")).rows[0].n,1);
  const current=all.find(r=>String(r.id)===String(b.id));await assert.rejects(service.applyPlan(manager,{rows:[{id:b.id,version:current.version,changes:{cartonCount:99}}],splits:[{id:a.id,version:a.version,sourceQty:60,quantity:10,destinationId:c.id}]}));assert.equal((await service.list(manager)).rows.find(r=>String(r.id)===String(b.id)).cartonCount,30);
@@ -683,18 +685,18 @@ test('five thousand rows retain complete projections when five hundred rows are 
 });
 
 test('container formula settings are versioned and missing product volume remains unpriced',async()=>{
- const c=await service.createContainer(manager,{name:'FORMULA',truckName:'17.5m'});assert.equal(c.freight_mode,'formula');const r=await service.create(manager,{...input(),contId:c.id});const changed=await service.updateContainer(manager,c.id,{version:c.version,changes:{freightMode:'formula',freightBase:202000000,freightCapacity:170}});assert.equal(Number(changed.freight_base),202000000);await assert.rejects(service.updateContainer(manager,c.id,{version:changed.version,changes:{freightCapacity:0}}));assert.equal((await service.list(manager)).rows[0].freightAmount,r.freightAmount);
+ const c=await service.createContainer(manager,{name:'FORMULA',assumedM3:170});assert.equal(c.freight_mode,'formula');const r=await service.create(manager,{...input(),contId:c.id});const changed=await service.updateContainer(manager,c.id,{version:c.version,changes:{freightMode:'formula',freightBase:202000000,freightCapacity:170}});assert.equal(Number(changed.freight_base),202000000);await assert.rejects(service.updateContainer(manager,c.id,{version:changed.version,changes:{freightCapacity:0}}));assert.equal((await service.list(manager)).rows[0].freightAmount,r.freightAmount);
 });
 
-test('freight allocation shares manual container cost and refuses incomplete volumes',()=>{const model=require('../public/shared/purchase-freight');const rows=[{contId:1,cartonCount:2,m3PerCarton:2},{contId:1,cartonCount:3,m3PerCarton:2}],containers=[{id:1,freightMode:'manual',freight:1000}];let rates=model.rates(rows,containers);assert.deepEqual(rows.map(r=>model.rowAmount(r,rates)),[400,600]);rows[1].m3PerCarton=null;rates=model.rates(rows,containers);assert.equal(model.rowAmount(rows[0],rates),null);containers[0].freightMode='formula';rates=model.rates(rows,containers);assert.equal(model.rowAmount(rows[0],rates),4*202000000/170);assert.equal(model.rowAmount(rows[1],rates),null)});
+test('freight allocation shares manual container cost and formula falls back to actual volume',()=>{const model=require('../public/shared/purchase-freight');const rows=[{contId:1,cartonCount:2,m3PerCarton:2},{contId:1,cartonCount:3,m3PerCarton:2}],containers=[{id:1,freightMode:'manual',freight:1000}];let rates=model.rates(rows,containers);assert.deepEqual(rows.map(r=>model.rowAmount(r,rates)),[400,600]);rows[1].m3PerCarton=null;rates=model.rates(rows,containers);assert.equal(model.rowAmount(rows[0],rates),null);containers[0].freightMode='formula';rates=model.rates(rows,containers);assert.equal(model.rowAmount(rows[0],rates),4*202000000/4);assert.equal(model.rowAmount(rows[1],rates),null)});
 
-test('clearing container freight restores the standard volume formula',async()=>{const c=await service.createContainer(manager,{name:'CLEAR COST',truckName:'17.5m'});const manual=await service.updateContainer(manager,c.id,{version:c.version,changes:{freight:123,freightMode:'manual',freightBase:999,freightCapacity:2}});const auto=await service.updateContainer(manager,c.id,{version:manual.version,changes:{freight:null}});assert.equal(auto.freight_mode,'formula');assert.equal(Number(auto.freight_base),202000000);assert.equal(Number(auto.freight_capacity),170)});
+test('clearing container freight restores the standard volume formula',async()=>{const c=await service.createContainer(manager,{name:'CLEAR COST',assumedM3:170});const manual=await service.updateContainer(manager,c.id,{version:c.version,changes:{freight:123,freightMode:'manual',freightBase:999,freightCapacity:2}});const auto=await service.updateContainer(manager,c.id,{version:manual.version,changes:{freight:null}});assert.equal(auto.freight_mode,'formula');assert.equal(Number(auto.freight_base),202000000);assert.equal(Number(auto.freight_capacity),170)});
 
 test('saved Excel-style freight formulas reprice every child and the shared projection',async()=>{
- const c=await service.createContainer(manager,{name:'FORMULA INPUT',truckName:'17.5m'});
+ const c=await service.createContainer(manager,{name:'FORMULA INPUT',assumedM3:170});
  const row=await service.create(manager,{...input(),productCode:'FORMULA',m3PerCarton:.5,cartonCount:4});
  await service.transfer(manager,{id:row.id,version:row.version,quantity:row.cartonCount,destinationId:c.id});
- const formula='=(195000000+4*500*3920)/170*D2';
+ const formula='=(195000000+4*500*3920)/M3_XE';
  const changed=await service.updateContainer(manager,c.id,{version:c.version,changes:{freightFormula:formula}});
  assert.equal(changed.freight_formula,formula);
  assert.equal(changed.freight_mode,'formula');
@@ -713,16 +715,30 @@ test('saved Excel-style freight formulas reprice every child and the shared proj
  assert.equal(manual.freight_mode,'manual');assert.equal(manual.freight_formula,null);
 });
 
+test('clearing assumed m3 switches the freight formula denominator to actual stacked volume',async()=>{
+ const c=await service.createContainer(manager,{name:'ASSUMED FALLBACK',assumedM3:100});
+ const row=await service.create(manager,{...input(),productCode:'ASSUMED FALLBACK',m3PerCarton:2,cartonCount:10});
+ await service.transfer(manager,{id:row.id,version:row.version,quantity:row.cartonCount,destinationId:c.id});
+ let current=await service.updateContainer(manager,c.id,{version:c.version,changes:{freightFormula:'=100000/M3_XE'}});
+ let saved=(await service.list(manager)).rows.find(r=>r.productCode==='ASSUMED FALLBACK');
+ assert.equal(saved.freightAmount,20000);
+ current=await service.updateContainer(manager,c.id,{version:current.version,changes:{assumedM3:null}});
+ saved=(await service.exportRows(manager)).find(r=>r.productCode==='ASSUMED FALLBACK');
+ assert.equal(current.assumed_m3,null);assert.equal(saved.freightAmount,100000);
+ const projected=(await db.query("SELECT vietnam_price FROM product_container_lines WHERE product_code='ASSUMED FALLBACK'")).rows[0];
+ assert.ok(Math.abs(Number(projected.vietnam_price)-saved.netPrice)<1e-6,`${projected.vietnam_price} != ${saved.netPrice}`);
+});
+
   test('formula input can clear the previous manual amount in the same request',async()=>{
-   const c=await service.createContainer(manager,{name:'FORMULA CLEAR MANUAL',truckName:'17.5m'});
+   const c=await service.createContainer(manager,{name:'FORMULA CLEAR MANUAL',assumedM3:170});
    const manual=await service.updateContainer(manager,c.id,{version:c.version,changes:{freight:123456,freightMode:'manual'}});
-   const formula='=(195000000+4*500*3930)/170*D2';
+   const formula='=(195000000+4*500*3930)/M3_XE';
    const updated=await service.updateContainer(manager,c.id,{version:manual.version,changes:{freight:null,freightMode:'formula',freightFormula:formula}});
    assert.equal(updated.freight_formula,formula);assert.equal(updated.freight_mode,'formula');assert.equal(updated.freight,null);
   });
 
   test('a saved formula that turns invalid after m³ changes returns validation and rolls back the row edit',async()=>{
-   const c=await service.createContainer(manager,{name:'FORMULA RANGE',truckName:'17.5m'});
+   const c=await service.createContainer(manager,{name:'FORMULA RANGE',assumedM3:170});
    let row=await service.create(manager,{...input(),productCode:'FORMULA RANGE',m3PerCarton:.5,cartonCount:100});
    await service.transfer(manager,{id:row.id,version:row.version,quantity:row.cartonCount,destinationId:c.id});
    row=(await service.list(manager)).rows.find(item=>item.id===row.id);
@@ -733,13 +749,13 @@ test('saved Excel-style freight formulas reprice every child and the shared proj
   });
 
 test('container rejects unsupported or invalid freight formulas without changing the saved formula',async()=>{
- const c=await service.createContainer(manager,{name:'FORMULA VALIDATION',truckName:'17.5m'});
+ const c=await service.createContainer(manager,{name:'FORMULA VALIDATION',assumedM3:170});
  for(const formula of ['=WEBSERVICE("x")','M3_CONT*2'])await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,changes:{freightFormula:formula}}),e=>e.code==='VALIDATION_ERROR');
  const latest=(await service.list(manager)).containers.find(row=>String(row.id)===String(c.id));
  assert.equal(latest.freight_formula??null,null);
 });
 
-test('multi-row allocation, export and SQL projection agree through manual, formula and missing-volume cases',async()=>{const c=await service.createContainer(manager,{name:'PARITY',truckName:'17.5m'});for(const [i,volume] of [.1,.3,.000001].entries()){const r=await service.create(manager,{...input(),productCode:'PARITY'+i,m3PerCarton:volume,unitPriceCny:1.23456,freightPrepaid:.1,freightPostpaid:.2});await service.transfer(manager,{id:r.id,version:r.version,quantity:r.cartonCount,destinationId:c.id})}let version=c.version;for(const changes of [{freight:1234567},{freightMode:'formula',freightBase:202000000,freightCapacity:170}]){const updated=await service.updateContainer(manager,c.id,{version,changes});version=updated.version;const exported=await service.exportRows(manager),projection=(await db.query('SELECT product_code,vietnam_price FROM product_container_lines')).rows;for(const row of exported){const price=Number(projection.find(p=>p.product_code===row.productCode).vietnam_price);assert.ok(Math.abs(price-row.netPrice)<.000001);assert.equal(row.literDiff,null);assert.equal(row.totalCny,2469.22)}const freight=exported.reduce((n,r)=>n+r.freightAmount,0);if(changes.freight)assert.ok(Math.abs(freight-changes.freight)<.001)}const rows=(await service.list(manager)).rows;await service.update(manager,rows[0].id,{version:rows[0].version,before:{m3PerCarton:rows[0].m3PerCarton},changes:{m3PerCarton:null}});const manual=await service.updateContainer(manager,c.id,{version,changes:{freight:1000}});const exported=await service.exportRows(manager);assert.ok(exported.every(r=>r.freightAmount===null&&r.netPrice!=null));assert.ok((await db.query('SELECT vietnam_price FROM product_container_lines')).rows.every(r=>Number.isFinite(Number(r.vietnam_price))))});
+test('multi-row allocation, export and SQL projection agree through manual, formula and missing-volume cases',async()=>{const c=await service.createContainer(manager,{name:'PARITY',assumedM3:170});for(const [i,volume] of [.1,.3,.000001].entries()){const r=await service.create(manager,{...input(),productCode:'PARITY'+i,m3PerCarton:volume,unitPriceCny:1.23456,freightPrepaid:.1,freightPostpaid:.2});await service.transfer(manager,{id:r.id,version:r.version,quantity:r.cartonCount,destinationId:c.id})}let version=c.version;for(const changes of [{freight:1234567},{freightMode:'formula',freightBase:202000000,freightCapacity:170}]){const updated=await service.updateContainer(manager,c.id,{version,changes});version=updated.version;const exported=await service.exportRows(manager),projection=(await db.query('SELECT product_code,vietnam_price FROM product_container_lines')).rows;for(const row of exported){const price=Number(projection.find(p=>p.product_code===row.productCode).vietnam_price);assert.ok(Math.abs(price-row.netPrice)<.000001);assert.equal(row.literDiff,null);assert.equal(row.totalCny,2469.22)}const freight=exported.reduce((n,r)=>n+r.freightAmount,0);if(changes.freight)assert.ok(Math.abs(freight-changes.freight)<.001)}const rows=(await service.list(manager)).rows;await service.update(manager,rows[0].id,{version:rows[0].version,before:{m3PerCarton:rows[0].m3PerCarton},changes:{m3PerCarton:null}});const manual=await service.updateContainer(manager,c.id,{version,changes:{freight:1000}});const exported=await service.exportRows(manager);assert.ok(exported.every(r=>r.freightAmount===null&&r.netPrice!=null));assert.ok((await db.query('SELECT vietnam_price FROM product_container_lines')).rows.every(r=>Number.isFinite(Number(r.vietnam_price))))});
 test('unconfigured new buyer names are rejected and legacy names stay editable',async()=>{
  await assert.rejects(service.create(manager,{...input(),buyer:'Free text'}),e=>e.code==='EMPLOYEE_INVALID');
  const a=await service.create(manager,input());await db.query('UPDATE purchase_orders SET buyer=$2 WHERE id=$1',[a.id,'Legacy']);
@@ -802,20 +818,20 @@ test('imports validate catalog at preview, revision and commit without losing le
 });
 
 test('direct and plan new products always wait even with a requested container',async()=>{
- const c=await service.createContainer(manager,{name:'WAITING',truckName:'17.5m'});
+ const c=await service.createContainer(manager,{name:'WAITING',assumedM3:170});
  const a=await service.create(manager,{...input(),contId:c.id});assert.equal(a.contId,null);
  await service.applyPlan(manager,{creates:[{values:{...input(),productCode:'PLAN',contId:c.id,buyer:'Dung'}}]});
  assert.ok((await service.list(manager)).rows.every(r=>r.contId===null));
 });
 
 test('shared container edits propagate dates atomically, recalculate NET and preserve quantities and stock',async()=>{
- const c=await service.createContainer(manager,{name:'SHARED',truckName:'17.5m'});
+ const c=await service.createContainer(manager,{name:'SHARED',assumedM3:170});
  const waiting=await service.create(manager,{...input(),productCode:'WAIT'});
  for(const productCode of ['A','B']){const r=await service.create(manager,{...input(),productCode,m3PerCarton:.2,kgPerCarton:3});await service.transfer(manager,{id:r.id,version:r.version,quantity:r.cartonCount,destinationId:c.id})}
  const initial=(await service.list(manager)).rows.filter(r=>r.contId===String(c.id));const rows=initial.map(({id,version})=>({id,version}));
  const physical=initial.map(r=>[r.id,r.cartonCount,r.qtyPerCarton,r.kgPerCarton,r.m3PerCarton]);
- const changed=await service.updateContainer(manager,c.id,{version:c.version,rows,changes:{name:'SHARED RENAMED',truckName:'18.5m',carrier:'Carrier',loader:'Loader',nameCn:'中文',loading:'Tomorrow',arrivalNote:'2026-11-10T09:30',arrivalDate:'2026-11-12',maxTon:35,m3Min:150,m3Max:180,freight:1000000}});
- assert.equal(changed.version,2);assert.equal(changed.truck_name,'18.5m');assert.equal(Number(changed.max_ton),35);
+ const changed=await service.updateContainer(manager,c.id,{version:c.version,rows,changes:{name:'SHARED RENAMED',assumedM3:185,carrier:'Carrier',loader:'Loader',nameCn:'中文',loading:'Tomorrow',arrivalNote:'2026-11-10T09:30',arrivalDate:'2026-11-12',maxTon:35,m3Min:150,m3Max:180,freight:1000000}});
+ assert.equal(changed.version,2);assert.equal(Number(changed.assumed_m3),185);assert.equal(Number(changed.max_ton),35);
  const updated=(await service.list(manager)).rows.filter(r=>r.contId===String(c.id));assert.deepEqual(updated.map(r=>[r.id,r.cartonCount,r.qtyPerCarton,r.kgPerCarton,r.m3PerCarton]),physical);
  for(const r of updated){assert.equal(r.version,3);assert.equal(r.etaNote,'2026-11-10T09:30');assert.equal(r.arrivedNote,'2026-11-12');assert.equal(r.freightAmount,500000)}
  assert.equal((await service.latest(manager,'WAIT')).version,waiting.version);
@@ -830,15 +846,15 @@ test('shared container edits propagate dates atomically, recalculate NET and pre
 });
 
 test('shared container optimistic conflicts and validation roll back every row, container, audit and event',async()=>{
- const c=await service.createContainer(manager,{name:'ATOMIC',truckName:'17.5m'}),a=await service.create(manager,input());
+ const c=await service.createContainer(manager,{name:'ATOMIC',assumedM3:170}),a=await service.create(manager,input());
  const r=(await service.transfer(manager,{id:a.id,version:a.version,quantity:a.cartonCount,destinationId:c.id})).row;
  let signals=0;const listener=()=>signals++;events.on('purchase-orders-changed',listener);
  try{
   const changes={arrivalNote:'2026-11-10',name:'Must not persist'};
   for(const rows of [undefined,[],[{id:r.id,version:1}],[{id:r.id,version:r.version},{id:r.id,version:r.version}]])await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,changes,rows}),e=>e.code==='VERSION_CONFLICT');
   await assert.rejects(service.updateContainer(manager,c.id,{version:999,changes,rows:[r]}),e=>e.code==='VERSION_CONFLICT');
-  for(const changes of [{maxTon:0},{m3Min:200,m3Max:100},{truckName:'x'.repeat(81)},{ton:100},{m3:100},{count:1},{arrivalDate:'2026-02-30'},{arrivalNote:'sometime'}])await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,rows:[r],changes}),e=>e.statusCode===400);
-  const other=await service.createContainer(manager,{name:'DUPLICATE',truckName:'17.5m'});signals=0;
+  for(const changes of [{maxTon:0},{m3Min:200,m3Max:100},{assumedM3:-1},{ton:100},{m3:100},{count:1},{arrivalDate:'2026-02-30'},{arrivalNote:'sometime'}])await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,rows:[r],changes}),e=>e.statusCode===400);
+  const other=await service.createContainer(manager,{name:'DUPLICATE',assumedM3:170});signals=0;
   await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,rows:[r],changes:{arrivalDate:'2026-11-11',name:other.name}}),e=>e.code==='CONTAINER_EXISTS');
   assert.equal(signals,0);assert.equal((await service.latest(manager,'A')).version,r.version);assert.equal((await service.latest(manager,'A')).arrivedNote,null);
   assert.equal((await db.query('SELECT name,version FROM product_containers WHERE id=$1',[c.id])).rows[0].name,'ATOMIC');
@@ -858,7 +874,7 @@ test('isolated catalog writes emit only purchase realtime and retain audit',asyn
 });
 
 test('shared container edits reject membership changed after the editor opened',async()=>{
- const c=await service.createContainer(manager,{name:'MEMBERSHIP',truckName:'17.5m'}),a=await service.create(manager,input()),b=await service.create(manager,{...input(),productCode:'B'});
+ const c=await service.createContainer(manager,{name:'MEMBERSHIP',assumedM3:170}),a=await service.create(manager,input()),b=await service.create(manager,{...input(),productCode:'B'});
  const first=(await service.transfer(manager,{id:a.id,version:a.version,quantity:a.cartonCount,destinationId:c.id})).row;
  await service.transfer(manager,{id:b.id,version:b.version,quantity:b.cartonCount,destinationId:c.id});
  await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,rows:[first],changes:{arrivalDate:'2026-11-12'}}),e=>e.code==='VERSION_CONFLICT');
@@ -866,7 +882,7 @@ test('shared container edits reject membership changed after the editor opened',
 });
 
 test('container lifecycle shows HĐ and NHĐ without changing shipment status and supports trash restore',async()=>{
- const container=await service.createContainer(manager,{name:'LIFECYCLE CONT',truckName:'17.5m'});
+ const container=await service.createContainer(manager,{name:'LIFECYCLE CONT',assumedM3:170});
  const product=await service.create(manager,input());const assigned=await service.transfer(manager,{id:product.id,version:product.version,quantity:product.cartonCount,destinationId:container.id});
  const inactive=await service.deactivateContainer(manager,{id:container.id,version:container.version});
  assert.ok(inactive.inactive_at);assert.equal(inactive.status,1);

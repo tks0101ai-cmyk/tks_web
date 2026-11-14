@@ -23,9 +23,9 @@ const CONTAINER_PREFIX = 'MẪU — ';
 // Bon cont phu cac truong hop dang xem: cuoc tu tinh, cuoc nhap tay, da ve,
 // va hang chua xep cont (container_id NULL, khong can dong cont nao).
 const CONTAINERS = Object.freeze([
-  { key: 'a', name: CONTAINER_PREFIX + 'Cont 01', status: 2, truck: 'Xe 17.5', freightMode: 'formula', freight: null, carrier: 'BAT+A SỰ', loader: 'Anh Dũng' },
-  { key: 'b', name: CONTAINER_PREFIX + 'Cont 02', status: 3, truck: 'Xe 18.5', freightMode: 'manual', freight: 185000000, carrier: 'TÂN PHÁT', loader: 'Anh Hùng' },
-  { key: 'c', name: CONTAINER_PREFIX + 'Cont 03 (đã về)', status: 4, truck: 'Xe 17.5', freightMode: 'formula', freight: null, carrier: 'BAT+A SỰ', loader: 'Anh Dũng' },
+  { key: 'a', name: CONTAINER_PREFIX + 'Cont 01', status: 2, assumedM3: 170, freightMode: 'formula', freight: null, carrier: 'BAT+A SỰ', loader: 'Anh Dũng' },
+  { key: 'b', name: CONTAINER_PREFIX + 'Cont 02', status: 3, assumedM3: 170, freightMode: 'manual', freight: 185000000, carrier: 'TÂN PHÁT', loader: 'Anh Hùng' },
+  { key: 'c', name: CONTAINER_PREFIX + 'Cont 03 (đã về)', status: 4, assumedM3: 170, freightMode: 'formula', freight: null, carrier: 'BAT+A SỰ', loader: 'Anh Dũng' },
 ]);
 
 // Dong mau: du so do -> tinh duoc het chi so; thieu so do -> hien canh bao;
@@ -58,10 +58,10 @@ async function seedSampleData({ pool = getPool(), logger = console, manageTransa
     const ids = new Map();
     for (const c of CONTAINERS) {
       const { rows } = await client.query(
-        `INSERT INTO product_containers(name,name_key,status,truck_name,freight,carrier,loader,freight_mode)
+        `INSERT INTO product_containers(name,name_key,status,assumed_m3,freight,carrier,loader,freight_mode)
          VALUES($1,$8,$2,$3,$4,$5,$6,$7)
          ON CONFLICT(name_key) DO UPDATE SET status=EXCLUDED.status RETURNING id`,
-        [c.name, c.status, c.truck, c.freight, c.carrier, c.loader, c.freightMode, normalizeName(c.name)]
+        [c.name, c.status, c.assumedM3, c.freight, c.carrier, c.loader, c.freightMode, normalizeName(c.name)]
       );
       ids.set(c.key, rows[0].id);
     }

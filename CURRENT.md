@@ -51,5 +51,5 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 - [ ] 13/11 — Nháp VAT: tài khoản VIB QUÂN số `044345` (6 số, ngắn bất thường) — hỏi người phụ trách; sai thì sửa `server/vatDraft/vatDraftConfig.js`
 
 ---
-Cập nhật: 13/11/2026
-- [ ] 14/11 — Thu mua: công thức cước cont trực tiếp tại ô Tiền VC (migration `0126`) — 120 test liên quan xanh; full `npm test` dừng do test workflow prototype dùng gần 2 GB RAM, graphify không có trong môi trường; cần kiểm staging/copy DB trước khi deploy; chưa áp production
+Cập nhật: 14/11/2026
+- [ ] 14/11 — Thu mua: chuyển Loại xe sang m³ giả định, tính cước theo m³ giả định/m³ đang xếp và đổi Thuế thành Phụ phí % (migrations `0127`–`0128`) — hoàn tất code; test trọng tâm và UI mock đạt, chờ kiểm staging rồi người vận hành áp migration/deploy

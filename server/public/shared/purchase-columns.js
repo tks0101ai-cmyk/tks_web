@@ -347,11 +347,11 @@
     "d": 1
   },
   {
-    "k": "taxAmount",
-    "l": "Thuế",
+    "k": "surchargePercent",
+    "l": "Phụ phí",
     "cn": "",
     "g": "Giá về",
-    "t": "money",
+    "t": "pct",
     "w": 95,
     "v": 0,
     "e": 1

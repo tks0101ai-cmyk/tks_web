@@ -476,7 +476,7 @@ Trạng thái: mockup cục bộ, chưa có API Thu mua, chưa tạo/chạy migr
 - Thêm mã lấy lần lên list gần nhất, không giới hạn thời gian; mỗi lần lưu tạo dòng mới ở hàng chờ.
 - Xe 17,5m và 18,5m: 32T, dải 160–170 m³; cảnh báo mềm. Hàng chưa đến điểm gom vẫn được lập kế hoạch cont.
 - Tách một lá thành khóa cũ+.01 (giữ lại) và khóa cũ+.02 (phần tách), giữ nguyên ID nội bộ, rootKey dùng truy gia đình. Chỉ cộng các lá hiện hành; khóa trước tách không còn hợp lệ để import, không tự ánh xạ vào nhánh .01.
-- VC trước/VC sau/Tiền VC nhập tay; sau tách để trống ở hai nhánh, giữ ảnh chụp giá trị cũ để đối chiếu. Giá NET theo VK-DUNG: (Tiền hàng + Tiền VC mã + Thuế + VC sau CNY × 3,920) / Tổng SL; giá hàng dùng tỉ giá dòng, hằng 3,920 chỉ áp dụng VC sau. Chi phí trống được coi là 0 trong NET; cước cont được phân bổ vào giá vốn dòng theo m³.
+- VC trước/VC sau/Tiền VC nhập tay; sau tách để trống ở hai nhánh, giữ ảnh chụp giá trị cũ để đối chiếu. Giá NET theo VK-DUNG: (Tiền hàng + Tiền VC mã + Phụ phí theo % tổng tiền hàng CNY + VC sau CNY × 3,920) / Tổng SL; giá hàng dùng tỉ giá dòng, hằng 3,920 chỉ áp dụng VC sau. Chi phí trống được coi là 0 trong NET; cước cont được phân bổ vào giá vốn dòng theo m³.
 - Xuất thiếu tạo nhánh .02 ở hàng chờ, phần xuất giữ ở .01; không tạo nhánh khi chuyển cả dòng. Lưu ảnh chụp xác nhận xuất độc lập với dữ liệu chỉnh sửa sau xuất.
 - Trạng thái 4 chỉ ghi ngày về thực tế, kho nhận, người xác nhận và lịch sử; không nhận đủ, không đối chiếu Kiot, không cộng tồn hay tự khóa giá.
 - Sửa sau xuất được phép; lọc/sắp xếp/chọn/bản nháp riêng từng phiên. Sửa khác trường có thể cùng ghi nếu các trường đích chưa đổi; cùng trường thì báo xung đột. Mockup chưa có SSE/presence thật.
@@ -493,7 +493,7 @@ Trạng thái: mockup cục bộ, chưa có API Thu mua, chưa tạo/chạy migr
 
 ### Những điểm chỉ người dùng có thể chốt
 - Cách chọn rõ thao tác xóa ô khi import; ô trống mặc định giữ nguyên. Chính sách lỗi đã chốt: không ghi gì nếu còn lỗi hoặc xung đột.
-- Danh sách trường/công thức giá vốn cuối cùng, cách nhập lại chi phí sau tách; kiểm lại Thuế vì các tab nguồn có công thức khác nhau.
+- Danh sách trường/công thức giá vốn cuối cùng, cách nhập lại chi phí sau tách; đối chiếu cách nhập phụ phí phần trăm với workbook nguồn.
 - Nguồn Sheet chuẩn để seed: VK-DUNG/THÊM DÒNG MỚI có chênh lệch; tổng cấp cont và tổng dòng khác nhau cần xác định ý nghĩa số khai báo/thực đo.
 - Ai có quyền xem/sửa/xuất/import, ai xác nhận xuất/về, danh sách kho nhận.
 - Tiêu chí gợi ý xếp cont và quy chuẩn mốc tiến độ NCC: chưa tự áp dụng.
@@ -780,4 +780,11 @@ Cập nhật cuối: 13/11/2026.
 
 ## Thu mua — công thức cước cont do người dùng chỉnh (14/11/2026)
 Cho phép nhập biểu thức Excel-style trực tiếp tại ô Tiền VC của cont. Lưu biểu thức tối đa 512 ký tự, parser an toàn chỉ nhận số học, `D2`/`M3_CONT` (tổng m³ cont), `M3_XE`, và `SUM`/`ROUND`/`MIN`/`MAX`/`ABS`; không dùng `eval`. Công thức cho tổng cước cont hiện tại; kết quả chia tổng m³ thành VC/m³, rồi cùng phép chiếu phân bổ cước dòng và NET trong thao tác thay đổi. Số tiền nhập trực tiếp tiếp tục là chế độ thủ công. Migration `0126_purchase_container_freight_formula.sql` thêm trường công thức, được nạp khi khởi tạo schema Thu mua. Test unit/service/projection/UI phải xác nhận parser, lưu/sửa chế độ, m³ đổi, từ chối kết quả không hợp lệ kèm rollback và công thức hiển thị khi focus.
+Cập nhật gần nhất: 14/11/2026.
+
+## Thu mua — m³ giả định và phụ phí (14/11/2026)
+Thay phân loại Loại xe bằng Tổng m³ giả định trên cont. Bắt buộc nhập khi tạo cont; cột Tổng m³ đang xếp vẫn phản ánh hàng thực tế. Công thức Tiền VC dùng m³ giả định làm mẫu số cho tới khi người dùng xóa; khi đó mẫu số đổi sang m³ đang xếp. Từng mã tiếp tục nhận VC theo m³ thực tế của mã. Phụ phí nhập theo % (giao diện nhập số phần trăm, API lưu phân số) và nhân với tiền hàng CNY của cùng mã rồi nhân tỉ giá dòng trước khi tính NET.
+
+Migrations `0127_purchase_container_assumed_m3.sql` và `0128_purchase_surcharge_percent.sql` tự đăng ký trong schema Thu mua; migration thứ hai bỏ `tax_amount` theo yêu cầu. Unit/service/projection/UI test và UAT giao diện mô phỏng đã kiểm tạo cont bắt nhập m³ giả định, xóa giá trị để chuyển mẫu số, phụ phí theo phần trăm và NET. Cần kiểm trên staging sau khi có schema; chưa áp migration production/deploy.
+
 Cập nhật gần nhất: 14/11/2026.

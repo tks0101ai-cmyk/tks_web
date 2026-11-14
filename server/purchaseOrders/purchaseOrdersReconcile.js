@@ -1,7 +1,7 @@
 'use strict';
 const columns=require('../public/shared/purchase-columns');
 const calculations=require('../public/shared/purchase-calculations');
-const compareFields=['productCode','container','status','cartonCount','qtyPerCarton','unitPriceCny','freightPrepaid','freightPostpaid','fxRate','kgPerCarton','m3PerCarton','literWarehouse','gramWarehouse','taxAmount'];
+const compareFields=['productCode','container','status','cartonCount','qtyPerCarton','unitPriceCny','freightPrepaid','freightPostpaid','fxRate','kgPerCarton','m3PerCarton','literWarehouse','gramWarehouse','surchargePercent'];
 function reconcile(source,target){
  const problems=[],differences=[];
  function index(snapshot,label){const result=new Map();for(const row of snapshot.rows||[]){if(!row.rowKey){problems.push({source:label,code:'MISSING_KEY',productCode:row.productCode});continue}if(result.has(row.rowKey))problems.push({source:label,code:'DUPLICATE_KEY',rowKey:row.rowKey});result.set(row.rowKey,row)}return result}
