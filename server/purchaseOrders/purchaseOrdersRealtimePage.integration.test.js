@@ -123,7 +123,7 @@ test('pristine focused input retains its original comparison value/version when 
  const input=doc.querySelector('[data-edit="supplier"]');assert.equal(doc.activeElement,input);assert.equal(input.value,'Old');assert.match(input.closest('td').title,/Remote/);
  input.value='My edit';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,260));assert.equal(p.drafts()['1'].before.supplier,'Old');assert.equal(p.drafts()['1'].version,4);
 });
-test('input burst debounces cont/task rebuilds while keeping draft and totals current',async t=>{
+test('input burst recalculates derived values immediately and batches summary rendering to one frame',async t=>{
  const p=await page(t),doc=p.w.document,row=p.data.rows[0];row.kgPerCarton=10;row.m3PerCarton=.1;p.listeners.changed();await tick();await tick();
  doc.querySelector('#containerTable [data-container-filter="2"]').click();
  const frames=new Map();let frameId=0;p.w.requestAnimationFrame=callback=>{const id=++frameId;frames.set(id,callback);return id};p.w.cancelAnimationFrame=id=>frames.delete(id);
@@ -131,14 +131,14 @@ test('input burst debounces cont/task rebuilds while keeping draft and totals cu
  watch(doc.getElementById('containerTable'),'containers');watch(doc.getElementById('purchaseTaskBar'),'tasks');
  const input=doc.querySelector('[data-edit="cartonCount"]');input.focus();
  for(const value of ['11','12','13']){input.value=value;input.dispatchEvent(new p.w.Event('input',{bubbles:true}))}
- assert.deepEqual(countWrites,{containers:0,tasks:0},'input burst must not rebuild summary DOM synchronously');await new Promise(resolve=>setTimeout(resolve,260));
- assert.deepEqual(countWrites,{containers:1,tasks:1},'one debounced update rebuilds each summary once');assert.equal(p.drafts()['1'].changes.cartonCount,13);const values=[...doc.querySelector('#containerTable [data-container-filter="2"]').closest('tr').querySelectorAll('td.num')].slice(0,3).map(td=>td.textContent);assert.deepEqual(values,['1','0.13','1.30']);
+ assert.deepEqual(countWrites,{containers:0,tasks:0},'derived values update without rebuilding summary tables');assert.equal(doc.querySelector('#orderTable [data-field="totalM3"]')?.textContent,'1.30','dependent volume calculation updates during input');assert.equal(doc.querySelector('#containerTable [data-container-filter="2"]').closest('tr').cells[4].textContent,'1.30','container m3 updates in place during input');for(const [id,callback] of [...frames]){frames.delete(id);callback(0)}
+ assert.deepEqual(countWrites,{containers:0,tasks:1},'summary task panel is refreshed once per frame without rebuilding container rows');const values=[...doc.querySelector('#containerTable [data-container-filter="2"]').closest('tr').querySelectorAll('td.num')].slice(0,3).map(td=>td.textContent);assert.deepEqual(values,['1','0.13','1.30']);
  assert.match(doc.querySelector('#purchaseTaskBar strong').textContent,/0\.13 \/ 32 T · 1\.30 \/ 170 m³/);
 });
-test('commit announces saving while the write is pending',async t=>{
+test('commit sync stays silent while the write is pending',async t=>{
  const p=await page(t),doc=p.w.document,input=doc.querySelector('[data-edit="supplier"]');input.focus();input.value='Saved supplier';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));input.dispatchEvent(new p.w.Event('change',{bubbles:true}));doc.getElementById('save').click();
  let resolveWrite;const write=new Promise(resolve=>{resolveWrite=resolve}),fetch=p.w.fetch;p.w.fetch=async(url,options={})=>url==='/api/purchase-orders/1'&&options.method==='PATCH'?write:fetch(url,options);
- const commit=doc.getElementById('commit');commit.click();await tick();assert.equal(commit.disabled,true);assert.equal(commit.getAttribute('aria-busy'),'true');assert.match(commit.textContent,/Đang lưu/);assert.equal(doc.querySelector('#modal [role="status"]')?.textContent,'Đang lưu thay đổi…');assert.equal(doc.getElementById('modal').open,true);
+ const commit=doc.getElementById('commit');commit.click();await tick();assert.equal(commit.disabled,true);assert.equal(commit.hasAttribute('aria-busy'),false);assert.equal(commit.textContent,'Lưu thay đổi');assert.equal(doc.querySelector('#modal [role="status"]')?.textContent,'');assert.equal(doc.getElementById('notice').textContent,'');assert.equal(doc.getElementById('modal').open,true);
  resolveWrite({ok:true,json:async()=>({})});for(let i=0;i<5;i++)await tick();
 });
 test('successful save closes without a sync toast and later applies authoritative row delta',async t=>{
