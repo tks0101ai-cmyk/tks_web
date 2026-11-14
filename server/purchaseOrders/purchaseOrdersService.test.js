@@ -429,12 +429,12 @@ test('failure while updating read models rolls back rows and audit and emits no 
   events.removeAllListeners();
 });
 
-test('scheduling preserves freight while a manual container amount reallocates by volume',async()=>{
+test('scheduling preserves freight while a manual container amount allocates using assumed m3',async()=>{
   const row=await service.create(manager,{...input(),m3PerCarton:.2}),cont=await service.createContainer(manager,{name:'CONT A',assumedM3:170});
   await service.transfer(manager,{id:row.id,version:1,quantity:100,destinationId:cont.id});
   await service.schedule(manager,{containerId:cont.id,version:1,loading:'DK 05/11 bốc'});
   await service.updateContainer(manager,cont.id,{version:2,changes:{freight:99999999,name:'CONT NEW'}});
-  assert.equal((await service.list(manager)).rows[0].freightAmount,99999999);
+  assert.ok(Math.abs((await service.list(manager)).rows[0].freightAmount-99999999*20/170)<1e-7);
   assert.equal((await db.query('SELECT container_name FROM product_container_lines')).rows[0].container_name,'CONT NEW');
 });
 test('bulk saves independent rows, reports conflicts individually, and emits one audit entry',async()=>{
@@ -476,8 +476,8 @@ test('server export uses volume allocation consistently with row NET',async()=>{
   await service.transfer(manager,{id:row.id,version:1,quantity:100,destinationId:cont.id});
   await service.updateContainer(manager,cont.id,{version:1,changes:{freight:999999}});
   const exported=(await service.exportRows(manager))[0];
-  assert.equal(exported.container,'CONT A');assert.equal(exported.totalQty,2000);assert.equal(exported.freightAmount,999999);
-  assert.equal(exported.netPrice,(4000*3920+999999)/2000);
+  assert.equal(exported.container,'CONT A');assert.equal(exported.totalQty,2000);assert.equal(exported.freightAmount,999999*20/170);
+  assert.equal(exported.netPrice,(4000*3920+999999*20/170)/2000);
 });
 
 test('periodic expected-arrivals refresh preserves canonical names for products not yet in Kiot',async()=>{
@@ -755,7 +755,7 @@ test('container rejects unsupported or invalid freight formulas without changing
  assert.equal(latest.freight_formula??null,null);
 });
 
-test('multi-row allocation, export and SQL projection agree through manual, formula and missing-volume cases',async()=>{const c=await service.createContainer(manager,{name:'PARITY',assumedM3:170});for(const [i,volume] of [.1,.3,.000001].entries()){const r=await service.create(manager,{...input(),productCode:'PARITY'+i,m3PerCarton:volume,unitPriceCny:1.23456,freightPrepaid:.1,freightPostpaid:.2});await service.transfer(manager,{id:r.id,version:r.version,quantity:r.cartonCount,destinationId:c.id})}let version=c.version;for(const changes of [{freight:1234567},{freightMode:'formula',freightBase:202000000,freightCapacity:170}]){const updated=await service.updateContainer(manager,c.id,{version,changes});version=updated.version;const exported=await service.exportRows(manager),projection=(await db.query('SELECT product_code,vietnam_price FROM product_container_lines')).rows;for(const row of exported){const price=Number(projection.find(p=>p.product_code===row.productCode).vietnam_price);assert.ok(Math.abs(price-row.netPrice)<.000001);assert.equal(row.literDiff,null);assert.equal(row.totalCny,2469.22)}const freight=exported.reduce((n,r)=>n+r.freightAmount,0);if(changes.freight)assert.ok(Math.abs(freight-changes.freight)<.001)}const rows=(await service.list(manager)).rows;await service.update(manager,rows[0].id,{version:rows[0].version,before:{m3PerCarton:rows[0].m3PerCarton},changes:{m3PerCarton:null}});const manual=await service.updateContainer(manager,c.id,{version,changes:{freight:1000}});const exported=await service.exportRows(manager);assert.ok(exported.every(r=>r.freightAmount===null&&r.netPrice!=null));assert.ok((await db.query('SELECT vietnam_price FROM product_container_lines')).rows.every(r=>Number.isFinite(Number(r.vietnam_price))))});
+test('multi-row allocation, export and SQL projection agree through manual, formula and missing-volume cases',async()=>{const c=await service.createContainer(manager,{name:'PARITY',assumedM3:170});for(const [i,volume] of [.1,.3,.000001].entries()){const r=await service.create(manager,{...input(),productCode:'PARITY'+i,m3PerCarton:volume,unitPriceCny:1.23456,freightPrepaid:.1,freightPostpaid:.2});await service.transfer(manager,{id:r.id,version:r.version,quantity:r.cartonCount,destinationId:c.id})}let version=c.version;for(const changes of [{freight:1234567},{freightMode:'formula',freightBase:202000000,freightCapacity:170}]){const updated=await service.updateContainer(manager,c.id,{version,changes});version=updated.version;const exported=await service.exportRows(manager),projection=(await db.query('SELECT product_code,vietnam_price FROM product_container_lines')).rows;for(const row of exported){const price=Number(projection.find(p=>p.product_code===row.productCode).vietnam_price);assert.ok(Math.abs(price-row.netPrice)<.000001);assert.equal(row.literDiff,null);assert.equal(row.totalCny,2469.22)}const freight=exported.reduce((n,r)=>n+r.freightAmount,0);if(changes.freight){const volume=exported.reduce((sum,r)=>sum+(r.totalM3||0),0);assert.ok(Math.abs(freight-changes.freight*volume/170)<.001)}}const rows=(await service.list(manager)).rows;await service.update(manager,rows[0].id,{version:rows[0].version,before:{m3PerCarton:rows[0].m3PerCarton},changes:{m3PerCarton:null}});const manual=await service.updateContainer(manager,c.id,{version,changes:{freight:1000}});const exported=await service.exportRows(manager);assert.ok(exported.some(r=>r.m3PerCarton==null&&r.freightAmount===null));assert.ok(exported.filter(r=>r.m3PerCarton>0).every(r=>r.freightAmount!=null&&r.netPrice!=null));assert.ok(exported.every(r=>r.netPrice!=null));assert.ok((await db.query('SELECT vietnam_price FROM product_container_lines')).rows.every(r=>Number.isFinite(Number(r.vietnam_price))))});
 test('unconfigured new buyer names are rejected and legacy names stay editable',async()=>{
  await assert.rejects(service.create(manager,{...input(),buyer:'Free text'}),e=>e.code==='EMPLOYEE_INVALID');
  const a=await service.create(manager,input());await db.query('UPDATE purchase_orders SET buyer=$2 WHERE id=$1',[a.id,'Legacy']);
@@ -833,9 +833,9 @@ test('shared container edits propagate dates atomically, recalculate NET and pre
  const changed=await service.updateContainer(manager,c.id,{version:c.version,rows,changes:{name:'SHARED RENAMED',assumedM3:185,carrier:'Carrier',loader:'Loader',nameCn:'中文',loading:'Tomorrow',arrivalNote:'2026-11-10T09:30',arrivalDate:'2026-11-12',maxTon:35,m3Min:150,m3Max:180,freight:1000000}});
  assert.equal(changed.version,2);assert.equal(Number(changed.assumed_m3),185);assert.equal(Number(changed.max_ton),35);
  const updated=(await service.list(manager)).rows.filter(r=>r.contId===String(c.id));assert.deepEqual(updated.map(r=>[r.id,r.cartonCount,r.qtyPerCarton,r.kgPerCarton,r.m3PerCarton]),physical);
- for(const r of updated){assert.equal(r.version,3);assert.equal(r.etaNote,'2026-11-10T09:30');assert.equal(r.arrivedNote,'2026-11-12');assert.equal(r.freightAmount,500000)}
+ for(const r of updated){assert.equal(r.version,3);assert.equal(r.etaNote,'2026-11-10T09:30');assert.equal(r.arrivedNote,'2026-11-12');assert.ok(Math.abs(r.freightAmount-1000000*20/185)<1e-7)}
  assert.equal((await service.latest(manager,'WAIT')).version,waiting.version);
- const exported=(await service.exportRows(manager)).filter(r=>r.contId===String(c.id));assert.ok(exported.every(r=>r.container==='SHARED RENAMED'&&r.netPrice===(4000*3920+500000)/2000));
+ const exported=(await service.exportRows(manager)).filter(r=>r.contId===String(c.id));assert.ok(exported.every(r=>r.container==='SHARED RENAMED'&&r.netPrice===(4000*3920+1000000*20/185)/2000));
  const projection=(await db.query("SELECT container_name,vietnam_price FROM product_container_lines WHERE product_code IN ('A','B')")).rows;assert.ok(projection.every(r=>r.container_name==='SHARED RENAMED'&&Number(r.vietnam_price)===exported[0].netPrice));
  assert.equal(Number((await db.query('SELECT on_hand FROM kiot_test_stock')).rows[0].on_hand),99);
  const history=(await db.query("SELECT summary FROM purchase_history WHERE action='container_edit'")).rows[0].summary;assert.equal(history.rows.length,2);assert.equal(history.before.name,'SHARED');assert.equal(history.after.name,'SHARED RENAMED');

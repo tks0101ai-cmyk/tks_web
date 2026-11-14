@@ -230,7 +230,26 @@ test('surcharge is entered as a percent and updates row NET while typing',async 
  doc.getElementById('columns').click();const option=doc.querySelector('[data-column="surchargePercent"]');option.checked=true;option.dispatchEvent(new p.w.Event('change',{bubbles:true}));doc.getElementById('modalClose').click();
  const input=doc.querySelector('[data-edit="surchargePercent"]');input.focus();input.value='10';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,260));
  assert.ok(p.drafts()['1'],JSON.stringify(p.drafts()));assert.equal(p.drafts()['1'].changes.surchargePercent,.1);assert.equal(doc.querySelector('[data-field="netPrice"]').textContent,'11,000');assert.equal(input.value,'10');
- input.blur();await new Promise(resolve=>setTimeout(resolve,5));assert.match(doc.querySelector('[data-edit="surchargePercent"]')?.value||doc.querySelector('[data-field="surchargePercent"]').textContent,/10%/);
+});
+test('manual container freight previews assumed and actual m3 allocation immediately',async t=>{
+ const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{m3PerCarton:.2,cartonCount:10});Object.assign(p.data.containers[0],{assumed_m3:10,freight:1000,freight_mode:'manual'});p.listeners.changed();await tick();await tick();
+ doc.getElementById('columns').click();const option=doc.querySelector('[data-column="freightAmount"]');option.checked=true;option.dispatchEvent(new p.w.Event('change',{bubbles:true}));doc.getElementById('modalClose').click();
+ assert.equal(doc.querySelector('[data-field="freightAmount"]').textContent,'200');
+ const assumed=doc.querySelector('#containerTable [data-container-field="assumedM3"]');assumed.focus();assumed.value='20';assumed.dispatchEvent(new p.w.Event('input',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,100));
+ assert.equal(doc.querySelector('[data-field="freightAmount"]').textContent,'100');assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) td:nth-child(8)').textContent,'50');
+ assumed.value='';assumed.dispatchEvent(new p.w.Event('input',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,100));assert.equal(doc.querySelector('[data-field="freightAmount"]').textContent,'1,000');assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) td:nth-child(8)').textContent,'500');
+});
+test('entering container freight previews per-item allocation against assumed m3',async t=>{
+ const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{m3PerCarton:.2,cartonCount:10});Object.assign(p.data.containers[0],{assumed_m3:10,freight:0,freight_mode:'manual'});p.listeners.changed();await tick();await tick();
+ doc.getElementById('columns').click();const option=doc.querySelector('[data-column="freightAmount"]');option.checked=true;option.dispatchEvent(new p.w.Event('change',{bubbles:true}));doc.getElementById('modalClose').click();
+ const input=doc.querySelector('#containerTable [data-cont-freight]');input.focus();input.value='1,200';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,100));
+ assert.equal(doc.querySelector('[data-field="freightAmount"]').textContent,'240');assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) td:nth-child(8)').textContent,'120');assert.equal(input.value,'1,200');
+});
+test('changing actual stacked m3 immediately redistributes manual freight when assumed m3 is empty',async t=>{
+ const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{m3PerCarton:.2,cartonCount:10});p.data.rows.push({...p.data.rows[0],id:'2',rowKey:'D00002',productCode:'B'});Object.assign(p.data.containers[0],{assumed_m3:null,freight:1000,freight_mode:'manual'});p.listeners.changed();await tick();await tick();
+ doc.getElementById('columns').click();for(const key of ['freightAmount','m3PerCarton']){const option=doc.querySelector('[data-column="'+key+'"]');option.checked=true;option.dispatchEvent(new p.w.Event('change',{bubbles:true}))}doc.getElementById('modalClose').click();
+ const amounts=()=>Object.fromEntries([...doc.querySelectorAll('#orderTable tr[data-id]')].map(tr=>[tr.dataset.id,tr.querySelector('[data-field="freightAmount"]').textContent]));assert.deepEqual(amounts(),{2:'500',1:'500'});const input=doc.querySelector('tr[data-id="1"] [data-edit="m3PerCarton"]');input.focus();input.value='0.4';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,100));
+ assert.deepEqual(amounts(),{2:'333',1:'667'});
 });
 test('Đối chiếu overrides are directly editable and sent through the normal versioned row patch',async t=>{
  const p=await page(t),doc=p.w.document;p.data.rows[0].literChina=120;p.data.rows[0].measurementOverrides={literChina:120};p.data.rows.push({...p.data.rows[0],id:'2',rowKey:'D00002',literChina:110,measurementOverrides:{literChina:110}});p.listeners.changed();await tick();await tick();

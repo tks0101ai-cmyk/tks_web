@@ -1373,7 +1373,7 @@ Kết quả `.codex_tmp/purchase-load-20-results.json`; mã thoát 0: chức nă
 
 ## Thu mua — NET theo VK-DUNG (11/11/2026)
 
-`purchase-calculations.js` và `purchaseOrdersProjection.js` tính NET = (Tiền hàng + Tiền VC mã + Phụ phí theo % tiền hàng CNY + VC sau CNY × 3,920) / Tổng SL. Tiền hàng dùng tỉ giá theo dòng; hằng 3,920 chỉ dùng cho VC sau. Chi phí trống được tính là 0 trong NET; kết quả NET vẫn có thể hiển thị khi chưa có phân bổ VC mã.
+`purchase-calculations.js` và `purchaseOrdersProjection.js` tính NET = (Tiền hàng + Tiền VC mã + Phụ phí theo % của Tiền hàng + VC sau CNY × 3,920) / Tổng SL. Hằng 3,920 chỉ dùng cho VC sau. Chi phí trống được tính là 0 trong NET; kết quả NET vẫn có thể hiển thị khi chưa có phân bổ VC mã.
 
 Tổng tệ trên bảng Đặt hàng làm tròn đơn vị mặc định; bấm hoặc kích hoạt nút bằng bàn phím sẽ hiện 3 chữ số thập phân ngay trong ô, khi mất focus trả về số làm tròn. Không mở hộp thoại và không đổi giá trị tính toán/ghi dữ liệu.
 
@@ -1456,7 +1456,7 @@ Cập nhật cuối: 13/11/2026.
 ## Thu mua — m³ giả định và phụ phí (migrations 0127–0128, 14/11/2026)
 - Khi tạo cont, bắt buộc nhập Tổng m³ giả định. Bảng Chỉ số cont hiển thị riêng Tổng m³ giả định và Tổng m³ đang xếp (thể tích hàng thực tế). Xóa m³ giả định sẽ chuyển mẫu số cước sang m³ đang xếp.
 - Công thức ở ô Tiền VC được tính thành VC/m³ bằng cách chia biểu thức cho m³ giả định; nếu giá trị giả định đã xóa thì chia cho m³ đang xếp. `M3_XE` tham chiếu mẫu số đang hiệu lực. Thay đổi m³ sẽ tính lại VC/m³, phần VC phân bổ theo thể tích thực tế từng dòng và Giá NET. Nhập số thường vẫn là tổng cước thủ công.
-- Đặt hàng ưu tiên m³ giả định cho quy đổi cước cont; khi xóa giá trị giả định, hệ thống tự dùng thể tích đang xếp. Phụ phí nhận số phần trăm (ví dụ nhập `5` là 5%), tính trên tổng tiền hàng CNY của dòng rồi quy đổi theo tỉ giá dòng để vào Giá NET.
+- Đặt hàng ưu tiên m³ giả định làm mẫu số chia tiền VC cont; khi xóa giá trị giả định, hệ thống dùng m³ đang xếp. Tiền VC từng mã = m³ của mã × (tiền VC cont / m³ mẫu số). Phụ phí nhận số phần trăm (ví dụ nhập `5` là 5%) nhân với cột Tiền hàng; Giá NET cộng Tiền hàng, Tiền VC từng mã, Phụ phí và VC sau rồi chia Tổng SL.
 - `0127_purchase_container_assumed_m3.sql` thêm `product_containers.assumed_m3`; `0128_purchase_surcharge_percent.sql` xóa `purchase_orders.tax_amount` theo yêu cầu và thêm `surcharge_percent`. Cả hai được đăng ký trong `ensurePurchaseSchema.FILES`. Migrations mới đã có trong mã nhưng chưa áp production; không deploy trong bước này.
 
 Cập nhật gần nhất: 14/11/2026.

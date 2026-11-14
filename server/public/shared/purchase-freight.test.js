@@ -22,3 +22,14 @@ test('invalid stored container formulas produce no freight rate',()=>{
  assert.equal(fee.rate,null);
  assert.equal(fee.amount,null);
 });
+
+test('manual container freight divides by assumed m3 first and actual stacked m3 after clearing it',()=>{
+ const rows=[{contId:1,cartonCount:2,m3PerCarton:2},{contId:1,cartonCount:2,m3PerCarton:4}],container={id:1,freightMode:'manual',freight:1200,assumedM3:100};let rates=Freight.rates(rows,[container]);
+ assert.equal(rates.get('1'),12);assert.deepEqual(rows.map(r=>Freight.rowAmount(r,rates)),[48,96]);
+ const actual=Freight.calculate({...container,assumedM3:null},12);assert.equal(actual.rate,100);rates=Freight.rates(rows,[{...container,assumedM3:null}]);assert.equal(rates.get('1'),100);assert.deepEqual(rows.map(r=>Freight.rowAmount(r,rates)),[400,800]);
+});
+
+test('manual assumed volume still provides a rate for measured lines when another line lacks m3',()=>{
+ const rows=[{contId:1,cartonCount:2,m3PerCarton:2},{contId:1,cartonCount:1,m3PerCarton:null}],rates=Freight.rates(rows,[{id:1,freightMode:'manual',freight:1000,assumedM3:100}]);
+ assert.equal(rates.get('1'),10);assert.equal(Freight.rowAmount(rows[0],rates),40);assert.equal(Freight.rowAmount(rows[1],rates),null);
+});
