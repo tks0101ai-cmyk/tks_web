@@ -30,7 +30,7 @@ async function projectContainers(client) {
       o.qty_per_carton AS units_per_package,o.carton_count AS package_count,
       o.qty_per_carton*o.carton_count AS quantity,
       CASE WHEN o.fx_rate>0 AND o.qty_per_carton>0 AND o.carton_count>0 AND o.unit_price_cny IS NOT NULL
-        THEN ((o.qty_per_carton*o.carton_count*o.unit_price_cny+COALESCE(o.freight_prepaid,0))*o.fx_rate+COALESCE(cost.freight,0)+((o.qty_per_carton*o.carton_count*o.unit_price_cny+COALESCE(o.freight_prepaid,0))*o.fx_rate*COALESCE(o.surcharge_percent,0))+COALESCE(o.freight_postpaid,0)*3920)/NULLIF(o.qty_per_carton*o.carton_count,0)
+        THEN ((o.qty_per_carton*o.carton_count*o.unit_price_cny+COALESCE(o.freight_prepaid,0))*o.fx_rate+COALESCE(cost.freight,0)+COALESCE(o.freight_postpaid,0)*3920)/NULLIF(o.qty_per_carton*o.carton_count,0)
         ELSE NULL END AS vietnam_price,
       o.unit_price_cny,COALESCE(o.buy_note,'') AS other_note
     FROM purchase_orders o LEFT JOIN product_containers c ON c.id=o.container_id

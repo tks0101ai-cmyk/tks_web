@@ -39,6 +39,6 @@ test('projectContainers and exportRows agree for optional signed prepaid and mis
   const out=exported.find(r=>r.productCode===label),sql=projected.find(r=>r.product_code===label);
   assert.equal(out.totalCny,total,label+' totalCny');assert.equal(out.goodsAmount,total==null?null:total*3920,label+' goodsAmount');
   if(total==null){assert.equal(out.netPrice,null,label);assert.equal(sql.vietnam_price,null,label);}
-  else{const net=(total*3920+(out.freightAmount||0)+(out.surchargeAmount||0)+(Number(row.freightPostpaid)||0)*3920)/1200;assert.equal(out.netPrice,net,label);assert.ok(Math.abs(Number(sql.vietnam_price)-net)<1e-7,label+' SQL parity');}
+  else{const net=(total*3920+(out.freightAmount||0)+(Number(row.freightPostpaid)||0)*3920)/1200;assert.equal(out.netPrice,net,label);assert.ok(Math.abs(Number(sql.vietnam_price)-net)<1e-7,label+' SQL parity');}
  }
 });
