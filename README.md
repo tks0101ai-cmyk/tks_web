@@ -625,3 +625,10 @@ Cập nhật gần nhất: 14/11/2026.
 - `0127_purchase_container_assumed_m3.sql` thêm `product_containers.assumed_m3`; `0128_purchase_surcharge_percent.sql` xóa `purchase_orders.tax_amount` theo yêu cầu và thêm `surcharge_percent`. Cả hai được đăng ký trong `ensurePurchaseSchema.FILES`. Migrations mới đã có trong mã nhưng chưa áp production; không deploy trong bước này.
 
 Cập nhật gần nhất: 14/11/2026.
+
+
+## Thu mua — cước cont và vùng (14/11/2026)
+
+Đơn giá cont giữ tổng chi phí nhập; VC/m³ bằng tổng chi phí chia cho m³ giả định hoặc m³ đang xếp khi m³ giả định trống. Phụ phí % nhận giá trị âm/dương và tính trên Tiền hàng của mã. Chỉ số cont có đơn giá quy đổi, tổng phụ phí, ghi chú; danh sách vùng hỗ trợ gán vùng cho đơn/cont, nhóm cont chờ xếp và lọc vùng. Migrations 0129–0130 đã được đăng ký, cần xác minh staging trước production.
+
+Cập nhật gần nhất: 14/11/2026.

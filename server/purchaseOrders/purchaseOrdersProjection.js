@@ -2,7 +2,7 @@
 const { randomUUID } = require('node:crypto');
 const expected = require('../productContainers/expectedRefresh').__test__;
 const freightModel = require('../public/shared/purchase-freight');
-const LABELS = { 1: '1.Chưa có lịch', 2: '2.Chưa bốc', 3: '3.Đã bốc', 4: '4.Đã về' };
+const LABELS = { 1: '1.Chưa xếp', 2: '2.Chưa bốc', 3: '3.Đã bốc', 4: '4.Đã về' };
 async function projectContainers(client) {
   // Called inside the same locked transaction as canonical changes. Legacy
   // readers keep their contract and never write back into the canonical tables.
@@ -23,7 +23,7 @@ async function projectContainers(client) {
       COALESCE(c.id,0)::integer AS container_row,o.id::integer AS source_row,
       o.product_code,lower(btrim(o.product_code)) AS product_key,
       COALESCE(c.name,'CONT CHỜ XẾP') AS container_name,COALESCE(c.status,1)::smallint AS status,
-      CASE COALESCE(c.status,1) WHEN 1 THEN '1.Chưa có lịch' WHEN 2 THEN '2.Chưa bốc' WHEN 3 THEN '3.Đã bốc' ELSE '4.Đã về' END AS status_label,
+      CASE COALESCE(c.status,1) WHEN 1 THEN '1.Chưa xếp' WHEN 2 THEN '2.Chưa bốc' WHEN 3 THEN '3.Đã bốc' ELSE '4.Đã về' END AS status_label,
       COALESCE(c.arrival_date::text,NULLIF(c.arrival_note,''),'') AS eta,
       COALESCE(o.color,'') AS color,COALESCE(o.sale_note,'') AS sale_note,
       COALESCE(o.buyer,'') AS ordered_by,COALESCE(o.listed_at::text,'') AS listed_at,

@@ -22,8 +22,9 @@ test('prepaid freight accepts a negative amount while every other money column d
   assert.ok(Number.isFinite(d.netPrice));
   assert.deepEqual(C.issues(r),[],'khong con bao loi vi so am');
   assert.ok(C.issues({...row,freightPostpaid:-1}).includes('freightPostpaid'),'VC sau van khong am');
-  assert.ok(C.issues({...row,surchargePercent:-1}).includes('surchargePercent'));
-  assert.deepEqual([...C.SIGNED],['freightPrepaid']);
+  assert.deepEqual(C.issues({...row,surchargePercent:-.1}),[]);
+  assert.equal(C.row({...row,surchargePercent:-.1},null).surchargeAmount,-638960);
+  assert.deepEqual([...C.SIGNED],['freightPrepaid','surchargePercent']);
 });
 test('numeric expressions respect precedence and reject code, invalid syntax and division by zero',()=>{
  const {evaluate}=require('./purchase-calculations');

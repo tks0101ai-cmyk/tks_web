@@ -1302,11 +1302,12 @@ Cập nhật cuối: 13/11/2026.
 - Migration `0126_purchase_container_freight_formula.sql` thêm `product_containers.freight_formula`, đăng ký trong `ensurePurchaseSchema.FILES`. Cần kiểm staging trước khi áp vào production; chưa deploy.
 Cập nhật gần nhất: 14/11/2026.
 
-## Thu mua — m³ giả định và phụ phí (14/11/2026)
-- Khi tạo cont, `assumedM3` là bắt buộc và phải lớn hơn 0. Khi sửa, giá trị có thể để trống để xóa giả định. Cont cũ không được backfill.
-- Bảng Chỉ số cont hiển thị `Tổng m³ đang xếp` từ tổng `m3PerCarton × cartonCount` và `Tổng m³ giả định` từ cont. Bỏ nhãn Loại xe khỏi bộ lọc và bảng.
-- Ở chế độ công thức, mẫu số hiệu lực là `assumed_m3` nếu có, nếu không là tổng m³ đang xếp. `M3_XE` trỏ tới mẫu số này; `D2`/`M3_CONT` tiếp tục trỏ tới tổng m³ thực tế cho tương thích công thức cũ. Tiền VC dạng công thức là đơn giá/m³; từng dòng nhận `m³ dòng thực tế × đơn giá/m³`. Cước thủ công tiếp tục được phân bổ theo m³ thực tế.
-- Thuế được thay bằng `surchargePercent`: người dùng nhập số phần trăm (5 nghĩa là 5%), lưu tỷ lệ thập phân `0.05`. Phụ phí = tổng tiền hàng CNY của dòng × tỷ lệ × tỉ giá dòng; không cộng VC trước vào cơ sở phụ phí. Giá NET và SQL projection phải khớp.
-- Migrations `0127` và `0128` được đăng ký ở `ensurePurchaseSchema`; `0128` xóa cột dữ liệu thuế cũ theo yêu cầu. Chưa áp production.
+## Thu mua — chi phí cont, phụ phí có dấu và vùng (14/11/2026)
+
+- Tổng chi phí nhập ở cột Đơn giá cont là kết quả số hoặc biểu thức nhập. VC/m³ = tổng chi phí / m³ ưu tiên (m³ giả định nếu còn, nếu trống thì m³ đang xếp). Ô chỉnh sửa vẫn cho xem biểu thức gốc; thay đổi m³ lập tức cập nhật VC/m³ và tiền vận chuyển phân bổ cho từng mã.
+- Phụ phí cho phép nhập phần trăm âm hoặc dương. Giá trị sau khi nhập hiển thị thành tiền phụ phí = phần trăm × Tiền hàng của dòng; không cộng phụ phí vào Tổng tệ hoặc Giá NET.
+- Chỉ số cont bỏ cột Dòng, đổi nhãn Tiền VC thành Đơn giá cont, thêm Đơn giá quy đổi = Đơn giá cont − tổng phụ phí và cột Phụ phí tổng hợp theo đơn hàng của cont. Trạng thái Chưa có lịch hiển thị Chưa xếp.
+- Mỗi cont có ghi chú mở từ nút trong bảng và lưu giữa các lần mở. Danh sách vùng cho phép thêm tên/màu, gán vùng cho đơn mới và cont mới; mã chờ xếp được hiển thị riêng theo vùng. Mã SP đã có trước tự điền vùng của lần đặt gần nhất. Bộ lọc vùng có ở bảng đặt hàng và bảng chỉ số cont.
+- Migrations 0129–0130 bổ sung vùng/ghi chú và cho phép phần trăm phụ phí âm. Cần xác minh staging trước khi áp vào production.
 
 Cập nhật gần nhất: 14/11/2026.

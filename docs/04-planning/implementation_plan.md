@@ -789,3 +789,10 @@ Thay phân loại Loại xe bằng Tổng m³ giả định trên cont. Bắt bu
 Migrations `0127_purchase_container_assumed_m3.sql` và `0128_purchase_surcharge_percent.sql` tự đăng ký trong schema Thu mua; migration thứ hai bỏ `tax_amount` theo yêu cầu. Unit/service/projection/UI test và UAT giao diện mô phỏng đã kiểm tạo cont bắt nhập m³ giả định, xóa giá trị để chuyển mẫu số, phụ phí theo phần trăm và NET. Cần kiểm trên staging sau khi có schema; chưa áp migration production/deploy.
 
 Cập nhật gần nhất: 14/11/2026.
+
+
+## Thu mua — hoàn thiện đơn giá cont và vùng (14/11/2026)
+
+Triển khai migration 0129 (danh mục vùng, vùng đơn hàng/cont và ghi chú cont) và 0130 (cho phép phụ phí phần trăm âm). Đơn giá cont lưu tổng chi phí, VC/m³ lấy tổng chi phí chia cho m³ giả định hoặc m³ đang xếp; phân bổ xuống mã theo m³ thực tế. Bảng chỉ số bỏ Dòng, có Đơn giá quy đổi và phụ phí tổng hợp; danh sách vùng, chọn vùng ở đơn/cont, cont chờ xếp tách theo vùng và bộ lọc vùng ở hai bảng. Còn cần chạy kiểm thử liên quan, kiểm staging rồi áp migration và deploy theo quy trình vận hành.
+
+Cập nhật gần nhất: 14/11/2026.

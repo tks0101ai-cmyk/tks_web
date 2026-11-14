@@ -718,3 +718,10 @@ Cập nhật gần nhất: 14/11/2026.
 Người dùng tạo cont với Tổng m³ giả định để dự tính cước. Khi đang xếp hàng, hệ thống theo dõi Tổng m³ đang xếp từ số đo và số thùng của từng mã. Cước/m³ dùng m³ giả định cho tới khi người dùng xóa giá trị này; sau đó chuyển sang m³ đang xếp. Phụ phí thay Thuế, được nhập theo phần trăm và tính trên tổng tiền hàng CNY của từng mã.
 
 Cập nhật gần nhất: 14/11/2026.
+
+
+## Thu mua — chi phí vận chuyển, phụ phí và quản lý vùng (14/11/2026)
+
+Người dùng nhập tổng chi phí vận chuyển theo cont, có thể là số hoặc biểu thức. Hệ thống giữ chi phí gốc ở Đơn giá cont và tính VC/m³ theo m³ giả định; khi bỏ m³ giả định, dùng m³ đang xếp. Chi phí vận chuyển từng mã thay đổi theo VC/m³ và m³ thực tế của mã. Phụ phí nhận phần trăm âm/dương, hiển thị thành số tiền trên Tiền hàng của mã. Bảng chỉ số cont cần trình bày tổng phụ phí và đơn giá quy đổi, ghi chú, trạng thái Chưa xếp. Người dùng quản lý vùng và màu, gán vùng khi tạo đơn/cont, phân biệt cont chờ xếp theo vùng và lọc vùng trong cả hai bảng.
+
+Cập nhật gần nhất: 14/11/2026.

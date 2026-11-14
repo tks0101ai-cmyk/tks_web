@@ -1039,9 +1039,14 @@ Cập nhật gần nhất: 13/11/2026.
 `product_containers.freight_formula TEXT NULL`, tối đa 512 ký tự. Khi có công thức, `freight_mode='formula'`, biểu thức lưu ở cột này và được đánh giá theo tổng m³ cont hiện hoạt (`D2`/`M3_CONT`) cùng sức chứa xe (`M3_XE`); khi không có công thức, cách tính chuẩn theo `freight_base/freight_capacity` không đổi. Chuyển sang cước nhập tay xóa biểu thức; migration chỉ thêm cột, không backfill hoặc sửa dữ liệu cước hiện có. Đăng ký trong `ensurePurchaseSchema.FILES`; chưa xác minh DB staging/production.
 Cập nhật gần nhất: 14/11/2026.
 
-## Thu mua — m³ giả định và phụ phí (migrations 0127–0128, 14/11/2026)
-`0127_purchase_container_assumed_m3.sql` thêm `product_containers.assumed_m3 NUMERIC NULL` với CHECK lớn hơn 0 khi có giá trị; API tạo cont yêu cầu trường dương, cập nhật nhận giá trị dương hoặc `null` để xóa. Không backfill cont cũ. Khi tính cước công thức, `M3_XE` là `assumed_m3` nếu có, nếu không là tổng m³ của các dòng đang xếp; cước/m³ được phân bổ theo m³ thực tế từng dòng. Công thức cũ tham chiếu `D2`/`M3_CONT` vẫn được nhận như tổng cước tương thích.
+## Thu mua — cước tổng, vùng cont và ghi chú (migrations 0127–0130, 14/11/2026)
 
-`0128_purchase_surcharge_percent.sql` xóa `purchase_orders.tax_amount` và thêm `surcharge_percent NUMERIC CHECK (surcharge_percent >= 0)`. Giá trị API/DB là tỷ lệ thập phân (5% lưu `0.05`); giao diện nhập `5` và hiển thị `5%`. Phụ phí dòng = cột Tiền hàng VND × tỷ lệ; NET và projection dùng phép tính chung. Migration đăng ký trong `ensurePurchaseSchema.FILES`; cần áp dụng đúng thứ tự sau 0127. Chưa xác minh DB staging/production.
+- `product_containers.assumed_m3` là mẫu số ưu tiên khi còn giá trị; khi để trống, dùng m³ đang xếp. `freight` hoặc kết quả `freight_formula` là tổng chi phí cont nhập vào. `VC/m³ = tổng chi phí / m³ ưu tiên`; phân bổ xuống từng mã theo m³ thực tế của mã. `Đơn giá cont` hiển thị tổng chi phí, không phải VC/m³.
+- `purchase_orders.surcharge_percent` nhận phần trăm dương hoặc âm. Phụ phí của mã = tỷ lệ × Tiền hàng của mã; không đổi các cột Tổng tệ hay Giá NET.
+- `purchase_regions` lưu tên, màu, trạng thái hoạt động và phiên bản vùng. `purchase_orders.region_id` giữ vùng đơn hàng đang chờ xếp; `product_containers.region_id` giữ vùng cont; `product_containers.note` lưu ghi chú cont. Xóa vùng bị chặn bằng trạng thái ngừng dùng, còn các đơn/cont cũ giữ liên kết.
+- `0129_purchase_regions_and_container_notes.sql` tạo danh mục vùng và thêm region/note vào đơn hàng, cont. `0130_purchase_surcharge_signed.sql` bỏ CHECK không âm của `surcharge_percent`, giữ dữ liệu phần trăm đã có.
+- Trên giao diện, bảng chỉ số bỏ cột Dòng, đổi Tiền VC thành Đơn giá cont, thêm Đơn giá quy đổi = Đơn giá cont − tổng phụ phí và tổng Phụ phí theo cont; trạng thái 1 hiển thị Chưa xếp. Hai bảng hỗ trợ lọc vùng; cont chờ xếp được nhóm theo vùng. Ghi chú được sửa qua popup.
+
+Migrations `0127`–`0130` đã đăng ký trong `ensurePurchaseSchema.FILES`; cần kiểm tra staging và áp dụng migration theo thứ tự trước khi deploy production.
 
 Cập nhật gần nhất: 14/11/2026.

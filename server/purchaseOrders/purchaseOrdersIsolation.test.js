@@ -167,3 +167,19 @@ test('the source sheet is readable through the API but is not a writable field',
   assert.equal(after.source_sheet, 'YIWU', 'xuat xu khong bi sua');
   assert.equal(Number(after.source_row), 12);
 });
+
+test('order and container regions persist without making the region an import column', async () => {
+  const region = (await db.query("INSERT INTO purchase_regions(name,name_key,color) VALUES('V','v','#1188AA') RETURNING id")).rows[0];
+  const created = await service.create(manager, { ...input(), regionId: String(region.id) });
+  assert.equal(created.regionId, String(region.id));
+  const container = await service.createContainer(manager, { name: 'CONT V-1', assumedM3: 170, regionId: String(region.id) });
+  const containerId = String(container.id);
+  assert.equal(String(container.region_id), String(region.id));
+  const row = (await db.query('SELECT version FROM purchase_orders WHERE id=$1', [created.id])).rows[0];
+  await service.transfer(manager, { id: created.id, version: Number(row.version), quantity: 100, destinationId: containerId });
+  const transferred = (await db.query('SELECT region_id,container_id FROM purchase_orders WHERE id=$1', [created.id])).rows[0];
+  assert.equal(String(transferred.region_id), String(region.id));
+  assert.equal(String(transferred.container_id), containerId);
+  const result = await service.saveRegions(manager, { entries: [{ id: String(region.id), version: 1, name: 'V', color: '#1188AA', isActive: true }] });
+  assert.equal(result.rows[0].name, 'V');
+});

@@ -52,4 +52,4 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 
 ---
 Cập nhật: 14/11/2026
-- [ ] 14/11 — Thu mua: chuyển Loại xe sang m³ giả định, tính cước theo m³ giả định/m³ đang xếp và đổi Thuế thành Phụ phí % (migrations `0127`–`0128`) — hoàn tất code; test trọng tâm và UI mock đạt, chờ kiểm staging rồi người vận hành áp migration/deploy
+- [ ] 14/11 — Thu mua: tách tổng chi phí cont khỏi VC/m³, cho phụ phí % âm/dương; thêm Đơn giá quy đổi, ghi chú cont, danh mục/lọc vùng và cont chờ xếp theo vùng (migrations `0127`–`0130`) — kiểm thử liên quan, xác minh staging rồi người vận hành áp migration/deploy

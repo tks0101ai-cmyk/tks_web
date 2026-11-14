@@ -1460,3 +1460,10 @@ Cập nhật cuối: 13/11/2026.
 - `0127_purchase_container_assumed_m3.sql` thêm `product_containers.assumed_m3`; `0128_purchase_surcharge_percent.sql` xóa `purchase_orders.tax_amount` theo yêu cầu và thêm `surcharge_percent`. Cả hai được đăng ký trong `ensurePurchaseSchema.FILES`. Migrations mới đã có trong mã nhưng chưa áp production; không deploy trong bước này.
 
 Cập nhật gần nhất: 14/11/2026.
+
+
+## Thu mua — cập nhật 14/11/2026
+
+Schema Thu mua đăng ký migrations 0129 (vùng đơn/cont và ghi chú cont) và 0130 (phụ phí % âm/dương) trong `db/ensurePurchaseSchema.js`. API vùng: `GET /api/purchase-orders/regions`, `PUT /api/purchase-orders/regions/batch`; API tạo cont nhận `regionId`, cập nhật cont nhận `note` và `regionId`. API danh sách Thu mua trả thêm `regions`. Cước cont là tổng chi phí nhập; `VC/m³ = tổng chi phí / m³ giả định nếu có, nếu không dùng m³ đang xếp`. Trạng thái cont 1 hiển thị `Chưa xếp`. Cần xác minh các migration trên staging trước production.
+
+Cập nhật gần nhất: 14/11/2026.
