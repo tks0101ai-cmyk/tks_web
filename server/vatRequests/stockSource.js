@@ -160,6 +160,9 @@ function createStockSource({ readValues, config = defaultStockConfig(), now, log
   const cache = createTtlSnapshotCache({
     freshTtlMs: 10 * 60 * 1000,
     staleTtlMs: 6 * 60 * 60 * 1000,
+    // Het 10 phut: tra ngay ban dang co va doc lai NGAM (nguoi dung khong cho Google Sheets; file goc VAT TKS
+    // co luc mat 1-2 phut). Chi lan dau sau khi khoi dong (chua co ban nao) moi phai cho.
+    backgroundRefresh: true,
     ...(now ? { now } : {}),
     fetch: async () => {
       const read = (source, fallbackSource, sheetName) => fetchSheetRecordsWithFallback({

@@ -236,3 +236,27 @@ test('ORDER VAT máy chủ cũ (không totalRows): tìm / sắp / đổi trang t
   assert.equal(lists(calls).length, 1, 'không tải lại');
   assert.deepEqual(ids(doc), [149]);
 });
+
+// 14/11/2026: máy chủ trả danh sách trước khi đọc xong Tồn VAT (Google Sheets chậm sau khi web khởi động lại).
+test('Tồn VAT đang tải: báo "đang tải" (không báo lỗi), tự tải lại khi rảnh; có số rồi thì thôi tải lại', async t => {
+  const all = Array.from({ length: 3 }, (_, i) => row(i + 1));
+  let loading = true;
+  const { doc, calls } = await setup(t, { handler: call => {
+    if (call.key !== 'GET /') return { status: 200, data: {} };
+    const data = serverPage(all, call.query);
+    data.stockStatus = loading
+      ? { available: false, loading: true, error: 'Đang tải tồn VAT từ Google Sheets (file nguồn đang chậm). Cột Tồn VAT sẽ có ở lần tải sau.' }
+      : { available: true, stale: false, loadedAt: '2026-11-14T03:00:00Z' };
+    return { status: 200, data };
+  } });
+  assert.equal(lists(calls).length, 1);
+  assert.match(doc.getElementById('vrSource').textContent, /Đang tải tồn VAT/);
+  assert.equal(doc.getElementById('vrSource').dataset.kind, 'warn');
+  assert.equal(ids(doc).length, 3, 'danh sách hiện ngay');
+  loading = false;
+  await wait(10300); await settle();
+  assert.equal(lists(calls).length, 2, 'tự tải lại 1 lần sau ~10 giây');
+  assert.match(doc.getElementById('vrSource').textContent, /Tồn VAT lấy từ Google Sheets/);
+  await wait(10300); await settle();
+  assert.equal(lists(calls).length, 2, 'đã có Tồn VAT: không tải lại nữa');
+});

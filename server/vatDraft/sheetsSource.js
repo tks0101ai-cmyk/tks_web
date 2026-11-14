@@ -186,7 +186,31 @@ function sheetError(message, code) {
  * @param {{ source: { spreadsheetId, sheetId, range? }, sheetName: string, readValues?: Function }} args
  *   readValues(source) gia lap duoc trong test.
  */
-async function fetchSheetRecords({ source, sheetName, readValues = readSheetValuesById }) {
+// Nhap VAT, Tra cuu VAT va ORDER VAT doc CUNG cac tab (Gộp VAT, Khớp mã; file goc khi file trung gian hong)
+// voi cache rieng: lan doc trung tab dang chay / vua xong (<= SHARED_READ_MS) dung chung 1 ket qua thay vi
+// goi Google them lan nua (file goc VAT TKS co the mat hang chuc giay moi lan). Chi ap cho bo doc mac dinh.
+const SHARED_READ_MS = 60 * 1000;
+const sharedReads = new Map(); // JSON(source) -> { promise, at }
+function sharedReadSheetValues(source) {
+  const key = JSON.stringify(source);
+  const now = Date.now();
+  for (const [entryKey, entry] of sharedReads) if (entry.settled && now - entry.at > SHARED_READ_MS) sharedReads.delete(entryKey);
+  const hit = sharedReads.get(key);
+  if (hit) return hit.promise;
+  const entry = { at: now, settled: false };
+  entry.promise = readSheetValuesById(source).then(values => {
+    entry.settled = true;
+    entry.at = Date.now();
+    return values;
+  }, error => {
+    if (sharedReads.get(key) === entry) sharedReads.delete(key); // loi khong giu lai: lan sau doc moi
+    throw error;
+  });
+  sharedReads.set(key, entry);
+  return entry.promise;
+}
+
+async function fetchSheetRecords({ source, sheetName, readValues = sharedReadSheetValues }) {
   let values;
   try {
     values = await readValues(source);
@@ -230,7 +254,7 @@ function describeBrokenRecords(records) {
  * Ca hai deu hong: nem loi cua file goc kem ly do file trung gian (503 code cua file goc,
  * hoac SHEET_REF_ERROR khi file goc doc duoc nhung cung hong).
  */
-async function fetchSheetRecordsWithFallback({ source, fallbackSource, sheetName, minColumns = 0, refErrorCode = 'SHEET_REF_ERROR', readValues = readSheetValuesById, logger = console }) {
+async function fetchSheetRecordsWithFallback({ source, fallbackSource, sheetName, minColumns = 0, refErrorCode = 'SHEET_REF_ERROR', readValues = sharedReadSheetValues, logger = console }) {
   let reason;
   let primaryRecords = null;
   try {
@@ -312,6 +336,9 @@ function createMasterDataSource({ readValues, config = vatDraftConfig, now, logg
   const cache = createTtlSnapshotCache({
     freshTtlMs: 10 * 60 * 1000,
     staleTtlMs: 6 * 60 * 60 * 1000,
+    // Het 10 phut: tra ngay ban dang co va doc lai NGAM (nguoi dung khong cho Google Sheets; file goc VAT TKS
+    // co luc mat 1-2 phut). Chi lan dau sau khi khoi dong (chua co ban nao) moi phai cho.
+    backgroundRefresh: true,
     ...(now ? { now } : {}),
     fetch: async () => {
       const read = (key, sheetName, letters) => fetchSheetRecordsWithFallback({

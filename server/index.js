@@ -162,6 +162,19 @@ async function startServer() {
   app.listen(CONFIG.PORT, () => {
     console.log(`TOKOSI dashboard server dang chay tren port ${CONFIG.PORT}`);
 
+    // Lam nong cache Google Sheets cua 3 trang VAT (ORDER VAT / Nhap VAT / Tra cuu VAT) o nen: lan doc dau co
+    // the mat 1-2 phut khi file trung gian loi va phai doc file goc VAT TKS. VAT_SHEETS_WARMUP=off de tat.
+    if (String(process.env.VAT_SHEETS_WARMUP || '').toLowerCase() !== 'off' && typeof routes.warmUpVatSheets === 'function') {
+      const timer = setTimeout(() => {
+        const started = Date.now();
+        routes.warmUpVatSheets().then(results => {
+          const failed = results.filter(result => result.status === 'rejected').length;
+          console.log(`[vat-sheets] Lam nong cache xong sau ${Date.now() - started} ms${failed ? ` (${failed} nguon loi, se doc lai khi co nguoi mo trang)` : ''}.`);
+        });
+      }, 2000);
+      if (timer.unref) timer.unref();
+    }
+
     if (CONFIG.HR_LEAVE_DB_REALTIME_ENABLED) createLeaveDbRealtime().start();
     const managerLeaveRuntime = getConfiguredManagerLeaveRuntime();
     if (managerLeaveRuntime) managerLeaveRuntime.start();

@@ -147,6 +147,7 @@ Mở `http://localhost:3000`.
 | `HR_LEAVE_DB_REALTIME_ENABLED` | Cầu thay đổi Postgres → SSE của HR, mặc định `true`, độc lập với công tắc bot |
 | `SPECIAL_DAYS_NOTIFY_ENABLED` | Báo ngày lễ/sinh nhật lên chuông thông báo; mặc định `true`, `false` để tắt |
 | `EXPORT_EXCEL_WORKER` | Dựng file Excel xuất (`POST /api/export`) trong worker thread để không chặn web; mặc định bật, `off` để dựng trong luồng chính |
+| `VAT_SHEETS_WARMUP` | Đọc trước Google Sheets của 3 trang VAT (ORDER VAT / Nhập VAT / Tra cứu VAT) ngay sau khi web khởi động để người mở đầu tiên không phải chờ; mặc định bật, `off` để tắt |
 | `EXPECTED_ARRIVALS_CACHE` | Cache trang `GET /api/expected-arrivals` theo version bảng tính sẵn (gom request trùng, trả bản cũ khi làm mới nền); mặc định bật, `off` để mỗi request chạy SQL như cũ |
 | `VAT_REQUEST_NOTIFY_ENABLED` | Báo chuông cho sale ~10 phút sau khi kế toán ngừng sửa yêu cầu ORDER VAT của họ; mặc định `true`, `false` để tắt (cần migration `0080`) |
 | `BACKGROUND_JOBS` | `inline` (mặc định): job nền chạy chung web; `worker`: web chỉ nghe sự kiện, job chạy ở `npm run worker` (`worker.js`) |
@@ -595,6 +596,19 @@ Log sáng 13/11 (08:00–10:30): `GET /api/expected-arrivals` là chỗ chậm n
 Không đổi schema/dependency/API. Biến môi trường mới (tùy chọn): `EXPECTED_ARRIVALS_CACHE`.
 
 Cập nhật cuối: 13/11/2026.
+
+## Hiệu năng đợt 6: 3 trang VAT không chờ Google Sheets, xuất Excel Dự kiến hàng về chạy worker (14/11/2026)
+
+Log 14/11: từ ~10:45, các tab của file trung gian "cúc cu test" chỉ còn `#REF!` nên mỗi lần làm mới, web đọc thẳng file gốc VAT TKS (~4 triệu ô). Mỗi lần đọc có thể hết 45 s và thư viện Google còn tự thử lại 3 lần, nên mất ~136 s. Trong lúc đó ORDER VAT (`GET /api/vat-requests`), Tra cứu VAT (`/meta`, `/search`) và Nhập VAT (`/allocate`, `/master-data/status`) đều đứng chờ 82–138 s. Hôm nay có 5 lần deploy trong giờ làm việc, mỗi lần xóa cache nên lại phải đọc lại từ đầu.
+- Đọc Sheets theo sheetId không tự thử lại nữa (chờ tối đa bằng timeout của nguồn); 3 trang đọc trùng tab thì dùng chung 1 lần gọi (giữ kết quả 60 s).
+- Cache Sheets của 3 trang: hết 10 phút thì trả ngay bản đang có và đọc lại ở nền; đọc nền lỗi thì trang báo "bản cũ do sheet đang lỗi".
+- ORDER VAT: danh sách / gợi ý mã chỉ chờ Tồn VAT tối đa 3 s, quá thì trả danh sách trước (cột Tồn VAT báo "đang tải"); trang tự tải lại khi rảnh để điền Tồn VAT. Tạo yêu cầu với mã chỉ có trong sheet vẫn chờ đọc xong (không báo sai "không tìm thấy mã").
+- Web vừa khởi động thì đọc trước Sheets của 3 trang ở nền (`VAT_SHEETS_WARMUP=off` để tắt).
+- Xuất Excel Dự kiến hàng về (`GET /api/expected-arrivals/export`) dựng file trong worker thread dùng chung với `/api/export`; 12.000 dòng làm event loop đứng 376–795 ms (1,6–1,9 s trên Render), giờ còn ~7 ms.
+
+Không đổi schema/dependency/API. Biến môi trường mới (tùy chọn): `VAT_SHEETS_WARMUP`.
+
+Cập nhật cuối: 14/11/2026.
 
 ## Nguồn dự phòng 3 trang VAT (12/11/2026)
 
