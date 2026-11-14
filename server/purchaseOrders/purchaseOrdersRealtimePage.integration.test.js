@@ -227,12 +227,12 @@ test('one view-only full render projects each source row once for every summary'
  const projectionProbe={count:0},p=await page(t,{projectionProbe});projectionProbe.count=0;p.w.document.getElementById('bulk').click();
  assert.equal(projectionProbe.count,1,'one full render should build one shared projected row array');
 });
-test('surcharge percent computes a separate amount without changing NET while typing',async t=>{
- const p=await page(t),doc=p.w.document,row=p.data.rows[0];Object.assign(row,{qtyPerCarton:5,cartonCount:10,unitPriceCny:2,fxRate:5000,freightPrepaid:0});p.listeners.changed();await tick();await tick();
- assert.equal(doc.querySelector('[data-field="netPrice"]').textContent,'10,000');
+test('surcharge input accepts a percent and then displays its money amount without changing totals',async t=>{
+ const p=await page(t),doc=p.w.document,row=p.data.rows[0];Object.assign(row,{qtyPerCarton:5,cartonCount:10,unitPriceCny:800,fxRate:5000,freightPrepaid:0});p.listeners.changed();await tick();await tick();
+ assert.equal(doc.querySelector('[data-field="netPrice"]').textContent,'4,000,000');const totalCny=doc.querySelector('[data-field="totalCny"]').textContent;
  doc.getElementById('columns').click();const option=doc.querySelector('[data-column="surchargePercent"]');option.checked=true;option.dispatchEvent(new p.w.Event('change',{bubbles:true}));doc.getElementById('modalClose').click();
  const input=doc.querySelector('[data-edit="surchargePercent"]');input.focus();input.value='10';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,260));
- assert.ok(p.drafts()['1'],JSON.stringify(p.drafts()));assert.equal(p.drafts()['1'].changes.surchargePercent,.1);assert.equal(doc.querySelector('[data-field="netPrice"]').textContent,'10,000');assert.equal(doc.querySelector('[data-field="surchargeAmount"]').textContent,'50,000');assert.equal(input.value,'10');
+ assert.ok(p.drafts()['1'],JSON.stringify(p.drafts()));assert.equal(p.drafts()['1'].changes.surchargePercent,.1);assert.equal(doc.querySelector('[data-field="netPrice"]').textContent,'4,000,000');assert.equal(doc.querySelector('[data-field="totalCny"]').textContent,totalCny);assert.equal(input.value,'10');input.blur();await new Promise(resolve=>setTimeout(resolve,10));assert.equal(input.value,'20,000,000');input.focus();assert.equal(input.value,'10');
 });
 test('manual container freight previews assumed and actual m3 allocation immediately',async t=>{
  const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{m3PerCarton:.2,cartonCount:10});Object.assign(p.data.containers[0],{assumed_m3:10,freight:1000,freight_mode:'manual'});p.listeners.changed();await tick();await tick();

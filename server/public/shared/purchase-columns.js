@@ -348,23 +348,13 @@
   },
   {
     "k": "surchargePercent",
-    "l": "Phụ phí (%)",
+    "l": "Phụ phí",
     "cn": "",
     "g": "Giá về",
     "t": "pct",
     "w": 95,
     "v": 1,
     "e": 1
-  },
-  {
-    "k": "surchargeAmount",
-    "l": "Tiền phụ phí",
-    "cn": "",
-    "g": "Giá về",
-    "t": "money",
-    "w": 115,
-    "v": 1,
-    "d": 1
   },
   {
     "k": "literWarehouse",
