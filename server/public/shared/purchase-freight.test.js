@@ -26,6 +26,13 @@ test('spreadsheet total freight formulas divide by assumed m3 first and actual m
  assert.ok(Math.abs(actual.amount-167044706)<1);
  assert.ok(Math.abs(actual.rate-1193176.4705882354)<1e-7);
 });
+test('a total-cost expression displays and allocates against assumed volume before stacked volume',()=>{
+ const cost=195000000+4*500*3920,container={freightMode:'formula',freightFormula:'=(195000000+4*500*3920)',assumedM3:170};
+ const estimated=Freight.calculate(container,150);
+ assert.equal(estimated.amount,cost);assert.equal(estimated.rate,cost/170);
+ const actual=Freight.calculate({...container,assumedM3:null},150);
+ assert.equal(actual.amount,cost);assert.equal(actual.rate,cost/150);
+});
 test('invalid stored container formulas produce no freight rate',()=>{
  const fee=Freight.calculate({freightMode:'formula',freightFormula:'=M3_CONT/0',freightCapacity:170},10);
  assert.equal(fee.rate,null);

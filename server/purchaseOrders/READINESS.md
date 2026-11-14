@@ -81,7 +81,7 @@ Nguồn kiểm chứng: công thức Sheet đã ghi nhận trong memory phiên d
 | Tổng tấn | kg/thùng × số thùng / 1,000 |
 | Tổng m³ | m³/thùng × số thùng |
 | VC cont tự tính | 202,000,000 / 170 × tổng m³ (hoặc định mức đã sửa) |
-| VC/m³ | Tiền VC cont / m³ giả định nếu có; nếu đã xóa giả định thì chia cho tổng m³ đang xếp |
+| Tiền VC trên bảng cont và VC/m³ | Chi phí cont / m³ giả định nếu có; nếu đã xóa giả định thì chia cho tổng m³ đang xếp. Hai ô hiển thị cùng mức phí trên mỗi m³ |
 | Tiền VC mã | Tổng m³ mã × VC/m³ cont |
 | Giá NET VND/cái | (Tiền hàng + Tiền VC mã + Phụ phí % × Tiền hàng + VC sau CNY × 3,920) / Tổng SL; hằng số 3,920 chỉ áp dụng VC sau |
 | L/c TQ; g/c TQ | m³/thùng × 1,000 / SL/thùng; kg/thùng × 1,000 / SL/thùng |
@@ -105,4 +105,4 @@ Bộ lọc đặt hàng có trạng thái, HR ID/tên legacy, NCC, VAT, ngày l�
 107 ca kiểm thử module đạt, trong đó 32 ca trang thật; kiểm thêm ID HTML không trùng và asset tồn tại. Đây là jsdom/PGlite, chưa nghiệm thu CSS/ảnh thực tế trên trình duyệt. Không có SUPABASE_TEST_DB_URL trong môi trường local hiện tại (chỉ kiểm cờ, không in secret); chưa chạy app kết nối DB thật, migration/seed/deploy/cutover. Cần môi trường thử nghiệm/DB độc lập để mở link trang thật và nghiệm thu bước 3–4. Câu hỏi môi trường thử nghiệm đã gửi người dùng.
 
 ## 14/11/2026 — Công thức cước cont
-Ô Tiền VC giờ nhận công thức an toàn (`=...`) bên cạnh số tiền thủ công. `D2`/`M3_CONT` là tổng m³ cont, `M3_XE` là sức chứa; parser hỗ trợ số học và `SUM`, `ROUND`, `MIN`, `MAX`, `ABS` (512 ký tự). Biểu thức lưu vào `product_containers.freight_formula` qua migration `0126`, và dùng chung cho phân bổ VC/mã, Giá NET và projection. Kết quả âm/không hợp lệ sau khi m³ đổi bị rollback và trả API 400 `FREIGHT_FORMULA_INVALID`. Chưa chạy migration trên DB thật/chưa deploy; staging phải kiểm trường hợp công thức và thay đổi m³ trước khi phát hành.
+Ô Tiền VC nhận công thức an toàn (`=...`) bên cạnh số tiền thủ công. Khi xem bảng cont, Tiền VC hiển thị chi phí chia cho m³ giả định nếu có, còn không thì chia cho m³ đang xếp; bấm vào ô sẽ hiện lại chi phí gốc hoặc công thức để sửa. VC/m³ hiển thị cùng mức, dùng chung cho phân bổ VC/mã, Giá NET và projection. `D2`/`M3_CONT` là tổng m³ cont, `M3_XE` là sức chứa; parser hỗ trợ số học và `SUM`, `ROUND`, `MIN`, `MAX`, `ABS` (512 ký tự). Biểu thức lưu vào `product_containers.freight_formula` qua migration `0126`. Kết quả âm/không hợp lệ sau khi m³ đổi bị rollback và trả API 400 `FREIGHT_FORMULA_INVALID`. Chưa chạy migration trên DB thật/chưa deploy; staging phải kiểm trường hợp công thức và thay đổi m³ trước khi phát hành.
