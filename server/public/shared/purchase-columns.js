@@ -61,6 +61,18 @@
     "e": 1
   },
   {
+    "k": "regionId",
+    "l": "Vùng",
+    "cn": "",
+    "g": "Đặt hàng",
+    "t": "text",
+    "w": 92,
+    "v": 1,
+    "e": 1,
+    "ro": 1,
+    "region": 1
+  },
+  {
     "k": "container",
     "l": "Tên cont",
     "cn": "",

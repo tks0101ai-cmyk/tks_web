@@ -64,15 +64,16 @@ test('Ctrl+Z undoes an edited input before it loses focus',async t=>{
  const undo=new p.w.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true});input.dispatchEvent(undo);
  assert.equal(undo.defaultPrevented,true);assert.equal(p.drafts()['1'],undefined);assert.equal(doc.activeElement.dataset.edit,'supplier');
 });
-test('container ratio is total tons divided by total cubic meters',async t=>{
+test('container index uses requested ordered columns and keeps the expense/rate distinct',async t=>{
  const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{cartonCount:10,kgPerCarton:2,m3PerCarton:.25});p.listeners.changed();await tick();await tick();
- assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) td:nth-child(11)').textContent,'0.8%');
+ assert.deepEqual([...doc.querySelectorAll('#containerTable thead th')].map(th=>th.textContent.replace(/[▲▼]/g,'').trim()),['Tên cont','Trạng thái cont','Tổng tấn','Tổng m³ đang xếp','Tổng m³ giả định','Đơn giá cont','Phụ phí','Đơn giá quy đổi','Tiền VC/m³','Ngày bốc','Ngày về','Nhà VC','Tên cont TQ','Loại xe','Ghi chú','Người xếp cont','KQ nhận','Trạng thái nhập']);
+ const row=doc.querySelector('#containerTable tbody tr:nth-child(2)');assert.ok(row.querySelector('[data-cont-freight]'));assert.ok(row.querySelector('[data-container-column=rate]'));assert.equal(row.querySelector('[data-cont-freight]').dataset.contFreight,'2');
 });
 test('order lifecycle sits last and container lifecycle is confirmed with the current version',async t=>{
  const p=await page(t),doc=p.w.document;
  assert.equal(doc.querySelector('#orderTable thead th:last-child').textContent,'Trạng thái');
  assert.equal(doc.querySelector('#orderTable tbody .purchase-lifecycle-badge').textContent,'Hoạt động');
- assert.equal(doc.querySelector('#containerTable thead tr th:nth-last-child(2)').textContent.replace(/[▲▼]/g,'').trim(),'Người xếp');assert.equal(doc.querySelector('#containerTable thead tr th:last-child').textContent.replace(/[▲▼]/g,'').trim(),'Hoạt động');assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) td:last-child .purchase-lifecycle-badge').textContent,'Hoạt động');
+ assert.equal(doc.querySelector('#containerTable thead tr th:nth-last-child(2)').textContent.replace(/[▲▼]/g,'').trim(),'KQ nhận');assert.equal(doc.querySelector('#containerTable thead tr th:last-child').textContent.replace(/[▲▼]/g,'').trim(),'Trạng thái nhập');assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) [data-container-column=lifecycle] .purchase-lifecycle-badge').textContent,'Hoạt động');
  doc.querySelector('#containerTable [data-container-lifecycle]').click();assert.equal(p.calls.some(call=>call.url.endsWith('/containers/deactivate')),false);doc.getElementById('confirmContainerLifecycle').click();await tick();await tick();
  const request=p.calls.find(call=>call.url.endsWith('/containers/deactivate'));
  assert.deepEqual(JSON.parse(request.options.body),{id:'2',version:3});
@@ -403,6 +404,16 @@ test('region list splits waiting container groups and filters both tables',async
 });
 test('region manager saves active name and RGB color in one batch',async t=>{
  const p=await page(t),doc=p.w.document;p.data.regions=[];doc.getElementById('managePurchaseRegions').click();await tick();const form=doc.getElementById('purchaseRegionAdd');form.elements.name.value='V';form.elements.color.value='#1188AA';form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}));doc.getElementById('savePurchaseRegions').click();await tick();await tick();const call=p.calls.find(c=>c.url.endsWith('/regions/batch'));assert.ok(call);const entry=JSON.parse(call.options.body).entries[0];assert.equal(entry.name,'V');assert.equal(entry.color,'#1188AA');assert.equal(entry.isActive,true);
+});
+
+test('container table defaults to active containers and retains the explicit all filter',async t=>{
+ const p=await page(t),doc=p.w.document;p.data.containers.push({id:'3',name:'CONT INACTIVE',status:1,version:1,inactive_at:'2026-11-14T00:00:00Z'});p.listeners.changed();await tick();await tick();assert.equal(doc.getElementById('contLifecycle').value,'false');assert.equal(doc.querySelector('#containerTable [data-container-lifecycle="3"]'),null);doc.getElementById('contLifecycle').value='';doc.getElementById('contLifecycle').dispatchEvent(new p.w.Event('change',{bubbles:true}));assert.ok(doc.querySelector('#containerTable [data-container-lifecycle="3"]'));
+});
+test('a newly saved region appears in the add-code region dropdown',async t=>{
+ const p=await page(t),doc=p.w.document;p.data.regions=[];doc.getElementById('managePurchaseRegions').click();await tick();const form=doc.getElementById('purchaseRegionAdd');form.elements.name.value='V';form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}));doc.getElementById('savePurchaseRegions').click();await tick();await tick();doc.getElementById('modalClose').click();doc.getElementById('add').click();const selector=doc.querySelector('#addForm select[name=regionId]');assert.ok(selector);assert.ok([...selector.options].some(option=>option.textContent==='V'));
+});
+test('container column chooser lists and toggles each index column',async t=>{
+ const p=await page(t),doc=p.w.document;doc.getElementById('containerColumns').click();assert.equal(doc.querySelectorAll('[data-container-column-toggle]').length,18);const note=doc.querySelector('[data-container-column-toggle=note]');assert.ok(note.checked);note.click();assert.equal(doc.querySelector('#containerTable thead [data-container-column=note]'),null);doc.getElementById('modalClose').click();
 });
 test('container note popup loads existing text and saves edits',async t=>{
  const p=await page(t),doc=p.w.document;p.data.containers[0].note='Ghi chú cũ';p.listeners.changed();await tick();await tick();doc.querySelector('[data-container-note="2"]').click();const form=doc.getElementById('containerNoteForm');assert.equal(form.elements.note.value,'Ghi chú cũ');form.elements.note.value='Ghi chú mới';form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}));await tick();await tick();const call=p.calls.find(c=>c.url.endsWith('/containers/2')&&c.options.method==='PATCH');assert.equal(JSON.parse(call.options.body).changes.note,'Ghi chú mới');

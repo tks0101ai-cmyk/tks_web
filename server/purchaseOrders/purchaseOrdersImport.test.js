@@ -82,7 +82,7 @@ test('full snapshot workbook carries revision, complete writable headers and per
   const file=excel.exportImportSnapshot({rows:[{...fresh(),rowKey:'D00001.01'}],columns,revision:'12:34'});
   const workbook=excel.read(file),parsed=excel.parseImportSnapshot(file,columns);
   const guide=XLSX.utils.sheet_to_json(workbook.Sheets['Hướng dẫn'],{header:1,defval:''});
-  const writable=columns.filter(c=>c.k==='rowKey'||!c.d&&!c.m&&!c.ro&& !['container','status'].includes(c.k));
+  const writable=columns.filter(c=>c.k==='rowKey'||!!c.region||!c.d&&!c.m&&!c.ro&& !['container','status'].includes(c.k));
   assert.ok(workbook.SheetNames.includes('Đặt hàng'));
   assert.equal(workbook.Workbook.Sheets.find(s=>s.name==='__TOKOSI').Hidden,1);
   assert.equal(parsed.revision,'12:34');
@@ -93,6 +93,14 @@ test('full snapshot workbook carries revision, complete writable headers and per
   assert.ok(guide.flat().some(cell=>/ví dụ/i.test(String(cell))), 'example stays on guide sheet');
 });
 
+
+test('snapshot import accepts configured region names and rejects unknown regions',()=>{
+  const current=[{...fresh(),id:'1',rowKey:'D00001',version:4,regionId:null}],regions=[{id:'9',name:'Miền Bắc',isActive:true}];
+  const accepted=prepareRows([{rowKey:'D00001',productCode:'A',regionId:'Miền Bắc'}],current,{snapshot:true,regions});
+  assert.equal(accepted.valid,true);assert.equal(accepted.rows[0].changes.find(change=>change.key==='regionId').after,'9');
+  const rejected=prepareRows([{rowKey:'D00001',productCode:'A',regionId:'Không có'}],current,{snapshot:true,regions});
+  assert.equal(rejected.valid,false);assert.match(rejected.rows[0].errors.join(' '),/Vùng/);
+});
 test('snapshot parser rejects ordinary or incomplete workbooks and accepts an intentionally empty snapshot', () => {
   const rows=[{...fresh(),rowKey:'D00001.01'}],ordinary=excel.bytes(excel.exportWorkbook(rows,columns));
   assert.throws(()=>excel.parseImportSnapshot(ordinary,columns),/Tải snapshot/);

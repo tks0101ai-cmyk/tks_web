@@ -7,13 +7,13 @@
   const labels = { productName: 'Tên SP (Việt)', productNameCn: 'Tên SP (Trung)', literDiff: 'Lệch L/c (%)', gramDiff: 'Lệch g/c (%)' };
   const normalize = value => String(value ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
   const caption = col => labels[col.k] || (col.cn ? col.l + ' · ' + col.cn : col.l);
-  const writable = col => col.k === 'rowKey' || !col.d && !col.m && !col.ro && !['container', 'status'].includes(col.k);
+  const writable = col => col.k === 'rowKey' || !!col.region || !col.d && !col.m && !col.ro && !['container', 'status'].includes(col.k);
   const importColumns = columns => columns.filter(col => writable(col));
 
   function exportWorkbook(rows, columns, visibleKeys) {
     const selected = new Set(visibleKeys || columns.map(col => col.k));
     const cols = [columns.find(col => col.k === 'rowKey'), ...columns.filter(col => col.k !== 'rowKey' && selected.has(col.k))].filter(Boolean);
-    const data = [cols.map(caption), ...rows.map(row => cols.map(col => row[col.k] ?? null))];
+    const data = [cols.map(caption), ...rows.map(row => cols.map(col => col.region?(row.regionName??row.regionId??null):(row[col.k]??null)))];
     const sheet = XLSX.utils.aoa_to_sheet(data);
     cols.forEach((col,c)=>{if(!numericTypes.has(col.t))return;const digits=col.decimals??({num:0,num1:1,num2:2,num4:4,money:0})[col.t],format=col.t==='ratio'?'0.0%':col.t==='pct'?'+0%;-0%;0%':digits!=null?'#,##0'+(digits?'.'+'0'.repeat(digits):''):'#,##0.##########';rows.forEach((row,r)=>{const cell=sheet[XLSX.utils.encode_cell({r:r+1,c})];if(cell?.t==='n')cell.z=format})});
     cols.forEach((col,c)=>{if(col.t!=='datetime')return;rows.forEach((row,r)=>{const text=dateTimeValue(row[col.k]);if(!text)return;const parts=text.split('T'),ymd=parts[0].split('-').map(Number),hm=(parts[1]||'00:00').split(':').map(Number);const cell=sheet[XLSX.utils.encode_cell({r:r+1,c})];cell.t='n';cell.v=(Date.UTC(ymd[0],ymd[1]-1,ymd[2],hm[0],hm[1])-Date.UTC(1899,11,30))/86400000;cell.z=parts[1]?'dd/mm/yyyy hh:mm':'dd/mm/yyyy'})});
@@ -23,18 +23,19 @@
     return workbook;
   }
 
-  function exportImportSnapshot({rows,columns,revision}) {
+  function exportImportSnapshot({rows,columns,revision,regions=[]}) {
     if(!/^\d+:\d+$/.test(String(revision||'')))throw Error('Phiên bản snapshot không hợp lệ.');
     const cols=importColumns(columns),keys=cols.filter(col=>col.k!=='rowKey').map(col=>col.k),book=exportWorkbook(rows,columns,keys);
     const kind=col=>numericTypes.has(col.t)?'Số'+(col.decimals!=null?' · tối đa '+col.decimals+' chữ số thập phân':''):col.t==='datetime'?'Ngày dd/mm/yyyy hoặc dd/mm/yyyy hh:mm':'Văn bản';
     const required=col=>col.k==='productCode'?'Có · mọi dòng':['productName','qtyPerCarton','cartonCount'].includes(col.k)?'Có · dòng mới':'Không';
-    const hints=cols.map(col=>[caption(col),required(col),kind(col),col.k==='rowKey'?'Có Mã dòng: cập nhật dòng đó. Để trống: tạo mã mới.':col.k==='productCode'?'Bắt buộc; không trùng trong file.':col.k==='productName'?'Bắt buộc khi tạo mã mới.':['qtyPerCarton','cartonCount'].includes(col.k)?'Mã mới cần số nguyên dương.':col.t==='datetime'?'Để trống sẽ xóa ngày hiện tại.':'Để trống sẽ xóa giá trị hiện tại.']);
+    const hints=cols.map(col=>[caption(col),required(col),col.region?'Tên vùng hoặc mã vùng':kind(col),col.region?'Nhập đúng tên vùng đang dùng; để trống sẽ bỏ gán vùng.':col.k==='rowKey'?'Có Mã dòng: cập nhật dòng đó. Để trống: tạo mã mới.':col.k==='productCode'?'Bắt buộc; không trùng trong file.':col.k==='productName'?'Bắt buộc khi tạo mã mới.':['qtyPerCarton','cartonCount'].includes(col.k)?'Mã mới cần số nguyên dương.':col.t==='datetime'?'Để trống sẽ xóa ngày hiện tại.':'Để trống sẽ xóa giá trị hiện tại.']);
     const exampleKeys=['rowKey','productCode','productName','qtyPerCarton','cartonCount','supplier','unitPriceCny','listedAt'],exampleColumns=exampleKeys.map(key=>cols.find(col=>col.k===key));
     const guide=XLSX.utils.aoa_to_sheet([
       ['HƯỚNG DẪN SỬA FILE THU MUA'],
       ['Đây là snapshot đầy đủ tải từ dữ liệu hiện tại. Sửa sheet “Đặt hàng” rồi tải lại chính file này. Không xóa sheet __TOKOSI.'],
       ['Mỗi dòng là một mã. Mã dòng có sẵn sẽ cập nhật; Mã dòng để trống sẽ tạo mã mới. Mã SP bắt buộc; mã mới cần Tên SP, SL/T và Số thùng.'],
       ['Giá trị ô trống sẽ xóa giá trị hiện tại. Xóa cả dòng khỏi sheet Đặt hàng sẽ xóa mềm mã đó. Xem lại số dòng xóa ở bước xem trước trước khi xác nhận.'],
+      ['Cột Vùng nhận tên vùng trong danh sách đã cấu hình; không nhập vùng mới trong file. Cột Cont và Trạng thái cont là thông tin tự tính, không import.'],
       ['Nếu dữ liệu trên hệ thống đổi sau lúc tải file, snapshot sẽ bị từ chối; hãy tải snapshot mới, áp lại chỉnh sửa và gửi lại. Một lỗi sẽ chặn toàn bộ file.'],
       [],['CỘT','BẮT BUỘC','KIỂU / ĐỊNH DẠNG','LƯU Ý'],...hints,
       [],['VÍ DỤ DÒNG MỚI (chỉ để xem, không nằm trong sheet Đặt hàng)'],
@@ -43,6 +44,7 @@
     ]);
     guide['!cols']=[{wch:30},{wch:18},{wch:34},{wch:88}];
     XLSX.utils.book_append_sheet(book,guide,'Hướng dẫn');
+    const regionSheet=XLSX.utils.aoa_to_sheet([['MÃ VÙNG','TÊN VÙNG','MÀU'],...regions.map(region=>[String(region.id),region.name,region.color||''])]);regionSheet['!cols']=[{wch:16},{wch:28},{wch:12}];XLSX.utils.book_append_sheet(book,regionSheet,'Danh sách vùng');
     const meta=XLSX.utils.aoa_to_sheet([['format','TOKOSI_PURCHASE_SNAPSHOT'],['revision',String(revision)]]);
     XLSX.utils.book_append_sheet(book,meta,'__TOKOSI');
     book.Workbook||={};

@@ -319,9 +319,9 @@
 .purchase-page .purchase-page-number,.purchase-page .num{font-variant-numeric:tabular-nums}
 
 /* Keep the compact order filters on one desktop row; narrow columns clip text cleanly. */
-.purchase-page .order-filters{grid-template-columns:repeat(9,minmax(90px,1fr));overflow-x:auto}
+.purchase-page .order-filters{grid-template-columns:repeat(14,minmax(64px,1fr));overflow-x:auto}
 .purchase-page .order-filters label:has(#search){grid-column:1/span 2;grid-row:1}
-.purchase-page .order-filters label:has(#filter),.purchase-page .order-filters label:has(#orderBuyer),.purchase-page .purchase-page .order-filters label:has(#orderFrom),.purchase-page .order-filters label:has(#orderTo),.purchase-page .order-filters label:has(#orderFlag),.purchase-page .order-filters label:has(#sort){grid-column:auto;grid-row:1}
+.purchase-page .order-filters label:has(#filter),.purchase-page .order-filters label:has(#orderRegion),.purchase-page .order-filters label:has(#orderLifecycle),.purchase-page .order-filters label:has(#orderStatus),.purchase-page .order-filters label:has(#orderBuyer),.purchase-page .purchase-page .order-filters label:has(#orderFrom),.purchase-page .order-filters label:has(#orderTo),.purchase-page .order-filters label:has(#orderFlag),.purchase-page .order-filters label:has(#sort){grid-column:auto;grid-row:1}
 .purchase-page .order-filters .filter-actions{grid-column:1/-1;grid-row:2}
 .purchase-page #orderTable td[data-field="productCode"]{font-weight:400}
 .purchase-page #orderTable td[data-field="productCode"],.purchase-page #orderTable td[data-field="productCode"] .code-label{text-overflow:clip}
@@ -391,9 +391,9 @@
 .purchase-page #containerPanel{margin-top:20px;padding:10px 12px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel-2)}
 .purchase-page #containerPanel>summary{padding:2px 0 8px}
 .purchase-page #containerPanel .container-filters{border-radius:6px}
-.purchase-page #containerPanel .container-filters{grid-template-columns:minmax(260px,3fr) repeat(4,minmax(110px,1fr)) minmax(92px,auto);gap:6px;padding:8px 10px;align-items:end}
+.purchase-page #containerPanel .container-filters{grid-template-columns:minmax(190px,2fr) repeat(5,minmax(78px,1fr)) minmax(70px,auto);gap:5px;padding:7px 8px;align-items:end}
 .purchase-page #containerPanel .container-filters .wide{grid-column:auto}
-.purchase-page #containerPanel .container-filters>button{grid-column:6;grid-row:1;min-height:29px;padding:4px 10px;align-self:end}
+.purchase-page #containerPanel .container-filters>button{grid-column:7;grid-row:1;min-height:29px;padding:4px 10px;align-self:end}
 .purchase-page #containerPanel .container-filters label{gap:3px;font-size:10px;line-height:13px}
 .purchase-page #containerPanel .container-filters input,.purchase-page #containerPanel .container-filters select{height:28px;padding:3px 7px;font-size:11px}
 @media(max-width:1100px){.purchase-page #containerPanel .container-filters{grid-template-columns:repeat(4,minmax(0,1fr))}.purchase-page #containerPanel .container-filters .wide{grid-column:span 2}.purchase-page #containerPanel .container-filters>button{grid-column:auto;grid-row:auto}}
@@ -420,8 +420,8 @@
  .purchase-page .order-actions #add{margin-left:0}
  .purchase-page .order-filters{grid-template-columns:repeat(12,minmax(72px,1fr));overflow-x:auto}
  .purchase-page .order-filters label:has(#search){grid-column:span 2;grid-row:1}
- .purchase-page .order-filters label:has(#filter),.purchase-page .order-filters label:has(#orderBuyer),.purchase-page .order-filters label:has(#orderFrom),.purchase-page .order-filters label:has(#orderTo),.purchase-page .order-filters label:has(#orderFlag),.purchase-page .order-filters label:has(#sort){grid-column:span 1;grid-row:1}
- .purchase-page .order-filters .filter-actions{grid-column:10/13;grid-row:1;align-self:end;justify-content:flex-end;gap:5px;padding:0;border:0;white-space:nowrap}
+ .purchase-page .order-filters label:has(#filter),.purchase-page .order-filters label:has(#orderRegion),.purchase-page .order-filters label:has(#orderLifecycle),.purchase-page .order-filters label:has(#orderStatus),.purchase-page .order-filters label:has(#orderBuyer),.purchase-page .order-filters label:has(#orderFrom),.purchase-page .order-filters label:has(#orderTo),.purchase-page .order-filters label:has(#orderFlag),.purchase-page .order-filters label:has(#sort){grid-column:span 1;grid-row:1}
+ .purchase-page .order-filters .filter-actions{grid-column:12/15;grid-row:1;align-self:end;justify-content:flex-end;gap:5px;padding:0;border:0;white-space:nowrap}
  .purchase-page .order-filters .column-tools{display:flex;gap:5px;align-items:center}
  .purchase-page .order-filters .filter-actions button{min-height:30px;padding:5px 7px;white-space:nowrap}
 }
@@ -608,3 +608,8 @@
 #modalBody .import-recovery small{font-size:9px;color:var(--muted)}
 #modalBody .import-archived{background:color-mix(in srgb,var(--primary) 5%,transparent)}
 @media(max-width:620px){.purchase-page #modalBody label.import-drop{min-height:170px;padding:18px}}
+
+.purchase-page .purchase-region-chip{display:inline-block;max-width:100%;padding:2px 7px;border-radius:999px;background:color-mix(in srgb,var(--region-color) 18%,transparent);color:var(--region-color);font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.purchase-page .purchase-container-column-options{display:grid;grid-template-columns:repeat(3,minmax(140px,1fr));gap:6px 12px;max-height:60vh;overflow:auto;padding:6px}
+.purchase-page #containerActions button{padding:4px 8px;min-height:27px;font-size:10px}
+@media(max-width:700px){.purchase-page .purchase-container-column-options{grid-template-columns:repeat(2,minmax(0,1fr))}}
