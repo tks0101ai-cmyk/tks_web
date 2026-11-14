@@ -224,6 +224,14 @@ test('one view-only full render projects each source row once for every summary'
  const projectionProbe={count:0},p=await page(t,{projectionProbe});projectionProbe.count=0;p.w.document.getElementById('bulk').click();
  assert.equal(projectionProbe.count,1,'one full render should build one shared projected row array');
 });
+test('surcharge is entered as a percent and updates row NET while typing',async t=>{
+ const p=await page(t),doc=p.w.document,row=p.data.rows[0];Object.assign(row,{qtyPerCarton:5,cartonCount:10,unitPriceCny:2,fxRate:5000,freightPrepaid:0});p.listeners.changed();await tick();await tick();
+ assert.equal(doc.querySelector('[data-field="netPrice"]').textContent,'10,000');
+ doc.getElementById('columns').click();const option=doc.querySelector('[data-column="surchargePercent"]');option.checked=true;option.dispatchEvent(new p.w.Event('change',{bubbles:true}));doc.getElementById('modalClose').click();
+ const input=doc.querySelector('[data-edit="surchargePercent"]');input.focus();input.value='10';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,260));
+ assert.ok(p.drafts()['1'],JSON.stringify(p.drafts()));assert.equal(p.drafts()['1'].changes.surchargePercent,.1);assert.equal(doc.querySelector('[data-field="netPrice"]').textContent,'11,000');assert.equal(input.value,'10');
+ input.blur();await new Promise(resolve=>setTimeout(resolve,5));assert.match(doc.querySelector('[data-edit="surchargePercent"]')?.value||doc.querySelector('[data-field="surchargePercent"]').textContent,/10%/);
+});
 test('Đối chiếu overrides are directly editable and sent through the normal versioned row patch',async t=>{
  const p=await page(t),doc=p.w.document;p.data.rows[0].literChina=120;p.data.rows[0].measurementOverrides={literChina:120};p.data.rows.push({...p.data.rows[0],id:'2',rowKey:'D00002',literChina:110,measurementOverrides:{literChina:110}});p.listeners.changed();await tick();await tick();
  doc.getElementById('columns').click();doc.querySelector('[data-column="literChina"]').checked=true;doc.querySelector('[data-column="literChina"]').dispatchEvent(new p.w.Event('change',{bubbles:true}));
