@@ -804,6 +804,22 @@ test('bulk and plan reject unconfigured or inactive assignments atomically and p
  assert.equal((await service.latest(manager,'B')).buyer,'Dung');
 });
 
+test('plan accepts an active region change for inline auto-save',async()=>{
+ const row=await service.create(manager,input()),region=(await db.query("INSERT INTO purchase_regions(name,name_key) VALUES('Vùng V','vung v') RETURNING id")).rows[0];
+ await service.applyPlan(manager,{rows:[{id:row.id,version:row.version,changes:{regionId:String(region.id)}}]});
+ assert.equal((await service.latest(manager,'A')).regionId,String(region.id));
+ const container=await service.createContainer(manager,{name:'CONT V',assumedM3:170,regionId:String(region.id)}),assigned=await service.latest(manager,'A');
+ await service.applyPlan(manager,{rows:[{id:row.id,version:assigned.version,changes:{contId:container.id}}]});
+ const loaded=await service.latest(manager,'A');await service.applyPlan(manager,{rows:[{id:row.id,version:loaded.version,changes:{contId:null}}]});
+ assert.equal((await service.latest(manager,'A')).regionId,String(region.id),'returning a line to the regional waiting group keeps its region');
+ const secondRegion=(await db.query("INSERT INTO purchase_regions(name,name_key) VALUES('Vùng H','vung h') RETURNING id")).rows[0];
+ const waiting=await service.latest(manager,'A');await service.applyPlan(manager,{rows:[{id:row.id,version:waiting.version,changes:{contId:container.id}}]});
+ const beforeRegionChange=await service.latest(manager,'A');await service.updateContainer(manager,container.id,{version:container.version,changes:{regionId:String(secondRegion.id)}});
+ const moved=await service.latest(manager,'A');assert.equal(moved.regionId,String(secondRegion.id),'reconfiguring a container updates the region of its current rows');assert.ok(moved.version>beforeRegionChange.version);
+ await service.applyPlan(manager,{rows:[{id:row.id,version:moved.version,changes:{contId:null}}]});
+ assert.equal((await service.latest(manager,'A')).regionId,String(secondRegion.id),'returning a line to waiting uses the reconfigured container region');
+});
+
 test('imports validate catalog at preview, revision and commit without losing legacy snapshots',async()=>{
  const bad=await service.previewImport(manager,{buffer:await snapshotFile([{...input(),buyer:'Free text'}])});assert.equal(bad.valid,false);assert.equal(bad.counts.error,1);
  await assert.rejects(service.commitImport(manager,bad.token),e=>e.code==='IMPORT_INVALID');
