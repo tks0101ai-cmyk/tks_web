@@ -9,10 +9,11 @@ const workbook = require('../public/shared/purchase-workbook');
 // Cot chi doc duoc danh dau `ro` trong purchase-columns.js — mot nguon duy nhat,
 // khong lap danh sach ten cot o hai noi nhu truoc.
 const writable = columns.filter(c => !c.d && !c.m && !c.ro);
-const regionColumn=columns.find(c=>c.region), importable=[...writable,...(regionColumn?[regionColumn]:[])];
+const overrideColumns=columns.filter(c=>c.o),regionColumn=columns.find(c=>c.region), importable=[...writable,...overrideColumns,...(regionColumn?[regionColumn]:[])];
 const byKey = new Map(importable.map(c => [c.k, c]));
 const keyPattern = /^D\d{5,}(?:\.(?:01|02))*$/;
 const integerFields = new Set(['qtyPerCarton', 'cartonCount']);
+const signedFields = new Set([...calculations.SIGNED,'literDiff','gramDiff']);
 const blank = value => value == null || value === '';
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
@@ -54,8 +55,8 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
       if(col.region){const raw=String(value).trim(),found=regions.find(region=>String(region.id)===raw||String(region.name).trim().toLocaleLowerCase('vi')===raw.toLocaleLowerCase('vi'));if(!found||found.isActive===false&&String(matched?.regionId??'')!==String(found?.id??''))result.errors.push('Vùng: chọn tên vùng đang hoạt động trong danh sách.');else values.regionId=String(found.id);continue}
       if (workbook.numericTypes.has(col.t)) {
         const number = calculations.parse(value);
-        // VC truoc duoc phep am (calculations.SIGNED); cac cot so khac khong am.
-        if (!Number.isFinite(number) || number < 0 && !calculations.SIGNED.has(col.k) || Math.abs(number) > Number.MAX_SAFE_INTEGER) result.errors.push(col.l + ': số không hợp lệ.');
+        // Chi cac cot co the am duoc khai bao trong signedFields.
+        if (!Number.isFinite(number) || number < 0 && !signedFields.has(col.k) || Math.abs(number) > Number.MAX_SAFE_INTEGER) result.errors.push(col.l + ': số không hợp lệ.');
         else if (integerFields.has(col.k) && (!Number.isSafeInteger(number) || number <= 0)) result.errors.push(col.l + ': phải là số nguyên dương.');
         else if(col.k==='fxRate'&&number===0)result.errors.push(col.l+': phải lớn hơn 0 hoặc để trống.');else values[col.k] = number;
       } else if ((col.t === 'date'||col.t==='datetime')) {

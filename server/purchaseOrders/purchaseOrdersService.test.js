@@ -416,6 +416,13 @@ test('snapshot changed after download is rejected before preview',async()=>{
  await service.update(manager,row.id,{version:row.version,changes:{supplier:'Changed'}});
  await assert.rejects(service.previewImport(manager,{buffer}),error=>error.code==='IMPORT_SNAPSHOT_STALE');assert.equal((await service.list(manager)).rows[0].supplier,'Changed');
 });
+test('snapshot import saves measurement overrides and blank cells restore calculated defaults',async()=>{
+ const row=await service.create(manager,input()),snapshot=await service.importSnapshot(manager),measured={...snapshot.rows[0],literWarehouse:1.25,m3Warehouse:.42,literChina:1.1,literDiff:-12,gramWarehouse:550,gramChina:500,gramDiff:-9,measuredOn:'2026-11-12',ratio:.75};
+ const file=Buffer.from(excel.exportImportSnapshot({rows:[measured],columns,revision:snapshot.revision})),preview=await service.previewImport(manager,{buffer:file});assert.equal(preview.valid,true,JSON.stringify(preview.rows[0]?.errors));await service.commitImport(manager,preview.token);
+ let saved=(await service.list(manager)).rows.find(item=>item.id===row.id);assert.deepEqual([saved.literWarehouse,saved.m3Warehouse,saved.literChina,saved.literDiff,saved.gramWarehouse,saved.gramChina,saved.gramDiff,saved.measuredOn,saved.ratio],[1.25,.42,1.1,-12,550,500,-9,'2026-11-12',.75]);assert.equal(saved.measurementOverrides.literWarehouse,1.25);
+ const latest=await service.importSnapshot(manager),blank={...latest.rows[0],literWarehouse:null,m3Warehouse:null,literChina:null,literDiff:null,gramWarehouse:null,gramChina:null,gramDiff:null,measuredOn:null,ratio:null},clear=await service.previewImport(manager,{buffer:Buffer.from(excel.exportImportSnapshot({rows:[blank],columns,revision:latest.revision}))});assert.equal(clear.valid,true);await service.commitImport(manager,clear.token);
+ saved=(await service.list(manager)).rows.find(item=>item.id===row.id);assert.deepEqual(saved.measurementOverrides,{});
+});
 test('stale import rejects valid creations and updates together', async () => {
   const row=await service.create(manager,input());
   const preview=await service.previewImport(manager,{buffer:await snapshotFile([{...input(),rowKey:row.rowKey,cartonCount:7},input()])});

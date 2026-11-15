@@ -17,10 +17,15 @@ test('same product without row key always creates a new waiting line, without mo
   assert.equal(JSON.stringify(rows), before);
 });
 test('partial update preserves blank fields, permits code rename, and ignores computed/cont fields', () => {
-  const result = prepareRows([{ rowKey: 'D00001.01', productCode: 'RENAMED', supplier: '', cartonCount: 11, container: 'Other', totalQty: 999, literWarehouse: 99 }], existing());
+  const result = prepareRows([{ rowKey: 'D00001.01', productCode: 'RENAMED', supplier: '', cartonCount: 11, container: 'Other', totalQty: 999 }], existing());
   assert.equal(result.valid, true);
   assert.deepEqual(result.operations[0].changes.map(c => c.key), ['productCode', 'cartonCount']);
   assert.equal(result.operations[0].expectedVersion, 2);
+});
+test('measurement input fields import as overrides while derived measurements stay calculated',()=>{
+  const result=prepareRows([{rowKey:'D00001.01',productCode:'A',literWarehouse:1.25,m3Warehouse:.42,literChina:1.1,literDiff:-12,gramWarehouse:350,gramChina:300,gramDiff:-14,measuredOn:'2026-11-12',ratio:.8}],existing());
+  assert.equal(result.valid,true,result.rows[0].errors.join('; '));
+  assert.deepEqual(result.operations[0].changes.filter(c=>['literWarehouse','m3Warehouse','literChina','literDiff','gramWarehouse','gramChina','gramDiff','measuredOn','ratio'].includes(c.key)).map(c=>c.key),['literWarehouse','m3Warehouse','literChina','literDiff','gramWarehouse','gramChina','gramDiff','measuredOn','ratio']);
 });
 test('one error suppresses the whole plan; all errors remain available to the UI', () => {
   const result = prepareRows([fresh(), { rowKey: 'D99999', productCode: 'B' }], existing());
@@ -82,7 +87,7 @@ test('full snapshot workbook carries revision, complete writable headers and per
   const file=excel.exportImportSnapshot({rows:[{...fresh(),rowKey:'D00001.01'}],columns,revision:'12:34'});
   const workbook=excel.read(file),parsed=excel.parseImportSnapshot(file,columns);
   const guide=XLSX.utils.sheet_to_json(workbook.Sheets['Hướng dẫn'],{header:1,defval:''});
-  const writable=columns.filter(c=>c.k==='rowKey'||!!c.region||!c.d&&!c.m&&!c.ro&& !['container','status'].includes(c.k));
+  const writable=columns.filter(c=>c.k==='rowKey'||!!c.region||!!c.o||!c.d&&!c.m&&!c.ro&& !['container','status'].includes(c.k));
   assert.ok(workbook.SheetNames.includes('Đặt hàng'));
   assert.equal(workbook.Workbook.Sheets.find(s=>s.name==='__TOKOSI').Hidden,1);
   assert.equal(parsed.revision,'12:34');
@@ -91,6 +96,7 @@ test('full snapshot workbook carries revision, complete writable headers and per
   assert.equal(parsed.rows[0].productNameCn,null);
   assert.ok(writable.every(c=>guide.some(row=>row.includes(excel.caption(c)))), 'guide must explain every imported column');
   assert.ok(guide.flat().some(cell=>/ví dụ/i.test(String(cell))), 'example stays on guide sheet');
+  assert.ok(writable.some(c=>c.k==='literWarehouse')&&writable.some(c=>c.k==='gramWarehouse')&&writable.some(c=>c.k==='measuredOn'));
 });
 
 

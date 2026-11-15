@@ -69,8 +69,8 @@ async function readArchivedRows(client,lock=false) { return (await client.query(
 async function audit(client,user,action,summary) { const who=actor(user);client.purchaseAction=action;await client.query('INSERT INTO purchase_history(action,actor_id,actor_name,summary) VALUES($1,$2,$3,$4)',[action,who.id,who.name,JSON.stringify({...summary,operationId:client.purchaseOperation})]); }
 async function insertMany(client,records) {
   if(!records.length)return [];
-  const cols=['row_key','root_key','root_order_id','split_from_key','container_id','region_id',...dbCols];
-  return (await client.query(`INSERT INTO purchase_orders(${cols.join(',')}) SELECT ${cols.join(',')} FROM jsonb_populate_recordset(NULL::purchase_orders,$1::jsonb) RETURNING *`,[JSON.stringify(records)])).rows;
+  const cols=['row_key','root_key','root_order_id','split_from_key','container_id','region_id','measurement_overrides',...dbCols];
+  return (await client.query(`INSERT INTO purchase_orders(${cols.join(',')}) SELECT ${cols.join(',')} FROM jsonb_populate_recordset(NULL::purchase_orders,$1::jsonb) RETURNING *`,[JSON.stringify(records.map(record=>({measurement_overrides:{},...record})))])).rows;
 }
 async function patchRow(client,row,changes) {
   if(Object.hasOwn(changes,'buyer')&&!Object.hasOwn(changes,'buyer_employee_id'))changes.buyer_employee_id=null;
@@ -436,13 +436,14 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
           const original=current.find(r=>String(r.id)===String(operation.id))||archived.find(r=>String(r.id)===String(operation.id));
           const record={...original},assignment=Object.fromEntries(operation.changes.map(c=>[c.key,c.after]));
           await resolveEmployee(client,assignment,record);operation.changes.forEach(change=>record[change.key]=assignment[change.key]);
-          const data={id:record.id,region_id:record.regionId??null};writable.forEach(c=>data[snake(c.k)]=record[c.k]??null);if(Object.hasOwn(assignment,'buyer'))data.buyer_employee_id=null;
+          const overrides=overrideColumns.some(c=>Object.hasOwn(assignment,c.k))?measurementOverridePlan(original,assignment).values:original.measurementOverrides||{};
+          const data={id:record.id,region_id:record.regionId??null,measurement_overrides:overrides};writable.forEach(c=>data[snake(c.k)]=record[c.k]??null);if(Object.hasOwn(assignment,'buyer'))data.buyer_employee_id=null;
           if(['reactivate','restore'].includes(operation.action))recoveries.push({data,action:operation.action,original});else updates.push(data);
         }
         const deletedFamilies=new Map();
         for(const operation of deletes){const retired=(await client.query('UPDATE purchase_orders SET deleted_at=now(),version=version+1,updated_at=now() WHERE id=$1 AND deleted_at IS NULL RETURNING *',[operation.id])).rows[0];if(retired){await recordRetiredKey(client,retired);deletedFamilies.set(String(retired.root_order_id),retired)}}
         for(const [rootOrderId,retired] of deletedFamilies)await releaseInactiveFamilyKey(client,rootOrderId,retired.root_key);
-        if(updates.length)await client.query('UPDATE purchase_orders o SET '+['region_id',...dbCols].map(c=>c+'=s.'+c).join(',')+',version=o.version+1,updated_at=now() FROM jsonb_populate_recordset(NULL::purchase_orders,$1::jsonb) s WHERE o.id=s.id',[JSON.stringify(updates)]);
+        if(updates.length)await client.query('UPDATE purchase_orders o SET '+['region_id','measurement_overrides',...dbCols].map(c=>c+'=s.'+c).join(',')+',version=o.version+1,updated_at=now() FROM jsonb_populate_recordset(NULL::purchase_orders,$1::jsonb) s WHERE o.id=s.id',[JSON.stringify(updates)]);
         const restoreFamilies=new Map();
         for(const recovery of recoveries){
           if(recovery.action==='restore'){
@@ -452,15 +453,15 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
             family.rows.push(recovery);
           }else{
             const data=recovery.data;
-            await client.query('UPDATE purchase_orders o SET '+['region_id',...dbCols].map(c=>c+'=s.'+c).join(',')+',inactive_at=NULL,version=o.version+1,updated_at=now() FROM jsonb_populate_record(NULL::purchase_orders,$1::jsonb) s WHERE o.id=s.id',[JSON.stringify(data)]);
+            await client.query('UPDATE purchase_orders o SET '+['region_id','measurement_overrides',...dbCols].map(c=>c+'=s.'+c).join(',')+',inactive_at=NULL,version=o.version+1,updated_at=now() FROM jsonb_populate_record(NULL::purchase_orders,$1::jsonb) s WHERE o.id=s.id',[JSON.stringify(data)]);
           }
         }
         for(const family of restoreFamilies.values()){
           await ensureFamilyKey(client,family.rootOrderId,family.rootKey);
-          for(const recovery of family.rows){const data=recovery.data;await client.query('UPDATE purchase_orders o SET '+['region_id',...dbCols].map(c=>c+'=s.'+c).join(',')+',inactive_at=NULL,deleted_at=NULL,version=o.version+1,updated_at=now() FROM jsonb_populate_record(NULL::purchase_orders,$1::jsonb) s WHERE o.id=s.id',[JSON.stringify(data)])}
+          for(const recovery of family.rows){const data=recovery.data;await client.query('UPDATE purchase_orders o SET '+['region_id','measurement_overrides',...dbCols].map(c=>c+'=s.'+c).join(',')+',inactive_at=NULL,deleted_at=NULL,version=o.version+1,updated_at=now() FROM jsonb_populate_record(NULL::purchase_orders,$1::jsonb) s WHERE o.id=s.id',[JSON.stringify(data)])}
         }
         const records=[];
-        for(const values of creates){const key=await allocateKey(client),record={row_key:key,root_key:key,container_id:null,region_id:values.regionId??null};writable.forEach(c=>record[snake(c.k)]=values[c.k]??null);records.push(record)}
+        for(const values of creates){const key=await allocateKey(client),record={row_key:key,root_key:key,container_id:null,region_id:values.regionId??null,measurement_overrides:Object.fromEntries(overrideColumns.filter(c=>values[c.k]!=null&&values[c.k]!=='').map(c=>[c.k,values[c.k]]))};writable.forEach(c=>record[snake(c.k)]=values[c.k]??null);records.push(record)}
         await insertMany(client,records);
         const result={counts:plan.counts,createdKeys:records.map(r=>r.row_key)};
         if(plan.operations.length)await audit(client,user,'import',{...result,changes:plan.rows.filter(r=>['update','reactivate','restore'].includes(r.action)).map(r=>({rowKey:r.rowKey,action:r.action,changes:r.changes})),deleted:deletes.map(r=>r.rowKey)});

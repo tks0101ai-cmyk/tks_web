@@ -7,8 +7,8 @@
   const labels = { productName: 'Tên SP (Việt)', productNameCn: 'Tên SP (Trung)', literDiff: 'Lệch L/c (%)', gramDiff: 'Lệch g/c (%)' };
   const normalize = value => String(value ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
   const caption = col => labels[col.k] || (col.cn ? col.l + ' · ' + col.cn : col.l);
-  const writable = col => col.k === 'rowKey' || !!col.region || !col.d && !col.m && !col.ro && !['container', 'status'].includes(col.k);
-  const importColumns = columns => columns.filter(col => writable(col));
+  const writable = col => col.k === 'rowKey' || !!col.region || !!col.o || !col.d && !col.m && !col.ro && !['container', 'status'].includes(col.k);
+  const importColumns = columns => columns.filter(writable);
 
   function exportWorkbook(rows, columns, visibleKeys) {
     const selected = new Set(visibleKeys || columns.map(col => col.k));
