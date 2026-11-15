@@ -87,7 +87,7 @@ test('full snapshot workbook carries revision, complete writable headers and per
   const file=excel.exportImportSnapshot({rows:[{...fresh(),rowKey:'D00001.01'}],columns,revision:'12:34'});
   const workbook=excel.read(file),parsed=excel.parseImportSnapshot(file,columns);
   const guide=XLSX.utils.sheet_to_json(workbook.Sheets['Hướng dẫn'],{header:1,defval:''});
-  const writable=columns.filter(c=>c.k==='rowKey'||!!c.region||!!c.o||!c.d&&!c.m&&!c.ro&& !['container','status'].includes(c.k));
+  const writable=columns.filter(c=>c.k==='rowKey'||!!c.region||!!c.o||c.si||!c.d&&!c.m&&!c.ro&& !['container','status'].includes(c.k));
   assert.ok(workbook.SheetNames.includes('Đặt hàng'));
   assert.equal(workbook.Workbook.Sheets.find(s=>s.name==='__TOKOSI').Hidden,1);
   assert.equal(parsed.revision,'12:34');
@@ -97,6 +97,28 @@ test('full snapshot workbook carries revision, complete writable headers and per
   assert.ok(writable.every(c=>guide.some(row=>row.includes(excel.caption(c)))), 'guide must explain every imported column');
   assert.ok(guide.flat().some(cell=>/ví dụ/i.test(String(cell))), 'example stays on guide sheet');
   assert.ok(writable.some(c=>c.k==='literWarehouse')&&writable.some(c=>c.k==='gramWarehouse')&&writable.some(c=>c.k==='measuredOn'));
+  assert.equal(parsed.rows[0].container,null);
+});
+
+test('snapshot container names assign matching active containers and blank values return rows to waiting',()=>{
+  const containers=[{id:'9',name:'10-2H',region_id:'3'}],regions=[{id:'3',name:'H',isActive:true}],current=[{...existing()[0],regionId:'3',contId:null}];
+  const assigned=prepareRows([{rowKey:'D00001.01',productCode:'A',regionId:'H',container:'CONT 10-2H'}],current,{snapshot:true,regions,containers});
+  assert.equal(assigned.valid,true,assigned.rows[0].errors.join('; '));
+  assert.equal(assigned.operations[0].changes.find(change=>change.key==='contId').after,'9');
+  const waiting=prepareRows([{rowKey:'D00001.01',productCode:'A',regionId:'H',container:''}],[{...current[0],contId:'9'}],{snapshot:true,regions,containers});
+  assert.equal(waiting.valid,true);assert.equal(waiting.operations[0].changes.find(change=>change.key==='contId').after,null);
+  const alias=prepareRows([{...fresh(),container:'Chờ -H'}],[],{snapshot:true,containers});
+  assert.equal(alias.valid,true);assert.equal(alias.operations[0].values.contId,null);
+  const pricing=prepareRows([{...fresh(),container:'Tính giá'}],[],{snapshot:true,containers});
+  assert.equal(pricing.valid,true);assert.equal(pricing.operations[0].values.contId,null);
+});
+
+test('snapshot blocks unknown or region-mismatched container names',()=>{
+  const containers=[{id:'9',name:'10-2H',region_id:'3'}],regions=[{id:'3',name:'H',isActive:true},{id:'4',name:'V',isActive:true}];
+  const unknown=prepareRows([{...fresh(),container:'10-99H'}],[],{snapshot:true,containers});
+  assert.equal(unknown.valid,false);assert.match(unknown.rows[0].errors.join(' '),/không tìm thấy cont/);
+  const mismatch=prepareRows([{...fresh(),regionId:'V',container:'10-2H'}],[],{snapshot:true,regions,containers});
+  assert.equal(mismatch.valid,false);assert.match(mismatch.rows[0].errors.join(' '),/vùng không khớp/);
 });
 
 

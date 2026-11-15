@@ -331,6 +331,16 @@ test('import confirms all rows and replaying token does not create duplicates', 
   assert.deepEqual(await service.commitImport(manager,preview.token),result);
   assert.equal((await service.list(manager)).rows.length,2);
 });
+test('snapshot import assigns selected containers to existing and new rows; blank selection returns to waiting',async()=>{
+ const container=await service.createContainer(manager,{name:'10-2H',assumedM3:170}),existingRow=await service.create(manager,input());
+ let snapshot=await service.importSnapshot(manager);
+ const assigned=await service.previewImport(manager,{buffer:Buffer.from(excel.exportImportSnapshot({rows:[{...existingRow,container:'10-2H'},{...input(),productCode:'NEW',rowKey:'',container:'CONT 10-2H'}],columns,revision:snapshot.revision}))});
+ assert.equal(assigned.valid,true,JSON.stringify(assigned.rows.filter(r=>r.errors.length)));await service.commitImport(manager,assigned.token);
+ let rows=(await service.list(manager)).rows;assert.ok(rows.every(row=>row.contId===String(container.id)));
+ snapshot=await service.importSnapshot(manager);assert.ok(snapshot.rows.every(row=>row.container==='10-2H'));
+ const waiting=await service.previewImport(manager,{buffer:Buffer.from(excel.exportImportSnapshot({rows:snapshot.rows.map(row=>({...row,container:''})),columns,revision:snapshot.revision}))});
+ assert.equal(waiting.valid,true);await service.commitImport(manager,waiting.token);rows=(await service.list(manager)).rows;assert.ok(rows.every(row=>row.contId===null));
+});
 test('snapshot import clears blanks and soft-deletes rows omitted from the complete file',async()=>{
  const kept=await service.create(manager,{...input(),supplier:'NCC'}),removed=await service.create(manager,{...input(),productCode:'B'}),cursor=(await service.revision(manager)).revision;
  const preview=await service.previewImport(manager,{buffer:await snapshotFile([{...kept,supplier:''}])});assert.equal(preview.valid,true);assert.equal(preview.counts.update,1);assert.equal(preview.counts.delete,1);
