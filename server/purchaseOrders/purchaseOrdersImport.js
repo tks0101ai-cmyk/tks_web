@@ -33,12 +33,12 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
   sourceRows.forEach(row=>{if(row.recoverArchived===true){const key=String(row.recoverRowKey||row.rowKey||'').trim();if(key)recoveryCounts.set(key,(recoveryCounts.get(key)||0)+1)}});
   const rows = sourceRows.map((source, index) => {
     const rowKey = blank(source.rowKey) ? null : String(source.rowKey).trim();
-    const archivedByKey=rowKey?archivedRows.find(row=>row.rowKey===rowKey):null;
+    const current = rowKey ? existing.get(rowKey) : null;
+    const archivedByKey=!current&&rowKey?archivedRows.find(row=>row.rowKey===rowKey):null;
     const selectedArchived=source.recoverRowKey?archivedRows.find(row=>row.rowKey===source.recoverRowKey):null;
-    const archived=selectedArchived||archivedByKey;
+    const archived=current?null:selectedArchived||archivedByKey;
     const candidates=archived?[archived]:[];
     const requestedKey=source.recoverArchived===true?(source.recoverRowKey||archived?.rowKey):null;
-    const current = rowKey ? existing.get(rowKey) : null;
     const recovered = !current&&archived&&requestedKey===archived.rowKey;
     const effectiveKey=recovered?archived.rowKey:rowKey;
     const result = { sourceRow: source.__sourceRow || index + 2, rowKey: effectiveKey, action: recovered?(archived.deletedAt?'restore':'reactivate'):rowKey ? 'update' : 'create', errors: [], changes: [] };
@@ -143,8 +143,11 @@ function prepareSnapshotWorkbook(data, existingRows, { currentRevision, listedAt
 
 function recheckPreview(preview, currentRows, archivedRows = [], regions = [], containers = []) {
   if (!preview?.valid) throw Error('Toàn bộ file phải hợp lệ trước khi xác nhận.');
-  const current = new Map([...currentRows,...archivedRows].map(row => [row.rowKey, row]));
-  const conflicts = preview.rows.filter(row => row.id&&row.rowKey && (!current.has(row.rowKey) || current.get(row.rowKey).id !== row.id || version(current.get(row.rowKey)) !== row.expectedVersion));
+  const rowsById = new Map([...archivedRows,...currentRows].map(row => [String(row.id), row]));
+  const conflicts = preview.rows.filter(row => {
+    const current = rowsById.get(String(row.id));
+    return row.id&&row.rowKey&&(!current||current.rowKey!==row.rowKey||version(current)!==row.expectedVersion);
+  });
   if (conflicts.length) return { valid: false, code: 'VERSION_CONFLICT', conflicts: conflicts.map(row => ({ rowKey: row.rowKey, sourceRow: row.sourceRow })), operations: [] };
   const currentKeys = new Set([...currentRows,...archivedRows].map(row => row.rowKey));
   const missing = preview.snapshot ? preview.rows.filter(row => !['delete','archived_skip'].includes(row.action) && row.rowKey && !currentKeys.has(row.rowKey)) : [];

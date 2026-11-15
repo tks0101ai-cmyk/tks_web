@@ -63,6 +63,25 @@ test('recheck detects splitting/removal of a previously valid row', () => {
   const preview = prepareRows([{ rowKey: 'D00001.01', productCode: 'A', cartonCount: 3 }], existing());
   assert.equal(recheckPreview(preview, []).valid, false);
 });
+test('snapshot recheck keeps the active row when its display key was reused', () => {
+  const current = { ...existing()[0], id: 2, productCode: 'CURRENT' };
+  const archived = { ...existing()[0], id: 1, productCode: 'ARCHIVED', deletedAt: '2026-11-01' };
+  const preview = prepareRows([{ rowKey: current.rowKey, productCode: 'CURRENT', productName: 'Renamed' }], [current], { snapshot: true, archivedRows: [archived] });
+  assert.equal(preview.rows[0].action, 'update');
+  const checked = recheckPreview(preview, [current], [archived]);
+  assert.equal(checked.valid, true);
+  assert.deepEqual(checked.conflicts, undefined);
+});
+test('snapshot deletion rows survive reused display keys in archived rows', () => {
+  const keys = ['D00556', 'D00561'];
+  const current = keys.map((rowKey, i) => ({ ...existing()[0], id: i + 2, rowKey }));
+  const archived = keys.map((rowKey, i) => ({ ...existing()[0], id: i + 1, rowKey, deletedAt: '2026-11-01' }));
+  const preview = prepareRows([fresh()], current, { snapshot: true, archivedRows: archived });
+  assert.deepEqual(preview.rows.filter(row => row.action === 'delete').map(row => [row.rowKey, row.sourceRow]), [['D00556', null], ['D00561', null]]);
+  const checked = recheckPreview(preview, current, archived);
+  assert.equal(checked.valid, true);
+  assert.deepEqual(checked.conflicts, undefined);
+});
 test('valid recheck preserves creation date and source data and exposes only planned writes', () => {
   const preview = prepareRows([fresh()], [], { listedAt: '2026-11-03' });
   const result = recheckPreview(preview, []);
