@@ -20,7 +20,7 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 
 ## Đang dở / chờ
 
-- [ ] 15/11 — Thu mua: import snapshot đề xuất/thêm nhân viên Thu mua mới và kích hoạt lại NV ngừng hoạt động trong cùng transaction — chưa commit/push/deploy; cần kiểm luồng preview/confirm trên DB test.
+- [ ] 15/11 — Thu mua: import snapshot thêm/kích hoạt lại nhân viên và tối ưu ghi theo lô (commit `146b0adf` đã push main) — chờ Render deploy rồi đo lại import snapshot production.
 
 > Rà ngày 10/11/2026: web `tokosi` và worker đều đang chạy `main` mới nhất (`d5e9ceb8`); mọi migration trong repo (đến `0120`) đã áp DB thật. Các việc cũ đã xong được xóa, xem file lưu trữ nếu cần chi tiết.
 
