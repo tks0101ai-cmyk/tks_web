@@ -728,11 +728,11 @@ test('freight allocation shares manual container cost and formula falls back to 
 
 test('clearing container freight restores the standard volume formula',async()=>{const c=await service.createContainer(manager,{name:'CLEAR COST',assumedM3:170});const manual=await service.updateContainer(manager,c.id,{version:c.version,changes:{freight:123,freightMode:'manual',freightBase:999,freightCapacity:2}});const auto=await service.updateContainer(manager,c.id,{version:manual.version,changes:{freight:null}});assert.equal(auto.freight_mode,'formula');assert.equal(Number(auto.freight_base),202000000);assert.equal(Number(auto.freight_capacity),170)});
 
-test('saved Excel-style freight formulas reprice every child and the shared projection',async()=>{
+test('saved total-freight formulas reprice every child and the shared projection',async()=>{
  const c=await service.createContainer(manager,{name:'FORMULA INPUT',assumedM3:170});
  const row=await service.create(manager,{...input(),productCode:'FORMULA',m3PerCarton:.5,cartonCount:4});
  await service.transfer(manager,{id:row.id,version:row.version,quantity:row.cartonCount,destinationId:c.id});
- const formula='=(195000000+4*500*3920)/M3_XE';
+ const formula='=(195000000+4*500*3920)';
  const changed=await service.updateContainer(manager,c.id,{version:c.version,changes:{freightFormula:formula}});
  assert.equal(changed.freight_formula,formula);
  assert.equal(changed.freight_mode,'formula');
@@ -755,7 +755,7 @@ test('clearing assumed m3 switches the freight formula denominator to actual sta
  const c=await service.createContainer(manager,{name:'ASSUMED FALLBACK',assumedM3:100});
  const row=await service.create(manager,{...input(),productCode:'ASSUMED FALLBACK',m3PerCarton:2,cartonCount:10});
  await service.transfer(manager,{id:row.id,version:row.version,quantity:row.cartonCount,destinationId:c.id});
- let current=await service.updateContainer(manager,c.id,{version:c.version,changes:{freightFormula:'=100000/M3_XE'}});
+ let current=await service.updateContainer(manager,c.id,{version:c.version,changes:{freightFormula:'=100000'}});
  let saved=(await service.list(manager)).rows.find(r=>r.productCode==='ASSUMED FALLBACK');
  assert.equal(saved.freightAmount,20000);
  current=await service.updateContainer(manager,c.id,{version:current.version,changes:{assumedM3:null}});
