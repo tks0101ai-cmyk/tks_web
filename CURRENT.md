@@ -20,7 +20,7 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 
 ## Đang dở / chờ
 
-- [ ] 15/11 — Thu mua: phân trang xem trước import snapshot và hiện trạng thái/lỗi khi xác nhận (commit `b8050a6f` đã push main; Render đã phục vụ asset mới) — tải lại trang, tải snapshot hiện tại, nhập lại file và xác nhận 919 dòng trên production.
+- [ ] 15/11 — Thu mua: xác nhận import snapshot 919 dòng trả 500 `PURCHASE_FAILED`; đã thêm log lỗi gốc riêng cho `/import/confirm` (không migration, chưa push) — deploy log chẩn đoán rồi thử lại cùng bản xem trước để xác định và sửa lỗi gốc.
 
 > Rà ngày 10/11/2026: web `tokosi` và worker đều đang chạy `main` mới nhất (`d5e9ceb8`); mọi migration trong repo (đến `0120`) đã áp DB thật. Các việc cũ đã xong được xóa, xem file lưu trữ nếu cần chi tiết.
 
