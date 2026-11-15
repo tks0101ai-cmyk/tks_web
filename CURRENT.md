@@ -20,7 +20,7 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 
 ## Đang dở / chờ
 
-- [ ] 15/11 — Thu mua: confirm 500 do `recheckPreview` trả xung đột thiếu `rows` đã được sửa; regression/import test đạt, service suite còn 3 lỗi ở luồng khác — đẩy bản sửa lên main, xác minh Render rồi dùng snapshot mới nếu preview báo 409.
+- [ ] 15/11 — Thu mua: fix confirm 500 do `recheckPreview` trả xung đột thiếu `rows` đã push (`79f6feff`); regression/import test đạt, service suite còn 3 lỗi ở luồng khác — xác minh Render deploy rồi dùng snapshot mới nếu preview báo 409.
 
 > Rà ngày 10/11/2026: web `tokosi` và worker đều đang chạy `main` mới nhất (`d5e9ceb8`); mọi migration trong repo (đến `0120`) đã áp DB thật. Các việc cũ đã xong được xóa, xem file lưu trữ nếu cần chi tiết.
 
