@@ -49,7 +49,7 @@
   function cont(id){return containerLookup.get(String(id))||data.containers.find(c=>String(c.id)===String(id))}
   const contLabel=text=>String(text||'').replace(/^CONT\s+/i,'').replace(/\s+(?:CHƯA CÓ LỊCH|CHỜ BỐC|ĐÃ BỐC|ĐÃ VỀ).*$/i,'').trim();
   async function releaseRowKeys(rows){for(const row of rows){if(!row.reservationId)continue;const res=await fetch(base+'/release-key',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json'},body:JSON.stringify({reservationId:row.reservationId})});if(!res.ok)throw new Error('Chưa trả được mã giữ chỗ. Bản nháp vẫn được giữ; hãy thử hủy lại.')}}
-  const regionById=id=>(data.regions||[]).find(r=>String(r.id)===String(id??'')), regionLabel=id=>regionById(id)?.name||'', containerTitle=c=>contLabel(c?.name)+(regionLabel(c?.region_id??c?.regionId)?' · '+regionLabel(c?.region_id??c?.regionId):''), name=id=>id==null||id===''?'Chờ xếp':containerTitle(cont(id))||'Cont không còn tồn tại';
+  const regionById=id=>(data.regions||[]).find(r=>String(r.id)===String(id??'')), regionLabel=id=>regionById(id)?.name||'', containerTitle=c=>contLabel(c?.name), name=id=>id==null||id===''?'Chờ xếp':containerTitle(cont(id))||'Cont không còn tồn tại';
   const status=['','Chưa xếp','Chờ bốc','Đã bốc','Đã về'];
   function value(r,k){
     if(Object.hasOwn(r.measurementOverrides||{},k))return r.measurementOverrides[k]??'';
