@@ -1228,7 +1228,7 @@ Cập nhật gần nhất: 08/11/2026.
 
 Mục này thay yêu cầu cũ về dropdown HR, nhập tên buyer tự do, gắn cont khi tạo mã và heartbeat 10 giây.
 
-- **FR-PUR-NV:** danh mục NV Thu mua độc lập, thêm/đổi tên/ngừng/kích hoạt bằng quyền purchase.edit; không xóa cứng. Row lưu tên snapshot, không cần HR linkage. Chỉ chọn mới/đổi sang tên catalog active; legacy/inactive không đổi vẫn đọc và sửa các ô khác. Đổi catalog không ghi lại lịch sử buyer trên đơn. Migration 0119 seed tên hiện có sau trim/khử trùng.
+- **FR-PUR-NV:** danh mục NV Thu mua độc lập, thêm/đổi tên/ngừng/kích hoạt bằng quyền purchase.edit; không xóa cứng. Row lưu tên snapshot, không cần HR linkage. Chỉ chọn mới/đổi sang tên catalog active; legacy/inactive không đổi vẫn đọc và sửa các ô khác. Import snapshot có quyền `purchase.import` được đề xuất thêm tên buyer mới hoặc kích hoạt tên đã ngừng; preview chỉ đọc, thay đổi danh mục chỉ ghi cùng snapshot khi xác nhận toàn bộ. Tên trùng cách viết không phân biệt hoa/thường bị chặn. Đổi catalog không ghi lại lịch sử buyer trên đơn. Migration 0119 seed tên hiện có sau trim/khử trùng.
 - **FR-PUR-WAIT:** Mọi mã hàng mới từ create trực tiếp, `plan.creates` hoặc import đều lưu `container_id=NULL` (**Chờ xếp**), kể cả request create gửi `contId`. Việc xếp/chuyển/tách cont là thao tác riêng có xác nhận và kiểm phiên bản. Tên legacy vẫn đọc được; chỉ lựa chọn buyer mới/đổi mới bắt buộc danh mục đang hoạt động.
 - **FR-PUR-CONT:** `PATCH /api/purchase-orders/containers/:id` nhận `{version,changes,rows?}`; version cont đang xem là bắt buộc. Các trường trong `changes`: `name`, `assumedM3` (số dương hoặc `null` để xóa), `carrier`, `loader`, `nameCn`, `loading`, `arrivalNote`, `arrivalDate`, `maxTon`, `m3Min`, `m3Max`, `freight`, `freightMode`, `freightFormula`, `freightBase`, `freightCapacity`. Response là bản ghi cont dạng DB (ví dụ `assumed_m3`, `arrival_note`, `arrival_date`), không phải toàn bộ dòng con.
 
@@ -1281,9 +1281,9 @@ Cập nhật gần nhất: 07/11/2026.
 11/11/2026 — NET theo tab VK-DUNG: cộng Thuế, nhân VC sau CNY với 3,920 (chỉ riêng phí này), giá hàng vẫn dùng tỉ giá dòng; chi phí để trống được tính là 0. Hiển thị giá tệ 2 chữ số và Tổng tệ làm tròn đơn vị; nút Tổng tệ hiện số chính xác 3 chữ số trong cùng ô tới khi mất focus, không mở popup.
 11/11/2026 — Thu mua cho phép ghi đè theo dòng 9 trường thuộc nhóm Đối chiếu Cân đo. `measurement_overrides` (JSONB, migration 0122) chỉ lưu key đã sửa; bỏ key/nhập trống sẽ lấy lại số nguồn hoặc kết quả tính tự động. Không ghi thay đổi ngược vào bảng `shipping_measures` hay Google Sheet; ngày đo vẫn trống nếu nguồn không có ngày.
 
-12/11/2026 — Import Thu mua phải tải workbook snapshot đầy đủ trước khi chọn/tải file. Workbook có hướng dẫn từng cột và revision ẩn; ô trống xóa giá trị, dòng vắng mặt được xóa mềm. UI hiển thị tiến độ tải và preview số dòng thêm/sửa/không đổi/xóa/lỗi; chỉ ghi sau khi xác nhận, theo giao dịch nguyên tử. Nếu revision đổi sau khi tải, preview/xác nhận bị từ chối và người dùng cần tải snapshot mới.
+12/11/2026 — Import Thu mua phải tải workbook snapshot đầy đủ trước khi chọn/tải file. Workbook có hướng dẫn từng cột và revision ẩn; ô trống xóa giá trị, dòng vắng mặt được xóa mềm. UI hiển thị tiến độ tải và preview số dòng thêm/sửa/không đổi/xóa/lỗi; chỉ ghi sau khi xác nhận, theo giao dịch nguyên tử. Nếu revision đổi sau khi tải, preview/xác nhận bị từ chối và người dùng cần tải snapshot mới. Buyer mới/ngừng hoạt động được liệt kê trong preview, chỉ thêm/kích hoạt cùng transaction khi xác nhận.
 
-Cập nhật cuối: 12/11/2026.
+Cập nhật cuối: 15/11/2026.
 
 ## Thu mua — vòng đời Mã dòng tái sử dụng (13/11/2026)
 

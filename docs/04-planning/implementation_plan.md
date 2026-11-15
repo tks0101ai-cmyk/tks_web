@@ -767,11 +767,13 @@ Cập nhật cuối: 12/11/2026.
 
 ## Thu mua — import snapshot Excel — 12/11/2026
 
-`GET /api/purchase-orders/import/snapshot` tạo workbook đầy đủ từ cùng một revision `REPEATABLE READ`; popup chỉ mở chọn/kéo file sau khi tải xong snapshot. Sheet `Hướng dẫn` mô tả mọi cột, định dạng và quy tắc dòng; manifest revision được giấu trong `__TOKOSI`. Preview hỗ trợ tạo mới, cập nhật, giữ nguyên, xóa mềm dòng bị thiếu, và xóa giá trị bằng ô trống; một lỗi hoặc revision cũ chặn toàn bộ. Xác nhận áp dụng create/update/soft-delete nguyên tử qua transaction, giữ audit, undo/restore và delta realtime hiện có. Không migration.
+`GET /api/purchase-orders/import/snapshot` tạo workbook đầy đủ từ cùng một revision `REPEATABLE READ`; popup chỉ mở chọn/kéo file sau khi tải xong snapshot. Sheet `Hướng dẫn` mô tả mọi cột, định dạng và quy tắc dòng; manifest revision được giấu trong `__TOKOSI`. Preview hỗ trợ tạo mới, cập nhật, giữ nguyên, xóa mềm dòng bị thiếu, xóa giá trị bằng ô trống, đồng thời đề xuất thêm/kích hoạt nhân viên theo buyer trong file; preview không ghi. Một lỗi hoặc revision cũ chặn toàn bộ. Xác nhận áp dụng thay đổi đơn hàng và danh mục nhân viên nguyên tử qua cùng transaction, ghi audit, phát delta realtime hiện có. Không migration.
 
 Kiểm tra: test importer và service bao gồm blank-clear, stale preview/confirm, soft-delete/restore và tombstone delta; route download cần quyền `purchase.import`; UI yêu cầu download trước, kéo/chọn `.xlsx`, giới hạn 10 MB và hiển thị tiến độ thật. Commit `725e73d5` đã push `main`; xác nhận Render phục vụ JS chứa UI snapshot mới. Còn test workbook với dữ liệu thật và xác minh đồng bộ hai phiên trên production.
 
-Cập nhật cuối: 12/11/2026.
+Cập nhật cuối: 15/11/2026.
+
+15/11/2026 — Import snapshot tự thêm nhân viên Thu mua chưa có hoặc kích hoạt lại tên đã ngừng. Preview hiển thị rõ danh sách; recheck danh mục khi xác nhận để tránh trùng cách viết hoặc ghi dữ liệu một phần.
 
 ## Hiệu năng đợt 5 — 13/11/2026
 

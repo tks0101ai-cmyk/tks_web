@@ -701,9 +701,9 @@ Khi nhiều người cùng mở bảng, sau snapshot ban đầu client đồng b
 11/11/2026 — Thu mua tính Giá NET theo tab VK-DUNG: cộng Thuế và VC sau CNY × 3,920 vào Tiền hàng + Tiền VC mã trước khi chia Tổng SL; 3,920 chỉ dành cho VC sau, giá hàng tiếp tục theo tỉ giá dòng. Giá tệ hiển thị 2 chữ số; Tổng tệ làm tròn đơn vị, bấm/Enter/Space hiện 3 chữ số chính xác ngay trong ô đến khi blur, không bật popup.
 11/11/2026 — Nhóm Đối chiếu Cân đo trong Thu mua cho phép sửa số đo/tính toán theo từng dòng mà không sửa dữ liệu Cân đo nguồn; xóa giá trị riêng để dùng lại nguồn hoặc tính tự động. Migration 0122 lưu các ghi đè theo đơn hàng.
 
-12/11/2026 — Người dùng tải toàn bộ dữ liệu Thu mua hiện tại kèm hướng dẫn, sửa cùng workbook rồi upload lại. File là bản thay thế đầy đủ: ô trống xóa giá trị, dòng vắng mặt xóa mềm; preview làm rõ số lượng và phải xác nhận toàn bộ. Nếu dữ liệu có người khác sửa sau khi tải, hệ thống yêu cầu tải snapshot mới để tránh ghi đè.
+12/11/2026 — Người dùng tải toàn bộ dữ liệu Thu mua hiện tại kèm hướng dẫn, sửa cùng workbook rồi upload lại. File là bản thay thế đầy đủ: ô trống xóa giá trị, dòng vắng mặt xóa mềm; preview làm rõ số lượng và phải xác nhận toàn bộ. Nếu dữ liệu có người khác sửa sau khi tải, hệ thống yêu cầu tải snapshot mới để tránh ghi đè. Từ 15/11, preview cũng nêu nhân viên Thu mua sẽ được thêm/kích hoạt theo tên buyer; chỉ lưu danh mục cùng snapshot sau khi xác nhận.
 
-Cập nhật cuối: 12/11/2026.
+Cập nhật cuối: 15/11/2026.
 
 ## Thu mua — Mã dòng có thể tái sử dụng (13/11/2026)
 

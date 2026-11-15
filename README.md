@@ -604,9 +604,9 @@ Cập nhật cuối: 12/11/2026.
 
 ## Thu mua — import snapshot Excel (12/11/2026)
 
-Import luôn bắt đầu bằng tải workbook đầy đủ từ `GET /api/purchase-orders/import/snapshot`; workbook có sheet `Đặt hàng`, hướng dẫn từng cột và manifest revision ẩn. Sửa đúng file đã tải rồi upload `.xlsx` (tối đa 10 MB, 10.000 dòng). Ô trống xóa giá trị; dòng bị bỏ khỏi file được tính xóa mềm và hiện rõ trong preview. Hệ thống từ chối snapshot cũ ở preview hoặc xác nhận, và chỉ áp dụng toàn bộ create/update/delete sau xác nhận hợp lệ. Không cần migration.
+Import luôn bắt đầu bằng tải workbook đầy đủ từ `GET /api/purchase-orders/import/snapshot`; workbook có sheet `Đặt hàng`, hướng dẫn từng cột và manifest revision ẩn. Sửa đúng file đã tải rồi upload `.xlsx` (tối đa 10 MB, 10.000 dòng). Ô trống xóa giá trị; dòng bị bỏ khỏi file được tính xóa mềm và hiện rõ trong preview. Preview đề xuất thêm/kích hoạt nhân viên Thu mua theo tên buyer trong file; chỉ ghi cùng snapshot sau khi xác nhận và trong một transaction. Hệ thống từ chối snapshot cũ ở preview hoặc xác nhận, và chỉ áp dụng toàn bộ thay đổi sau xác nhận hợp lệ. Không cần migration.
 
-Cập nhật cuối: 13/11/2026.
+Cập nhật cuối: 15/11/2026.
 
 ## Phiên đăng nhập trượt 7 ngày (13/11/2026)
 
