@@ -483,7 +483,9 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         if(!saved.payload.valid)throw fail(400,'IMPORT_INVALID','Toàn bộ file phải hợp lệ.');
         const revision=(await client.query("SELECT COALESCE(max(id),0)::text || ':' || count(*)::text AS version FROM purchase_history")).rows[0].version;
         if(saved.payload.snapshotRevision&&revision!==saved.payload.snapshotRevision)throw fail(409,'IMPORT_SNAPSHOT_STALE','Dữ liệu đã thay đổi. Tải snapshot mới rồi sửa lại.');
-        const current=await readRows(client),archived=await readArchivedRows(client),regions=(await client.query('SELECT id,name,is_active AS "isActive" FROM purchase_regions')).rows,containers=await readImportContainers(client),plan=await validateImportEmployees(client,recheckPreview(saved.payload,current,archived,regions,containers),current,archived);
+        const current=await readRows(client),archived=await readArchivedRows(client),regions=(await client.query('SELECT id,name,is_active AS "isActive" FROM purchase_regions')).rows,containers=await readImportContainers(client),checked=recheckPreview(saved.payload,current,archived,regions,containers);
+        if(!checked.valid)throw fail(409,'VERSION_CONFLICT','Dữ liệu đã thay đổi. Không ghi dòng nào.',{conflicts:checked.conflicts});
+        const plan=await validateImportEmployees(client,checked,current,archived);
         if(!plan.valid)throw fail(409,'VERSION_CONFLICT','Dữ liệu đã thay đổi. Không ghi dòng nào.',{conflicts:plan.conflicts});
         const employeeChanges=await applyImportEmployees(client,plan.employeeChanges||[],user);
         const creates=[],updates=[],recoveries=[],deletes=[],emptyContainerCandidates=new Set();

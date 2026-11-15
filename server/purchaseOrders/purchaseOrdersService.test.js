@@ -694,6 +694,9 @@ test('two actors merge separate fields, block same-cell overwrite and stale dele
 test('deleting a row after import preview invalidates the whole import and does not resurrect it',async()=>{
  const a=await service.create(manager,input()),preview=await service.previewImport(manager,{buffer:await snapshotFile([{...a,cartonCount:3},{...input(),productCode:'NEW'}])});await service.remove(manager,{rows:[{id:a.id,version:a.version}]});await assert.rejects(service.commitImport(manager,preview.token));assert.equal((await service.list(manager)).rows.length,0);
 });
+test('import confirm returns a version conflict when a row changes without a history entry',async()=>{
+ const a=await service.create(manager,input()),preview=await service.previewImport(manager,{buffer:await snapshotFile([{...a,cartonCount:3}])});await db.query('UPDATE purchase_orders SET version=version+1 WHERE id=$1',[a.id]);await assert.rejects(service.commitImport(manager,preview.token),e=>e.code==='VERSION_CONFLICT');assert.equal((await service.list(manager)).rows[0].cartonCount,100);
+});
 
 test('employee assignment can be cleared using the buyer name field',async()=>{
  const a=await service.create(manager,{...input(),buyer:'Dung'});const b=await service.update(manager,a.id,{version:a.version,changes:{buyer:''}});assert.equal(b.buyerEmployeeId,null);assert.equal(b.buyer,'');
