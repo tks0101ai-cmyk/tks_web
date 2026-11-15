@@ -433,6 +433,19 @@ test('snapshot import saves measurement overrides and blank cells restore calcul
  const latest=await service.importSnapshot(manager),blank={...latest.rows[0],literWarehouse:null,m3Warehouse:null,literChina:null,literDiff:null,gramWarehouse:null,gramChina:null,gramDiff:null,measuredOn:null,ratio:null},clear=await service.previewImport(manager,{buffer:Buffer.from(excel.exportImportSnapshot({rows:[blank],columns,revision:latest.revision}))});assert.equal(clear.valid,true);await service.commitImport(manager,clear.token);
  saved=(await service.list(manager)).rows.find(item=>item.id===row.id);assert.deepEqual(saved.measurementOverrides,{});
 });
+
+test('snapshot import processes deletes and generated keys in a bounded number of queries',async()=>{
+ const oldRows=[];
+ for(let i=0;i<20;i++)oldRows.push(await service.create(manager,{...input(),productCode:'OLD'+i}));
+ const preview=await service.previewImport(manager,{buffer:await snapshotFile(Array.from({length:20},(_,i)=>({...input(),productCode:'NEW'+i,rowKey:''})))});
+ assert.equal(preview.valid,true);
+ let queryCount=0;const query=(sql,params)=>{queryCount++;return db.query(sql,params)};
+ const measured=createPurchaseOrdersService({pool:{query,connect:async()=>({query,release(){}})},events});
+ queryCount=0;const result=await measured.commitImport(manager,preview.token);
+ assert.equal(result.counts.create,20);assert.equal(result.counts.delete,20);
+ assert.deepEqual([...result.createdKeys].sort(),oldRows.map(row=>row.rowKey).sort());
+ assert.ok(queryCount<40,`snapshot commit made ${queryCount} sequential database queries`);
+});
 test('stale import rejects valid creations and updates together', async () => {
   const row=await service.create(manager,input());
   const preview=await service.previewImport(manager,{buffer:await snapshotFile([{...input(),rowKey:row.rowKey,cartonCount:7},input()])});
@@ -837,20 +850,17 @@ test('plan accepts an active region change for inline auto-save',async()=>{
  assert.equal((await service.latest(manager,'A')).regionId,String(secondRegion.id),'returning a line to waiting uses the reconfigured container region');
 });
 
-test('imports validate catalog at preview, revision and commit without losing legacy snapshots',async()=>{
- const bad=await service.previewImport(manager,{buffer:await snapshotFile([{...input(),buyer:'Free text'}])});assert.equal(bad.valid,false);assert.equal(bad.counts.error,1);
- await assert.rejects(service.commitImport(manager,bad.token),e=>e.code==='IMPORT_INVALID');
- const revised=await service.reviseImport(manager,bad.token,[{...input(),buyer:'Dung'}]);assert.equal(revised.valid,true);
- await db.query("UPDATE purchase_employees SET is_active=false WHERE name='Dung'");
- await assert.rejects(service.commitImport(manager,bad.token),e=>e.code==='EMPLOYEE_INVALID');assert.equal((await service.list(manager)).rows.length,0);
- await db.query("UPDATE purchase_employees SET is_active=true WHERE name='Dung'");await service.commitImport(manager,bad.token);
- const a=(await service.list(manager)).rows[0];assert.equal(a.buyer,'Dung');assert.equal(a.contId,null);
+test('snapshot import adds and reactivates buyer employees while preserving legacy names',async()=>{
+ const proposed=await service.previewImport(manager,{buffer:await snapshotFile([{...input(),buyer:'New Buyer'}])});
+ assert.equal(proposed.valid,true);assert.deepEqual(proposed.employeeChanges.map(change=>({action:change.action,name:change.name})),[{action:'create',name:'New Buyer'}]);
+ await service.commitImport(manager,proposed.token);let a=(await service.list(manager)).rows[0];assert.equal(a.buyer,'New Buyer');assert.equal(a.contId,null);
  await db.query("UPDATE purchase_orders SET buyer='Legacy import' WHERE id=$1",[a.id]);
  const legacy=await service.previewImport(manager,{buffer:await snapshotFile([{...a,buyer:'Legacy import',supplier:'Imported edit'}])});assert.equal(legacy.valid,true);await service.commitImport(manager,legacy.token);
  assert.equal((await service.latest(manager,'A')).buyer,'Legacy import');assert.equal((await service.latest(manager,'A')).supplier,'Imported edit');
  const changed=await service.previewImport(manager,{buffer:await snapshotFile([{...await service.latest(manager,'A'),buyer:'Other'}])});assert.equal(changed.valid,true);
- await db.query("UPDATE purchase_employees SET is_active=false WHERE name='Other'");await assert.rejects(service.commitImport(manager,changed.token),e=>e.code==='EMPLOYEE_INVALID');
- assert.equal((await service.latest(manager,'A')).buyer,'Legacy import');
+ await db.query("UPDATE purchase_employees SET is_active=false WHERE name='Other'");const result=await service.commitImport(manager,changed.token);
+ assert.deepEqual(result.employeeChanges.reactivated,['Other']);assert.equal((await service.latest(manager,'A')).buyer,'Other');
+ assert.equal((await db.query("SELECT is_active FROM purchase_employees WHERE name='Other'")).rows[0].is_active,true);
 });
 
 test('direct and plan new products always wait even with a requested container',async()=>{

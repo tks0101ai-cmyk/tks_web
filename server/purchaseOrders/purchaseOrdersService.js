@@ -103,8 +103,32 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
     const pooled=(await client.query("DELETE FROM purchase_key_pool WHERE row_key=(SELECT row_key FROM purchase_key_pool ORDER BY substring(row_key FROM 2)::bigint LIMIT 1) RETURNING row_key")).rows[0];
     return pooled?.row_key||newKey(client);
   }
+  async function allocateKeys(client,count) {
+    if(!count)return [];
+    const pooled=(await client.query(`WITH picked AS (SELECT row_key FROM purchase_key_pool ORDER BY substring(row_key FROM 2)::bigint LIMIT $1 FOR UPDATE SKIP LOCKED),
+      deleted AS (DELETE FROM purchase_key_pool AS pool USING picked WHERE pool.row_key=picked.row_key RETURNING pool.row_key)
+      SELECT row_key FROM deleted ORDER BY substring(row_key FROM 2)::bigint`,[count])).rows.map(row=>row.row_key);
+    const missing=count-pooled.length;
+    if(missing)pooled.push(...(await client.query("SELECT 'D'||lpad(nextval('purchase_order_key_seq')::text,5,'0') AS row_key FROM generate_series(1,$1)",[missing])).rows.map(row=>row.row_key));
+    return pooled;
+  }
   async function recordRetiredKey(client,row) {
     await client.query('INSERT INTO purchase_key_history(row_key,order_id,root_order_id,root_key) VALUES($1,$2,$3,$4)',[row.row_key,row.id,row.root_order_id,row.root_key]);
+  }
+  async function recordRetiredKeys(client,rows) {
+    if(!rows.length)return;
+    await client.query(`INSERT INTO purchase_key_history(row_key,order_id,root_order_id,root_key)
+      SELECT row_key,order_id,root_order_id,root_key FROM jsonb_to_recordset($1::jsonb) AS retired(row_key text,order_id bigint,root_order_id bigint,root_key text)`,[JSON.stringify(rows.map(row=>({row_key:row.row_key,order_id:row.id,root_order_id:row.root_order_id,root_key:row.root_key})))]);
+  }
+  async function releaseInactiveFamilies(client,rows) {
+    if(!rows.length)return;
+    await client.query(`WITH affected AS (SELECT DISTINCT root_order_id FROM jsonb_to_recordset($1::jsonb) AS retired(root_order_id bigint)),
+      inactive AS (SELECT orders.root_order_id,min(orders.root_key) AS root_key FROM purchase_orders AS orders JOIN affected USING(root_order_id)
+        GROUP BY orders.root_order_id HAVING NOT bool_or(orders.deleted_at IS NULL))
+      INSERT INTO purchase_key_pool(row_key) SELECT family.root_key FROM inactive AS family
+      WHERE NOT EXISTS(SELECT 1 FROM purchase_orders AS active WHERE active.root_key=family.root_key AND active.root_order_id<>family.root_order_id AND active.deleted_at IS NULL)
+        AND NOT EXISTS(SELECT 1 FROM purchase_key_reservations AS reservation WHERE reservation.row_key=family.root_key AND reservation.expires_at>now())
+      ON CONFLICT(row_key) DO NOTHING`,[JSON.stringify(rows)]);
   }
   async function releaseInactiveFamilyKey(client,rootOrderId,rootKey,exactKey=false) {
     const family=(await client.query('SELECT min(root_key) AS root_key,bool_or(deleted_at IS NULL) AS active FROM purchase_orders WHERE root_order_id=$1 GROUP BY root_order_id',[rootOrderId])).rows[0];
@@ -459,23 +483,22 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         if(!saved.payload.valid)throw fail(400,'IMPORT_INVALID','Toàn bộ file phải hợp lệ.');
         const revision=(await client.query("SELECT COALESCE(max(id),0)::text || ':' || count(*)::text AS version FROM purchase_history")).rows[0].version;
         if(saved.payload.snapshotRevision&&revision!==saved.payload.snapshotRevision)throw fail(409,'IMPORT_SNAPSHOT_STALE','Dữ liệu đã thay đổi. Tải snapshot mới rồi sửa lại.');
-        const current=await readRows(client,true),archived=await readArchivedRows(client,true),regions=(await client.query('SELECT id,name,is_active AS "isActive" FROM purchase_regions')).rows,containers=await readImportContainers(client),plan=await validateImportEmployees(client,recheckPreview(saved.payload,current,archived,regions,containers),current,archived,true);
+        const current=await readRows(client),archived=await readArchivedRows(client),regions=(await client.query('SELECT id,name,is_active AS "isActive" FROM purchase_regions')).rows,containers=await readImportContainers(client),plan=await validateImportEmployees(client,recheckPreview(saved.payload,current,archived,regions,containers),current,archived);
         if(!plan.valid)throw fail(409,'VERSION_CONFLICT','Dữ liệu đã thay đổi. Không ghi dòng nào.',{conflicts:plan.conflicts});
         const employeeChanges=await applyImportEmployees(client,plan.employeeChanges||[],user);
         const creates=[],updates=[],recoveries=[],deletes=[];
         for(const operation of plan.operations){
           if(operation.action==='delete'){deletes.push(operation);continue}
-          if(operation.action==='create'){await resolveEmployee(client,operation.values);creates.push(operation.values);continue}
+          if(operation.action==='create'){const values={...operation.values};if(values.buyer==null)values.buyer='';creates.push(values);continue}
           const original=current.find(r=>String(r.id)===String(operation.id))||archived.find(r=>String(r.id)===String(operation.id));
           const record={...original},assignment=Object.fromEntries(operation.changes.map(c=>[c.key,c.after]));
-          await resolveEmployee(client,assignment,record);operation.changes.forEach(change=>record[change.key]=assignment[change.key]);
+          operation.changes.forEach(change=>record[change.key]=assignment[change.key]);if(Object.hasOwn(assignment,'buyer')&&assignment.buyer==null){assignment.buyer='';record.buyer=''}
           const overrides=overrideColumns.some(c=>Object.hasOwn(assignment,c.k))?measurementOverridePlan(original,assignment).values:original.measurementOverrides||{};
           const data={id:record.id,container_id:record.contId??null,region_id:record.regionId??null,measurement_overrides:overrides};writable.forEach(c=>data[snake(c.k)]=record[c.k]??null);if(Object.hasOwn(assignment,'buyer'))data.buyer_employee_id=null;
           if(['reactivate','restore'].includes(operation.action))recoveries.push({data,action:operation.action,original});else updates.push(data);
         }
-        const deletedFamilies=new Map();
-        for(const operation of deletes){const retired=(await client.query('UPDATE purchase_orders SET deleted_at=now(),version=version+1,updated_at=now() WHERE id=$1 AND deleted_at IS NULL RETURNING *',[operation.id])).rows[0];if(retired){await recordRetiredKey(client,retired);deletedFamilies.set(String(retired.root_order_id),retired)}}
-        for(const [rootOrderId,retired] of deletedFamilies)await releaseInactiveFamilyKey(client,rootOrderId,retired.root_key);
+        const retired=deletes.length?(await client.query('UPDATE purchase_orders SET deleted_at=now(),version=version+1,updated_at=now() WHERE id=ANY($1::bigint[]) AND deleted_at IS NULL RETURNING id,row_key,root_order_id,root_key',[deletes.map(row=>row.id)])).rows:[];
+        await recordRetiredKeys(client,retired);await releaseInactiveFamilies(client,retired);
         if(updates.length)await client.query('UPDATE purchase_orders o SET '+['container_id','region_id','measurement_overrides',...dbCols].map(c=>c+'=s.'+c).join(',')+',version=o.version+1,updated_at=now() FROM jsonb_populate_recordset(NULL::purchase_orders,$1::jsonb) s WHERE o.id=s.id',[JSON.stringify(updates)]);
         const restoreFamilies=new Map();
         for(const recovery of recoveries){
@@ -493,8 +516,8 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
           await ensureFamilyKey(client,family.rootOrderId,family.rootKey);
           for(const recovery of family.rows){const data=recovery.data;await client.query('UPDATE purchase_orders o SET '+['container_id','region_id','measurement_overrides',...dbCols].map(c=>c+'=s.'+c).join(',')+',inactive_at=NULL,deleted_at=NULL,version=o.version+1,updated_at=now() FROM jsonb_populate_record(NULL::purchase_orders,$1::jsonb) s WHERE o.id=s.id',[JSON.stringify(data)])}
         }
-        const records=[];
-        for(const values of creates){const key=await allocateKey(client),record={row_key:key,root_key:key,container_id:values.contId??null,region_id:values.regionId??null,measurement_overrides:Object.fromEntries(overrideColumns.filter(c=>values[c.k]!=null&&values[c.k]!=='').map(c=>[c.k,values[c.k]]))};writable.forEach(c=>record[snake(c.k)]=values[c.k]??null);records.push(record)}
+        const records=[],keys=await allocateKeys(client,creates.length);
+        for(let i=0;i<creates.length;i++){const values=creates[i],key=keys[i],record={row_key:key,root_key:key,container_id:values.contId??null,region_id:values.regionId??null,measurement_overrides:Object.fromEntries(overrideColumns.filter(c=>values[c.k]!=null&&values[c.k]!=='').map(c=>[c.k,values[c.k]]))};writable.forEach(c=>record[snake(c.k)]=values[c.k]??null);records.push(record)}
         await insertMany(client,records);
         const result={counts:plan.counts,createdKeys:records.map(r=>r.row_key),employeeChanges};
         if(plan.operations.length)await audit(client,user,'import',{...result,changes:plan.rows.filter(r=>['update','reactivate','restore'].includes(r.action)).map(r=>({rowKey:r.rowKey,action:r.action,changes:r.changes})),deleted:deletes.map(r=>r.rowKey)});
