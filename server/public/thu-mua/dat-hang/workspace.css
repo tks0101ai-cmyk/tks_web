@@ -498,6 +498,9 @@
 .purchase-page #modal .dp-close{width:34px;height:34px;border-color:var(--border);border-radius:var(--radius-sm);background:var(--panel);color:var(--muted);font-size:21px;}
 .purchase-page #modal .dp-close:hover{background:var(--surface-hover);color:var(--text);}
 .purchase-page #modal .dp-body{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:20px;}
+.purchase-page .purchase-modal-success{min-height:140px;display:flex;align-items:center;justify-content:center;gap:12px;color:#86efac;font-size:16px;text-align:center}
+.purchase-page .purchase-modal-success>span{width:36px;height:36px;display:grid;place-items:center;border-radius:50%;background:#14532d;color:#bbf7d0;font-size:22px}
+:root[data-theme="light"] .purchase-page .purchase-modal-success{color:#166534}
 .purchase-page #modalBody{display:grid;gap:14px;min-width:0;}
 .purchase-page #modalBody>p{margin:0;color:var(--text-secondary);line-height:1.55;}
 .purchase-page #modalBody>form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:end;}

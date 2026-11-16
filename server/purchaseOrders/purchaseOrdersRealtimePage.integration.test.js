@@ -17,16 +17,24 @@ async function page(t,{local=false,localCount=1,directory=null,projectionProbe=n
 }
 test('table scope hides the ungranted table while keeping its own controls available',async t=>{
  const orders=await page(t,{permissions:{containers:false}}),orderDoc=orders.w.document;
- assert.equal(orderDoc.querySelector('.order-grid-shell').hidden,false);assert.equal(orderDoc.getElementById('containerPanel').hidden,true);assert.equal(orderDoc.getElementById('addMany').disabled,false);
+ assert.equal(orderDoc.querySelector('.order-grid-shell').hidden,false);assert.equal(orderDoc.getElementById('containerPanel').hidden,true);assert.equal(orderDoc.getElementById('add').disabled,false);assert.equal(orderDoc.getElementById('addMany'),null);
  const containers=await page(t,{permissions:{orders:false,edit:false}}),containerDoc=containers.w.document;
  assert.equal(containerDoc.querySelector('.order-grid-shell').hidden,true);assert.equal(containerDoc.getElementById('containerPanel').hidden,false);assert.equal(containerDoc.getElementById('packing'),null);assert.equal(containerDoc.getElementById('newCont').disabled,false);assert.equal(containerDoc.getElementById('manageRegionsQuick').disabled,false);
 });
 test('packing workspace is removed while container controls remain available',async t=>{
  const p=await page(t),doc=p.w.document;assert.equal(doc.getElementById('packing'),null);assert.equal(doc.getElementById('sourceTable'),null);assert.equal(doc.getElementById('targetTable'),null);assert.ok(doc.getElementById('newCont'));assert.ok(doc.getElementById('containerTable'));
 });
-test('bulk add accepts pasted product code and reuses the latest row values in one request',async t=>{
- const p=await page(t),doc=p.w.document;doc.getElementById('addMany').click();const input=doc.getElementById('bulkCodes');input.value='A';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));assert.equal(doc.getElementById('bulkCodesSave').disabled,false);doc.getElementById('bulkCodesSave').click();for(let i=0;i<4;i++)await tick();
+test('add modal accepts a pasted code and carton count, reusing available optional values in one request',async t=>{
+ const p=await page(t),doc=p.w.document;doc.getElementById('add').click();const input=doc.getElementById('bulkCodes');input.value='A\t10';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));assert.equal(doc.getElementById('bulkCodesSave').disabled,false);doc.getElementById('bulkCodesSave').click();for(let i=0;i<4;i++)await tick();
  const call=p.calls.find(item=>item.url.endsWith('/bulk-create'));assert.ok(call);const payload=JSON.parse(call.options.body);assert.equal(payload.rows.length,1);assert.equal(payload.rows[0].productCode,'A');assert.equal(payload.rows[0].productName,'Product');assert.equal(payload.rows[0].cartonCount,10);assert.equal(payload.rows[0].qtyPerCarton,5);
+});
+test('add modal does not require optional product details for a new code',async t=>{
+ const p=await page(t),doc=p.w.document;doc.getElementById('add').click();const input=doc.getElementById('bulkCodes');input.value='NEW-01\t7';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));assert.equal(doc.getElementById('bulkCodesSave').disabled,false);doc.getElementById('bulkCodesSave').click();for(let i=0;i<4;i++)await tick();const call=p.calls.find(item=>item.url.endsWith('/bulk-create'));assert.ok(call);const row=JSON.parse(call.options.body).rows[0];assert.equal(row.productCode,'NEW-01');assert.equal(row.cartonCount,7);assert.equal(Object.hasOwn(row,'productName'),false);assert.equal(Object.hasOwn(row,'qtyPerCarton'),true);assert.equal(row.qtyPerCarton,0);
+});
+test('bulk add shows success in its popup before automatically closing it',async t=>{
+ const p=await page(t),doc=p.w.document;doc.getElementById('add').click();const input=doc.getElementById('bulkCodes');input.value='NEW-02\t3';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));doc.getElementById('bulkCodesSave').click();for(let i=0;i<4;i++)await tick();
+ assert.equal(doc.getElementById('modal').open,true);assert.match(doc.querySelector('.purchase-modal-success').textContent,/Đã thêm 1 mã/);
+ await new Promise(resolve=>setTimeout(resolve,700));assert.equal(doc.getElementById('modal').open,false);
 });
 test('page size 10 slices the table and keeps next-page navigation',async t=>{
  const p=await page(t),doc=p.w.document;
@@ -57,13 +65,14 @@ test('date notes accept an approximate day range and save it as entered',async t
 });
 test('purchase errors are announced through a visible toast',async t=>{
  const p=await page(t),doc=p.w.document;
- p.w.fetch=async url=>url.endsWith('/operations')?{ok:true,json:async()=>({rows:[]})}:{ok:true,json:async()=>({rows:[]})};
+ p.w.fetch=async url=>url.endsWith('/undo')?{ok:false,status:409,json:async()=>({error:'Chưa có thao tác của bạn để hoàn tác.'})}:{ok:true,json:async()=>({rows:[]})};
  doc.querySelector('#orderTable [data-field="supplier"]').focus();
  doc.activeElement.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true}));await tick();
  const notice=doc.getElementById('notice');
  assert.match(notice.textContent,/Chưa có thao tác/);
  assert.ok(notice.classList.contains('toast'));
  assert.equal(notice.getAttribute('role'),'status');
+ assert.equal(doc.getElementById('modal').open,false,'undo runs directly without an extra confirmation popup');
 });
 test('Ctrl+Z undoes a grid paste but leaves native undo alone in the search field',async t=>{
  const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{literChina:120,measurementOverrides:{literChina:120}});
@@ -127,12 +136,12 @@ test('waiting container stays first by default but moves when sorting the contai
  doc.querySelector('#containerTable thead [data-container-column="name"] .sort-button').click();
  assert.equal(rows()[0].querySelector('[data-container-column="name"]').textContent,'11-1V');
 });
-test('order lifecycle sits last and container lifecycle is confirmed with the current version',async t=>{
+test('order lifecycle sits last and container lifecycle acts directly with the current version',async t=>{
  const p=await page(t),doc=p.w.document;
  assert.equal(doc.querySelector('#orderTable thead th:last-child').textContent,'Trạng thái');
  assert.equal(doc.querySelector('#orderTable tbody .purchase-lifecycle-badge').textContent,'Hoạt động');
  assert.equal(doc.querySelector('#containerTable thead tr th:nth-last-child(3)').textContent.replace(/[▲▼]/g,'').trim(),'KQ nhận');assert.equal(doc.querySelector('#containerTable thead tr th:nth-last-child(2)').textContent.replace(/[▲▼]/g,'').trim(),'Khớp tiền');assert.equal(doc.querySelector('#containerTable thead tr th:last-child').textContent.replace(/[▲▼]/g,'').trim(),'HĐ/NHĐ');assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) [data-container-column=lifecycle] .purchase-lifecycle-badge').textContent,'Hoạt động');
- doc.querySelector('#containerTable [data-container-lifecycle]').click();assert.equal(p.calls.some(call=>call.url.endsWith('/containers/deactivate')),false);doc.getElementById('confirmContainerLifecycle').click();await tick();await tick();
+ doc.querySelector('#containerTable [data-container-lifecycle]').click();await tick();await tick();assert.equal(doc.getElementById('modal').open,true);assert.match(doc.querySelector('.purchase-modal-success').textContent,/Đã ngừng hoạt động cont/);
  const request=p.calls.find(call=>call.url.endsWith('/containers/deactivate'));
  assert.deepEqual(JSON.parse(request.options.body),{id:'2',version:3});
 });
@@ -208,10 +217,11 @@ test('successful save closes without a sync toast and later applies authoritativ
  let resolveDelta;const delta=new Promise(resolve=>{resolveDelta=resolve});const fetch=p.w.fetch;p.w.fetch=async(url,options={})=>{if(url==='/api/purchase-orders/1'&&options.method==='PATCH'){p.data.rows[0].supplier='Saved supplier';p.data.rows[0].version=5;return {ok:true,json:async()=>({...structuredClone(p.data.rows[0]),operationId:'op-1'})}}if(url.startsWith('/api/purchase-orders/changes?')){p.calls.push({url,options});return delta}return fetch(url,options)};
  const root=doc.getElementById('orderTable');let writes=0,proto=Object.getPrototypeOf(root),descriptor;while(proto&&!descriptor){descriptor=Object.getOwnPropertyDescriptor(proto,'innerHTML');proto=Object.getPrototypeOf(proto)}Object.defineProperty(root,'innerHTML',{configurable:true,get(){return descriptor.get.call(root)},set(value){writes++;descriptor.set.call(root,value)}});
  doc.getElementById('commit').click();for(let i=0;i<5;i++)await tick();
- const supplierCell=()=>doc.querySelector('tr[data-id="1"] [data-field="supplier"]');assert.equal(doc.getElementById('modal').open,false);assert.equal(p.drafts()['1'],undefined);assert.equal(doc.getElementById('notice').textContent,'');assert.equal(supplierCell().querySelector('input')?.value||supplierCell().textContent,'Saved supplier','authoritative PATCH row should render before the background delta');assert.equal(writes,1,'the accepted PATCH row renders while the background delta is pending');assert.ok(p.calls.some(c=>c.url==='/api/purchase-orders/changes?after=8%3A1'));
+ const supplierCell=()=>doc.querySelector('tr[data-id="1"] [data-field="supplier"]');assert.equal(doc.getElementById('modal').open,true);assert.match(doc.querySelector('.purchase-modal-success').textContent,/Lưu thành công/);assert.equal(p.drafts()['1'],undefined);assert.equal(doc.getElementById('notice').textContent,'');assert.equal(supplierCell().querySelector('input')?.value||supplierCell().textContent,'Saved supplier','authoritative PATCH row should render before the background delta');assert.equal(writes,1,'the accepted PATCH row renders while the background delta is pending');assert.ok(p.calls.some(c=>c.url==='/api/purchase-orders/changes?after=8%3A1'));
  doc.getElementById('notice').textContent='Thông báo mới hơn';
  resolveDelta({ok:true,json:async()=>({revision:'8:2',rows:[structuredClone(p.data.rows[0])],deletedIds:[],containers:p.data.containers,sourceMode:'web',integrationEnabled:true,employeesChanged:false,reset:false})});for(let i=0;i<5;i++)await tick();
  assert.equal(writes,2,'the later delta applies after the authoritative PATCH row render');assert.equal(supplierCell().querySelector('input')?.value||supplierCell().textContent,'Saved supplier');assert.equal(p.drafts()['1'],undefined);assert.equal(doc.getElementById('save').hidden,true);assert.equal(doc.getElementById('notice').textContent,'Thông báo mới hơn','background completion must not overwrite a newer notice');
+ await new Promise(resolve=>setTimeout(resolve,700));assert.equal(doc.getElementById('modal').open,false,'success feedback closes automatically');
 });
 test('automatic invalidation uses changes and only reset falls back to full snapshot',async t=>{
  const p=await page(t,{revision:'8:1'}),doc=p.w.document,fetch=p.w.fetch;let revision='8:2',reset=false,changeCalls=0,revisionCalls=0;
@@ -251,27 +261,27 @@ test('empty realtime delta advances revision without rebuilding the order grid',
 test('discarded local row is not resurrected by an otherwise empty delta',async t=>{
  const p=await page(t,{local:true,revision:'8:1'}),doc=p.w.document,fetch=p.w.fetch;let changeCalls=0;
  p.w.fetch=async(url,options={})=>{if(url==='/api/purchase-orders/revision')return {ok:true,json:async()=>({revision:'8:2'})};if(url.startsWith('/api/purchase-orders/changes?')){changeCalls++;return {ok:true,json:async()=>({revision:'8:2',rows:[],deletedIds:[],containers:p.data.containers,sourceMode:'web',integrationEnabled:true,employeesChanged:false,reset:false})}}return fetch(url,options)};
- assert.ok(doc.querySelector('tr[data-id="new-local"]'));doc.getElementById('cancel').click();doc.getElementById('discard').click();await tick();assert.equal(doc.querySelector('tr[data-id="new-local"]'),null);
+ assert.ok(doc.querySelector('tr[data-id="new-local"]'));doc.getElementById('cancel').click();await tick();assert.equal(doc.querySelector('tr[data-id="new-local"]'),null);
  p.listeners.changed();await new Promise(resolve=>setTimeout(resolve,500));for(let i=0;i<10;i++)await tick();assert.equal(changeCalls,1);assert.equal(doc.querySelector('tr[data-id="new-local"]'),null);
 });
 test('discard releases the local row reservation',async t=>{
- const p=await page(t,{local:true}),doc=p.w.document;doc.getElementById('cancel').click();doc.getElementById('discard').click();await tick();
+ const p=await page(t,{local:true}),doc=p.w.document;doc.getElementById('cancel').click();await tick();
  const release=p.calls.find(c=>c.url==='/api/purchase-orders/release-key');assert.ok(release);assert.deepEqual(JSON.parse(release.options.body),{reservationId:'00000000-0000-4000-8000-000000000001'});
  assert.equal(doc.querySelector('tr[data-id="new-local"]'),null);
 });
 test('discard cancels autosave before waiting for release and keeps drafts when release fails',async t=>{
  const p=await page(t,{local:true}),doc=p.w.document,fetch=p.w.fetch;let releaseCount=0,finishRelease;
  p.w.fetch=async(url,options={})=>{if(url==='/api/purchase-orders/release-key'){releaseCount++;if(releaseCount===1)return new Promise(resolve=>{finishRelease=resolve});return {ok:true,json:async()=>({released:true})}}return fetch(url,options)};
- doc.getElementById('cancel').click();doc.getElementById('discard').click();await tick();assert.equal(releaseCount,1);
+ doc.getElementById('cancel').click();await tick();assert.equal(releaseCount,1);
  await new Promise(resolve=>setTimeout(resolve,500));assert.equal(p.calls.some(c=>c.url==='/api/purchase-orders/plan'),false,'discard must stop the scheduled autosave before awaiting release');
  finishRelease({ok:false,json:async()=>({error:'release failed'})});for(let i=0;i<5;i++)await tick();assert.ok(doc.querySelector('tr[data-id="new-local"]'));assert.ok(p.drafts()['new-local']);
- doc.getElementById('discard').click();for(let i=0;i<5;i++)await tick();assert.equal(doc.querySelector('tr[data-id="new-local"]'),null);
+ doc.getElementById('cancel').click();for(let i=0;i<5;i++)await tick();assert.equal(doc.querySelector('tr[data-id="new-local"]'),null);
 });
 test('discard refuses while an autosaved create is in flight',async t=>{
  const p=await page(t,{local:true}),doc=p.w.document,fetch=p.w.fetch;let finishPlan;
  p.w.fetch=async(url,options={})=>url==='/api/purchase-orders/plan'&&options.method==='POST'?new Promise(resolve=>{finishPlan=resolve}):fetch(url,options);
  await new Promise(resolve=>setTimeout(resolve,500));assert.ok(finishPlan,'autosave should have started');
- doc.getElementById('cancel').click();doc.getElementById('discard').click();await tick();
+ doc.getElementById('cancel').click();await tick();
  assert.ok(doc.querySelector('tr[data-id="new-local"]'));assert.ok(!p.calls.some(c=>c.url==='/api/purchase-orders/release-key'));assert.match(doc.getElementById('notice').textContent,/lưu xong/);
  p.data.rows.push({...p.data.rows[0],id:'2',rowKey:'D00002',supplier:'Local'});finishPlan({ok:true,json:async()=>({createdRows:[{clientId:'new-local',id:'2',rowKey:'D00002'}]})});
  for(let i=0;i<10;i++)await tick();assert.ok(doc.querySelector('tr[data-id="2"]'));
@@ -359,14 +369,9 @@ test('new row submission carries staged comparison overrides',async t=>{
  const p=await page(t,{local:true}),doc=p.w.document;doc.getElementById('columns').click();doc.querySelector('[data-column="literChina"]').checked=true;doc.querySelector('[data-column="literChina"]').dispatchEvent(new p.w.Event('change',{bubbles:true}));
  const input=doc.querySelector('tr[data-id="new-local"] [data-edit="literChina"]');assert.ok(input);input.value='125';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));doc.getElementById('save').click();doc.getElementById('commit').click();await tick();await tick();const call=p.calls.find(c=>c.options.method==='POST'&&c.url==='/api/purchase-orders/plan');assert.ok(call);const body=JSON.parse(call.options.body);assert.equal(body.creates[0].values.literChina,125);
 });
-test('new row reservation survives add and autosave outside the order values',async t=>{
- const p=await page(t),doc=p.w.document,fetch=p.w.fetch,reservationId='01234567-89ab-4def-8123-456789abcdef';
- p.w.fetch=async(url,options={})=>{if(url==='/api/purchase-orders/next-key')return {ok:true,json:async()=>({rowKey:'D00042',reservationId,expiresAt:'2026-11-13T12:30:00.000Z'})};if(url==='/api/purchase-orders/plan'&&options.method==='POST'){p.calls.push({url,options});return {ok:true,json:async()=>({})}}return fetch(url,options)};
- doc.getElementById('add').click();const form=doc.getElementById('addForm');
- Object.assign(form.elements.productCode,{value:'NEW'});Object.assign(form.elements.productName,{value:'New item'});Object.assign(form.elements.qtyPerCarton,{value:'2'});Object.assign(form.elements.cartonCount,{value:'3'});
- form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}));await tick();await new Promise(resolve=>setTimeout(resolve,550));await tick();await tick();
- const call=p.calls.find(c=>c.url==='/api/purchase-orders/plan'&&c.options.method==='POST');assert.ok(call);const body=JSON.parse(call.options.body),create=body.creates[0];
- assert.equal(create.values.rowKey,'D00042');assert.equal(create.reservationId,reservationId);assert.equal(Object.hasOwn(create.values,'reservationId'),false);
+test('bulk add creates pasted rows in one request without reserving row keys in the browser',async t=>{
+ const p=await page(t),doc=p.w.document;doc.getElementById('add').click();const input=doc.getElementById('bulkCodes');input.value='NEW\t3';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));doc.getElementById('bulkCodesSave').click();for(let i=0;i<4;i++)await tick();
+ const call=p.calls.find(c=>c.url==='/api/purchase-orders/bulk-create'&&c.options.method==='POST');assert.ok(call);assert.deepEqual(JSON.parse(call.options.body).rows.map(({productCode,cartonCount})=>({productCode,cartonCount})),[{productCode:'NEW',cartonCount:3}]);assert.equal(p.calls.some(c=>c.url==='/api/purchase-orders/next-key'),false);
 });
 test('autosave replaces an owned expired reservation and preserves the saved local draft',async t=>{
  const p=await page(t,{local:true}),fetch=p.w.fetch,replacement='12345678-1234-4234-8234-123456789abc';let writes=0;
@@ -478,8 +483,8 @@ test('region manager saves active name and RGB color in one batch',async t=>{
 test('container table defaults to active containers and retains the explicit all filter',async t=>{
  const p=await page(t),doc=p.w.document;p.data.containers.push({id:'3',name:'CONT INACTIVE',status:1,version:1,inactive_at:'2026-11-14T00:00:00Z'});p.listeners.changed();await tick();await tick();assert.equal(doc.getElementById('contLifecycle').value,'false');assert.equal(doc.querySelector('#containerTable [data-container-lifecycle="3"]'),null);doc.getElementById('contLifecycle').value='';doc.getElementById('contLifecycle').dispatchEvent(new p.w.Event('change',{bubbles:true}));assert.ok(doc.querySelector('#containerTable [data-container-lifecycle="3"]'));
 });
-test('a newly saved region appears in the add-code region dropdown',async t=>{
- const p=await page(t),doc=p.w.document;p.data.regions=[];doc.getElementById('managePurchaseRegions').click();await tick();const form=doc.getElementById('purchaseRegionAdd');form.elements.name.value='V';form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}));doc.getElementById('savePurchaseRegions').click();await tick();await tick();doc.getElementById('modalClose').click();doc.getElementById('add').click();const selector=doc.querySelector('#addForm select[name=regionId]');assert.ok(selector);assert.ok([...selector.options].some(option=>option.textContent==='V'));
+test('bulk add requires only a pasted product code and carton count',async t=>{
+ const p=await page(t),doc=p.w.document;doc.getElementById('add').click();assert.ok(doc.getElementById('bulkCodes'));assert.equal(doc.querySelector('#modal select[name=regionId]'),null);assert.match(doc.querySelector('#modal').textContent,/Mã SP/);assert.match(doc.querySelector('#modal').textContent,/Số thùng/);
 });
 test('container column chooser lists and toggles each index column',async t=>{
  const p=await page(t),doc=p.w.document;doc.getElementById('containerColumns').click();assert.equal(doc.querySelectorAll('[data-container-column-toggle]').length,18);const note=doc.querySelector('[data-container-column-toggle=note]');assert.ok(note.checked);note.click();assert.equal(doc.querySelector('#containerTable thead [data-container-column=note]'),null);doc.getElementById('modalClose').click();

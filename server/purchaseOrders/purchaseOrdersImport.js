@@ -23,7 +23,7 @@ function version(row) { return row.version ?? row.v; }
 function comparable(value, col) {
   return blank(value) ? null : workbook.numericTypes.has(col.t) ? Number(value) : String(value);
 }
-function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = false, snapshotRevision, archivedRows = [], regions = [], containers = [] } = {}) {
+function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = false, snapshotRevision, archivedRows = [], regions = [], containers = [], allowSparseCreates = false } = {}) {
   if (!Array.isArray(sourceRows) || (!sourceRows.length && !snapshot) || sourceRows.length > 10000) throw Error('Đợt nhập phải có 1–10.000 dòng.');
   if (!Array.isArray(existingRows)) throw Error('Thiếu dữ liệu hiện hành để đối chiếu.');
   const existing = new Map(existingRows.map(row => [row.rowKey, row]));
@@ -89,7 +89,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
     const effective={...(matched||{}),...values};for(const key of calculations.issues(effective).filter(k=>!['qtyPerCarton','cartonCount'].includes(k))){if(!result.errors.some(e=>e.startsWith((byKey.get(key)?.l||key)+':')))result.errors.push((byKey.get(key)?.l||key)+': số liệu vượt giới hạn tính toán hoặc không hợp lệ.')}
     if (!values.productCode) result.errors.push('Thiếu Mã SP.');
     if (!effectiveKey && !matched) {
-      for (const key of ['productName', 'qtyPerCarton', 'cartonCount']) if (blank(values[key])) result.errors.push('Thiếu ' + byKey.get(key).l + '.');
+      for (const key of (allowSparseCreates ? ['cartonCount'] : ['productName', 'qtyPerCarton', 'cartonCount'])) if (blank(values[key])) result.errors.push('Thiếu ' + byKey.get(key).l + '.');
       if (!values.listedAt) values.listedAt = listedAt;
       result.values = { ...values, contId: values.contId??null };
     } else if (matched) {

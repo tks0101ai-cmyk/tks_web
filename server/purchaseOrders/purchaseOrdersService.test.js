@@ -23,6 +23,15 @@ test('bulk add validates once and creates all pasted product codes in AA with on
  assert.equal((await db.query("SELECT name FROM purchase_regions WHERE id=(SELECT region_id FROM purchase_orders LIMIT 1)")).rows[0].name,'AA');
  assert.equal((await db.query("SELECT count(*)::int AS count FROM purchase_history WHERE action='bulk_create'")).rows[0].count,1);
 });
+test('bulk add requires only product code and carton count',async()=>{
+ const result=await service.createMany(manager,{rows:[{productCode:'MINIMAL-01',cartonCount:7}]});
+ assert.equal(result.count,1);assert.equal(result.rows[0].productCode,'MINIMAL-01');assert.equal(result.rows[0].cartonCount,7);assert.equal(result.rows[0].productName,'');assert.equal(result.rows[0].qtyPerCarton,0);
+});
+test('undo without an operation id directly reverts the latest eligible action',async()=>{
+ const created=await service.create(manager,input());assert.equal((await service.list(manager)).rows.length,1);
+ await service.undo(manager,{});assert.equal((await service.list(manager)).rows.length,0);
+ await assert.rejects(service.undo(manager,{}),error=>error.code==='UNDO_INVALID');
+});
 before(async () => {
   db = new PGlite();
   // Danh sach migration Thu mua lay tu FILES de them migration moi khong lam
