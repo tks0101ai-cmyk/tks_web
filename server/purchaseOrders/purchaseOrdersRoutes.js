@@ -8,7 +8,7 @@ const { createPurchaseOrdersService } = require('./purchaseOrdersService');
 const workbook = require('../public/shared/purchase-workbook');
 const columns = require('../public/shared/purchase-columns');
 function createPurchaseOrdersRouter(dependencies={}) {
-  const router=express.Router(),service=dependencies.service||createPurchaseOrdersService();
+  const router=express.Router(),service=dependencies.service||createPurchaseOrdersService({deferProjection:true});
   const root=dependencies.root||'/api/purchase-orders';
   const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:10*1024*1024,files:1,fields:1}});
   router.use(root,(req,res,next)=>{res.set('Cache-Control','no-store');next()},dependencies.requireAuth||requireAuth,requireFeature('purchase.view'));

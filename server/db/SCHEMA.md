@@ -975,7 +975,7 @@ Migrations Thu mua bắt đầu ở 0110–0116 vì main đã dùng 0101–0109 
 - purchase_history và purchase_departures: audit và ảnh chụp thực xuất append-only, trigger chặn sửa/xóa.
 - purchase_import_previews: UUID token, actor_id, payload server, hạn 30 phút và result cho xác nhận lặp. Ghi dữ liệu và đánh dấu token trong cùng giao dịch.
 - purchase_settings: source_mode mặc định sheets. Đây là hàng rào chuyển nguồn; mọi lệnh ghi mới bị chặn cho tới khi chuyển sang web có kiểm soát. Migration không seed, không bật nguồn web.
-- Transaction ghi dùng advisory lock 20531015 chung với sync Sheet. Khi web là nguồn, Sheet sync bỏ qua cả khi force; projection cập nhật dữ liệu Thu mua, snapshot cont, expected và audit nguyên tử. Hàng đã về vẫn đọc lịch sử, không cộng tồn Kiot.
+- Transaction ghi dùng advisory lock 20531015 chung với sync Sheet. Khi web là nguồn, Sheet sync bỏ qua cả khi force. Canonical data, audit và mục outbox projection nguyên tử; worker cập nhật read models cont/expected ngay sau đó theo queue có retry. Hàng đã về vẫn đọc lịch sử, không cộng tồn Kiot.
 - Chưa được tự bật source_mode=web trước khi chọn nguồn Sheet chuẩn, seed và đối chiếu đủ dữ liệu. Các bảng mới không cấp SELECT cho reporting_readonly theo default grants cũ.
 
 ## Migration 0125 — Thu mua / Mã dòng có thể tái sử dụng (13/11/2026, chưa áp staging/production)
@@ -996,6 +996,10 @@ Cập nhật gần nhất: 13/11/2026.
 03/11/2026 — Bổ sung vào migration 0101 chưa áp dụng: purchase_presence(connection_id UUID PRIMARY KEY, actor_id TEXT, actor_name TEXT, expires_at TIMESTAMPTZ), index expires_at. Đây là lease ngắn hạn cho SSE/hiện diện liên tiến trình (gia hạn 10s, hết hạn 45s), không chứa bộ lọc hay bản nháp, không ghi vào audit nghiệp vụ. Không cấp reporting_readonly. Mã production UI /thu-mua/dat-hang/ đã nối API; migration/seed/cutover vẫn chưa chạy.
 
 03/11/2026 — Chuẩn hóa cột ngày Thu mua: Lên list / Đặt / Phát / DK đến / Đến / Ngày đo dùng metadata datetime; form và ô sửa dùng datetime-local, nhãn ngày hiển thị dd/MM/yyyy HH:mm khi có giờ. Ngày cũ không có giờ vẫn giữ ngày, không suy diễn giờ hay ngày từ ghi chú. Mockup chuyển nội dung tự do cũ của Đặt/Phát/DK đến/Đến nguyên văn sang Ghi chú 2; không chỉnh nguồn Sheet. Import server/preview kiểm ngày-giờ hợp lệ, Excel xuất kiểu số ngày với định dạng ngày/giờ và đọc lại giữ giờ-phút. listed_at ở migration 0101 chưa áp DB đổi từ DATE thành TIMESTAMP WITHOUT TIME ZONE để lưu giờ địa phương UTC+7; bốn trường *_note cũ giữ tên khóa API/TEXT nhưng giá trị phải ISO ngày hoặc ngày-giờ. Chưa seed/migrate/deploy. Kiểm tra DOM+Excel 33 đạt, service 19 đạt, import/live UI liên quan đạt.
+
+16/11/2026 — Migration `0134_purchase_projection_queue.sql` bổ sung outbox bền vững cho projection Thu mua; canonical data/audit và yêu cầu chiếu commit nguyên tử. Worker chiếu read model `product_container_lines`/`product_container_expected` theo mốc queue, retry khi lỗi và không giữ global lock ghi trong lượt chiếu. Áp qua `ensurePurchaseSchema.FILES`.
+
+Cập nhật gần nhất: 16/11/2026.
 
 
 05/11/2026 — Chuẩn bị production Thu mua: chuyển các tiện ích dán bảng/bàn phím/đặt lại/chuyển cont/lọc nhanh/soát lỗi sang purchase.js; dropdown NV từ API HR rút gọn, lưu buyer_employee_id và kiểm active ở lần ghi. Thêm migration 0102_purchase_operations.sql (chưa chạy): xóa mềm và snapshot thao tác máy chủ, API trash/delete/restore/operations/undo có quyền edit/view, actor ownership, CAS và projection trong cùng transaction. Hoàn tác nhiều bước và hai nhánh tách được kiểm trước khi đảo; import/xuất/nhận không hoàn tác bằng endpoint này. Có công cụ purchaseOrdersReconcile.js đọc hai JSON chuẩn hóa, không ghi DB. Chi tiết schema/giới hạn/cách đối chiếu tại server/purchaseOrders/ROLLOUT.md. Chưa seed/chạy migration/cutover/deploy; chưa đối chiếu nguồn thật hay kiểm nhiều trình duyệt/máy chủ thật.
@@ -1037,6 +1041,8 @@ JSONB `user_table_prefs.prefs` hỗ trợ `sorts: [{key, dir}]` theo thứ tự 
 
 11/11/2026 — Không đổi bảng/cột/index. Hợp đồng giá NET của Thu mua: `(goodsAmount + surchargeAmount + freightAmount + freightPostpaid*postpaidFxRate) / totalQty`; `postpaidFxRate` lấy `product_containers.container_fx_rate`, mặc định 3900 khi chưa nhập; cước/phụ phí chưa có coi như 0. Cột projection `product_container_lines.vietnam_price` phản ánh cùng công thức.
 16/11/2026 — Migration `0133_purchase_container_money_match_status.sql` thêm trạng thái đối chiếu tiền cont (`money_match_status`: `matched` / `unmatched` / NULL).
+
+16/11/2026 — Migration `0134_purchase_projection_queue.sql` tạo `purchase_projection_queue(id BIGSERIAL, requested_at, last_error)`. Mỗi giao dịch ghi Thu mua cần cập nhật read model thêm một hàng outbox trong cùng transaction; worker chiếu theo snapshot `REPEATABLE READ`, rồi xóa các yêu cầu đến mốc đã xử lý. Hàng phát sinh trong lúc chiếu có ID lớn hơn nên được giữ lại cho lượt sau; lỗi vẫn giữ queue và được thử lại. Migration tự đăng ký trong `ensurePurchaseSchema.FILES`.
 
 Cập nhật gần nhất: 13/11/2026.
 

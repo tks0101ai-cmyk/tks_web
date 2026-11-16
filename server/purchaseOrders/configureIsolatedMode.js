@@ -8,6 +8,8 @@ async function configureIsolatedMode({pool,logger=console}){
   await client.query('BEGIN');
   await client.query("SET LOCAL lock_timeout='5s'");
   await client.query('SELECT pg_advisory_xact_lock($1)',[20531015]);
+  // Serialize source/integration changes with the background projection worker.
+  await client.query('SELECT pg_advisory_xact_lock($1)',[20531074]);
   const applied=await client.query('SELECT 1 FROM schema_migrations WHERE filename=$1',['0117_purchase_isolated_workflow.sql']);
   if(!applied.rowCount)throw Error('Chưa có migration cách ly 0117; chưa mở ghi.');
   await client.query('SELECT id FROM purchase_settings WHERE id=1 FOR UPDATE');

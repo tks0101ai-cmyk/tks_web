@@ -757,7 +757,15 @@ Migration 0125 bổ sung `root_order_id` bất biến cho cả họ split, uniqu
 
 Full `npm test`: 5,052/5,109 đạt, 53 lỗi, 4 bỏ qua; không gán lỗi cho baseline. Focused service+route: 92/92 đạt sau vá thu hồi reservation hết hạn. Graphify không khả dụng. Migration chưa chạy staging/production. Cần xác minh backfill và mọi họ split trên staging/copy, sau đó operator áp 0125 trước deploy. Xem [spec](../superpowers/specs/2026-11-13-purchase-rowkey-recycling-design.md) và [kế hoạch](../superpowers/plans/2026-11-13-purchase-rowkey-recycling.md).
 
-Cập nhật cuối: 13/11/2026.
+Cập nhật cuối: 16/11/2026.
+
+## Thu mua — tách thời gian lưu khỏi chiếu read model (16/11/2026)
+
+Đường ghi canonical thêm outbox `purchase_projection_queue` nguyên tử cùng dữ liệu nghiệp vụ. Worker nền gom các mục đến một mốc, chiếu trạng thái hiện tại sang `product_container_lines` và `product_container_expected` trong snapshot `REPEATABLE READ`, sau đó xóa đúng các mục đã bao phủ; mục phát sinh trong lúc xử lý còn lại. Worker giữ khóa chiếu riêng và khóa Dự kiến hàng về, không giữ global writer lock trong toàn lượt chiếu nên thao tác ghi mới có thể tiếp tục. Kiểm tra công thức cước vẫn chạy đồng bộ trước commit để không chấp nhận thay đổi khiến biểu thức cước sai. Lỗi chiếu giữ outbox, log và retry sau 5 giây.
+
+Đã kiểm migration/schema, service, route và queue test. Service suite còn một lỗi fixture đã có từ trước ở kiểm tra override `ratio` (mong `.75`, hiện nhận `null`); các test mới queue, rollback công thức và route đều đạt. Chưa đo tải staging/production; cần so p50/p95 thời gian lưu, mức hàng tồn queue và độ trễ projection trước khi coi là kết quả production.
+
+Cập nhật cuối: 16/11/2026.
 
 ## Hiệu năng đợt 4 — 12/11/2026
 

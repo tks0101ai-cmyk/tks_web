@@ -632,3 +632,8 @@ Cập nhật gần nhất: 14/11/2026.
 Đơn giá cont giữ tổng chi phí nhập; VC/m³ bằng tổng chi phí chia cho m³ giả định hoặc m³ đang xếp khi m³ giả định trống. Phụ phí % nhận giá trị âm/dương và tính trên Tiền hàng của mã. Chỉ số cont có đơn giá quy đổi, tổng phụ phí, ghi chú; danh sách vùng hỗ trợ gán vùng cho đơn/cont, nhóm cont chờ xếp và lọc vùng. Migrations 0129–0130 đã được đăng ký, cần xác minh staging trước production.
 
 Cập nhật gần nhất: 14/11/2026.
+
+## Thu mua — lưu nhanh, chiếu dữ liệu nền (16/11/2026)
+Khi tích hợp Thu mua với các bảng dùng chung, giao dịch lưu dữ liệu canonical và ghi một mục bền vững vào `purchase_projection_queue`. Worker nền gộp các yêu cầu đang chờ rồi cập nhật `product_container_lines` và `product_container_expected`; giao dịch người dùng không chờ lượt chiếu toàn bảng. Queue giữ yêu cầu mới phát sinh trong lúc xử lý và thử lại sau lỗi. Sự kiện làm mới cont phát sau commit projection. Migration `0134` được đăng ký trong `ensurePurchaseSchema`; theo dõi log `[Purchase projection]`.
+
+Cập nhật gần nhất: 16/11/2026.

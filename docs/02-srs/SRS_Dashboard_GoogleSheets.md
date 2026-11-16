@@ -1300,7 +1300,15 @@ Cập nhật cuối: 13/11/2026.
 - VC/m³ = kết quả công thức / tổng m³ cont. Tiền VC mã = m³ mã × VC/m³; Giá NET và projection dùng cùng kết quả. Mọi lần sửa dòng làm đổi m³ sẽ tính lại trong projection; không thay đổi công thức đã lưu.
 - Nhập số thường chuyển về chế độ cước thủ công và xóa công thức; xóa ô về chuẩn cũ 202.000.000 / 170. Các cont hiện hữu không đổi trước khi người dùng nhập công thức. Nếu lần sửa m³ làm công thức cho kết quả âm/không hợp lệ, toàn bộ thao tác bị rollback và API trả lỗi validation 400 để người dùng sửa công thức hoặc chọn cước thủ công.
 - Migration `0126_purchase_container_freight_formula.sql` thêm `product_containers.freight_formula`, đăng ký trong `ensurePurchaseSchema.FILES`. Cần kiểm staging trước khi áp vào production; chưa deploy.
-Cập nhật gần nhất: 14/11/2026.
+Cập nhật gần nhất: 16/11/2026.
+
+## Thu mua — lưu liên tục, chiếu read model nền (16/11/2026)
+
+Khi `source_mode='web'` và tích hợp được bật, một giao dịch ghi nghiệp vụ phải ghi một mục outbox bền vững cùng transaction. API chỉ xác nhận sau khi dữ liệu canonical và mục outbox cùng commit. Worker lấy mốc queue hiện có, dựng projection nhất quán từ snapshot, áp dụng cho bảng cont và Dự kiến hàng về, rồi xóa các mục đã được bao phủ. Thay đổi mới phát sinh khi worker đang chạy phải được để lại cho lượt kế tiếp. Worker lỗi không được xóa mục queue; retry và log rõ trạng thái. Công thức cước không hợp lệ vẫn phải từ chối ngay trong giao dịch người dùng.
+
+Không dùng hàng đợi này để thay audit, kiểm phiên bản, idempotency hoặc lưu nháp người dùng. Projection dùng chung được cập nhật sau khi canonical commit; thông báo làm mới cont chỉ phát sau projection để màn hình khác không tải dữ liệu cũ. Tab Thu mua tiếp tục đồng bộ theo revision/SSE. Chỉ số nghiệm thu staging/production: p50/p95 thời gian API lưu, p95 độ trễ queue→projection, số queue tồn đọng, lỗi retry và xác nhận không mất cập nhật khi ghi đồng thời.
+
+Cập nhật gần nhất: 16/11/2026.
 
 ## Thu mua — chi phí cont, phụ phí có dấu và vùng (14/11/2026)
 

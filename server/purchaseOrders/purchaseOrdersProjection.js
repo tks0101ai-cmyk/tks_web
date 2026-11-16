@@ -4,8 +4,9 @@ const expected = require('../productContainers/expectedRefresh').__test__;
 const freightModel = require('../public/shared/purchase-freight');
 const LABELS = { 1: '1.Chưa xếp', 2: '2.Chưa bốc', 3: '3.Đã bốc', 4: '4.Đã về' };
 async function projectContainers(client) {
-  // Called inside the same locked transaction as canonical changes. Legacy
-  // readers keep their contract and never write back into the canonical tables.
+  // Rebuilds the read models from canonical state. Production invokes this in
+  // the durable projection worker; legacy readers keep their contract and
+  // never write back into the canonical tables.
   //
   // purchase_settings.projection_owns_all quyet dinh pham vi (xem migration 0115):
   //   false — so huu mot phan: chi thay the cont co trong product_containers,

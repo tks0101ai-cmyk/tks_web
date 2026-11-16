@@ -21,6 +21,7 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 ## Đang dở / chờ
 
 - [ ] 15/11 — Thu mua: xử lý 409 snapshot confirm do Mã dòng tái sử dụng trùng bản lưu trữ; regression test mô phỏng `D00556`/`D00561` — push/deploy rồi tạo preview mới và xác nhận lại.
+- [ ] 16/11 — Thu mua: outbox `0134` tách lưu canonical khỏi chiếu read model; deploy web + worker, xác nhận migration/queue trên production và đo p50/p95 thời gian lưu cùng độ trễ chiếu.
 
 > Rà ngày 10/11/2026: web `tokosi` và worker đều đang chạy `main` mới nhất (`d5e9ceb8`); mọi migration trong repo (đến `0120`) đã áp DB thật. Các việc cũ đã xong được xóa, xem file lưu trữ nếu cần chi tiết.
 

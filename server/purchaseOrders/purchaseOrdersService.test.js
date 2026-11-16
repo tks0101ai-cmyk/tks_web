@@ -25,7 +25,7 @@ before(async () => {
   service = createPurchaseOrdersService({ pool:{query,connect:async()=>({query,release(){}})},events });
 });
 beforeEach(async () => {
-  await db.exec(`TRUNCATE purchase_employees,purchase_requests,purchase_undo_expected,purchase_operation_rows,purchase_operations,purchase_orders,product_containers,purchase_key_history,purchase_key_pool,purchase_key_reservations,purchase_history,purchase_departures,purchase_import_previews,product_container_lines,product_container_expected,product_container_expected_state,shipping_measures RESTART IDENTITY CASCADE;
+  await db.exec(`TRUNCATE purchase_employees,purchase_requests,purchase_undo_expected,purchase_operation_rows,purchase_operations,purchase_orders,product_containers,purchase_key_history,purchase_key_pool,purchase_key_reservations,purchase_history,purchase_departures,purchase_import_previews,product_container_lines,product_container_expected,product_container_expected_state,shipping_measures,purchase_projection_queue RESTART IDENTITY CASCADE;
     ALTER SEQUENCE purchase_order_key_seq RESTART WITH 1;
     UPDATE purchase_settings SET source_mode='web',projection_owns_all=true,integration_enabled=true;
     INSERT INTO purchase_employees(name) VALUES('Dung'),('Other'),('Edited after arrival');`);
@@ -722,6 +722,16 @@ test('five thousand rows retain complete projections when five hundred rows are 
  const start=Date.now();await db.exec("INSERT INTO purchase_orders(row_key,root_key,product_code,product_name,qty_per_carton,carton_count,kg_per_carton,m3_per_carton) SELECT 'D'||(100000+n)::text,'D'||(100000+n)::text,'LOAD'||n,'Hàng thử',10,1,5,.2 FROM generate_series(1,5000) n");const all=(await service.list(manager)).rows;assert.equal(all.length,5000);const selected=all.slice(0,500).map(r=>({id:r.id,version:r.version,before:{cartonCount:1}}));const changed=await service.bulkEdit(manager,{rows:selected,changes:{cartonCount:2}});assert.equal(changed.results.filter(r=>r.status==='updated').length,500);assert.equal((await db.query('SELECT count(*)::int n FROM product_container_lines')).rows[0].n,5000);assert.equal((await service.list(manager)).rows.filter(r=>r.cartonCount===2).length,500);t.diagnostic('PGlite fixture: 5,000 rows, 500 edits and projection '+(Date.now()-start)+' ms; staging performance still required');
 });
 
+test('deferred 500-row saves enqueue one projection request instead of rebuilding the shared snapshot',async t=>{
+ const start=Date.now();await db.exec("INSERT INTO purchase_orders(row_key,root_key,product_code,product_name,qty_per_carton,carton_count,kg_per_carton,m3_per_carton) SELECT 'D'||(100000+n)::text,'D'||(100000+n)::text,'QUEUE'||n,'Hàng thử',10,1,5,.2 FROM generate_series(1,5000) n");
+ const query=(sql,params)=>db.query(sql,params),deferred=createPurchaseOrdersService({pool:{query,connect:async()=>({query,release(){}})},events,project:async()=>{assert.fail('HTTP save must not rebuild shared projection')},deferProjection:true});
+ const all=(await deferred.list(manager)).rows,selected=all.slice(0,500).map(r=>({id:r.id,version:r.version,before:{cartonCount:1}}));
+ const changed=await deferred.bulkEdit(manager,{rows:selected,changes:{cartonCount:2}});assert.equal(changed.results.filter(r=>r.status==='updated').length,500);
+ assert.equal((await db.query('SELECT count(*)::int n FROM product_container_lines')).rows[0].n,0);
+ assert.equal((await db.query('SELECT count(*)::int n FROM purchase_projection_queue')).rows[0].n,1);
+ t.diagnostic('PGlite fixture: deferred 5,000-row table, 500 saves acknowledged in '+(Date.now()-start)+' ms without shared projection; staging performance still required');
+});
+
 test('container formula settings are versioned and missing product volume remains unpriced',async()=>{
  const c=await service.createContainer(manager,{name:'FORMULA',assumedM3:170});assert.equal(c.freight_mode,'formula');const r=await service.create(manager,{...input(),contId:c.id});const changed=await service.updateContainer(manager,c.id,{version:c.version,changes:{freightMode:'formula',freightBase:202000000,freightCapacity:170}});assert.equal(Number(changed.freight_base),202000000);await assert.rejects(service.updateContainer(manager,c.id,{version:changed.version,changes:{freightCapacity:0}}));assert.equal((await service.list(manager)).rows[0].freightAmount,r.freightAmount);
 });
@@ -887,6 +897,39 @@ test('container metadata saves skip the shared line projection; financial change
  assert.equal(projected.length,1,'metadata only should not rebuild the global line projection');
  const financial=await fastService.updateContainer(manager,c.id,{version:metadata.version,changes:{containerFxRate:4100}});
  assert.equal(projected.length,2,'financial changes still refresh calculated shared prices');assert.equal(Number(financial.container_fx_rate),4100);
+});
+
+test('production saves enqueue shared projection atomically and acknowledge without waiting for it',async()=>{
+ const {processPending}=require('./purchaseProjectionQueue'),query=(sql,params)=>db.query(sql,params),pool={query,connect:async()=>({query,release(){}})},projected=[];
+ const deferred=createPurchaseOrdersService({pool,events,project:async client=>{projected.push('projection');await client.query('SELECT 1')},deferProjection:true});
+ let sharedEvents=0;const onShared=()=>sharedEvents++;events.on('containersChanged',onShared);
+ const saved=await deferred.create(manager,{...input(),productCode:'QUEUED-PROJECTION'});
+ assert.ok(saved.id,'canonical purchase row is returned immediately');assert.deepEqual(projected,[],'request path does not rebuild shared read models');
+ assert.equal(sharedEvents,0,'shared consumers are not told to refresh before projection commits');
+ assert.equal((await db.query('SELECT count(*)::int AS n FROM purchase_projection_queue')).rows[0].n,1);
+ await db.query('UPDATE purchase_settings SET integration_enabled=false WHERE id=1');
+ const inactive=await processPending({pool,events,project:async()=>projected.push('must-not-project'),log:{log(){},error(){}}});
+ assert.equal(inactive.status,'inactive');assert.equal((await db.query('SELECT count(*)::int AS n FROM purchase_projection_queue')).rows[0].n,1);
+ await db.query('UPDATE purchase_settings SET integration_enabled=true WHERE id=1');
+ const failed=await processPending({pool,events,project:async()=>{throw Error('transient projection failure')},log:{log(){},error(){}}});
+ assert.equal(failed.status,'failed');assert.equal((await db.query('SELECT count(*)::int AS n FROM purchase_projection_queue')).rows[0].n,1,'failed projection remains queued');
+ const result=await processPending({pool,events,project:async client=>{projected.push('projection');await client.query('INSERT INTO purchase_projection_queue(requested_at) VALUES(now())')},log:{log(){},error(){}}});
+ assert.equal(result.status,'processed');assert.deepEqual(projected,['projection']);
+ assert.equal(sharedEvents,1,'shared refresh notification follows the projection commit');
+ assert.equal((await db.query('SELECT count(*)::int AS n FROM purchase_projection_queue')).rows[0].n,1,'newer queue rows remain for a subsequent projection');
+ const next=await processPending({pool,events,project:async client=>{projected.push('projection');await client.query('SELECT 1')},log:{log(){},error(){}}});
+ assert.equal(next.status,'processed');assert.equal((await db.query('SELECT count(*)::int AS n FROM purchase_projection_queue')).rows[0].n,0);assert.equal(sharedEvents,2);events.off('containersChanged',onShared);
+});
+
+test('deferred projection validates freight formulas before committing canonical edits',async()=>{
+ const query=(sql,params)=>db.query(sql,params),deferred=createPurchaseOrdersService({pool:{query,connect:async()=>({query,release(){}})},events,deferProjection:true,project:async()=>{}});
+ const c=await deferred.createContainer(manager,{name:'DEFERRED FORMULA',assumedM3:170});
+ let row=await deferred.create(manager,{...input(),productCode:'DEFERRED-FORMULA',m3PerCarton:.5,cartonCount:100});
+ await deferred.transfer(manager,{id:row.id,version:row.version,quantity:row.cartonCount,destinationId:c.id});row=await deferred.latest(manager,'DEFERRED-FORMULA');
+ const current=(await deferred.list(manager)).containers.find(item=>item.id===c.id),saved=await deferred.updateContainer(manager,c.id,{version:current.version,changes:{freightFormula:'=100-M3_CONT'}});
+ const queuedBefore=(await db.query('SELECT count(*)::int AS n FROM purchase_projection_queue')).rows[0].n;
+ await assert.rejects(deferred.update(manager,row.id,{version:row.version,changes:{m3PerCarton:1.2}}),error=>error.code==='FREIGHT_FORMULA_INVALID'&&error.statusCode===400);
+ assert.equal((await deferred.latest(manager,'DEFERRED-FORMULA')).m3PerCarton,.5);assert.equal((await db.query('SELECT count(*)::int AS n FROM purchase_projection_queue')).rows[0].n,queuedBefore);assert.equal(saved.freight_formula,'=100-M3_CONT');
 });
 
 test('NET defaults postpaid FX to 3900 then uses the saved container FX in export and projection',async()=>{

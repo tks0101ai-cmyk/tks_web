@@ -1461,9 +1461,13 @@ Cập nhật cuối: 13/11/2026.
 
 Cập nhật gần nhất: 14/11/2026.
 
-
 ## Thu mua — cập nhật 14/11/2026
 
 Schema Thu mua đăng ký migrations 0129 (vùng đơn/cont và ghi chú cont) và 0130 (phụ phí % âm/dương) trong `db/ensurePurchaseSchema.js`. API vùng: `GET /api/purchase-orders/regions`, `PUT /api/purchase-orders/regions/batch`; API tạo cont nhận `regionId`, cập nhật cont nhận `note` và `regionId`. API danh sách Thu mua trả thêm `regions`. Cước cont là tổng chi phí nhập; `VC/m³ = tổng chi phí / m³ giả định nếu có, nếu không dùng m³ đang xếp`. Trạng thái cont 1 hiển thị `Chưa xếp`. Cần xác minh các migration trên staging trước production.
 
 Cập nhật gần nhất: 14/11/2026.
+
+## Thu mua — hàng đợi chiếu read model (16/11/2026)
+`purchaseOrdersRoutes` dùng chế độ deferred projection: trong cùng transaction với sửa dữ liệu Thu mua, server thêm một hàng outbox; worker từ `jobs.js` chạy `purchaseProjectionQueue.js` mỗi 750 ms, lấy mốc ID hiện tại, chiếu trong `REPEATABLE READ`, rồi xóa các yêu cầu tới mốc đó. Hàng mới trong lúc chạy được giữ cho lượt sau; lỗi giữ queue và thử lại sau 5 giây. Worker dùng advisory lock riêng cho projection và bảng Dự kiến hàng về để tránh khóa luồng ghi canonical trong toàn bộ lượt chiếu. Mốc dữ liệu canonical và kiểm tra công thức cước vẫn đồng bộ trước khi API xác nhận; hai bảng dùng chung có thể trễ đến khi worker hoàn tất. Sự kiện `containersChanged` phát sau commit projection để màn hình khác không tải dữ liệu cũ. Schema `0134_purchase_projection_queue.sql` tự chạy cùng schema Thu mua.
+
+Cập nhật gần nhất: 16/11/2026.
