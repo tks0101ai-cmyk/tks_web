@@ -841,7 +841,8 @@ test('bulk and plan reject unconfigured or inactive assignments atomically and p
 
 test('plan accepts an active region change for inline auto-save',async()=>{
  const row=await service.create(manager,input()),region=(await db.query("INSERT INTO purchase_regions(name,name_key) VALUES('Vùng V','vung v') RETURNING id")).rows[0];
- await service.applyPlan(manager,{rows:[{id:row.id,version:row.version,changes:{regionId:String(region.id)}}]});
+ const acknowledged=await service.applyPlan(manager,{rows:[{id:row.id,version:row.version,changes:{regionId:String(region.id)}}]});
+ assert.equal(acknowledged.rows[0].id,row.id);assert.equal(acknowledged.rows[0].regionId,String(region.id));assert.equal(acknowledged.rows[0].version,row.version+1);
  assert.equal((await service.latest(manager,'A')).regionId,String(region.id));
  const container=await service.createContainer(manager,{name:'CONT V',assumedM3:170,regionId:String(region.id)}),assigned=await service.latest(manager,'A');
  await service.applyPlan(manager,{rows:[{id:row.id,version:assigned.version,changes:{contId:container.id}}]});
