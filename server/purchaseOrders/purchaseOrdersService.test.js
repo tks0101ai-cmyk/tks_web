@@ -12,6 +12,17 @@ let db, service, events;
 const manager = { id: 'manager', hoTen: 'Người quản lý' };
 const input = () => ({ productCode: 'A', productName: 'Hàng A', listedAt: '2026-11-03', qtyPerCarton: 20, cartonCount: 100, unitPriceCny: 2, fxRate: 3920, freightPrepaid: 0, freightPostpaid: 0, freightAmount: 1000 });
 const snapshotFile = async rows => { const snapshot=await service.importSnapshot(manager);return Buffer.from(excel.exportImportSnapshot({rows,columns,revision:snapshot.revision})); };
+test('bulk add validates once and creates all pasted product codes in AA with one batch insert',async()=>{
+ const rows=['A-101','A-102','A-103'].map((productCode,index)=>{const row={...input(),productCode,productName:'Hàng '+(index+1)};delete row.freightAmount;return row});
+ const invalid={...rows[1],productCode:'',productName:''};await assert.rejects(service.createMany(manager,{rows:[rows[0],invalid]}),error=>error.code==='VALIDATION_ERROR');
+ assert.equal((await db.query('SELECT count(*)::int AS count FROM purchase_orders')).rows[0].count,0,'invalid batch is atomic');
+ const result=await service.createMany(manager,{rows});
+ assert.equal(result.count,3);assert.equal(new Set(result.rows.map(row=>row.rowKey)).size,3);
+ assert.deepEqual(result.rows.map(row=>row.productCode),['A-101','A-102','A-103']);
+ assert.ok(result.rows.every(row=>row.regionId!=null&&row.contId==null));
+ assert.equal((await db.query("SELECT name FROM purchase_regions WHERE id=(SELECT region_id FROM purchase_orders LIMIT 1)")).rows[0].name,'AA');
+ assert.equal((await db.query("SELECT count(*)::int AS count FROM purchase_history WHERE action='bulk_create'")).rows[0].count,1);
+});
 before(async () => {
   db = new PGlite();
   // Danh sach migration Thu mua lay tu FILES de them migration moi khong lam

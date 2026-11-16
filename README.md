@@ -638,6 +638,13 @@ Khi tích hợp Thu mua với các bảng dùng chung, giao dịch lưu dữ li�
 
 Cập nhật gần nhất: 16/11/2026.
 
+## Thu mua — quyền theo bảng và thêm mã theo lô (16/11/2026)
+Trong màn hình cấp quyền tài khoản, Thu mua chỉ có hai lựa chọn: **Làm việc với bảng Đặt hàng** và **Làm việc với bảng Chỉ số cont**. Mỗi quyền mở đúng bảng và nhóm API ghi tương ứng; tài khoản chỉ có quyền Đặt hàng không thể sửa cont, và ngược lại. Quyền legacy vẫn được hiểu để tài khoản hiện tại không mất quyền cho đến khi quản lý lưu phạm vi mới.
+
+Nút **Thêm nhiều mã** nhận danh sách dán từ Excel, tối đa 500 dòng; các cột hỗ trợ là Mã SP, Tên SP, Số thùng, SL/T, Giá Net, Kg/thùng và m³/thùng. Khi chỉ dán mã đã có lịch sử, giá trị mới nhất của mã được dùng làm mặc định; mọi mã mới được tạo ở vùng AA. Máy chủ kiểm tra cả lô rồi thêm trong một transaction và batch insert, nên lỗi không ghi một phần.
+
+Cập nhật gần nhất: 16/11/2026.
+
 ## Thu mua — phân bổ cước quy đổi và sửa hàng loạt (16/11/2026)
 Tiền VC từng mã phân bổ từ Đơn giá cont quy đổi (Đơn giá cont trừ tổng Phụ phí), chia cho m³ giả định hoặc tổng m³ xếp nếu bỏ giả định. Phụ phí được tính riêng trong NET. Sửa hàng loạt khóa và cập nhật theo tập dòng để giảm số lần gọi DB.
 

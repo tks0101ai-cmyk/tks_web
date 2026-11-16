@@ -731,7 +731,7 @@ router.get('/api/admin/permissions/catalog', ...authView, async (req, res) => {
   for (const role of VALID_ROLES) roleDefaults[role] = featureRegistry.defaultsForRole(role);
   res.status(200).json({
     groups: featureRegistry.FEATURE_GROUPS,
-    features: featureRegistry.FEATURES.map(f => ({
+    features: featureRegistry.FEATURES.filter(f => !f.internal).map(f => ({
       key: f.key,
       label: f.label,
       groupKey: f.groupKey,

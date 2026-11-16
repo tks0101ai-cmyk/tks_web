@@ -1302,6 +1302,14 @@ Cập nhật cuối: 13/11/2026.
 - Migration `0126_purchase_container_freight_formula.sql` thêm `product_containers.freight_formula`, đăng ký trong `ensurePurchaseSchema.FILES`. Cần kiểm staging trước khi áp vào production; chưa deploy.
 Cập nhật gần nhất: 16/11/2026.
 
+## Thu mua — hai phạm vi quyền và tạo mã hàng loạt (16/11/2026)
+
+- Danh mục quyền cấp theo tài khoản chỉ hiển thị **Làm việc với bảng Đặt hàng** và **Làm việc với bảng Chỉ số cont**. Quyền Đặt hàng bao gồm sửa/import/export đơn và các thao tác dòng; quyền Chỉ số cont bao gồm tạo/sửa/vòng đời cont và trạng thái cont. API kiểm tra phạm vi ở máy chủ; quyền cũ được duy trì tương thích cho đến khi tài khoản được lưu theo phạm vi mới.
+- Màn hình Đặt hàng có luồng **Thêm nhiều mã** cho phép dán tối đa 500 dòng từ Excel. Cột theo thứ tự: Mã SP, Tên SP, Số thùng, SL/T, Giá Net, Kg/thùng, m³/thùng; có thể chỉ dán Mã SP nếu mã đã có dòng lịch sử để điền các giá trị gần nhất. Mã thiếu trường bắt buộc chặn cả lô; tất cả dòng mới mặc định chờ xếp ở vùng AA.
+- `POST /api/purchase-orders/bulk-create` kiểm tra đầu vào, phân bổ khóa dòng theo lô, dùng batch insert và ghi một audit trong cùng transaction. Giới hạn 500 dòng/lần; không ghi một phần nếu có lỗi.
+
+Cập nhật gần nhất: 16/11/2026.
+
 ## Thu mua — lưu liên tục, chiếu read model nền (16/11/2026)
 
 Khi `source_mode='web'` và tích hợp được bật, một giao dịch ghi nghiệp vụ phải ghi một mục outbox bền vững cùng transaction. API chỉ xác nhận sau khi dữ liệu canonical và mục outbox cùng commit. Worker lấy mốc queue hiện có, dựng projection nhất quán từ snapshot, áp dụng cho bảng cont và Dự kiến hàng về, rồi xóa các mục đã được bao phủ. Thay đổi mới phát sinh khi worker đang chạy phải được để lại cho lượt kế tiếp. Worker lỗi không được xóa mục queue; retry và log rõ trạng thái. Công thức cước không hợp lệ vẫn phải từ chối ngay trong giao dịch người dùng.
