@@ -464,6 +464,17 @@
     return diff===0?'Hôm nay':diff===1?'Hôm qua':d.toLocaleDateString('vi-VN',{day:'numeric',month:'long'});
   }
   const vhTime=value=>new Date(value).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'});
+  function vhVersionDays(){
+    const days=[];
+    for(const version of vhVersions){
+      const label=vhDayLabel(version.created_at);let day=days.at(-1);
+      if(!day||day.label!==label){day={label,sessions:[]};days.push(day)}
+      const time=new Date(version.created_at).getTime(),session=day.sessions.at(-1);
+      if(!session||session.newestTime-time>10*60*1000)day.sessions.push({versions:[version],newestTime:time,oldestTime:time});
+      else{session.versions.push(version);session.oldestTime=time}
+    }
+    return days;
+  }
   async function vhLoad(more=false){
     if(vhBusy)return;vhBusy=true;
     try{
@@ -477,14 +488,18 @@
     }finally{vhBusy=false}
   }
   function vhRenderList(){
-    let day='';
-    $('vhList').innerHTML=vhVersions.map(v=>{
-      const label=vhDayLabel(v.created_at),head=label===day?'':'<p class="vh-day">'+esc(label)+'</p>';day=label;
-      return head+'<button type="button" class="vh-item'+(String(v.id)===String(vhSelected)?' on':'')+'" data-version="'+esc(v.id)+'" role="option" aria-selected="'+(String(v.id)===String(vhSelected))+'">'
+    const list=$('vhList'),open=new Set([...list.querySelectorAll('details[data-session-key][open]')].map(item=>item.dataset.sessionKey));
+    const versionMarkup=v=>'<button type="button" class="vh-item'+(String(v.id)===String(vhSelected)?' on':'')+'" data-version="'+esc(v.id)+'" role="option" aria-selected="'+(String(v.id)===String(vhSelected))+'">'
         +'<span class="vh-when">'+esc(vhTime(v.created_at))+'</span>'
         +'<span class="vh-who"><i class="vh-dot" style="background:'+vhColor(v.actor_id)+'"></i>'+esc(v.actor_name||v.actor_id||'Không rõ')+'</span>'
         +'<span class="vh-what">'+esc(vhAction(v.action))+' · '+v.row_count+' dòng'+(v.undone?' · đã hoàn tác':'')+'</span></button>';
-    }).join('');
+    list.innerHTML=vhVersionDays().map(day=>'<p class="vh-day">'+esc(day.label)+'</p>'+day.sessions.map(session=>{
+      const versions=session.versions;
+      if(versions.length===1)return versionMarkup(versions[0]);
+      const key=String(versions[0].id)+'-'+String(versions.at(-1).id),selected=versions.some(v=>String(v.id)===String(vhSelected));
+      const expanded=open.has(key)||selected,range=vhTime(new Date(session.oldestTime).toISOString())+'–'+vhTime(new Date(session.newestTime).toISOString());
+      return '<details class="vh-session" data-session-key="'+esc(key)+'"'+(expanded?' open':'')+'><summary class="vh-session-head"><span class="vh-session-range">'+esc(range)+'</span><span class="vh-session-count">'+nf(versions.length)+' phiên bản</span></summary><div class="vh-session-items" role="group">'+versions.map(versionMarkup).join('')+'</div></details>';
+    }).join('')).join('');
   }
   async function vhOpen(id){
     vhSelected=id;vhRenderList();

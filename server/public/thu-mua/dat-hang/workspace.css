@@ -150,6 +150,16 @@
 .purchase-page .vh-side h3{margin:0;padding:11px 12px;font-size:13px;font-family:var(--font-display);border-bottom:1px solid var(--border)}
 .purchase-page #vhList{overflow:auto;flex:1;min-height:0}
 .purchase-page .vh-day{margin:0;padding:9px 12px 4px;font-size:11px;font-weight:650;color:var(--muted)}
+.purchase-page .vh-session{border-bottom:1px solid var(--border-subtle)}
+.purchase-page .vh-session-head{display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;list-style:none;font-size:11px;font-weight:650;color:var(--text)}
+.purchase-page .vh-session-head::-webkit-details-marker{display:none}
+.purchase-page .vh-session-head::before{content:"›";width:10px;flex:none;color:var(--muted);font-size:15px;line-height:1;transition:transform .15s ease}
+.purchase-page .vh-session[open]>.vh-session-head::before{transform:rotate(90deg)}
+.purchase-page .vh-session-head:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
+.purchase-page .vh-session-range{flex:1;font-variant-numeric:tabular-nums}
+.purchase-page .vh-session-count{color:var(--muted);font-size:10px;font-weight:500}
+.purchase-page .vh-session-items{padding:0 0 4px}
+.purchase-page .vh-session .vh-item{padding-left:28px}
 .purchase-page .vh-item{display:grid;gap:2px;width:100%;text-align:left;background:transparent;border:0;border-left:3px solid transparent;border-radius:0;padding:7px 12px;min-height:0;cursor:pointer}
 .purchase-page .vh-item:hover{background:var(--panel-2)}
 .purchase-page .vh-item.on{background:var(--panel-2);border-left-color:var(--blue)}
