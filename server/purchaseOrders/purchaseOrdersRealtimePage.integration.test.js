@@ -296,6 +296,10 @@ test('one view-only full render projects each source row once for every summary'
  const projectionProbe={count:0},p=await page(t,{projectionProbe});projectionProbe.count=0;p.w.document.getElementById('bulk').click();
  assert.equal(projectionProbe.count,1,'one full render should build one shared projected row array');
 });
+test('editing a non-calculated text field skips whole-table formula projection',async t=>{
+ const p=await page(t),input=p.w.document.querySelector('[data-edit="supplier"]'),calculations=p.w.PurchaseCalculations,calculate=calculations.row;let formulaCalls=0;calculations.row=(...args)=>{formulaCalls++;return calculate(...args)};assert.ok(input);input.focus();input.value='Supplier changed';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,270));
+ assert.equal(formulaCalls,0,'ordinary text input should not recompute row formulas or freight');assert.equal(p.drafts()['1'].changes.supplier,'Supplier changed');
+});
 test('surcharge input accepts a percent, displays its money amount and updates NET without changing total CNY',async t=>{
  const p=await page(t),doc=p.w.document,row=p.data.rows[0];Object.assign(row,{qtyPerCarton:5,cartonCount:10,unitPriceCny:800,fxRate:5000,freightPrepaid:0});p.listeners.changed();await tick();await tick();
  assert.equal(doc.querySelector('[data-field="netPrice"]').textContent,'4,000,000');const totalCny=doc.querySelector('[data-field="totalCny"]').textContent;
@@ -333,6 +337,12 @@ test('changing actual stacked m3 immediately redistributes manual freight when a
  doc.getElementById('columns').click();for(const key of ['freightAmount','m3PerCarton']){const option=doc.querySelector('[data-column="'+key+'"]');option.checked=true;option.dispatchEvent(new p.w.Event('change',{bubbles:true}))}doc.getElementById('modalClose').click();
  const amounts=()=>Object.fromEntries([...doc.querySelectorAll('#orderTable tr[data-id]')].map(tr=>[tr.dataset.id,tr.querySelector('[data-field="freightAmount"]').textContent]));assert.deepEqual(amounts(),{2:'500',1:'500'});const input=doc.querySelector('tr[data-id="1"] [data-edit="m3PerCarton"]');input.focus();input.value='0.4';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,100));
  assert.deepEqual(amounts(),{2:'333',1:'667'});
+});
+test('commit batches distinct edits across rows into one versioned plan request',async t=>{
+ const p=await page(t),doc=p.w.document;p.data.rows.push({...p.data.rows[0],id:'2',rowKey:'D00002',version:7,productCode:'B',supplier:'Old B'});p.listeners.changed();await tick();await tick();
+ for(const [id,value] of [['1','Vendor A'],['2','Vendor B']]){const input=doc.querySelector(`tr[data-id="${id}"] [data-edit="supplier"]`);assert.ok(input,`supplier editor for row ${id}`);input.focus();input.value=value;input.dispatchEvent(new p.w.Event('input',{bubbles:true}))}
+ doc.getElementById('save').click();doc.getElementById('commit').click();for(let i=0;i<5;i++)await tick();
+ const plans=p.calls.filter(c=>c.url==='/api/purchase-orders/plan'&&c.options.method==='POST');assert.equal(plans.length,1);const rows=JSON.parse(plans[0].options.body).rows;assert.deepEqual(rows.map(({id,version,changes})=>({id:String(id),version,changes})),[{id:'1',version:4,changes:{supplier:'Vendor A'}},{id:'2',version:7,changes:{supplier:'Vendor B'}}]);assert.equal(p.calls.filter(c=>c.options.method==='PATCH'&&/\/api\/purchase-orders\/\d+$/.test(c.url)).length,0);
 });
 test('Đối chiếu overrides are directly editable and sent through the normal versioned row patch',async t=>{
  const p=await page(t),doc=p.w.document;p.data.rows[0].literChina=120;p.data.rows[0].measurementOverrides={literChina:120};p.data.rows.push({...p.data.rows[0],id:'2',rowKey:'D00002',literChina:110,measurementOverrides:{literChina:110}});p.listeners.changed();await tick();await tick();
