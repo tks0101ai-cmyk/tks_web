@@ -19,11 +19,10 @@ test('table scope hides the ungranted table while keeping its own controls avail
  const orders=await page(t,{permissions:{containers:false}}),orderDoc=orders.w.document;
  assert.equal(orderDoc.querySelector('.order-grid-shell').hidden,false);assert.equal(orderDoc.getElementById('containerPanel').hidden,true);assert.equal(orderDoc.getElementById('addMany').disabled,false);
  const containers=await page(t,{permissions:{orders:false,edit:false}}),containerDoc=containers.w.document;
- assert.equal(containerDoc.querySelector('.order-grid-shell').hidden,true);assert.equal(containerDoc.getElementById('containerPanel').hidden,false);assert.equal(containerDoc.getElementById('packing').hidden,true);assert.equal(containerDoc.getElementById('addContainerFromMetrics').disabled,false);assert.equal(containerDoc.getElementById('manageRegionsFromMetrics').disabled,false);
+ assert.equal(containerDoc.querySelector('.order-grid-shell').hidden,true);assert.equal(containerDoc.getElementById('containerPanel').hidden,false);assert.equal(containerDoc.getElementById('packing'),null);assert.equal(containerDoc.getElementById('newCont').disabled,false);assert.equal(containerDoc.getElementById('manageRegionsQuick').disabled,false);
 });
-test('packing metrics omit the missing-measure warning text',async t=>{
- const p=await page(t),doc=p.w.document;p.data.rows[0].kgPerCarton=null;p.data.rows[0].m3PerCarton=null;doc.getElementById('target').value='2';doc.getElementById('target').dispatchEvent(new p.w.Event('change',{bubbles:true}));
- assert.match(doc.getElementById('metrics').textContent,/29\.85|0\.00/);assert.doesNotMatch(doc.getElementById('metrics').textContent,/Thiếu số đo/);
+test('packing workspace is removed while container controls remain available',async t=>{
+ const p=await page(t),doc=p.w.document;assert.equal(doc.getElementById('packing'),null);assert.equal(doc.getElementById('sourceTable'),null);assert.equal(doc.getElementById('targetTable'),null);assert.ok(doc.getElementById('newCont'));assert.ok(doc.getElementById('containerTable'));
 });
 test('bulk add accepts pasted product code and reuses the latest row values in one request',async t=>{
  const p=await page(t),doc=p.w.document;doc.getElementById('addMany').click();const input=doc.getElementById('bulkCodes');input.value='A';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));assert.equal(doc.getElementById('bulkCodesSave').disabled,false);doc.getElementById('bulkCodesSave').click();for(let i=0;i<4;i++)await tick();
