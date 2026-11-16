@@ -130,7 +130,7 @@
 .purchase-page .vh-bar h2{font-size:14px;margin:0;font-family:var(--font-display)}
 .purchase-page .vh-bar button{min-height:28px;padding:3px 9px;font-size:12px}
 .purchase-page .vh-count{margin-left:auto;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
-.purchase-page .vh-body{display:grid;direction:ltr;grid-template-columns:minmax(0,1fr) 220px;grid-template-rows:auto minmax(0,1fr);height:min(74vh,820px);min-width:0;min-height:0}
+.purchase-page .vh-body{display:grid;direction:ltr;grid-template-columns:minmax(0,1fr) 220px;grid-template-rows:auto minmax(0,1fr);height:min(calc(100vh - 110px),1100px);height:min(calc(100dvh - 110px),1100px);min-width:0;min-height:0}
 .purchase-page .vh-body>.tks-table-tools{grid-column:1;grid-row:1;min-width:0}
 .purchase-page #vhTable{grid-column:1;grid-row:2;min-width:0;min-height:0;overflow:auto;max-height:none;border:0;border-right:1px solid var(--border)}
 .purchase-page .vh-table{border-collapse:collapse;width:max-content;min-width:100%;table-layout:auto}
