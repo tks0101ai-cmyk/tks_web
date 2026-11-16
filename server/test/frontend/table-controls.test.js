@@ -571,3 +571,12 @@ test('selected dropdown sizing is opt-in and does not reserve space for hidden l
  regular.api.enhance(regular.table);assert.ok(state(regular).columns[0].width>200);
  ctx.table.querySelector('select').value='Cont có tên rất dài chỉ hiện khi mở danh sách';ctx.api.refresh(ctx.table);assert.ok(state(ctx).columns[0].width>200);
 });
+test('allow-column-shrink lets a selected dropdown column resize without its label width',t=>{
+ const html='<table data-min-column-width="24" data-table-select-width="selected"><thead><tr><th style="width:50px">NV</th></tr></thead><tbody><tr><td style="padding:0;border:0"><select data-allow-column-shrink="true" style="font:11px Arial;appearance:none;border:0;padding:0"><option selected>Nhân viên có tên rất dài đang được chọn</option><option>Khác</option></select></td></tr></tbody></table>';
+ const ctx=setup(t,html);ctx.window.HTMLCanvasElement.prototype.getContext=()=>({font:'',measureText:text=>({width:text.length*6})});
+ ctx.api.enhance(ctx.table);
+ const handle=ctx.table.querySelector('.tks-column-resizer');
+ assert.equal(Number(handle.getAttribute('aria-valuemin')),24,'nhãn đang chọn không khóa độ rộng tối thiểu của cột');
+ for(let i=0;i<40;i++)handle.dispatchEvent(new ctx.window.KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));
+ assert.equal(state(ctx).columns[0].width,24,'cột vẫn kéo nhỏ tới sàn riêng của bảng');
+});
