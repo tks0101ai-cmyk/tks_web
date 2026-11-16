@@ -495,6 +495,60 @@ test('scheduling preserves freight while a manual container amount allocates usi
   assert.ok(Math.abs((await service.list(manager)).rows[0].freightAmount-99999999*20/170)<1e-7);
   assert.equal((await db.query('SELECT container_name FROM product_container_lines')).rows[0].container_name,'CONT NEW');
 });
+test('nhat ky phien ban liet ke tung thao tac kem nguoi thuc hien va so dong da dung',async()=>{
+ const a=await service.create(manager,{...input(),productCode:'V1'});
+ await service.update(manager,a.id,{version:a.version,changes:{supplier:'NCC MOI'}});
+ const versions=await service.versions(manager);
+ assert.ok(versions.length>=2,'moi thao tac la mot phien ban');
+ assert.deepEqual(versions.map(v=>v.action).slice(0,2),['edit','create'],'moi nhat dung dau');
+ assert.equal(versions[0].actor_name,manager.hoTen);assert.equal(versions[0].row_count,1);assert.equal(versions[0].undone,false);
+ assert.ok(versions[0].created_at instanceof Date||typeof versions[0].created_at==='string');
+ assert.equal((await service.versions(manager,{limit:1})).length,1,'gioi han so phien ban tra ve');
+});
+test('mo mot phien ban thi bang hien dung trang thai luc do, khong phai hien tai',async()=>{
+ const row=await service.create(manager,{...input(),productCode:'TIMET',supplier:'NCC A'});
+ const edited=await service.update(manager,row.id,{version:row.version,changes:{supplier:'NCC B'}});
+ const atEdit=(await service.versions(manager))[0];
+ await service.update(manager,row.id,{version:edited.version,changes:{supplier:'NCC C'}});
+ assert.equal((await service.latest(manager,'TIMET')).supplier,'NCC C','hien tai da sang NCC C');
+ const snapshot=await service.versionAt(manager,atEdit.id);
+ assert.equal(snapshot.rows.find(r=>r.productCode==='TIMET').supplier,'NCC B','tua ve dung luc do, da gom thay doi cua chinh phien ban');
+ assert.deepEqual(snapshot.changes.map(c=>[c.field,c.before,c.after]),[['supplier','NCC A','NCC B']]);
+ assert.equal(snapshot.cellCount,1);assert.equal(snapshot.version.actorName,manager.hoTen);
+});
+test('restore version reinstates its active rows, keeps unrelated inactive rows and records a new version',async()=>{
+ const original=await service.create(manager,{...input(),productCode:'RESTORE-A',supplier:'NCC cũ'});
+ const firstVersion=(await service.versions(manager)).find(version=>version.action==='create');
+ await service.update(manager,original.id,{version:original.version,changes:{supplier:'NCC mới'}});
+ const later=await service.create(manager,{...input(),productCode:'RESTORE-LATER'});
+ const inactive=await service.create(manager,{...input(),productCode:'RESTORE-INACTIVE'});
+ await service.deactivate(manager,{rows:[{id:inactive.id,version:inactive.version}]});
+ const restored=await service.restoreVersion(manager,firstVersion.id);
+ assert.equal(restored.restored,true);assert.equal(restored.operationId!=null,true);
+ assert.equal((await service.latest(manager,'RESTORE-A')).supplier,'NCC cũ');
+ const laterState=(await db.query('SELECT deleted_at FROM purchase_orders WHERE id=$1',[later.id])).rows[0];assert.ok(laterState.deleted_at,'later active rows are removed from the restored state');
+ const inactiveState=(await db.query('SELECT deleted_at,inactive_at FROM purchase_orders WHERE id=$1',[inactive.id])).rows[0];assert.equal(inactiveState.deleted_at,null);assert.ok(inactiveState.inactive_at,'unrelated inactive rows remain inactive');
+ const newest=(await service.versions(manager))[0];assert.equal(newest.action,'restore_version');
+ assert.equal((await service.versionAt(manager,newest.id)).rows.some(row=>row.productCode==='RESTORE-A'),true);
+ await service.restoreVersion(manager,firstVersion.id);
+ assert.equal((await db.query("SELECT count(*)::int n FROM purchase_history WHERE action='restore_version'")).rows[0].n,1,'restoring the same state again is a no-op');
+});
+test('phien ban them va xoa dong duoc danh dau ca hang thay vi tung o',async()=>{
+ const before=(await service.versions(manager))[0];
+ const row=await service.create(manager,{...input(),productCode:'ADDED'});
+ const created=(await service.versions(manager))[0];
+ assert.deepEqual((await service.versionAt(manager,created.id)).changes.map(c=>c.kind),['added']);
+ assert.ok((await service.versionAt(manager,created.id)).rows.some(r=>r.productCode==='ADDED'));
+ if(before)assert.equal((await service.versionAt(manager,before.id)).rows.some(r=>r.productCode==='ADDED'),false,'phien ban truoc do chua co dong moi');
+ await service.remove(manager,{rows:[{id:row.id,version:row.version}]});
+ const removed=(await service.versionAt(manager,(await service.versions(manager))[0].id));
+ assert.deepEqual(removed.changes.map(c=>c.kind),['state'],'xoa mem la doi trang thai dong');
+ assert.equal(removed.rows.some(r=>r.productCode==='ADDED'),false,'dong da xoa khong con trong bang tai phien ban do');
+});
+test('ma phien ban sai dinh dang hoac khong ton tai bi tu choi ro rang',async()=>{
+ await assert.rejects(service.versionAt(manager,'khong-phai-uuid'),e=>e.code==='OPERATION_ID_INVALID'&&e.statusCode===400);
+ await assert.rejects(service.versionAt(manager,'00000000-0000-4000-8000-000000000000'),e=>e.code==='OPERATION_NOT_FOUND'&&e.statusCode===404);
+});
 test('bulk saves independent rows, reports conflicts individually, and emits one audit entry',async()=>{
   const a=await service.create(manager,input()),b=await service.create(manager,input());
   await service.update(manager,b.id,{version:1,changes:{buyer:'Other'}});

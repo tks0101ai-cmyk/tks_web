@@ -12,6 +12,10 @@ test('employee migration seeds distinct legacy names without HR or row rewrites 
   assert.deepEqual(catalog,[{name:'Dung',is_active:true,version:1},{name:'Legacy',is_active:true,version:1}]);
   assert.equal((await db.query('SELECT buyer FROM purchase_orders WHERE id=1')).rows[0].buyer,' Dung ');
   assert.equal((await db.query("SELECT to_regclass('hr_employees') t")).rows[0].t,null);
-  assert.equal(FILES.at(-1),'0134_purchase_projection_queue.sql');
+  // Moi migration Thu mua moi phai duoc dang ky trong FILES, neu khong PGlite trong test va
+  // ensurePurchaseSchema tren may chu se chay thieu. Kiem tra theo thu muc thay vi ghim mot ten:
+  // ghim ten lam dong nay do moi lan them migration (0135 them vao 16/11 ma quen sua cho nay).
+  const onDisk=fs.readdirSync(path.join(__dirname,'migrations')).filter(name=>/_purchase_.*\.sql$/.test(name)&&name>='0110').sort();
+  assert.deepEqual([...FILES].sort(),onDisk,'FILES phai liet ke du moi migration Thu mua tren dia');
  }finally{await db.close()}
 });

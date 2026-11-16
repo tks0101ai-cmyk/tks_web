@@ -56,5 +56,5 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 ---
 Cập nhật: 16/11/2026
 - [ ] 14/11 — Thu mua: tách tổng chi phí cont khỏi VC/m³, cho phụ phí % âm/dương; thêm Đơn giá quy đổi, ghi chú cont, danh mục/lọc vùng và cont chờ xếp theo vùng (migrations `0127`–`0130`) — kiểm thử liên quan, xác minh staging rồi người vận hành áp migration/deploy
-- [ ] 16/11 — Thu mua: sửa 2 test còn sót kỳ vọng Tỉ lệ là override sau khi `be005395` biến nó thành cột chỉ tính toán (nhánh `feat/purchase-workspace-20261107`, commit `62cdfb6b` CHƯA push, không migration) — push + mở PR rồi merge
-- [ ] 16/11 — Thu mua: 34 test đỏ có sẵn trên `4a543be5` (`purchaseOrdersLive` 20, `purchaseOrdersRealtimePage.integration` 8, `seedSampleData` 4; mẫu: ô Tổng tấn nhận `10.00` thay vì `2.00`) — tìm nguyên nhân, nghi lệch chỉ số cột sau đợt thêm cột cont
+- [ ] 16/11 — Thu mua: Nhật ký phiên bản kiểu Google Sheets (migration `0136` chỉ thêm index, chưa commit/deploy) — giao diện và API đã có khôi phục phiên bản; xác minh service/route 129/129 và test UI khôi phục riêng đạt; cần review diff rồi người vận hành áp migration/deploy
+- [ ] 16/11 — Thu mua: `purchaseOrdersLive.test.js` hiện 30/79 lỗi (49 đạt; trước phần sửa quyền fixture là 54/78 lỗi trên `c66a3cc5`) — lỗi còn lại chủ yếu là test dùng selector/kỳ vọng UI cũ, cùng một số lỗi giao diện/định dạng cần phân loại; chưa hoàn tất dọn bộ test

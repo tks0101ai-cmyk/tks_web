@@ -9,7 +9,7 @@ const columns = require('../public/shared/purchase-columns');
 async function start(t,user) {
   const calls=[];
   const record=name=>async(...args)=>{calls.push({name,args});return name==='revision'?{revision:'9:4'}:name==='importSnapshot'?{revision:'9:4',rows:[]}:name==='history'?[]:{ok:true}};
-  const service=Object.fromEntries(['revision','changes','employees','saveEmployees','regions','saveRegions','createEmployee','updateEmployee','trash','inactive','containerTrash','inactiveContainers','deactivateContainer','reactivateContainer','removeContainer','restoreContainer','operations','remove','deactivate','reactivate','restore','undo','applyPlan','list','history','create','createMany','update','createContainer','updateContainer','schedule','changeStatus','bulkEdit','transfer','depart','arrive','importSnapshot','previewImport','reviseImport','commitImport','reserveKey','releaseKey'].map(name=>[name,record(name)]));
+  const service=Object.fromEntries(['revision','changes','employees','saveEmployees','regions','saveRegions','createEmployee','updateEmployee','trash','inactive','containerTrash','inactiveContainers','deactivateContainer','reactivateContainer','removeContainer','restoreContainer','operations','remove','deactivate','reactivate','restore','restoreVersion','versions','versionAt','undo','applyPlan','list','history','create','createMany','update','createContainer','updateContainer','schedule','changeStatus','bulkEdit','transfer','depart','arrive','importSnapshot','previewImport','reviseImport','commitImport','reserveKey','releaseKey'].map(name=>[name,record(name)]));
   const app=express();app.use(express.json());app.use((req,res,next)=>{req.user=user;next()});
   app.use(createPurchaseOrdersRouter({service,requireAuth:(req,res,next)=>req.user?next():res.status(401).json({error:'Chưa đăng nhập'})}));
   const server=await new Promise(resolve=>{const server=app.listen(0,'127.0.0.1',()=>resolve(server))});t.after(()=>server.close());
@@ -74,6 +74,15 @@ test('import commit accepts a token only, never client-generated write operation
 
 test('delete restore and undo require edit permission, directory requires purchase view only',async t=>{
  const {base,calls}=await start(t,{id:'reader',vaiTro:ROLES.NHAN_VIEN_MUA_HANG,featurePermissions:{'purchase.view':true}});for(const path of ['/delete','/deactivate','/reactivate','/restore','/undo','/plan'])assert.equal((await fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,403);assert.equal((await fetch(base+'/employees')).status,200);assert.deepEqual(calls.map(c=>c.name),['employees']);
+});
+test('version restore requires purchase edit and forwards the selected operation id',async t=>{
+ const reader=await start(t,{id:'reader',vaiTro:ROLES.NHAN_VIEN_MUA_HANG,featurePermissions:{'purchase.view':true}});
+ const id='00000000-0000-4000-8000-000000000001';
+ assert.equal((await fetch(reader.base+'/versions/'+id+'/restore',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,403);
+ assert.deepEqual(reader.calls.map(call=>call.name),[]);
+ const manager=await start(t,{id:'manager',vaiTro:ROLES.QUAN_LY});
+ const response=await fetch(manager.base+'/versions/'+id+'/restore',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+ assert.equal(response.status,200);assert.deepEqual(manager.calls.map(call=>call.name),['restoreVersion']);assert.equal(manager.calls[0].args[1],id);
 });
 
 test('row key release requires edit permission and validates reservation ID',async t=>{

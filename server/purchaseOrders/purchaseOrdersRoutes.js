@@ -31,6 +31,10 @@ function createPurchaseOrdersRouter(dependencies={}) {
   router.get(root+'/containers/trash',requireFeature('purchase.view'),handle(async(req,res)=>res.json({rows:await service.containerTrash(req.user)})));
   router.get(root+'/containers/inactive',requireFeature('purchase.view'),handle(async(req,res)=>res.json({rows:await service.inactiveContainers(req.user)})));
   router.get(root+'/operations',requireFeature('purchase.view'),handle(async(req,res)=>res.json({rows:await service.operations(req.user)})));
+  // Nhat ky phien ban: danh sach phien ban, va trang thai bang tai mot phien ban.
+  router.get(root+'/versions',requireFeature('purchase.view'),handle(async(req,res)=>res.json({rows:await service.versions(req.user,{limit:req.query.limit,before:req.query.before})})));
+  router.get(root+'/versions/:id',requireFeature('purchase.view'),handle(async(req,res)=>res.json(await service.versionAt(req.user,req.params.id))));
+  router.post(root+'/versions/:id/restore',ordersScope,requireFeature('purchase.edit'),handle(async(req,res)=>res.json(await service.restoreVersion(req.user,req.params.id))));
   for(const [path,method] of [['delete','remove'],['deactivate','deactivate'],['reactivate','reactivate'],['restore','restore'],['undo','undo']])router.post(root+'/'+path,requirePurchaseScope(path.startsWith('containers/')?'purchase.containers':'purchase.orders'),handle(async(req,res)=>res.json(await service[method](req.user,req.body))));
   for(const [path,method] of [['containers/deactivate','deactivateContainer'],['containers/reactivate','reactivateContainer'],['containers/delete','removeContainer'],['containers/restore','restoreContainer']])router.post(root+'/'+path,requirePurchaseScope(path.startsWith('containers/')?'purchase.containers':'purchase.orders'),handle(async(req,res)=>res.json(await service[method](req.user,req.body))));
   router.get(root+'/latest',requireFeature('purchase.view'),handle(async(req,res)=>res.json({row:await service.latest(req.user,req.query.code)})));

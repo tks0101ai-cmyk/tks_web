@@ -124,6 +124,43 @@
 .purchase-page #orderTable td[data-field="productCode"]:hover .code-edit,.purchase-page #orderTable td[data-field="productCode"] .code-edit:focus-visible{opacity:1}
 .purchase-page #orderTable td[data-field="productCode"] .code-edit:hover{color:var(--blue)}
 
+/* ---- Nhật ký phiên bản: bảng tua ngược bên trái, danh sách phiên bản bên phải ---- */
+.purchase-page #history{display:flex;flex-direction:column;gap:0;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-xl);overflow:hidden}
+.purchase-page .vh-bar{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);background:var(--panel-2)}
+.purchase-page .vh-bar h2{font-size:14px;margin:0;font-family:var(--font-display)}
+.purchase-page .vh-bar button{min-height:28px;padding:3px 9px;font-size:12px}
+.purchase-page .vh-count{margin-left:auto;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+.purchase-page .vh-body{display:grid;grid-template-columns:minmax(0,1fr) 288px;min-height:0}
+.purchase-page #vhTable{overflow:auto;max-height:70vh;border:0;border-right:1px solid var(--border)}
+.purchase-page .vh-table{border-collapse:collapse;width:max-content;min-width:100%;table-layout:auto}
+.purchase-page .vh-table th{position:sticky;top:0;z-index:1;background:var(--panel-2);font-size:9px;font-weight:650;color:var(--text-secondary,#cbd5e1);padding:5px;text-align:center;white-space:normal;line-height:1.2}
+.purchase-page .vh-table td{padding:4px 5px;font-size:11px;height:25px;border-bottom:1px solid var(--border-subtle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px}
+.purchase-page .vh-table td.num{text-align:right;font-variant-numeric:tabular-nums}
+
+/* Ô đã đổi tô theo màu người thực hiện (--vh-actor đặt inline), như Google Sheets. */
+.purchase-page .vh-table td.vh-cell{background:color-mix(in srgb,var(--vh-actor) 22%,transparent);box-shadow:inset 0 0 0 1px var(--vh-actor)}
+.purchase-page .vh-table tr.vh-row-added>td{background:color-mix(in srgb,var(--green) 16%,transparent)}
+.purchase-page .vh-table tr.vh-row-removed>td,.purchase-page .vh-table tr.vh-row-state>td{background:color-mix(in srgb,var(--amber) 16%,transparent)}
+.purchase-page .vh-table .vh-focus{outline:2px solid var(--blue);outline-offset:-2px}
+/* Dải gộp các hàng không đổi, thay cho việc hiện hết cả nghìn dòng. */
+.purchase-page .vh-table tr.vh-gap>td{padding:3px 8px;font-size:10px;color:var(--muted);background:var(--panel-2);text-align:left}
+
+.purchase-page .vh-side{display:flex;flex-direction:column;min-width:0;background:var(--panel)}
+.purchase-page .vh-side h3{margin:0;padding:11px 12px;font-size:13px;font-family:var(--font-display);border-bottom:1px solid var(--border)}
+.purchase-page #vhList{overflow:auto;flex:1;min-height:0}
+.purchase-page .vh-day{margin:0;padding:9px 12px 4px;font-size:11px;font-weight:650;color:var(--muted)}
+.purchase-page .vh-item{display:grid;gap:2px;width:100%;text-align:left;background:transparent;border:0;border-left:3px solid transparent;border-radius:0;padding:7px 12px;min-height:0;cursor:pointer}
+.purchase-page .vh-item:hover{background:var(--panel-2)}
+.purchase-page .vh-item.on{background:var(--panel-2);border-left-color:var(--blue)}
+.purchase-page .vh-when{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
+.purchase-page .vh-who{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text)}
+.purchase-page .vh-dot{width:8px;height:8px;border-radius:50%;flex:none}
+.purchase-page .vh-what{font-size:10px;color:var(--muted)}
+.purchase-page #vhMore{margin:8px 12px;font-size:11px;min-height:28px}
+.purchase-page .vh-toggles{display:grid;gap:7px;padding:11px 12px;border-top:1px solid var(--border);background:var(--panel-2)}
+.purchase-page .vh-toggles label{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text);margin:0;width:auto}
+@media(max-width:900px){.purchase-page .vh-body{grid-template-columns:1fr}.purchase-page #vhTable{border-right:0;border-bottom:1px solid var(--border);max-height:48vh}}
+
 .purchase-page #sourceBanner.isolated-banner{border-left:3px solid var(--amber);color:var(--text);background:var(--panel)}
 
 /* Tiêu đề sắp xếp được: giữ đúng khuôn .sortable/.sort-button/.sort-indicator dùng chung

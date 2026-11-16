@@ -170,7 +170,7 @@
   function renderDerivedContainerCells(rows,containers){const groups=new Map();for(const r of rows){const key=r.contId==null?'wait:'+String(r.regionId??''):String(r.contId);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(r)}for(const marker of $('containerTable').querySelectorAll('tbody td[data-container-filter]')){const tr=marker.closest('tr'),key=marker.dataset.containerFilter,c=containers.find(item=>String(item.id??'')===key)||{id:null,region_id:key.startsWith('wait:')?key.slice(5)||null:null,name:'Chờ xếp',freightMode:'formula'},items=groups.get(key)||[],{ton,m3}=PurchaseCalculations.stats(items),assessment=items.some(r=>!(r.m3PerCarton>0&&r.cartonCount>0))?'Có mã thiếu số đo hoặc số thùng':'',fee=PurchaseFreight.calculate(c,m3),surcharge=items.reduce((sum,r)=>sum+(PurchaseCalculations.row(r)?.surchargeAmount||0),0),postpaid=PurchaseCalculations.sum(items.map(r=>r.freightPostpaid)),set=(field,text)=>{const cell=tr.querySelector('[data-container-column="'+field+'"]');if(cell)cell.textContent=text};set('ton',nf(ton,2));set('m3',nf(m3,2));for(const field of ['ton','m3']){const cell=tr.querySelector('[data-container-column="'+field+'"]');if(cell)cell.title=assessment}const freight=tr.querySelector('[data-cont-freight]');if(freight){if(freight!==document.activeElement){freight.value=nf(fee.amount);freight.dataset.freightDisplay=nf(fee.amount);freight.dataset.freightFormula=fee.formula||nf(fee.amount)}}else set('freight',nf(fee.amount));set('rate',nf(convertedFreightRate(fee,m3,surcharge)));set('converted',nf((fee.amount??0)-surcharge));set('surcharge',nf(surcharge));set('postpaid',nf(postpaid,2))}}
   function scheduleDerivedRender(){const projectedRows=previewRows(),projectedContainers=previewContainers();containerLookup=new Map(projectedContainers.filter(c=>c.id!=null).map(c=>[String(c.id),c]));freightRates=PurchaseFreight.rates(projectedRows,projectedContainers);calculationCache=new WeakMap();renderDerivedOrderCells(projectedRows);renderDerivedContainerCells(projectedRows,projectedContainers);if(derivedRenderFrame!==null)return;const refreshDerived=()=>{derivedRenderFrame=null;if(containerFieldEdit)renderContainerFreightCells(previewRows(),previewContainers());else refreshTasks(previewRows())};derivedRenderFrame=window.requestAnimationFrame?window.requestAnimationFrame(refreshDerived):window.setTimeout(refreshDerived,0)}
   function syncBulkSelectionUI(){const table=$('orderTable'),pageRows=[...table.querySelectorAll('tbody tr[data-id]')].filter(tr=>!tr.dataset.id.startsWith('split-')),master=$('pickAll');table.querySelectorAll('input[data-pick]').forEach(input=>{input.checked=selected.has(String(input.dataset.pick))});if(master){const checked=pageRows.filter(tr=>selected.has(String(tr.dataset.id))).length;master.checked=pageRows.length>0&&checked===pageRows.length;master.indeterminate=checked>0&&checked<pageRows.length}if($('bulk'))$('bulk').textContent=bulk?'Đang chọn '+selected.size+' dòng':'Sửa hàng loạt';for(const id of ['deactivateSelected','deleteSelected']){const button=$(id);if(button){button.hidden=!bulk;button.disabled=!allowed('edit')||!selected.size}}}
-  function applyPinnedColumns(){const table=$('orderTable').querySelector('table');if(!table)return;const keep=new Set();let left=bulk?36:0,z=1000;if(bulk)table.querySelectorAll('tr>*:first-child').forEach(cell=>{keep.add(cell);cell.classList.add('purchase-pinned-column');cell.style.left='0px';cell.style.zIndex=cell.closest('thead')?'3000':String(z)});for(const c of columns.filter(c=>pinnedColumns.includes(c.k)&&visible.includes(c.k))){const cells=[...table.querySelectorAll('thead th,tbody td')].filter(cell=>(cell.dataset.key||cell.dataset.field)===c.k),header=cells[0];if(!header)continue;const col=[...table.querySelectorAll('colgroup col')].find(item=>item.dataset.columnKey===c.k),width=header.getBoundingClientRect().width||Number.parseFloat(col?.style.width)||Number(widths[c.k])||compactWidth(c,orderedViewRows),layer=z--;cells.forEach(cell=>{keep.add(cell);cell.classList.add('purchase-pinned-column');cell.style.left=left+'px';cell.style.zIndex=cell.closest('thead')?String(2000+layer):String(layer)});left+=width}table.querySelectorAll('.purchase-pinned-column').forEach(cell=>{if(keep.has(cell))return;cell.classList.remove('purchase-pinned-column');cell.style.removeProperty('left');cell.style.removeProperty('z-index')})}
+  function applyPinnedColumns(){const table=$('orderTable').querySelector('table');if(!table)return;const keep=new Set();let left=bulk?36:0;if(bulk)table.querySelectorAll('tr>*:first-child').forEach(cell=>{keep.add(cell);cell.classList.add('purchase-pinned-column');cell.style.left='0px';cell.style.zIndex=cell.closest('thead')?'21':'11'});for(const c of columns.filter(c=>pinnedColumns.includes(c.k)&&visible.includes(c.k))){const cells=[...table.querySelectorAll('thead th,tbody td')].filter(cell=>(cell.dataset.key||cell.dataset.field)===c.k),header=cells[0];if(!header)continue;const col=[...table.querySelectorAll('colgroup col')].find(item=>item.dataset.columnKey===c.k),width=header.getBoundingClientRect().width||Number.parseFloat(col?.style.width)||Number(widths[c.k])||compactWidth(c,orderedViewRows);cells.forEach(cell=>{keep.add(cell);cell.classList.add('purchase-pinned-column');cell.style.left=left+'px';cell.style.zIndex=cell.closest('thead')?'20':'10'});left+=width}table.querySelectorAll('.purchase-pinned-column').forEach(cell=>{if(keep.has(cell))return;cell.classList.remove('purchase-pinned-column');cell.style.removeProperty('left');cell.style.removeProperty('z-index')})}
   let pinnedLayoutFrame=null;
   $('orderTable').addEventListener('tks:column-resized',()=>{if(pinnedLayoutFrame!==null)return;const schedule=window.requestAnimationFrame||((callback)=>window.setTimeout(callback,0));pinnedLayoutFrame=schedule(()=>{pinnedLayoutFrame=null;applyPinnedColumns()})});
   function lifecycleCell(r){const inactive=!!r.inactiveAt,label=inactive?'Ngừng hoạt động':'Hoạt động';return '<td data-field="lifecycle">'+(allowed('edit')&&!r.__splitPreview?'<button type="button" class="purchase-lifecycle-badge '+(inactive?'is-inactive':'is-active')+'" data-row-lifecycle="'+esc(r.id)+'" aria-label="'+esc(label+' · '+r.rowKey)+'">'+label+'</button>':'<span class="purchase-lifecycle-badge '+(inactive?'is-inactive':'is-active')+'">'+label+'</span>')+'</td>'}
@@ -331,10 +331,14 @@
   let containerFieldEdit=null;
   function containerSavedRows(id){return data.rows.filter(r=>String(r.contId)===String(id)&&!Object.hasOwn(newRows,String(r.id))&&!r.deletedAt&&!r.deleted_at).map(r=>({id:r.id,version:r.version}))}
   function containerPatch(id,version,changes,rows=containerSavedRows(id)){return {version,changes,...(Object.hasOwn(changes,'arrivalNote')||Object.hasOwn(changes,'arrivalDate')?{rows}: {})}}
-  function saveContainerPatch(id,changes){
+  function saveContainerPatch(id,changes,version){
     const run=async()=>{
       const current=cont(id);if(!current||current.deleted_at||current.deletedAt)throw Error('Cont không còn hoạt động. Tải lại dữ liệu rồi thử lại.');
-      const result=await api('/containers/'+encodeURIComponent(id),containerPatch(id,current.version,changes,containerSavedRows(id)),'PATCH');
+      // Gửi phiên bản chốt lúc NGƯỜI DÙNG mở ô, không phải phiên bản hiện tại: SSE có thể đã nâng
+      // version giữa chừng vì người khác vừa sửa, mà gửi version mới thì máy chủ không còn phát hiện
+      // được tranh chấp và thay đổi của họ bị ghi đè im lặng thay vì trả 409.
+      const sent=Number.isFinite(Number(version))?Number(version):current.version;
+      const result=await api('/containers/'+encodeURIComponent(id),containerPatch(id,sent,changes,containerSavedRows(id)),'PATCH');
       const canonical=data.containers.find(item=>String(item.id)===String(id));if(canonical&&result&&typeof result==='object')Object.assign(canonical,result);if(current!==canonical&&result&&typeof result==='object')Object.assign(current,result);
       return result;
     };
@@ -377,7 +381,7 @@
    function statusSelect(c,rowKey){if(!c)return '';if(!allowed('edit','containers')||c.deleted_at||c.deletedAt)return esc(status[c.status]);return '<select class="purchase-status-'+c.status+'" data-status="'+esc(c.id)+'" aria-label="Trạng thái '+esc(rowKey||c.name)+'" title="Đổi trạng thái toàn bộ '+esc(c.name)+'">'+[1,2,3,4].map(n=>'<option value="'+n+'" '+(n===c.status?'selected':'')+' '+((n===3&&!data.permissions.depart)||(n===4&&!data.permissions.arrive)?'disabled':'')+'>'+status[n]+'</option>').join('')+'</select>'}
   $('containerTable').addEventListener('click',guarded(async e=>{const noteButton=e.target.closest('[data-container-note]');if(noteButton){const c=cont(noteButton.dataset.containerNote);if(!c)return;modal('<h2>Ghi chú · '+esc(c.name)+'</h2><form id="containerNoteForm"><label>Ghi chú<textarea name="note" rows="8">'+esc(c.note||'')+'</textarea></label><button>Lưu ghi chú</button></form>');$('containerNoteForm').onsubmit=guarded(async event=>{event.preventDefault();await saveContainerPatch(c.id,{note:new FormData(event.currentTarget).get('note')});render();await modalSuccess('Đã lưu ghi chú cont.')});return}const button=e.target.closest('[data-container-lifecycle]');if(!button)return;const c=cont(button.dataset.containerLifecycle);if(!c)throw Error('Không còn cont này.');await containerLifecycle(c.inactive_at||c.inactiveAt?'reactivate':'deactivate',c.id,c.version)}));
   const changeContainerStatus=guarded(async e=>{if(!e.target.dataset.status)return;const input=e.target,c=cont(input.dataset.status),old=c.status,next=Number(input.value);if(next===old)return;input.disabled=true;try{await api('/status',{containerId:c.id,version:c.version,status:next});await refresh();await popupSuccess('Đã cập nhật trạng thái '+c.name+' và các dòng cùng cont.')}catch(error){input.value=String(old);throw error}finally{input.disabled=false}});
-  const changeContainerInput=async e=>{if(e.target.dataset.containerField&&e.target.dataset.containerId){const input=e.target,id=input.dataset.containerId,key=input.dataset.containerField,raw=input.value.trim(),value=['assumedM3','containerFxRate'].includes(key)?(raw===''?null:PurchaseCalculations.evaluate(raw)):input.value;if(key==='assumedM3'&&value!==null&&!(value>0))throw Error('Tổng m³ giả định phải lớn hơn 0 hoặc để trống.');if(key==='containerFxRate'&&value!==null&&!(value>0))throw Error('Tỉ giá cont phải lớn hơn 0 hoặc để trống.');await saveContainerPatch(id,{[key]:value});if(containerFieldEdit?.element===input)containerFieldEdit=null;input.blur();render();return}if(e.target.dataset.contFreight){const input=e.target,id=input.dataset.contFreight,c=cont(id),raw=input.value.trim(),empty=!raw,rows=previewRows().filter(row=>String(row.contId)===String(c.id)),volume=PurchaseCalculations.stats(rows).m3,denominator=PurchaseCalculations.positive(c.assumed_m3??c.assumedM3)||volume;let changes;if(empty)changes={freight:null,freightMode:'formula',freightFormula:null,freightBase:202000000,freightCapacity:170};else if(raw.startsWith('=')){const result=PurchaseCalculations.evaluateFormula(raw,{M3_CONT:volume??0,M3_XE:denominator??0,D2:volume??0});if(!Number.isFinite(result)||result<0)throw Error('Công thức chi phí cont không hợp lệ.');changes={freight:null,freightMode:'formula',freightFormula:raw}}else{const amount=PurchaseCalculations.evaluate(raw);if(PurchaseCalculations.number(amount)==null||amount<0)throw Error('Nhập tiền VC không âm hoặc công thức bắt đầu bằng =.');changes={freight:amount,freightMode:'manual'}}await saveContainerPatch(id,changes);if(containerFieldEdit?.element===input)containerFieldEdit=null;input.blur();render();return}return changeContainerStatus(e)};
+  const changeContainerInput=async e=>{if(e.target.dataset.containerField&&e.target.dataset.containerId){const input=e.target,id=input.dataset.containerId,key=input.dataset.containerField,raw=input.value.trim(),value=['assumedM3','containerFxRate'].includes(key)?(raw===''?null:PurchaseCalculations.evaluate(raw)):input.value;if(key==='assumedM3'&&value!==null&&!(value>0))throw Error('Tổng m³ giả định phải lớn hơn 0 hoặc để trống.');if(key==='containerFxRate'&&value!==null&&!(value>0))throw Error('Tỉ giá cont phải lớn hơn 0 hoặc để trống.');await saveContainerPatch(id,{[key]:value},containerFieldEdit?.key===id+':'+key?containerFieldEdit.version:undefined);if(containerFieldEdit?.element===input)containerFieldEdit=null;input.blur();render();return}if(e.target.dataset.contFreight){const input=e.target,id=input.dataset.contFreight,c=cont(id),raw=input.value.trim(),empty=!raw,rows=previewRows().filter(row=>String(row.contId)===String(c.id)),volume=PurchaseCalculations.stats(rows).m3,denominator=PurchaseCalculations.positive(c.assumed_m3??c.assumedM3)||volume;let changes;if(empty)changes={freight:null,freightMode:'formula',freightFormula:null,freightBase:202000000,freightCapacity:170};else if(raw.startsWith('=')){const result=PurchaseCalculations.evaluateFormula(raw,{M3_CONT:volume??0,M3_XE:denominator??0,D2:volume??0});if(!Number.isFinite(result)||result<0)throw Error('Công thức chi phí cont không hợp lệ.');changes={freight:null,freightMode:'formula',freightFormula:raw}}else{const amount=PurchaseCalculations.evaluate(raw);if(PurchaseCalculations.number(amount)==null||amount<0)throw Error('Nhập tiền VC không âm hoặc công thức bắt đầu bằng =.');changes={freight:amount,freightMode:'manual'}}await saveContainerPatch(id,changes);if(containerFieldEdit?.element===input)containerFieldEdit=null;input.blur();render();return}return changeContainerStatus(e)};
   $('containerTable').onchange=guarded(async e=>{const input=e.target;if(input.dataset.containerPickAll!==undefined){for(const box of $('containerTable').querySelectorAll('[data-container-pick]'))if(input.checked)selectedContainers.add(box.dataset.containerPick);else selectedContainers.delete(box.dataset.containerPick);syncContainerSelectionUI();return}if(input.dataset.containerPick!==undefined){if(input.checked)selectedContainers.add(input.dataset.containerPick);else selectedContainers.delete(input.dataset.containerPick);syncContainerSelectionUI();return}const edit=containerFieldEdit?.element===input?containerFieldEdit:null;if(edit?.saving)return;if(edit){edit.saving=true;edit.raw=input.value;edit.attemptedRaw=input.value}try{await changeContainerInput(e)}finally{if(edit)edit.saving=false}});
   async function containerLifecycle(action,id,version){if(!allowed('edit','containers'))throw Error('Bạn chưa có quyền sửa Thu mua.');const c=cont(id);if(!c)throw Error('Không còn cont này.');if(action==='delete'){await api('/containers/delete',{id,version:Number(version)});await refresh();await popupSuccess('Đã chuyển cont vào thùng rác.');return}const endpoint=action==='deactivate'?'deactivate':'reactivate',label=action==='deactivate'?'ngừng hoạt động':'bật hoạt động';await api('/containers/'+endpoint,{id,version:Number(version)});await refresh();await popupSuccess('Đã '+label+' cont '+c.name+'.')}
   async function deleteSelectedContainers(){if(!allowed('edit','containers'))throw Error('Bạn chưa có quyền sửa Thu mua.');const rows=data.containers.filter(c=>selectedContainers.has(String(c.id))&&!c.deleted_at&&!c.deletedAt);if(!rows.length)throw Error('Chọn ít nhất một cont trước.');for(const c of rows)await api('/containers/delete',{id:c.id,version:c.version});selectedContainers.clear();await refresh();await popupSuccess('Đã chuyển '+rows.length+' cont vào thùng rác.')}
@@ -447,7 +451,115 @@
   }
   $('export').onclick=guarded(async()=>{const ids=data.rows.filter(r=>!newRows[r.id]).filter(quickMatches).filter(orderMatches).map(r=>r.id);const res=await fetch(base+'/export',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields:[...new Set(['rowKey','productCode',...visible])],ids})});if(!res.ok)throw Error('Không xuất được file.');const url=URL.createObjectURL(await res.blob()),link=document.createElement('a');link.href=url;link.download='Thu-mua.xlsx';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);notice('Đã xuất '+ids.length+' dòng theo bộ lọc; dùng dữ liệu đã lưu trên máy chủ.')});
   // Sidebar trỏ tới #history; mở trang hoặc đổi hash đều phải nhảy đúng tab.
-  function openTabFromHash(){const history=location.hash==='#history'&&!!data.permissions.orders;$('orders').hidden=history;$('history').hidden=!history;if(history&&!$('history').dataset.loaded)guarded(async()=>{const result=await api('/history');$('history').innerHTML='<h2>Lịch sử thay đổi</h2>'+result.rows.map(h=>'<details><summary>'+esc(new Date(h.created_at).toLocaleString('vi-VN')+' · '+h.actor_name+' · '+auditTitle(h))+'</summary>'+auditDetail(h)+'</details>').join('');$('history').dataset.loaded='true'})()}
+  // ---- Nhật ký phiên bản ----
+  // Bảng bên trái dựng lại trạng thái TẠI phiên bản đang chọn (máy chủ tua ngược), không phải
+  // bảng hiện tại — nên ô đã đổi tô được mà giá trị vẫn đúng với thời điểm đó.
+  let vhVersions=[],vhDetail=null,vhSelected=null,vhBusy=false,vhEdits=[],vhEditAt=-1;
+  // Màu theo người thực hiện, suy ra từ id nên mỗi người luôn một màu, không cần lưu thêm.
+  function vhColor(actorId){let hash=0;for(const ch of String(actorId||''))hash=(hash*31+ch.charCodeAt(0))>>>0;return 'hsl('+(hash%360)+' 70% 55%)'}
+  const vhAction=action=>auditTitle({action,summary:{}}).replace(/ · $/,'');
+  function vhDayLabel(value){
+    const d=new Date(value),today=new Date(),day=x=>new Date(x.getFullYear(),x.getMonth(),x.getDate()).getTime();
+    const diff=Math.round((day(today)-day(d))/86400000);
+    return diff===0?'Hôm nay':diff===1?'Hôm qua':d.toLocaleDateString('vi-VN',{day:'numeric',month:'long'});
+  }
+  const vhTime=value=>new Date(value).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'});
+  async function vhLoad(more=false){
+    if(vhBusy)return;vhBusy=true;
+    try{
+      const last=more?vhVersions.at(-1)?.created_at:null;
+      const result=await api('/versions'+(last?'?before='+encodeURIComponent(new Date(last).toISOString()):''));
+      vhVersions=more?[...vhVersions,...result.rows]:result.rows;
+      $('vhMore').hidden=result.rows.length<60;
+      vhRenderList();
+      if(!more&&vhVersions[0])await vhOpen(vhVersions[0].id);
+      if(!vhVersions.length)$('vhTable').innerHTML='<p class="table-empty">Chưa có thay đổi nào được ghi nhận.</p>';
+    }finally{vhBusy=false}
+  }
+  function vhRenderList(){
+    let day='';
+    $('vhList').innerHTML=vhVersions.map(v=>{
+      const label=vhDayLabel(v.created_at),head=label===day?'':'<p class="vh-day">'+esc(label)+'</p>';day=label;
+      return head+'<button type="button" class="vh-item'+(String(v.id)===String(vhSelected)?' on':'')+'" data-version="'+esc(v.id)+'" role="option" aria-selected="'+(String(v.id)===String(vhSelected))+'">'
+        +'<span class="vh-when">'+esc(vhTime(v.created_at))+'</span>'
+        +'<span class="vh-who"><i class="vh-dot" style="background:'+vhColor(v.actor_id)+'"></i>'+esc(v.actor_name||v.actor_id||'Không rõ')+'</span>'
+        +'<span class="vh-what">'+esc(vhAction(v.action))+' · '+v.row_count+' dòng'+(v.undone?' · đã hoàn tác':'')+'</span></button>';
+    }).join('');
+  }
+  async function vhOpen(id){
+    vhSelected=id;vhRenderList();
+    $('vhTable').innerHTML='<p class="table-empty">Đang dựng lại bảng…</p>';
+    vhDetail=await api('/versions/'+encodeURIComponent(id));
+    $('vhTitle').textContent=vhAction(vhDetail.version.action)+' · '+vhTime(vhDetail.version.createdAt)+' '+vhDayLabel(vhDetail.version.createdAt).toLowerCase();
+    $('vhRestore').hidden=!allowed('edit');
+    vhRenderTable();
+  }
+  async function vhConfirmRestore(){
+    return new Promise(resolve=>{
+      let confirmed=false,finished=false;
+      const finish=()=>{if(finished)return;finished=true;resolve(confirmed)};
+      modal('<h2>Khôi phục phiên bản?</h2><p>Bảng Đặt hàng sẽ trở về trạng thái đã chọn. Những thay đổi hiện tại sẽ vẫn còn trong nhật ký phiên bản.</p><div class="purchase-modal-actions"><button id="vhRestoreCancel" type="button">Hủy</button><button id="vhRestoreConfirm" type="button" class="danger">Khôi phục</button></div>');
+      $('vhRestoreCancel').onclick=()=>{$('modal').close()};
+      $('vhRestoreConfirm').onclick=()=>{confirmed=true;$('modal').close()};
+      $('modal').addEventListener('close',finish,{once:true});
+    });
+  }
+  // Giá trị hiển thị của dòng lịch sử: cột suy ra tính tại chỗ, cột cont lấy tên theo danh sách
+  // cont hiện tại (tên cont đổi rất ít; dữ liệu cont theo thời điểm không được chụp lại).
+  function vhValue(r,k){
+    if(k==='container')return name(r.contId);if(k==='status')return r.contId==null?'Chờ xếp':status[cont(r.contId)?.status]??'';
+    const derived=PurchaseCalculations.row(r,null);
+    return (Object.hasOwn(derived,k)?derived[k]:r[k])??'';
+  }
+  function vhRenderTable(){
+    if(!vhDetail)return;
+    const cols=columns.filter(c=>visible.includes(c.k)),highlight=$('vhHighlight').checked,showAll=$('vhAllRows').checked;
+    const byCell=new Map(),byRow=new Map();
+    for(const change of vhDetail.changes){
+      if(change.kind==='changed')byCell.set(change.rowId+':'+change.field,change);
+      else byRow.set(change.rowId,change.kind);
+    }
+    const rows=vhDetail.rows,body=[];let skipped=0;
+    const flush=()=>{if(skipped){body.push('<tr class="vh-gap"><td colspan="'+cols.length+'">'+nf(skipped)+' hàng không được sửa đổi</td></tr>');skipped=0}};
+    for(const r of rows){
+      const touched=byRow.has(String(r.id))||cols.some(c=>byCell.has(String(r.id)+':'+c.k));
+      if(!touched&&!showAll){skipped++;continue}
+      flush();
+      const mark=byRow.get(String(r.id));
+      body.push('<tr data-id="'+esc(r.id)+'"'+(highlight&&mark?' class="vh-row-'+mark+'"':'')+'>'+cols.map(c=>{
+        const change=byCell.get(String(r.id)+':'+c.k),on=highlight&&!!change;
+        const title=change?esc(c.l+': '+(display(change.before,c.t,c.decimals)||'(trống)')+' → '+(display(change.after,c.t,c.decimals)||'(trống)')):'';
+        return '<td data-field="'+c.k+'" class="'+(numbers.has(c.t)?'num ':'')+(on?'vh-cell':'')+'"'+(on?' style="--vh-actor:'+vhColor(vhDetail.version.actorId)+'" title="'+title+'"':'')+'>'+esc(display(vhValue(r,c.k),c.t,c.decimals))+'</td>';
+      }).join('')+'</tr>');
+    }
+    flush();
+    $('vhTable').innerHTML='<table class="vh-table"><thead><tr>'+cols.map(c=>'<th class="'+(numbers.has(c.t)?'num':'')+'">'+esc(c.l)+'</th>').join('')+'</tr></thead><tbody>'+body.join('')+'</tbody></table>'
+      +(rows.length?'':'<p class="table-empty">Bảng chưa có dòng nào tại phiên bản này.</p>');
+    $('vhCount').textContent='Tổng số: '+nf(vhDetail.cellCount)+' nội dung chỉnh sửa';
+    vhEdits=[...$('vhTable').querySelectorAll('.vh-cell,[class*="vh-row-"]')];vhEditAt=-1;
+    for(const id of ['vhPrevEdit','vhNextEdit'])$(id).disabled=vhEdits.length<1;
+  }
+  function vhJump(delta){
+    if(!vhEdits.length)return;
+    vhEdits[vhEditAt]?.classList.remove('vh-focus');
+    vhEditAt=(vhEditAt+delta+vhEdits.length)%vhEdits.length;
+    const target=vhEdits[vhEditAt];target.classList.add('vh-focus');
+    target.scrollIntoView({block:'center',inline:'center',behavior:'smooth'});
+    $('vhCount').textContent='Chỉnh sửa '+(vhEditAt+1)+'/'+nf(vhEdits.length)+' · Tổng số: '+nf(vhDetail.cellCount);
+  }
+  $('vhList').onclick=guarded(async e=>{const id=e.target.closest('[data-version]')?.dataset.version;if(id&&id!==vhSelected)await vhOpen(id)});
+  $('vhMore').onclick=guarded(()=>vhLoad(true));
+  $('vhRestore').onclick=guarded(async()=>{
+    if(!vhSelected||!vhDetail||!allowed('edit'))throw Error('Bạn chưa có quyền khôi phục phiên bản.');
+    if(Object.keys(drafts).length||pendingRequest)throw Error('Hãy lưu hoặc hủy bản nháp trước khi khôi phục phiên bản.');
+    if(!await vhConfirmRestore())return;
+    $('vhRestore').disabled=true;
+    try{await api('/versions/'+encodeURIComponent(vhSelected)+'/restore',{});await refresh();await vhLoad();notice('Đã khôi phục phiên bản.')}finally{$('vhRestore').disabled=false}
+  });
+  $('vhHighlight').onchange=$('vhAllRows').onchange=()=>vhRenderTable();
+  $('vhPrevEdit').onclick=()=>vhJump(-1);$('vhNextEdit').onclick=()=>vhJump(1);
+  $('vhBack').onclick=()=>{location.hash=''};
+  function openTabFromHash(){const history=location.hash==='#history'&&!!data.permissions.orders;$('orders').hidden=history;$('history').hidden=!history;if(history&&!$('history').dataset.loaded){$('history').dataset.loaded='true';guarded(()=>vhLoad())()}}
   window.addEventListener('hashchange',openTabFromHash);  window.addEventListener('beforeunload',e=>{if(Object.keys(drafts).length){e.preventDefault();e.returnValue=''}});
   window.addEventListener('online',()=>autoRefresh.trigger());window.addEventListener('offline',()=>{$('connection').textContent='Ngoại tuyến · bản nháp vẫn giữ';render()});
   // Cont assignment and lifecycle controls are available from the order and container tables.
