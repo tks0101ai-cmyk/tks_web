@@ -13,6 +13,7 @@ const ordersService = require('./stockOutOrdersService');
 const { events: defaultEvents, CHANGED } = require('./stockPositionsEvents');
 const { createStockPositionsWorkbook, createStockPositionsHistoryWorkbook } = require('./stockPositionsExport');
 const { createStockOutOrderWorkbook } = require('./stockOutOrdersExport');
+const { createStockOutSkippedWorkbook } = require('./stockOutSkippedExport');
 
 const IMPORT_MAX_BYTES = 8 * 1024 * 1024;
 const IMPORT_EXTENSIONS = /\.(xlsx|xls|csv)$/iu;
@@ -164,6 +165,13 @@ function createStockPositionsRouter(dependencies = {}) {
     const fileName = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
     if (!IMPORT_EXTENSIONS.test(fileName)) return res.status(400).json({ error: 'Chỉ nhận file .xlsx, .xls hoặc .csv.', code: 'IMPORT_BAD_EXTENSION' });
     res.json(await svc().stockOutFile(ctxOf(req), req.query.branch, { buffer: req.file.buffer, fileName }));
+  }));
+  // Xuat Excel cac dong bi bo qua cua lan Xuat kho Excel (client gui lai danh sach loi); quyen stockLocationsV2.export.
+  router.post('/api/stock-positions/stock-out/skipped-export', requireFeature('stockLocationsV2.export'), handle(async (req, res) => {
+    const file = await createStockOutSkippedWorkbook({ errors: (req.body || {}).errors, branch: (req.body || {}).branch });
+    res.set('Content-Type', file.mimeType);
+    res.set('Content-Disposition', `attachment; filename="${file.fileName}"`);
+    res.send(file.buffer);
   }));
   // Don xuat kho (migration 0104): don tam dung chung moi co so, chi tru ton khi chot. Xem = .view; them/sua/xoa dong, import, chot = .edit.
   // Dat truoc '/:id' (cac duong dan sau co nhieu doan hon nen khong trung, nhung giu cung thu tu voi cac route cu the khac).
