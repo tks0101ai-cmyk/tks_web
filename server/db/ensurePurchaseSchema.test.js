@@ -12,6 +12,6 @@ test('employee migration seeds distinct legacy names without HR or row rewrites 
   assert.deepEqual(catalog,[{name:'Dung',is_active:true,version:1},{name:'Legacy',is_active:true,version:1}]);
   assert.equal((await db.query('SELECT buyer FROM purchase_orders WHERE id=1')).rows[0].buyer,' Dung ');
   assert.equal((await db.query("SELECT to_regclass('hr_employees') t")).rows[0].t,null);
-  assert.equal(FILES.at(-1),'0131_purchase_container_arrival_text.sql');
+  assert.equal(FILES.at(-1),'0132_purchase_container_fx_rate.sql');
  }finally{await db.close()}
 });

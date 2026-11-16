@@ -254,10 +254,10 @@ test('warehouse liter and m³ measurements project one CÂN ĐO record to every 
 test('comparison overrides persist per order row, export effective values, and clear back to shared measurements',async()=>{
  await db.query("INSERT INTO shipping_measures(code_key,per_carton,m3_per_unit,kg_per_unit) VALUES('a',12,.025,.4)");
  const a=await service.create(manager,{...input(),productCode:'A',m3PerCarton:.073,kgPerCarton:10}),b=await service.create(manager,{...input(),productCode:'A',listedAt:'2026-11-02',m3PerCarton:.073,kgPerCarton:10});
- const edited=await service.update(manager,a.id,{version:a.version,before:{literWarehouse:25},changes:{literWarehouse:30,m3Warehouse:.42,literChina:8,literDiff:-.7333,gramWarehouse:450,gramChina:350,gramDiff:-.2222,measuredOn:'2026-11-10T14:35',ratio:18.5}});
- assert.deepEqual([edited.literWarehouse,edited.m3Warehouse,edited.literChina,edited.literDiff,edited.gramWarehouse,edited.gramChina,edited.gramDiff,edited.measuredOn,edited.ratio],[30,.42,8,-.7333,450,350,-.2222,'2026-11-10T14:35',18.5]);
+ const edited=await service.update(manager,a.id,{version:a.version,before:{literWarehouse:25},changes:{literWarehouse:30,m3Warehouse:.42,literChina:8,literDiff:-.7333,gramWarehouse:450,gramChina:350,gramDiff:-.2222,measuredOn:'2026-11-10T14:35'}});
+ assert.deepEqual([edited.literWarehouse,edited.m3Warehouse,edited.literChina,edited.literDiff,edited.gramWarehouse,edited.gramChina,edited.gramDiff,edited.measuredOn,edited.ratio],[30,.42,8,-.7333,450,350,-.2222,'2026-11-10T14:35',10/(1000*.073)]);
  assert.equal(edited.measurementDefaults.literWarehouse,25);assert.equal(edited.measurementDefaults.m3Warehouse,.3);assert.equal(edited.measurementDefaults.measuredOn,null);
- assert.deepEqual(Object.keys(edited.measurementOverrides).sort(),['literChina','literDiff','literWarehouse','m3Warehouse','gramWarehouse','gramChina','gramDiff','measuredOn','ratio'].sort());
+ assert.deepEqual(Object.keys(edited.measurementOverrides).sort(),['literChina','literDiff','literWarehouse','m3Warehouse','gramWarehouse','gramChina','gramDiff','measuredOn'].sort());
  const listed=await service.list(manager),exported=await service.exportRows(manager),latest=await service.latest(manager,'A');
  const persisted=listed.rows.find(r=>r.id===a.id);assert.equal(persisted.literWarehouse,30);assert.equal(persisted.m3Warehouse,.42);assert.equal(exported.find(r=>r.id===a.id).literChina,8);assert.equal(exported.find(r=>r.id===a.id).literDiff,-.7333);assert.equal(latest.measurementOverrides.literWarehouse,30);
  assert.deepEqual([listed.rows.find(r=>r.id===b.id).literWarehouse,listed.rows.find(r=>r.id===b.id).m3Warehouse],[25,.3]);
@@ -873,6 +873,10 @@ test('direct and plan new products always wait even with a requested container',
  const a=await service.create(manager,{...input(),contId:c.id});assert.equal(a.contId,null);
  await service.applyPlan(manager,{creates:[{values:{...input(),productCode:'PLAN',contId:c.id,buyer:'Dung'}}]});
  assert.ok((await service.list(manager)).rows.every(r=>r.contId===null));
+});
+
+test('container exchange rate is optional, positive and persists on the shared cont',async()=>{
+ const c=await service.createContainer(manager,{name:'FX RATE',assumedM3:170}),saved=await service.updateContainer(manager,c.id,{version:c.version,changes:{containerFxRate:3920}});assert.equal(Number(saved.container_fx_rate),3920);assert.equal(Number((await db.query('SELECT container_fx_rate FROM product_containers WHERE id=$1',[c.id])).rows[0].container_fx_rate),3920);await assert.rejects(service.updateContainer(manager,c.id,{version:saved.version,changes:{containerFxRate:0}}),e=>e.code==='VALIDATION_ERROR');
 });
 
 test('shared container edits propagate dates atomically, recalculate NET and preserve quantities and stock',async()=>{

@@ -70,8 +70,14 @@ test('Ctrl+Z undoes an edited input before it loses focus',async t=>{
 });
 test('container index uses requested ordered columns and keeps the expense/rate distinct',async t=>{
  const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{cartonCount:10,kgPerCarton:2,m3PerCarton:.25});p.listeners.changed();await tick();await tick();
- assert.deepEqual([...doc.querySelectorAll('#containerTable thead th')].map(th=>th.textContent.replace(/[▲▼]/g,'').trim()),['Tên cont','Trạng thái cont','Tổng tấn','m³ xếp','m³ giả định','Đơn giá cont','Phụ phí','Đơn giá quy đổi','Tiền VC/m³','Ngày bốc','Ngày về','Nhà VC','Tên cont TQ','Loại xe','Ghi chú','Người xếp cont','KQ nhận','HĐ/NHĐ']);
+ assert.deepEqual([...doc.querySelectorAll('#containerTable thead th')].map(th=>th.textContent.replace(/[▲▼]/g,'').trim()),['Tên cont','Trạng thái cont','Tổng tấn','m³ xếp','m³ giả định','Đơn giá cont','Phụ phí','Đơn giá quy đổi','Tiền VC/m³','VC trả sau','Tỉ giá cont','Ngày bốc','Ngày về','Nhà VC','Tên cont TQ','Loại xe','Ghi chú','Người xếp cont','KQ nhận','HĐ/NHĐ']);
  const row=doc.querySelector('#containerTable tbody tr:nth-child(2)');assert.ok(row.querySelector('[data-cont-freight]'));assert.ok(row.querySelector('[data-container-column=rate]'));assert.equal(row.querySelector('[data-cont-freight]').dataset.contFreight,'2');
+});
+test('order table waiting container selector includes its region suffix',async t=>{
+ const p=await page(t),doc=p.w.document;p.data.regions=[{id:'h',name:'H',color:'#2563EB',isActive:true}];p.data.rows[0]={...p.data.rows[0],contId:null,regionId:'h'};p.listeners.changed();await tick();await tick();assert.equal(doc.querySelector('#orderTable [data-edit="contId"] option[value=""]').textContent,'Chờ H');
+});
+test('container index sums VC trả sau and saves the cont exchange rate',async t=>{
+ const p=await page(t),doc=p.w.document;p.data.rows[0].freightPostpaid=.25;p.data.rows.push({...p.data.rows[0],id:'2',rowKey:'D00002',freightPostpaid:.75});p.listeners.changed();await tick();await tick();const row=doc.querySelector('#containerTable [data-container-filter="2"]').closest('tr');assert.equal(row.querySelector('[data-container-column="postpaid"]').textContent,'1.00');const rate=row.querySelector('[data-container-field="containerFxRate"]');rate.focus();rate.value='3920';rate.dispatchEvent(new p.w.Event('change',{bubbles:true}));await tick();const call=p.calls.find(c=>c.url.endsWith('/containers/2')&&c.options.method==='PATCH');assert.equal(JSON.parse(call.options.body).changes.containerFxRate,3920);
 });
 test('container VC/m3 uses converted price divided by preferred then actual m3',async t=>{
  const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{cartonCount:10,qtyPerCarton:5,unitPriceCny:100,fxRate:1,surchargePercent:.2,kgPerCarton:2,m3PerCarton:.2});Object.assign(p.data.containers[0],{assumed_m3:10,freight:3000,freight_mode:'manual'});p.listeners.changed();await tick();await tick();
@@ -297,18 +303,18 @@ test('measurement inputs show agreed precision and focus/blur alone creates no d
  doc.getElementById('columns').click();for(const key of ['kgPerCarton','m3PerCarton','gramChina']){const box=doc.querySelector('[data-column="'+key+'"]');box.checked=true;box.dispatchEvent(new p.w.Event('change',{bubbles:true}))}
  for(const [key,shown] of [['kgPerCarton','14.0'],['m3PerCarton','0.067'],['gramChina','4,680']]){let input=doc.querySelector('[data-edit="'+key+'"]');assert.equal(input.value,shown,key+' initial');input.focus();input.blur();await new Promise(resolve=>setTimeout(resolve,5));input=doc.querySelector('[data-edit="'+key+'"]');assert.equal(input.value,shown,key+' after blur')}assert.equal(Object.keys(p.drafts()).length,0);
 });
-test('calculated ratio is shown to one decimal place as total tons divided by total m3 times 100',async t=>{
- for(const readOnly of [false,true]){const p=await page(t,{readOnly}),doc=p.w.document;Object.assign(p.data.rows[0],{kgPerCarton:330,m3PerCarton:1.66});p.listeners.changed();await tick();await tick();
+test('calculated ratio is formula-only and shown as total tons divided by total m3 times 100',async t=>{
+ for(const readOnly of [false,true]){const p=await page(t,{readOnly}),doc=p.w.document;Object.assign(p.data.rows[0],{kgPerCarton:330,m3PerCarton:1.66,measurementOverrides:{ratio:.002}});p.listeners.changed();await tick();await tick();
   doc.getElementById('columns').click();const box=doc.querySelector('[data-column="ratio"]');box.checked=true;box.dispatchEvent(new p.w.Event('change',{bubbles:true}));
-  assert.equal(readOnly?doc.querySelector('[data-field="ratio"]').textContent:doc.querySelector('[data-edit="ratio"]').value,'19.9%',readOnly?'read-only':'editable');
+  assert.equal(doc.querySelector('[data-field="ratio"]').textContent,'19.9%',readOnly?'read-only':'editable');assert.equal(doc.querySelector('[data-edit="ratio"]'),null);
  }
 });
-test('percentage overrides edit in displayed percentage points',async t=>{
- const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{literDiff:-.03,ratio:25,measurementOverrides:{literDiff:-.03,ratio:25}});p.listeners.changed();await tick();await tick();
+test('manual percentage overrides remain editable while the container ratio stays formula-only',async t=>{
+ const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{kgPerCarton:330,m3PerCarton:1.66,literDiff:-.03,measurementOverrides:{literDiff:-.03,ratio:.002}});p.listeners.changed();await tick();await tick();
  doc.getElementById('columns').click();for(const key of ['literDiff','ratio']){const box=doc.querySelector('[data-column="'+key+'"]');box.checked=true;box.dispatchEvent(new p.w.Event('change',{bubbles:true}))}
-  assert.equal(doc.querySelector('[data-edit="literDiff"]').value,'-3.0%');assert.equal(doc.querySelector('[data-edit="ratio"]').value,'25.0%');
- for(const [key,v] of [['literDiff','12'],['ratio','12.3']]){const input=doc.querySelector('tr[data-id="1"] [data-edit="'+key+'"]');input.value=v;input.dispatchEvent(new p.w.Event('input',{bubbles:true}))}await new Promise(resolve=>setTimeout(resolve,270));
- assert.deepEqual(p.drafts()['1'].changes,{literDiff:.12,ratio:12.3});doc.getElementById('save').click();doc.getElementById('commit').click();await tick();await tick();const body=JSON.parse(p.calls.find(c=>c.options.method==='PATCH'&&c.url.endsWith('/1')).options.body);assert.deepEqual(body.changes,{literDiff:.12,ratio:12.3});
+ assert.equal(doc.querySelector('[data-edit="literDiff"]').value,'-3.0%');assert.equal(doc.querySelector('[data-field="ratio"]').textContent,'19.9%');
+ const input=doc.querySelector('tr[data-id="1"] [data-edit="literDiff"]');input.value='12';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,270));
+ assert.deepEqual(p.drafts()['1'].changes,{literDiff:.12});doc.getElementById('save').click();doc.getElementById('commit').click();await tick();await tick();const body=JSON.parse(p.calls.find(c=>c.options.method==='PATCH'&&c.url.endsWith('/1')).options.body);assert.deepEqual(body.changes,{literDiff:.12});
 });
 test('staged override changes and clears recalculate dependent comparison fields from fallback',async t=>{
  const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{m3PerCarton:.005,literWarehouse:1,literChina:1.2,literDiff:.2,measurementOverrides:{literChina:1.2},measurementDefaults:{literWarehouse:1,m3Warehouse:null,literChina:1,literDiff:0,gramWarehouse:null,gramChina:null,gramDiff:null,measuredOn:null,ratio:null}});p.listeners.changed();await tick();await tick();
