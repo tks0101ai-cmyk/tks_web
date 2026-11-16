@@ -66,7 +66,7 @@ test('Ctrl+Z undoes an edited input before it loses focus',async t=>{
 });
 test('container index uses requested ordered columns and keeps the expense/rate distinct',async t=>{
  const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{cartonCount:10,kgPerCarton:2,m3PerCarton:.25});p.listeners.changed();await tick();await tick();
- assert.deepEqual([...doc.querySelectorAll('#containerTable thead th')].map(th=>th.textContent.replace(/[▲▼]/g,'').trim()),['Tên cont','Trạng thái cont','Tổng tấn','m³ xếp','m³ giả định','Đơn giá cont','Phụ phí','Đơn giá quy đổi','Tiền VC/m³','Ngày bốc','Ngày về','Nhà VC','Tên cont TQ','Loại xe','Ghi chú','Người xếp cont','KQ nhận','Trạng thái nhập']);
+ assert.deepEqual([...doc.querySelectorAll('#containerTable thead th')].map(th=>th.textContent.replace(/[▲▼]/g,'').trim()),['Tên cont','Trạng thái cont','Tổng tấn','m³ xếp','m³ giả định','Đơn giá cont','Phụ phí','Đơn giá quy đổi','Tiền VC/m³','Ngày bốc','Ngày về','Nhà VC','Tên cont TQ','Loại xe','Ghi chú','Người xếp cont','KQ nhận','HĐ/NHĐ']);
  const row=doc.querySelector('#containerTable tbody tr:nth-child(2)');assert.ok(row.querySelector('[data-cont-freight]'));assert.ok(row.querySelector('[data-container-column=rate]'));assert.equal(row.querySelector('[data-cont-freight]').dataset.contFreight,'2');
 });
 test('waiting container stays first by default but moves when sorting the container name header',async t=>{
@@ -83,7 +83,7 @@ test('order lifecycle sits last and container lifecycle is confirmed with the cu
  const p=await page(t),doc=p.w.document;
  assert.equal(doc.querySelector('#orderTable thead th:last-child').textContent,'Trạng thái');
  assert.equal(doc.querySelector('#orderTable tbody .purchase-lifecycle-badge').textContent,'Hoạt động');
- assert.equal(doc.querySelector('#containerTable thead tr th:nth-last-child(2)').textContent.replace(/[▲▼]/g,'').trim(),'KQ nhận');assert.equal(doc.querySelector('#containerTable thead tr th:last-child').textContent.replace(/[▲▼]/g,'').trim(),'Trạng thái nhập');assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) [data-container-column=lifecycle] .purchase-lifecycle-badge').textContent,'Hoạt động');
+ assert.equal(doc.querySelector('#containerTable thead tr th:nth-last-child(2)').textContent.replace(/[▲▼]/g,'').trim(),'KQ nhận');assert.equal(doc.querySelector('#containerTable thead tr th:last-child').textContent.replace(/[▲▼]/g,'').trim(),'HĐ/NHĐ');assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) [data-container-column=lifecycle] .purchase-lifecycle-badge').textContent,'Hoạt động');
  doc.querySelector('#containerTable [data-container-lifecycle]').click();assert.equal(p.calls.some(call=>call.url.endsWith('/containers/deactivate')),false);doc.getElementById('confirmContainerLifecycle').click();await tick();await tick();
  const request=p.calls.find(call=>call.url.endsWith('/containers/deactivate'));
  assert.deepEqual(JSON.parse(request.options.body),{id:'2',version:3});
