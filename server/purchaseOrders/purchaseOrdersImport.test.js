@@ -25,7 +25,9 @@ test('partial update preserves blank fields, permits code rename, and ignores co
 test('measurement input fields import as overrides while derived measurements stay calculated',()=>{
   const result=prepareRows([{rowKey:'D00001.01',productCode:'A',literWarehouse:1.25,m3Warehouse:.42,literChina:1.1,literDiff:-12,gramWarehouse:350,gramChina:300,gramDiff:-14,measuredOn:'2026-11-12',ratio:.8}],existing());
   assert.equal(result.valid,true,result.rows[0].errors.join('; '));
-  assert.deepEqual(result.operations[0].changes.filter(c=>['literWarehouse','m3Warehouse','literChina','literDiff','gramWarehouse','gramChina','gramDiff','measuredOn','ratio'].includes(c.key)).map(c=>c.key),['literWarehouse','m3Warehouse','literChina','literDiff','gramWarehouse','gramChina','gramDiff','measuredOn','ratio']);
+  // Tỉ lệ là cột công thức (Tổng Tấn / Tổng m³), không còn cờ `o` từ be005395: file import có gõ
+  // Tỉ lệ thì vẫn không sinh thay đổi nào, giống 11 cột công thức còn lại.
+  assert.deepEqual(result.operations[0].changes.filter(c=>['literWarehouse','m3Warehouse','literChina','literDiff','gramWarehouse','gramChina','gramDiff','measuredOn','ratio'].includes(c.key)).map(c=>c.key),['literWarehouse','m3Warehouse','literChina','literDiff','gramWarehouse','gramChina','gramDiff','measuredOn']);
 });
 test('one error suppresses the whole plan; all errors remain available to the UI', () => {
   const result = prepareRows([fresh(), { rowKey: 'D99999', productCode: 'B' }], existing());

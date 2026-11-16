@@ -431,7 +431,10 @@ test('snapshot changed after download is rejected before preview',async()=>{
 test('snapshot import saves measurement overrides and blank cells restore calculated defaults',async()=>{
  const row=await service.create(manager,input()),snapshot=await service.importSnapshot(manager),measured={...snapshot.rows[0],literWarehouse:1.25,m3Warehouse:.42,literChina:1.1,literDiff:-12,gramWarehouse:550,gramChina:500,gramDiff:-9,measuredOn:'2026-11-12',ratio:.75};
  const file=Buffer.from(excel.exportImportSnapshot({rows:[measured],columns,revision:snapshot.revision})),preview=await service.previewImport(manager,{buffer:file});assert.equal(preview.valid,true,JSON.stringify(preview.rows[0]?.errors));await service.commitImport(manager,preview.token);
- let saved=(await service.list(manager)).rows.find(item=>item.id===row.id);assert.deepEqual([saved.literWarehouse,saved.m3Warehouse,saved.literChina,saved.literDiff,saved.gramWarehouse,saved.gramChina,saved.gramDiff,saved.measuredOn,saved.ratio],[1.25,.42,1.1,-12,550,500,-9,'2026-11-12',.75]);assert.equal(saved.measurementOverrides.literWarehouse,1.25);
+ // Tỉ lệ trong file chỉ để đọc: cột công thức (Tổng Tấn / Tổng m³) nên không thành override và
+ // luôn tính lại — dòng này không có Kg/T lẫn M3/T nên Tỉ lệ ra null, không phải .75 vừa gõ vào.
+ let saved=(await service.list(manager)).rows.find(item=>item.id===row.id);assert.deepEqual([saved.literWarehouse,saved.m3Warehouse,saved.literChina,saved.literDiff,saved.gramWarehouse,saved.gramChina,saved.gramDiff,saved.measuredOn,saved.ratio],[1.25,.42,1.1,-12,550,500,-9,'2026-11-12',null]);assert.equal(saved.measurementOverrides.literWarehouse,1.25);
+ assert.equal(Object.hasOwn(saved.measurementOverrides,'ratio'),false);
  const latest=await service.importSnapshot(manager),blank={...latest.rows[0],literWarehouse:null,m3Warehouse:null,literChina:null,literDiff:null,gramWarehouse:null,gramChina:null,gramDiff:null,measuredOn:null,ratio:null},clear=await service.previewImport(manager,{buffer:Buffer.from(excel.exportImportSnapshot({rows:[blank],columns,revision:latest.revision}))});assert.equal(clear.valid,true);await service.commitImport(manager,clear.token);
  saved=(await service.list(manager)).rows.find(item=>item.id===row.id);assert.deepEqual(saved.measurementOverrides,{});
 });
