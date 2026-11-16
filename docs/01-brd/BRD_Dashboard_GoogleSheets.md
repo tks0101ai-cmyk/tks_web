@@ -724,6 +724,11 @@ Người dùng tạo cont với Tổng m³ giả định để dự tính cướ
 
 Cập nhật gần nhất: 14/11/2026.
 
+## Thu mua — phân bổ Tiền VC mã từ giá quy đổi (16/11/2026)
+Đơn giá cont quy đổi là Đơn giá cont sau khi trừ tổng Phụ phí của các mã. Tiền VC từng mã được tính bằng m³ xếp mã nhân Đơn giá cont quy đổi chia cho m³ giả định; khi không có m³ giả định, dùng tổng m³ xếp. Giá NET cộng phụ phí riêng và không tính lặp phụ phí trong VC.
+
+Cập nhật gần nhất: 16/11/2026.
+
 
 ## Thu mua — chi phí vận chuyển, phụ phí và quản lý vùng (14/11/2026)
 

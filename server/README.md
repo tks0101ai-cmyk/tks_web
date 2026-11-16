@@ -1471,3 +1471,9 @@ Cập nhật gần nhất: 14/11/2026.
 `purchaseOrdersRoutes` dùng chế độ deferred projection: trong cùng transaction với sửa dữ liệu Thu mua, server thêm một hàng outbox; worker từ `jobs.js` chạy `purchaseProjectionQueue.js` mỗi 750 ms, lấy mốc ID hiện tại, chiếu trong `REPEATABLE READ`, rồi xóa các yêu cầu tới mốc đó. Hàng mới trong lúc chạy được giữ cho lượt sau; lỗi giữ queue và thử lại sau 5 giây. Worker dùng advisory lock riêng cho projection và bảng Dự kiến hàng về để tránh khóa luồng ghi canonical trong toàn bộ lượt chiếu. Mốc dữ liệu canonical và kiểm tra công thức cước vẫn đồng bộ trước khi API xác nhận; hai bảng dùng chung có thể trễ đến khi worker hoàn tất. Sự kiện `containersChanged` phát sau commit projection để màn hình khác không tải dữ liệu cũ. Schema `0134_purchase_projection_queue.sql` tự chạy cùng schema Thu mua.
 
 Cập nhật gần nhất: 16/11/2026.
+
+## Thu mua — phân bổ cước quy đổi và sửa hàng loạt (16/11/2026)
+
+Tiền VC mã dùng `m³ xếp của mã × ((Đơn giá cont − tổng Phụ phí cont) / m³ mẫu số)`. Mẫu số ưu tiên m³ giả định, nếu trống dùng m³ xếp thực tế. Phụ phí vẫn được cộng riêng vào NET, tránh tính phụ phí lần hai trong phần VC; API xuất và projection SQL dùng cùng quy tắc. Sửa hàng loạt khóa tập dòng bằng một truy vấn, ghi các dòng đã hợp lệ bằng một câu `UPDATE ... FROM jsonb_to_recordset`, và chỉ kiểm danh mục nhân viên một lần cho cả lô.
+
+Cập nhật gần nhất: 16/11/2026.

@@ -42,3 +42,18 @@ test('projectContainers and exportRows agree for optional signed prepaid and mis
   else{const net=(total*3920+(out.surchargeAmount||0)+(out.freightAmount||0)+(Number(row.freightPostpaid)||0)*3900)/1200;assert.equal(out.netPrice,net,label);assert.ok(Math.abs(Number(sql.vietnam_price)-net)<1e-7,label+' SQL parity');}
  }
 });
+
+test('converted container price is allocated to each product and stays in parity with NET projection',async()=>{
+ await db.exec('TRUNCATE purchase_employees,purchase_requests,purchase_undo_expected,purchase_operation_rows,purchase_operations,purchase_orders,product_containers,purchase_key_history,purchase_key_pool,purchase_key_reservations,purchase_history,purchase_departures,purchase_import_previews,product_container_lines,product_container_expected,product_container_expected_state,purchase_projection_queue RESTART IDENTITY CASCADE; ALTER SEQUENCE purchase_order_key_seq RESTART WITH 1; UPDATE purchase_settings SET source_mode=\'web\',projection_owns_all=true,integration_enabled=true;');
+ let c=await service.createContainer({id:'manager',hoTen:'Người quản lý'},{name:'CONVERTED',assumedM3:10});
+ c=await service.updateContainer({id:'manager',hoTen:'Người quản lý'},c.id,{version:c.version,changes:{freight:3000,freightMode:'manual'}});
+ const rows=[];
+ for(const [code,price,surcharge] of [['CONVERTED-A',100,.2],['CONVERTED-B',50,.1]]){
+  const row=await service.create({id:'manager',hoTen:'Người quản lý'},{productCode:code,productName:code,listedAt:'2026-11-03',qtyPerCarton:5,cartonCount:10,unitPriceCny:price,fxRate:1,freightPrepaid:0,freightPostpaid:0,surchargePercent:surcharge,kgPerCarton:2,m3PerCarton:.2});
+  await service.transfer({id:'manager',hoTen:'Người quản lý'},{id:row.id,version:row.version,quantity:row.cartonCount,destinationId:c.id});rows.push(code);
+ }
+ const current=(await service.exportRows({id:'manager'})),lines=current.filter(row=>rows.includes(row.productCode));
+ const surcharge=lines.reduce((sum,row)=>sum+row.surchargeAmount,0),converted=Number(c.freight)-surcharge;
+ assert.equal(surcharge,1250);assert.equal(lines.reduce((sum,row)=>sum+row.freightAmount,0),converted*4/10);
+ for(const row of lines){const projected=(await db.query('SELECT vietnam_price FROM product_container_lines WHERE product_code=$1',[row.productCode])).rows[0];assert.ok(Math.abs(Number(projected.vietnam_price)-row.netPrice)<1e-7,row.productCode)}
+});

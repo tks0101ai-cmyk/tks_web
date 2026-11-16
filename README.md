@@ -637,3 +637,8 @@ Cập nhật gần nhất: 14/11/2026.
 Khi tích hợp Thu mua với các bảng dùng chung, giao dịch lưu dữ liệu canonical và ghi một mục bền vững vào `purchase_projection_queue`. Worker nền gộp các yêu cầu đang chờ rồi cập nhật `product_container_lines` và `product_container_expected`; giao dịch người dùng không chờ lượt chiếu toàn bảng. Queue giữ yêu cầu mới phát sinh trong lúc xử lý và thử lại sau lỗi. Sự kiện làm mới cont phát sau commit projection. Migration `0134` được đăng ký trong `ensurePurchaseSchema`; theo dõi log `[Purchase projection]`.
 
 Cập nhật gần nhất: 16/11/2026.
+
+## Thu mua — phân bổ cước quy đổi và sửa hàng loạt (16/11/2026)
+Tiền VC từng mã phân bổ từ Đơn giá cont quy đổi (Đơn giá cont trừ tổng Phụ phí), chia cho m³ giả định hoặc tổng m³ xếp nếu bỏ giả định. Phụ phí được tính riêng trong NET. Sửa hàng loạt khóa và cập nhật theo tập dòng để giảm số lần gọi DB.
+
+Cập nhật gần nhất: 16/11/2026.

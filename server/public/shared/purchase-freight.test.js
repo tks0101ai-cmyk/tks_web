@@ -48,3 +48,17 @@ test('manual assumed volume still provides a rate for measured lines when anothe
  const rows=[{contId:1,cartonCount:2,m3PerCarton:2},{contId:1,cartonCount:1,m3PerCarton:null}],rates=Freight.rates(rows,[{id:1,freightMode:'manual',freight:1000,assumedM3:100}]);
  assert.equal(rates.get('1'),10);assert.equal(Freight.rowAmount(rows[0],rates),40);assert.equal(Freight.rowAmount(rows[1],rates),null);
 });
+
+test('purchase line freight allocates converted container price after subtracting surcharges',()=>{
+ const container={id:1,freightMode:'manual',freight:3000,assumedM3:10};
+ const rows=[
+  {contId:1,cartonCount:10,qtyPerCarton:5,unitPriceCny:100,fxRate:1,surchargePercent:.2,m3PerCarton:.2},
+  {contId:1,cartonCount:10,qtyPerCarton:5,unitPriceCny:50,fxRate:1,surchargePercent:.1,m3PerCarton:.2}
+ ];
+ const rates=Freight.rates(rows,[container]);
+ const surcharge=rows.reduce((sum,row)=>sum+require('./purchase-calculations').row(row).surchargeAmount,0);
+ assert.equal(surcharge,1250);
+ assert.equal(rates.get('1'),(container.freight-surcharge)/container.assumedM3);
+ assert.deepEqual(rows.map(row=>Freight.rowAmount(row,rates)),[350,350]);
+ assert.equal(rows.reduce((sum,row)=>sum+Freight.rowAmount(row,rates),0),((container.freight-surcharge)/container.assumedM3)*4);
+});

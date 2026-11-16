@@ -793,6 +793,11 @@ Cập nhật cuối: 13/11/2026.
 Cho phép nhập biểu thức Excel-style trực tiếp tại ô Tiền VC của cont. Lưu biểu thức tối đa 512 ký tự, parser an toàn chỉ nhận số học, `D2`/`M3_CONT` (tổng m³ cont), `M3_XE`, và `SUM`/`ROUND`/`MIN`/`MAX`/`ABS`; không dùng `eval`. Công thức cho tổng cước cont hiện tại; kết quả chia tổng m³ thành VC/m³, rồi cùng phép chiếu phân bổ cước dòng và NET trong thao tác thay đổi. Số tiền nhập trực tiếp tiếp tục là chế độ thủ công. Migration `0126_purchase_container_freight_formula.sql` thêm trường công thức, được nạp khi khởi tạo schema Thu mua. Test unit/service/projection/UI phải xác nhận parser, lưu/sửa chế độ, m³ đổi, từ chối kết quả không hợp lệ kèm rollback và công thức hiển thị khi focus.
 Cập nhật gần nhất: 14/11/2026.
 
+## Thu mua — cước quy đổi và lô sửa hàng loạt (16/11/2026)
+Áp dụng Tiền VC mã = m³ xếp mã × ((Đơn giá cont − tổng Phụ phí cont) / m³ mẫu số), với m³ giả định ưu tiên và m³ thực tế dự phòng. NET cộng phụ phí riêng. API/export và projection phải giữ cùng phép tính. Tối ưu bulk edit bằng khóa tập dòng và UPDATE set-based, giữ kiểm xung đột từng dòng/audit một lần.
+
+Cập nhật gần nhất: 16/11/2026.
+
 ## Thu mua — m³ giả định và phụ phí (14/11/2026)
 Thay phân loại Loại xe bằng Tổng m³ giả định trên cont. Bắt buộc nhập khi tạo cont; cột Tổng m³ đang xếp vẫn phản ánh hàng thực tế. Công thức Tiền VC dùng m³ giả định làm mẫu số cho tới khi người dùng xóa; khi đó mẫu số đổi sang m³ đang xếp. Từng mã tiếp tục nhận VC theo m³ thực tế của mã. Phụ phí nhập theo % (giao diện nhập số phần trăm, API lưu phân số) và nhân với tiền hàng CNY của cùng mã rồi nhân tỉ giá dòng trước khi tính NET.
 

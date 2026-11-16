@@ -2,6 +2,7 @@
 const { randomUUID } = require('node:crypto');
 const expected = require('../productContainers/expectedRefresh').__test__;
 const freightModel = require('../public/shared/purchase-freight');
+const calculations = require('../public/shared/purchase-calculations');
 const LABELS = { 1: '1.Chưa xếp', 2: '2.Chưa bốc', 3: '3.Đã bốc', 4: '4.Đã về' };
 async function projectContainers(client) {
   // Rebuilds the read models from canonical state. Production invokes this in
@@ -13,9 +14,12 @@ async function projectContainers(client) {
   //           dong cua sheet khac giu nguyen, khong day hang cho xep sang.
   //   true  — so huu toan phan: Thu mua la nguon duy nhat.
   const containers=(await client.query('SELECT * FROM product_containers')).rows;
-  const volumeRows=(await client.query('SELECT container_id AS "containerId",COALESCE(sum(carton_count*m3_per_carton),0)::numeric AS volume,COALESCE(bool_and(m3_per_carton>0 AND carton_count>0 AND m3_per_carton IS NOT NULL),false) AS complete FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL GROUP BY container_id')).rows;
-  const stats=new Map(volumeRows.map(row=>[String(row.containerId??''),{volume:Number(row.volume),complete:row.complete}])),rates=new Map();
-  for(const container of [{id:null,freightMode:'formula'},...containers]){const key=String(container.id??''),summary=stats.get(key)||{volume:0,complete:true},fee=freightModel.calculate(container,summary.volume),rate=fee.mode==='manual'&&(!summary.complete||!summary.volume||fee.amount==null)?null:fee.rate;if(container.freight_formula&&summary.volume>0&&rate==null)throw Object.assign(new Error(`Công thức cước cont ${container.name} cho kết quả không hợp lệ với tổng m³ hiện tại. Sửa công thức hoặc chuyển sang nhập số tiền.`),{statusCode:400,code:'FREIGHT_FORMULA_INVALID'});rates.set(key,rate)}
+  const volumeRows=(await client.query(`SELECT container_id AS "containerId",COALESCE(sum(carton_count*m3_per_carton),0)::numeric AS volume,
+      COALESCE(sum((qty_per_carton*carton_count*unit_price_cny+COALESCE(freight_prepaid,0))*fx_rate*COALESCE(surcharge_percent,0)),0)::numeric AS surcharge,
+      COALESCE(bool_and(m3_per_carton>0 AND carton_count>0 AND m3_per_carton IS NOT NULL),false) AS complete
+    FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL GROUP BY container_id`)).rows;
+  const stats=new Map(volumeRows.map(row=>[String(row.containerId??''),{volume:Number(row.volume),surcharge:Number(row.surcharge),complete:row.complete}])),rates=new Map();
+  for(const container of [{id:null,freightMode:'formula'},...containers]){const key=String(container.id??''),summary=stats.get(key)||{volume:0,surcharge:0,complete:true},fee=freightModel.calculate(container,summary.volume),converted=fee.amount==null?null:fee.amount-summary.surcharge,rate=fee.mode==='manual'&&(!summary.complete||!summary.volume||fee.amount==null)?null:calculations.divide(converted,fee.assumedM3??summary.volume);if(container.freight_formula&&summary.volume>0&&rate==null)throw Object.assign(new Error(`Công thức cước cont ${container.name} cho kết quả không hợp lệ với tổng m³ hiện tại. Sửa công thức hoặc chuyển sang nhập số tiền.`),{statusCode:400,code:'FREIGHT_FORMULA_INVALID'});rates.set(key,rate)}
   await client.query('CREATE TEMP TABLE purchase_container_freight_rates(container_id BIGINT, rate NUMERIC) ON COMMIT DROP');
   for(const [containerId,rate] of rates)await client.query('INSERT INTO purchase_container_freight_rates(container_id,rate) VALUES($1,$2)',[containerId===''?null:containerId,rate]);
   const ownsAll = (await client.query('SELECT projection_owns_all FROM purchase_settings WHERE id=1')).rows[0]?.projection_owns_all === true;

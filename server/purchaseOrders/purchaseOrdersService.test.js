@@ -482,6 +482,14 @@ test('bulk saves independent rows, reports conflicts individually, and emits one
   assert.equal(result.results[0].status,'updated');assert.equal(result.results[1].status,'conflict');
   assert.equal((await db.query("SELECT count(*)::int n FROM purchase_history WHERE action='bulk_edit'")).rows[0].n,1);
 });
+test('bulk edit locks and writes selected rows in two set-based queries',async()=>{
+ const a=await service.create(manager,input()),b=await service.create(manager,{...input(),productCode:'BATCH-B'});let lockQueries=0,writeQueries=0;
+ const query=(sql,params)=>{if(/SELECT \* FROM purchase_orders WHERE id=ANY\(\$1::bigint\[\]\)/i.test(sql))lockQueries++;if(/jsonb_to_recordset\(\$1::jsonb\)/i.test(sql))writeQueries++;return db.query(sql,params)};
+ const batched=createPurchaseOrdersService({pool:{query,connect:async()=>({query,release(){}})},events,deferProjection:true,project:async()=>{}});
+ const result=await batched.bulkEdit(manager,{rows:[{id:a.id,version:a.version},{id:b.id,version:b.version}],changes:{supplier:'BATCHED'}});
+ assert.deepEqual(result.results.map(row=>row.status),['updated','updated']);assert.equal(lockQueries,1);assert.equal(writeQueries,1);
+ assert.equal((await batched.latest(manager,'A')).supplier,'BATCHED');assert.equal((await batched.latest(manager,'BATCH-B')).supplier,'BATCHED');
+});
 test('revise import requires every file row and validates all corrected data server-side',async()=>{
   const preview=await service.previewImport(manager,{buffer:await snapshotFile([{...input(),rowKey:'D99999'},input()])});
   await assert.rejects(service.reviseImport(manager,preview.token,[input()]),e=>e.code==='IMPORT_ROW_COUNT');
@@ -932,6 +940,7 @@ test('deferred projection validates freight formulas before committing canonical
  const current=(await deferred.list(manager)).containers.find(item=>item.id===c.id),saved=await deferred.updateContainer(manager,c.id,{version:current.version,changes:{freightFormula:'=100-M3_CONT'}});
  const queuedBefore=(await db.query('SELECT count(*)::int AS n FROM purchase_projection_queue')).rows[0].n;
  await assert.rejects(deferred.update(manager,row.id,{version:row.version,changes:{m3PerCarton:1.2}}),error=>error.code==='FREIGHT_FORMULA_INVALID'&&error.statusCode===400);
+ await assert.rejects(deferred.bulkEdit(manager,{rows:[{id:row.id,version:row.version,before:{m3PerCarton:.5}}],changes:{m3PerCarton:1.2}}),error=>error.code==='FREIGHT_FORMULA_INVALID'&&error.statusCode===400);
  assert.equal((await deferred.latest(manager,'DEFERRED-FORMULA')).m3PerCarton,.5);assert.equal((await db.query('SELECT count(*)::int AS n FROM purchase_projection_queue')).rows[0].n,queuedBefore);assert.equal(saved.freight_formula,'=100-M3_CONT');
 });
 

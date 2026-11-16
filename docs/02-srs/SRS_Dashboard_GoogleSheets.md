@@ -1166,9 +1166,9 @@ Nguồn kiểm chứng: công thức Sheet đã ghi nhận trong memory phiên d
 | Tổng tấn | kg/thùng × số thùng / 1,000 |
 | Tổng m³ | m³/thùng × số thùng |
 | VC cont tự tính | 202,000,000 / 170 × tổng m³ (hoặc định mức đã sửa) |
-| VC/m³ | Tự tính: tiền chuẩn / m³ chuẩn; nhập tay: tiền cont / tổng m³ đầy đủ của cont |
-| Tiền VC mã | Tổng m³ mã × VC/m³ cont |
-| Giá NET VND/cái | (Tiền hàng + Tiền VC mã + Thuế + VC sau CNY × 3,920) / Tổng SL; hằng số 3,920 chỉ áp dụng VC sau, giá hàng dùng tỉ giá dòng |
+| VC/m³ | (Đơn giá cont − tổng phụ phí cont) / m³ mẫu số; m³ giả định ưu tiên, nếu trống dùng tổng m³ xếp |
+| Tiền VC mã | Tổng m³ xếp mã × VC/m³ cont |
+| Giá NET VND/cái | (Tiền hàng + phụ phí mã + Tiền VC mã + VC trả sau × tỉ giá cont hoặc 3,900 mặc định) / Tổng SL |
 | L/c TQ; g/c TQ | m³/thùng × 1,000 / SL/thùng; kg/thùng × 1,000 / SL/thùng |
 | Lệch số đo | (Số đo TQ − số đo kho) / số đo kho; hiển thị % |
 | Tỉ lệ | Tổng tấn / tổng m³; hiển thị % |
@@ -1312,10 +1312,19 @@ Cập nhật gần nhất: 16/11/2026.
 
 ## Thu mua — chi phí cont, phụ phí có dấu và vùng (14/11/2026)
 
-- Tổng chi phí nhập ở cột Đơn giá cont là kết quả số hoặc biểu thức nhập. VC/m³ = tổng chi phí / m³ ưu tiên (m³ giả định nếu còn, nếu trống thì m³ đang xếp). Ô chỉnh sửa vẫn cho xem biểu thức gốc; thay đổi m³ lập tức cập nhật VC/m³ và tiền vận chuyển phân bổ cho từng mã.
-- Phụ phí cho phép nhập phần trăm âm hoặc dương. Giá trị sau khi nhập hiển thị thành tiền phụ phí = phần trăm × Tiền hàng của dòng; không cộng phụ phí vào Tổng tệ hoặc Giá NET.
-- Chỉ số cont bỏ cột Dòng, đổi nhãn Tiền VC thành Đơn giá cont, thêm Đơn giá quy đổi = Đơn giá cont − tổng phụ phí và cột Phụ phí tổng hợp theo đơn hàng của cont. Trạng thái Chưa có lịch hiển thị Chưa xếp.
+- Tổng chi phí nhập ở cột Đơn giá cont là kết quả số hoặc biểu thức nhập. Đơn giá cont quy đổi = Đơn giá cont − tổng Phụ phí cont. VC/m³ = Đơn giá cont quy đổi / m³ ưu tiên (m³ giả định nếu còn, nếu trống thì m³ đang xếp). Ô chỉnh sửa vẫn cho xem biểu thức gốc; thay đổi m³ lập tức cập nhật VC/m³ và tiền vận chuyển phân bổ cho từng mã.
+- Phụ phí cho phép nhập phần trăm âm hoặc dương. Phụ phí mã = phần trăm × Tiền hàng của dòng; NET cộng phụ phí riêng, không tính lặp khoản này trong tiền VC mã.
+- Tiền VC mã = m³ xếp của mã × VC/m³. Chỉ số cont có Đơn giá cont, Phụ phí tổng hợp, Đơn giá quy đổi và trạng thái Chưa xếp khi chưa có lịch.
 - Mỗi cont có ghi chú mở từ nút trong bảng và lưu giữa các lần mở. Danh sách vùng cho phép thêm tên/màu, gán vùng cho đơn mới và cont mới; mã chờ xếp được hiển thị riêng theo vùng. Mã SP đã có trước tự điền vùng của lần đặt gần nhất. Bộ lọc vùng có ở bảng đặt hàng và bảng chỉ số cont.
 - Migrations 0129–0130 bổ sung vùng/ghi chú và cho phép phần trăm phụ phí âm. Cần xác minh staging trước khi áp vào production.
 
 Cập nhật gần nhất: 14/11/2026.
+
+## Thu mua — Tiền VC theo Đơn giá cont quy đổi (16/11/2026)
+
+- Đơn giá cont quy đổi = Đơn giá cont − tổng Phụ phí của các mã trong cont.
+- Tiền VC mã = m³ xếp của mã × (Đơn giá cont quy đổi / m³ mẫu số); m³ mẫu số là m³ giả định nếu đã nhập, nếu trống dùng tổng m³ xếp.
+- NET cộng Tiền VC mã và Phụ phí riêng. API xuất và projection dùng chung phép tính để giá lưu trong bảng Đặt hàng khớp chỉ số cont.
+- Sửa hàng loạt khóa theo lô và ghi bằng câu lệnh set-based; giữ kết quả xung đột/không hợp lệ theo từng mã và một audit cho cả thao tác.
+
+Cập nhật gần nhất: 16/11/2026.
