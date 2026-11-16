@@ -560,6 +560,20 @@ test('balance plan commits edits, recursive split and new code together; stale s
  const current=all.find(r=>String(r.id)===String(b.id));await assert.rejects(service.applyPlan(manager,{rows:[{id:b.id,version:current.version,changes:{cartonCount:99}}],splits:[{id:a.id,version:a.version,sourceQty:60,quantity:10,destinationId:c.id}]}));assert.equal((await service.list(manager)).rows.find(r=>String(r.id)===String(b.id)).cartonCount,30);
 });
 
+test('balance plan batches ordinary row writes and preserves JSONB measurement overrides',async()=>{
+ const a=await service.create(manager,input()),b=await service.create(manager,{...input(),productCode:'B'}),queries=[];
+ const tracked=createPurchaseOrdersService({pool:{query:(sql,params)=>db.query(sql,params),connect:async()=>({query:async(sql,params)=>{queries.push(sql);return db.query(sql,params)},release(){}})},events,deferProjection:true});
+ await tracked.applyPlan(manager,{rows:[
+  {id:a.id,version:a.version,changes:{supplier:'Nhà cung cấp mới'}},
+  {id:b.id,version:b.version,changes:{literWarehouse:125}},
+ ]});
+ assert.equal(queries.filter(sql=>sql.includes('WITH patch AS')).length,1,'all ordinary row changes use one batch UPDATE');
+ assert.equal(queries.filter(sql=>sql.includes('WHERE p.id=ANY($1::bigint[])')&&sql.includes('ORDER BY p.id')&&!sql.includes('FOR UPDATE')).length,1,'acknowledged rows are read in one grouped query');
+ assert.equal((await db.query('SELECT supplier FROM purchase_orders WHERE id=$1',[a.id])).rows[0].supplier,'Nhà cung cấp mới');
+ assert.deepEqual((await db.query('SELECT measurement_overrides FROM purchase_orders WHERE id=$1',[b.id])).rows[0].measurement_overrides,{literWarehouse:125});
+ const acknowledged=await tracked.latest(manager,'B');assert.equal(acknowledged.literWarehouse,125);
+});
+
 test('balance plan ignores client-only id and version on a new row',async()=>{
  await db.query("SELECT setval('purchase_order_key_seq',1,false)");
  const result=await service.applyPlan(manager,{creates:[{clientId:'new123',values:{...input(),id:'new123',version:1,contId:null}}]});
