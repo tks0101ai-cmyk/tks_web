@@ -292,18 +292,18 @@ test('measurement inputs show agreed precision and focus/blur alone creates no d
  doc.getElementById('columns').click();for(const key of ['kgPerCarton','m3PerCarton','gramChina']){const box=doc.querySelector('[data-column="'+key+'"]');box.checked=true;box.dispatchEvent(new p.w.Event('change',{bubbles:true}))}
  for(const [key,shown] of [['kgPerCarton','14.0'],['m3PerCarton','0.067'],['gramChina','4,680']]){let input=doc.querySelector('[data-edit="'+key+'"]');assert.equal(input.value,shown,key+' initial');input.focus();input.blur();await new Promise(resolve=>setTimeout(resolve,5));input=doc.querySelector('[data-edit="'+key+'"]');assert.equal(input.value,shown,key+' after blur')}assert.equal(Object.keys(p.drafts()).length,0);
 });
-test('calculated ratio is shown as a rounded percentage in edit and view modes',async t=>{
- for(const readOnly of [false,true]){const p=await page(t,{readOnly}),doc=p.w.document;Object.assign(p.data.rows[0],{kgPerCarton:14,m3PerCarton:.067});p.listeners.changed();await tick();await tick();
+test('calculated ratio is shown to one decimal place as total tons divided by total m3 times 100',async t=>{
+ for(const readOnly of [false,true]){const p=await page(t,{readOnly}),doc=p.w.document;Object.assign(p.data.rows[0],{kgPerCarton:330,m3PerCarton:1.66});p.listeners.changed();await tick();await tick();
   doc.getElementById('columns').click();const box=doc.querySelector('[data-column="ratio"]');box.checked=true;box.dispatchEvent(new p.w.Event('change',{bubbles:true}));
-  assert.equal(readOnly?doc.querySelector('[data-field="ratio"]').textContent:doc.querySelector('[data-edit="ratio"]').value,'21%',readOnly?'read-only':'editable');
+  assert.equal(readOnly?doc.querySelector('[data-field="ratio"]').textContent:doc.querySelector('[data-edit="ratio"]').value,'19.9%',readOnly?'read-only':'editable');
  }
 });
-test('percentage overrides edit in displayed percentage points; blank clears a value override',async t=>{
- const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{literDiff:-.03,ratio:25,literChina:1.23,measurementOverrides:{literDiff:-.03,ratio:25,literChina:1.23}});p.listeners.changed();await tick();await tick();
- doc.getElementById('columns').click();for(const key of ['literDiff','ratio','literChina']){const box=doc.querySelector('[data-column="'+key+'"]');box.checked=true;box.dispatchEvent(new p.w.Event('change',{bubbles:true}))}
-  assert.equal(doc.querySelector('[data-edit="literDiff"]').value,'-3.0%');assert.equal(doc.querySelector('[data-edit="ratio"]').value,'25%');
- for(const [key,v] of [['literDiff','12'],['ratio','12'],['literChina','']]){const input=doc.querySelector('tr[data-id="1"] [data-edit="'+key+'"]');input.value=v;input.dispatchEvent(new p.w.Event('input',{bubbles:true}))}
- assert.deepEqual(p.drafts()['1'].changes,{literDiff:.12,ratio:12,literChina:null});doc.getElementById('save').click();doc.getElementById('commit').click();await tick();await tick();const body=JSON.parse(p.calls.find(c=>c.options.method==='PATCH'&&c.url.endsWith('/1')).options.body);assert.deepEqual(body.changes,{literDiff:.12,ratio:12,literChina:null});
+test('percentage overrides edit in displayed percentage points',async t=>{
+ const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{literDiff:-.03,ratio:25,measurementOverrides:{literDiff:-.03,ratio:25}});p.listeners.changed();await tick();await tick();
+ doc.getElementById('columns').click();for(const key of ['literDiff','ratio']){const box=doc.querySelector('[data-column="'+key+'"]');box.checked=true;box.dispatchEvent(new p.w.Event('change',{bubbles:true}))}
+  assert.equal(doc.querySelector('[data-edit="literDiff"]').value,'-3.0%');assert.equal(doc.querySelector('[data-edit="ratio"]').value,'25.0%');
+ for(const [key,v] of [['literDiff','12'],['ratio','12.3']]){const input=doc.querySelector('tr[data-id="1"] [data-edit="'+key+'"]');input.value=v;input.dispatchEvent(new p.w.Event('input',{bubbles:true}))}await new Promise(resolve=>setTimeout(resolve,270));
+ assert.deepEqual(p.drafts()['1'].changes,{literDiff:.12,ratio:12.3});doc.getElementById('save').click();doc.getElementById('commit').click();await tick();await tick();const body=JSON.parse(p.calls.find(c=>c.options.method==='PATCH'&&c.url.endsWith('/1')).options.body);assert.deepEqual(body.changes,{literDiff:.12,ratio:12.3});
 });
 test('staged override changes and clears recalculate dependent comparison fields from fallback',async t=>{
  const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{m3PerCarton:.005,literWarehouse:1,literChina:1.2,literDiff:.2,measurementOverrides:{literChina:1.2},measurementDefaults:{literWarehouse:1,m3Warehouse:null,literChina:1,literDiff:0,gramWarehouse:null,gramChina:null,gramDiff:null,measuredOn:null,ratio:null}});p.listeners.changed();await tick();await tick();
@@ -417,10 +417,12 @@ test('region list splits waiting container groups and filters both tables',async
  const names=[...doc.querySelectorAll('#containerTable tbody tr td[data-container-filter]')].map(td=>td.textContent);assert.ok(names.some(name=>name.includes('Chờ V')));assert.ok(names.some(name=>name.includes('Chờ H')));assert.ok(names.some(name=>name.includes('Chờ T')),'an empty configured region still has its waiting group');assert.ok(names.some(name=>name.includes('Chờ')&&!name.includes('V')&&!name.includes('H')&&!name.includes('T')),'legacy unassigned rows stay in their own group');assert.equal(doc.querySelector('tr[data-id="4"] [data-edit="regionId"] option').textContent,'-');assert.ok([...doc.getElementById('orderRegion').options].some(option=>option.value==='__unassigned__'&&option.textContent==='Chưa gán vùng'));assert.ok([...doc.getElementById('contRegion').options].some(option=>option.value==='__unassigned__'));assert.ok(doc.getElementById('orderRegion').options.length>=4);assert.ok(doc.getElementById('contRegion').options.length>=4);
  doc.getElementById('orderRegion').value='__unassigned__';doc.getElementById('orderRegion').dispatchEvent(new p.w.Event('change',{bubbles:true}));assert.deepEqual([...doc.querySelectorAll('#orderTable tbody tr[data-id]')].map(row=>row.dataset.id),['4']);
 });
-test('container names retain their region suffix in the index and assignment lists',async t=>{
+test('only waiting container labels append their region to the name',async t=>{
  const p=await page(t),doc=p.w.document;p.data.regions=[{id:'20',name:'H',color:'#AA5500',isActive:true,version:1}];p.data.containers[0].region_id='20';p.listeners.changed();await tick();await tick();
- assert.equal(doc.querySelector('#containerTable [data-container-filter="2"] button').textContent,'11-1V · H');
- assert.ok([...doc.querySelectorAll('#filter option')].some(option=>option.textContent.includes('11-1V · H')),'container selector identifies its region');
+ assert.equal(doc.querySelector('#containerTable [data-container-filter="2"] button').textContent,'11-1V');
+ assert.ok([...doc.querySelectorAll('#filter option')].some(option=>option.textContent.includes('11-1V')),'saved container keeps its original name');
+ p.data.rows[0].contId=null;p.data.rows[0].regionId='20';p.listeners.changed();await tick();await tick();
+ assert.ok([...doc.querySelectorAll('#containerTable tbody [data-container-column="name"]')].some(cell=>cell.textContent.includes('Chờ H')),'waiting group includes its region suffix');
 });
 test('order autosave waits until an input is blurred before validating and saving',async t=>{
  const p=await page(t),doc=p.w.document,input=doc.querySelector('#orderTable [data-edit="supplier"]');input.focus();input.value='NCC đã nhập';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,520));assert.equal(p.calls.some(call=>call.url.endsWith('/plan')&&call.options.method==='POST'),false);assert.equal(doc.getElementById('notice').textContent,'');input.blur();await new Promise(resolve=>setTimeout(resolve,520));assert.equal(p.calls.some(call=>call.url.endsWith('/plan')&&call.options.method==='POST'),true);
