@@ -128,6 +128,17 @@ test('order rows show container status but cannot change it; metrics board updat
 test('container transport status asks for confirmation before sending its versioned request',async t=>{
  const p=await page(t),doc=p.w.document;p.change('#containerTable [data-status="2"]','4');assert.equal(doc.getElementById('modal').open,true);assert.equal(p.calls.filter(c=>c.url.endsWith('/status')).length,0);doc.getElementById('confirmContainerStatus').click();await tick();await tick();const calls=p.calls.filter(c=>c.url.endsWith('/status'));assert.equal(calls.length,1);assert.deepEqual(JSON.parse(calls[0].options.body),{containerId:'2',version:1,status:4});assert.equal(doc.getElementById('modal').open,false);
 });
+test('rapid edits to different fields on one container serialize with the acknowledged version',async t=>{
+ const p=await page(t),doc=p.w.document;
+ p.change('#containerTable [data-container-field="carrier"]','Nhà xe mới');
+ p.change('#containerTable [data-container-field="loader"]','Người xếp mới');
+ for(let i=0;i<8;i++)await tick();
+ const writes=p.calls.filter(call=>call.url.endsWith('/containers/2')&&call.options.method==='PATCH');
+ assert.equal(writes.length,2);
+ assert.deepEqual(writes.map(call=>JSON.parse(call.options.body).version),[1,2]);
+ assert.equal(p.current.containers[0].version,3);
+ assert.equal(doc.getElementById('notice').textContent,'');
+});
 test('order lifecycle filter loads inactive rows separately and status toggle requires confirmation',async t=>{
  const p=await page(t),doc=p.w.document,badge=doc.querySelector('#orderTable [data-row-lifecycle]');assert.equal(badge.textContent,'Hoạt động');badge.click();assert.equal(doc.getElementById('modal').open,true);assert.equal(p.calls.some(c=>c.url.endsWith('/deactivate')),false);doc.getElementById('confirmRowLifecycle').click();await tick();await tick();const call=p.calls.find(c=>c.url.endsWith('/deactivate'));assert.deepEqual(JSON.parse(call.options.body),{rows:[{id:'1',version:1}]});p.change('#orderLifecycle','inactive');await tick();await tick();assert.ok(p.calls.some(c=>c.url.endsWith('/inactive')));assert.equal(doc.querySelector('#orderTable tr[data-id="1"] [data-row-lifecycle]').textContent,'Ngừng hoạt động');doc.querySelector('#orderTable tr[data-id="1"] [data-row-lifecycle]').click();assert.equal(doc.getElementById('modal').open,true);doc.getElementById('confirmRowLifecycle').click();await tick();await tick();const reactivate=p.calls.find(c=>c.url.endsWith('/reactivate'));assert.deepEqual(JSON.parse(reactivate.options.body),{id:'1',version:2});
 });

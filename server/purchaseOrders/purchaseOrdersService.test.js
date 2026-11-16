@@ -879,6 +879,15 @@ test('container exchange rate is optional, positive and persists on the shared c
  const c=await service.createContainer(manager,{name:'FX RATE',assumedM3:170}),saved=await service.updateContainer(manager,c.id,{version:c.version,changes:{containerFxRate:3920}});assert.equal(Number(saved.container_fx_rate),3920);assert.equal(Number((await db.query('SELECT container_fx_rate FROM product_containers WHERE id=$1',[c.id])).rows[0].container_fx_rate),3920);await assert.rejects(service.updateContainer(manager,c.id,{version:saved.version,changes:{containerFxRate:0}}),e=>e.code==='VALIDATION_ERROR');
 });
 
+test('container metadata saves skip the shared line projection; financial changes still refresh it',async()=>{
+ const projected=[],query=(sql,params)=>db.query(sql,params),fastService=createPurchaseOrdersService({pool:{query,connect:async()=>({query,release(){}})},events,project:async()=>projected.push('projection')});
+ const c=await fastService.createContainer(manager,{name:'FAST CONT',assumedM3:170});assert.equal(projected.length,1);
+ const metadata=await fastService.updateContainer(manager,c.id,{version:c.version,changes:{carrier:'Nhà xe',loader:'Người xếp',note:'Ghi chú',moneyMatchStatus:'matched'}});
+ assert.equal(projected.length,1,'metadata only should not rebuild the global line projection');
+ const financial=await fastService.updateContainer(manager,c.id,{version:metadata.version,changes:{containerFxRate:4100}});
+ assert.equal(projected.length,2,'financial changes still refresh calculated shared prices');assert.equal(Number(financial.container_fx_rate),4100);
+});
+
 test('NET defaults postpaid FX to 3900 then uses the saved container FX in export and projection',async()=>{
  const c=await service.createContainer(manager,{name:'NET FX',assumedM3:170}),r=await service.create(manager,{...input(),productCode:'NET-FX',qtyPerCarton:1,cartonCount:2,unitPriceCny:100,freightPrepaid:0,freightPostpaid:10,fxRate:1,surchargePercent:.1,m3PerCarton:.2});
  await service.transfer(manager,{id:r.id,version:r.version,quantity:r.cartonCount,destinationId:c.id});
