@@ -294,6 +294,7 @@ test('repeated split keys preserve totals, retire old keys, and clear manual cos
   assert.equal(Number((await db.query('SELECT sum(carton_count) n FROM purchase_orders')).rows[0].n),100);
   assert.equal((await db.query('SELECT count(*)::int n FROM purchase_key_history')).rows[0].n,2);
 });
+test('new product codes default to region AA when no region is supplied',async()=>{const row=await service.create(manager,{...input(),regionId:''});assert.equal((await db.query('SELECT name FROM purchase_regions WHERE id=$1',[row.regionId])).rows[0].name,'AA')});
 test('same-field conflict rejects; different-field stale edit can merge', async () => {
   const row=await service.create(manager,input());
   await service.update(manager,row.id,{version:1,changes:{supplier:'NCC'}});
@@ -307,7 +308,8 @@ test('departure shortage and arrival keep immutable snapshot and do not change s
   await service.depart(manager,{containerId:cont.id,version:1,rows:[{id:row.id,version:2,actual:80}]});
   const list=await service.list(manager),shipped=list.rows.find(r=>r.contId===String(cont.id));
   assert.equal(shipped.cartonCount,80);assert.equal(list.rows.find(r=>r.contId==null).cartonCount,20);
-  await service.arrive(manager,{containerId:cont.id,version:2,date:'2026-11-03',warehouse:'Kho Hà Nội'});
+  await service.arrive(manager,{containerId:cont.id,version:2,date:'11-12/11',warehouse:'Kho Hà Nội'});
+  assert.equal((await service.list(manager)).containers[0].arrival_date,'11-12/11');
   await service.update(manager,shipped.id,{version:shipped.version,changes:{buyer:'Edited after arrival'}});
   assert.equal((await service.list(manager)).containers[0].status,4);
   assert.equal((await db.query('SELECT snapshot FROM purchase_departures')).rows[0].snapshot[0].cartonCount,80);
@@ -902,7 +904,7 @@ test('shared container optimistic conflicts and validation roll back every row, 
   const changes={arrivalNote:'2026-11-10',name:'Must not persist'};
   for(const rows of [undefined,[],[{id:r.id,version:1}],[{id:r.id,version:r.version},{id:r.id,version:r.version}]])await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,changes,rows}),e=>e.code==='VERSION_CONFLICT');
   await assert.rejects(service.updateContainer(manager,c.id,{version:999,changes,rows:[r]}),e=>e.code==='VERSION_CONFLICT');
-  for(const changes of [{maxTon:0},{m3Min:200,m3Max:100},{assumedM3:-1},{ton:100},{m3:100},{count:1},{arrivalDate:'2026-02-30'},{arrivalNote:'sometime'}])await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,rows:[r],changes}),e=>e.statusCode===400);
+  for(const changes of [{maxTon:0},{m3Min:200,m3Max:100},{assumedM3:-1},{ton:100},{m3:100},{count:1},{arrivalDate:'x'.repeat(501)}])await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,rows:[r],changes}),e=>e.statusCode===400);
   const other=await service.createContainer(manager,{name:'DUPLICATE',assumedM3:170});signals=0;
   await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,rows:[r],changes:{arrivalDate:'2026-11-11',name:other.name}}),e=>e.code==='CONTAINER_EXISTS');
   assert.equal(signals,0);assert.equal((await service.latest(manager,'A')).version,r.version);assert.equal((await service.latest(manager,'A')).arrivedNote,null);

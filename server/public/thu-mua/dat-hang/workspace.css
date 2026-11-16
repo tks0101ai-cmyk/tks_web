@@ -46,7 +46,8 @@
 #containerTable table{min-width:100%;table-layout:fixed}
 #containerTable th,#containerTable td{padding:7px 8px;font-size:11px}
 #containerTable th{font-size:9px}
-#containerTable td.num{text-align:right}
+#containerTable td.num,#containerTable th.num{text-align:right}
+#containerTable td.num input{ text-align:right }
 #containerTable tr.on>td{background:var(--accent-blue-12,rgba(59,130,246,.1))}
 #containerTable [data-container-filter]{background:transparent;border:0;padding:0;min-height:22px;font-size:11px;font-weight:650;text-align:left}
 #containerTable small{display:block;font-size:9px;color:var(--muted);opacity:1}

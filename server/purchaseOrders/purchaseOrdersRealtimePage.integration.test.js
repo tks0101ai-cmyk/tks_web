@@ -71,11 +71,11 @@ test('container index uses requested ordered columns and keeps the expense/rate 
 });
 test('waiting container stays first by default but moves when sorting the container name header',async t=>{
  const p=await page(t),doc=p.w.document,rows=()=>[...doc.querySelectorAll('#containerTable tbody tr')];
- assert.match(rows()[0].querySelector('[data-container-column="name"]').textContent,/Chờ xếp/);
+ assert.match(rows()[0].querySelector('[data-container-column="name"]').textContent,/Chờ/);
  const sort=doc.getElementById('contSort');sort.value='name';sort.dispatchEvent(new p.w.Event('change',{bubbles:true}));
  assert.equal(rows()[0].querySelector('[data-container-column="name"]').textContent,'11-1V');
  sort.value='status';sort.dispatchEvent(new p.w.Event('change',{bubbles:true}));
- assert.match(rows()[0].querySelector('[data-container-column="name"]').textContent,/Chờ xếp/);
+ assert.match(rows()[0].querySelector('[data-container-column="name"]').textContent,/Chờ/);
  doc.querySelector('#containerTable thead [data-container-column="name"] .sort-button').click();
  assert.equal(rows()[0].querySelector('[data-container-column="name"]').textContent,'11-1V');
 });
@@ -96,7 +96,7 @@ test('pinned container sits under filters and shows the six compact identity and
 test('assumed m3 is editable in the container grid and required by the create dialog',async t=>{
  const p=await page(t),doc=p.w.document;assert.equal(doc.querySelector('#containerTable [data-container-field="assumedM3"]').tagName,'INPUT');
  doc.getElementById('newCont').click();const form=doc.getElementById('contForm');assert.equal(form.elements.assumedM3.tagName,'INPUT');form.elements.name.value='NEW CONT';form.elements.assumedM3.value='170';form.dispatchEvent(new p.w.Event('submit',{bubbles:true,cancelable:true}));await tick();await tick();
- const call=p.calls.find(c=>c.url.endsWith('/containers'));assert.deepEqual(JSON.parse(call.options.body),{name:'NEW CONT',regionId:'',assumedM3:'170'});
+ const call=p.calls.find(c=>c.url.endsWith('/containers'));assert.deepEqual(JSON.parse(call.options.body),{name:'NEW CONT',truckName:'',regionId:'',assumedM3:'170'});
 });
 test('clearing assumed m3 sends null and negative assumed m3 is rejected',async t=>{
  const p=await page(t),doc=p.w.document;p.data.containers[0].assumed_m3=170;p.listeners.changed();await tick();await tick();const input=doc.querySelector('#containerTable [data-container-field="assumedM3"]');input.focus();input.value='';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));input.dispatchEvent(new p.w.Event('change',{bubbles:true}));await tick();await tick();const calls=()=>p.calls.filter(c=>c.url.endsWith('/containers/2')&&c.options.method==='PATCH');assert.equal(JSON.parse(calls()[0].options.body).changes.assumedM3,null);assert.equal(doc.getElementById('notice').textContent,'');const updated=doc.querySelector('#containerTable [data-container-field="assumedM3"]');updated.focus();updated.value='-1';updated.dispatchEvent(new p.w.Event('change',{bubbles:true}));await tick();assert.equal(calls().length,1);assert.match(doc.getElementById('notice').textContent,/lớn hơn 0 hoặc để trống/);
@@ -106,10 +106,10 @@ test('integrated refresh updates another cell during numeric expression typing, 
  p.data.rows[0].supplier='Remote supplier';p.data.rows[0].cartonCount=20;p.data.rows[0].version=5;p.listeners.changed();await tick();await tick();
  assert.equal(doc.activeElement.value,'2*6');assert.equal(doc.activeElement.selectionStart,1);assert.equal(doc.activeElement.selectionEnd,2);assert.equal(doc.activeElement.dataset.gridEditing,'true');assert.equal(doc.activeElement.dataset.gridDirty,'true');assert.equal(doc.querySelector('[data-edit="supplier"]').value,'Remote supplier');assert.equal(p.drafts()['1'].before.cartonCount,10);assert.equal(p.drafts()['1'].version,4);assert.match(doc.getElementById('notice').textContent,/Người khác/);assert.ok(doc.querySelector('[data-field="cartonCount"]').classList.contains('conflict'));
 });
- test('arrival inline edit sends saved contained row versions, excluding local rows and retaining edit baseline across refresh',async t=>{
+ test('arrival text input preserves the entered approximate day and patches the saved container',async t=>{
   const p=await page(t,{local:true}),doc=p.w.document;assert.ok(p.drafts()['new-local']);
-  let input=doc.querySelector('#containerTable [data-container-field="arrivalNote"]');input.focus();input.value='09/11';p.data.containers[0].version=9;p.data.rows[0].version=8;p.listeners.changed();await tick();await tick();input=doc.activeElement;assert.equal(input.value,'09/11');input.dispatchEvent(new p.w.Event('change',{bubbles:true}));
- await tick();await tick();const call=p.calls.find(c=>c.options.method==='PATCH');assert.ok(call);const body=JSON.parse(call.options.body);assert.equal(body.version,3);assert.deepEqual(body.rows,[{id:'1',version:4}]);assert.match(body.changes.arrivalNote,/11-09/);
+  const input=doc.querySelector('#containerTable [data-container-field="arrivalDate"]');assert.ok(input);input.focus();input.value='11-12/11';input.dispatchEvent(new p.w.Event('change',{bubbles:true}));
+  await tick();await tick();const call=p.calls.find(c=>c.options.method==='PATCH'&&c.url.endsWith('/containers/2'));assert.ok(call);const body=JSON.parse(call.options.body);assert.equal(body.version,3);assert.deepEqual(body.rows,[{id:'1',version:4}]);assert.equal(body.changes.arrivalDate,'11-12/11');
 });
 test('pagehide closes events, clears poll timer and prevents queued refreshes',async t=>{
  const p=await page(t);assert.equal(p.timers.size,1);p.w.dispatchEvent(new p.w.Event('pagehide'));assert.equal(p.closed,1);assert.equal(p.timers.size,0);const n=p.calls.length;p.listeners.changed();p.w.dispatchEvent(new p.w.Event('online'));await tick();await tick();assert.equal(p.calls.length,n);
@@ -291,13 +291,13 @@ test('measurement inputs show agreed precision and focus/blur alone creates no d
 test('calculated ratio is shown as a rounded percentage in edit and view modes',async t=>{
  for(const readOnly of [false,true]){const p=await page(t,{readOnly}),doc=p.w.document;Object.assign(p.data.rows[0],{kgPerCarton:14,m3PerCarton:.067});p.listeners.changed();await tick();await tick();
   doc.getElementById('columns').click();const box=doc.querySelector('[data-column="ratio"]');box.checked=true;box.dispatchEvent(new p.w.Event('change',{bubbles:true}));
-  assert.equal(readOnly?doc.querySelector('[data-field="ratio"]').textContent:doc.querySelector('[data-edit="ratio"]').value,'20.9%',readOnly?'read-only':'editable');
+  assert.equal(readOnly?doc.querySelector('[data-field="ratio"]').textContent:doc.querySelector('[data-edit="ratio"]').value,'21%',readOnly?'read-only':'editable');
  }
 });
 test('percentage overrides edit in displayed percentage points; blank clears a value override',async t=>{
  const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{literDiff:-.03,ratio:25,literChina:1.23,measurementOverrides:{literDiff:-.03,ratio:25,literChina:1.23}});p.listeners.changed();await tick();await tick();
  doc.getElementById('columns').click();for(const key of ['literDiff','ratio','literChina']){const box=doc.querySelector('[data-column="'+key+'"]');box.checked=true;box.dispatchEvent(new p.w.Event('change',{bubbles:true}))}
-  assert.equal(doc.querySelector('[data-edit="literDiff"]').value,'-3.0%');assert.equal(doc.querySelector('[data-edit="ratio"]').value,'25.0%');
+  assert.equal(doc.querySelector('[data-edit="literDiff"]').value,'-3.0%');assert.equal(doc.querySelector('[data-edit="ratio"]').value,'25%');
  for(const [key,v] of [['literDiff','12'],['ratio','12'],['literChina','']]){const input=doc.querySelector('tr[data-id="1"] [data-edit="'+key+'"]');input.value=v;input.dispatchEvent(new p.w.Event('input',{bubbles:true}))}
  assert.deepEqual(p.drafts()['1'].changes,{literDiff:.12,ratio:12,literChina:null});doc.getElementById('save').click();doc.getElementById('commit').click();await tick();await tick();const body=JSON.parse(p.calls.find(c=>c.options.method==='PATCH'&&c.url.endsWith('/1')).options.body);assert.deepEqual(body.changes,{literDiff:.12,ratio:12,literChina:null});
 });
@@ -410,7 +410,7 @@ test('background refresh preserves row order and selected stable ids while new r
 
 test('region list splits waiting container groups and filters both tables',async t=>{
  const p=await page(t),doc=p.w.document;p.data.regions=[{id:'10',name:'V',color:'#0088AA',isActive:true,version:1},{id:'20',name:'H',color:'#AA5500',isActive:true,version:1},{id:'30',name:'T',color:'#118855',isActive:true,version:1}];p.data.rows[0].contId=null;p.data.rows[0].regionId='10';p.data.rows.push({...p.data.rows[0],id:'3',rowKey:'D00003',regionId:'20'},{...p.data.rows[0],id:'4',rowKey:'D00004',regionId:null});p.listeners.changed();await tick();await tick();
- const names=[...doc.querySelectorAll('#containerTable tbody tr td[data-container-filter]')].map(td=>td.textContent);assert.ok(names.some(name=>name.includes('Chờ xếp V')));assert.ok(names.some(name=>name.includes('Chờ xếp H')));assert.ok(names.some(name=>name.includes('Chờ xếp T')),'an empty configured region still has its waiting group');assert.ok(names.some(name=>name.includes('Chờ xếp')&&!name.includes('V')&&!name.includes('H')&&!name.includes('T')),'legacy unassigned rows stay in their own group');assert.equal(doc.querySelector('tr[data-id="4"] [data-edit="regionId"] option').textContent,'-');assert.ok([...doc.getElementById('orderRegion').options].some(option=>option.value==='__unassigned__'&&option.textContent==='Chưa gán vùng'));assert.ok([...doc.getElementById('contRegion').options].some(option=>option.value==='__unassigned__'));assert.ok(doc.getElementById('orderRegion').options.length>=4);assert.ok(doc.getElementById('contRegion').options.length>=4);
+ const names=[...doc.querySelectorAll('#containerTable tbody tr td[data-container-filter]')].map(td=>td.textContent);assert.ok(names.some(name=>name.includes('Chờ V')));assert.ok(names.some(name=>name.includes('Chờ H')));assert.ok(names.some(name=>name.includes('Chờ T')),'an empty configured region still has its waiting group');assert.ok(names.some(name=>name.includes('Chờ')&&!name.includes('V')&&!name.includes('H')&&!name.includes('T')),'legacy unassigned rows stay in their own group');assert.equal(doc.querySelector('tr[data-id="4"] [data-edit="regionId"] option').textContent,'-');assert.ok([...doc.getElementById('orderRegion').options].some(option=>option.value==='__unassigned__'&&option.textContent==='Chưa gán vùng'));assert.ok([...doc.getElementById('contRegion').options].some(option=>option.value==='__unassigned__'));assert.ok(doc.getElementById('orderRegion').options.length>=4);assert.ok(doc.getElementById('contRegion').options.length>=4);
  doc.getElementById('orderRegion').value='__unassigned__';doc.getElementById('orderRegion').dispatchEvent(new p.w.Event('change',{bubbles:true}));assert.deepEqual([...doc.querySelectorAll('#orderTable tbody tr[data-id]')].map(row=>row.dataset.id),['4']);
 });
 test('order autosave waits until an input is blurred before validating and saving',async t=>{

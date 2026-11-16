@@ -1,3 +1,7 @@
+## Migration 0131 — ngày về cont nhập dạng chữ (16/11/2026)
+
+`0131_purchase_container_arrival_text.sql` đổi `product_containers.arrival_date` từ `DATE` sang `TEXT`, giữ nguyên ngày ISO cũ để các luồng đồng bộ hiện có tiếp tục đọc được và cho phép nhập lịch dự kiến dạng khoảng như `11-12/11`. API cập nhật cont và xác nhận cont về đều lưu chuỗi nguyên dạng. Migration được đăng ký trong `db/ensurePurchaseSchema.js`.
+
 # Supabase schema cho đồng bộ KiotViet
 
 ## Migration 0123 — Thu mua: tắt dòng cũ (13/11/2026)

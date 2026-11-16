@@ -47,7 +47,7 @@
    ['carrier','Nhà vận chuyển','text',c.carrier],['loader','Người xếp','text',c.loader],
    ['nameCn','Tên cont TQ','text',value(c,'nameCn','name_cn')],['loading','Lịch bốc','text',c.loading],
    ['arrivalNote','Dự kiến đến','text',value(c,'arrivalNote','arrival_note')],
-   ['arrivalDate','Ngày về','date',String(value(c,'arrivalDate','arrival_date')).slice(0,10)],
+   ['arrivalDate','Ngày về','text',value(c,'arrivalDate','arrival_date')],
    ['freight','Tiền VC','number',fee.amount],['freightMode','Chế độ cước','select',fee.mode],
    ['freightBase','Tiền chuẩn','number',fee.base],['freightCapacity','m³ chuẩn','number',fee.capacity],
    ['maxTon','Tải trọng tối đa (T)','number',value(c,'maxTon','max_ton',32)],
