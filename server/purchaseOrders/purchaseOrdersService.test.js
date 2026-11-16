@@ -879,6 +879,21 @@ test('container exchange rate is optional, positive and persists on the shared c
  const c=await service.createContainer(manager,{name:'FX RATE',assumedM3:170}),saved=await service.updateContainer(manager,c.id,{version:c.version,changes:{containerFxRate:3920}});assert.equal(Number(saved.container_fx_rate),3920);assert.equal(Number((await db.query('SELECT container_fx_rate FROM product_containers WHERE id=$1',[c.id])).rows[0].container_fx_rate),3920);await assert.rejects(service.updateContainer(manager,c.id,{version:saved.version,changes:{containerFxRate:0}}),e=>e.code==='VALIDATION_ERROR');
 });
 
+test('NET defaults postpaid FX to 3900 then uses the saved container FX in export and projection',async()=>{
+ const c=await service.createContainer(manager,{name:'NET FX',assumedM3:170}),r=await service.create(manager,{...input(),productCode:'NET-FX',qtyPerCarton:1,cartonCount:2,unitPriceCny:100,freightPrepaid:0,freightPostpaid:10,fxRate:1,surchargePercent:.1,m3PerCarton:.2});
+ await service.transfer(manager,{id:r.id,version:r.version,quantity:r.cartonCount,destinationId:c.id});
+ let exported=(await service.exportRows(manager)).find(row=>row.productCode==='NET-FX'),expected=(exported.goodsAmount+exported.surchargeAmount+exported.freightAmount+10*3900)/2;
+ assert.equal(exported.netPrice,expected);let projection=(await db.query("SELECT vietnam_price FROM product_container_lines WHERE product_code='NET-FX'")).rows[0];assert.equal(Number(projection.vietnam_price),expected);
+ const current=(await service.list(manager)).containers.find(item=>String(item.id)===String(c.id));await service.updateContainer(manager,c.id,{version:current.version,changes:{containerFxRate:4100}});
+ exported=(await service.exportRows(manager)).find(row=>row.productCode==='NET-FX');expected=(exported.goodsAmount+exported.surchargeAmount+exported.freightAmount+10*4100)/2;assert.equal(exported.netPrice,expected);
+ projection=(await db.query("SELECT vietnam_price FROM product_container_lines WHERE product_code='NET-FX'")).rows[0];assert.equal(Number(projection.vietnam_price),expected);
+});
+
+test('container money match status accepts only matched or unmatched and persists',async()=>{
+ const c=await service.createContainer(manager,{name:'MONEY MATCH',assumedM3:170}),saved=await service.updateContainer(manager,c.id,{version:c.version,changes:{moneyMatchStatus:'matched'}});assert.equal(saved.money_match_status,'matched');
+ const changed=await service.updateContainer(manager,c.id,{version:saved.version,changes:{moneyMatchStatus:'unmatched'}});assert.equal(changed.money_match_status,'unmatched');await assert.rejects(service.updateContainer(manager,c.id,{version:changed.version,changes:{moneyMatchStatus:'unknown'}}),e=>e.code==='VALIDATION_ERROR');
+});
+
 test('shared container edits propagate dates atomically, recalculate NET and preserve quantities and stock',async()=>{
  const c=await service.createContainer(manager,{name:'SHARED',assumedM3:170});
  const waiting=await service.create(manager,{...input(),productCode:'WAIT'});

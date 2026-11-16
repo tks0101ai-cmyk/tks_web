@@ -70,7 +70,7 @@ test('Ctrl+Z undoes an edited input before it loses focus',async t=>{
 });
 test('container index uses requested ordered columns and keeps the expense/rate distinct',async t=>{
  const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{cartonCount:10,kgPerCarton:2,m3PerCarton:.25});p.listeners.changed();await tick();await tick();
- assert.deepEqual([...doc.querySelectorAll('#containerTable thead th')].map(th=>th.textContent.replace(/[▲▼]/g,'').trim()),['Tên cont','Trạng thái cont','Tổng tấn','m³ xếp','m³ giả định','Đơn giá cont','Phụ phí','Đơn giá quy đổi','Tiền VC/m³','VC trả sau','Tỉ giá cont','Ngày bốc','Ngày về','Nhà VC','Tên cont TQ','Loại xe','Ghi chú','Người xếp cont','KQ nhận','HĐ/NHĐ']);
+ assert.deepEqual([...doc.querySelectorAll('#containerTable thead th')].map(th=>th.textContent.replace(/[▲▼]/g,'').trim()),['Tên cont','Trạng thái cont','Tổng tấn','m³ xếp','m³ giả định','Đơn giá cont','Phụ phí','Đơn giá quy đổi','Tiền VC/m³','VC trả sau','Tỉ giá cont','Ngày bốc','Ngày về','Nhà VC','Tên cont TQ','Loại xe','Ghi chú','Người xếp cont','KQ nhận','Khớp tiền','HĐ/NHĐ']);
  const row=doc.querySelector('#containerTable tbody tr:nth-child(2)');assert.ok(row.querySelector('[data-cont-freight]'));assert.ok(row.querySelector('[data-container-column=rate]'));assert.equal(row.querySelector('[data-cont-freight]').dataset.contFreight,'2');
 });
 test('order table waiting container selector includes its region suffix',async t=>{
@@ -78,6 +78,17 @@ test('order table waiting container selector includes its region suffix',async t
 });
 test('container index sums VC trả sau and saves the cont exchange rate',async t=>{
  const p=await page(t),doc=p.w.document;p.data.rows[0].freightPostpaid=.25;p.data.rows.push({...p.data.rows[0],id:'2',rowKey:'D00002',freightPostpaid:.75});p.listeners.changed();await tick();await tick();const row=doc.querySelector('#containerTable [data-container-filter="2"]').closest('tr');assert.equal(row.querySelector('[data-container-column="postpaid"]').textContent,'1.00');const rate=row.querySelector('[data-container-field="containerFxRate"]');rate.focus();rate.value='3920';rate.dispatchEvent(new p.w.Event('change',{bubbles:true}));await tick();const call=p.calls.find(c=>c.url.endsWith('/containers/2')&&c.options.method==='PATCH');assert.equal(JSON.parse(call.options.body).changes.containerFxRate,3920);
+});
+test('row NET uses the container exchange rate and previews it while editing',async t=>{
+ const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{qtyPerCarton:1,cartonCount:2,unitPriceCny:100,fxRate:1,freightPostpaid:10,surchargePercent:0,m3PerCarton:.2});Object.assign(p.data.containers[0],{freight_mode:'manual',freight:0,container_fx_rate:null});p.listeners.changed();await tick();await tick();
+ const net=()=>Number(doc.querySelector('#orderTable [data-id="1"] [data-field="netPrice"]').textContent.replace(/,/g,''));assert.equal(net(),19600);
+ const rate=doc.querySelector('#containerTable [data-container-field="containerFxRate"]');rate.focus();rate.value='4100';rate.dispatchEvent(new p.w.Event('input',{bubbles:true}));await tick();await tick();assert.equal(net(),20600);
+});
+test('container Khớp tiền selector saves and shows the matched color',async t=>{
+ const p=await page(t),doc=p.w.document,fetch=p.w.fetch;assert.deepEqual([...doc.querySelectorAll('#containerTable thead th')].map(th=>th.textContent.replace(/[▲▼]/g,'').trim()).slice(-3),['KQ nhận','Khớp tiền','HĐ/NHĐ']);
+ const selector=doc.querySelector('#containerTable [data-container-field="moneyMatchStatus"]');assert.deepEqual([...selector.options].map(option=>option.textContent),['-','Đã khớp','Chưa khớp']);let sent;
+ p.w.fetch=async(url,options={})=>{if(url.endsWith('/containers/2')&&options.method==='PATCH'){sent=JSON.parse(options.body).changes;Object.assign(p.data.containers[0],{money_match_status:sent.moneyMatchStatus});return {ok:true,json:async()=>p.data.containers[0]}}return fetch(url,options)};
+ selector.value='matched';selector.dispatchEvent(new p.w.Event('change',{bubbles:true}));await tick();await tick();assert.equal(sent.moneyMatchStatus,'matched');assert.ok(doc.querySelector('#containerTable [data-container-field="moneyMatchStatus"].is-matched'));
 });
 test('container VC/m3 uses converted price divided by preferred then actual m3',async t=>{
  const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{cartonCount:10,qtyPerCarton:5,unitPriceCny:100,fxRate:1,surchargePercent:.2,kgPerCarton:2,m3PerCarton:.2});Object.assign(p.data.containers[0],{assumed_m3:10,freight:3000,freight_mode:'manual'});p.listeners.changed();await tick();await tick();
@@ -107,7 +118,7 @@ test('order lifecycle sits last and container lifecycle is confirmed with the cu
  const p=await page(t),doc=p.w.document;
  assert.equal(doc.querySelector('#orderTable thead th:last-child').textContent,'Trạng thái');
  assert.equal(doc.querySelector('#orderTable tbody .purchase-lifecycle-badge').textContent,'Hoạt động');
- assert.equal(doc.querySelector('#containerTable thead tr th:nth-last-child(2)').textContent.replace(/[▲▼]/g,'').trim(),'KQ nhận');assert.equal(doc.querySelector('#containerTable thead tr th:last-child').textContent.replace(/[▲▼]/g,'').trim(),'HĐ/NHĐ');assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) [data-container-column=lifecycle] .purchase-lifecycle-badge').textContent,'Hoạt động');
+ assert.equal(doc.querySelector('#containerTable thead tr th:nth-last-child(3)').textContent.replace(/[▲▼]/g,'').trim(),'KQ nhận');assert.equal(doc.querySelector('#containerTable thead tr th:nth-last-child(2)').textContent.replace(/[▲▼]/g,'').trim(),'Khớp tiền');assert.equal(doc.querySelector('#containerTable thead tr th:last-child').textContent.replace(/[▲▼]/g,'').trim(),'HĐ/NHĐ');assert.equal(doc.querySelector('#containerTable tbody tr:nth-child(2) [data-container-column=lifecycle] .purchase-lifecycle-badge').textContent,'Hoạt động');
  doc.querySelector('#containerTable [data-container-lifecycle]').click();assert.equal(p.calls.some(call=>call.url.endsWith('/containers/deactivate')),false);doc.getElementById('confirmContainerLifecycle').click();await tick();await tick();
  const request=p.calls.find(call=>call.url.endsWith('/containers/deactivate'));
  assert.deepEqual(JSON.parse(request.options.body),{id:'2',version:3});
