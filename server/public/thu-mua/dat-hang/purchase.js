@@ -516,7 +516,8 @@
     const cols=columns.filter(c=>visible.includes(c.k)),highlight=$('vhHighlight').checked,showAll=$('vhAllRows').checked;
     const byCell=new Map(),byRow=new Map();
     for(const change of vhDetail.changes){
-      if(change.kind==='changed')byCell.set(change.rowId+':'+change.field,change);
+      const field=change.field==='contId'?'container':change.field;
+      if(change.kind==='changed')byCell.set(change.rowId+':'+field,change);
       else byRow.set(change.rowId,change.kind);
     }
     const rows=vhDetail.rows,body=[];let skipped=0;
