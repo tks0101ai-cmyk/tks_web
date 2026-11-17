@@ -760,7 +760,19 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
       const requests=[...rows,...splits];if(new Set(requests.map(r=>String(r.id))).size!==requests.length)throw fail(400,'PLAN_DUPLICATE','Một dòng chỉ được xuất hiện một lần trong phương án.');
       const lockedRows=requests.length?(await client.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE p.id=ANY($1::bigint[]) ORDER BY p.id FOR UPDATE OF p`,[requests.map(request=>request.id)])).rows:[];
       const locked=new Map(lockedRows.map(row=>[String(row.id),row]));
-      for(const requested of requests){const row=locked.get(String(requested.id));if(!row||row.deleted_at||row.inactive_at||Number(row.version)!==Number(requested.version))throw fail(409,'VERSION_CONFLICT','Dòng đã thay đổi.');}
+      const rowRequests=new Map(rows.map(requested=>[String(requested.id),requested]));
+      for(const requested of requests){
+        const row=locked.get(String(requested.id));
+        if(!row||row.deleted_at||row.inactive_at)throw fail(409,'VERSION_CONFLICT','Dòng đã thay đổi.');
+        if(Number(row.version)===Number(requested.version))continue;
+        const rowRequest=rowRequests.get(String(requested.id)),before=rowRequest?.before,changes=rowRequest?.changes;
+        // Ordinary edits can merge across concurrent changes to other cells. Splits
+        // still require the exact row version because they depend on its quantity
+        // and container assignment as a whole.
+        if(!rowRequest||!before||typeof before!=='object'||Array.isArray(before)||!changes||typeof changes!=='object'||Array.isArray(changes))throw fail(409,'VERSION_CONFLICT','Dòng đã thay đổi.');
+        const current=jsRow(row),hasCellConflict=Object.entries(changes).some(([key,value])=>!Object.hasOwn(before,key)||(String(current[key]??'')!==String(before[key]??'')&&String(current[key]??'')!==String(value??'')));
+        if(hasCellConflict)throw fail(409,'VERSION_CONFLICT','Ô đã được người khác sửa.');
+      }
       const detail=[],branches=[],created=[],createdRows=[],changedIds=new Set(),rowPatches=[],defaultAaId=creates.some(input=>{const values=input.values||input;return values.regionId==null||values.regionId==='';})?await ensureAaRegion(client):null;
       for(const requested of rows){const result=await editPlanFields(client,locked.get(String(requested.id)),requested.changes,{deferWrite:true});if(result.diff.length){detail.push({rowKey:result.row.row_key,changes:result.diff});changedIds.add(String(result.row.id));rowPatches.push({id:result.row.id,changes:result.patch})}}
       await writeRows(client,rowPatches);
