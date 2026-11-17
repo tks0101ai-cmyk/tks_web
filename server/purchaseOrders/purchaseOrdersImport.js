@@ -27,7 +27,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
   if (!Array.isArray(sourceRows) || (!sourceRows.length && !snapshot) || sourceRows.length > 10000) throw Error('Đợt nhập phải có 1–10.000 dòng.');
   if (!Array.isArray(existingRows)) throw Error('Thiếu dữ liệu hiện hành để đối chiếu.');
   const existing = new Map(existingRows.map(row => [row.rowKey, row]));
-  const archived = new Map(archivedRows.map(row => [row.rowKey, row]));
+  const archivedByKey = new Map(archivedRows.map(row => [row.rowKey, row]));
   const prefixes = rows => {const found=new Set();for(const row of rows){const parts=String(row.rowKey||'').split('.');while(parts.length>1){parts.pop();found.add(parts.join('.'))}}return found};
   const existingPrefixes=prefixes(existingRows),archivedPrefixes=prefixes(archivedRows);
   const normalizeContainerName=value=>String(value??'').trim().replace(/^cont\s+/i,'').normalize('NFKC').replace(/\s+/g,' ').toLocaleLowerCase('vi');
@@ -42,9 +42,9 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
   const rows = sourceRows.map((source, index) => {
     const rowKey = blank(source.rowKey) ? null : String(source.rowKey).trim();
     const current = rowKey ? existing.get(rowKey) : null;
-    const archivedByKey=!current&&rowKey?archived.get(rowKey):null;
-    const selectedArchived=source.recoverRowKey?archived.get(source.recoverRowKey):null;
-    const archived=current?null:selectedArchived||archivedByKey;
+    const archivedRowByKey=!current&&rowKey?archivedByKey.get(rowKey):null;
+    const selectedArchived=source.recoverRowKey?archivedByKey.get(source.recoverRowKey):null;
+    const archived=current?null:selectedArchived||archivedRowByKey;
     const candidates=archived?[archived]:[];
     const requestedKey=source.recoverArchived===true?(source.recoverRowKey||archived?.rowKey):null;
     const recovered = !current&&archived&&requestedKey===archived.rowKey;
@@ -55,7 +55,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
     if (rowKey && !keyPattern.test(rowKey)) result.errors.push('Khóa dòng sai định dạng.');
     if (rowKey && counts.get(rowKey) > 1) result.errors.push('Khóa dòng trùng trong file.');
     if(recovered&&(recoveryCounts.get(archived.rowKey)||0)>1)result.errors.push('Một dòng lưu trữ chỉ được chọn khôi phục một lần.');
-    if (rowKey && !current&&!archivedByKey) result.errors.push(existingPrefixes.has(rowKey) ? 'Khóa đã tách; xuất lại các nhánh hiện hành.' : archivedPrefixes.has(rowKey)?'Khóa đã tách; chọn đúng nhánh đang tắt/đã xóa.':'Khóa dòng không tồn tại.');
+    if (rowKey && !current&&!archivedRowByKey) result.errors.push(existingPrefixes.has(rowKey) ? 'Khóa đã tách; xuất lại các nhánh hiện hành.' : archivedPrefixes.has(rowKey)?'Khóa đã tách; chọn đúng nhánh đang tắt/đã xóa.':'Khóa dòng không tồn tại.');
     if (matched && (!Number.isSafeInteger(version(matched)) || version(matched) < 1)) result.errors.push('Không đọc được phiên bản dòng hiện hành.');
     for (const message of Object.values(source.__cellErrors || {})) result.errors.push(String(message));
     const values = {};
