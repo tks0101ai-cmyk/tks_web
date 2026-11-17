@@ -53,7 +53,7 @@ test('scheduler creates independent fast and slow timers at configured intervals
   const businessMonthlyCalls = [];
   const debtCycleCalls = [];
   const scheduler = createPollingScheduler({
-    enabled:true, fastIntervalMs:7, slowIntervalMs:20, dashboardRollupIntervalMs:300000, customerDebtReportIntervalMs:300000, productReportIntervalMs:300000, customerInvoiceLinesIntervalMs:300000, inventoryValueSnapshotIntervalMs:60000, businessMonthlyIntervalMs:300000,
+    enabled:true, fastIntervalMs:7, slowIntervalMs:20, reconcileOrdersIntervalMs:33, dashboardRollupIntervalMs:300000, customerDebtReportIntervalMs:300000, productReportIntervalMs:300000, customerInvoiceLinesIntervalMs:300000, inventoryValueSnapshotIntervalMs:60000, businessMonthlyIntervalMs:300000,
     getConfiguredBranches:()=>[], setIntervalFn:(fn,ms)=>(timers.push({fn,ms}),ms),
     scheduleImmediate:(fn)=>immediate.push(fn),
     getPool:()=>'fake-pool',
@@ -66,12 +66,13 @@ test('scheduler creates independent fast and slow timers at configured intervals
     startBusinessMonthlySchedule:(pool,opts)=>{businessMonthlyCalls.push({pool,...opts}); return 'business-monthly-handle';},
     startDebtCycleSnapshotSchedule:(pool,opts)=>{debtCycleCalls.push({pool,...opts}); return 'debt-cycle-handle';}
   });
-  assert.deepEqual(scheduler.startPollingScheduler(), [7,20,86400000,60000,'rollup-handle','debt-report-handle','product-report-handle','product-90d-handle','invoice-lines-handle','inventory-snapshot-handle','business-monthly-handle','debt-cycle-handle']);
+  assert.deepEqual(scheduler.startPollingScheduler(), [7,20,33,86400000,60000,'rollup-handle','debt-report-handle','product-report-handle','product-90d-handle','invoice-lines-handle','inventory-snapshot-handle','business-monthly-handle','debt-cycle-handle']);
   assert.equal(product90dCalls.length, 1);
   assert.equal(product90dCalls[0].pool, 'fake-pool');
   assert.equal(product90dCalls[0].intervalMs, 60000);
   assert.equal(typeof product90dCalls[0].scheduleImmediate, 'function');
-  assert.deepEqual(timers.map((x)=>x.ms), [7,20,86400000,60000]);
+  // 33 = nhip doi soat don dang mo (reconcileOpenOrders), nam ngay sau nhom slow.
+  assert.deepEqual(timers.map((x)=>x.ms), [7,20,33,86400000,60000]);
   assert.equal(immediate.length, 1);
   assert.equal(rollupCalls.length, 1);
   assert.equal(rollupCalls[0].pool, 'fake-pool');

@@ -213,3 +213,24 @@ startDate/endDate lọc theo transDate, không phát hiện mọi sửa/hủy ho
 Phân trang cashflow: orderBy=Id/orderDirection=ASC đã xác minh. Theo TransDate có thể trùng/thiếu phiếu cùng giờ. Phát hiện SG TT016464: ID cũ 206806358 không còn trên API (lọc ids trả total=0); cùng mã trả ID mới 206806359. Đối soát cần đánh dấu ID cũ bằng source_missing_at, giữ lịch sử nhưng không cộng trùng. Chỉ đánh dấu sau snapshot đủ ID duy nhất theo total API.
 
 Cập nhật gần nhất: 05/11/2026 (giá vốn không đổi `modifiedDate`, entity `product_costs`); trước đó 29/10/2026 (phân trang lastModifiedFrom, orderBy=id, chồng lấn 5 phút, đối soát đầy đủ products).
+
+## `GET /orders` — danh sách tăng dần KHÔNG trả lại đơn đã hủy (17/11/2026)
+
+Đơn bị hủy trên KiotViet **không quay lại** trong danh sách `/orders` theo `lastModifiedFrom`, nên
+dòng cũ trong Postgres nằm im vĩnh viễn với trạng thái cuối cùng từng thấy (thường là `Phiếu tạm`).
+Ví dụ thực tế: `DH044921` (18/10/2026) và `DH049077` (07/11/2026) đã hủy từ lâu trên KiotViet nhưng
+module Vòng đời vẫn hiện `Phiếu tạm` / `Chưa bốc`, cột cập nhật gần nhất bằng đúng giờ tạo đơn.
+
+Chưa phân định được hai khả năng (cần probe trực tiếp mới chắc):
+
+- API loại bỏ đơn đã hủy khỏi danh sách (hiện `listQuery` không truyền `status`), hoặc
+- KiotViet không bump `modifiedDate` khi hủy, nên `lastModifiedFrom` không bao giờ bắt được.
+
+Khả năng thứ hai có tiền lệ **đã xác nhận** ở entity khác: khách hàng chuyển sang "ngừng hoạt động"
+cũng không được bump `modifiedDate` (xem ghi chú `customersFullScanEntity` trong `kiotvietSync/scheduler.js`).
+
+**Không được tin `lastModifiedFrom` để phát hiện hủy đơn.** Cách xử lý hiện tại:
+`kiotvietSync/reconcileOpenOrders.js` hỏi **thẳng từng đơn** theo id (`GET /orders/{id}`) cho các đơn
+chưa ở trạng thái kết thúc (`Hoàn thành`, `Đã hủy`), chạy theo nhịp riêng trong scheduler. Đường detail
+trả về cả đơn đã hủy nên cách này đúng cho cả hai khả năng trên. Đơn trả 404 chỉ được **đếm và nêu tên**,
+tuyệt đối không suy ra là "đã hủy".

@@ -1,4 +1,6 @@
 # CURRENT — Trạng thái dự án
+> 17/11/2026 — **Đơn hủy trên KiotViet vẫn hiện "Phiếu tạm" ở Vòng đời (nhánh `work/purchase-20261117`, chưa merge, không migration):** đồng bộ orders chỉ upsert theo `lastModifiedFrom` và không có đường xử lý hủy/xóa, nên đơn bị hủy không bao giờ quay lại danh sách. Thêm `server/kiotvietSync/reconcileOpenOrders.js` hỏi thẳng từng đơn chưa kết thúc qua `GET /orders/{id}` (nhịp 30 phút trong scheduler); đơn trả 404 chỉ đếm và nêu tên, không suy ra là đã hủy. **Việc tiếp theo:** chạy thật với credential KiotViet để xác nhận đường detail trả về đơn đã hủy — `.env` hiện rỗng toàn bộ `KIOTVIET_*` nên chưa probe được.
+
 > 10/11/2026 — **Bộ canh event loop (PR #70 đã merge/deploy, không migration):** `server/lib/loopStallWatch.js` ghi request đang chạy và vừa xong khi event loop đứng ≥ `LOOP_STALL_WARN_MS` (mặc định 1000 ms, `0` tắt; bỏ qua SSE). Kiểm chứng 9 test mới và thử server thật. **Việc tiếp theo:** rà log `[loop-stall]` sau một ngày để xác định request gây khối 1–12 s.
 > 10/11/2026 — **Thu mua: đồng bộ lưới (đã có trên main, commit `a4748410`):** gộp polling/revision, giữ nháp và vùng chọn, copy/paste/fill/undo trong session; kiểm thử cục bộ 288/288 và kiểm tra hai phiên IAB dữ liệu giả lập. Báo cáo `docs/04-planning/purchase-grid-sync-20261110-test-report.md`. Chưa xác minh UI trên production.
 

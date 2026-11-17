@@ -142,7 +142,20 @@ function createKiotVietClient(config) {
     }
   }
 
-  return { getAccessToken, fetchJsonWithRetry, fetchAllPages, fetchProductOnHand };
+  // Doc THANG mot don theo id. Danh sach /orders theo lastModifiedFrom khong dua don da huy
+  // quay lai (xem reconcileOpenOrders.js), nen doi soat phai hoi tung don mot.
+  // found:false = API tra 404, tuc don khong con truy duoc - KHONG suy ra la da huy.
+  async function fetchOrderById(id) {
+    try {
+      const params = new URLSearchParams({ includePayment: 'true', includeOrderDelivery: 'true' });
+      return { id, found: true, order: await authorizedRequest(`/orders/${encodeURIComponent(id)}`, params) };
+    } catch (err) {
+      if (err.status === 404) return { id, found: false, order: null };
+      throw err;
+    }
+  }
+
+  return { getAccessToken, fetchJsonWithRetry, fetchAllPages, fetchProductOnHand, fetchOrderById };
 }
 
 module.exports = { createKiotVietClient };

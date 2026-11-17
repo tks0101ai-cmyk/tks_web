@@ -58,6 +58,7 @@ const customersEntity = slowEntities.find(entity => entity.entity === 'customers
 const customersFullScanEntity = { ...customersEntity, reconcileIntervalMs: 1 };
 const bankAccounts = require('./entities/bankAccounts');
 const cashFlows = require('./entities/cashFlows');
+const { reconcileOpenOrders } = require('./reconcileOpenOrders');
 
 function createPollingScheduler({
   enabled = CONFIG.KIOTVIET_SYNC_ENABLED,
@@ -98,9 +99,29 @@ function createPollingScheduler({
   startInventoryValueSnapshotSchedule: startInventoryValueSnapshot = startInventoryValueSnapshotSchedule,
   startBusinessMonthlySchedule: startBusinessMonthly = startBusinessMonthlySchedule,
   startDebtCycleSnapshotSchedule: startDebtCycleSnapshot = startDebtCycleSnapshotSchedule,
+  reconcileOrdersIntervalMs = 30 * 60 * 1000,
+  reconcileOrdersLimit = 200,
   logger = console
 } = {}) {
   let cashbookRunning = false;
+  // Doi soat don dang mo: bat don bi huy tren KiotViet ma danh sach tang dan khong bao gio tra lai.
+  let reconcileRunning = false;
+  async function runReconcileOrders() {
+    if (reconcileRunning) return;
+    reconcileRunning = true;
+    try {
+      for (const branchConfig of getBranches()) {
+        try {
+          await reconcileOpenOrders({
+            pool: getPoolFn(), client: createClient(branchConfig),
+            branch: branchConfig.branch, limit: reconcileOrdersLimit, logger,
+          });
+        } catch (error) {
+          logger.error(`[KiotViet Sync] Lỗi đối soát đơn ${branchConfig.branch}:`, error.message);
+        }
+      }
+    } finally { reconcileRunning = false; }
+  }
   async function runCashbook() {
     if (cashbookRunning) return;
     cashbookRunning = true;
@@ -212,6 +233,7 @@ function createPollingScheduler({
     return [
       setIntervalFn(() => runFastGroupAndRollup(), fastIntervalMs),
       setIntervalFn(() => runGroup(slowEntities), slowIntervalMs),
+      setIntervalFn(runReconcileOrders, reconcileOrdersIntervalMs),
       ...(cashbookEnabled ? [
         setIntervalFn(runDailyBankAccounts, 24 * 60 * 60 * 1000),
         setIntervalFn(runCashbook, cashbookIntervalMs)
