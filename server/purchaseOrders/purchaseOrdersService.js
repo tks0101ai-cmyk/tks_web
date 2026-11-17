@@ -68,7 +68,7 @@ function measurementOverridePlan(current,changes) {
 }
 const defaultWaitingConfig={freightMode:'formula',freight:null,freightFormula:null,freightBase:202000000,freightCapacity:170,assumedM3:null,containerFxRate:null,version:1};
 function waitingContainerConfigs(regions,configs){return [...regions.map(region=>({id:null,region_id:String(region.id),...(configs[String(region.id)]||defaultWaitingConfig)})),{id:null,region_id:null,...defaultWaitingConfig}]}
-function withFreight(rows,containers,waitingContainers=[]){const rates=freightModel.rates(rows,[...containers,...waitingContainers]);return rows.map(r=>({...r,freightAmount:freightModel.rowAmount(r,rates)}))}
+function withFreight(rows,containers,waitingContainers=[],summaries=null){const rates=freightModel.rates(rows,[...containers,...waitingContainers],summaries);return rows.map(r=>({...r,freightAmount:freightModel.rowAmount(r,rates)}))}
 async function validateProjectionFormulas(client){
   if(!(await client.query('SELECT 1 FROM product_containers WHERE freight_formula IS NOT NULL LIMIT 1')).rowCount)return;
   const rows=(await client.query(`SELECT c.name,c.freight_formula,c.assumed_m3,c.freight_base,c.freight_capacity,
@@ -190,6 +190,7 @@ async function readContainerSummaries(client){return (await client.query(`SELECT
   count(*) FILTER(WHERE carton_count IS NULL OR carton_count<=0 OR kg_per_carton IS NULL OR kg_per_carton<=0 OR m3_per_carton IS NULL OR m3_per_carton<=0)::int AS missing,
   COALESCE(sum(CASE WHEN carton_count>0 AND kg_per_carton>0 THEN carton_count::numeric*kg_per_carton/1000 ELSE 0 END),0)::float8 AS ton,
   COALESCE(sum(CASE WHEN carton_count>0 AND m3_per_carton>0 THEN carton_count::numeric*m3_per_carton ELSE 0 END),0)::float8 AS m3,
+  count(*) FILTER(WHERE carton_count IS NULL OR carton_count<=0 OR m3_per_carton IS NULL OR m3_per_carton<=0)::int AS "freightMissing",
   COALESCE(sum(CASE WHEN qty_per_carton>0 AND carton_count>0 AND unit_price_cny>=0 AND fx_rate>0 THEN (qty_per_carton::numeric*carton_count*unit_price_cny+COALESCE(freight_prepaid,0))*fx_rate*COALESCE(surcharge_percent,0) ELSE 0 END),0)::float8 AS surcharge,
   COALESCE(sum(COALESCE(freight_postpaid,0)),0)::float8 AS postpaid
   FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL GROUP BY container_id,region_id`)).rows}
@@ -634,7 +635,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
           }
           summaries=await containerSummaryInFlight.promise;
         }
-        return {revision,sourceMode:source,integrationEnabled:settings?.integration_enabled===true,waitingConfig,waitingConfigs,rows:withFreight(activeRows,containers,waitingContainerRows),supplementalRows:withFreight(supplementalRows,containers,waitingContainerRows),containers,regions,containerSummaries:summaries,...(filter.clientSort?{}:{pagination:{page,pageSize,total,pages:Math.max(1,Math.ceil(total/pageSize))}})};
+        return {revision,sourceMode:source,integrationEnabled:settings?.integration_enabled===true,waitingConfig,waitingConfigs,rows:withFreight(activeRows,containers,waitingContainerRows,summaries),supplementalRows:withFreight(supplementalRows,containers,waitingContainerRows,summaries),containers,regions,containerSummaries:summaries,...(filter.clientSort?{}:{pagination:{page,pageSize,total,pages:Math.max(1,Math.ceil(total/pageSize))}})};
       }
       return {revision,sourceMode:source,integrationEnabled:settings?.integration_enabled===true,waitingConfig,waitingConfigs,rows:withFreight(await readRows(client),containers,waitingContainerRows),containers,regions};
     }finally{client.release()}},
@@ -905,7 +906,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
       let selectedRows;
       if(filters&&typeof filters==='object'&&!Array.isArray(filters)){const query=pagedOrderFilter(filters,user);selectedRows=(await pool.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE ${query.where} ORDER BY ${query.order}`,[...query.values])).rows.map(jsRow)}
       else selectedRows=await readRows(pool,false,ids);
-      const rows=withFreight(selectedRows,containers,waitingRows);
+      const summaries=filters&&typeof filters==='object'&&!Array.isArray(filters)?await readContainerSummaries(pool):null,rows=withFreight(selectedRows,containers,waitingRows,summaries);
       const byId=new Map(containers.map(c=>[String(c.id),c])),waitingByRegion=new Map(Object.entries(waitingMap)),regionNames=new Map(regions.map(region=>[String(region.id),region.name]));return rows.map(row=>{const c=row.contId==null?waitingByRegion.get(String(row.regionId??'')):byId.get(String(row.contId));return {...row,regionName:regionNames.get(String(row.regionId??''))||'',container:c?.name||'CONT CHỜ XẾP',status:c?.status||0,...calculations.row(row,row.freightAmount,c?.container_fx_rate??c?.containerFxRate)}});
     },
     async history(user,orderId) {actor(user);if(!/^[1-9]\d*$/.test(String(orderId||''))||BigInt(orderId)>9223372036854775807n)throw fail(400,'ORDER_ID_INVALID','Mã dòng nội bộ không hợp lệ.');const root=(await pool.query('SELECT COALESCE((SELECT root_order_id FROM purchase_orders WHERE id=$1),(SELECT root_order_id FROM purchase_operation_rows WHERE row_id=$1 ORDER BY operation_id LIMIT 1)) AS root_order_id',[String(orderId)])).rows[0]?.root_order_id;if(root==null)return [];return (await pool.query(`SELECT h.* FROM purchase_history h WHERE EXISTS(

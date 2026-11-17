@@ -44,6 +44,13 @@ test('manual container freight divides by assumed m3 first and actual stacked m3
  const actual=Freight.calculate({...container,assumedM3:null},12);assert.equal(actual.rate,100);rates=Freight.rates(rows,[{...container,assumedM3:null}]);assert.equal(rates.get('1'),100);assert.deepEqual(rows.map(r=>Freight.rowAmount(r,rates)),[400,800]);
 });
 
+test('filtered rows keep using the full container volume for freight allocation',()=>{
+ const allRows=[{id:1,contId:7,cartonCount:1,m3PerCarton:2},{id:2,contId:7,cartonCount:1,m3PerCarton:8}],container={id:7,freightMode:'manual',freight:1000,assumedM3:null};
+ const summary=[{contId:7,m3:10,surcharge:0,freightMissing:0}];
+ const rates=Freight.rates([allRows[0]],[container],summary);
+ assert.equal(Freight.rowAmount(allRows[0],rates),200);
+});
+
 test('manual assumed volume still provides a rate for measured lines when another line lacks m3',()=>{
  const rows=[{contId:1,cartonCount:2,m3PerCarton:2},{contId:1,cartonCount:1,m3PerCarton:null}],rates=Freight.rates(rows,[{id:1,freightMode:'manual',freight:1000,assumedM3:100}]);
  assert.equal(rates.get('1'),10);assert.equal(Freight.rowAmount(rows[0],rates),40);assert.equal(Freight.rowAmount(rows[1],rates),null);

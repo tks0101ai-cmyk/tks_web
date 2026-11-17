@@ -39,6 +39,20 @@ test('server sorting handles numeric values numerically and text values alphabet
  assert.deepEqual((await sorted('surchargePercent','asc')).rows.map(row=>row.productCode),['B-ITEM','A-ITEM']);
  for(const key of ['totalCny','goodsAmount','totalM3','totalQty','literWarehouse','m3Warehouse','literChina','gramWarehouse','gramChina','literDiff','gramDiff','ratio'])await sorted(key,'asc');
 });
+test('search-filtered rows and filtered exports allocate freight from all rows in the container',async()=>{
+ const container=await service.createContainer(manager,{name:'FILTER FREIGHT',assumedM3:170});
+ const first=await service.create(manager,{...input(),productCode:'FILTER-FREIGHT-A',m3PerCarton:2,cartonCount:1});
+ const second=await service.create(manager,{...input(),productCode:'FILTER-FREIGHT-B',m3PerCarton:8,cartonCount:1});
+ for(const row of [first,second])await service.transfer(manager,{id:row.id,version:row.version,quantity:row.cartonCount,destinationId:container.id});
+ const current=await service.updateContainer(manager,container.id,{version:container.version,changes:{assumedM3:null,freightMode:'manual',freight:1000}});
+ const listed=await service.list(manager,{page:1,pageSize:100,search:'FILTER-FREIGHT-A'});
+ assert.equal(listed.rows.length,1);
+ assert.equal(listed.rows[0].freightAmount,200);
+ const exported=await service.exportRows(manager,null,{search:'FILTER-FREIGHT-A'});
+ assert.equal(exported.length,1);
+ assert.equal(exported[0].freightAmount,200);
+ assert.ok(current.version>container.version);
+});
 test('undo without an operation id directly reverts the latest eligible action',async()=>{
  const created=await service.create(manager,input());assert.equal((await service.list(manager)).rows.length,1);
  await service.undo(manager,{});assert.equal((await service.list(manager)).rows.length,0);
