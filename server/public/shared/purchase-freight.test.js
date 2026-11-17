@@ -63,6 +63,18 @@ test('purchase line freight allocates converted container price after subtractin
  assert.equal(rows.reduce((sum,row)=>sum+Freight.rowAmount(row,rates),0),((container.freight-surcharge)/container.assumedM3)*4);
 });
 
+test('fractional container freight stays precise through surcharge conversion and line allocation',()=>{
+ const container={id:1,freightMode:'manual',freight:3000.75,assumedM3:10};
+ const rows=[
+  {contId:1,cartonCount:10,qtyPerCarton:5,unitPriceCny:100,fxRate:1,surchargePercent:.2,m3PerCarton:.2},
+  {contId:1,cartonCount:10,qtyPerCarton:5,unitPriceCny:50,fxRate:1,surchargePercent:.1,m3PerCarton:.2}
+ ];
+ const fee=Freight.calculate(container,4),rates=Freight.rates(rows,[container]);
+ assert.equal(fee.amount,3000.75);
+ assert.equal(rates.get('1'),175.075);
+ assert.deepEqual(rows.map(row=>Freight.rowAmount(row,rates)),[350.15,350.15]);
+});
+
 test('waiting freight is calculated separately for each region',()=>{
  const rows=[{id:'1',contId:null,regionId:'H',cartonCount:10,m3PerCarton:.2},{id:'2',contId:null,regionId:'AA',cartonCount:10,m3PerCarton:.2}],waiting=[
   {id:null,region_id:'H',freightMode:'manual',freight:1000,assumedM3:10},
