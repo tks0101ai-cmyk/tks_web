@@ -31,7 +31,7 @@ test('disconnect during presence query removes late insert; response error also 
 });
 test('presence store reads only public roster and committed history fingerprint',async()=>{
  const queries=[],pool={query:async(sql,args)=>{queries.push({sql,args});return {rows:sql.includes('AS version')?[{version:'9:8'}]:sql.startsWith('SELECT DISTINCT')?[{id:'u',name:'Buyer'}]:[]}}};
- const store=createPresenceStore(pool),snapshot=await store.touch('connection',{id:'u',username:'Buyer'});assert.equal(snapshot.version,'9:8');assert.match(queries[3].sql,/count\(\*\)/);await store.remove('connection');assert.deepEqual(queries.at(-1).args,['connection']);
+ const store=createPresenceStore(pool),snapshot=await store.touch('connection',{id:'u',username:'Buyer'});assert.equal(snapshot.version,'9:8');assert.match(queries[2].sql,/count\(\*\)/);assert.match(queries[1].sql,/WITH expired AS/);await store.remove('connection');assert.deepEqual(queries.at(-1).args,['connection']);
 });
 test('real SQL presence expiry, actor deduplication, disconnect and late lower history id are detected',async()=>{
  const {PGlite}=require('@electric-sql/pglite');const db=new PGlite();
@@ -53,11 +53,11 @@ test('router shares snapshot polling while renewing each connection separately',
  clients.forEach(c=>c.close());await tick();const count=polls;await new Promise(r=>setTimeout(r,25));assert.equal(polls,count);assert.equal(leases.size,0);
 });
 test('shared SQL polling performs one cleanup, roster and history query per router tick',async t=>{
- const queries=[],pool={async query(sql,args){queries.push({sql,args});return {rows:sql.includes('AS version')?[{version:'8:3'}]:sql.startsWith('SELECT DISTINCT')?[{id:'u',name:'Buyer'}]:[]}}};
+ const queries=[],pool={async query(sql,args){queries.push({sql,args});return {rows:sql.includes('AS version')?[{version:'8:3'}]:sql.includes('SELECT DISTINCT actor_id')?[{id:'u',name:'Buyer'}]:[]}}};
  const a=instance(createPresenceStore(pool)),clients=Array.from({length:6},()=>a.connect());t.after(()=>clients.forEach(c=>c.close()));await tick();
  assert.equal(queries.filter(q=>q.sql.startsWith('INSERT INTO purchase_presence')).length,6);
  assert.equal(queries.filter(q=>q.sql.includes('AS version')).length,1);
- assert.equal(queries.filter(q=>q.sql.startsWith('SELECT DISTINCT')).length,1);
+ assert.equal(queries.filter(q=>q.sql.includes('SELECT DISTINCT actor_id')).length,1);
  assert.equal(queries.filter(q=>q.sql.includes('expires_at<now()')).length,1);
  clients.forEach(c=>c.close());await tick();assert.equal(queries.filter(q=>q.sql.includes('connection_id=$1')).length,6);
 });
