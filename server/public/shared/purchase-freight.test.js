@@ -56,7 +56,7 @@ test('manual assumed volume still provides a rate for measured lines when anothe
  assert.equal(rates.get('1'),10);assert.equal(Freight.rowAmount(rows[0],rates),40);assert.equal(Freight.rowAmount(rows[1],rates),null);
 });
 
-test('purchase line freight allocates converted container price after subtracting surcharges',()=>{
+test('purchase line freight allocates the full container freight and keeps surcharges separate',()=>{
  const container={id:1,freightMode:'manual',freight:3000,assumedM3:10};
  const rows=[
   {contId:1,cartonCount:10,qtyPerCarton:5,unitPriceCny:100,fxRate:1,surchargePercent:.2,m3PerCarton:.2},
@@ -65,12 +65,12 @@ test('purchase line freight allocates converted container price after subtractin
  const rates=Freight.rates(rows,[container]);
  const surcharge=rows.reduce((sum,row)=>sum+require('./purchase-calculations').row(row).surchargeAmount,0);
  assert.equal(surcharge,1250);
- assert.equal(rates.get('1'),(container.freight-surcharge)/container.assumedM3);
- assert.deepEqual(rows.map(row=>Freight.rowAmount(row,rates)),[350,350]);
- assert.equal(rows.reduce((sum,row)=>sum+Freight.rowAmount(row,rates),0),((container.freight-surcharge)/container.assumedM3)*4);
+ assert.equal(rates.get('1'),container.freight/container.assumedM3);
+ assert.deepEqual(rows.map(row=>Freight.rowAmount(row,rates)),[600,600]);
+ assert.equal(rows.reduce((sum,row)=>sum+Freight.rowAmount(row,rates),0),(container.freight/container.assumedM3)*4);
 });
 
-test('fractional container freight stays precise through surcharge conversion and line allocation',()=>{
+test('fractional container freight stays precise and independent from surcharge allocation',()=>{
  const container={id:1,freightMode:'manual',freight:3000.75,assumedM3:10};
  const rows=[
   {contId:1,cartonCount:10,qtyPerCarton:5,unitPriceCny:100,fxRate:1,surchargePercent:.2,m3PerCarton:.2},
@@ -78,8 +78,8 @@ test('fractional container freight stays precise through surcharge conversion an
  ];
  const fee=Freight.calculate(container,4),rates=Freight.rates(rows,[container]);
  assert.equal(fee.amount,3000.75);
- assert.equal(rates.get('1'),175.075);
- assert.deepEqual(rows.map(row=>Freight.rowAmount(row,rates)),[350.15,350.15]);
+ assert.equal(rates.get('1'),300.075);
+ assert.deepEqual(rows.map(row=>Freight.rowAmount(row,rates)),[600.15,600.15]);
 });
 
 test('waiting freight is calculated separately for each region',()=>{

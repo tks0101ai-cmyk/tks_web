@@ -53,7 +53,7 @@ test('converted container price is allocated to each product and stays in parity
   await service.transfer({id:'manager',hoTen:'Người quản lý'},{id:row.id,version:row.version,quantity:row.cartonCount,destinationId:c.id});rows.push(code);
  }
  const current=(await service.exportRows({id:'manager'})),lines=current.filter(row=>rows.includes(row.productCode));
- const surcharge=lines.reduce((sum,row)=>sum+row.surchargeAmount,0),converted=Number(c.freight)-surcharge;
- assert.equal(surcharge,1250);assert.equal(converted,1750.75);assert.equal(lines.reduce((sum,row)=>sum+row.freightAmount,0),converted*4/10);
+ const surcharge=lines.reduce((sum,row)=>sum+row.surchargeAmount,0),converted=Number(c.freight);
+ assert.equal(surcharge,1250);assert.equal(converted,3000);assert.equal(lines.reduce((sum,row)=>sum+row.freightAmount,0),converted*4/10);
  for(const row of lines){const projected=(await db.query('SELECT vietnam_price FROM product_container_lines WHERE product_code=$1',[row.productCode])).rows[0];assert.ok(Math.abs(Number(projected.vietnam_price)-row.netPrice)<1e-7,row.productCode)}
 });
