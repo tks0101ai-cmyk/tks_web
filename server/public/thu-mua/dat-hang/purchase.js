@@ -328,6 +328,25 @@
     save.onclick=guarded(async()=>{const rows=preview();if(save.disabled)return;save.disabled=true;const payload=rows.map(row=>Object.fromEntries(Object.entries(row).filter(([,value])=>value!==''&&value!=null)));try{const result=await api('/bulk-create',{rows:payload});data.rows.push(...(result.rows||[]));render();await modalSuccess(`Đã thêm ${result.count||0} mã vào bảng Đặt hàng.`);refreshAfterWrite('')}catch(error){save.disabled=false;throw error}});
   };
   const manageRegionsQuick=document.createElement('button');manageRegionsQuick.id='manageRegionsQuick';manageRegionsQuick.type='button';manageRegionsQuick.textContent='Danh sách vùng';document.querySelector('#containerActions').prepend(manageRegionsQuick);manageRegionsQuick.addEventListener('click',()=> $('managePurchaseRegions').click());
+  // Xuat dung nhung gi dang thay: doc tu bang da render nen tu theo cot dang hien, bo loc va thu tu sap xep.
+  const containerExport=document.createElement('button');containerExport.id='containerExport';containerExport.type='button';containerExport.textContent='Xuất file';
+  document.querySelector('#containerActions').append(containerExport);
+  containerExport.addEventListener('click',()=>{
+    const table=$('containerTable').querySelector('table');
+    if(!table)return notice('Chưa có cont nào để xuất.');
+    const text=el=>{const control=el.querySelector('select');if(control)return (control.selectedOptions[0]||{}).textContent||'';
+      const input=el.querySelector('input');if(input)return input.type==='checkbox'?(input.checked?'x':''):input.value;
+      return el.textContent};
+    const clean=v=>String(v==null?'':v).replace(/[▲▼]/g,'').replace(/\s+/g,' ').trim();
+    const line=cells=>cells.map(v=>{const s=clean(v);return /[";\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}).join(';');
+    const head=[...table.querySelectorAll('thead th')].map(text);
+    const body=[...table.querySelectorAll('tbody tr')].map(tr=>line([...tr.children].map(text)));
+    // sep=; de Excel ban Viet mo dung cot; BOM de khong hong dau tieng Viet.
+    const blob=new Blob(['﻿'+['sep=;',line(head),...body].join('\r\n')],{type:'text/csv;charset=utf-8'});
+    const url=URL.createObjectURL(blob),link=document.createElement('a');
+    link.href=url;link.download='Chi-so-cont.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    notice('Đã xuất '+body.length+' cont theo bộ lọc và cột đang xem.');
+  });
   let containerFieldEdit=null;
   function containerSavedRows(id){return data.rows.filter(r=>String(r.contId)===String(id)&&!Object.hasOwn(newRows,String(r.id))&&!r.deletedAt&&!r.deleted_at).map(r=>({id:r.id,version:r.version}))}
   function containerPatch(id,version,changes,rows=containerSavedRows(id)){return {version,changes,...(Object.hasOwn(changes,'arrivalNote')||Object.hasOwn(changes,'arrivalDate')?{rows}: {})}}

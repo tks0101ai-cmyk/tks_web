@@ -731,3 +731,32 @@ test('paste follows keyboard navigation instead of the previous selected row',as
 test('paste cannot bypass split-parent freight readonly cells',async t=>{const p=await page(t,{saved:{columnLayout:6,visible:['rowKey','productCode','cartonCount','freightPrepaid'],drafts:{'1':{version:1,before:{cartonCount:10},changes:{cartonCount:5},split:{quantity:5,destinationId:'2'}}}}}),doc=p.w.document;const target=doc.querySelector('tr[data-id="1"] [data-field="freightPrepaid"]');assert.ok(target);assert.equal(target.querySelector('input'),null);target.click();const event=new p.w.Event('paste',{bubbles:true,cancelable:true});event.clipboardData={getData:()=> '100\n'};target.dispatchEvent(event);const saved=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.equal(saved.drafts['1'].changes.freightPrepaid,undefined);assert.match(doc.getElementById('notice').textContent,/Chưa dán/);assert.equal(p.calls.filter(c=>c.options.method).length,0)});
 
 test('Escape after a range paste clears selection without cancelling the staged range',async t=>{const p=await page(t,{extraRows:[{id:'3',rowKey:'D00003',version:1,contId:null,productCode:'B',supplier:'Other',cartonCount:2,qtyPerCarton:1}]}),doc=p.w.document;doc.querySelector('tr[data-id="3"] [data-field="supplier"]').click();doc.querySelector('tr[data-id="1"] [data-field="supplier"]').dispatchEvent(new p.w.MouseEvent('click',{bubbles:true,shiftKey:true}));const paste=new p.w.Event('paste',{bubbles:true,cancelable:true});paste.clipboardData={getData:()=> 'Shared'};doc.querySelector('tr[data-id="3"] [data-edit="supplier"]').dispatchEvent(paste);assert.equal(doc.activeElement.dataset.edit,'supplier');assert.equal(doc.activeElement.closest('tr').dataset.id,'3');doc.activeElement.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(doc.querySelectorAll('.purchase-cell-selected').length,0);const saved=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.equal(saved.drafts['1'].changes.supplier,'Shared');assert.equal(saved.drafts['3'].changes.supplier,'Shared')});
+
+test('container metrics export writes what the table shows, following visible columns and filters',async t=>{
+ const p=await page(t),doc=p.w.document;
+ const button=doc.getElementById('containerExport');
+ assert.ok(button,'bang chi so cont phai co nut xuat file');
+ // Chan tai xuong de doc thang noi dung thay vi ghi ra dia.
+ let captured=null,revoked=false;
+ p.w.URL.createObjectURL=blob=>{captured=blob;return 'blob:cont'};
+ p.w.URL.revokeObjectURL=()=>{revoked=true};
+ let downloadName=null;
+ const realCreate=doc.createElement.bind(doc);
+ doc.createElement=tag=>{const el=realCreate(tag);if(tag==='a')el.click=()=>{downloadName=el.getAttribute('download')};return el};
+ button.click();
+ assert.equal(downloadName,'Chi-so-cont.csv');
+ assert.ok(captured,'phai tao blob de tai ve');
+ // BOM phai kiem o muc byte: blob.text() giai ma UTF-8 va luoc bo BOM theo dung chuan,
+ // con Excel thi doc byte nen van can no de khong hong dau tieng Viet.
+ const bytes=new Uint8Array(await captured.arrayBuffer());
+ assert.deepEqual([...bytes.slice(0,3)],[0xEF,0xBB,0xBF],'phai co BOM UTF-8 o dau file');
+ const text=await captured.text();
+ const lines=text.split('\r\n');
+ assert.match(lines[0],/sep=;/);
+ // Hang tieu de phai bo mui ten sap xep, va so dong phai bang so hang dang hien.
+ assert.doesNotMatch(text,/[▲▼]/);
+ const shown=doc.querySelectorAll('#containerTable tbody tr').length;
+ assert.equal(lines.length-2,shown,'moi hang dang hien ra dung mot dong');
+ assert.match(lines[1],/Tên cont/);
+ assert.match(doc.getElementById('notice').textContent,new RegExp('Đã xuất '+shown+' cont'));
+});
