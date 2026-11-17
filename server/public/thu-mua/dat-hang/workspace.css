@@ -718,7 +718,7 @@
 /* Container metrics: clearer cell hierarchy and an obvious column resize affordance. */
 .purchase-page #containerTable{border:1px solid var(--border);border-radius:var(--radius-md);overflow:auto;background:var(--panel)}
 .purchase-page #containerTable table{border-collapse:separate;border-spacing:0}
-.purchase-page #containerTable th{position:relative;padding:9px 16px 9px 9px;white-space:nowrap;line-height:1.25;background:var(--panel-2)}
+.purchase-page #containerTable th{position:sticky;top:0;z-index:8;padding:9px 16px 9px 9px;white-space:nowrap;line-height:1.25;background:var(--panel-2)}
 .purchase-page #containerTable td{height:42px;padding:7px 9px;vertical-align:middle}
 .purchase-page #containerTable tbody tr:hover>td{background:color-mix(in srgb,var(--primary) 6%,var(--panel))}
 .purchase-page #containerTable td [data-container-field],.purchase-page #containerTable td [data-cont-freight],.purchase-page #containerTable td [data-wait-freight]{box-sizing:border-box;min-height:30px;padding:4px 7px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel-2);color:var(--text)}

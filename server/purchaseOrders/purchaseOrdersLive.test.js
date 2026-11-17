@@ -68,6 +68,16 @@ test('pinned column offsets follow a resized column so pinned headers stay flush
  assert.ok(Number(table.querySelector('thead th.purchase-pinned-column').style.zIndex)<25,'pinned order headers must sit below the watched container');
  assert.match(fs.readFileSync(path.join(dir,'../../shared/purchase-workspace.css'),'utf8'),/#watchedContainer\{[^}]*z-index:25/);
 });
+test('container metric headers stay sticky and allow columns to shrink',async t=>{
+ const p=await page(t),doc=p.w.document,table=doc.querySelector('#containerTable table'),header=table.querySelector('th[data-container-column="name"]'),handle=header.querySelector('.tks-column-resizer');
+ assert.equal(header.dataset.minWidth,'24');assert.ok(handle,'container header should expose a resize handle');
+ const before=Number(handle.getAttribute('aria-valuenow'));
+ handle.dispatchEvent(new p.w.MouseEvent('pointerdown',{button:0,clientX:100,bubbles:true}));
+ doc.dispatchEvent(new p.w.MouseEvent('pointermove',{clientX:80,bubbles:true}));
+ doc.dispatchEvent(new p.w.MouseEvent('pointerup',{clientX:80,bubbles:true}));
+ assert.equal(Number(handle.getAttribute('aria-valuenow')),before-20);
+ assert.match(fs.readFileSync(path.join(dir,'workspace.css'),'utf8'),/#containerTable th\{position:sticky;top:0/);
+});
 test('Excel import accepts an existing snapshot and offers fresh download',async t=>{
  const p=await page(t),doc=p.w.document;doc.getElementById('import').click();
  assert.match(doc.getElementById('modalTitle').textContent,/Nhập Excel theo dữ liệu hiện tại/);
