@@ -1496,4 +1496,4 @@ Cập nhật gần nhất: 17/11/2026.
 
 
 ## Thu mua — cấu hình chi phí nhóm Chờ xếp (migration 0137)
-Nhóm ảo `container_id IS NULL` dùng hồ sơ hàng chờ singleton trong `purchase_settings`; bảng Chỉ số cont cho thao tác cước, m³ giả định và tỉ giá như cont thật qua `PATCH /api/purchase-orders/waiting-config` với `version` và `changes`, yêu cầu `purchase.orders` + `purchase.edit`. Xóa ô cước khôi phục công thức mặc định; không tạo cont thật. Khi bật cách ly `integration_enabled=false`, lưu không chiếu read model hay xóa cache cont dùng chung.
+Nhóm Chờ xếp là ảo, không phải cont lưu trong `product_containers`; mỗi vùng có đúng một hàng nhóm và cấu hình riêng trong `purchase_waiting_configs`. Cước, phụ phí, đơn giá quy đổi, VC/m³, VC trả sau và Giá NET được tính theo `(container_id IS NULL, region_id)`. `PATCH /api/purchase-orders/waiting-config` nhận `regionId`, `version` và `changes`, yêu cầu `purchase.orders` + `purchase.edit`; sửa vùng H chỉ ảnh hưởng dòng vùng H. Không hiển thị hàng Chờ xếp gốc không vùng. Khi bật cách ly `integration_enabled=false`, lưu không chiếu read model hay xóa cache cont dùng chung.

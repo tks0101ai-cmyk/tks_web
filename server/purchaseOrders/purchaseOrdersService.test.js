@@ -56,18 +56,21 @@ beforeEach(async () => {
   // dong — ke ca dong cho xep — deu co trong read model dung chung. Pham vi
   // mot phan (mac dinh) duoc kiem rieng o purchaseOrdersProjectionScope.test.js.
 });
-test('waiting group configuration is versioned, uses container cost formulas and does not leak to real containers',async()=>{
+test('waiting group configuration is versioned per region and formulas do not leak to another region or real container',async()=>{
+ const regionH=(await db.query("INSERT INTO purchase_regions(name,name_key) VALUES('H','h') RETURNING id")).rows[0].id;
  const waiting=await service.create(manager,{...input(),m3PerCarton:0.2,cartonCount:10});
- const container=await service.createContainer(manager,{name:'REAL CONT',assumedM3:170});
- const real=await service.create(manager,{...input(),productCode:'REAL',m3PerCarton:0.2,cartonCount:10});
+ const waitingH=await service.create(manager,{...input(),productCode:'H-ROW',regionId:String(regionH),m3PerCarton:0.2,cartonCount:10});
+ const container=await service.createContainer(manager,{name:'REAL CONT',assumedM3:170,regionId:String(regionH)});
+ const real=await service.create(manager,{...input(),productCode:'REAL',regionId:String(regionH),m3PerCarton:0.2,cartonCount:10});
  const assigned=await service.transfer(manager,{id:real.id,version:1,quantity:10,destinationId:container.id});
- const saved=await service.updateWaitingConfig(manager,{version:1,changes:{freight:1000,freightMode:'manual',assumedM3:10,containerFxRate:4100}});
+ const saved=await service.updateWaitingConfig(manager,{regionId:String(regionH),version:1,changes:{freight:1000,freightMode:'manual',assumedM3:10,containerFxRate:4100}});
  assert.equal(saved.version,2);assert.equal(Number(saved.assumedM3),10);assert.equal(Number(saved.containerFxRate),4100);
- const listed=await service.list(manager),waitingRow=listed.rows.find(row=>row.id===waiting.id),realRow=listed.rows.find(row=>row.id===assigned.row.id);
- assert.equal(waitingRow.freightAmount,200,'waiting cost is allocated using its shared assumed volume');
+ const listed=await service.list(manager),waitingRow=listed.rows.find(row=>row.id===waitingH.id),otherWaitingRow=listed.rows.find(row=>row.id===waiting.id),realRow=listed.rows.find(row=>row.id===assigned.row.id);
+ assert.equal(waitingRow.freightAmount,200,'waiting cost uses region H assumed volume');
+ assert.notEqual(otherWaitingRow.freightAmount,waitingRow.freightAmount,'region H settings do not change another waiting group');
  assert.notEqual(realRow.freightAmount,waitingRow.freightAmount,'real container keeps its own freight calculation');
- await assert.rejects(service.updateWaitingConfig(manager,{version:1,changes:{freight:1}}),error=>error.statusCode===409);
- const reset=await service.updateWaitingConfig(manager,{version:2,changes:{freight:null,freightMode:'formula',freightFormula:null,freightBase:202000000,freightCapacity:170}});
+ await assert.rejects(service.updateWaitingConfig(manager,{regionId:String(regionH),version:1,changes:{freight:1}}),error=>error.statusCode===409);
+ const reset=await service.updateWaitingConfig(manager,{regionId:String(regionH),version:2,changes:{freight:null,freightMode:'formula',freightFormula:null,freightBase:202000000,freightCapacity:170}});
  assert.equal(reset.freight,null);assert.equal(reset.freightMode,'formula');assert.equal(reset.version,3);
 });
 after(async () => db?.close());

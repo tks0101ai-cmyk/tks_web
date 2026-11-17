@@ -63,9 +63,11 @@ test('an isolated create writes the row and its history but never reaches shared
 });
 
 test('waiting group edits remain isolated from projection and shared container caches', async () => {
+  const row = await service.create(manager, input());
   const own = [];
   events.on('purchase-orders-changed', () => own.push('changed'));
   const result = await service.updateWaitingConfig(manager, {
+    regionId: row.regionId,
     version: 1,
     changes: { freight: 1000, freightMode: 'manual', assumedM3: 10, containerFxRate: 4100 }
   });

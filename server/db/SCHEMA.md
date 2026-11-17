@@ -1064,4 +1064,9 @@ Cập nhật gần nhất: 14/11/2026.
 
 
 ## Migration 0137 — Cước nhóm Chờ xếp (17/11/2026)
-`purchase_settings` singleton giữ hồ sơ nhóm ảo Chờ xếp: `waiting_freight_mode`, `waiting_freight`, `waiting_freight_formula`, `waiting_freight_base` (mặc định 202.000.000), `waiting_freight_capacity` (mặc định 170), `waiting_assumed_m3`, `waiting_container_fx_rate` và `waiting_version`. Bảng Chỉ số cont cho thao tác các ô cước, m³ giả định và tỉ giá như cont thật; hồ sơ áp dụng cho các dòng `purchase_orders.container_id IS NULL`, không tạo cont giả. API ghi kiểm tra version, trả 409 khi stale. Khi cách ly, không projection/cache invalidation/events `containersChanged`.
+`0137_purchase_waiting_freight.sql` thêm công thức cước mặc định cho nhóm Chờ xếp vào `purchase_settings`. Migration 0138 chuyển cấu hình sang từng vùng riêng.
+
+
+## Migration 0138 — cấu hình Chờ xếp theo vùng (17/11/2026)
+
+`0138_purchase_waiting_region_freight.sql` tạo `purchase_waiting_configs` với khóa ngoại tới `purchase_regions`; mỗi vùng chỉ có một cấu hình. Cấu hình singleton cũ được chép sang từng vùng khi migrate. Các phép tính VC và giá NET gom dòng chưa xếp theo `(container_id IS NULL, region_id)` để nhập ở Chờ H chỉ cập nhật công thức của vùng H.

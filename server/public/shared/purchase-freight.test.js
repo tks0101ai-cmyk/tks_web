@@ -62,3 +62,12 @@ test('purchase line freight allocates converted container price after subtractin
  assert.deepEqual(rows.map(row=>Freight.rowAmount(row,rates)),[350,350]);
  assert.equal(rows.reduce((sum,row)=>sum+Freight.rowAmount(row,rates),0),((container.freight-surcharge)/container.assumedM3)*4);
 });
+
+test('waiting freight is calculated separately for each region',()=>{
+ const rows=[{id:'1',contId:null,regionId:'H',cartonCount:10,m3PerCarton:.2},{id:'2',contId:null,regionId:'AA',cartonCount:10,m3PerCarton:.2}],waiting=[
+  {id:null,region_id:'H',freightMode:'manual',freight:1000,assumedM3:10},
+  {id:null,region_id:'AA',freightMode:'manual',freight:2000,assumedM3:40}
+ ],rates=Freight.rates(rows,waiting);
+ assert.equal(rates.get('wait:H'),100);assert.equal(rates.get('wait:AA'),50);
+ assert.deepEqual(rows.map(row=>Freight.rowAmount(row,rates)),[200,100]);
+});
