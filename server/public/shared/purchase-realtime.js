@@ -6,8 +6,8 @@
     const scope=el.closest('#orderTable,#containerTable,#watchedContainer');
     if(!scope)return null;
     const d=el.dataset,row=el.closest('[data-id]');
-    const field=d.containerField||d.edit||d.status|| (d.contFreight!==undefined?'freight':d.childQty!==undefined?'childQty':d.childCont!==undefined?'childCont':null);
-    const id=d.containerId||d.contFreight||d.childQty||d.childCont||row?.dataset.id;
+    const field=d.containerField||d.edit||d.searchSelectFor||d.status|| (d.contFreight!==undefined?'freight':d.childQty!==undefined?'childQty':d.childCont!==undefined?'childCont':null);
+    const id=d.containerId||d.contFreight||d.childQty||d.childCont||d.status||row?.dataset.id;
     return field!=null&&id!=null?JSON.stringify([scope.id,String(id),field]):null;
   }
   function captureFocus(root,getKey=inputKey){

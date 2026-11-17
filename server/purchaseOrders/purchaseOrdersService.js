@@ -155,10 +155,8 @@ function pagedOrderFilter(options,user){
   if(search){const arg=bind('%'+search+'%'),folded=`translate(lower(concat_ws(' ',p.row_key,p.source_sheet,p.product_code,p.product_name,p.product_name_cn,p.supplier,p.sale_note,p.buy_note,p.extra_note)),'${searchFoldFrom}','${searchFoldTo}')`;where.push(`(${folded} LIKE ${arg})`)}
   if(options.container!==undefined&&options.container!=='all')where.push(!options.container||options.container==='__waiting__'?'p.container_id IS NULL':'p.container_id='+bind(options.container));
   if(options.region==='__unassigned__')where.push('p.region_id IS NULL');else if(options.region)where.push('p.region_id='+bind(options.region));
-  if(options.status!==undefined&&options.status!==''){
-    if(String(options.status)==='0')where.push('p.container_id IS NULL');
-    else where.push('EXISTS(SELECT 1 FROM product_containers c WHERE c.id=p.container_id AND c.status='+bind(Number(options.status))+')');
-  }
+  const statuses=String(options.status??'').split(',').filter(value=>/^[0-4]$/.test(value)).map(Number);
+  if(statuses.length){const clauses=[];if(statuses.includes(0))clauses.push('p.container_id IS NULL');const assigned=statuses.filter(value=>value>0);if(assigned.length)clauses.push('EXISTS(SELECT 1 FROM product_containers c WHERE c.id=p.container_id AND c.status=ANY('+bind(assigned)+'::int[]))');where.push('('+clauses.join(' OR ')+')')}
   if(options.buyer){const [kind,...rest]=String(options.buyer).split(':');const value=rest.join(':');if(kind==='id')where.push('p.buyer_employee_id='+bind(value));else where.push('lower(btrim(p.buyer))='+bind(value.toLocaleLowerCase('vi')))}
   if(options.from)where.push('p.listed_at::date >= '+bind(options.from)+'::date');
   if(options.to)where.push('p.listed_at::date <= '+bind(options.to)+'::date');
