@@ -610,7 +610,16 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
 
     async deactivateContainer(user,{id,version}) {return transaction(user,async client=>{const row=await getContainer(client,id,version);if(!row||row.deleted_at)throw fail(404,'CONTAINER_NOT_FOUND','Không có cont đang hoạt động.');if(row.inactive_at)return {changed:false,value:row};const updated=(await client.query('UPDATE product_containers SET inactive_at=now(),version=version+1,updated_at=now() WHERE id=$1 RETURNING *',[id])).rows[0];await audit(client,user,'container_deactivate',{containerId:String(id),name:row.name});return {changed:true,value:updated}})},
     async reactivateContainer(user,{id,version}) {return transaction(user,async client=>{const row=await getContainer(client,id,version);if(!row||row.deleted_at||!row.inactive_at)throw fail(409,'VERSION_CONFLICT','Cont đã thay đổi hoặc đã được bật lại.');const updated=(await client.query('UPDATE product_containers SET inactive_at=NULL,version=version+1,updated_at=now() WHERE id=$1 RETURNING *',[id])).rows[0];await audit(client,user,'container_reactivate',{containerId:String(id),name:row.name});return {changed:true,value:updated}})},
-    async removeContainer(user,{id,version}) {return transaction(user,async client=>{const row=await getContainer(client,id,version);if(!row)throw fail(404,'CONTAINER_NOT_FOUND','Không có cont cần xóa.');const updated=(await client.query('UPDATE product_containers SET deleted_at=now(),version=version+1,updated_at=now() WHERE id=$1 RETURNING *',[id])).rows[0];await audit(client,user,'container_delete',{containerId:String(id),name:row.name});return {changed:true,value:updated}})},
+    async removeContainer(user,{id,version,rows}) {return transaction(user,async client=>{
+      if(rows!==undefined){
+        if(!Array.isArray(rows)||!rows.length||rows.length>500||rows.some(r=>!r||!Number.isSafeInteger(Number(r.id))||Number(r.id)<1||!Number.isSafeInteger(Number(r.version))||Number(r.version)<1)||new Set(rows.map(r=>String(r.id))).size!==rows.length)throw fail(400,'CONTAINER_DELETE_INVALID','Chọn 1–500 cont không trùng.');
+        const locked=(await client.query('SELECT * FROM product_containers WHERE id=ANY($1::bigint[]) ORDER BY id FOR UPDATE',[rows.map(r=>r.id)])).rows,byId=new Map(locked.map(row=>[String(row.id),row]));
+        if(locked.length!==rows.length||rows.some(ref=>{const row=byId.get(String(ref.id));return !row||row.deleted_at||Number(row.version)!==Number(ref.version)}))throw fail(409,'VERSION_CONFLICT','Một số cont đã thay đổi. Tải lại bảng rồi thử lại.');
+        const deleted=(await client.query('UPDATE product_containers SET deleted_at=now(),version=version+1,updated_at=now() WHERE id=ANY($1::bigint[]) RETURNING *',[locked.map(row=>row.id)])).rows;
+        await audit(client,user,'container_delete',{containers:deleted.map(row=>({containerId:String(row.id),name:row.name}))});return {changed:true,value:{rows:deleted,deleted:deleted.length}};
+      }
+      const row=await getContainer(client,id,version);if(!row)throw fail(404,'CONTAINER_NOT_FOUND','Không có cont cần xóa.');const updated=(await client.query('UPDATE product_containers SET deleted_at=now(),version=version+1,updated_at=now() WHERE id=$1 RETURNING *',[id])).rows[0];await audit(client,user,'container_delete',{containerId:String(id),name:row.name});return {changed:true,value:updated}
+    })},
     async restoreContainer(user,{id,version}) {return transaction(user,async client=>{const row=(await client.query('SELECT * FROM product_containers WHERE id=$1 FOR UPDATE',[id])).rows[0];if(!row?.deleted_at||Number(row.version)!==Number(version))throw fail(409,'VERSION_CONFLICT','Cont đã thay đổi hoặc đã khôi phục.');const updated=(await client.query('UPDATE product_containers SET deleted_at=NULL,version=version+1,updated_at=now() WHERE id=$1 RETURNING *',[id])).rows[0];await audit(client,user,'container_restore',{containerId:String(id),name:row.name});return {changed:true,value:updated}})},
 
     async updateContainer(user,id,{version,changes={},rows}) {
@@ -647,19 +656,22 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         if(Number(changes.m3Max??container.m3_max)<Number(changes.m3Min??container.m3_min))throw fail(400,'VALIDATION_ERROR','m³ tối đa phải lớn hơn hoặc bằng tối thiểu.');
         if(!entries.length)return {changed:false,value:container};
         const shared=Object.hasOwn(changes,'arrivalNote')||Object.hasOwn(changes,'arrivalDate'),details=[];
+        let actual=[];
+        if(shared||Object.hasOwn(changes,'regionId')){
+          actual=(await client.query('SELECT * FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL AND container_id=$1 ORDER BY id FOR UPDATE',[id])).rows;
+        }
         if(shared){
-          const actual=(await client.query('SELECT * FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL AND container_id=$1 ORDER BY id FOR UPDATE',[id])).rows;
           if(!Array.isArray(rows)||rows.length!==actual.length||rows.some(r=>!r||!Number.isSafeInteger(Number(r.version))||Number(r.version)<1)||new Set(rows.map(r=>String(r.id))).size!==actual.length||actual.some(r=>!rows.some(x=>String(x.id)===String(r.id)&&Number(x.version)===Number(r.version))))throw fail(409,'VERSION_CONFLICT','Danh sách hoặc phiên bản dòng trong cont đã thay đổi.');
-          for(const raw of actual){const patch={};if(Object.hasOwn(changes,'arrivalNote'))patch.eta_note=entries.find(([key])=>key==='arrival_note')[1]||null;if(Object.hasOwn(changes,'arrivalDate'))patch.arrived_note=entries.find(([key])=>key==='arrival_date')[1]||null;
-            const updated=await patchRow(client,raw,patch);details.push({before:jsRow(raw),after:jsRow(updated)});
-          }
+          const patch={};if(Object.hasOwn(changes,'arrivalNote'))patch.eta_note=entries.find(([key])=>key==='arrival_note')[1]||null;if(Object.hasOwn(changes,'arrivalDate'))patch.arrived_note=entries.find(([key])=>key==='arrival_date')[1]||null;
+          const updated=(await client.query(`UPDATE purchase_orders SET ${Object.keys(patch).map((key,index)=>`${key}=$${index+2}`).join(',')},version=version+1,updated_at=now() WHERE id=ANY($1::bigint[]) RETURNING *`,[actual.map(row=>row.id),...Object.values(patch)])).rows,byId=new Map(updated.map(row=>[String(row.id),row]));
+          for(const raw of actual){const after=byId.get(String(raw.id));details.push({before:jsRow(raw),after:jsRow({...raw,...after})})}
         }
         let regionRows=[];
         if(Object.hasOwn(changes,'regionId')){
           const regionId=changes.regionId==null||changes.regionId===''?null:String(changes.regionId);
-          regionRows=(await client.query('SELECT id,version,region_id FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL AND container_id=$1 ORDER BY id FOR UPDATE',[id])).rows;
+          regionRows=actual.filter(row=>String(row.region_id??'')!==String(regionId??''));
           if(regionRows.length){
-            const updated=(await client.query('UPDATE purchase_orders SET region_id=$2,version=version+1,updated_at=now() WHERE container_id=$1 AND deleted_at IS NULL AND inactive_at IS NULL AND region_id IS DISTINCT FROM $2 RETURNING id,version,region_id',[id,regionId])).rows;
+            const updated=(await client.query('UPDATE purchase_orders SET region_id=$2,version=version+1,updated_at=now() WHERE id=ANY($1::bigint[]) RETURNING id,version,region_id',[regionRows.map(row=>row.id),regionId])).rows;
             details.push(...updated.map(r=>({id:String(r.id),regionId:r.region_id==null?null:String(r.region_id)})));
           }
         }
