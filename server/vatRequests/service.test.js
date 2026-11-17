@@ -745,3 +745,55 @@ test('phan trang (slice 6): sap / gop / tim tren TOAN BO ket qua roi moi cat tra
     assert.equal(exported.totalRows, undefined);
   } finally { await db.close(); }
 });
+
+// 14/11/2026: file trung gian loi -> doc file goc VAT TKS mat 1-2 phut; danh sach ORDER VAT khong duoc cho theo.
+test('sheet ton dang doc cham: danh sach tra ngay (Ton VAT "dang tai"), lan doc van chay tiep va lan sau co so', async () => {
+  const config = defaultStockConfig();
+  const stockCsv = 'CTY,Mã kiot đại diện,Tên,MÃ VAT KIOT,TÊN VAT,Tên hàng,ĐVT,x,TỒN ĐẦU NGÀY\nTKS,014XOAN,,VAT1,,,Cái,,70\n';
+  const stock = { ...parseStockRecords(parseCsv(stockCsv), config), vatByProduct: new Map(), loadedAt: Date.now() };
+  const db = new PGlite();
+  for (const file of MIGRATIONS) await db.exec(fs.readFileSync(path.join(__dirname, '../db/migrations', file), 'utf8'));
+  await db.exec(`INSERT INTO product_report(product_code, product_name) VALUES ('014XOAN', 'Bát inox 2 lớp XOẮN 14cm')`);
+  let release;
+  let reads = 0;
+  const slow = new Promise(resolve => { release = resolve; });
+  let ready = null;
+  const stockSource = { get: () => { reads++; return ready ? Promise.resolve(ready) : slow; } };
+  const service = createVatRequestService({ pool: poolFor(db), stockSource, stockWaitMs: 30, now: () => new Date('2026-10-20T03:00:00Z') });
+  try {
+    await service.create(SALE, NEW_REQUEST);
+    const started = Date.now();
+    const data = await service.list(KT);
+    assert.ok(Date.now() - started < 2000, 'khong cho sheet');
+    assert.equal(data.rows.length, 1);
+    assert.equal(data.metrics['014xoan'].vatStock, null);
+    assert.deepEqual([data.stockStatus.available, data.stockStatus.loading], [false, true]);
+    assert.match(data.stockStatus.error, /Đang tải tồn VAT/);
+    const paged = await service.list(KT, { paging: { page: 1, pageSize: 50 } });
+    assert.equal(paged.stockStatus.loading, true);
+    assert.equal((await service.suggestProducts('014', 5)).length, 1, 'goi y van tra ma KiotViet, khong cho sheet');
+    release(stock);
+    ready = stock;
+    const later = await service.list(KT);
+    assert.equal(later.stockStatus.available, true);
+    assert.equal(later.metrics['014xoan'].vatStock.total, 70);
+    assert.ok(reads >= 2);
+  } finally { await db.close(); }
+});
+
+test('tao yeu cau voi ma chi co trong sheet van cho doc sheet (khong cat ngang de khong bao sai "khong tim thay ma")', async () => {
+  const config = defaultStockConfig();
+  const stockCsv = 'CTY,Mã kiot đại diện,Tên,MÃ VAT KIOT,TÊN VAT,Tên hàng,ĐVT,x,TỒN ĐẦU NGÀY\nTKS,CHISHEET,Hàng chỉ có ở sheet,VAT9,,,Cái,,5\n';
+  const parsed = parseStockRecords(parseCsv(stockCsv), config);
+  const { buildProductCatalog } = require('./stockSource');
+  const { representativeCatalog, vatCatalog, ...rest } = parsed;
+  const stock = { ...rest, vatByProduct: new Map(), productByCode: buildProductCatalog(new Map(), representativeCatalog, vatCatalog), loadedAt: Date.now() };
+  const db = new PGlite();
+  for (const file of MIGRATIONS) await db.exec(fs.readFileSync(path.join(__dirname, '../db/migrations', file), 'utf8'));
+  const stockSource = { get: () => new Promise(resolve => setTimeout(resolve, 80, stock)) };
+  const service = createVatRequestService({ pool: poolFor(db), stockSource, stockWaitMs: 10, now: () => new Date('2026-10-20T03:00:00Z') });
+  try {
+    const row = await service.create(SALE, { ...NEW_REQUEST, productCode: 'chisheet' });
+    assert.equal(row.productCode, 'CHISHEET');
+  } finally { await db.close(); }
+});

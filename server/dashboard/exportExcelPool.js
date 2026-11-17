@@ -10,7 +10,7 @@
 
 const path = require('node:path');
 const { Worker } = require('node:worker_threads');
-const { renderExcelWorkbook } = require('./exportExcelRenderer');
+const { EXCEL_TASKS } = require('./exportExcelTasks');
 
 const WORKER_FILE = path.join(__dirname, 'exportExcelWorker.js');
 const WORKER_IDLE_MS = 5 * 60 * 1000;
@@ -18,10 +18,10 @@ const WORKER_IDLE_MS = 5 * 60 * 1000;
 let worker = null;
 let nextId = 0;
 let idleTimer = null;
-const pending = new Map(); // id -> { resolve, reject, dataset }
+const pending = new Map(); // id -> { resolve, reject, task, payload }
 
-function renderInline(dataset) {
-  return renderExcelWorkbook(dataset);
+function renderInline(task, payload) {
+  return Promise.resolve().then(() => EXCEL_TASKS[task](payload));
 }
 
 // Worker hỏng: các việc đang chờ dựng lại trong luồng chính, không bắt người dùng xuất lại.
@@ -30,7 +30,7 @@ function recoverPending(reason) {
   pending.clear();
   worker = null;
   if (jobs.length) console.warn('[export] Worker Excel lỗi, dựng lại trong luồng chính:', reason && reason.message ? reason.message : reason);
-  for (const job of jobs) renderInline(job.dataset).then(job.resolve, job.reject);
+  for (const job of jobs) renderInline(job.task, job.payload).then(job.resolve, job.reject);
 }
 
 function refState() {
@@ -61,21 +61,27 @@ function getWorker() {
   return worker;
 }
 
-async function renderExcelInWorker(dataset) {
-  if (String(process.env.EXPORT_EXCEL_WORKER || '').toLowerCase() === 'off') return renderInline(dataset);
+/** Dựng 1 file .xlsx loại `task` (EXCEL_TASKS) trong worker; tắt / lỗi / dữ liệu không gửi được -> luồng chính. */
+async function runExcelTaskInWorker(task, payload) {
+  if (!EXCEL_TASKS[task]) throw new Error(`Không có loại file Excel '${task}'.`);
+  if (String(process.env.EXPORT_EXCEL_WORKER || '').toLowerCase() === 'off') return renderInline(task, payload);
   let target;
-  try { target = getWorker(); } catch (error) { return renderInline(dataset); }
+  try { target = getWorker(); } catch (error) { return renderInline(task, payload); }
   const id = ++nextId;
-  const result = new Promise((resolve, reject) => pending.set(id, { resolve, reject, dataset }));
+  const result = new Promise((resolve, reject) => pending.set(id, { resolve, reject, task, payload }));
   try {
-    target.postMessage({ id, dataset });
+    target.postMessage({ id, task, payload });
   } catch (error) {
     pending.delete(id);
     refState();
-    return renderInline(dataset); // DataCloneError: dataset có giá trị không gửi được sang worker
+    return renderInline(task, payload); // DataCloneError: dữ liệu có giá trị không gửi được sang worker
   }
   refState();
   return result;
 }
 
-module.exports = { renderExcelInWorker, __test__: { state: () => ({ hasWorker: !!worker, pending: pending.size }) } };
+function renderExcelInWorker(dataset) {
+  return runExcelTaskInWorker('dataset', dataset);
+}
+
+module.exports = { renderExcelInWorker, runExcelTaskInWorker, __test__: { state: () => ({ hasWorker: !!worker, pending: pending.size }) } };

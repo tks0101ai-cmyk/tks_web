@@ -259,7 +259,13 @@ function serializeRow(row, user) {
   };
 }
 
-function createVatRequestService({ pool = getPool(), stockSource = createStockSource(), now = () => new Date() } = {}) {
+// Danh sach / so lieu chi cho Ton VAT (Google Sheets) toi da chung nay: lan doc dau sau khi khoi dong co the
+// mat 1-2 phut (file goc VAT TKS) -> tra danh sach truoc, cot Ton VAT bao "dang tai", lan tai sau co so.
+const STOCK_WAIT_MS = 3000;
+
+const STOCK_LOADING = Symbol('stock-loading');
+
+function createVatRequestService({ pool = getPool(), stockSource = createStockSource(), now = () => new Date(), stockWaitMs = STOCK_WAIT_MS } = {}) {
   const submissions = new Map(); // `${userId}:${submissionId}` -> { promise, at } (chong gui trung form nhieu dong)
   async function loadOrThrow(db, id, options) {
     const row = await repository.getRequest(db, id, options);
@@ -267,9 +273,23 @@ function createVatRequestService({ pool = getPool(), stockSource = createStockSo
     return row;
   }
 
-  async function readStock() {
+  /**
+   * @param {{ waitMs?: number }} [options] waitMs: cho toi da bay nhieu ms (chi cho so lieu hien thi). Qua han ->
+   *   { snapshot: null, status: { available: false, loading: true } }; lan doc van chay tiep (cache dung chung).
+   *   Bo trong = cho den khi xong (tra ma SP khi tao yeu cau can danh muc day du).
+   */
+  async function readStock({ waitMs } = {}) {
+    const pending = Promise.resolve().then(() => stockSource.get());
     try {
-      const snapshot = await stockSource.get();
+      let timer;
+      const snapshot = !(waitMs >= 0) ? await pending : await Promise.race([
+        pending,
+        new Promise(resolve => { timer = setTimeout(resolve, waitMs, STOCK_LOADING); })
+      ]).finally(() => clearTimeout(timer));
+      if (snapshot === STOCK_LOADING) {
+        pending.catch(() => {}); // doc xong (hoac loi) sau: chi de cache, khong ai cho
+        return { snapshot: null, status: { available: false, loading: true, error: 'Đang tải tồn VAT từ Google Sheets (file nguồn đang chậm). Cột Tồn VAT sẽ có ở lần tải sau.' } };
+      }
       return { snapshot, status: { available: true, stale: !!snapshot.stale, loadedAt: snapshot.loadedAt ? new Date(snapshot.loadedAt).toISOString() : null } };
     } catch (error) {
       return { snapshot: null, status: { available: false, error: error.message } };
@@ -308,7 +328,7 @@ function createVatRequestService({ pool = getPool(), stockSource = createStockSo
     const [pending, incoming, stock] = await Promise.all([
       repository.pendingInsertQuantities(pool, keys),
       repository.incomingContainers(pool, keys),
-      readStock()
+      readStock({ waitMs: stockWaitMs })
     ]);
     const metrics = {};
     for (const key of keys) {
@@ -705,7 +725,7 @@ function createVatRequestService({ pool = getPool(), stockSource = createStockSo
     if (results.length >= max) return results;
     // Bo sung ma chi co trong sheet Khớp mã / Gộp VAT (sau ma KiotViet, khong trung ma).
     const seen = new Set(results.map(row => row.code.trim().toLowerCase()));
-    const { snapshot } = await readStock();
+    const { snapshot } = await readStock({ waitMs: stockWaitMs }); // goi y khi go: khong cho Sheets lau
     for (const entry of suggestSheetProducts(snapshot, q, max)) {
       if (results.length >= max) break;
       const key = entry.code.trim().toLowerCase();

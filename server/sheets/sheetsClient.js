@@ -167,16 +167,21 @@ function createClient(getSpreadsheetId, branchLabel) {
 /**
  * Doc 1 tab xac dinh theo sheetId (= gid tren URL) thay vi theo ten: doi ten tab
  * khong lam hong nguon. Tra mang 2 chieu nhu values.get (cuoi dong / cuoi bang trong bi cat).
- * @param {{ spreadsheetId: string, sheetId: number|string, range?: string }} source
+ * @param {{ spreadsheetId: string, sheetId: number|string, range?: string, timeoutMs?: number }} source
  *   range dang 'A1:P' (bo trong = ca tab).
  * @param {{ sheetsApi?: object, valueRenderOption?: string }} options sheetsApi de test gia lap.
+ *
+ * KHONG tu thu lai (retry: false): googleapis mac dinh thu lai 3 lan khi het thoi gian cho, nen 1 lan doc
+ * file goc VAT TKS (timeout 45 s) tung keo dai ~136 s va moi trang VAT cho theo (14/11/2026). Loi -> nguoi
+ * goi tra ban cu (cache) hoac lan sau doc lai.
  */
 async function readSheetValuesById({ spreadsheetId, sheetId, range = '', timeoutMs = API_TIMEOUT_MS }, { sheetsApi, valueRenderOption = 'FORMATTED_VALUE' } = {}) {
   const sheets = sheetsApi || await getSheetsApi();
+  const requestOptions = { timeout: timeoutMs, retry: false };
   const meta = await sheets.spreadsheets.get({
     spreadsheetId,
     fields: 'sheets.properties(sheetId,title)'
-  }, { timeout: timeoutMs });
+  }, requestOptions);
   const tab = (meta.data.sheets || []).find(s => String(s.properties.sheetId) === String(sheetId));
   if (!tab) {
     const err = new Error(`Không có tab sheetId ${sheetId} trong file ${spreadsheetId}.`);
@@ -188,7 +193,7 @@ async function readSheetValuesById({ spreadsheetId, sheetId, range = '', timeout
     range: quoteSheetName(tab.properties.title) + (range ? `!${range}` : ''),
     valueRenderOption,
     dateTimeRenderOption: 'FORMATTED_STRING'
-  }, { timeout: timeoutMs });
+  }, requestOptions);
   return res.data.values || [];
 }
 

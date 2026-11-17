@@ -237,3 +237,40 @@ test('createMasterDataSource: file trung gian #REF! -> doc tab file goc (sheetId
   const fallbackRead = sources.find(s => s.spreadsheetId === vatDraftConfig.fallback.spreadsheetId);
   assert.deepEqual(fallbackRead, { spreadsheetId: vatDraftConfig.fallback.spreadsheetId, timeoutMs: vatDraftConfig.fallback.timeoutMs, sheetId: 950697804, range: 'A1:P' });
 });
+
+// 14/11/2026: 3 trang VAT doc cung tab (vd file goc VAT TKS khi file trung gian loi) -> dung chung 1 lan doc.
+test('bo doc mac dinh: doc trung tab dang chay / vua xong dung chung 1 lan goi; loi khong giu lai', async () => {
+  const sheetsClient = require('../sheets/sheetsClient');
+  const original = sheetsClient.readSheetValuesById;
+  const calls = [];
+  let fail = false;
+  sheetsClient.readSheetValuesById = async source => {
+    calls.push(source.sheetId);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    if (fail) throw new Error('timeout of 45000ms exceeded');
+    return [['Mã', 'Tên'], ['A1', 'x']];
+  };
+  const modulePath = require.resolve('./sheetsSource');
+  delete require.cache[modulePath];
+  try {
+    const { fetchSheetRecordsWithFallback: fetchFresh } = require('./sheetsSource');
+    const source = { spreadsheetId: 'SHARED', sheetId: 950697804, range: 'A1:P', timeoutMs: 45000 };
+    const [a, b] = await Promise.all([
+      fetchFresh({ source, sheetName: 'Gộp VAT', logger: null }),
+      fetchFresh({ source: { ...source }, sheetName: 'Tồn VAT', logger: null })
+    ]);
+    assert.deepEqual(a.records, b.records);
+    assert.notEqual(a.records, b.records, 'moi nguoi goi nhan mang rieng');
+    await fetchFresh({ source, sheetName: 'Gộp VAT', logger: null });
+    assert.deepEqual(calls, [950697804], '3 lan doc trong 60 s -> 1 lan goi Google');
+    const other = { ...source, sheetId: 1 };
+    fail = true;
+    await assert.rejects(() => fetchFresh({ source: other, sheetName: 'Khớp mã', logger: null }), /quá lâu/);
+    fail = false;
+    await fetchFresh({ source: other, sheetName: 'Khớp mã', logger: null });
+    assert.deepEqual(calls, [950697804, 1, 1], 'lan loi khong duoc dung lai');
+  } finally {
+    sheetsClient.readSheetValuesById = original;
+    delete require.cache[modulePath];
+  }
+});

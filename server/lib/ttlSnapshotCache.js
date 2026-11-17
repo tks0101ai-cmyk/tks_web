@@ -45,6 +45,10 @@ function createTtlSnapshotCache(options = {}) {
       })
       .catch(err => {
         if (lastSuccess && now() - lastSuccess.loadedAt <= staleTtlMs) {
+          // Lam moi nen: cac request sau (khong cho lan doc nay) cung phai biet ban dang tra la ban cu do nguon
+          // loi -> ghi co stale vao chinh ban dang giu (giu loadedAt: van het han, lan sau doc lai). Lan doc sau
+          // thanh cong thi thay ban moi (stale: false).
+          if (backgroundRefresh) lastSuccess = { ...lastSuccess, stale: true };
           return { ...lastSuccess, stale: true };
         }
         return onUnavailable(err);

@@ -805,9 +805,12 @@ Migrations `0127_purchase_container_assumed_m3.sql` và `0128_purchase_surcharge
 
 Cập nhật gần nhất: 14/11/2026.
 
-
 ## Thu mua — hoàn thiện đơn giá cont và vùng (14/11/2026)
 
 Triển khai migration 0129 (danh mục vùng, vùng đơn hàng/cont và ghi chú cont) và 0130 (cho phép phụ phí phần trăm âm). Đơn giá cont lưu tổng chi phí, VC/m³ lấy tổng chi phí chia cho m³ giả định hoặc m³ đang xếp; phân bổ xuống mã theo m³ thực tế. Bảng chỉ số bỏ Dòng, có Đơn giá quy đổi và phụ phí tổng hợp; danh sách vùng, chọn vùng ở đơn/cont, cont chờ xếp tách theo vùng và bộ lọc vùng ở hai bảng. Còn cần chạy kiểm thử liên quan, kiểm staging rồi áp migration và deploy theo quy trình vận hành.
+
+## Hiệu năng đợt 6 — 14/11/2026
+
+ORDER VAT / Tra cứu VAT / Nhập VAT treo 82–138 s: tab file trung gian lỗi `#REF!` → đọc file gốc VAT TKS (45 s × 3 lần thử lại tự động), mọi request chờ lần đọc đó. Đã làm: tắt tự thử lại khi đọc Sheets theo sheetId, dùng chung lần đọc trùng tab giữa 3 trang, cache trả bản cũ + làm mới nền (đọc nền lỗi thì báo bản cũ), ORDER VAT chờ Tồn VAT tối đa 3 s rồi tự tải lại, đọc trước Sheets khi web khởi động. Xuất Excel Dự kiến hàng về chạy worker thread (event loop không còn đứng ~0,4–1,9 s). Không đổi schema/API.
 
 Cập nhật gần nhất: 14/11/2026.

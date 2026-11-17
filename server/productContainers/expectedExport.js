@@ -4,8 +4,7 @@
 // (businessReport/businessReportExport.js): loc o may chu bang cung tham so voi man hinh, whitelist cot,
 // bo qua cot thi xuat tat ca. Tra cung dang /export/fields de frontend dung lai startExportDialog.
 
-const ExcelJS = require('exceljs');
-const { HEADER_FONT, frozenNoGridlinesView, applyFullTableBorder } = require('../excelTableStyle');
+const { runExcelTaskInWorker } = require('../dashboard/exportExcelPool');
 const { renderHtmlReport } = require('../dashboard/exportHtmlReport');
 const fuzzy = require('../shared/fuzzySearch');
 const { filterTableItems } = require('../public/js/table-explorer');
@@ -193,32 +192,15 @@ async function createExportFile(format, rows, columnKeys, { query = {}, meta = n
       }]
     });
   }
-  const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'TOKOSI Dashboard';
-  const sheet = workbook.addWorksheet('Dự kiến hàng về');
-  sheet.columns = columns.map(c => ({
-    key: c.key,
-    header: c.label,
-    width: c.type === 'number' ? 16 : c.key === 'productName' || c.key === 'saleNote' ? 36 : 22,
-    style: c.type === 'number' ? { numFmt: c.decimals === 2 ? '#,##0.00' : c.decimals === 0 ? '#,##0' : '#,##0' } : {}
+  // Gia tri o chuan bi o day (nhanh); ExcelJS dung file trong worker thread, khong chan web (exportExcelPool).
+  const values = rows.map(row => columns.map(c => {
+    const v = cellValue(row, c);
+    return typeof v === 'string' ? safeText(v) : v;
   }));
-  for (const row of rows) {
-    sheet.addRow(columns.map(c => {
-      const v = cellValue(row, c);
-      return typeof v === 'string' ? safeText(v) : v;
-    }));
-  }
-  sheet.views = frozenNoGridlinesView(1);
-  sheet.getRow(1).font = HEADER_FONT;
-  sheet.getRow(1).height = 24;
-  sheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-  sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: Math.max(1, rows.length + 1), column: columns.length } };
-  applyFullTableBorder(sheet, columns.length, rows.length + 1);
-  return {
-    buffer: Buffer.from(await workbook.xlsx.writeBuffer()),
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    fileName: `${FILE_BASE}.xlsx`
-  };
+  return runExcelTaskInWorker('expectedArrivals', {
+    columns: columns.map(({ key, label, type, decimals }) => ({ key, label, type, ...(decimals !== undefined ? { decimals } : {}) })),
+    values, sheetName: 'Dự kiến hàng về', fileName: `${FILE_BASE}.xlsx`
+  });
 }
 
 module.exports = { createExportFile, filterRows, sortRowsByLabel, exportFieldsFor, resolveColumnKeys, stripPriceFields, MAX_EXPORT_ROWS, COLUMNS };

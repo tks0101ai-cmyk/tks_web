@@ -52,6 +52,10 @@ const cashbookRoutes = require('./cashbook/cashbookRoutes');
 const { createVatDraftRouter } = require('./vatDraft/vatDraftRoutes');
 const { createVatRequestRouter } = require('./vatRequests/routes');
 const { createVatLookupRouter } = require('./vatLookup/vatLookupRoutes');
+const { createVatRequestService } = require('./vatRequests/service');
+const { createStockSource: createVatStockSource } = require('./vatRequests/stockSource');
+const { createMasterDataSource: createVatMasterData } = require('./vatDraft/sheetsSource');
+const { createLookupSource: createVatLookupSource } = require('./vatLookup/lookupSource');
 const { createBusinessReportRouter } = require('./businessReport/businessReportRoutes');
 const { createExpectedArrivalsRouter } = require('./productContainers/expectedRoutes');
 const { createPriceAuditRouter } = require('./invoicePriceAudit/priceAuditRoutes');
@@ -110,11 +114,15 @@ for (const prefix of ['/api/cashbook', '/api/vat-draft', '/api/vat-requests', '/
 // Sổ quỹ toàn công ty: không áp cookie hoặc middleware chọn cơ sở.
 router.use('/api/cashbook', cashbookRoutes);
 // Kế toán – Nháp VAT (port vat-draft-app): chứng từ theo cookie cơ sở, gắn resolveBranch trong router.
-router.use('/api/vat-draft', createVatDraftRouter());
+// 3 trang VAT doc Google Sheets (file goc VAT TKS co luc 1-2 phut / lan): giu nguon o day de lam nong ngay sau
+// khi web khoi dong (warmUpVatSheets, goi tu index.js) — deploy / restart khong bat nguoi dau tien phai cho.
+const vatSheetSources = { stock: createVatStockSource(), masterData: createVatMasterData(), lookup: createVatLookupSource() };
+router.warmUpVatSheets = () => Promise.allSettled(Object.values(vatSheetSources).map(source => source.get()));
+router.use('/api/vat-draft', createVatDraftRouter({ masterData: vatSheetSources.masterData }));
 // Kế toán – ORDER VAT (thay sheet ORDER VAT 1): toàn công ty, không áp cookie cơ sở (gợi ý khách tự gắn resolveBranch).
-router.use('/api/vat-requests', createVatRequestRouter());
+router.use('/api/vat-requests', createVatRequestRouter({ service: createVatRequestService({ stockSource: vatSheetSources.stock }) }));
 // Kế toán – Tra cứu VAT (thay app Apps Script): đọc 3 tab Sheet công khai, toàn công ty, không áp cookie cơ sở.
-router.use('/api/vat-lookup', createVatLookupRouter());
+router.use('/api/vat-lookup', createVatLookupRouter({ source: vatSheetSources.lookup }));
 // Báo cáo kinh doanh (tăng trưởng Sale/Khách/Mã hàng): gộp HN + SG, cũng không áp cookie cơ sở.
 router.use('/api/business-report', createBusinessReportRouter());
 // Bang "Du kien hang ve" (tab Hang hoa): quyen rieng reports.products.expected, KHONG di qua guard /api/product-report.
