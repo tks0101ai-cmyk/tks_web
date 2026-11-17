@@ -36,7 +36,7 @@
  }
  function statusMarkup(options={}){
   return '<div class="purchase-container-status" role="group" aria-label="Lọc theo trạng thái cont">'+statusSummary(options).map(s=>
-   '<button type="button" data-container-status="'+s.status+'" aria-pressed="'+((Array.isArray(options.selectedStatuses)?options.selectedStatuses.map(String):[String(options.selectedStatus)]).includes(String(s.status)))+'"><strong>'+s.label+'</strong> <span data-status-count>'+ (s.status==='waiting'?s.count:s.containerCount)+'</span></button>'
+   '<button type="button" data-container-status="'+s.status+'" aria-pressed="'+((Array.isArray(options.selectedStatuses)?options.selectedStatuses.map(String):[String(options.selectedStatus)]).includes(String(s.status)))+'"><strong>'+s.label+'</strong> <span data-status-count>'+ s.count+'</span></button>'
   ).join('')+'</div>';
  }
  // No IDs, form wrapper or handlers: safe to use in bottom table and pinned copy.
