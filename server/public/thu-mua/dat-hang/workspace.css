@@ -688,7 +688,7 @@
 /* Searchable selects used by filters and editable table columns. */
 .purchase-page .purchase-search-select{display:block;position:relative;width:100%;min-width:0}
 .purchase-page .purchase-search-select-input{display:block;width:100%;min-width:0;box-sizing:border-box}
-.purchase-page select.purchase-search-select-native{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;clip-path:inset(50%)!important;white-space:nowrap!important;border:0!important;opacity:0!important;pointer-events:none!important}
+.purchase-page select.purchase-search-select-native{display:none!important}
 .purchase-search-select-popover{position:fixed;z-index:20000;overflow:auto;padding:4px;border:1px solid var(--border,#475569);border-radius:6px;background:var(--panel,#172334);box-shadow:0 12px 32px #0008;color:var(--text,#F8FAFC)}
 .purchase-search-select-popover[hidden]{display:none}
 .purchase-search-select-popover button{display:block;width:100%;padding:7px 9px;border:0;border-radius:4px;text-align:left;background:transparent;color:inherit;cursor:pointer}
