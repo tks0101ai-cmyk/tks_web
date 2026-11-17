@@ -472,7 +472,9 @@ test('snapshot import saves measurement overrides and blank cells restore calcul
  // luôn tính lại — dòng này không có Kg/T lẫn M3/T nên Tỉ lệ ra null, không phải .75 vừa gõ vào.
  let saved=(await service.list(manager)).rows.find(item=>item.id===row.id);assert.deepEqual([saved.literWarehouse,saved.m3Warehouse,saved.literChina,saved.literDiff,saved.gramWarehouse,saved.gramChina,saved.gramDiff,saved.measuredOn,saved.ratio],[1.25,.42,1.1,-12,550,500,-9,'2026-11-12',null]);assert.equal(saved.measurementOverrides.literWarehouse,1.25);
  assert.equal(Object.hasOwn(saved.measurementOverrides,'ratio'),false);
- const latest=await service.importSnapshot(manager),blank={...latest.rows[0],literWarehouse:null,m3Warehouse:null,literChina:null,literDiff:null,gramWarehouse:null,gramChina:null,gramDiff:null,measuredOn:null,ratio:null},clear=await service.previewImport(manager,{buffer:Buffer.from(excel.exportImportSnapshot({rows:[blank],columns,revision:latest.revision}))});assert.equal(clear.valid,true);await service.commitImport(manager,clear.token);
+ const latest=await service.importSnapshot(manager),same=await service.previewImport(manager,{buffer:Buffer.from(excel.exportImportSnapshot({rows:latest.rows,columns,revision:latest.revision}))});assert.equal(same.valid,true);assert.equal(same.counts.unchanged,1);await service.commitImport(manager,same.token);
+ let unchanged=(await service.list(manager)).rows.find(item=>item.id===row.id);assert.deepEqual([unchanged.literChina,unchanged.literDiff,unchanged.gramChina,unchanged.gramDiff],[1.1,-12,500,-9]);
+ const fresh=await service.importSnapshot(manager),blank={...fresh.rows[0],literWarehouse:null,m3Warehouse:null,literChina:null,literDiff:null,gramWarehouse:null,gramChina:null,gramDiff:null,measuredOn:null,ratio:null},clear=await service.previewImport(manager,{buffer:Buffer.from(excel.exportImportSnapshot({rows:[blank],columns,revision:fresh.revision}))});assert.equal(clear.valid,true);await service.commitImport(manager,clear.token);
  saved=(await service.list(manager)).rows.find(item=>item.id===row.id);assert.deepEqual(saved.measurementOverrides,{});
 });
 
@@ -771,7 +773,7 @@ test('deactivate hides stale rows from order and cont projections while keeping 
  assert.equal((await service.list(manager)).rows.length,1);assert.equal((await service.list(manager)).rows[0].id,kept.id);
  assert.equal((await service.inactive(manager))[0].rowKey,old.rowKey);assert.equal((await service.inactive(manager))[0].inactiveAt!=null,true);
  assert.equal((await db.query("SELECT count(*)::int n FROM product_container_lines WHERE product_code='A'")).rows[0].n,0);
- await assert.rejects(service.remove(manager,{rows:[{id:old.id,version:old.version+1}]}),e=>e.code==='VERSION_CONFLICT');
+ await assert.rejects(service.remove(manager,{rows:[{id:old.id,version:old.version}]}),e=>e.code==='VERSION_CONFLICT');
  await service.reactivate(manager,{id:old.id,version:(await service.inactive(manager))[0].version});assert.equal((await service.list(manager)).rows.length,2);
  const operation=(await service.operations(manager))[0];assert.equal(operation.action,'reactivate');await service.undo(manager,{operationId:operation.id});assert.equal((await service.list(manager)).rows.length,1);
 

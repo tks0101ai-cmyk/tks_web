@@ -25,22 +25,24 @@
 
   function snapshotFormula(col,row,columns,rowIndex) {
     if(!col.d)return null;
+    if(col.o&&row.measurementOverrides&&Object.hasOwn(row.measurementOverrides,col.k))return `=${Number(row.measurementOverrides[col.k])}`;
     const ref=key=>{const index=columns.findIndex(item=>item.k===key);return index<0?null:XLSX.utils.encode_cell({r:rowIndex+1,c:index})};
     const cell=key=>{const address=ref(key);return address?address.replace(/\d+$/,'')+(rowIndex+2):null};
     const q=cell('qtyPerCarton'),n=cell('cartonCount'),kg=cell('kgPerCarton'),m3=cell('m3PerCarton'),price=cell('unitPriceCny'),pre=cell('freightPrepaid'),fx=cell('fxRate'),post=cell('freightPostpaid'),surcharge=cell('surchargePercent');
+    const qty=cell('totalQty'),goods=cell('goodsAmount'),freight=cell('freightAmount'),liter=cell('literChina'),gram=cell('gramChina'),literWarehouse=cell('literWarehouse'),gramWarehouse=cell('gramWarehouse'),isBlank=refs=>`OR(${refs.map(address=>`${address}=\"\"`).join(',')})`;
     const formulas={
-      totalQty:q&&n?`=IFERROR(${q}*${n},0)`:null,
-      totalCny:q&&n&&price&&pre?`=IFERROR(${q}*${n}*${price}+${pre},0)`:null,
-      goodsAmount:q&&n&&price&&pre&&fx?`=IFERROR((${q}*${n}*${price}+${pre})*${fx},0)`:null,
-      totalTon:kg&&n?`=IFERROR(${kg}*${n}/1000,0)`:null,
-      totalM3:m3&&n?`=IFERROR(${m3}*${n},0)`:null,
-      freightAmount:m3&&n?`=IFERROR(${m3}*${n}*${(Number(row.totalM3)>0?Number(row.freightAmount)/Number(row.totalM3):0)},0)`:null,
-      netPrice:q&&n&&price&&pre&&fx&&post&&surcharge?`=IFERROR((((${q}*${n}*${price}+${pre})*${fx})*(1+${surcharge})+${cell('freightAmount')}+${post}*${(Number(row.containerFxRate??row.postpaidFxRate)||3900)})/(${q}*${n}),0)`:null,
-      literChina:m3&&q?`=IFERROR(${m3}*1000/${q},0)`:null,
-      gramChina:kg&&q?`=IFERROR(${kg}*1000/${q},0)`:null,
-      literDiff:cell('literChina')&&cell('literWarehouse')?`=IFERROR((${cell('literChina')}-${cell('literWarehouse')})/${cell('literWarehouse')},0)`:null,
-      gramDiff:cell('gramChina')&&cell('gramWarehouse')?`=IFERROR((${cell('gramChina')}-${cell('gramWarehouse')})/${cell('gramWarehouse')},0)`:null,
-      ratio:cell('totalTon')&&cell('totalM3')?`=IFERROR(${cell('totalTon')}/${cell('totalM3')},0)`:null
+      totalQty:q&&n?`=IF(${isBlank([q,n])},\"\",IFERROR(${q}*${n},\"\"))`:null,
+      totalCny:q&&n&&price&&pre?`=IF(${isBlank([q,n,price])},\"\",IFERROR(${q}*${n}*${price}+${pre},\"\"))`:null,
+      goodsAmount:q&&n&&price&&pre&&fx?`=IF(${isBlank([q,n,price,fx])},\"\",IFERROR((${q}*${n}*${price}+${pre})*${fx},\"\"))`:null,
+      totalTon:kg&&n?`=IF(${isBlank([kg,n])},\"\",IFERROR(${kg}*${n}/1000,\"\"))`:null,
+      totalM3:m3&&n?`=IF(${isBlank([m3,n])},\"\",IFERROR(${m3}*${n},\"\"))`:null,
+      freightAmount:m3&&n?`=IF(${isBlank([m3,n])},\"\",IFERROR(${m3}*${n}*${(Number(row.totalM3)>0?Number(row.freightAmount)/Number(row.totalM3):0)},\"\"))`:null,
+      netPrice:qty&&goods&&freight&&post&&surcharge?`=IF(OR(${qty}=\"\",${qty}=0,${goods}=\"\"),\"\",IFERROR((${goods}+IF(${surcharge}=\"\",0,${goods}*${surcharge})+IF(${freight}=\"\",0,${freight})+IF(${post}=\"\",0,${post}*${(Number(row.containerFxRate??row.postpaidFxRate)||3900)}))/${qty},\"\"))`:null,
+      literChina:row.measurementOverrides&&Object.hasOwn(row.measurementOverrides,'literChina')?`=${Number(row.measurementOverrides.literChina)}`:m3&&q?`=IF(OR(${isBlank([m3,q])},${q}=0),\"\",IFERROR(${m3}*1000/${q},\"\"))`:null,
+      gramChina:row.measurementOverrides&&Object.hasOwn(row.measurementOverrides,'gramChina')?`=${Number(row.measurementOverrides.gramChina)}`:kg&&q?`=IF(OR(${isBlank([kg,q])},${q}=0),\"\",IFERROR(${kg}*1000/${q},\"\"))`:null,
+      literDiff:row.measurementOverrides&&Object.hasOwn(row.measurementOverrides,'literDiff')?`=${Number(row.measurementOverrides.literDiff)}`:liter&&literWarehouse?`=IF(OR(${isBlank([liter,literWarehouse])},${literWarehouse}=0),\"\",IFERROR((${liter}-${literWarehouse})/${literWarehouse},\"\"))`:null,
+      gramDiff:row.measurementOverrides&&Object.hasOwn(row.measurementOverrides,'gramDiff')?`=${Number(row.measurementOverrides.gramDiff)}`:gram&&gramWarehouse?`=IF(OR(${isBlank([gram,gramWarehouse])},${gramWarehouse}=0),\"\",IFERROR((${gram}-${gramWarehouse})/${gramWarehouse},\"\"))`:null,
+      ratio:cell('totalTon')&&cell('totalM3')?`=IF(OR(${isBlank([cell('totalTon'),cell('totalM3')])},${cell('totalM3')}=0),\"\",IFERROR(${cell('totalTon')}/${cell('totalM3')},\"\"))`:null
     };
     return formulas[col.k]||null;
   }
@@ -48,7 +50,7 @@
   function exportImportSnapshot({rows,columns,revision,regions=[]}) {
     if(!/^\d+:\d+$/.test(String(revision||'')))throw Error('Phiên bản snapshot không hợp lệ.');
     const cols=columns,keys=cols.filter(col=>col.k!=='rowKey').map(col=>col.k),book=exportWorkbook(rows,columns,keys),sheet=book.Sheets['Đặt hàng'];
-    cols.forEach((col,c)=>rows.forEach((row,r)=>{const formula=snapshotFormula(col,row,cols,r);if(!formula)return;const address=XLSX.utils.encode_cell({r:r+1,c}),cell=sheet[address]||(sheet[address]={t:'n',v:0});cell.f=formula.slice(1);if(typeof row[col.k]==='number'&&Number.isFinite(row[col.k])){cell.t='n';cell.v=row[col.k]}else{cell.t='n';cell.v=0}}));
+    cols.forEach((col,c)=>rows.forEach((row,r)=>{const formula=snapshotFormula(col,row,cols,r);if(!formula)return;const address=XLSX.utils.encode_cell({r:r+1,c}),cell=sheet[address]||(sheet[address]={t:'n',v:0});cell.f=formula.slice(1);if(typeof row[col.k]==='number'&&Number.isFinite(row[col.k])){cell.t='n';cell.v=row[col.k]}else{cell.t='str';cell.v=''}}));
     const kind=col=>numericTypes.has(col.t)?'Số'+(col.decimals!=null?' · tối đa '+col.decimals+' chữ số thập phân':''):col.t==='datetime'?'Ngày dd/mm/yyyy hoặc dd/mm/yyyy hh:mm':'Văn bản';
     const required=col=>col.k==='productCode'?'Có · mọi dòng':['productName','qtyPerCarton','cartonCount'].includes(col.k)?'Có · dòng mới':'Không';
     const importable=importColumns(columns),hints=cols.map(col=>[caption(col),required(col),col.region?'Tên vùng hoặc mã vùng':kind(col),col.d?'Cột công thức Excel; thay công thức bằng giá trị nếu cần ghi đè.':!importable.includes(col)?'Chỉ xem; không được nhập ngược vào hệ thống.':col.region?'Nhập đúng tên vùng đang dùng; để trống sẽ bỏ gán vùng.':col.k==='container'?'Nhập cont đang hoạt động; để trống hoặc chọn Chờ xếp sẽ đưa vào hàng chờ.':col.k==='rowKey'?'Có Mã dòng: cập nhật dòng đó. Để trống: tạo mã mới.':col.k==='productCode'?'Bắt buộc; không trùng trong file.':col.k==='productName'?'Bắt buộc khi tạo mã mới.':['qtyPerCarton','cartonCount'].includes(col.k)?'Mã mới cần số nguyên dương.':col.t==='datetime'?'Để trống sẽ xóa ngày hiện tại.':'Để trống sẽ xóa giá trị hiện tại.']);
@@ -139,7 +141,7 @@
         const cell = sheet[address];
         // Formula columns are presentation-only in snapshots. Replacing a formula
         // with a literal remains a supported way to enter a measurement override.
-        if(snapshot&&col.d&&cell?.f)return;
+        if(snapshot&&col.d&&cell?.f){if(!col.o)return;if(cell.t==='e'){row[col.k]=cell.w||'#LỖI';row.__cellErrors[col.k]=caption(col)+': công thức lỗi hoặc chưa có kết quả; sửa thành giá trị';return}if(value==null||value===''){row[col.k]=null;return}}
         if (cell?.t === 'e' || (cell?.f && (value === '' || value == null))) {
           row[col.k] = cell.w || '#LỖI';
           row.__cellErrors[col.k] = caption(col) + ': công thức lỗi hoặc chưa có kết quả; sửa thành giá trị';

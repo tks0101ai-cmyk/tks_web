@@ -137,6 +137,10 @@ async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees
  const change=(selector,v)=>{const el=w.document.querySelector(selector);el.value=v;el.dispatchEvent(new w.Event('change',{bubbles:true}))};
  return {w,calls,listeners,change,get current(){return current}};
 }
+test('shared branch switcher remains a native select outside purchase search widgets',async t=>{
+ const p=await page(t),doc=p.w.document,branch=doc.createElement('select');branch.className='tks-branch-select';branch.innerHTML='<option>Hà Nội</option><option>Sài Gòn</option>';doc.body.append(branch);await tick();
+ assert.equal(branch.parentElement,doc.body);assert.equal(branch.classList.contains('purchase-search-select-native'),false);assert.equal(branch.tabIndex,0);
+});
 test('version history restores the selected snapshot after confirmation',async t=>{
  const p=await page(t),doc=p.w.document,first='00000000-0000-4000-8000-000000000001',restored='00000000-0000-4000-8000-000000000002';
  let versions=[{id:first,action:'edit',created_at:'2026-11-16T08:00:00Z',actor_id:'manager',actor_name:'Người quản lý',row_count:1}];

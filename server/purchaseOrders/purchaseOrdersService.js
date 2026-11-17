@@ -260,8 +260,8 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
     await client.query('INSERT INTO purchase_key_pool(row_key) VALUES($1) ON CONFLICT(row_key) DO NOTHING',[key]);
     return true;
   }
-  async function ensureFamilyKey(client,rootOrderId,rootKey) {
-    const conflict=(await client.query(`SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE root_key=$1 AND deleted_at IS NULL AND root_order_id<>$2)
+  async function ensureFamilyKey(client,rootOrderId,rootKey,reservedKeys=null) {
+    const conflict=reservedKeys?.has(String(rootKey))||(await client.query(`SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE root_key=$1 AND deleted_at IS NULL AND root_order_id<>$2)
       OR EXISTS(SELECT 1 FROM purchase_key_reservations WHERE row_key=$1 AND expires_at>now()) AS used`,[rootKey,rootOrderId])).rows[0].used;
     if(!conflict){await client.query('DELETE FROM purchase_key_pool WHERE row_key=$1',[rootKey]);return rootKey;}
     await client.query('DELETE FROM purchase_key_pool WHERE row_key=$1',[rootKey]);
@@ -599,7 +599,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
           WHERE h.id>$1 GROUP BY r.row_id ORDER BY r.row_id LIMIT 501`,[cursorId])).rows;
         if(changes.length>500){metadata.reset=true;metadata.employeesChanged=true;await client.query('COMMIT');committed=true;return metadata}
         metadata.employeesChanged=(await client.query("SELECT EXISTS(SELECT 1 FROM purchase_history WHERE id>$1 AND action IN ('employee_create','employee_edit')) AS changed",[cursorId])).rows[0].changed;metadata.regionsChanged=(await client.query("SELECT EXISTS(SELECT 1 FROM purchase_history WHERE id>$1 AND action IN ('region_create','region_edit')) AS changed",[cursorId])).rows[0].changed;
-        const containersChanged=(await client.query("SELECT EXISTS(SELECT 1 FROM purchase_history WHERE id>$1 AND (action LIKE 'container_%' OR action IN ('depart','arrive','import')) AS changed",[cursorId])).rows[0].changed;
+        const containersChanged=(await client.query("SELECT EXISTS(SELECT 1 FROM purchase_history WHERE id>$1 AND (action LIKE 'container_%' OR action IN ('depart','arrive','import'))) AS changed",[cursorId])).rows[0].changed;
         if(containersChanged)metadata.containers=(await client.query('SELECT * FROM product_containers ORDER BY id')).rows;
         if(metadata.regionsChanged)metadata.regions=(await client.query('SELECT id,name,color,is_active AS \"isActive\",version FROM purchase_regions ORDER BY name,id')).rows;
         if(changes.length){
@@ -733,7 +733,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
           actual=(await client.query('SELECT * FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL AND container_id=$1 ORDER BY id FOR UPDATE',[id])).rows;
         }
         if(shared){
-          if(rows!==undefined&&(!Array.isArray(rows)||rows.length!==actual.length||rows.some(r=>!r||!Number.isSafeInteger(Number(r.version))||Number(r.version)<1)||new Set(rows.map(r=>String(r.id))).size!==actual.length||actual.some(r=>!rows.some(x=>String(x.id)===String(r.id)&&Number(x.version)===Number(r.version)))))throw fail(409,'VERSION_CONFLICT','Danh sách hoặc phiên bản dòng trong cont đã thay đổi.');
+          if(!Array.isArray(rows)||rows.length!==actual.length||rows.some(r=>!r||!Number.isSafeInteger(Number(r.version))||Number(r.version)<1)||new Set(rows.map(r=>String(r.id))).size!==actual.length||actual.some(r=>!rows.some(x=>String(x.id)===String(r.id)&&Number(x.version)===Number(r.version))))throw fail(409,'VERSION_CONFLICT','Danh sách hoặc phiên bản dòng trong cont đã thay đổi.');
           const patch={};if(Object.hasOwn(changes,'arrivalNote'))patch.eta_note=entries.find(([key])=>key==='arrival_note')[1]||null;if(Object.hasOwn(changes,'arrivalDate'))patch.arrived_note=entries.find(([key])=>key==='arrival_date')[1]||null;
           const updated=(await client.query(`UPDATE purchase_orders SET ${Object.keys(patch).map((key,index)=>`${key}=$${index+2}`).join(',')},version=version+1,updated_at=now() WHERE id=ANY($1::bigint[]) RETURNING *`,[actual.map(row=>row.id),...Object.values(patch)])).rows,byId=new Map(updated.map(row=>[String(row.id),row]));
           for(const raw of actual){const after=byId.get(String(raw.id));details.push({before:jsRow(raw),after:jsRow({...raw,...after})})}
@@ -883,7 +883,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
           const roots=(await client.query('SELECT id,root_order_id,root_key FROM purchase_orders WHERE id=ANY($1::bigint[])',[restoreRows.map(recovery=>recovery.data.id)])).rows;
           const rootById=new Map(roots.map(root=>[String(root.id),root]));
           for(const recovery of restoreRows){const root=rootById.get(String(recovery.data.id));if(!root)continue;const key=String(root.root_order_id);let family=restoreFamilies.get(key);if(!family){family={rootOrderId:root.root_order_id,rootKey:root.root_key,rows:[]};restoreFamilies.set(key,family)}family.rows.push(recovery)}
-          for(const family of restoreFamilies.values())await ensureFamilyKey(client,family.rootOrderId,family.rootKey);
+          const reservedRootKeys=new Set();for(const family of restoreFamilies.values()){const assigned=await ensureFamilyKey(client,family.rootOrderId,family.rootKey,reservedRootKeys);reservedRootKeys.add(String(assigned))}
         }
         if(recoveries.length){
           const recoveryData=recoveries.map(recovery=>({...recovery.data,inactive_at:null,deleted_at:null}));
