@@ -43,6 +43,15 @@ test('order columns can be selected for pinning and persist in the user layout',
  assert.deepEqual(JSON.parse(doc.defaultView.sessionStorage.getItem('purchase:buyer:v1')).pinnedColumns,['productCode','productName','supplier']);
  assert.ok(doc.querySelector('#orderTable th[data-key="supplier"].purchase-pinned-column'));
 });
+test('row status can be hidden and shown in both order and container column pickers',async t=>{
+ const p=await page(t),doc=p.w.document;
+ doc.getElementById('columns').click();
+ const order=doc.querySelector('[data-column="status"]');assert.ok(order);assert.equal(order.parentElement.textContent.includes('Trạng thái'),true);
+ order.checked=false;order.dispatchEvent(new p.w.Event('change',{bubbles:true}));assert.equal(doc.querySelector('#orderTable th[data-key="status"]'),null);
+ doc.getElementById('modalClose').click();doc.getElementById('containerColumns').click();
+ const container=doc.querySelector('[data-container-column-toggle="status"]');assert.ok(container);assert.equal(container.parentElement.textContent.includes('Trạng thái dòng'),true);
+ container.checked=false;container.dispatchEvent(new p.w.Event('change',{bubbles:true}));assert.equal(doc.querySelector('#containerTable th[data-container-column="status"]'),null);
+});
 test('pinned column offsets follow a resized column so pinned headers stay flush',async t=>{
  const p=await page(t),doc=p.w.document,table=doc.querySelector('#orderTable table'),right=table.querySelector('th[data-key="productName"]');
  const before=parseFloat(right.style.left),handle=table.querySelector('th[data-key="productCode"] .tks-column-resizer');

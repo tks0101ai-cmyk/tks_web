@@ -87,7 +87,7 @@
   },
   {
     "k": "status",
-    "l": "Trạng thái cont",
+    "l": "Trạng thái",
     "cn": "",
     "g": "Cont",
     "t": "status",

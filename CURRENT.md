@@ -61,4 +61,4 @@ Cập nhật: 16/11/2026
 
 - [ ] 17/11 — Thu mua: sửa xuất Chỉ số cont sang XLSX để giữ Unicode, kiểu số/ngày và độ rộng cột (không migration) — deploy web rồi tải lại file trong Excel thực tế.
 
-- [ ] 17/11 — Thu mua: cấu hình cước Chờ xếp trong purchase_settings (migration 0137), cùng tính NET theo công thức cont; xác minh migration và sửa/xóa cước trên staging, deploy rồi kiểm tra Chờ xếp không tác động cont thật.
+- [ ] 17/11 — Thu mua: cấu hình hàng Chờ xếp dạng nhóm ảo trong purchase_settings (migration 0137), thao tác ô cước/m³ giả định/tỉ giá và cùng tính NET theo công thức cont; xác minh migration và sửa/xóa cước trên staging, deploy rồi kiểm tra Chờ xếp không tác động cont thật.
