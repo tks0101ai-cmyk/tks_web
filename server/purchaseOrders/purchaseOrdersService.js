@@ -340,10 +340,10 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
   function employeeName(name){if(typeof name!=='string'||!name.trim()||name.trim().length>200)throw fail(400,'NAME_INVALID','Tên nhân viên phải có 1–200 ký tự.');return name.trim()}
   async function validateImportEmployees(client,plan,current,archived=[],lock=false){
     const employees=(await client.query('SELECT id,name,color,is_active AS "isActive",version FROM purchase_employees ORDER BY id'+(lock?' FOR UPDATE':''))).rows;
-    const byName=new Map(employees.map(employee=>[employee.name.trim().toLowerCase(),employee])),planned=new Map(),employeeChanges=[];
+    const byName=new Map(employees.map(employee=>[employee.name.trim().toLowerCase(),employee])),currentByKey=new Map(current.map(row=>[row.rowKey,row])),archivedByKey=new Map(archived.map(row=>[row.rowKey,row])),planned=new Map(),employeeChanges=[];
     for(const row of plan.rows){
       if(['archived_skip','delete'].includes(row.action))continue;
-      const matched=current.find(r=>r.rowKey===row.rowKey)||archived.find(r=>r.rowKey===row.rowKey),buyerChange=row.changes.find(change=>change.key==='buyer'),buyer=row.action==='create'?row.values?.buyer:buyerChange?buyerChange.after:matched?.buyer;
+      const matched=currentByKey.get(row.rowKey)||archivedByKey.get(row.rowKey),buyerChange=row.changes.find(change=>change.key==='buyer'),buyer=row.action==='create'?row.values?.buyer:buyerChange?buyerChange.after:matched?.buyer;
       if(buyer==null||buyer==='')continue;
       let name;try{name=employeeName(buyer)}catch(error){row.errors.push(error.message);continue}
       const key=name.toLowerCase(),existing=byName.get(key),prior=planned.get(key);

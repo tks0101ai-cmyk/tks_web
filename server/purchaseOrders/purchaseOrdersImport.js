@@ -27,6 +27,14 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
   if (!Array.isArray(sourceRows) || (!sourceRows.length && !snapshot) || sourceRows.length > 10000) throw Error('Đợt nhập phải có 1–10.000 dòng.');
   if (!Array.isArray(existingRows)) throw Error('Thiếu dữ liệu hiện hành để đối chiếu.');
   const existing = new Map(existingRows.map(row => [row.rowKey, row]));
+  const archived = new Map(archivedRows.map(row => [row.rowKey, row]));
+  const prefixes = rows => {const found=new Set();for(const row of rows){const parts=String(row.rowKey||'').split('.');while(parts.length>1){parts.pop();found.add(parts.join('.'))}}return found};
+  const existingPrefixes=prefixes(existingRows),archivedPrefixes=prefixes(archivedRows);
+  const normalizeContainerName=value=>String(value??'').trim().replace(/^cont\s+/i,'').normalize('NFKC').replace(/\s+/g,' ').toLocaleLowerCase('vi');
+  const containersById=new Map(),containersByName=new Map();
+  for(const container of containers){containersById.set(String(container.id),container);const key=normalizeContainerName(container.name);if(key&&!containersByName.has(key))containersByName.set(key,container)}
+  const regionsById=new Map(),regionsByName=new Map();
+  for(const region of regions){regionsById.set(String(region.id),region);const key=String(region.name||'').trim().toLocaleLowerCase('vi');if(key&&!regionsByName.has(key))regionsByName.set(key,region)}
   const counts = new Map();
   const recoveryCounts = new Map();
   sourceRows.forEach(row => { const key = String(row.rowKey ?? '').trim(); if (key) counts.set(key, (counts.get(key) || 0) + 1); });
@@ -34,8 +42,8 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
   const rows = sourceRows.map((source, index) => {
     const rowKey = blank(source.rowKey) ? null : String(source.rowKey).trim();
     const current = rowKey ? existing.get(rowKey) : null;
-    const archivedByKey=!current&&rowKey?archivedRows.find(row=>row.rowKey===rowKey):null;
-    const selectedArchived=source.recoverRowKey?archivedRows.find(row=>row.rowKey===source.recoverRowKey):null;
+    const archivedByKey=!current&&rowKey?archived.get(rowKey):null;
+    const selectedArchived=source.recoverRowKey?archived.get(source.recoverRowKey):null;
     const archived=current?null:selectedArchived||archivedByKey;
     const candidates=archived?[archived]:[];
     const requestedKey=source.recoverArchived===true?(source.recoverRowKey||archived?.rowKey):null;
@@ -47,7 +55,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
     if (rowKey && !keyPattern.test(rowKey)) result.errors.push('Khóa dòng sai định dạng.');
     if (rowKey && counts.get(rowKey) > 1) result.errors.push('Khóa dòng trùng trong file.');
     if(recovered&&(recoveryCounts.get(archived.rowKey)||0)>1)result.errors.push('Một dòng lưu trữ chỉ được chọn khôi phục một lần.');
-    if (rowKey && !current&&!archivedByKey) result.errors.push(existingRows.some(row => row.rowKey.startsWith(rowKey + '.')) ? 'Khóa đã tách; xuất lại các nhánh hiện hành.' : archivedRows.some(row=>row.rowKey.startsWith(rowKey+'.'))?'Khóa đã tách; chọn đúng nhánh đang tắt/đã xóa.':'Khóa dòng không tồn tại.');
+    if (rowKey && !current&&!archivedByKey) result.errors.push(existingPrefixes.has(rowKey) ? 'Khóa đã tách; xuất lại các nhánh hiện hành.' : archivedPrefixes.has(rowKey)?'Khóa đã tách; chọn đúng nhánh đang tắt/đã xóa.':'Khóa dòng không tồn tại.');
     if (matched && (!Number.isSafeInteger(version(matched)) || version(matched) < 1)) result.errors.push('Không đọc được phiên bản dòng hiện hành.');
     for (const message of Object.values(source.__cellErrors || {})) result.errors.push(String(message));
     const values = {};
@@ -57,8 +65,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
         if(!snapshot)continue;
         const text=String(value??'').trim(),waiting=!text||/^(?:cont\s*)?chờ(?:\s+|-)?xếp(?:\s+[hv?])?$/i.test(text)||/^chờ\s*-\s*h$/i.test(text)||/^tính giá$/i.test(text);
         if(waiting){if(snapshot)values.contId=null;continue}
-        const normalized=name=>String(name??'').trim().replace(/^cont\s+/i,'').normalize('NFKC').replace(/\s+/g,' ').toLocaleLowerCase('vi');
-        const found=containers.find(container=>String(container.id)===text||normalized(container.name)===normalized(text));
+        const found=containersById.get(text)||containersByName.get(normalizeContainerName(text));
         if(!found){result.errors.push('Tên cont: không tìm thấy cont đang hoạt động.');continue}
         const isActive=found.is_active!==false&&found.isActive!==false&&!found.inactive_at&&!found.inactiveAt&&!found.deleted_at&&!found.deletedAt;
         if(!isActive&&String(matched?.contId??'')!==String(found.id)){result.errors.push('Tên cont: cont đã ngừng hoạt động hoặc đã xóa.');continue}
@@ -68,7 +75,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
         values.contId=String(found.id);continue;
       }
       if (blank(value)) { if (snapshot) values[col.k] = null; continue; }
-      if(col.region){const raw=String(value).trim(),found=regions.find(region=>String(region.id)===raw||String(region.name).trim().toLocaleLowerCase('vi')===raw.toLocaleLowerCase('vi'));if(!found||found.isActive===false&&String(matched?.regionId??'')!==String(found?.id??''))result.errors.push('Vùng: chọn tên vùng đang hoạt động trong danh sách.');else values.regionId=String(found.id);continue}
+      if(col.region){const raw=String(value).trim(),found=regionsById.get(raw)||regionsByName.get(raw.toLocaleLowerCase('vi'));if(!found||found.isActive===false&&String(matched?.regionId??'')!==String(found?.id??''))result.errors.push('Vùng: chọn tên vùng đang hoạt động trong danh sách.');else values.regionId=String(found.id);continue}
       if (workbook.numericTypes.has(col.t)) {
         const number = calculations.parse(value);
         // Chi cac cot co the am duoc khai bao trong signedFields.
