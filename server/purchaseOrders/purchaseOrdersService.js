@@ -21,6 +21,8 @@ const containerProjectionFields = new Set(['assumedM3','containerFxRate','arriva
 const PROJECTION_LOCK_KEY=20531074;
 const fail = (statusCode,code,message,extra={}) => Object.assign(new Error(message),{statusCode,code,...extra});
 const { normalizeName } = require('./containerNames');
+const searchFoldGroups={a:'àáảãạăằắẳẵặâầấẩẫậ',e:'èéẻẽẹêềếểễệ',i:'ìíỉĩị',o:'òóỏõọôồốổỗộơờớởỡợ',u:'ùúủũụưừứửữự',y:'ỳýỷỹỵ',d:'đ'};
+const searchFoldFrom=Object.values(searchFoldGroups).join(''),searchFoldTo=Object.entries(searchFoldGroups).map(([letter,chars])=>letter.repeat([...chars].length)).join('');
 async function ensureAaRegion(client){let row=(await client.query("SELECT id FROM purchase_regions WHERE lower(btrim(name))='aa' AND is_active=true ORDER BY id LIMIT 1")).rows[0];if(!row)row=(await client.query("INSERT INTO purchase_regions(name,name_key,color,is_active) VALUES('AA','aa','#2563EB',true) ON CONFLICT(name_key) DO UPDATE SET name=EXCLUDED.name,is_active=true RETURNING id")).rows[0];return String(row.id)}
 const regionName=value=>{const text=String(value??'').trim();if(!text||text.length>80)throw fail(400,'REGION_INVALID','Tên vùng tối đa 80 ký tự.');return text};
 const employeeColor=value=>{if(typeof value!=='string'||!/^#[0-9A-Fa-f]{6}$/.test(value))throw fail(400,'COLOR_INVALID','Chọn màu RGB hợp lệ.');return value.toUpperCase()};
@@ -146,7 +148,54 @@ async function writeRows(client,patches) {
   if(result.rowCount!==patches.length)throw fail(409,'VERSION_CONFLICT','Một số dòng đã thay đổi. Tải lại bảng rồi thử lại.');
 }
 async function patchRow(client,row,changes) { const updated=await writeRow(client,row,changes);return updated===row?row:readPurchaseRow(client,updated.id); }
+function pagedOrderFilter(options,user){
+  const values=[],where=['p.deleted_at IS NULL AND p.inactive_at IS NULL'];
+  const bind=value=>{values.push(value);return '$'+values.length};
+  const search=String(options.search||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').replace(/Đ/g,'D').toLocaleLowerCase('vi').trim();
+  if(search){const arg=bind('%'+search+'%'),folded=`translate(lower(concat_ws(' ',p.row_key,p.source_sheet,p.product_code,p.product_name,p.product_name_cn,p.supplier,p.sale_note,p.buy_note,p.extra_note)),'${searchFoldFrom}','${searchFoldTo}')`;where.push(`(${folded} LIKE ${arg})`)}
+  if(options.container!==undefined&&options.container!=='all')where.push(!options.container||options.container==='__waiting__'?'p.container_id IS NULL':'p.container_id='+bind(options.container));
+  if(options.region==='__unassigned__')where.push('p.region_id IS NULL');else if(options.region)where.push('p.region_id='+bind(options.region));
+  if(options.status!==undefined&&options.status!==''){
+    if(String(options.status)==='0')where.push('p.container_id IS NULL');
+    else where.push('EXISTS(SELECT 1 FROM product_containers c WHERE c.id=p.container_id AND c.status='+bind(Number(options.status))+')');
+  }
+  if(options.buyer){const [kind,...rest]=String(options.buyer).split(':');const value=rest.join(':');if(kind==='id')where.push('p.buyer_employee_id='+bind(value));else where.push('lower(btrim(p.buyer))='+bind(value.toLocaleLowerCase('vi')))}
+  if(options.from)where.push('p.listed_at::date >= '+bind(options.from)+'::date');
+  if(options.to)where.push('p.listed_at::date <= '+bind(options.to)+'::date');
+  if(options.quick==='mine'){const id=bind(String(user?.hrEmployeeId||user?.employeeId||'')),name=bind(String(user?.hoTen||user?.username||'').toLocaleLowerCase('vi'));where.push(`(p.buyer_employee_id=${id} OR lower(btrim(p.buyer))=${name})`)}
+  if(options.quick==='eta')where.push("(p.eta_note IS NULL OR btrim(p.eta_note)='')");
+  if(options.quick==='measure')where.push('(p.carton_count IS NULL OR p.carton_count<=0 OR p.kg_per_carton IS NULL OR p.kg_per_carton<=0 OR p.m3_per_carton IS NULL OR p.m3_per_carton<=0)');
+  if(options.flag==='measure')where.push('(p.carton_count IS NULL OR p.carton_count<=0 OR p.kg_per_carton IS NULL OR p.kg_per_carton<=0 OR p.m3_per_carton IS NULL OR p.m3_per_carton<=0)');
+  if(options.flag==='price')where.push('(p.qty_per_carton IS NULL OR p.qty_per_carton<=0 OR p.carton_count IS NULL OR p.carton_count<=0 OR p.unit_price_cny IS NULL OR p.unit_price_cny<0 OR p.fx_rate IS NULL OR p.fx_rate<=0)');
+  if(options.flag==='diff'){
+    const literWarehouse="COALESCE(NULLIF(p.measurement_overrides->>'literWarehouse','')::numeric,sm.m3_per_unit*1000)",gramWarehouse="COALESCE(NULLIF(p.measurement_overrides->>'gramWarehouse','')::numeric,sm.kg_per_unit*1000)",literChina="COALESCE(NULLIF(p.measurement_overrides->>'literChina','')::numeric,p.m3_per_carton*1000/NULLIF(p.qty_per_carton,0))",gramChina="COALESCE(NULLIF(p.measurement_overrides->>'gramChina','')::numeric,p.kg_per_carton*1000/NULLIF(p.qty_per_carton,0))",literDiff="COALESCE(NULLIF(p.measurement_overrides->>'literDiff','')::numeric,("+literChina+"-"+literWarehouse+")/NULLIF("+literWarehouse+",0))",gramDiff="COALESCE(NULLIF(p.measurement_overrides->>'gramDiff','')::numeric,("+gramChina+"-"+gramWarehouse+")/NULLIF("+gramWarehouse+",0))";
+    where.push('(abs('+literDiff+')>0.100000000001 OR abs('+gramDiff+')>0.100000000001)');
+  }
+  if(['bulky','heavy'].includes(options.flag)){
+    const ratio='(p.kg_per_carton::numeric/(1000*p.m3_per_carton))',maxTon='COALESCE((SELECT NULLIF(c.max_ton,0) FROM product_containers c WHERE c.id=p.container_id),32)',maxM3='COALESCE((SELECT NULLIF(c.m3_max,0) FROM product_containers c WHERE c.id=p.container_id),170)',minM3='COALESCE((SELECT NULLIF(c.m3_min,0) FROM product_containers c WHERE c.id=p.container_id),160)',bound='('+(options.flag==='bulky'?maxTon+'/'+maxM3:maxTon+'/'+minM3)+')';
+    where.push('p.carton_count>0 AND p.kg_per_carton>0 AND p.m3_per_carton>0 AND '+ratio+(options.flag==='bulky'?' < ':' > ')+bound);
+  }
+  const ids=(Array.isArray(options.ids)?options.ids:String(options.ids||'').split(',')).map(String).filter(id=>/^[1-9]\d*$/.test(id)).slice(0,10000);
+  if(ids.length)where.push('p.id=ANY('+bind(ids)+'::bigint[])');
+  else if(options.onlyIds==='true'||options.onlyIds===true)where.push('false');
+  let order=options.sort==='date'?'p.listed_at DESC NULLS LAST,p.id DESC':options.sort==='code'?'p.product_code ASC,p.id DESC':"p.container_id NULLS FIRST,(p.split_from_key IS NOT NULL) DESC,CASE WHEN p.split_from_key IS NOT NULL THEN max(p.id) OVER (PARTITION BY p.split_from_key) END DESC NULLS LAST,CASE WHEN p.split_from_key IS NOT NULL THEN p.row_key END ASC,CASE WHEN p.split_from_key IS NULL THEN p.id END DESC,p.id DESC";
+  let colSort=options.colSort;if(typeof colSort==='string'){try{colSort=JSON.parse(colSort)}catch{colSort=[]}}
+  let clientSort=false;
+  if(Array.isArray(colSort)&&colSort.length){const clauses=[],overrides="p.measurement_overrides->>'",override=key=>"NULLIF("+overrides+key+"','')::numeric";const expressions={rowKey:'p.row_key',container:"COALESCE((SELECT c.name FROM product_containers c WHERE c.id=p.container_id),'')",status:'COALESCE((SELECT c.status FROM product_containers c WHERE c.id=p.container_id),0)',totalQty:'p.qty_per_carton*p.carton_count',totalCny:'p.qty_per_carton*p.carton_count*p.unit_price_cny+COALESCE(p.freight_prepaid,0)',goodsAmount:'(p.qty_per_carton*p.carton_count*p.unit_price_cny+COALESCE(p.freight_prepaid,0))*p.fx_rate',totalTon:'p.kg_per_carton*p.carton_count/1000',totalM3:'p.m3_per_carton*p.carton_count',literWarehouse:'COALESCE('+override('literWarehouse')+',sm.m3_per_unit*1000)',m3Warehouse:'COALESCE('+override('m3Warehouse')+',sm.m3_per_unit*sm.per_carton)',literChina:'COALESCE('+override('literChina')+',p.m3_per_carton*1000/NULLIF(p.qty_per_carton,0))',gramWarehouse:'COALESCE('+override('gramWarehouse')+',sm.kg_per_unit*1000)',gramChina:'COALESCE('+override('gramChina')+',p.kg_per_carton*1000/NULLIF(p.qty_per_carton,0))',literDiff:'COALESCE('+override('literDiff')+',((COALESCE('+override('literChina')+',p.m3_per_carton*1000/NULLIF(p.qty_per_carton,0))-COALESCE('+override('literWarehouse')+',sm.m3_per_unit*1000))/NULLIF(COALESCE('+override('literWarehouse')+',sm.m3_per_unit*1000),0))',gramDiff:'COALESCE('+override('gramDiff')+',((COALESCE('+override('gramChina')+',p.kg_per_carton*1000/NULLIF(p.qty_per_carton,0))-COALESCE('+override('gramWarehouse')+',sm.kg_per_unit*1000))/NULLIF(COALESCE('+override('gramWarehouse')+',sm.kg_per_unit*1000),0))',ratio:'p.kg_per_carton/(1000*NULLIF(p.m3_per_carton,0))'};
+    for(const sort of colSort.slice(0,3)){if(!['asc','desc'].includes(sort.dir))continue;const column=columns.find(c=>c.k===sort.key),key=column&&snake(column.k),expression=expressions[sort.key]||(dbCols.includes(key)?'p."'+key+'"':null);if(expression)clauses.push(expression+' '+sort.dir.toUpperCase()+' NULLS LAST');else clientSort=true}
+    if(clauses.length)order='p.container_id NULLS FIRST,(p.split_from_key IS NOT NULL) DESC,'+clauses.join(',')+',p.id DESC';
+  }
+  return {where:where.join(' AND '),values,order,clientSort};
+}
+async function readContainerSummaries(client){return (await client.query(`SELECT container_id AS "contId",region_id AS "regionId",count(*)::int AS count,
+  count(*) FILTER(WHERE carton_count IS NULL OR carton_count<=0 OR kg_per_carton IS NULL OR kg_per_carton<=0 OR m3_per_carton IS NULL OR m3_per_carton<=0)::int AS missing,
+  COALESCE(sum(CASE WHEN carton_count>0 AND kg_per_carton>0 THEN carton_count::numeric*kg_per_carton/1000 ELSE 0 END),0)::float8 AS ton,
+  COALESCE(sum(CASE WHEN carton_count>0 AND m3_per_carton>0 THEN carton_count::numeric*m3_per_carton ELSE 0 END),0)::float8 AS m3,
+  COALESCE(sum(CASE WHEN qty_per_carton>0 AND carton_count>0 AND unit_price_cny>=0 AND fx_rate>0 THEN (qty_per_carton::numeric*carton_count*unit_price_cny+COALESCE(freight_prepaid,0))*fx_rate*COALESCE(surcharge_percent,0) ELSE 0 END),0)::float8 AS surcharge,
+  COALESCE(sum(COALESCE(freight_postpaid,0)),0)::float8 AS postpaid
+  FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL GROUP BY container_id,region_id`)).rows}
 function createPurchaseOrdersService({ pool=getPool(), project=projectContainers, events=dashboardRollupEvents, lockKey=20531015, invalidate=invalidateContainerDetails, deferProjection=false }={}) {
+  let cachedContainerSummaryRevision=null,cachedContainerSummaries=null,containerSummaryInFlight=null;
   async function transaction(user,fn) {
     actor(user);const client=await pool.connect();let committed=false;
     try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock_shared($1)',[lockKey]);
@@ -562,7 +611,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         metadata.reset=false;await client.query('COMMIT');committed=true;return metadata;
       }catch(error){if(!committed)await client.query('ROLLBACK').catch(()=>{});throw error}finally{client.release()}
     },
-    async list(user) {actor(user);const client=await pool.connect();try{
+    async list(user,options={}) {actor(user);const client=await pool.connect();try{
       const revision=(await client.query("SELECT COALESCE(max(id),0)::text || ':' || count(*)::text AS version FROM purchase_history")).rows[0].version;
       const settings=(await client.query('SELECT * FROM purchase_settings WHERE id=1')).rows[0],source=settings?.source_mode;
       const containers=(await client.query('SELECT * FROM product_containers ORDER BY id')).rows;
@@ -570,6 +619,24 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
       const configs=(await client.query('SELECT region_id AS "regionId",freight_mode AS "freightMode",freight,freight_formula AS "freightFormula",freight_base AS "freightBase",freight_capacity AS "freightCapacity",assumed_m3 AS "assumedM3",container_fx_rate AS "containerFxRate",version FROM purchase_waiting_configs')).rows;
       const savedWaitingConfigs=Object.fromEntries(configs.map(config=>[String(config.regionId),config])),waitingConfigs=Object.fromEntries(regions.map(region=>[String(region.id),savedWaitingConfigs[String(region.id)]||{regionId:String(region.id),...defaultWaitingConfig}])),waitingContainerRows=waitingContainerConfigs(regions,waitingConfigs);
       const waitingConfig={freightMode:settings.waiting_freight_mode,freight:settings.waiting_freight,freightFormula:settings.waiting_freight_formula,freightBase:settings.waiting_freight_base,freightCapacity:settings.waiting_freight_capacity,assumedM3:settings.waiting_assumed_m3,assumed_m3:settings.waiting_assumed_m3,containerFxRate:settings.waiting_container_fx_rate,container_fx_rate:settings.waiting_container_fx_rate,version:settings.waiting_version};
+      if(options.page!=null){
+        let page=Math.max(1,Math.min(100000,Number.parseInt(options.page,10)||1));const pageSize=Math.max(10,Math.min(200,Number.parseInt(options.pageSize,10)||50)),filter=pagedOrderFilter(options,user),whereValues=[...filter.values],where=filter.where;
+        const total=Number((await client.query('SELECT count(*)::text AS count FROM purchase_orders p LEFT JOIN product_containers pc ON pc.id=p.container_id LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE '+where,whereValues)).rows[0].count);
+        page=Math.min(page,Math.max(1,Math.ceil(total/pageSize)));
+        const offset=(page-1)*pageSize,limitParam='$'+(whereValues.length+1),offsetParam='$'+(whereValues.length+2),pageSql=filter.clientSort?'':` LIMIT ${limitParam} OFFSET ${offsetParam}`,pageArgs=filter.clientSort?whereValues:[...whereValues,pageSize,offset];
+        const activeRows=(await client.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) LEFT JOIN product_containers pc ON pc.id=p.container_id WHERE ${where} ORDER BY ${filter.order}${pageSql}`,pageArgs)).rows.map(jsRow);
+        const extraIds=[...new Set((Array.isArray(options.includeIds)?options.includeIds:String(options.includeIds||'').split(',')).map(String).filter(id=>/^\d+$/.test(id)))].filter(id=>!activeRows.some(row=>String(row.id)===id)).slice(0,1000);
+        const supplementalRows=extraIds.length?await readRows(client,false,extraIds):[];
+        let summaries=cachedContainerSummaries;
+        if(cachedContainerSummaryRevision!==revision||!cachedContainerSummaries){
+          if(containerSummaryInFlight?.revision!==revision){
+            const pending=readContainerSummaries(client);containerSummaryInFlight={revision,promise:pending};
+            pending.then(summaries=>{if(containerSummaryInFlight?.promise===pending){cachedContainerSummaries=summaries;cachedContainerSummaryRevision=revision;containerSummaryInFlight=null}},()=>{if(containerSummaryInFlight?.promise===pending)containerSummaryInFlight=null});
+          }
+          summaries=await containerSummaryInFlight.promise;
+        }
+        return {revision,sourceMode:source,integrationEnabled:settings?.integration_enabled===true,waitingConfig,waitingConfigs,rows:withFreight(activeRows,containers,waitingContainerRows),supplementalRows:withFreight(supplementalRows,containers,waitingContainerRows),containers,regions,containerSummaries:summaries,...(filter.clientSort?{}:{pagination:{page,pageSize,total,pages:Math.max(1,Math.ceil(total/pageSize))}})};
+      }
       return {revision,sourceMode:source,integrationEnabled:settings?.integration_enabled===true,waitingConfig,waitingConfigs,rows:withFreight(await readRows(client),containers,waitingContainerRows),containers,regions};
     }finally{client.release()}},
     async updateWaitingConfig(user,{regionId,version,changes={}}){return transaction(user,async client=>{
@@ -593,6 +660,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
     })},
     async importSnapshot(user) {actor(user);const client=await pool.connect();try{await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');const settings=(await client.query('SELECT source_mode FROM purchase_settings WHERE id=1')).rows[0];if(settings?.source_mode!=='web')throw fail(503,'PURCHASE_SOURCE_NOT_ACTIVE','Thu mua chưa chuyển nguồn sang web.');const revision=(await client.query("SELECT COALESCE(max(id),0)::text || ':' || count(*)::text AS version FROM purchase_history")).rows[0].version,rows=await readRows(client),regions=(await client.query('SELECT id,name,is_active AS "isActive" FROM purchase_regions ORDER BY name,id')).rows,containers=await readImportContainers(client),regionNames=new Map(regions.map(region=>[String(region.id),region.name])),containerNames=new Map(containers.map(container=>[String(container.id),container.name]));for(const row of rows){row.regionName=regionNames.get(String(row.regionId??''))||'';row.container=containerNames.get(String(row.contId??''))||'CONT CHỜ XẾP'}await client.query('COMMIT');return {revision,rows,regions}}catch(error){await client.query('ROLLBACK').catch(()=>{});throw error}finally{client.release()}},
     async latest(user,code) {actor(user);if(!String(code||'').trim())throw fail(400,'CODE_REQUIRED','Nhập Mã SP.');const result=await pool.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE p.deleted_at IS NULL AND p.inactive_at IS NULL AND lower(btrim(p.product_code))=lower(btrim($1)) ORDER BY p.listed_at DESC NULLS LAST,p.id DESC LIMIT 1`,[String(code).trim()]);return result.rows[0]?jsRow(result.rows[0]):null},
+    async latestMany(user,codes) {actor(user);if(!Array.isArray(codes)||codes.length>500||codes.some(code=>typeof code!=='string'||code.length>200))throw fail(400,'CODES_INVALID','Danh sách mã SP không hợp lệ.');const normalized=[...new Set(codes.map(code=>code.trim().toLocaleLowerCase('vi')).filter(Boolean))];if(!normalized.length)return [];return (await pool.query(`SELECT DISTINCT ON (lower(btrim(p.product_code))) ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE p.deleted_at IS NULL AND p.inactive_at IS NULL AND lower(btrim(p.product_code))=ANY($1::text[]) ORDER BY lower(btrim(p.product_code)),p.listed_at DESC NULLS LAST,p.id DESC`,[normalized])).rows.map(jsRow)},
     // nextval khong quay lui khi rollback, nen dat cho lam thung day so — dung quy tac khong tai su dung khoa.
 
     reserveKey,
@@ -666,7 +734,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
           actual=(await client.query('SELECT * FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL AND container_id=$1 ORDER BY id FOR UPDATE',[id])).rows;
         }
         if(shared){
-          if(!Array.isArray(rows)||rows.length!==actual.length||rows.some(r=>!r||!Number.isSafeInteger(Number(r.version))||Number(r.version)<1)||new Set(rows.map(r=>String(r.id))).size!==actual.length||actual.some(r=>!rows.some(x=>String(x.id)===String(r.id)&&Number(x.version)===Number(r.version))))throw fail(409,'VERSION_CONFLICT','Danh sách hoặc phiên bản dòng trong cont đã thay đổi.');
+          if(rows!==undefined&&(!Array.isArray(rows)||rows.length!==actual.length||rows.some(r=>!r||!Number.isSafeInteger(Number(r.version))||Number(r.version)<1)||new Set(rows.map(r=>String(r.id))).size!==actual.length||actual.some(r=>!rows.some(x=>String(x.id)===String(r.id)&&Number(x.version)===Number(r.version)))))throw fail(409,'VERSION_CONFLICT','Danh sách hoặc phiên bản dòng trong cont đã thay đổi.');
           const patch={};if(Object.hasOwn(changes,'arrivalNote'))patch.eta_note=entries.find(([key])=>key==='arrival_note')[1]||null;if(Object.hasOwn(changes,'arrivalDate'))patch.arrived_note=entries.find(([key])=>key==='arrival_date')[1]||null;
           const updated=(await client.query(`UPDATE purchase_orders SET ${Object.keys(patch).map((key,index)=>`${key}=$${index+2}`).join(',')},version=version+1,updated_at=now() WHERE id=ANY($1::bigint[]) RETURNING *`,[actual.map(row=>row.id),...Object.values(patch)])).rows,byId=new Map(updated.map(row=>[String(row.id),row]));
           for(const raw of actual){const after=byId.get(String(raw.id));details.push({before:jsRow(raw),after:jsRow({...raw,...after})})}
@@ -809,8 +877,12 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         return {changed:plan.operations.length>0||employeeChanges.created.length>0||employeeChanges.reactivated.length>0,value:result};
       });
     },
-    async exportRows(user) {
-      actor(user);const containers=(await pool.query('SELECT * FROM product_containers')).rows,regions=(await pool.query('SELECT id,name FROM purchase_regions')).rows,configs=(await pool.query('SELECT region_id AS "regionId",freight_mode AS "freightMode",freight,freight_formula AS "freightFormula",freight_base AS "freightBase",freight_capacity AS "freightCapacity",assumed_m3 AS "assumedM3",container_fx_rate AS "containerFxRate",version FROM purchase_waiting_configs')).rows,waitingMap=Object.fromEntries(configs.map(config=>[String(config.regionId),config])),rows=withFreight(await readRows(pool),containers,waitingContainerConfigs(regions,waitingMap));
+    async exportRows(user,ids=null,filters=null) {
+      actor(user);const containers=(await pool.query('SELECT * FROM product_containers')).rows,regions=(await pool.query('SELECT id,name FROM purchase_regions')).rows,configs=(await pool.query('SELECT region_id AS "regionId",freight_mode AS "freightMode",freight,freight_formula AS "freightFormula",freight_base AS "freightBase",freight_capacity AS "freightCapacity",assumed_m3 AS "assumedM3",container_fx_rate AS "containerFxRate",version FROM purchase_waiting_configs')).rows,waitingMap=Object.fromEntries(configs.map(config=>[String(config.regionId),config])),waitingRows=waitingContainerConfigs(regions,waitingMap);
+      let selectedRows;
+      if(filters&&typeof filters==='object'&&!Array.isArray(filters)){const query=pagedOrderFilter(filters,user);selectedRows=(await pool.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE ${query.where} ORDER BY ${query.order}`,[...query.values])).rows.map(jsRow)}
+      else selectedRows=await readRows(pool,false,ids);
+      const rows=withFreight(selectedRows,containers,waitingRows);
       const byId=new Map(containers.map(c=>[String(c.id),c])),waitingByRegion=new Map(Object.entries(waitingMap)),regionNames=new Map(regions.map(region=>[String(region.id),region.name]));return rows.map(row=>{const c=row.contId==null?waitingByRegion.get(String(row.regionId??'')):byId.get(String(row.contId));return {...row,regionName:regionNames.get(String(row.regionId??''))||'',container:c?.name||'CONT CHỜ XẾP',status:c?.status||0,...calculations.row(row,row.freightAmount,c?.container_fx_rate??c?.containerFxRate)}});
     },
     async history(user,orderId) {actor(user);if(!/^[1-9]\d*$/.test(String(orderId||''))||BigInt(orderId)>9223372036854775807n)throw fail(400,'ORDER_ID_INVALID','Mã dòng nội bộ không hợp lệ.');const root=(await pool.query('SELECT COALESCE((SELECT root_order_id FROM purchase_orders WHERE id=$1),(SELECT root_order_id FROM purchase_operation_rows WHERE row_id=$1 ORDER BY operation_id LIMIT 1)) AS root_order_id',[String(orderId)])).rows[0]?.root_order_id;if(root==null)return [];return (await pool.query(`SELECT h.* FROM purchase_history h WHERE EXISTS(

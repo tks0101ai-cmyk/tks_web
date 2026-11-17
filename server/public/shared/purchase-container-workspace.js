@@ -27,6 +27,7 @@
   return [queue,...groups];
  }
  function statusSummary(options={}){
+  if(Array.isArray(options.summaries))return statuses.map(([status,label])=>{const matching=options.summaries.filter(summary=>status==='waiting'?waiting(summary.contId):!waiting(summary.contId)&&Number(options.containers.find(c=>key(c.id)===key(summary.contId))?.status)===status),sum=field=>matching.reduce((total,summary)=>total+(Number(summary[field])||0),0);return {status,label,containerCount:status==='waiting'?0:new Set(matching.map(summary=>key(summary.contId))).size,count:sum('count'),ton:sum('ton'),m3:sum('m3'),missing:sum('missing')}});
   const groups=groupContainers(options);
   return statuses.map(([status,label])=>{
    const matching=groups.filter(g=>status==='waiting'?waiting(g.c.id):!waiting(g.c.id)&&Number(g.c.status)===status);

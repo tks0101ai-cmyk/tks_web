@@ -4,7 +4,7 @@
   const nf=(n,d=2)=>Number(n||0).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
   const same=(a,b)=>String(a??'')===String(b??'');
   const normalize=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').toLowerCase();
-  function stats(rows,id){return C.stats(rows.filter(r=>same(r.contId,id)))}
+  function stats(rows,id){const summaries=rows.filter(r=>r.__summaryStats&&(id==null?r.contId==null:same(r.contId,id)));if(summaries.length){const sum=field=>summaries.reduce((total,row)=>total+(Number(row.__summaryStats[field])||0),0);return {count:sum('count'),ton:sum('ton'),m3:sum('m3'),missing:sum('missing')}}return C.stats(rows.filter(r=>same(r.contId,id)))}
   function warnings(s,c){if(!c)return [];const out=[],ton=Number(c.maxTon)||32,min=Number(c.m3Min)||160,max=Number(c.m3Max)||170;if(s.ton>ton)out.push('Vượt tải '+nf(s.ton-ton)+' T');if(s.m3>max)out.push('Vượt khối '+nf(s.m3-max)+' m³');if(s.missing)out.push('Thiếu số đo '+s.missing+' mã — chưa đủ cơ sở đánh giá');if(s.m3<min)out.push('Còn '+nf(min-s.m3)+' m³ tới mốc '+min);return out}
   function dialog(doc,title){let d=doc.getElementById('purchaseTaskDialog');if(!d){d=doc.createElement('dialog');d.id='purchaseTaskDialog';doc.body.append(d)}d.innerHTML='<form method="dialog"><button class="task-close" aria-label="Đóng">×</button></form><h2 id="purchaseTaskDialogTitle">'+esc(title)+'</h2><div class="task-dialog-body"></div>';d.setAttribute('aria-labelledby','purchaseTaskDialogTitle');if(!d.open)d.showModal();return {dialog:d,body:d.querySelector('.task-dialog-body')}}
   function picker(doc,{containers,rows,initial,onSelect=()=>{}}){
