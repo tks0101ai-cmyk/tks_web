@@ -60,6 +60,12 @@ test('waiting rows appear once per region and changing one group updates its for
  assert.notEqual(rate.textContent,before);assert.equal(p.w.document.querySelector('#orderTable tr[data-id="3"] [data-field="freightAmount"]').textContent,'40,400,000');
  input.dispatchEvent(new p.w.Event('change',{bubbles:true}));await tick();await tick();assert.equal(p.calls.filter(call=>call.url.endsWith('/waiting-config')).length,1);assert.equal(JSON.parse(p.calls.find(call=>call.url.endsWith('/waiting-config')).options.body).regionId,'1');
 });
+test('container surcharge keeps precise value available on hover and click',async t=>{
+ const p=await page(t),row=p.current.rows[0];Object.assign(row,{qtyPerCarton:2,cartonCount:3,unitPriceCny:4,fxRate:1.5,surchargePercent:.125});p.current.containerSummaries=[{contId:null,regionId:'1',count:1,missing:0,ton:0,m3:0,surcharge:4.500123456789,postpaid:0}];p.listeners.changed();await tick();await tick();
+ const button=p.w.document.querySelector('#containerTable [data-container-filter="wait:1"]')?.closest('tr')?.querySelector('[data-container-column="surcharge"] [data-money-detail]');
+ assert.ok(button);assert.equal(button.dataset.rounded,'5');assert.equal(button.dataset.exact,'4.500123456789');assert.match(button.title,/4\.500123456789/);
+ button.focus();button.click();assert.equal(button.textContent,'4.500123456789');assert.equal(button.getAttribute('aria-pressed'),'true');button.blur();assert.equal(button.textContent,'5');
+});
 test('pinned column offsets follow a resized column so pinned headers stay flush',async t=>{
  const p=await page(t),doc=p.w.document,table=doc.querySelector('#orderTable table'),right=table.querySelector('th[data-key="productName"]');
  const before=parseFloat(right.style.left),handle=table.querySelector('th[data-key="productCode"] .tks-column-resizer');

@@ -723,7 +723,7 @@
 .purchase-page #containerTable tbody tr:hover>td{background:color-mix(in srgb,var(--primary) 6%,var(--panel))}
 .purchase-page #containerTable td [data-container-field],.purchase-page #containerTable td [data-cont-freight],.purchase-page #containerTable td [data-wait-freight]{box-sizing:border-box;min-height:30px;padding:4px 7px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel-2);color:var(--text)}
 .purchase-page #containerTable td [data-container-field]:focus,.purchase-page #containerTable td [data-cont-freight]:focus,.purchase-page #containerTable td [data-wait-freight]:focus{border-color:var(--primary);outline:2px solid color-mix(in srgb,var(--primary) 25%,transparent);outline-offset:0}
-.purchase-page #containerTable table.tks-controlled-table th>.tks-column-resizer{right:0;width:13px;min-width:13px;opacity:.72}
+.purchase-page #containerTable table.tks-controlled-table th>.tks-column-resizer{right:0;width:18px;min-width:18px;z-index:16;opacity:.9;cursor:col-resize;pointer-events:auto}
 .purchase-page #containerTable table.tks-controlled-table th>.tks-column-resizer::before{content:"";position:absolute;top:50%;right:4px;width:3px;height:15px;transform:translateY(-50%);border-left:1px solid var(--muted);border-right:1px solid var(--muted);opacity:.85}
 .purchase-page #containerTable table.tks-controlled-table th>.tks-column-resizer::after{top:25%;bottom:25%;right:0;width:2px;background:var(--border-focus)}
 .purchase-page #containerTable table.tks-controlled-table th>.tks-column-resizer:hover,.purchase-page #containerTable table.tks-controlled-table th>.tks-column-resizer:focus-visible{opacity:1;background:color-mix(in srgb,var(--primary) 10%,transparent)}
@@ -731,21 +731,25 @@
 .purchase-page #containerTable select.purchase-status-2{color:#FDE68A;border-color:#FBBF24;background:color-mix(in srgb,#D97706 14%,var(--panel))}
 .purchase-page #containerTable select.purchase-status-3{color:#E9D5FF;border-color:#C084FC;background:color-mix(in srgb,#9333EA 14%,var(--panel))}
 .purchase-page #containerTable select.purchase-status-4{color:#BBF7D0;border-color:#4ADE80;background:color-mix(in srgb,#16A34A 14%,var(--panel))}
+.purchase-page #containerTable .purchase-money-detail,.purchase-page #watchedContainer .purchase-money-detail{position:relative;display:block;width:100%;min-height:24px;padding:2px 4px;border:0;border-radius:3px;background:transparent;color:inherit;font:inherit;text-align:right;font-variant-numeric:tabular-nums;cursor:help}
+.purchase-page #containerTable .purchase-money-detail:hover,.purchase-page #watchedContainer .purchase-money-detail:hover{background:transparent;color:var(--primary)}
+.purchase-page #containerTable .purchase-money-detail:hover::after,.purchase-page #containerTable .purchase-money-detail:focus-visible::after,.purchase-page #watchedContainer .purchase-money-detail:hover::after,.purchase-page #watchedContainer .purchase-money-detail:focus-visible::after{content:attr(data-exact);position:absolute;right:0;bottom:calc(100% + 3px);z-index:30;padding:3px 6px;border:1px solid var(--border-focus);border-radius:4px;background:var(--panel);color:var(--text);box-shadow:0 3px 10px #0004;white-space:nowrap;font-weight:600}
 
 
 /* The held container is a working copy of the pinned row; keep its values readable and resizable. */
-.purchase-page #watchedContainer .watched-scroll{width:100%;max-width:100%;overflow:auto}
-.purchase-page #watchedContainer table.watched-container-table{width:max-content;min-width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0}
-.purchase-page #watchedContainer .watched-container-table th{position:relative;padding:10px 17px 10px 10px;white-space:nowrap;font-size:11px;line-height:1.3;background:var(--panel-2)}
-.purchase-page #watchedContainer .watched-container-table td{height:48px;padding:8px 10px;vertical-align:middle;font-size:12px}
+.purchase-page #watchedContainer .watched-scroll{width:max-content;max-width:100%;overflow:auto}
+.purchase-page #watchedContainer{width:max-content;max-width:100%;overflow:hidden}
+.purchase-page #watchedContainer table.watched-container-table{width:max-content;min-width:max-content;max-width:none;table-layout:fixed;border-collapse:separate;border-spacing:0}
+.purchase-page #watchedContainer .watched-container-table th{position:relative;padding:5px 14px 5px 7px;white-space:nowrap;font-size:10px;line-height:1.2;background:var(--panel-2)}
+.purchase-page #watchedContainer .watched-container-table td{height:34px;padding:4px 6px;vertical-align:middle;font-size:10.5px}
 .purchase-page #watchedContainer .watched-container-table td.num{white-space:nowrap;font-variant-numeric:tabular-nums}
-.purchase-page #watchedContainer .watched-container-table td [data-cont-freight],.purchase-page #watchedContainer .watched-container-table td [data-wait-freight],.purchase-page #watchedContainer .watched-container-table td [data-container-field]{box-sizing:border-box;width:100%!important;min-width:0;max-width:none!important;min-height:34px;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel);color:var(--text);font-size:12px;text-align:right;font-variant-numeric:tabular-nums}
+.purchase-page #watchedContainer .watched-container-table td [data-cont-freight],.purchase-page #watchedContainer .watched-container-table td [data-wait-freight],.purchase-page #watchedContainer .watched-container-table td [data-container-field]{box-sizing:border-box;width:100%!important;min-width:0;max-width:none!important;min-height:25px;padding:2px 5px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel);color:var(--text);font-size:10.5px;text-align:right;font-variant-numeric:tabular-nums}
 .purchase-page #watchedContainer .watched-container-table td [data-container-field]:focus,.purchase-page #watchedContainer .watched-container-table td [data-cont-freight]:focus,.purchase-page #watchedContainer .watched-container-table td [data-wait-freight]:focus{border-color:var(--primary);outline:2px solid color-mix(in srgb,var(--primary) 24%,transparent)}
-.purchase-page #watchedContainer .watched-container-table td:first-child button{min-height:30px;padding:5px 9px;border-radius:999px}
+.purchase-page #watchedContainer .watched-container-table td:first-child button{min-height:24px;padding:3px 7px;border-radius:999px;font-size:10px}
 .purchase-page #watchedContainer .watched-container-table .watched-unpin-cell{text-align:center}
-.purchase-page #watchedContainer table.tks-controlled-table th>.tks-column-resizer{right:0;width:13px;min-width:13px;opacity:.78}
+.purchase-page #watchedContainer table.tks-controlled-table th>.tks-column-resizer{right:0;width:16px;min-width:16px;opacity:.85}
 .purchase-page #watchedContainer table.tks-controlled-table th>.tks-column-resizer::before{content:"";position:absolute;top:50%;right:4px;width:3px;height:16px;transform:translateY(-50%);border-left:1px solid var(--muted);border-right:1px solid var(--muted)}
 .purchase-page #watchedContainer table.tks-controlled-table th>.tks-column-resizer::after{top:22%;bottom:22%;right:0;width:2px;background:var(--border-focus)}
 .purchase-page #watchedContainer table.tks-controlled-table th>.tks-column-resizer:hover,.purchase-page #watchedContainer table.tks-controlled-table th>.tks-column-resizer:focus-visible{opacity:1;background:color-mix(in srgb,var(--primary) 10%,transparent)}
 .purchase-page #watchedContainer>.tks-table-tools{display:none!important}
-.purchase-page #watchedContainer .watched-container-table td select{box-sizing:border-box;width:100%;min-width:0;max-width:none;min-height:34px;padding:5px 24px 5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background-color:var(--panel);font-size:12px;line-height:1.3}
+.purchase-page #watchedContainer .watched-container-table td select{box-sizing:border-box;width:100%;min-width:0;max-width:none;min-height:25px;padding:2px 20px 2px 5px;border:1px solid var(--border);border-radius:var(--radius-sm);background-color:var(--panel);font-size:10.5px;line-height:1.2}

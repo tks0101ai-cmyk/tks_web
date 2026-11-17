@@ -35,7 +35,7 @@
   });
  }
  function statusMarkup(options={}){
-  return '<div class="purchase-container-status" role="group" aria-label="Lọc theo trạng thái cont">'+statusSummary(options).map(s=>
+  return '<div class="purchase-container-status" role="group" aria-label="Lọc theo trạng thái cont">'+statusSummary(options).filter(s=>s.status!==1).map(s=>
    '<button type="button" data-container-status="'+s.status+'" aria-pressed="'+((Array.isArray(options.selectedStatuses)?options.selectedStatuses.map(String):[String(options.selectedStatus)]).includes(String(s.status)))+'"><strong>'+s.label+'</strong> <span data-status-count>'+ s.count+'</span></button>'
   ).join('')+'</div>';
  }

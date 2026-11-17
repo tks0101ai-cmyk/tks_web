@@ -20,9 +20,9 @@ test('groupContainers keeps waiting first under every sort and never mutates inp
 });
 test('statusMarkup renders accessible filter hooks and accepts numeric selected status',()=>{
  const dom=new JSDOM(W.statusMarkup({containers,rows,selectedStatus:2}));const buttons=[...dom.window.document.querySelectorAll('button[data-container-status]')];
- assert.equal(buttons.length,5);assert.deepEqual(buttons.map(b=>b.dataset.containerStatus),['waiting','1','2','3','4']);
- assert.equal(buttons[2].getAttribute('aria-pressed'),'true');assert.match(buttons[0].textContent,/Chờ xếp/);
- let chosen;dom.window.document.body.addEventListener('click',e=>{chosen=e.target.closest('[data-container-status]')?.dataset.containerStatus});buttons[1].querySelector('span').click();assert.equal(chosen,'1');
+ assert.equal(buttons.length,4);assert.deepEqual(buttons.map(b=>b.dataset.containerStatus),['waiting','2','3','4']);assert.doesNotMatch(dom.window.document.body.textContent,/Chưa có lịch/);
+ assert.equal(buttons[1].getAttribute('aria-pressed'),'true');assert.match(buttons[0].textContent,/Chờ xếp/);
+ let chosen;dom.window.document.body.addEventListener('click',e=>{chosen=e.target.closest('[data-container-status]')?.dataset.containerStatus});buttons[1].querySelector('span').click();assert.equal(chosen,'2');
  assert.equal(new JSDOM(W.statusMarkup({selectedStatus:'waiting'})).window.document.querySelector('button').getAttribute('aria-pressed'),'true');
 });
 test('containerEditorMarkup supports snake-case data, safe fields and readonly computed values in both clones',()=>{

@@ -27,6 +27,18 @@ test('bulk add requires only product code and carton count',async()=>{
  const result=await service.createMany(manager,{rows:[{productCode:'MINIMAL-01',cartonCount:7}]});
  assert.equal(result.count,1);assert.equal(result.rows[0].productCode,'MINIMAL-01');assert.equal(result.rows[0].cartonCount,7);assert.equal(result.rows[0].productName,'');assert.equal(result.rows[0].qtyPerCarton,0);
 });
+test('server sorting handles numeric values numerically and text values alphabetically',async()=>{
+ const b=await service.create(manager,{...input(),productCode:'B-ITEM',productName:'Beta',supplier:'Zeta',cartonCount:50,kgPerCarton:100,m3PerCarton:.2,surchargePercent:.01});
+ const a=await service.create(manager,{...input(),productCode:'A-ITEM',productName:'Alpha',supplier:'Alpha',cartonCount:10,kgPerCarton:10,m3PerCarton:.2,surchargePercent:.5});
+ const container=await service.createContainer(manager,{name:'CONT SORT',assumedM3:170});
+ await service.transfer(manager,{id:b.id,version:b.version,quantity:b.cartonCount,destinationId:container.id});
+ const sorted=async(key,dir)=>service.list(manager,{page:1,pageSize:100,colSort:JSON.stringify([{key,dir}])});
+ assert.deepEqual((await sorted('totalTon','desc')).rows.map(row=>row.productCode),['B-ITEM','A-ITEM']);
+ assert.deepEqual((await sorted('productCode','asc')).rows.map(row=>row.productCode),['A-ITEM','B-ITEM']);
+ assert.deepEqual((await sorted('supplier','desc')).rows.map(row=>row.supplier),['Zeta','Alpha']);
+ assert.deepEqual((await sorted('surchargePercent','asc')).rows.map(row=>row.productCode),['B-ITEM','A-ITEM']);
+ for(const key of ['totalCny','goodsAmount','totalM3','totalQty','literWarehouse','m3Warehouse','literChina','gramWarehouse','gramChina','literDiff','gramDiff','ratio'])await sorted(key,'asc');
+});
 test('undo without an operation id directly reverts the latest eligible action',async()=>{
  const created=await service.create(manager,input());assert.equal((await service.list(manager)).rows.length,1);
  await service.undo(manager,{});assert.equal((await service.list(manager)).rows.length,0);
