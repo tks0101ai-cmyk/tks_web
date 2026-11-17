@@ -1061,3 +1061,7 @@ Cập nhật gần nhất: 14/11/2026.
 Migrations `0127`–`0130` đã đăng ký trong `ensurePurchaseSchema.FILES`; cần kiểm tra staging và áp dụng migration theo thứ tự trước khi deploy production.
 
 Cập nhật gần nhất: 14/11/2026.
+
+
+## Migration 0137 — Cước nhóm Chờ xếp (17/11/2026)
+`purchase_settings` singleton giữ `waiting_freight_mode`, `waiting_freight`, `waiting_freight_formula`, `waiting_freight_base` (mặc định 202.000.000), `waiting_freight_capacity` (mặc định 170) và `waiting_version`. Đây là cấu hình tính cước cho các dòng `purchase_orders.container_id IS NULL`, không phải cont giả. API ghi kiểm tra version, trả 409 khi stale. Khi cách ly, không projection/cache invalidation/events `containersChanged`.

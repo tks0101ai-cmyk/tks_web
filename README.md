@@ -668,3 +668,6 @@ Cập nhật gần nhất: 16/11/2026.
 17/11/2026 — Thu mua: xuất bảng Chỉ số cont dưới dạng Excel `.xlsx` thay CSV để giữ tiếng Việt/中文, ô số và chuỗi ngày đúng kiểu; giữ bộ lọc, thứ tự và cột đang hiển thị, bỏ cột checkbox chọn cont, tự đặt độ rộng cột. Không migration.
 
 Cập nhật gần nhất: 17/11/2026.
+
+
+17/11/2026 — Thu mua: cấu hình cước dùng chung cho nhóm Chờ xếp trong `purchase_settings`, version chống ghi đè; không tạo cont giả.

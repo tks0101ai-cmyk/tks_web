@@ -60,3 +60,5 @@ Cập nhật: 16/11/2026
 - [ ] 16/11 — Thu mua: `purchaseOrdersLive.test.js` hiện 30/79 lỗi (49 đạt; trước phần sửa quyền fixture là 54/78 lỗi trên `c66a3cc5`) — lỗi còn lại chủ yếu là test dùng selector/kỳ vọng UI cũ, cùng một số lỗi giao diện/định dạng cần phân loại; chưa hoàn tất dọn bộ test
 
 - [ ] 17/11 — Thu mua: sửa xuất Chỉ số cont sang XLSX để giữ Unicode, kiểu số/ngày và độ rộng cột (không migration) — deploy web rồi tải lại file trong Excel thực tế.
+
+- [ ] 17/11 — Thu mua: cấu hình cước Chờ xếp trong purchase_settings (migration 0137), cùng tính NET theo công thức cont; xác minh migration và sửa/xóa cước trên staging, deploy rồi kiểm tra Chờ xếp không tác động cont thật.
