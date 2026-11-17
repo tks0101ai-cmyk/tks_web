@@ -43,14 +43,14 @@ test('order columns can be selected for pinning and persist in the user layout',
  assert.deepEqual(JSON.parse(doc.defaultView.sessionStorage.getItem('purchase:buyer:v1')).pinnedColumns,['productCode','productName','supplier']);
  assert.ok(doc.querySelector('#orderTable th[data-key="supplier"].purchase-pinned-column'));
 });
-test('row status can be hidden and shown in both order and container column pickers',async t=>{
+test('activity status column can be hidden and shown in order and container tables',async t=>{
  const p=await page(t),doc=p.w.document;
  doc.getElementById('columns').click();
- const order=doc.querySelector('[data-column="status"]');assert.ok(order);assert.equal(order.parentElement.textContent.includes('Trạng thái'),true);
- order.checked=false;order.dispatchEvent(new p.w.Event('change',{bubbles:true}));assert.equal(doc.querySelector('#orderTable th[data-key="status"]'),null);
+ const order=doc.querySelector('[data-column="lifecycle"]');assert.ok(order);assert.equal(order.parentElement.textContent.includes('Trạng thái'),true);
+ order.checked=false;order.dispatchEvent(new p.w.Event('change',{bubbles:true}));assert.equal(doc.querySelector('#orderTable th[data-key="lifecycle"]'),null);
  doc.getElementById('modalClose').click();doc.getElementById('containerColumns').click();
- const container=doc.querySelector('[data-container-column-toggle="status"]');assert.ok(container);assert.equal(container.parentElement.textContent.includes('Trạng thái dòng'),true);
- container.checked=false;container.dispatchEvent(new p.w.Event('change',{bubbles:true}));assert.equal(doc.querySelector('#containerTable th[data-container-column="status"]'),null);
+ const container=doc.querySelector('[data-container-column-toggle="lifecycle"]');assert.ok(container);assert.equal(container.parentElement.textContent.includes('Trạng thái'),true);
+ container.checked=false;container.dispatchEvent(new p.w.Event('change',{bubbles:true}));assert.equal(doc.querySelector('#containerTable th[data-container-column="lifecycle"]'),null);
 });
 test('pinned column offsets follow a resized column so pinned headers stay flush',async t=>{
  const p=await page(t),doc=p.w.document,table=doc.querySelector('#orderTable table'),right=table.querySelector('th[data-key="productName"]');
@@ -299,6 +299,11 @@ test('offline and failed reconnect preserve personal filters and all staged edit
 
 test('a lost write response retains the request key and retry recovers without dropping other drafts',async t=>{
  const p=await page(t,{extraRows:[{id:'3',rowKey:'D00003',version:1,productCode:'B',cartonCount:5,qtyPerCarton:10,contId:null}]}),doc=p.w.document,real=p.w.fetch;let lost=true,firstKey,retryKey,cached;const savedCalls=[];p.w.fetch=async(url,options={})=>{if(options.method==='PATCH'){savedCalls.push(options);if(lost){lost=false;firstKey=options.headers['Idempotency-Key'];cached=await (await real(url,options)).json();throw Error('response lost')}retryKey=options.headers['Idempotency-Key'];return {ok:true,json:async()=>cached}}return real(url,options)};p.change('tr[data-id="1"] [data-edit="supplier"]','Draft');p.change('tr[data-id="3"] [data-edit="supplier"]','Other');doc.getElementById('save').click();doc.getElementById('commit').click();await tick();await tick();assert.ok(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1:outbox')).key);assert.equal(doc.getElementById('retryWrite').hidden,false);assert.ok(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).drafts['1']);doc.getElementById('retryWrite').click();await tick();await tick();assert.equal(retryKey,firstKey);assert.equal(p.w.sessionStorage.getItem('purchase:buyer:v1:outbox'),null);assert.equal(doc.getElementById('retryWrite').hidden,true);assert.equal(p.current.rows[0].supplier,'Draft');assert.equal(p.calls.filter(c=>c.options.method==='PATCH').length,1);assert.equal(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).drafts['3'].changes.supplier,'Other');
+});
+test('a server error response keeps the idempotency key without claiming the response was lost',async t=>{
+ const p=await page(t),doc=p.w.document,real=p.w.fetch;p.w.fetch=async(url,options={})=>options.method==='PATCH'?{ok:false,status:500,text:async()=>JSON.stringify({code:'PURCHASE_FAILED',error:'Không xử lý được Thu mua.'})}:real(url,options);
+ p.change('tr[data-id="1"] [data-edit="supplier"]','Draft');doc.getElementById('save').click();doc.getElementById('commit').click();await tick();await tick();
+ assert.ok(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1:outbox')).key);assert.match(doc.getElementById('notice').textContent,/Không xử lý được Thu mua/);assert.doesNotMatch(doc.getElementById('notice').textContent,/Chưa xác định kết quả lưu/);assert.ok(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).drafts['1']);
 });
 
 test('watching a container pins its existing metrics without changing private filter',async t=>{

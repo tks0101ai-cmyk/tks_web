@@ -62,6 +62,17 @@ test('an isolated create writes the row and its history but never reaches shared
   assert.equal((await db.query('SELECT count(*)::int n FROM product_container_lines')).rows[0].n, 0, 'read model dung chung khong bi ghi');
 });
 
+test('waiting group edits remain isolated from projection and shared container caches', async () => {
+  const own = [];
+  events.on('purchase-orders-changed', () => own.push('changed'));
+  const result = await service.updateWaitingConfig(manager, {
+    version: 1,
+    changes: { freight: 1000, freightMode: 'manual', assumedM3: 10, containerFxRate: 4100 }
+  });
+  assert.equal(result.version, 2);
+  assert.deepEqual({ projected, invalidated, shared, own }, { projected: 0, invalidated: 0, shared: [], own: ['changed'] });
+});
+
 test('the same create wires into shared data once integration is enabled', async () => {
   await db.query("UPDATE purchase_settings SET integration_enabled=true WHERE id=1");
   await service.create(manager, input());
