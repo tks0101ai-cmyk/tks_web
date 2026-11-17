@@ -1,3 +1,10 @@
+-- 0137 was already applied on some databases before the assumed-volume and
+-- FX columns were added to that migration file. Add them here as well so this
+-- migration can safely upgrade those databases without rewriting 0137.
+ALTER TABLE purchase_settings
+  ADD COLUMN IF NOT EXISTS waiting_assumed_m3 NUMERIC CHECK (waiting_assumed_m3 IS NULL OR waiting_assumed_m3 > 0),
+  ADD COLUMN IF NOT EXISTS waiting_container_fx_rate NUMERIC CHECK (waiting_container_fx_rate IS NULL OR waiting_container_fx_rate > 0);
+
 CREATE TABLE IF NOT EXISTS purchase_waiting_configs (
   region_id BIGINT PRIMARY KEY REFERENCES purchase_regions(id) ON DELETE CASCADE,
   freight_mode TEXT NOT NULL DEFAULT 'formula' CHECK (freight_mode IN ('manual','formula')),

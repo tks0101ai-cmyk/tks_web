@@ -1069,4 +1069,4 @@ Cập nhật gần nhất: 14/11/2026.
 
 ## Migration 0138 — cấu hình Chờ xếp theo vùng (17/11/2026)
 
-`0138_purchase_waiting_region_freight.sql` tạo `purchase_waiting_configs` với khóa ngoại tới `purchase_regions`; mỗi vùng chỉ có một cấu hình. Cấu hình singleton cũ được chép sang từng vùng khi migrate. Các phép tính VC và giá NET gom dòng chưa xếp theo `(container_id IS NULL, region_id)` để nhập ở Chờ H chỉ cập nhật công thức của vùng H.
+`0138_purchase_waiting_region_freight.sql` tạo `purchase_waiting_configs` với khóa ngoại tới `purchase_regions`; mỗi vùng chỉ có một cấu hình. Cấu hình singleton cũ được chép sang từng vùng khi migrate. Migration cũng bổ sung `waiting_assumed_m3` và `waiting_container_fx_rate` nếu DB đã đánh dấu phiên bản đầu của 0137 là hoàn tất trước khi hai cột này được thêm vào file migration. Các phép tính VC và giá NET gom dòng chưa xếp theo `(container_id IS NULL, region_id)` để nhập ở Chờ H chỉ cập nhật công thức của vùng H.
