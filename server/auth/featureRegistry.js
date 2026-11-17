@@ -48,12 +48,15 @@ const FEATURE_GROUPS = Object.freeze([
  * khong ai tat duoc (tranh khoa chet nguoi dung ra khoi he thong).
  */
 const FEATURES = Object.freeze([
-  {key:'purchase.view',groupKey:'purchase',label:'Xem Thu mua',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH]},
-  {key:'purchase.edit',groupKey:'purchase',label:'Sửa Thu mua',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH],requires:'purchase.view'},
-  {key:'purchase.import',groupKey:'purchase',label:'Import Thu mua',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH],requires:'purchase.view'},
-  {key:'purchase.export',groupKey:'purchase',label:'Xuất Excel Thu mua',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH],requires:'purchase.view'},
-  {key:'purchase.depart',groupKey:'purchase',label:'Xác nhận bốc cont',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH],requires:'purchase.view'},
-  {key:'purchase.arrive',groupKey:'purchase',label:'Xác nhận cont về',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH],requires:'purchase.view'},
+  {key:'purchase.orders',groupKey:'purchase',label:'Làm việc với bảng Đặt hàng',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH]},
+  {key:'purchase.containers',groupKey:'purchase',label:'Làm việc với bảng Chỉ số cont',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH]},
+  // Internal compatibility keys. The account editor exposes only the two table scopes above.
+  {key:'purchase.view',groupKey:'purchase',label:'Xem Thu mua',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH],internal:true},
+  {key:'purchase.edit',groupKey:'purchase',label:'Sửa Thu mua',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH],requires:'purchase.view',internal:true},
+  {key:'purchase.import',groupKey:'purchase',label:'Import Thu mua',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH],requires:'purchase.view',internal:true},
+  {key:'purchase.export',groupKey:'purchase',label:'Xuất Excel Thu mua',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH],requires:'purchase.view',internal:true},
+  {key:'purchase.depart',groupKey:'purchase',label:'Xác nhận bốc cont',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH],requires:'purchase.view',internal:true},
+  {key:'purchase.arrive',groupKey:'purchase',label:'Xác nhận cont về',roles:MANAGER_ONLY,forbiddenRoles:[ROLES.KHACH],requires:'purchase.view',internal:true},
   { key: 'reports.products.expected.otherNote', groupKey: 'reports', label: 'Dự kiến hàng về: Xem Ghi chú khác', roles: MANAGER_ONLY, requires: 'reports.products.expected' },
   // --- Bao cao tong hop ---
   { key: 'reports.overview', groupKey: 'reports', label: 'Tổng quan', roles: REPORT_VIEW_ROLES },
@@ -200,7 +203,7 @@ const PAGE_FEATURES = Object.freeze([
   { path: '/reports', href: '/reports/', anyOf: ANY_REPORTS_FEATURES, landingAnyOf: ANY_REPORTS_FEATURES.filter(k => k !== 'reports.products.expected') },
   { path: '/shipment/lifecycle', href: '/shipment/lifecycle/', anyOf: ['shipment.lifecycle'] },
   { path: '/humanresources', href: '/humanresources/', anyOf: ['hr.rules', 'hr.employees', 'hr.leave', 'hr.leave.submit'] },
-  {path:'/thu-mua/dat-hang',href:'/thu-mua/dat-hang/',anyOf:['purchase.view']},
+  {path:'/thu-mua/dat-hang',href:'/thu-mua/dat-hang/',anyOf:['purchase.orders','purchase.containers','purchase.view']},
   { path: '/vt-positions', href: '/vt-positions/', anyOf: ['stockLocationsV2.view'] },
   // Sơ đồ kho HN / SG: cùng quyền xem với VT (mọi vai trò kể cả Khách), trang tĩnh không có API.
   { path: '/kho-hn', href: '/kho-hn/', anyOf: ['stockLocationsV2.view'] },
@@ -264,9 +267,23 @@ function resolvePermissions(user) {
   }
   const granted = new Set(defaultsForRole(user.vaiTro));
   const overrides = sanitizeOverrides(user.featurePermissions);
+  const scopedPurchase = ['purchase.orders','purchase.containers'].some(key => Object.hasOwn(user.featurePermissions || {}, key));
   for (const [key, allowed] of Object.entries(overrides)) {
+    if (scopedPurchase && key.startsWith('purchase.') && !['purchase.orders','purchase.containers'].includes(key)) continue;
     if (allowed) granted.add(key);
     else granted.delete(key);
+  }
+  if (scopedPurchase) {
+    const orders = granted.has('purchase.orders');
+    const containers = granted.has('purchase.containers');
+    for (const key of ['purchase.view','purchase.edit','purchase.import','purchase.export','purchase.depart','purchase.arrive']) granted.delete(key);
+    if (orders || containers) { granted.add('purchase.view'); granted.add('purchase.edit'); }
+    if (orders) { granted.add('purchase.import'); granted.add('purchase.export'); }
+    if (containers) { granted.add('purchase.depart'); granted.add('purchase.arrive'); }
+  } else if (granted.has('purchase.edit')) {
+    // Existing accounts retain their historic access until a manager saves the new two-scope form.
+    granted.add('purchase.orders');
+    granted.add('purchase.containers');
   }
   for (const key of ALWAYS_ON_KEYS) granted.add(key);
   if (canSubmitOwnLeave(user)) granted.add('hr.leave.submit');

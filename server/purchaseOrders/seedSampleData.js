@@ -71,7 +71,7 @@ async function seedSampleData({ pool = getPool(), logger = console, manageTransa
         `INSERT INTO purchase_orders(row_key,root_key,split_from_key,container_id,product_code,product_name,
            supplier,qty_per_carton,carton_count,unit_price_cny,fx_rate,kg_per_carton,m3_per_carton,listed_at)
          VALUES($1,split_part($1,'.',1),$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,now())
-         ON CONFLICT(row_key) DO NOTHING`,
+         ON CONFLICT(row_key) WHERE deleted_at IS NULL DO NOTHING`,
         [r.rowKey, r.splitFrom || null, r.cont ? ids.get(r.cont) : null, r.code, r.name,
           r.supplier, r.qtyPerCarton, r.cartonCount, r.unitPriceCny, r.fxRate, r.kgPerCarton, r.m3PerCarton]
       );

@@ -9,9 +9,13 @@ const workbook = require('../public/shared/purchase-workbook');
 // Cot chi doc duoc danh dau `ro` trong purchase-columns.js — mot nguon duy nhat,
 // khong lap danh sach ten cot o hai noi nhu truoc.
 const writable = columns.filter(c => !c.d && !c.m && !c.ro);
-const byKey = new Map(writable.map(c => [c.k, c]));
+const overrideColumns=columns.filter(c=>c.o),regionColumn=columns.find(c=>c.region), importable=[...writable,...overrideColumns,...(regionColumn?[regionColumn]:[])];
+const snapshotColumns=columns.filter(c=>c.si);
+importable.push(...snapshotColumns);
+const byKey = new Map(importable.map(c => [c.k, c]));
 const keyPattern = /^D\d{5,}(?:\.(?:01|02))*$/;
 const integerFields = new Set(['qtyPerCarton', 'cartonCount']);
+const signedFields = new Set([...calculations.SIGNED,'literDiff','gramDiff']);
 const blank = value => value == null || value === '';
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
@@ -19,7 +23,7 @@ function version(row) { return row.version ?? row.v; }
 function comparable(value, col) {
   return blank(value) ? null : workbook.numericTypes.has(col.t) ? Number(value) : String(value);
 }
-function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = false, snapshotRevision, archivedRows = [] } = {}) {
+function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = false, snapshotRevision, archivedRows = [], regions = [], containers = [], allowSparseCreates = false } = {}) {
   if (!Array.isArray(sourceRows) || (!sourceRows.length && !snapshot) || sourceRows.length > 10000) throw Error('Đợt nhập phải có 1–10.000 dòng.');
   if (!Array.isArray(existingRows)) throw Error('Thiếu dữ liệu hiện hành để đối chiếu.');
   const existing = new Map(existingRows.map(row => [row.rowKey, row]));
@@ -29,12 +33,12 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
   sourceRows.forEach(row=>{if(row.recoverArchived===true){const key=String(row.recoverRowKey||row.rowKey||'').trim();if(key)recoveryCounts.set(key,(recoveryCounts.get(key)||0)+1)}});
   const rows = sourceRows.map((source, index) => {
     const rowKey = blank(source.rowKey) ? null : String(source.rowKey).trim();
-    const archivedByKey=rowKey?archivedRows.find(row=>row.rowKey===rowKey):null;
+    const current = rowKey ? existing.get(rowKey) : null;
+    const archivedByKey=!current&&rowKey?archivedRows.find(row=>row.rowKey===rowKey):null;
     const selectedArchived=source.recoverRowKey?archivedRows.find(row=>row.rowKey===source.recoverRowKey):null;
-    const archived=selectedArchived||archivedByKey;
+    const archived=current?null:selectedArchived||archivedByKey;
     const candidates=archived?[archived]:[];
     const requestedKey=source.recoverArchived===true?(source.recoverRowKey||archived?.rowKey):null;
-    const current = rowKey ? existing.get(rowKey) : null;
     const recovered = !current&&archived&&requestedKey===archived.rowKey;
     const effectiveKey=recovered?archived.rowKey:rowKey;
     const result = { sourceRow: source.__sourceRow || index + 2, rowKey: effectiveKey, action: recovered?(archived.deletedAt?'restore':'reactivate'):rowKey ? 'update' : 'create', errors: [], changes: [] };
@@ -47,13 +51,28 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
     if (matched && (!Number.isSafeInteger(version(matched)) || version(matched) < 1)) result.errors.push('Không đọc được phiên bản dòng hiện hành.');
     for (const message of Object.values(source.__cellErrors || {})) result.errors.push(String(message));
     const values = {};
-    for (const col of writable) {
+    for (const col of importable) {
       const value = source[col.k];
+      if(col.si){
+        if(!snapshot)continue;
+        const text=String(value??'').trim(),waiting=!text||/^(?:cont\s*)?chờ(?:\s+|-)?xếp(?:\s+[hv?])?$/i.test(text)||/^chờ\s*-\s*h$/i.test(text)||/^tính giá$/i.test(text);
+        if(waiting){if(snapshot)values.contId=null;continue}
+        const normalized=name=>String(name??'').trim().replace(/^cont\s+/i,'').normalize('NFKC').replace(/\s+/g,' ').toLocaleLowerCase('vi');
+        const found=containers.find(container=>String(container.id)===text||normalized(container.name)===normalized(text));
+        if(!found){result.errors.push('Tên cont: không tìm thấy cont đang hoạt động.');continue}
+        const isActive=found.is_active!==false&&found.isActive!==false&&!found.inactive_at&&!found.inactiveAt&&!found.deleted_at&&!found.deletedAt;
+        if(!isActive&&String(matched?.contId??'')!==String(found.id)){result.errors.push('Tên cont: cont đã ngừng hoạt động hoặc đã xóa.');continue}
+        const region=found.region_id??found.regionId??null,requestedRegion=Object.hasOwn(values,'regionId')?values.regionId:matched?.regionId??null;
+        if(region!=null&&requestedRegion!=null&&String(region)!==String(requestedRegion)){result.errors.push('Tên cont: vùng không khớp với cột Vùng.');continue}
+        if(region!=null&&requestedRegion==null)values.regionId=String(region);
+        values.contId=String(found.id);continue;
+      }
       if (blank(value)) { if (snapshot) values[col.k] = null; continue; }
+      if(col.region){const raw=String(value).trim(),found=regions.find(region=>String(region.id)===raw||String(region.name).trim().toLocaleLowerCase('vi')===raw.toLocaleLowerCase('vi'));if(!found||found.isActive===false&&String(matched?.regionId??'')!==String(found?.id??''))result.errors.push('Vùng: chọn tên vùng đang hoạt động trong danh sách.');else values.regionId=String(found.id);continue}
       if (workbook.numericTypes.has(col.t)) {
         const number = calculations.parse(value);
-        // VC truoc duoc phep am (calculations.SIGNED); cac cot so khac khong am.
-        if (!Number.isFinite(number) || number < 0 && !calculations.SIGNED.has(col.k) || Math.abs(number) > Number.MAX_SAFE_INTEGER) result.errors.push(col.l + ': số không hợp lệ.');
+        // Chi cac cot co the am duoc khai bao trong signedFields.
+        if (!Number.isFinite(number) || number < 0 && !signedFields.has(col.k) || Math.abs(number) > Number.MAX_SAFE_INTEGER) result.errors.push(col.l + ': số không hợp lệ.');
         else if (integerFields.has(col.k) && (!Number.isSafeInteger(number) || number <= 0)) result.errors.push(col.l + ': phải là số nguyên dương.');
         else if(col.k==='fxRate'&&number===0)result.errors.push(col.l+': phải lớn hơn 0 hoặc để trống.');else values[col.k] = number;
       } else if ((col.t === 'date'||col.t==='datetime')) {
@@ -70,15 +89,17 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
     const effective={...(matched||{}),...values};for(const key of calculations.issues(effective).filter(k=>!['qtyPerCarton','cartonCount'].includes(k))){if(!result.errors.some(e=>e.startsWith((byKey.get(key)?.l||key)+':')))result.errors.push((byKey.get(key)?.l||key)+': số liệu vượt giới hạn tính toán hoặc không hợp lệ.')}
     if (!values.productCode) result.errors.push('Thiếu Mã SP.');
     if (!effectiveKey && !matched) {
-      for (const key of ['productName', 'qtyPerCarton', 'cartonCount']) if (blank(values[key])) result.errors.push('Thiếu ' + byKey.get(key).l + '.');
+      for (const key of (allowSparseCreates ? ['cartonCount'] : ['productName', 'qtyPerCarton', 'cartonCount'])) if (blank(values[key])) result.errors.push('Thiếu ' + byKey.get(key).l + '.');
       if (!values.listedAt) values.listedAt = listedAt;
-      result.values = { ...values, contId: null };
+      result.values = { ...values, contId: values.contId??null };
     } else if (matched) {
       result.id = matched.id;
       result.expectedVersion = version(matched);
       for (const [key, next] of Object.entries(values)) {
+        if(key==='contId')continue;
         if (comparable(matched[key], byKey.get(key)) !== comparable(next, byKey.get(key))) result.changes.push({ key, label: byKey.get(key).l, before: matched[key] ?? null, after: next });
       }
+      if(Object.hasOwn(values,'contId')&&String(matched.contId??'')!==String(values.contId??''))result.changes.push({key:'contId',label:'Tên cont',before:matched.contId??null,after:values.contId});
       if (!recovered&&!result.changes.length && !result.errors.length) result.action = 'unchanged';
     }
     return result;
@@ -98,7 +119,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
       const out = { rowKey: source.rowKey, __sourceRow: source.__sourceRow, __cellErrors: { ...(source.__cellErrors || {}) } };
       if(source.recoverArchived===true)out.recoverArchived=true;
       if(source.recoverRowKey)out.recoverRowKey=String(source.recoverRowKey);
-      writable.forEach(col => { if (snapshot || !blank(source[col.k])) out[col.k] = source[col.k] ?? ''; });
+      importable.forEach(col => { if (snapshot || !blank(source[col.k])) out[col.k] = source[col.k] ?? ''; });
       return out;
     }),
     listedAt,
@@ -113,22 +134,25 @@ function prepareWorkbook(data, existingRows, { sheetName, ...options } = {}) {
   return { ...prepareRows(parsed.rows, existingRows, options), sheetName: parsed.sheetName, ignoredColumns: parsed.ignored };
 }
 
-function prepareSnapshotWorkbook(data, existingRows, { currentRevision, listedAt = today(), archivedRows = [] } = {}) {
+function prepareSnapshotWorkbook(data, existingRows, { currentRevision, listedAt = today(), archivedRows = [], regions = [], containers = [] } = {}) {
   if (!data || !data.byteLength || data.byteLength > 10 * 1024 * 1024) throw Error('File phải có dữ liệu và không quá 10 MB.');
   const parsed = workbook.parseImportSnapshot(data, columns);
   if (parsed.revision !== currentRevision) { const error = Error('Dữ liệu đã thay đổi sau khi tải file. Hãy tải snapshot mới rồi sửa lại.'); error.code = 'IMPORT_SNAPSHOT_STALE'; throw error; }
-  return { ...prepareRows(parsed.rows, existingRows, { listedAt, snapshot: true, snapshotRevision: parsed.revision, archivedRows }), sheetName: 'Đặt hàng', ignoredColumns: [], fields: parsed.fields };
+  return { ...prepareRows(parsed.rows, existingRows, { listedAt, snapshot: true, snapshotRevision: parsed.revision, archivedRows, regions, containers }), sheetName: 'Đặt hàng', ignoredColumns: [], fields: parsed.fields };
 }
 
-function recheckPreview(preview, currentRows, archivedRows = []) {
+function recheckPreview(preview, currentRows, archivedRows = [], regions = [], containers = []) {
   if (!preview?.valid) throw Error('Toàn bộ file phải hợp lệ trước khi xác nhận.');
-  const current = new Map([...currentRows,...archivedRows].map(row => [row.rowKey, row]));
-  const conflicts = preview.rows.filter(row => row.id&&row.rowKey && (!current.has(row.rowKey) || current.get(row.rowKey).id !== row.id || version(current.get(row.rowKey)) !== row.expectedVersion));
+  const rowsById = new Map([...archivedRows,...currentRows].map(row => [String(row.id), row]));
+  const conflicts = preview.rows.filter(row => {
+    const current = rowsById.get(String(row.id));
+    return row.id&&row.rowKey&&(!current||current.rowKey!==row.rowKey||version(current)!==row.expectedVersion);
+  });
   if (conflicts.length) return { valid: false, code: 'VERSION_CONFLICT', conflicts: conflicts.map(row => ({ rowKey: row.rowKey, sourceRow: row.sourceRow })), operations: [] };
   const currentKeys = new Set([...currentRows,...archivedRows].map(row => row.rowKey));
   const missing = preview.snapshot ? preview.rows.filter(row => !['delete','archived_skip'].includes(row.action) && row.rowKey && !currentKeys.has(row.rowKey)) : [];
   if (missing.length) return { valid: false, code: 'VERSION_CONFLICT', conflicts: missing.map(row => ({ rowKey: row.rowKey, sourceRow: row.sourceRow })), operations: [] };
-  return prepareRows(preview.sourceRows, currentRows, { listedAt: preview.listedAt, snapshot: preview.snapshot, snapshotRevision: preview.snapshotRevision, archivedRows });
+  return prepareRows(preview.sourceRows, currentRows, { listedAt: preview.listedAt, snapshot: preview.snapshot, snapshotRevision: preview.snapshotRevision, archivedRows, regions, containers });
 }
 
 module.exports = { prepareRows, prepareWorkbook, prepareSnapshotWorkbook, recheckPreview };

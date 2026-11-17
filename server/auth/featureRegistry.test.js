@@ -63,6 +63,19 @@ test('module Vị trí hàng cũ (đọc Google Sheets) đã gỡ: không còn q
   }
 });
 
+test('Thu mua consolidates account grants into Đặt hàng and Chỉ số cont table scopes',()=>{
+  const buyer=ROLES.NHAN_VIEN_MUA_HANG;
+  const orders=registry.resolvePermissions({vaiTro:buyer,featurePermissions:{'purchase.orders':true}});
+  assert.ok(orders.includes('purchase.orders'));assert.ok(orders.includes('purchase.view'));assert.ok(orders.includes('purchase.edit'));
+  assert.ok(orders.includes('purchase.import'));assert.ok(orders.includes('purchase.export'));
+  assert.ok(!orders.includes('purchase.containers'));assert.ok(!orders.includes('purchase.depart'));
+  const containers=registry.resolvePermissions({vaiTro:buyer,featurePermissions:{'purchase.containers':true}});
+  assert.ok(containers.includes('purchase.containers'));assert.ok(containers.includes('purchase.view'));assert.ok(containers.includes('purchase.edit'));
+  assert.ok(containers.includes('purchase.depart'));assert.ok(containers.includes('purchase.arrive'));
+  assert.ok(!containers.includes('purchase.orders'));assert.ok(!containers.includes('purchase.import'));
+  assert.deepEqual(registry.resolvePermissions({vaiTro:buyer,featurePermissions:{'purchase.orders':true,'purchase.containers':false}}).filter(key=>key.startsWith('purchase.')).sort(),['purchase.edit','purchase.export','purchase.import','purchase.orders','purchase.view']);
+});
+
 test('VT Hà Nội / VT Sài Gòn: xem + xuất Excel mặc định cho MỌI vai trò kể cả Khách; sửa / xóa lịch sử mặc định chỉ Quản lý', () => {
   for (const vaiTro of Object.values(ROLES)) {
     const defaults = registry.defaultsForRole(vaiTro);

@@ -229,6 +229,10 @@
     sections.forEach(function (section) {
       grid(section).entries.forEach(function (entry) {
         entry.cell.querySelectorAll('select:not([multiple])').forEach(function (select) {
+          // Some compact editable columns (for example the purchase buyer field)
+          // intentionally clip the selected label so their column can be resized
+          // independently of the longest currently selected option.
+          if (select.dataset.allowColumnShrink === 'true') return;
           var style = window.getComputedStyle(select);
           if (select.hidden || style.display === 'none') return;
           if (textContext === undefined) textContext = document.createElement('canvas').getContext('2d');

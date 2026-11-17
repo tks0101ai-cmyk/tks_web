@@ -35,28 +35,22 @@ td input{width:100%;box-sizing:border-box;padding:3px}
 #orderTable td input,#orderTable td select{font-size:11px;min-width:0;padding:2px 3px;box-sizing:border-box}
 #orderTable td input{font-variant-numeric:tabular-nums}
 
-.panes{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.panes section{min-width:0}
-.panes select{width:100%;margin-bottom:8px}
-.panes table{width:100%}
-.panes td{white-space:normal}
-.panes small{display:block}
-.panes .scroll{height:53vh}
-#metrics{padding:12px 0}
-
 /* Hộp chi tiết theo khuôn .dp-* của shared/detail-panel.css: .dp-head và .dp-body
    tự lo đệm trong, nên dialog để padding:0 cho khỏi đệm đôi. */
 dialog{background:var(--bg);color:inherit;border:1px solid var(--border);border-radius:6px;width:min(1100px,92vw);max-height:86vh;padding:0}
 dialog::backdrop{background:#0009}
 #modalBody label{display:inline-grid;gap:4px;margin:7px;width:210px}
 #modalBody .scroll{max-height:56vh}
+#modalBody label[for="bulkCodes"]{display:block;width:auto;margin:12px 0 4px;font-weight:700}
+#bulkCodes{display:block;width:100%;min-height:230px;box-sizing:border-box;resize:vertical;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--panel-2);color:inherit;font:13px/1.55 ui-monospace,Consolas,monospace;white-space:pre;tab-size:4}
+#bulkCodesStatus{min-height:20px;margin:8px 0 12px;color:var(--muted)}
+#bulkCodesSave{background:var(--primary);color:var(--primary-ink,#fff);font-weight:700}
 
 #notice{min-height:18px;color:var(--amber)}
 .error{color:var(--amber)}
 .resize{position:absolute;right:0;top:0;width:6px;height:100%;cursor:col-resize}
 
-/* Drawer điều hướng dùng chung ở shared.css; chỉ xếp lại hai bảng bên dưới. */
+/* Drawer điều hướng dùng chung ở shared.css. */
 @media(max-width:850px){
   .layout{grid-template-columns:1fr}
-  .panes{grid-template-columns:1fr}
 }

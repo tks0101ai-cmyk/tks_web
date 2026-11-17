@@ -12,6 +12,26 @@ let db, service, events;
 const manager = { id: 'manager', hoTen: 'Người quản lý' };
 const input = () => ({ productCode: 'A', productName: 'Hàng A', listedAt: '2026-11-03', qtyPerCarton: 20, cartonCount: 100, unitPriceCny: 2, fxRate: 3920, freightPrepaid: 0, freightPostpaid: 0, freightAmount: 1000 });
 const snapshotFile = async rows => { const snapshot=await service.importSnapshot(manager);return Buffer.from(excel.exportImportSnapshot({rows,columns,revision:snapshot.revision})); };
+test('bulk add validates once and creates all pasted product codes in AA with one batch insert',async()=>{
+ const rows=['A-101','A-102','A-103'].map((productCode,index)=>{const row={...input(),productCode,productName:'Hàng '+(index+1)};delete row.freightAmount;return row});
+ const invalid={...rows[1],productCode:'',productName:''};await assert.rejects(service.createMany(manager,{rows:[rows[0],invalid]}),error=>error.code==='VALIDATION_ERROR');
+ assert.equal((await db.query('SELECT count(*)::int AS count FROM purchase_orders')).rows[0].count,0,'invalid batch is atomic');
+ const result=await service.createMany(manager,{rows});
+ assert.equal(result.count,3);assert.equal(new Set(result.rows.map(row=>row.rowKey)).size,3);
+ assert.deepEqual(result.rows.map(row=>row.productCode),['A-101','A-102','A-103']);
+ assert.ok(result.rows.every(row=>row.regionId!=null&&row.contId==null));
+ assert.equal((await db.query("SELECT name FROM purchase_regions WHERE id=(SELECT region_id FROM purchase_orders LIMIT 1)")).rows[0].name,'AA');
+ assert.equal((await db.query("SELECT count(*)::int AS count FROM purchase_history WHERE action='bulk_create'")).rows[0].count,1);
+});
+test('bulk add requires only product code and carton count',async()=>{
+ const result=await service.createMany(manager,{rows:[{productCode:'MINIMAL-01',cartonCount:7}]});
+ assert.equal(result.count,1);assert.equal(result.rows[0].productCode,'MINIMAL-01');assert.equal(result.rows[0].cartonCount,7);assert.equal(result.rows[0].productName,'');assert.equal(result.rows[0].qtyPerCarton,0);
+});
+test('undo without an operation id directly reverts the latest eligible action',async()=>{
+ const created=await service.create(manager,input());assert.equal((await service.list(manager)).rows.length,1);
+ await service.undo(manager,{});assert.equal((await service.list(manager)).rows.length,0);
+ await assert.rejects(service.undo(manager,{}),error=>error.code==='UNDO_INVALID');
+});
 before(async () => {
   db = new PGlite();
   // Danh sach migration Thu mua lay tu FILES de them migration moi khong lam
@@ -25,7 +45,7 @@ before(async () => {
   service = createPurchaseOrdersService({ pool:{query,connect:async()=>({query,release(){}})},events });
 });
 beforeEach(async () => {
-  await db.exec(`TRUNCATE purchase_employees,purchase_requests,purchase_undo_expected,purchase_operation_rows,purchase_operations,purchase_orders,product_containers,purchase_key_history,purchase_key_pool,purchase_key_reservations,purchase_history,purchase_departures,purchase_import_previews,product_container_lines,product_container_expected,product_container_expected_state,shipping_measures RESTART IDENTITY CASCADE;
+  await db.exec(`TRUNCATE purchase_employees,purchase_requests,purchase_undo_expected,purchase_operation_rows,purchase_operations,purchase_orders,product_containers,purchase_key_history,purchase_key_pool,purchase_key_reservations,purchase_history,purchase_departures,purchase_import_previews,product_container_lines,product_container_expected,product_container_expected_state,shipping_measures,purchase_projection_queue RESTART IDENTITY CASCADE;
     ALTER SEQUENCE purchase_order_key_seq RESTART WITH 1;
     UPDATE purchase_settings SET source_mode='web',projection_owns_all=true,integration_enabled=true;
     INSERT INTO purchase_employees(name) VALUES('Dung'),('Other'),('Edited after arrival');`);
@@ -199,9 +219,12 @@ test('container requires a positive assumed m3 at creation and allows clearing i
  assert.equal(Number(created.assumed_m3),170);
  const edited=await service.updateContainer(manager,created.id,{version:created.version,changes:{assumedM3:185}});
  assert.equal(Number(edited.assumed_m3),185);
- const cleared=await service.updateContainer(manager,created.id,{version:edited.version,changes:{assumedM3:null}});
+ const cleared=await service.updateContainer(manager,created.id,{version:edited.version,changes:{assumedM3:''}});
  assert.equal(cleared.assumed_m3,null);
- await assert.rejects(service.updateContainer(manager,created.id,{version:cleared.version,changes:{assumedM3:-1}}),e=>e.statusCode===400);
+ const restored=await service.updateContainer(manager,created.id,{version:cleared.version,changes:{assumedM3:185}});
+ const clearedNull=await service.updateContainer(manager,created.id,{version:restored.version,changes:{assumedM3:null}});
+ assert.equal(clearedNull.assumed_m3,null);
+ await assert.rejects(service.updateContainer(manager,created.id,{version:clearedNull.version,changes:{assumedM3:-1}}),e=>e.statusCode===400);
  await assert.rejects(service.createContainer(manager,{name:'MISSING ESTIMATE'}),e=>e.statusCode===400);
 });
 
@@ -251,10 +274,10 @@ test('warehouse liter and m³ measurements project one CÂN ĐO record to every 
 test('comparison overrides persist per order row, export effective values, and clear back to shared measurements',async()=>{
  await db.query("INSERT INTO shipping_measures(code_key,per_carton,m3_per_unit,kg_per_unit) VALUES('a',12,.025,.4)");
  const a=await service.create(manager,{...input(),productCode:'A',m3PerCarton:.073,kgPerCarton:10}),b=await service.create(manager,{...input(),productCode:'A',listedAt:'2026-11-02',m3PerCarton:.073,kgPerCarton:10});
- const edited=await service.update(manager,a.id,{version:a.version,before:{literWarehouse:25},changes:{literWarehouse:30,m3Warehouse:.42,literChina:8,literDiff:-.7333,gramWarehouse:450,gramChina:350,gramDiff:-.2222,measuredOn:'2026-11-10T14:35',ratio:18.5}});
- assert.deepEqual([edited.literWarehouse,edited.m3Warehouse,edited.literChina,edited.literDiff,edited.gramWarehouse,edited.gramChina,edited.gramDiff,edited.measuredOn,edited.ratio],[30,.42,8,-.7333,450,350,-.2222,'2026-11-10T14:35',18.5]);
+ const edited=await service.update(manager,a.id,{version:a.version,before:{literWarehouse:25},changes:{literWarehouse:30,m3Warehouse:.42,literChina:8,literDiff:-.7333,gramWarehouse:450,gramChina:350,gramDiff:-.2222,measuredOn:'2026-11-10T14:35'}});
+ assert.deepEqual([edited.literWarehouse,edited.m3Warehouse,edited.literChina,edited.literDiff,edited.gramWarehouse,edited.gramChina,edited.gramDiff,edited.measuredOn,edited.ratio],[30,.42,8,-.7333,450,350,-.2222,'2026-11-10T14:35',10/(1000*.073)]);
  assert.equal(edited.measurementDefaults.literWarehouse,25);assert.equal(edited.measurementDefaults.m3Warehouse,.3);assert.equal(edited.measurementDefaults.measuredOn,null);
- assert.deepEqual(Object.keys(edited.measurementOverrides).sort(),['literChina','literDiff','literWarehouse','m3Warehouse','gramWarehouse','gramChina','gramDiff','measuredOn','ratio'].sort());
+ assert.deepEqual(Object.keys(edited.measurementOverrides).sort(),['literChina','literDiff','literWarehouse','m3Warehouse','gramWarehouse','gramChina','gramDiff','measuredOn'].sort());
  const listed=await service.list(manager),exported=await service.exportRows(manager),latest=await service.latest(manager,'A');
  const persisted=listed.rows.find(r=>r.id===a.id);assert.equal(persisted.literWarehouse,30);assert.equal(persisted.m3Warehouse,.42);assert.equal(exported.find(r=>r.id===a.id).literChina,8);assert.equal(exported.find(r=>r.id===a.id).literDiff,-.7333);assert.equal(latest.measurementOverrides.literWarehouse,30);
  assert.deepEqual([listed.rows.find(r=>r.id===b.id).literWarehouse,listed.rows.find(r=>r.id===b.id).m3Warehouse],[25,.3]);
@@ -291,6 +314,7 @@ test('repeated split keys preserve totals, retire old keys, and clear manual cos
   assert.equal(Number((await db.query('SELECT sum(carton_count) n FROM purchase_orders')).rows[0].n),100);
   assert.equal((await db.query('SELECT count(*)::int n FROM purchase_key_history')).rows[0].n,2);
 });
+test('new product codes default to region AA when no region is supplied',async()=>{const row=await service.create(manager,{...input(),regionId:''});assert.equal((await db.query('SELECT name FROM purchase_regions WHERE id=$1',[row.regionId])).rows[0].name,'AA')});
 test('same-field conflict rejects; different-field stale edit can merge', async () => {
   const row=await service.create(manager,input());
   await service.update(manager,row.id,{version:1,changes:{supplier:'NCC'}});
@@ -304,7 +328,8 @@ test('departure shortage and arrival keep immutable snapshot and do not change s
   await service.depart(manager,{containerId:cont.id,version:1,rows:[{id:row.id,version:2,actual:80}]});
   const list=await service.list(manager),shipped=list.rows.find(r=>r.contId===String(cont.id));
   assert.equal(shipped.cartonCount,80);assert.equal(list.rows.find(r=>r.contId==null).cartonCount,20);
-  await service.arrive(manager,{containerId:cont.id,version:2,date:'2026-11-03',warehouse:'Kho Hà Nội'});
+  await service.arrive(manager,{containerId:cont.id,version:2,date:'11-12/11',warehouse:'Kho Hà Nội'});
+  assert.equal((await service.list(manager)).containers[0].arrival_date,'11-12/11');
   await service.update(manager,shipped.id,{version:shipped.version,changes:{buyer:'Edited after arrival'}});
   assert.equal((await service.list(manager)).containers[0].status,4);
   assert.equal((await db.query('SELECT snapshot FROM purchase_departures')).rows[0].snapshot[0].cartonCount,80);
@@ -327,6 +352,16 @@ test('import confirms all rows and replaying token does not create duplicates', 
   assert.equal(result.counts.create,1);assert.equal(result.counts.update,1);
   assert.deepEqual(await service.commitImport(manager,preview.token),result);
   assert.equal((await service.list(manager)).rows.length,2);
+});
+test('snapshot import assigns selected containers to existing and new rows; blank selection returns to waiting',async()=>{
+ const container=await service.createContainer(manager,{name:'10-2H',assumedM3:170}),existingRow=await service.create(manager,input());
+ let snapshot=await service.importSnapshot(manager);
+ const assigned=await service.previewImport(manager,{buffer:Buffer.from(excel.exportImportSnapshot({rows:[{...existingRow,container:'10-2H'},{...input(),productCode:'NEW',rowKey:'',container:'CONT 10-2H'}],columns,revision:snapshot.revision}))});
+ assert.equal(assigned.valid,true,JSON.stringify(assigned.rows.filter(r=>r.errors.length)));await service.commitImport(manager,assigned.token);
+ let rows=(await service.list(manager)).rows;assert.ok(rows.every(row=>row.contId===String(container.id)));
+ snapshot=await service.importSnapshot(manager);assert.ok(snapshot.rows.every(row=>row.container==='10-2H'));
+ const waiting=await service.previewImport(manager,{buffer:Buffer.from(excel.exportImportSnapshot({rows:snapshot.rows.map(row=>({...row,container:''})),columns,revision:snapshot.revision}))});
+ assert.equal(waiting.valid,true);await service.commitImport(manager,waiting.token);rows=(await service.list(manager)).rows;assert.ok(rows.every(row=>row.contId===null));
 });
 test('snapshot import clears blanks and soft-deletes rows omitted from the complete file',async()=>{
  const kept=await service.create(manager,{...input(),supplier:'NCC'}),removed=await service.create(manager,{...input(),productCode:'B'}),cursor=(await service.revision(manager)).revision;
@@ -413,6 +448,29 @@ test('snapshot changed after download is rejected before preview',async()=>{
  await service.update(manager,row.id,{version:row.version,changes:{supplier:'Changed'}});
  await assert.rejects(service.previewImport(manager,{buffer}),error=>error.code==='IMPORT_SNAPSHOT_STALE');assert.equal((await service.list(manager)).rows[0].supplier,'Changed');
 });
+test('snapshot import saves measurement overrides and blank cells restore calculated defaults',async()=>{
+ const row=await service.create(manager,input()),snapshot=await service.importSnapshot(manager),measured={...snapshot.rows[0],literWarehouse:1.25,m3Warehouse:.42,literChina:1.1,literDiff:-12,gramWarehouse:550,gramChina:500,gramDiff:-9,measuredOn:'2026-11-12',ratio:.75};
+ const file=Buffer.from(excel.exportImportSnapshot({rows:[measured],columns,revision:snapshot.revision})),preview=await service.previewImport(manager,{buffer:file});assert.equal(preview.valid,true,JSON.stringify(preview.rows[0]?.errors));await service.commitImport(manager,preview.token);
+ // Tỉ lệ trong file chỉ để đọc: cột công thức (Tổng Tấn / Tổng m³) nên không thành override và
+ // luôn tính lại — dòng này không có Kg/T lẫn M3/T nên Tỉ lệ ra null, không phải .75 vừa gõ vào.
+ let saved=(await service.list(manager)).rows.find(item=>item.id===row.id);assert.deepEqual([saved.literWarehouse,saved.m3Warehouse,saved.literChina,saved.literDiff,saved.gramWarehouse,saved.gramChina,saved.gramDiff,saved.measuredOn,saved.ratio],[1.25,.42,1.1,-12,550,500,-9,'2026-11-12',null]);assert.equal(saved.measurementOverrides.literWarehouse,1.25);
+ assert.equal(Object.hasOwn(saved.measurementOverrides,'ratio'),false);
+ const latest=await service.importSnapshot(manager),blank={...latest.rows[0],literWarehouse:null,m3Warehouse:null,literChina:null,literDiff:null,gramWarehouse:null,gramChina:null,gramDiff:null,measuredOn:null,ratio:null},clear=await service.previewImport(manager,{buffer:Buffer.from(excel.exportImportSnapshot({rows:[blank],columns,revision:latest.revision}))});assert.equal(clear.valid,true);await service.commitImport(manager,clear.token);
+ saved=(await service.list(manager)).rows.find(item=>item.id===row.id);assert.deepEqual(saved.measurementOverrides,{});
+});
+
+test('snapshot import processes deletes and generated keys in a bounded number of queries',async()=>{
+ const oldRows=[];
+ for(let i=0;i<20;i++)oldRows.push(await service.create(manager,{...input(),productCode:'OLD'+i}));
+ const preview=await service.previewImport(manager,{buffer:await snapshotFile(Array.from({length:20},(_,i)=>({...input(),productCode:'NEW'+i,rowKey:''})))});
+ assert.equal(preview.valid,true);
+ let queryCount=0;const query=(sql,params)=>{queryCount++;return db.query(sql,params)};
+ const measured=createPurchaseOrdersService({pool:{query,connect:async()=>({query,release(){}})},events});
+ queryCount=0;const result=await measured.commitImport(manager,preview.token);
+ assert.equal(result.counts.create,20);assert.equal(result.counts.delete,20);
+ assert.deepEqual([...result.createdKeys].sort(),oldRows.map(row=>row.rowKey).sort());
+ assert.ok(queryCount<40,`snapshot commit made ${queryCount} sequential database queries`);
+});
 test('stale import rejects valid creations and updates together', async () => {
   const row=await service.create(manager,input());
   const preview=await service.previewImport(manager,{buffer:await snapshotFile([{...input(),rowKey:row.rowKey,cartonCount:7},input()])});
@@ -437,12 +495,74 @@ test('scheduling preserves freight while a manual container amount allocates usi
   assert.ok(Math.abs((await service.list(manager)).rows[0].freightAmount-99999999*20/170)<1e-7);
   assert.equal((await db.query('SELECT container_name FROM product_container_lines')).rows[0].container_name,'CONT NEW');
 });
+test('nhat ky phien ban liet ke tung thao tac kem nguoi thuc hien va so dong da dung',async()=>{
+ const a=await service.create(manager,{...input(),productCode:'V1'});
+ await service.update(manager,a.id,{version:a.version,changes:{supplier:'NCC MOI'}});
+ const versions=await service.versions(manager);
+ assert.ok(versions.length>=2,'moi thao tac la mot phien ban');
+ assert.deepEqual(versions.map(v=>v.action).slice(0,2),['edit','create'],'moi nhat dung dau');
+ assert.equal(versions[0].actor_name,manager.hoTen);assert.equal(versions[0].row_count,1);assert.equal(versions[0].undone,false);
+ assert.ok(versions[0].created_at instanceof Date||typeof versions[0].created_at==='string');
+ assert.equal((await service.versions(manager,{limit:1})).length,1,'gioi han so phien ban tra ve');
+});
+test('mo mot phien ban thi bang hien dung trang thai luc do, khong phai hien tai',async()=>{
+ const row=await service.create(manager,{...input(),productCode:'TIMET',supplier:'NCC A'});
+ const edited=await service.update(manager,row.id,{version:row.version,changes:{supplier:'NCC B'}});
+ const atEdit=(await service.versions(manager))[0];
+ await service.update(manager,row.id,{version:edited.version,changes:{supplier:'NCC C'}});
+ assert.equal((await service.latest(manager,'TIMET')).supplier,'NCC C','hien tai da sang NCC C');
+ const snapshot=await service.versionAt(manager,atEdit.id);
+ assert.equal(snapshot.rows.find(r=>r.productCode==='TIMET').supplier,'NCC B','tua ve dung luc do, da gom thay doi cua chinh phien ban');
+ assert.deepEqual(snapshot.changes.map(c=>[c.field,c.before,c.after]),[['supplier','NCC A','NCC B']]);
+ assert.equal(snapshot.cellCount,1);assert.equal(snapshot.version.actorName,manager.hoTen);
+});
+test('restore version reinstates its active rows, keeps unrelated inactive rows and records a new version',async()=>{
+ const original=await service.create(manager,{...input(),productCode:'RESTORE-A',supplier:'NCC cũ'});
+ const firstVersion=(await service.versions(manager)).find(version=>version.action==='create');
+ await service.update(manager,original.id,{version:original.version,changes:{supplier:'NCC mới'}});
+ const later=await service.create(manager,{...input(),productCode:'RESTORE-LATER'});
+ const inactive=await service.create(manager,{...input(),productCode:'RESTORE-INACTIVE'});
+ await service.deactivate(manager,{rows:[{id:inactive.id,version:inactive.version}]});
+ const restored=await service.restoreVersion(manager,firstVersion.id);
+ assert.equal(restored.restored,true);assert.equal(restored.operationId!=null,true);
+ assert.equal((await service.latest(manager,'RESTORE-A')).supplier,'NCC cũ');
+ const laterState=(await db.query('SELECT deleted_at FROM purchase_orders WHERE id=$1',[later.id])).rows[0];assert.ok(laterState.deleted_at,'later active rows are removed from the restored state');
+ const inactiveState=(await db.query('SELECT deleted_at,inactive_at FROM purchase_orders WHERE id=$1',[inactive.id])).rows[0];assert.equal(inactiveState.deleted_at,null);assert.ok(inactiveState.inactive_at,'unrelated inactive rows remain inactive');
+ const newest=(await service.versions(manager))[0];assert.equal(newest.action,'restore_version');
+ assert.equal((await service.versionAt(manager,newest.id)).rows.some(row=>row.productCode==='RESTORE-A'),true);
+ await service.restoreVersion(manager,firstVersion.id);
+ assert.equal((await db.query("SELECT count(*)::int n FROM purchase_history WHERE action='restore_version'")).rows[0].n,1,'restoring the same state again is a no-op');
+});
+test('phien ban them va xoa dong duoc danh dau ca hang thay vi tung o',async()=>{
+ const before=(await service.versions(manager))[0];
+ const row=await service.create(manager,{...input(),productCode:'ADDED'});
+ const created=(await service.versions(manager))[0];
+ assert.deepEqual((await service.versionAt(manager,created.id)).changes.map(c=>c.kind),['added']);
+ assert.ok((await service.versionAt(manager,created.id)).rows.some(r=>r.productCode==='ADDED'));
+ if(before)assert.equal((await service.versionAt(manager,before.id)).rows.some(r=>r.productCode==='ADDED'),false,'phien ban truoc do chua co dong moi');
+ await service.remove(manager,{rows:[{id:row.id,version:row.version}]});
+ const removed=(await service.versionAt(manager,(await service.versions(manager))[0].id));
+ assert.deepEqual(removed.changes.map(c=>c.kind),['state'],'xoa mem la doi trang thai dong');
+ assert.equal(removed.rows.some(r=>r.productCode==='ADDED'),false,'dong da xoa khong con trong bang tai phien ban do');
+});
+test('ma phien ban sai dinh dang hoac khong ton tai bi tu choi ro rang',async()=>{
+ await assert.rejects(service.versionAt(manager,'khong-phai-uuid'),e=>e.code==='OPERATION_ID_INVALID'&&e.statusCode===400);
+ await assert.rejects(service.versionAt(manager,'00000000-0000-4000-8000-000000000000'),e=>e.code==='OPERATION_NOT_FOUND'&&e.statusCode===404);
+});
 test('bulk saves independent rows, reports conflicts individually, and emits one audit entry',async()=>{
   const a=await service.create(manager,input()),b=await service.create(manager,input());
   await service.update(manager,b.id,{version:1,changes:{buyer:'Other'}});
   const result=await service.bulkEdit(manager,{rows:[{id:a.id,version:1},{id:b.id,version:1}],changes:{buyer:'Dung'}});
   assert.equal(result.results[0].status,'updated');assert.equal(result.results[1].status,'conflict');
   assert.equal((await db.query("SELECT count(*)::int n FROM purchase_history WHERE action='bulk_edit'")).rows[0].n,1);
+});
+test('bulk edit locks and writes selected rows in two set-based queries',async()=>{
+ const a=await service.create(manager,input()),b=await service.create(manager,{...input(),productCode:'BATCH-B'});let lockQueries=0,writeQueries=0;
+ const query=(sql,params)=>{if(/SELECT \* FROM purchase_orders WHERE id=ANY\(\$1::bigint\[\]\)/i.test(sql))lockQueries++;if(/jsonb_to_recordset\(\$1::jsonb\)/i.test(sql))writeQueries++;return db.query(sql,params)};
+ const batched=createPurchaseOrdersService({pool:{query,connect:async()=>({query,release(){}})},events,deferProjection:true,project:async()=>{}});
+ const result=await batched.bulkEdit(manager,{rows:[{id:a.id,version:a.version},{id:b.id,version:b.version}],changes:{supplier:'BATCHED'}});
+ assert.deepEqual(result.results.map(row=>row.status),['updated','updated']);assert.equal(lockQueries,1);assert.equal(writeQueries,1);
+ assert.equal((await batched.latest(manager,'A')).supplier,'BATCHED');assert.equal((await batched.latest(manager,'BATCH-B')).supplier,'BATCHED');
 });
 test('revise import requires every file row and validates all corrected data server-side',async()=>{
   const preview=await service.previewImport(manager,{buffer:await snapshotFile([{...input(),rowKey:'D99999'},input()])});
@@ -492,6 +612,20 @@ test('balance plan commits edits, recursive split and new code together; stale s
  await service.applyPlan(manager,{rows:[{id:b.id,version:b.version,changes:{cartonCount:30}}],splits:[{id:a.id,version:a.version,sourceQty:100,quantity:40,destinationId:c.id}],creates:[{values:{...input(),productCode:'C',contId:c.id}}]});
  const all=(await service.list(manager)).rows;const branches=all.filter(r=>r.rowKey.startsWith(a.rowKey+'.'));assert.equal(branches.length,2);assert.equal(branches.reduce((s,r)=>s+r.cartonCount,0),100);assert.ok(branches.some(r=>r.rowKey===a.rowKey+'.02'&&String(r.contId)===String(c.id)));assert.equal((await db.query("SELECT count(*)::int n FROM purchase_history WHERE action='balance_plan'")).rows[0].n,1);
  const current=all.find(r=>String(r.id)===String(b.id));await assert.rejects(service.applyPlan(manager,{rows:[{id:b.id,version:current.version,changes:{cartonCount:99}}],splits:[{id:a.id,version:a.version,sourceQty:60,quantity:10,destinationId:c.id}]}));assert.equal((await service.list(manager)).rows.find(r=>String(r.id)===String(b.id)).cartonCount,30);
+});
+
+test('balance plan batches ordinary row writes and preserves JSONB measurement overrides',async()=>{
+ const a=await service.create(manager,input()),b=await service.create(manager,{...input(),productCode:'B'}),queries=[];
+ const tracked=createPurchaseOrdersService({pool:{query:(sql,params)=>db.query(sql,params),connect:async()=>({query:async(sql,params)=>{queries.push(sql);return db.query(sql,params)},release(){}})},events,deferProjection:true});
+ await tracked.applyPlan(manager,{rows:[
+  {id:a.id,version:a.version,changes:{supplier:'Nhà cung cấp mới'}},
+  {id:b.id,version:b.version,changes:{literWarehouse:125}},
+ ]});
+ assert.equal(queries.filter(sql=>sql.includes('WITH patch AS')).length,1,'all ordinary row changes use one batch UPDATE');
+ assert.equal(queries.filter(sql=>sql.includes('WHERE p.id=ANY($1::bigint[])')&&sql.includes('ORDER BY p.id')&&!sql.includes('FOR UPDATE')).length,1,'acknowledged rows are read in one grouped query');
+ assert.equal((await db.query('SELECT supplier FROM purchase_orders WHERE id=$1',[a.id])).rows[0].supplier,'Nhà cung cấp mới');
+ assert.deepEqual((await db.query('SELECT measurement_overrides FROM purchase_orders WHERE id=$1',[b.id])).rows[0].measurement_overrides,{literWarehouse:125});
+ const acknowledged=await tracked.latest(manager,'B');assert.equal(acknowledged.literWarehouse,125);
 });
 
 test('balance plan ignores client-only id and version on a new row',async()=>{
@@ -661,6 +795,9 @@ test('two actors merge separate fields, block same-cell overwrite and stale dele
 test('deleting a row after import preview invalidates the whole import and does not resurrect it',async()=>{
  const a=await service.create(manager,input()),preview=await service.previewImport(manager,{buffer:await snapshotFile([{...a,cartonCount:3},{...input(),productCode:'NEW'}])});await service.remove(manager,{rows:[{id:a.id,version:a.version}]});await assert.rejects(service.commitImport(manager,preview.token));assert.equal((await service.list(manager)).rows.length,0);
 });
+test('import confirm returns a version conflict when a row changes without a history entry',async()=>{
+ const a=await service.create(manager,input()),preview=await service.previewImport(manager,{buffer:await snapshotFile([{...a,cartonCount:3}])});await db.query('UPDATE purchase_orders SET version=version+1 WHERE id=$1',[a.id]);await assert.rejects(service.commitImport(manager,preview.token),e=>e.code==='VERSION_CONFLICT');assert.equal((await service.list(manager)).rows[0].cartonCount,100);
+});
 
 test('employee assignment can be cleared using the buyer name field',async()=>{
  const a=await service.create(manager,{...input(),buyer:'Dung'});const b=await service.update(manager,a.id,{version:a.version,changes:{buyer:''}});assert.equal(b.buyerEmployeeId,null);assert.equal(b.buyer,'');
@@ -684,6 +821,16 @@ test('five thousand rows retain complete projections when five hundred rows are 
  const start=Date.now();await db.exec("INSERT INTO purchase_orders(row_key,root_key,product_code,product_name,qty_per_carton,carton_count,kg_per_carton,m3_per_carton) SELECT 'D'||(100000+n)::text,'D'||(100000+n)::text,'LOAD'||n,'Hàng thử',10,1,5,.2 FROM generate_series(1,5000) n");const all=(await service.list(manager)).rows;assert.equal(all.length,5000);const selected=all.slice(0,500).map(r=>({id:r.id,version:r.version,before:{cartonCount:1}}));const changed=await service.bulkEdit(manager,{rows:selected,changes:{cartonCount:2}});assert.equal(changed.results.filter(r=>r.status==='updated').length,500);assert.equal((await db.query('SELECT count(*)::int n FROM product_container_lines')).rows[0].n,5000);assert.equal((await service.list(manager)).rows.filter(r=>r.cartonCount===2).length,500);t.diagnostic('PGlite fixture: 5,000 rows, 500 edits and projection '+(Date.now()-start)+' ms; staging performance still required');
 });
 
+test('deferred 500-row saves enqueue one projection request instead of rebuilding the shared snapshot',async t=>{
+ const start=Date.now();await db.exec("INSERT INTO purchase_orders(row_key,root_key,product_code,product_name,qty_per_carton,carton_count,kg_per_carton,m3_per_carton) SELECT 'D'||(100000+n)::text,'D'||(100000+n)::text,'QUEUE'||n,'Hàng thử',10,1,5,.2 FROM generate_series(1,5000) n");
+ const query=(sql,params)=>db.query(sql,params),deferred=createPurchaseOrdersService({pool:{query,connect:async()=>({query,release(){}})},events,project:async()=>{assert.fail('HTTP save must not rebuild shared projection')},deferProjection:true});
+ const all=(await deferred.list(manager)).rows,selected=all.slice(0,500).map(r=>({id:r.id,version:r.version,before:{cartonCount:1}}));
+ const changed=await deferred.bulkEdit(manager,{rows:selected,changes:{cartonCount:2}});assert.equal(changed.results.filter(r=>r.status==='updated').length,500);
+ assert.equal((await db.query('SELECT count(*)::int n FROM product_container_lines')).rows[0].n,0);
+ assert.equal((await db.query('SELECT count(*)::int n FROM purchase_projection_queue')).rows[0].n,1);
+ t.diagnostic('PGlite fixture: deferred 5,000-row table, 500 saves acknowledged in '+(Date.now()-start)+' ms without shared projection; staging performance still required');
+});
+
 test('container formula settings are versioned and missing product volume remains unpriced',async()=>{
  const c=await service.createContainer(manager,{name:'FORMULA',assumedM3:170});assert.equal(c.freight_mode,'formula');const r=await service.create(manager,{...input(),contId:c.id});const changed=await service.updateContainer(manager,c.id,{version:c.version,changes:{freightMode:'formula',freightBase:202000000,freightCapacity:170}});assert.equal(Number(changed.freight_base),202000000);await assert.rejects(service.updateContainer(manager,c.id,{version:changed.version,changes:{freightCapacity:0}}));assert.equal((await service.list(manager)).rows[0].freightAmount,r.freightAmount);
 });
@@ -692,11 +839,11 @@ test('freight allocation shares manual container cost and formula falls back to 
 
 test('clearing container freight restores the standard volume formula',async()=>{const c=await service.createContainer(manager,{name:'CLEAR COST',assumedM3:170});const manual=await service.updateContainer(manager,c.id,{version:c.version,changes:{freight:123,freightMode:'manual',freightBase:999,freightCapacity:2}});const auto=await service.updateContainer(manager,c.id,{version:manual.version,changes:{freight:null}});assert.equal(auto.freight_mode,'formula');assert.equal(Number(auto.freight_base),202000000);assert.equal(Number(auto.freight_capacity),170)});
 
-test('saved Excel-style freight formulas reprice every child and the shared projection',async()=>{
+test('saved total-freight formulas reprice every child and the shared projection',async()=>{
  const c=await service.createContainer(manager,{name:'FORMULA INPUT',assumedM3:170});
  const row=await service.create(manager,{...input(),productCode:'FORMULA',m3PerCarton:.5,cartonCount:4});
  await service.transfer(manager,{id:row.id,version:row.version,quantity:row.cartonCount,destinationId:c.id});
- const formula='=(195000000+4*500*3920)/M3_XE';
+ const formula='=(195000000+4*500*3920)';
  const changed=await service.updateContainer(manager,c.id,{version:c.version,changes:{freightFormula:formula}});
  assert.equal(changed.freight_formula,formula);
  assert.equal(changed.freight_mode,'formula');
@@ -719,7 +866,7 @@ test('clearing assumed m3 switches the freight formula denominator to actual sta
  const c=await service.createContainer(manager,{name:'ASSUMED FALLBACK',assumedM3:100});
  const row=await service.create(manager,{...input(),productCode:'ASSUMED FALLBACK',m3PerCarton:2,cartonCount:10});
  await service.transfer(manager,{id:row.id,version:row.version,quantity:row.cartonCount,destinationId:c.id});
- let current=await service.updateContainer(manager,c.id,{version:c.version,changes:{freightFormula:'=100000/M3_XE'}});
+ let current=await service.updateContainer(manager,c.id,{version:c.version,changes:{freightFormula:'=100000'}});
  let saved=(await service.list(manager)).rows.find(r=>r.productCode==='ASSUMED FALLBACK');
  assert.equal(saved.freightAmount,20000);
  current=await service.updateContainer(manager,c.id,{version:current.version,changes:{assumedM3:null}});
@@ -801,20 +948,34 @@ test('bulk and plan reject unconfigured or inactive assignments atomically and p
  assert.equal((await service.latest(manager,'B')).buyer,'Dung');
 });
 
-test('imports validate catalog at preview, revision and commit without losing legacy snapshots',async()=>{
- const bad=await service.previewImport(manager,{buffer:await snapshotFile([{...input(),buyer:'Free text'}])});assert.equal(bad.valid,false);assert.equal(bad.counts.error,1);
- await assert.rejects(service.commitImport(manager,bad.token),e=>e.code==='IMPORT_INVALID');
- const revised=await service.reviseImport(manager,bad.token,[{...input(),buyer:'Dung'}]);assert.equal(revised.valid,true);
- await db.query("UPDATE purchase_employees SET is_active=false WHERE name='Dung'");
- await assert.rejects(service.commitImport(manager,bad.token),e=>e.code==='EMPLOYEE_INVALID');assert.equal((await service.list(manager)).rows.length,0);
- await db.query("UPDATE purchase_employees SET is_active=true WHERE name='Dung'");await service.commitImport(manager,bad.token);
- const a=(await service.list(manager)).rows[0];assert.equal(a.buyer,'Dung');assert.equal(a.contId,null);
+test('plan accepts an active region change for inline auto-save',async()=>{
+ const row=await service.create(manager,input()),region=(await db.query("INSERT INTO purchase_regions(name,name_key) VALUES('Vùng V','vung v') RETURNING id")).rows[0];
+ const acknowledged=await service.applyPlan(manager,{rows:[{id:row.id,version:row.version,changes:{regionId:String(region.id)}}]});
+ assert.equal(acknowledged.rows[0].id,row.id);assert.equal(acknowledged.rows[0].regionId,String(region.id));assert.equal(acknowledged.rows[0].version,row.version+1);
+ assert.equal((await service.latest(manager,'A')).regionId,String(region.id));
+ const container=await service.createContainer(manager,{name:'CONT V',assumedM3:170,regionId:String(region.id)}),assigned=await service.latest(manager,'A');
+ await service.applyPlan(manager,{rows:[{id:row.id,version:assigned.version,changes:{contId:container.id}}]});
+ const loaded=await service.latest(manager,'A');await service.applyPlan(manager,{rows:[{id:row.id,version:loaded.version,changes:{contId:null}}]});
+ assert.equal((await service.latest(manager,'A')).regionId,String(region.id),'returning a line to the regional waiting group keeps its region');
+ const secondRegion=(await db.query("INSERT INTO purchase_regions(name,name_key) VALUES('Vùng H','vung h') RETURNING id")).rows[0];
+ const waiting=await service.latest(manager,'A');await service.applyPlan(manager,{rows:[{id:row.id,version:waiting.version,changes:{contId:container.id}}]});
+ const beforeRegionChange=await service.latest(manager,'A');await service.updateContainer(manager,container.id,{version:container.version,changes:{regionId:String(secondRegion.id)}});
+ const moved=await service.latest(manager,'A');assert.equal(moved.regionId,String(secondRegion.id),'reconfiguring a container updates the region of its current rows');assert.ok(moved.version>beforeRegionChange.version);
+ await service.applyPlan(manager,{rows:[{id:row.id,version:moved.version,changes:{contId:null}}]});
+ assert.equal((await service.latest(manager,'A')).regionId,String(secondRegion.id),'returning a line to waiting uses the reconfigured container region');
+});
+
+test('snapshot import adds and reactivates buyer employees while preserving legacy names',async()=>{
+ const proposed=await service.previewImport(manager,{buffer:await snapshotFile([{...input(),buyer:'New Buyer'}])});
+ assert.equal(proposed.valid,true);assert.deepEqual(proposed.employeeChanges.map(change=>({action:change.action,name:change.name})),[{action:'create',name:'New Buyer'}]);
+ await service.commitImport(manager,proposed.token);let a=(await service.list(manager)).rows[0];assert.equal(a.buyer,'New Buyer');assert.equal(a.contId,null);
  await db.query("UPDATE purchase_orders SET buyer='Legacy import' WHERE id=$1",[a.id]);
  const legacy=await service.previewImport(manager,{buffer:await snapshotFile([{...a,buyer:'Legacy import',supplier:'Imported edit'}])});assert.equal(legacy.valid,true);await service.commitImport(manager,legacy.token);
  assert.equal((await service.latest(manager,'A')).buyer,'Legacy import');assert.equal((await service.latest(manager,'A')).supplier,'Imported edit');
  const changed=await service.previewImport(manager,{buffer:await snapshotFile([{...await service.latest(manager,'A'),buyer:'Other'}])});assert.equal(changed.valid,true);
- await db.query("UPDATE purchase_employees SET is_active=false WHERE name='Other'");await assert.rejects(service.commitImport(manager,changed.token),e=>e.code==='EMPLOYEE_INVALID');
- assert.equal((await service.latest(manager,'A')).buyer,'Legacy import');
+ await db.query("UPDATE purchase_employees SET is_active=false WHERE name='Other'");const result=await service.commitImport(manager,changed.token);
+ assert.deepEqual(result.employeeChanges.reactivated,['Other']);assert.equal((await service.latest(manager,'A')).buyer,'Other');
+ assert.equal((await db.query("SELECT is_active FROM purchase_employees WHERE name='Other'")).rows[0].is_active,true);
 });
 
 test('direct and plan new products always wait even with a requested container',async()=>{
@@ -822,6 +983,68 @@ test('direct and plan new products always wait even with a requested container',
  const a=await service.create(manager,{...input(),contId:c.id});assert.equal(a.contId,null);
  await service.applyPlan(manager,{creates:[{values:{...input(),productCode:'PLAN',contId:c.id,buyer:'Dung'}}]});
  assert.ok((await service.list(manager)).rows.every(r=>r.contId===null));
+});
+
+test('container exchange rate is optional, positive and persists on the shared cont',async()=>{
+ const c=await service.createContainer(manager,{name:'FX RATE',assumedM3:170}),saved=await service.updateContainer(manager,c.id,{version:c.version,changes:{containerFxRate:3920}});assert.equal(Number(saved.container_fx_rate),3920);assert.equal(Number((await db.query('SELECT container_fx_rate FROM product_containers WHERE id=$1',[c.id])).rows[0].container_fx_rate),3920);await assert.rejects(service.updateContainer(manager,c.id,{version:saved.version,changes:{containerFxRate:0}}),e=>e.code==='VALIDATION_ERROR');
+});
+
+test('container metadata saves skip the shared line projection; financial changes still refresh it',async()=>{
+ const projected=[],query=(sql,params)=>db.query(sql,params),fastService=createPurchaseOrdersService({pool:{query,connect:async()=>({query,release(){}})},events,project:async()=>projected.push('projection')});
+ const c=await fastService.createContainer(manager,{name:'FAST CONT',assumedM3:170});assert.equal(projected.length,1);
+ const metadata=await fastService.updateContainer(manager,c.id,{version:c.version,changes:{carrier:'Nhà xe',loader:'Người xếp',note:'Ghi chú',moneyMatchStatus:'matched'}});
+ assert.equal(projected.length,1,'metadata only should not rebuild the global line projection');
+ const financial=await fastService.updateContainer(manager,c.id,{version:metadata.version,changes:{containerFxRate:4100}});
+ assert.equal(projected.length,2,'financial changes still refresh calculated shared prices');assert.equal(Number(financial.container_fx_rate),4100);
+});
+
+test('production saves enqueue shared projection atomically and acknowledge without waiting for it',async()=>{
+ const {processPending}=require('./purchaseProjectionQueue'),query=(sql,params)=>db.query(sql,params),pool={query,connect:async()=>({query,release(){}})},projected=[];
+ const deferred=createPurchaseOrdersService({pool,events,project:async client=>{projected.push('projection');await client.query('SELECT 1')},deferProjection:true});
+ let sharedEvents=0;const onShared=()=>sharedEvents++;events.on('containersChanged',onShared);
+ const saved=await deferred.create(manager,{...input(),productCode:'QUEUED-PROJECTION'});
+ assert.ok(saved.id,'canonical purchase row is returned immediately');assert.deepEqual(projected,[],'request path does not rebuild shared read models');
+ assert.equal(sharedEvents,0,'shared consumers are not told to refresh before projection commits');
+ assert.equal((await db.query('SELECT count(*)::int AS n FROM purchase_projection_queue')).rows[0].n,1);
+ await db.query('UPDATE purchase_settings SET integration_enabled=false WHERE id=1');
+ const inactive=await processPending({pool,events,project:async()=>projected.push('must-not-project'),log:{log(){},error(){}}});
+ assert.equal(inactive.status,'inactive');assert.equal((await db.query('SELECT count(*)::int AS n FROM purchase_projection_queue')).rows[0].n,1);
+ await db.query('UPDATE purchase_settings SET integration_enabled=true WHERE id=1');
+ const failed=await processPending({pool,events,project:async()=>{throw Error('transient projection failure')},log:{log(){},error(){}}});
+ assert.equal(failed.status,'failed');assert.equal((await db.query('SELECT count(*)::int AS n FROM purchase_projection_queue')).rows[0].n,1,'failed projection remains queued');
+ const result=await processPending({pool,events,project:async client=>{projected.push('projection');await client.query('INSERT INTO purchase_projection_queue(requested_at) VALUES(now())')},log:{log(){},error(){}}});
+ assert.equal(result.status,'processed');assert.deepEqual(projected,['projection']);
+ assert.equal(sharedEvents,1,'shared refresh notification follows the projection commit');
+ assert.equal((await db.query('SELECT count(*)::int AS n FROM purchase_projection_queue')).rows[0].n,1,'newer queue rows remain for a subsequent projection');
+ const next=await processPending({pool,events,project:async client=>{projected.push('projection');await client.query('SELECT 1')},log:{log(){},error(){}}});
+ assert.equal(next.status,'processed');assert.equal((await db.query('SELECT count(*)::int AS n FROM purchase_projection_queue')).rows[0].n,0);assert.equal(sharedEvents,2);events.off('containersChanged',onShared);
+});
+
+test('deferred projection validates freight formulas before committing canonical edits',async()=>{
+ const query=(sql,params)=>db.query(sql,params),deferred=createPurchaseOrdersService({pool:{query,connect:async()=>({query,release(){}})},events,deferProjection:true,project:async()=>{}});
+ const c=await deferred.createContainer(manager,{name:'DEFERRED FORMULA',assumedM3:170});
+ let row=await deferred.create(manager,{...input(),productCode:'DEFERRED-FORMULA',m3PerCarton:.5,cartonCount:100});
+ await deferred.transfer(manager,{id:row.id,version:row.version,quantity:row.cartonCount,destinationId:c.id});row=await deferred.latest(manager,'DEFERRED-FORMULA');
+ const current=(await deferred.list(manager)).containers.find(item=>item.id===c.id),saved=await deferred.updateContainer(manager,c.id,{version:current.version,changes:{freightFormula:'=100-M3_CONT'}});
+ const queuedBefore=(await db.query('SELECT count(*)::int AS n FROM purchase_projection_queue')).rows[0].n;
+ await assert.rejects(deferred.update(manager,row.id,{version:row.version,changes:{m3PerCarton:1.2}}),error=>error.code==='FREIGHT_FORMULA_INVALID'&&error.statusCode===400);
+ await assert.rejects(deferred.bulkEdit(manager,{rows:[{id:row.id,version:row.version,before:{m3PerCarton:.5}}],changes:{m3PerCarton:1.2}}),error=>error.code==='FREIGHT_FORMULA_INVALID'&&error.statusCode===400);
+ assert.equal((await deferred.latest(manager,'DEFERRED-FORMULA')).m3PerCarton,.5);assert.equal((await db.query('SELECT count(*)::int AS n FROM purchase_projection_queue')).rows[0].n,queuedBefore);assert.equal(saved.freight_formula,'=100-M3_CONT');
+});
+
+test('NET defaults postpaid FX to 3900 then uses the saved container FX in export and projection',async()=>{
+ const c=await service.createContainer(manager,{name:'NET FX',assumedM3:170}),r=await service.create(manager,{...input(),productCode:'NET-FX',qtyPerCarton:1,cartonCount:2,unitPriceCny:100,freightPrepaid:0,freightPostpaid:10,fxRate:1,surchargePercent:.1,m3PerCarton:.2});
+ await service.transfer(manager,{id:r.id,version:r.version,quantity:r.cartonCount,destinationId:c.id});
+ let exported=(await service.exportRows(manager)).find(row=>row.productCode==='NET-FX'),expected=(exported.goodsAmount+exported.surchargeAmount+exported.freightAmount+10*3900)/2;
+ assert.equal(exported.netPrice,expected);let projection=(await db.query("SELECT vietnam_price FROM product_container_lines WHERE product_code='NET-FX'")).rows[0];assert.equal(Number(projection.vietnam_price),expected);
+ const current=(await service.list(manager)).containers.find(item=>String(item.id)===String(c.id));await service.updateContainer(manager,c.id,{version:current.version,changes:{containerFxRate:4100}});
+ exported=(await service.exportRows(manager)).find(row=>row.productCode==='NET-FX');expected=(exported.goodsAmount+exported.surchargeAmount+exported.freightAmount+10*4100)/2;assert.equal(exported.netPrice,expected);
+ projection=(await db.query("SELECT vietnam_price FROM product_container_lines WHERE product_code='NET-FX'")).rows[0];assert.equal(Number(projection.vietnam_price),expected);
+});
+
+test('container money match status accepts only matched or unmatched and persists',async()=>{
+ const c=await service.createContainer(manager,{name:'MONEY MATCH',assumedM3:170}),saved=await service.updateContainer(manager,c.id,{version:c.version,changes:{moneyMatchStatus:'matched'}});assert.equal(saved.money_match_status,'matched');
+ const changed=await service.updateContainer(manager,c.id,{version:saved.version,changes:{moneyMatchStatus:'unmatched'}});assert.equal(changed.money_match_status,'unmatched');await assert.rejects(service.updateContainer(manager,c.id,{version:changed.version,changes:{moneyMatchStatus:'unknown'}}),e=>e.code==='VALIDATION_ERROR');
 });
 
 test('shared container edits propagate dates atomically, recalculate NET and preserve quantities and stock',async()=>{
@@ -853,7 +1076,7 @@ test('shared container optimistic conflicts and validation roll back every row, 
   const changes={arrivalNote:'2026-11-10',name:'Must not persist'};
   for(const rows of [undefined,[],[{id:r.id,version:1}],[{id:r.id,version:r.version},{id:r.id,version:r.version}]])await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,changes,rows}),e=>e.code==='VERSION_CONFLICT');
   await assert.rejects(service.updateContainer(manager,c.id,{version:999,changes,rows:[r]}),e=>e.code==='VERSION_CONFLICT');
-  for(const changes of [{maxTon:0},{m3Min:200,m3Max:100},{assumedM3:-1},{ton:100},{m3:100},{count:1},{arrivalDate:'2026-02-30'},{arrivalNote:'sometime'}])await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,rows:[r],changes}),e=>e.statusCode===400);
+  for(const changes of [{maxTon:0},{m3Min:200,m3Max:100},{assumedM3:-1},{ton:100},{m3:100},{count:1},{arrivalDate:'x'.repeat(501)}])await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,rows:[r],changes}),e=>e.statusCode===400);
   const other=await service.createContainer(manager,{name:'DUPLICATE',assumedM3:170});signals=0;
   await assert.rejects(service.updateContainer(manager,c.id,{version:c.version,rows:[r],changes:{arrivalDate:'2026-11-11',name:other.name}}),e=>e.code==='CONTAINER_EXISTS');
   assert.equal(signals,0);assert.equal((await service.latest(manager,'A')).version,r.version);assert.equal((await service.latest(manager,'A')).arrivedNote,null);

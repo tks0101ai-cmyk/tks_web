@@ -697,7 +697,8 @@ test('GET /api/admin/permissions/catalog tra ve danh muc + mac dinh theo vai tro
 
   assert.equal(res.statusCode, 200);
   assert.ok(Array.isArray(res.body.groups) && res.body.groups.length > 0);
-  assert.equal(res.body.features.length, featureRegistry.FEATURE_KEYS.length);
+  assert.equal(res.body.features.length, featureRegistry.FEATURES.filter(f => !f.internal).length);
+  assert.deepEqual(res.body.features.filter(f => f.groupKey === 'purchase').map(f => f.key), ['purchase.orders','purchase.containers']);
   assert.ok(res.body.features.every(f => f.key && f.label && f.groupKey));
   // Marketing giong Sale tru 5 tab xem bao cao (Sale duoc mo them tu 2026-10-02) va Vong doi don hang (shipment.lifecycle:
   // bo Nhan vien mua hang + marketing, 2026-10-02), Tao QR (2026-10-17), Yeu cau xuat VAT (2026-10-20), Tra cuu VAT (2026-10-23).

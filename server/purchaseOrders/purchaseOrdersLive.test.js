@@ -8,6 +8,8 @@ const {EventEmitter}=require('node:events');
 const {attachRealtime}=require('./purchaseOrdersRealtime');
 const dir=path.join(__dirname,'../public/thu-mua/dat-hang');
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
+// Chi so cot bang cont doi moi lan them cot (da lam do test 3 lan), nen tra theo khoa cot.
+const contCell=(doc,tr,key)=>tr.cells[[...doc.querySelectorAll('#containerTable thead th')].findIndex(th=>th.dataset.containerColumn===key)];
 test('purchase uses the shared application shell and brand instead of a private grid',()=>{
  const dom=new JSDOM(fs.readFileSync(path.join(dir,'index.html'),'utf8'));
  const reference=new JSDOM(fs.readFileSync(path.join(dir,'../../stocktake/index.html'),'utf8'));
@@ -46,6 +48,8 @@ test('pinned column offsets follow a resized column so pinned headers stay flush
  const before=parseFloat(right.style.left),handle=table.querySelector('th[data-key="productCode"] .tks-column-resizer');
  handle.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));await tick();await tick();
  assert.equal(parseFloat(right.style.left),before+10);assert.ok(table.querySelector('tbody td[data-field="productCode"]').classList.contains('purchase-pinned-column'));
+ assert.ok(Number(table.querySelector('thead th.purchase-pinned-column').style.zIndex)<25,'pinned order headers must sit below the watched container');
+ assert.match(fs.readFileSync(path.join(dir,'../../shared/purchase-workspace.css'),'utf8'),/#watchedContainer\{[^}]*z-index:25/);
 });
 test('Excel import requires a fresh snapshot download before file selection',async t=>{
  const p=await page(t),doc=p.w.document;doc.getElementById('import').click();
@@ -75,11 +79,14 @@ test('order milestone columns are editable text while listed date keeps compact 
  await new Promise(resolve=>setTimeout(resolve,300));const changes=JSON.parse(doc.defaultView.sessionStorage.getItem('purchase:buyer:v1')).drafts['1'].changes;for(const [key,value] of Object.entries(notes))assert.equal(changes[key],value);
  assert.equal(doc.querySelector('#orderTable td[data-field="listedAt"] .date-label')!==null,true);
 });
-async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees=[],integrationEnabled=true,onEnhance,inactiveContainers=[]}={}){
+async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees=[],integrationEnabled=true,onEnhance,inactiveContainers=[],permissions={}}={}){
  const dom=new JSDOM(fs.readFileSync(path.join(dir,'index.html'),'utf8'),{url:'https://example.test/thu-mua/dat-hang/',runScripts:'outside-only'}),w=dom.window;
  t.after(()=>w.close());
  w.HTMLCanvasElement.prototype.getContext=()=>null;
- let current={sourceMode,integrationEnabled,permissions:{edit:true,import:true,export:true,depart:true,arrive:true},rows:[{id:'1',rowKey:'D00001',version:1,contId:null,productCode:'AC305',productName:'Băng dính',cartonCount:10,qtyPerCarton:100,supplier:'A'}],containers:[{id:'2',name:'CONT 11-1V',status:2,version:1}]};
+ let current={sourceMode,integrationEnabled,// `orders`/`containers` la quyen theo tung bang, them tu bb0b27d8: allowed('edit') doc
+ // permissions.orders chu khong con doc permissions.edit, thieu hai khoa nay thi ca bang
+ // render o che do chi doc va moi test co thao tac deu hong.
+ permissions:{orders:true,containers:true,edit:true,import:true,export:true,depart:true,arrive:true,...permissions},rows:[{id:'1',rowKey:'D00001',version:1,contId:null,productCode:'AC305',productName:'Băng dính',cartonCount:10,qtyPerCarton:100,supplier:'A'}],containers:[{id:'2',name:'CONT 11-1V',status:2,version:1}]};
  current.rows.push(...extraRows.map(r=>({productName:r.productCode,...r})));current.containers.push(...inactiveContainers);const calls=[],listeners={};
  w.PurchaseCalculations=require('../public/shared/purchase-calculations');w.PurchaseFreight=require('../public/shared/purchase-freight');w.PurchaseColumns=require('../public/shared/purchase-columns');w.PurchaseTasks=require('../public/shared/purchase-tasks');w.TKSNav={authGuard:async()=>({id:'buyer'})};
  w.PurchaseRealtime=require('../public/shared/purchase-realtime');w.PurchaseDraftHistory=require('../public/shared/purchase-draft-history');w.PurchaseContainerWorkspace=require('../public/shared/purchase-container-workspace');
@@ -105,7 +112,7 @@ async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees
   container.version++;return {ok:true,json:async()=>structuredClone(container)};
  }
  if(url.endsWith('/inactive')&&!options.method)return {ok:true,json:async()=>({rows:structuredClone(current.rows.filter(r=>r.inactiveAt||r.inactive_at))})};if(url.endsWith('/deactivate')&&options.method==='POST'){const input=JSON.parse(options.body);for(const ref of input.rows||[]){const target=current.rows.find(r=>String(r.id)===String(ref.id));if(target&&Number(target.version)===Number(ref.version)){target.inactiveAt='2026-11-14T00:00:00Z';target.version++}}return {ok:true,json:async()=>({changed:true})}}if(url.endsWith('/reactivate')&&options.method==='POST'){const input=JSON.parse(options.body),target=current.rows.find(r=>String(r.id)===String(input.id));if(target){delete target.inactiveAt;delete target.inactive_at;target.version++}return {ok:true,json:async()=>({changed:true})}}if(url.endsWith('/containers/delete')&&options.method==='POST'){const input=JSON.parse(options.body),target=current.containers.find(c=>String(c.id)===String(input.id));if(target&&Number(target.version)===Number(input.version)){target.deletedAt='2026-11-14T00:00:00Z';target.version++}return {ok:true,json:async()=>({changed:true})}}
- if(url.endsWith('/plan')&&options.method==='POST'){const plan=JSON.parse(options.body),createdKeys=[];for(const item of plan.rows||[]){const currentRow=current.rows.find(r=>String(r.id)===String(item.id));if(currentRow)Object.assign(currentRow,item.changes,{version:currentRow.version+1})}for(const item of plan.creates||[]){const values=item.values||item;createdKeys.push(values.rowKey);current.rows.push({...values,id:String(100+current.rows.length),version:1})}return {ok:true,json:async()=>({createdKeys,split:[]})}}if(url.endsWith('/status')){const input=JSON.parse(options.body),container=current.containers.find(c=>String(c.id)===String(input.containerId));container.status=input.status;container.version++;return {ok:true,json:async()=>structuredClone(container)}}if(url.endsWith('/bulk')){const input=JSON.parse(options.body);return {ok:true,json:async()=>({results:input.rows.map(r=>({id:r.id,status:'updated'}))})}}if(options.method==='PATCH'){const input=JSON.parse(options.body);if(input.before.supplier!==undefined&&current.rows[0].supplier!==input.before.supplier)return {ok:false,status:409,json:async()=>({error:'Ô đã được người khác sửa.'})};current.rows[0]={...current.rows[0],...input.changes,version:current.rows[0].version+1};return {ok:true,json:async()=>current.rows[0]}}return {ok:true,json:async()=>structuredClone(current)}};
+ if(url.endsWith('/plan')&&options.method==='POST'){const plan=JSON.parse(options.body),createdKeys=[],createdRows=[];for(const item of plan.rows||[]){const currentRow=current.rows.find(r=>String(r.id)===String(item.id));if(currentRow)Object.assign(currentRow,item.changes,{version:currentRow.version+1})}for(const item of plan.creates||[]){const values=item.values||item,id=String(100+current.rows.length);createdKeys.push(values.rowKey);createdRows.push({clientId:item.clientId??null,id,rowKey:values.rowKey});current.rows.push({...values,id,version:1})}const ids=new Set([...(plan.rows||[]).map(item=>String(item.id)),...createdRows.map(row=>row.id)]);return {ok:true,json:async()=>({createdKeys,createdRows,rows:structuredClone(current.rows.filter(row=>ids.has(String(row.id)))),split:[]})}}if(url.endsWith('/status')){const input=JSON.parse(options.body),container=current.containers.find(c=>String(c.id)===String(input.containerId));container.status=input.status;container.version++;return {ok:true,json:async()=>structuredClone(container)}}if(url.endsWith('/bulk')){const input=JSON.parse(options.body);return {ok:true,json:async()=>({results:input.rows.map(r=>({id:r.id,status:'updated'}))})}}if(options.method==='PATCH'){const input=JSON.parse(options.body);if(input.before.supplier!==undefined&&current.rows[0].supplier!==input.before.supplier)return {ok:false,status:409,json:async()=>({error:'Ô đã được người khác sửa.'})};current.rows[0]={...current.rows[0],...input.changes,version:current.rows[0].version+1};return {ok:true,json:async()=>current.rows[0]}}return {ok:true,json:async()=>structuredClone(current)}};
  if(saved)w.sessionStorage.setItem('purchase:buyer:v1',JSON.stringify(saved));if(savedOutbox)w.sessionStorage.setItem('purchase:buyer:v1:outbox',JSON.stringify(savedOutbox));
  w.eval(fs.readFileSync(path.join(dir,'../../shared/table-controls.js'),'utf8'));
  if(onEnhance)w.TKSTables.enhance=onEnhance;
@@ -113,11 +120,26 @@ async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees
  const change=(selector,v)=>{const el=w.document.querySelector(selector);el.value=v;el.dispatchEvent(new w.Event('change',{bubbles:true}))};
  return {w,calls,listeners,change,get current(){return current}};
 }
+test('version history restores the selected snapshot after confirmation',async t=>{
+ const p=await page(t),doc=p.w.document,first='00000000-0000-4000-8000-000000000001',restored='00000000-0000-4000-8000-000000000002';
+ let versions=[{id:first,action:'edit',created_at:'2026-11-16T08:00:00Z',actor_id:'manager',actor_name:'Người quản lý',row_count:1}];
+ const detail=id=>({version:{id,action:id===first?'edit':'restore_version',createdAt:'2026-11-16T08:00:00Z',actorId:'manager',actorName:'Người quản lý'},rows:structuredClone(p.current.rows),changes:[],cellCount:0});
+ const prior=p.w.fetch;p.w.fetch=async(url,options={})=>{
+  if(url.endsWith('/versions')&&!options.method)return {ok:true,json:async()=>({rows:structuredClone(versions)})};
+  if((url.endsWith('/versions/'+first)||url.endsWith('/versions/'+restored))&&!options.method)return {ok:true,json:async()=>detail(url.split('/').at(-1))};
+  if(url.endsWith('/versions/'+first+'/restore')&&options.method==='POST'){p.calls.push({url,options});versions=[{id:restored,action:'restore_version',created_at:'2026-11-16T08:01:00Z',actor_id:'manager',actor_name:'Người quản lý',row_count:1},...versions];return {ok:true,json:async()=>({restored:true,operationId:restored})}}
+  return prior(url,options);
+ };
+ p.w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new p.w.Event('close'))};
+ p.w.location.hash='#history';p.w.dispatchEvent(new p.w.Event('hashchange'));for(let i=0;i<5;i++)await tick();
+ const restore=doc.getElementById('vhRestore');assert.equal(restore.hidden,false);restore.click();assert.equal(doc.getElementById('modal').open,true);doc.getElementById('vhRestoreConfirm').click();for(let i=0;i<8;i++)await tick();
+ assert.ok(p.calls.some(call=>call.url.endsWith('/versions/'+first+'/restore')));assert.ok(doc.querySelector('#vhList [data-version="'+restored+'"]'));assert.match(doc.getElementById('notice').textContent,/Đã khôi phục phiên bản/);
+});
 test('quantity and container drafts recalculate container totals immediately and cancel restores them',async t=>{
  const p=await page(t);Object.assign(p.current.rows[0],{kgPerCarton:100,m3PerCarton:.5});p.listeners.changed();await tick();await tick();
  p.change('[data-edit="cartonCount"]','20');p.change('[data-edit="contId"]','2');
- const target=p.w.document.querySelector('[data-container-filter="2"]').closest('tr');assert.equal(target.cells[3].textContent,'2.00');assert.equal(target.cells[4].textContent,'10.00');assert.doesNotMatch(target.textContent,/Đang lưu/);assert.equal(p.calls.filter(c=>c.options.method).length,0);
- p.w.document.getElementById('cancel').click();p.w.document.getElementById('discard').click();await tick();await tick();assert.equal(p.w.document.querySelector('[data-container-filter="2"]').closest('tr').cells[3].textContent,'0.00');assert.equal(p.current.rows[0].cartonCount,10);
+ const target=p.w.document.querySelector('[data-container-filter="2"]').closest('tr');assert.equal(contCell(p.w.document,target,'ton').textContent,'2.00');assert.equal(contCell(p.w.document,target,'m3').textContent,'10.00');assert.doesNotMatch(target.textContent,/Đang lưu/);assert.equal(p.calls.filter(c=>c.options.method).length,0);
+ p.w.document.getElementById('cancel').click();p.w.document.getElementById('discard').click();await tick();await tick();assert.equal(p.w.document.querySelector('[data-container-filter="2"]').closest('tr').cells[2].textContent,'0.00');assert.equal(p.current.rows[0].cartonCount,10);
 });
 test('order rows show container status but cannot change it; metrics board updates whole container',async t=>{
  const p=await page(t,{extraRows:[{id:'3',rowKey:'D00003',version:1,contId:'2',productCode:'B',cartonCount:5,qtyPerCarton:10},{id:'4',rowKey:'D00004',version:1,contId:'2',productCode:'C',cartonCount:8,qtyPerCarton:10}]});
@@ -127,6 +149,17 @@ test('order rows show container status but cannot change it; metrics board updat
 });
 test('container transport status asks for confirmation before sending its versioned request',async t=>{
  const p=await page(t),doc=p.w.document;p.change('#containerTable [data-status="2"]','4');assert.equal(doc.getElementById('modal').open,true);assert.equal(p.calls.filter(c=>c.url.endsWith('/status')).length,0);doc.getElementById('confirmContainerStatus').click();await tick();await tick();const calls=p.calls.filter(c=>c.url.endsWith('/status'));assert.equal(calls.length,1);assert.deepEqual(JSON.parse(calls[0].options.body),{containerId:'2',version:1,status:4});assert.equal(doc.getElementById('modal').open,false);
+});
+test('rapid edits to different fields on one container serialize with the acknowledged version',async t=>{
+ const p=await page(t),doc=p.w.document;
+ p.change('#containerTable [data-container-field="carrier"]','Nhà xe mới');
+ p.change('#containerTable [data-container-field="loader"]','Người xếp mới');
+ for(let i=0;i<8;i++)await tick();
+ const writes=p.calls.filter(call=>call.url.endsWith('/containers/2')&&call.options.method==='PATCH');
+ assert.equal(writes.length,2);
+ assert.deepEqual(writes.map(call=>JSON.parse(call.options.body).version),[1,2]);
+ assert.equal(p.current.containers[0].version,3);
+ assert.equal(doc.getElementById('notice').textContent,'');
 });
 test('order lifecycle filter loads inactive rows separately and status toggle requires confirmation',async t=>{
  const p=await page(t),doc=p.w.document,badge=doc.querySelector('#orderTable [data-row-lifecycle]');assert.equal(badge.textContent,'Hoạt động');badge.click();assert.equal(doc.getElementById('modal').open,true);assert.equal(p.calls.some(c=>c.url.endsWith('/deactivate')),false);doc.getElementById('confirmRowLifecycle').click();await tick();await tick();const call=p.calls.find(c=>c.url.endsWith('/deactivate'));assert.deepEqual(JSON.parse(call.options.body),{rows:[{id:'1',version:1}]});p.change('#orderLifecycle','inactive');await tick();await tick();assert.ok(p.calls.some(c=>c.url.endsWith('/inactive')));assert.equal(doc.querySelector('#orderTable tr[data-id="1"] [data-row-lifecycle]').textContent,'Ngừng hoạt động');doc.querySelector('#orderTable tr[data-id="1"] [data-row-lifecycle]').click();assert.equal(doc.getElementById('modal').open,true);doc.getElementById('confirmRowLifecycle').click();await tick();await tick();const reactivate=p.calls.find(c=>c.url.endsWith('/reactivate'));assert.deepEqual(JSON.parse(reactivate.options.body),{id:'1',version:2});
@@ -224,7 +257,7 @@ test('paste is validated before any stage and is undoable as one operation',asyn
  const p=await page(t,{extraRows:[{id:'3',rowKey:'D00003',version:1,contId:null,productCode:'B',cartonCount:5,qtyPerCarton:10}]});const doc=p.w.document;doc.querySelector('tr[data-id="3"] [data-field="cartonCount"]').click();const paste=text=>{const event=new p.w.Event('paste',{bubbles:true,cancelable:true});Object.defineProperty(event,'clipboardData',{value:{getData:()=>text}});doc.querySelector('tr[data-id="3"] [data-edit="cartonCount"]').dispatchEvent(event)};paste('12\ninvalid');assert.equal(doc.querySelector('tr[data-id="3"] [data-edit="cartonCount"]').value,'5');paste('12\n13');assert.equal(doc.querySelector('tr[data-id="3"] [data-edit="cartonCount"]').value,'12');doc.getElementById('undoWork').click();await tick();assert.equal(doc.querySelector('tr[data-id="3"] [data-edit="cartonCount"]').value,'5');assert.equal(p.calls.filter(c=>c.options.method).length,0);
 });
 test('buyer selects configured NV privately and keyboard Enter moves down',async t=>{
- const p=await page(t,{employees:[{id:'7',name:'Nhân viên',department:'Mua',branch:'hanoi'}],extraRows:[{id:'3',rowKey:'D00003',version:1,contId:null,productCode:'B',cartonCount:5,qtyPerCarton:10}]});p.change('tr[data-id="1"] [data-edit="buyer"]','Nhân viên');const saved=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.ok(saved.drafts['1'],JSON.stringify({saved,select:p.w.document.querySelector('[data-edit="buyer"]').outerHTML,notice:p.w.document.getElementById('notice').textContent}));assert.equal(saved.drafts['1'].changes.buyer,'Nhân viên');const buyer=p.w.document.querySelector('tr[data-id="1"] [data-edit="buyer"]');assert.equal(buyer.tagName,'SELECT');assert.deepEqual([...buyer.options].map(o=>o.value),['','Nhân viên']);const el=p.w.document.querySelector('tr[data-id="3"] [data-edit="cartonCount"]');el.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));assert.equal(p.w.document.activeElement.closest('tr').dataset.id,'1');
+ const p=await page(t,{employees:[{id:'7',name:'Nhân viên',department:'Mua',branch:'hanoi'}],extraRows:[{id:'3',rowKey:'D00003',version:1,contId:null,productCode:'B',cartonCount:5,qtyPerCarton:10}]});p.change('tr[data-id="1"] [data-edit="buyer"]','Nhân viên');const saved=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.ok(saved.drafts['1'],JSON.stringify({saved,select:p.w.document.querySelector('[data-edit="buyer"]').outerHTML,notice:p.w.document.getElementById('notice').textContent}));assert.equal(saved.drafts['1'].changes.buyer,'Nhân viên');const buyer=p.w.document.querySelector('tr[data-id="1"] [data-edit="buyer"]');assert.equal(buyer.tagName,'SELECT');assert.equal(buyer.dataset.allowColumnShrink,'true');const buyerHandle=[...p.w.document.querySelectorAll('.tks-column-resizer')].find(handle=>handle.dataset.columnKey==='buyer');assert.equal(Number(buyerHandle.getAttribute('aria-valuemin')),24,'long selected employee names do not block shrinking the NV column');assert.deepEqual([...buyer.options].map(o=>o.value),['','Nhân viên']);const el=p.w.document.querySelector('tr[data-id="3"] [data-edit="cartonCount"]');el.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));assert.equal(p.w.document.activeElement.closest('tr').dataset.id,'1');
 });
 test('reorder creates private rows and quick filters do not issue writes',async t=>{
  const p=await page(t);p.w.document.getElementById('bulk').click();p.w.document.querySelector('[data-pick="1"]').click();p.w.document.getElementById('reorderWork').click();await tick();await tick();const saved=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.equal(Object.keys(saved.newRows).length,1);assert.equal(Object.values(saved.newRows)[0].contId,null);p.change('#quickWork','eta');assert.equal(p.calls.filter(c=>c.options.method).length,0);p.w.document.getElementById('undoWork').click();await tick();assert.equal(Object.keys(JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1')).newRows).length,0);

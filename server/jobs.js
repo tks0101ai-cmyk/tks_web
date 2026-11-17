@@ -14,6 +14,10 @@ function startBackgroundJobs() {
 
   stops.push(require('./productContainers/sync').startContainerSchedule());
 
+  // Durable Purchase projection queue: canonical writes commit immediately;
+  // shared legacy projections are rebuilt in the background and coalesced.
+  stops.push(require('./purchaseOrders/purchaseProjectionQueue').startPurchaseProjectionQueue());
+
   // CÂN ĐO: đọc Google Sheets theo chu kỳ vào Postgres, web chỉ đọc DB (Vị trí hàng cũ đã gỡ 2026-10-30).
   stops.push(require('./sheetSnapshots/sync').startSheetSnapshotSchedule());
 

@@ -1153,6 +1153,8 @@
     $('vtStockOutReview').hidden = true;
     $('vtStockOutResult').replaceChildren();
     $('vtStockOutErrorsBox').hidden = true;
+    $('vtStockOutSkippedExport').hidden = true;
+    stockOutState.errors = [];
     $('vtStockOutBack').hidden = true;
     $('vtStockOutRun').hidden = false;
     $('vtStockOutError').textContent = '';
@@ -1202,9 +1204,40 @@
       body.appendChild(tr);
     });
     $('vtStockOutErrorsBox').hidden = !errors.length;
+    stockOutState.errors = errors;
+    $('vtStockOutSkippedExport').hidden = !errors.length || state[activeTab].canExport !== true;
     $('vtStockOutErrorNote').textContent = payload.errorsTruncated
       ? `Chỉ hiển thị ${formatNumber(errors.length)} dòng đầu trong tổng ${formatNumber(counts.skipped || 0)} dòng bị bỏ qua. Các dòng hợp lệ đã được trừ.`
       : 'Các dòng hợp lệ đã được trừ; chỉ những dòng ở trên bị bỏ qua. Sửa file rồi xuất kho lại cho các dòng này nếu cần.';
+  }
+  // Xuất Excel danh sách dòng bị bỏ qua (máy chủ dựng file từ danh sách lỗi vừa nhận).
+  async function exportStockOutSkipped() {
+    const button = $('vtStockOutSkippedExport');
+    const errors = stockOutState.errors || [];
+    if (button.disabled || !errors.length) return;
+    button.disabled = true;
+    $('vtStockOutError').textContent = '';
+    try {
+      const response = await fetch(API + '/stock-out/skipped-export', Object.assign({ credentials: 'same-origin', cache: 'no-store' }, jsonOptions('POST', { errors, branch: stockOutState.tab || activeTab })));
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        $('vtStockOutError').textContent = payload.error || 'Không xuất được file Excel.';
+        return;
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = exportFileName(response.headers.get('Content-Disposition'), 'xuat-kho-bo-qua');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      $('vtStockOutError').textContent = 'Không xuất được file Excel.';
+    } finally {
+      button.disabled = false;
+    }
   }
   async function runStockOut() {
     if (stockOutState.busy || stockOutState.done) return;
@@ -1766,6 +1799,7 @@
     $('vtStockOutPick').addEventListener('click', () => $('vtStockOutFile').click());
     $('vtStockOutBack').addEventListener('click', () => { $('vtStockOutFile').value = ''; resetStockOut(); });
     $('vtStockOutTemplate').addEventListener('click', downloadStockOutTemplate);
+    $('vtStockOutSkippedExport').addEventListener('click', exportStockOutSkipped);
     const stockOutDrop = $('vtStockOutDrop');
     ['dragenter', 'dragover'].forEach(name => stockOutDrop.addEventListener(name, event => { event.preventDefault(); if (!stockOutState.busy) stockOutDrop.classList.add('is-over'); }));
     ['dragleave', 'dragend'].forEach(name => stockOutDrop.addEventListener(name, () => stockOutDrop.classList.remove('is-over')));

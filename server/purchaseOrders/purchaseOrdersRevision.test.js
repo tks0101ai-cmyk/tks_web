@@ -3,7 +3,7 @@ const {PGlite}=require('@electric-sql/pglite');
 const {createPurchaseOrdersService}=require('./purchaseOrdersService');
 test('list revision detects empty history, late lower id and history deletion',async()=>{
  const db=new PGlite();try{
- await db.exec("CREATE TABLE purchase_settings(id int,source_mode text,integration_enabled boolean); INSERT INTO purchase_settings VALUES(1,'web',false); CREATE TABLE product_containers(id bigint); CREATE TABLE purchase_orders(id bigint,product_code text,deleted_at timestamptz); CREATE TABLE purchase_history(id bigint PRIMARY KEY); CREATE TABLE shipping_measures(code_key text PRIMARY KEY,per_carton numeric,m3_per_unit numeric,kg_per_unit numeric)");
+ await db.exec("CREATE TABLE purchase_settings(id int,source_mode text,integration_enabled boolean); INSERT INTO purchase_settings VALUES(1,'web',false); CREATE TABLE product_containers(id bigint); CREATE TABLE purchase_regions(id bigint,name text,color text,is_active boolean,version int); CREATE TABLE purchase_orders(id bigint,product_code text,deleted_at timestamptz,inactive_at timestamptz); CREATE TABLE purchase_history(id bigint PRIMARY KEY); CREATE TABLE shipping_measures(code_key text PRIMARY KEY,per_carton numeric,m3_per_unit numeric,kg_per_unit numeric)");
  const query=(sql,args)=>db.query(sql,args),service=createPurchaseOrdersService({pool:{query,connect:async()=>({query,release(){}})}}),user={id:'u'};
  assert.equal((await service.list(user)).revision,'0:0');assert.deepEqual(await service.revision(user),{revision:'0:0'});
  await db.exec('INSERT INTO purchase_history VALUES(9)');assert.equal((await service.list(user)).revision,'9:1');

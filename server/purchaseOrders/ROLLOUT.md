@@ -4,7 +4,7 @@
 
 Route /thu-mua/dat-hang/, API /api/purchase-orders, sidebar/phân quyền và bộ công thức được đưa lên bằng branch feat/purchase-module → PR → kiểm tra → merge main. Render triển khai tự động theo cấu hình hiện tại; không sửa Render dashboard, credentials, worker hay nguồn Kiot.
 
-Ứng dụng khởi tạo riêng 0110_purchase_orders.sql, 0111_purchase_operations.sql, 0112_purchase_requests.sql và 0113_purchase_freight.sql trước khi nhận HTTP. Chỉ bốn file này được chạy, trong một transaction có advisory lock dùng chung với ghi cont; migration đã có được bỏ qua. Lỗi khởi tạo rollback và không chặn các module khác; API Thu mua trả 503 nếu chưa có schema. Không chạy toàn bộ pending migrations khi startup. Số 0101–0109 đã dùng trên main và không được thay đổi.
+Ứng dụng khởi tạo riêng các migration được liệt kê trong `ensurePurchaseSchema.FILES` (hiện 0110–0134) trước khi nhận HTTP, trong một transaction có advisory lock; migration đã có được bỏ qua. Lỗi khởi tạo rollback và không chặn các module khác; API Thu mua trả 503 nếu chưa có schema. Không chạy toàn bộ pending migrations khi startup. Số 0101–0109 đã dùng trên main và không được thay đổi.
 
 Nguồn ghi vẫn là Sheets (purchase_settings.source_mode='sheets') sau khởi tạo. Bản phát hành không seed, không chuyển nguồn, không xóa read models hiện có, không tăng tồn kho. Trang hiển thị rõ chưa bật ghi; dữ liệu canonical chỉ có sau bước nạp nguồn được đối soát. Đây là phát hành module, không phải xác nhận chuyển dữ liệu nghiệp vụ.
 
@@ -13,7 +13,7 @@ Nguồn ghi vẫn là Sheets (purchase_settings.source_mode='sheets') sau khởi
 1. Sao lưu database hoặc ít nhất các bảng product_container_lines, product_container_sync, product_container_expected, product_container_expected_state và toàn bộ purchase_* / product_containers nếu đã có dữ liệu; ghi nhận phiên bản nguồn. Backup code Git không thay thế backup database.
 2. Chốt snapshot Sheet, chuẩn hóa đủ cột theo purchase-columns.js; ánh xạ cont/khóa dòng/ngày giờ/NV legacy. Không nhập dữ liệu thử của mockup vào production; không tự ghép tên nhân viên trùng.
 3. Nhập thử bản canonical và xuất snapshot theo dạng {rows,containers}. Chạy node purchaseOrders/purchaseOrdersReconcile.js sheet-snapshot.json web-snapshot.json; xử lý tất cả lỗi dữ liệu gốc. Chênh lệch do công thức cước mới phải được giải thích riêng, không ghi đè cước cũ một cách âm thầm.
-4. Chỉ khi số liệu đã được kiểm và có backup phục hồi mới chuyển source_mode sang web. Web và job Sheet dùng chung advisory lock 20531015; job Sheet dừng ghi khi source web. Từ đó canonical project hai read models trong cùng giao dịch.
+4. Chỉ khi số liệu đã được kiểm và có backup phục hồi mới chuyển source_mode sang web. Web và job Sheet dùng chung advisory lock 20531015; job Sheet dừng ghi khi source web. Khi `integration_enabled=true`, thao tác lưu ghi đơn canonical và tạo mục trong `purchase_projection_queue` cùng transaction; background worker chiếu các thay đổi sang hai read model, gộp những yêu cầu đang chờ. Chiếu nền có thể trễ một nhịp ngắn; queue được giữ lại và thử lại nếu worker lỗi. Theo dõi log `[Purchase projection]`.
 5. Cấp quyền Thu mua cho nhân viên qua cơ chế phân quyền hiện có và kiểm hai tài khoản. Mặc định chỉ Quản lý thấy/sửa module. Không có API công khai chuyển nguồn hoặc nhận secret.
 
 ## Kiểm sau merge
@@ -115,7 +115,7 @@ Thứ tự bắt buộc. Đổi cờ TRƯỚC khi deploy mã mới là sai: bả
    | Sửa một ô rồi lưu | Dòng đổi thật, Nhật ký có bản ghi, và `SELECT count(*) FROM product_container_lines WHERE sheet_name='THU MUA'` **không tăng** |
    | Log job cont sau 10 phút | Vẫn có lượt đọc Sheet (không phải `web-source`); Dự kiến hàng về không đổi số |
 
-5. **Khi nào mới bật `integration_enabled=true`:** sau khi bản chụp nguồn đã đầy đủ và đã đối soát (`purchaseOrdersReconcile.js`). Bật cờ này làm job đọc Sheet dừng hẳn và Thu mua tiếp quản read model — không còn là bước thử nghiệm.
+5. **Khi nào mới bật `integration_enabled=true`:** sau khi bản chụp nguồn đã đầy đủ và đã đối soát (`purchaseOrdersReconcile.js`). Bật cờ này làm job đọc Sheet dừng hẳn và Thu mua tiếp quản read model qua worker projection — không còn là bước thử nghiệm.
 
 ### Quay lui
 

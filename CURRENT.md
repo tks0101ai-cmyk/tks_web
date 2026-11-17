@@ -20,6 +20,9 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 
 ## Đang dở / chờ
 
+- [ ] 15/11 — Thu mua: xử lý 409 snapshot confirm do Mã dòng tái sử dụng trùng bản lưu trữ; regression test mô phỏng `D00556`/`D00561` — push/deploy rồi tạo preview mới và xác nhận lại.
+- [ ] 16/11 — Thu mua: outbox `0134` tách lưu canonical khỏi chiếu read model; deploy web + worker, xác nhận migration/queue trên production và đo p50/p95 thời gian lưu cùng độ trễ chiếu.
+
 > Rà ngày 10/11/2026: web `tokosi` và worker đều đang chạy `main` mới nhất (`d5e9ceb8`); mọi migration trong repo (đến `0120`) đã áp DB thật. Các việc cũ đã xong được xóa, xem file lưu trữ nếu cần chi tiết.
 
 - [ ] 10/11 — Nhân sự: sửa hồ sơ trùng số sổ bảo hiểm báo 500 (nhánh `fix/hr-employee-insurance-duplicate`, không migration) — merge + deploy, rồi rà `hr_employees` xem còn số bảo hiểm trùng nào do import cũ để lại
@@ -51,5 +54,7 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 - [ ] 13/11 — Nháp VAT: tài khoản VIB QUÂN số `044345` (6 số, ngắn bất thường) — hỏi người phụ trách; sai thì sửa `server/vatDraft/vatDraftConfig.js`
 
 ---
-Cập nhật: 14/11/2026
-- [ ] 14/11 — Thu mua: chuyển Loại xe sang m³ giả định, tính cước theo m³ giả định/m³ đang xếp và đổi Thuế thành Phụ phí % (migrations `0127`–`0128`) — hoàn tất code; test trọng tâm và UI mock đạt, chờ kiểm staging rồi người vận hành áp migration/deploy
+Cập nhật: 16/11/2026
+- [ ] 14/11 — Thu mua: tách tổng chi phí cont khỏi VC/m³, cho phụ phí % âm/dương; thêm Đơn giá quy đổi, ghi chú cont, danh mục/lọc vùng và cont chờ xếp theo vùng (migrations `0127`–`0130`) — kiểm thử liên quan, xác minh staging rồi người vận hành áp migration/deploy
+- [ ] 16/11 — Thu mua: Nhật ký phiên bản kiểu Google Sheets (migration `0136` chỉ thêm index, chưa commit/deploy) — giao diện và API đã có khôi phục phiên bản; xác minh service/route 129/129 và test UI khôi phục riêng đạt; cần review diff rồi người vận hành áp migration/deploy
+- [ ] 16/11 — Thu mua: `purchaseOrdersLive.test.js` hiện 30/79 lỗi (49 đạt; trước phần sửa quyền fixture là 54/78 lỗi trên `c66a3cc5`) — lỗi còn lại chủ yếu là test dùng selector/kỳ vọng UI cũ, cùng một số lỗi giao diện/định dạng cần phân loại; chưa hoàn tất dọn bộ test

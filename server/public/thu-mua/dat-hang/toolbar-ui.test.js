@@ -17,7 +17,7 @@ test('order toolbar keeps primary actions first and secondary actions grouped la
 
   assert.deepEqual(order, [
     'heading', 'add', 'bulk', 'trashRows', 'import', 'export',
-    'managePurchaseEmployees'
+    'managePurchaseEmployees', 'managePurchaseRegions'
   ]);
 });
 
@@ -25,7 +25,7 @@ test('order lifecycle replaces the supplier dropdown and container trash stays a
   const doc = new JSDOM(page).window.document;
   assert.equal(doc.getElementById('orderLifecycle').tagName, 'SELECT');
   assert.equal(doc.getElementById('orderSupplier'), null);
-  assert.ok(doc.querySelector('#orderBuyer').closest('label').nextElementSibling.querySelector('#orderLifecycle'));
+  assert.ok(doc.querySelector('#orderRegion').closest('label').nextElementSibling.querySelector('#orderLifecycle'));
   assert.match(script, /data-key="_lifecycle"[^>]*>Trạng thái/);
   assert.deepEqual([...doc.querySelectorAll('#orderLifecycle option')].map(option => [option.value, option.textContent]), [['active','Hoạt động'],['inactive','Ngừng hoạt động']]);
   assert.match(script, /purchase-lifecycle-badge is-active/);
@@ -38,9 +38,9 @@ test('order lifecycle replaces the supplier dropdown and container trash stays a
 });
 
 test('container selection replaces row actions and container lifecycle can be toggled in place', () => {
-  assert.match(script, /containerSelectMode\?\[\['Chọn',52\]\]:\[\]/);
+  assert.match(script, /containerSelectMode\?\[\['select','Chọn',52\]\]:\[\]/);
   assert.match(script, /data-container-pick-all/);
-  assert.match(script, /containerSelectMode&&i===0/);
+  assert.match(script, /containerSelectMode\?'<td data-container-column="select" class="container-pick-cell"/);
   assert.match(styles, /#orderLifecycle/);
   assert.doesNotMatch(styles, /#orderSupplier/);
   assert.match(script, /data-container-lifecycle/);
@@ -48,8 +48,9 @@ test('container selection replaces row actions and container lifecycle can be to
 });
 
 test('container filters fit in a compact desktop row', () => {
-  assert.match(styles, /#containerPanel \.container-filters\{grid-template-columns:minmax\(260px,3fr\) repeat\(4,minmax\(110px,1fr\)\) minmax\(92px,auto\)/);
-  assert.match(styles, /#containerPanel \.container-filters>button\{grid-column:6;grid-row:1/);
+  assert.match(styles, /#containerPanel \.container-filters\{grid-template-columns:minmax\(190px,2fr\) repeat\(5,minmax\(78px,1fr\)\) minmax\(70px,auto\)/);
+  assert.match(styles, /#containerPanel \.container-filters>button\{grid-column:7;grid-row:1/);
+  assert.match(script, /\['lifecycle','HĐ\/NHĐ',72\]\]/);
 });
 
 test('filter summary follows the title and pushes toolbar actions to the right', () => {

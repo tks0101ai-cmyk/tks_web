@@ -701,9 +701,9 @@ Khi nhiều người cùng mở bảng, sau snapshot ban đầu client đồng b
 11/11/2026 — Thu mua tính Giá NET theo tab VK-DUNG: cộng Thuế và VC sau CNY × 3,920 vào Tiền hàng + Tiền VC mã trước khi chia Tổng SL; 3,920 chỉ dành cho VC sau, giá hàng tiếp tục theo tỉ giá dòng. Giá tệ hiển thị 2 chữ số; Tổng tệ làm tròn đơn vị, bấm/Enter/Space hiện 3 chữ số chính xác ngay trong ô đến khi blur, không bật popup.
 11/11/2026 — Nhóm Đối chiếu Cân đo trong Thu mua cho phép sửa số đo/tính toán theo từng dòng mà không sửa dữ liệu Cân đo nguồn; xóa giá trị riêng để dùng lại nguồn hoặc tính tự động. Migration 0122 lưu các ghi đè theo đơn hàng.
 
-12/11/2026 — Người dùng tải toàn bộ dữ liệu Thu mua hiện tại kèm hướng dẫn, sửa cùng workbook rồi upload lại. File là bản thay thế đầy đủ: ô trống xóa giá trị, dòng vắng mặt xóa mềm; preview làm rõ số lượng và phải xác nhận toàn bộ. Nếu dữ liệu có người khác sửa sau khi tải, hệ thống yêu cầu tải snapshot mới để tránh ghi đè.
+12/11/2026 — Người dùng tải toàn bộ dữ liệu Thu mua hiện tại kèm hướng dẫn, sửa cùng workbook rồi upload lại. File là bản thay thế đầy đủ: ô trống xóa giá trị, dòng vắng mặt xóa mềm; preview làm rõ số lượng và phải xác nhận toàn bộ. Nếu dữ liệu có người khác sửa sau khi tải, hệ thống yêu cầu tải snapshot mới để tránh ghi đè. Từ 15/11, preview cũng nêu nhân viên Thu mua sẽ được thêm/kích hoạt theo tên buyer; chỉ lưu danh mục cùng snapshot sau khi xác nhận.
 
-Cập nhật cuối: 12/11/2026.
+Cập nhật cuối: 15/11/2026.
 
 ## Thu mua — Mã dòng có thể tái sử dụng (13/11/2026)
 
@@ -712,9 +712,26 @@ Cập nhật cuối: 13/11/2026.
 
 ## Thu mua — chỉnh công thức tiền vận chuyển cont (14/11/2026)
 Người dùng cần thay đổi linh hoạt các thành phần của cước cont (ví dụ phí cố định, tỉ giá, sức chứa) ngay tại ô Tiền VC. Hệ thống cho nhập công thức theo cont; khi tổng m³ thay đổi, tiền vận chuyển/m³, tiền VC từng mã và giá NET được tính lại. Nhập số tiền vẫn dùng cách nhập thủ công hiện tại.
-Cập nhật gần nhất: 14/11/2026.
+Cập nhật gần nhất: 16/11/2026.
+
+## Hiệu năng ghi Thu mua — 16/11/2026
+Hệ thống cần xác nhận lưu đơn hàng nhanh mà vẫn giữ cập nhật dùng chung bền vững. Giao dịch chính lưu dữ liệu và tác vụ chiếu trong cùng commit; worker có thể gộp nhiều thay đổi, tự thử lại khi lỗi, và không để thao tác chiếu toàn bảng chặn người đang nhập. Các bảng được chiếu có thể cập nhật trễ ngắn; người dùng vẫn nhận xác nhận ngay cho dữ liệu canonical và đồng bộ realtime theo revision.
+
+Cập nhật gần nhất: 16/11/2026.
 
 ## Thu mua — thể tích giả định và phụ phí (14/11/2026)
 Người dùng tạo cont với Tổng m³ giả định để dự tính cước. Khi đang xếp hàng, hệ thống theo dõi Tổng m³ đang xếp từ số đo và số thùng của từng mã. Cước/m³ dùng m³ giả định cho tới khi người dùng xóa giá trị này; sau đó chuyển sang m³ đang xếp. Phụ phí thay Thuế, được nhập theo phần trăm và tính trên tổng tiền hàng CNY của từng mã.
+
+Cập nhật gần nhất: 14/11/2026.
+
+## Thu mua — phân bổ Tiền VC mã từ giá quy đổi (16/11/2026)
+Đơn giá cont quy đổi là Đơn giá cont sau khi trừ tổng Phụ phí của các mã. Tiền VC từng mã được tính bằng m³ xếp mã nhân Đơn giá cont quy đổi chia cho m³ giả định; khi không có m³ giả định, dùng tổng m³ xếp. Giá NET cộng phụ phí riêng và không tính lặp phụ phí trong VC.
+
+Cập nhật gần nhất: 16/11/2026.
+
+
+## Thu mua — chi phí vận chuyển, phụ phí và quản lý vùng (14/11/2026)
+
+Người dùng nhập tổng chi phí vận chuyển theo cont, có thể là số hoặc biểu thức. Hệ thống giữ chi phí gốc ở Đơn giá cont và tính VC/m³ theo m³ giả định; khi bỏ m³ giả định, dùng m³ đang xếp. Chi phí vận chuyển từng mã thay đổi theo VC/m³ và m³ thực tế của mã. Phụ phí nhận phần trăm âm/dương, hiển thị thành số tiền trên Tiền hàng của mã. Bảng chỉ số cont cần trình bày tổng phụ phí và đơn giá quy đổi, ghi chú, trạng thái Chưa xếp. Người dùng quản lý vùng và màu, gán vùng khi tạo đơn/cont, phân biệt cont chờ xếp theo vùng và lọc vùng trong cả hai bảng.
 
 Cập nhật gần nhất: 14/11/2026.

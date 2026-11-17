@@ -757,7 +757,15 @@ Migration 0125 bổ sung `root_order_id` bất biến cho cả họ split, uniqu
 
 Full `npm test`: 5,052/5,109 đạt, 53 lỗi, 4 bỏ qua; không gán lỗi cho baseline. Focused service+route: 92/92 đạt sau vá thu hồi reservation hết hạn. Graphify không khả dụng. Migration chưa chạy staging/production. Cần xác minh backfill và mọi họ split trên staging/copy, sau đó operator áp 0125 trước deploy. Xem [spec](../superpowers/specs/2026-11-13-purchase-rowkey-recycling-design.md) và [kế hoạch](../superpowers/plans/2026-11-13-purchase-rowkey-recycling.md).
 
-Cập nhật cuối: 13/11/2026.
+Cập nhật cuối: 16/11/2026.
+
+## Thu mua — tách thời gian lưu khỏi chiếu read model (16/11/2026)
+
+Đường ghi canonical thêm outbox `purchase_projection_queue` nguyên tử cùng dữ liệu nghiệp vụ. Worker nền gom các mục đến một mốc, chiếu trạng thái hiện tại sang `product_container_lines` và `product_container_expected` trong snapshot `REPEATABLE READ`, sau đó xóa đúng các mục đã bao phủ; mục phát sinh trong lúc xử lý còn lại. Worker giữ khóa chiếu riêng và khóa Dự kiến hàng về, không giữ global writer lock trong toàn lượt chiếu nên thao tác ghi mới có thể tiếp tục. Kiểm tra công thức cước vẫn chạy đồng bộ trước commit để không chấp nhận thay đổi khiến biểu thức cước sai. Lỗi chiếu giữ outbox, log và retry sau 5 giây.
+
+Đã kiểm migration/schema, service, route và queue test. Service suite còn một lỗi fixture đã có từ trước ở kiểm tra override `ratio` (mong `.75`, hiện nhận `null`); các test mới queue, rollback công thức và route đều đạt. Chưa đo tải staging/production; cần so p50/p95 thời gian lưu, mức hàng tồn queue và độ trễ projection trước khi coi là kết quả production.
+
+Cập nhật cuối: 16/11/2026.
 
 ## Hiệu năng đợt 4 — 12/11/2026
 
@@ -767,11 +775,13 @@ Cập nhật cuối: 12/11/2026.
 
 ## Thu mua — import snapshot Excel — 12/11/2026
 
-`GET /api/purchase-orders/import/snapshot` tạo workbook đầy đủ từ cùng một revision `REPEATABLE READ`; popup chỉ mở chọn/kéo file sau khi tải xong snapshot. Sheet `Hướng dẫn` mô tả mọi cột, định dạng và quy tắc dòng; manifest revision được giấu trong `__TOKOSI`. Preview hỗ trợ tạo mới, cập nhật, giữ nguyên, xóa mềm dòng bị thiếu, và xóa giá trị bằng ô trống; một lỗi hoặc revision cũ chặn toàn bộ. Xác nhận áp dụng create/update/soft-delete nguyên tử qua transaction, giữ audit, undo/restore và delta realtime hiện có. Không migration.
+`GET /api/purchase-orders/import/snapshot` tạo workbook đầy đủ từ cùng một revision `REPEATABLE READ`; popup chỉ mở chọn/kéo file sau khi tải xong snapshot. Sheet `Hướng dẫn` mô tả mọi cột, định dạng và quy tắc dòng; manifest revision được giấu trong `__TOKOSI`. Preview hỗ trợ tạo mới, cập nhật, giữ nguyên, xóa mềm dòng bị thiếu, xóa giá trị bằng ô trống, đồng thời đề xuất thêm/kích hoạt nhân viên theo buyer trong file; preview không ghi. Một lỗi hoặc revision cũ chặn toàn bộ. Xác nhận áp dụng thay đổi đơn hàng và danh mục nhân viên nguyên tử qua cùng transaction, ghi audit, phát delta realtime hiện có. Không migration.
 
 Kiểm tra: test importer và service bao gồm blank-clear, stale preview/confirm, soft-delete/restore và tombstone delta; route download cần quyền `purchase.import`; UI yêu cầu download trước, kéo/chọn `.xlsx`, giới hạn 10 MB và hiển thị tiến độ thật. Commit `725e73d5` đã push `main`; xác nhận Render phục vụ JS chứa UI snapshot mới. Còn test workbook với dữ liệu thật và xác minh đồng bộ hai phiên trên production.
 
-Cập nhật cuối: 12/11/2026.
+Cập nhật cuối: 15/11/2026.
+
+15/11/2026 — Import snapshot tự thêm nhân viên Thu mua chưa có hoặc kích hoạt lại tên đã ngừng. Preview hiển thị rõ danh sách; recheck danh mục khi xác nhận để tránh trùng cách viết hoặc ghi dữ liệu một phần.
 
 ## Hiệu năng đợt 5 — 13/11/2026
 
@@ -783,12 +793,21 @@ Cập nhật cuối: 13/11/2026.
 Cho phép nhập biểu thức Excel-style trực tiếp tại ô Tiền VC của cont. Lưu biểu thức tối đa 512 ký tự, parser an toàn chỉ nhận số học, `D2`/`M3_CONT` (tổng m³ cont), `M3_XE`, và `SUM`/`ROUND`/`MIN`/`MAX`/`ABS`; không dùng `eval`. Công thức cho tổng cước cont hiện tại; kết quả chia tổng m³ thành VC/m³, rồi cùng phép chiếu phân bổ cước dòng và NET trong thao tác thay đổi. Số tiền nhập trực tiếp tiếp tục là chế độ thủ công. Migration `0126_purchase_container_freight_formula.sql` thêm trường công thức, được nạp khi khởi tạo schema Thu mua. Test unit/service/projection/UI phải xác nhận parser, lưu/sửa chế độ, m³ đổi, từ chối kết quả không hợp lệ kèm rollback và công thức hiển thị khi focus.
 Cập nhật gần nhất: 14/11/2026.
 
+## Thu mua — cước quy đổi và lô sửa hàng loạt (16/11/2026)
+Áp dụng Tiền VC mã = m³ xếp mã × ((Đơn giá cont − tổng Phụ phí cont) / m³ mẫu số), với m³ giả định ưu tiên và m³ thực tế dự phòng. NET cộng phụ phí riêng. API/export và projection phải giữ cùng phép tính. Tối ưu bulk edit bằng khóa tập dòng và UPDATE set-based, giữ kiểm xung đột từng dòng/audit một lần.
+
+Cập nhật gần nhất: 16/11/2026.
+
 ## Thu mua — m³ giả định và phụ phí (14/11/2026)
 Thay phân loại Loại xe bằng Tổng m³ giả định trên cont. Bắt buộc nhập khi tạo cont; cột Tổng m³ đang xếp vẫn phản ánh hàng thực tế. Công thức Tiền VC dùng m³ giả định làm mẫu số cho tới khi người dùng xóa; khi đó mẫu số đổi sang m³ đang xếp. Từng mã tiếp tục nhận VC theo m³ thực tế của mã. Phụ phí nhập theo % (giao diện nhập số phần trăm, API lưu phân số) và nhân với tiền hàng CNY của cùng mã rồi nhân tỉ giá dòng trước khi tính NET.
 
 Migrations `0127_purchase_container_assumed_m3.sql` và `0128_purchase_surcharge_percent.sql` tự đăng ký trong schema Thu mua; migration thứ hai bỏ `tax_amount` theo yêu cầu. Unit/service/projection/UI test và UAT giao diện mô phỏng đã kiểm tạo cont bắt nhập m³ giả định, xóa giá trị để chuyển mẫu số, phụ phí theo phần trăm và NET. Cần kiểm trên staging sau khi có schema; chưa áp migration production/deploy.
 
 Cập nhật gần nhất: 14/11/2026.
+
+## Thu mua — hoàn thiện đơn giá cont và vùng (14/11/2026)
+
+Triển khai migration 0129 (danh mục vùng, vùng đơn hàng/cont và ghi chú cont) và 0130 (cho phép phụ phí phần trăm âm). Đơn giá cont lưu tổng chi phí, VC/m³ lấy tổng chi phí chia cho m³ giả định hoặc m³ đang xếp; phân bổ xuống mã theo m³ thực tế. Bảng chỉ số bỏ Dòng, có Đơn giá quy đổi và phụ phí tổng hợp; danh sách vùng, chọn vùng ở đơn/cont, cont chờ xếp tách theo vùng và bộ lọc vùng ở hai bảng. Còn cần chạy kiểm thử liên quan, kiểm staging rồi áp migration và deploy theo quy trình vận hành.
 
 ## Hiệu năng đợt 6 — 14/11/2026
 

@@ -1443,11 +1443,11 @@ Cập nhật cuối: 12/11/2026.
 ## Thu mua — snapshot import Excel (12/11/2026)
 
 - `GET /api/purchase-orders/import/snapshot` (`purchase.import`) tải mọi dòng Thu mua đang hoạt động, không phụ thuộc lọc/trang, dưới dạng `.xlsx` gồm `Đặt hàng`, `Hướng dẫn`, `__TOKOSI` ẩn. Snapshot và revision lịch sử được đọc trong cùng giao dịch `REPEATABLE READ READ ONLY`.
-- `POST /import/preview` chỉ nhận workbook snapshot này (tối đa 10 MB/10.000 dòng), kiểm tra đủ cột và revision. Preview đếm thêm/sửa/không đổi/xóa mềm/lỗi; không ghi dữ liệu.
-- `POST /import/revise` cập nhật lại preview; `POST /import/confirm` xác nhận toàn bộ. Revision được kiểm tra lại khi sửa preview và trước khi ghi; snapshot cũ trả 409 `IMPORT_SNAPSHOT_STALE`.
+- `POST /import/preview` chỉ nhận workbook snapshot này (tối đa 10 MB/10.000 dòng), kiểm tra đủ cột và revision. Preview đếm thêm/sửa/không đổi/xóa mềm/lỗi; không ghi dữ liệu. Tên buyer mới được đề xuất thêm vào danh mục NV Thu mua; NV đã ngừng hoạt động được đề xuất kích hoạt lại.
+- `POST /import/revise` cập nhật lại preview; `POST /import/confirm` xác nhận toàn bộ. Revision và danh mục NV được kiểm tra lại trong transaction trước khi ghi; các NV đề xuất chỉ được thêm/kích hoạt cùng lúc với snapshot đã xác nhận. Snapshot cũ trả 409 `IMPORT_SNAPSHOT_STALE`; nếu danh mục đổi hoặc trùng cách viết sau preview thì từ chối toàn bộ.
 - Ô trống xóa giá trị tùy chọn; thiếu Mã dòng tạo mã mới; Mã dòng có sẵn cập nhật; dòng active bị bỏ khỏi workbook được xóa mềm cùng audit, projection và realtime. Một lỗi/xung đột chặn toàn bộ snapshot. Không migration.
 
-Cập nhật cuối: 12/11/2026.
+Cập nhật cuối: 15/11/2026.
 
 ## Thu mua — Mã dòng tái sử dụng (migration 0125, 13/11/2026)
 
@@ -1466,8 +1466,25 @@ Cập nhật cuối: 13/11/2026.
 
 ## Thu mua — m³ giả định và phụ phí (migrations 0127–0128, 14/11/2026)
 - Khi tạo cont, bắt buộc nhập Tổng m³ giả định. Bảng Chỉ số cont hiển thị riêng Tổng m³ giả định và Tổng m³ đang xếp (thể tích hàng thực tế). Xóa m³ giả định sẽ chuyển mẫu số cước sang m³ đang xếp.
-- Công thức ở ô Tiền VC được tính thành VC/m³ bằng cách chia biểu thức cho m³ giả định; nếu giá trị giả định đã xóa thì chia cho m³ đang xếp. `M3_XE` tham chiếu mẫu số đang hiệu lực. Thay đổi m³ sẽ tính lại VC/m³, phần VC phân bổ theo thể tích thực tế từng dòng và Giá NET. Nhập số thường vẫn là tổng cước thủ công.
+- Ô Tiền VC giữ tổng chi phí (nhập số hoặc biểu thức); cột VC/m³ là tổng chi phí chia cho m³ giả định, hoặc m³ đang xếp sau khi xóa giả định. `M3_XE` nhận mẫu số đang hiệu lực, vì vậy đổi m³ sẽ cập nhật VC/m³ và phần VC phân bổ theo thể tích thực tế từng dòng mà vẫn giữ tổng chi phí của biểu thức. Giá NET được tính lại theo phần VC mỗi mã.
 - Đặt hàng ưu tiên m³ giả định làm mẫu số chia tiền VC cont; khi xóa giá trị giả định, hệ thống dùng m³ đang xếp. Tiền VC từng mã = m³ của mã × (tiền VC cont / m³ mẫu số). Phụ phí nhận số phần trăm (ví dụ nhập `5` là 5%) nhân với cột Tiền hàng; Giá NET cộng Tiền hàng, Tiền VC từng mã, Phụ phí và VC sau rồi chia Tổng SL.
 - `0127_purchase_container_assumed_m3.sql` thêm `product_containers.assumed_m3`; `0128_purchase_surcharge_percent.sql` xóa `purchase_orders.tax_amount` theo yêu cầu và thêm `surcharge_percent`. Cả hai được đăng ký trong `ensurePurchaseSchema.FILES`. Migrations mới đã có trong mã nhưng chưa áp production; không deploy trong bước này.
 
 Cập nhật gần nhất: 14/11/2026.
+
+## Thu mua — cập nhật 14/11/2026
+
+Schema Thu mua đăng ký migrations 0129 (vùng đơn/cont và ghi chú cont) và 0130 (phụ phí % âm/dương) trong `db/ensurePurchaseSchema.js`. API vùng: `GET /api/purchase-orders/regions`, `PUT /api/purchase-orders/regions/batch`; API tạo cont nhận `regionId`, cập nhật cont nhận `note` và `regionId`. API danh sách Thu mua trả thêm `regions`. Cước cont là tổng chi phí nhập; `VC/m³ = tổng chi phí / m³ giả định nếu có, nếu không dùng m³ đang xếp`. Trạng thái cont 1 hiển thị `Chưa xếp`. Cần xác minh các migration trên staging trước production.
+
+Cập nhật gần nhất: 14/11/2026.
+
+## Thu mua — hàng đợi chiếu read model (16/11/2026)
+`purchaseOrdersRoutes` dùng chế độ deferred projection: trong cùng transaction với sửa dữ liệu Thu mua, server thêm một hàng outbox; worker từ `jobs.js` chạy `purchaseProjectionQueue.js` mỗi 750 ms, lấy mốc ID hiện tại, chiếu trong `REPEATABLE READ`, rồi xóa các yêu cầu tới mốc đó. Hàng mới trong lúc chạy được giữ cho lượt sau; lỗi giữ queue và thử lại sau 5 giây. Worker dùng advisory lock riêng cho projection và bảng Dự kiến hàng về để tránh khóa luồng ghi canonical trong toàn bộ lượt chiếu. Mốc dữ liệu canonical và kiểm tra công thức cước vẫn đồng bộ trước khi API xác nhận; hai bảng dùng chung có thể trễ đến khi worker hoàn tất. Sự kiện `containersChanged` phát sau commit projection để màn hình khác không tải dữ liệu cũ. Schema `0134_purchase_projection_queue.sql` tự chạy cùng schema Thu mua.
+
+Cập nhật gần nhất: 16/11/2026.
+
+## Thu mua — phân bổ cước quy đổi và sửa hàng loạt (16/11/2026)
+
+Tiền VC mã dùng `m³ xếp của mã × ((Đơn giá cont − tổng Phụ phí cont) / m³ mẫu số)`. Mẫu số ưu tiên m³ giả định, nếu trống dùng m³ xếp thực tế. Phụ phí vẫn được cộng riêng vào NET, tránh tính phụ phí lần hai trong phần VC; API xuất và projection SQL dùng cùng quy tắc. Sửa hàng loạt khóa tập dòng bằng một truy vấn, ghi các dòng đã hợp lệ bằng một câu `UPDATE ... FROM jsonb_to_recordset`, và chỉ kiểm danh mục nhân viên một lần cho cả lô.
+
+Cập nhật gần nhất: 16/11/2026.

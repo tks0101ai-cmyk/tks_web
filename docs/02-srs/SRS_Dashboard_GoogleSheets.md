@@ -1166,9 +1166,9 @@ Nguồn kiểm chứng: công thức Sheet đã ghi nhận trong memory phiên d
 | Tổng tấn | kg/thùng × số thùng / 1,000 |
 | Tổng m³ | m³/thùng × số thùng |
 | VC cont tự tính | 202,000,000 / 170 × tổng m³ (hoặc định mức đã sửa) |
-| VC/m³ | Tự tính: tiền chuẩn / m³ chuẩn; nhập tay: tiền cont / tổng m³ đầy đủ của cont |
-| Tiền VC mã | Tổng m³ mã × VC/m³ cont |
-| Giá NET VND/cái | (Tiền hàng + Tiền VC mã + Thuế + VC sau CNY × 3,920) / Tổng SL; hằng số 3,920 chỉ áp dụng VC sau, giá hàng dùng tỉ giá dòng |
+| VC/m³ | (Đơn giá cont − tổng phụ phí cont) / m³ mẫu số; m³ giả định ưu tiên, nếu trống dùng tổng m³ xếp |
+| Tiền VC mã | Tổng m³ xếp mã × VC/m³ cont |
+| Giá NET VND/cái | (Tiền hàng + phụ phí mã + Tiền VC mã + VC trả sau × tỉ giá cont hoặc 3,900 mặc định) / Tổng SL |
 | L/c TQ; g/c TQ | m³/thùng × 1,000 / SL/thùng; kg/thùng × 1,000 / SL/thùng |
 | Lệch số đo | (Số đo TQ − số đo kho) / số đo kho; hiển thị % |
 | Tỉ lệ | Tổng tấn / tổng m³; hiển thị % |
@@ -1228,7 +1228,7 @@ Cập nhật gần nhất: 08/11/2026.
 
 Mục này thay yêu cầu cũ về dropdown HR, nhập tên buyer tự do, gắn cont khi tạo mã và heartbeat 10 giây.
 
-- **FR-PUR-NV:** danh mục NV Thu mua độc lập, thêm/đổi tên/ngừng/kích hoạt bằng quyền purchase.edit; không xóa cứng. Row lưu tên snapshot, không cần HR linkage. Chỉ chọn mới/đổi sang tên catalog active; legacy/inactive không đổi vẫn đọc và sửa các ô khác. Đổi catalog không ghi lại lịch sử buyer trên đơn. Migration 0119 seed tên hiện có sau trim/khử trùng.
+- **FR-PUR-NV:** danh mục NV Thu mua độc lập, thêm/đổi tên/ngừng/kích hoạt bằng quyền purchase.edit; không xóa cứng. Row lưu tên snapshot, không cần HR linkage. Chỉ chọn mới/đổi sang tên catalog active; legacy/inactive không đổi vẫn đọc và sửa các ô khác. Import snapshot có quyền `purchase.import` được đề xuất thêm tên buyer mới hoặc kích hoạt tên đã ngừng; preview chỉ đọc, thay đổi danh mục chỉ ghi cùng snapshot khi xác nhận toàn bộ. Tên trùng cách viết không phân biệt hoa/thường bị chặn. Đổi catalog không ghi lại lịch sử buyer trên đơn. Migration 0119 seed tên hiện có sau trim/khử trùng.
 - **FR-PUR-WAIT:** Mọi mã hàng mới từ create trực tiếp, `plan.creates` hoặc import đều lưu `container_id=NULL` (**Chờ xếp**), kể cả request create gửi `contId`. Việc xếp/chuyển/tách cont là thao tác riêng có xác nhận và kiểm phiên bản. Tên legacy vẫn đọc được; chỉ lựa chọn buyer mới/đổi mới bắt buộc danh mục đang hoạt động.
 - **FR-PUR-CONT:** `PATCH /api/purchase-orders/containers/:id` nhận `{version,changes,rows?}`; version cont đang xem là bắt buộc. Các trường trong `changes`: `name`, `assumedM3` (số dương hoặc `null` để xóa), `carrier`, `loader`, `nameCn`, `loading`, `arrivalNote`, `arrivalDate`, `maxTon`, `m3Min`, `m3Max`, `freight`, `freightMode`, `freightFormula`, `freightBase`, `freightCapacity`. Response là bản ghi cont dạng DB (ví dụ `assumed_m3`, `arrival_note`, `arrival_date`), không phải toàn bộ dòng con.
 
@@ -1281,9 +1281,9 @@ Cập nhật gần nhất: 07/11/2026.
 11/11/2026 — NET theo tab VK-DUNG: cộng Thuế, nhân VC sau CNY với 3,920 (chỉ riêng phí này), giá hàng vẫn dùng tỉ giá dòng; chi phí để trống được tính là 0. Hiển thị giá tệ 2 chữ số và Tổng tệ làm tròn đơn vị; nút Tổng tệ hiện số chính xác 3 chữ số trong cùng ô tới khi mất focus, không mở popup.
 11/11/2026 — Thu mua cho phép ghi đè theo dòng 9 trường thuộc nhóm Đối chiếu Cân đo. `measurement_overrides` (JSONB, migration 0122) chỉ lưu key đã sửa; bỏ key/nhập trống sẽ lấy lại số nguồn hoặc kết quả tính tự động. Không ghi thay đổi ngược vào bảng `shipping_measures` hay Google Sheet; ngày đo vẫn trống nếu nguồn không có ngày.
 
-12/11/2026 — Import Thu mua phải tải workbook snapshot đầy đủ trước khi chọn/tải file. Workbook có hướng dẫn từng cột và revision ẩn; ô trống xóa giá trị, dòng vắng mặt được xóa mềm. UI hiển thị tiến độ tải và preview số dòng thêm/sửa/không đổi/xóa/lỗi; chỉ ghi sau khi xác nhận, theo giao dịch nguyên tử. Nếu revision đổi sau khi tải, preview/xác nhận bị từ chối và người dùng cần tải snapshot mới.
+12/11/2026 — Import Thu mua phải tải workbook snapshot đầy đủ trước khi chọn/tải file. Workbook có hướng dẫn từng cột và revision ẩn; ô trống xóa giá trị, dòng vắng mặt được xóa mềm. UI hiển thị tiến độ tải và preview số dòng thêm/sửa/không đổi/xóa/lỗi; chỉ ghi sau khi xác nhận, theo giao dịch nguyên tử. Nếu revision đổi sau khi tải, preview/xác nhận bị từ chối và người dùng cần tải snapshot mới. Buyer mới/ngừng hoạt động được liệt kê trong preview, chỉ thêm/kích hoạt cùng transaction khi xác nhận.
 
-Cập nhật cuối: 12/11/2026.
+Cập nhật cuối: 15/11/2026.
 
 ## Thu mua — vòng đời Mã dòng tái sử dụng (13/11/2026)
 
@@ -1300,13 +1300,39 @@ Cập nhật cuối: 13/11/2026.
 - VC/m³ = kết quả công thức / tổng m³ cont. Tiền VC mã = m³ mã × VC/m³; Giá NET và projection dùng cùng kết quả. Mọi lần sửa dòng làm đổi m³ sẽ tính lại trong projection; không thay đổi công thức đã lưu.
 - Nhập số thường chuyển về chế độ cước thủ công và xóa công thức; xóa ô về chuẩn cũ 202.000.000 / 170. Các cont hiện hữu không đổi trước khi người dùng nhập công thức. Nếu lần sửa m³ làm công thức cho kết quả âm/không hợp lệ, toàn bộ thao tác bị rollback và API trả lỗi validation 400 để người dùng sửa công thức hoặc chọn cước thủ công.
 - Migration `0126_purchase_container_freight_formula.sql` thêm `product_containers.freight_formula`, đăng ký trong `ensurePurchaseSchema.FILES`. Cần kiểm staging trước khi áp vào production; chưa deploy.
+Cập nhật gần nhất: 16/11/2026.
+
+## Thu mua — hai phạm vi quyền và tạo mã hàng loạt (16/11/2026)
+
+- Danh mục quyền cấp theo tài khoản chỉ hiển thị **Làm việc với bảng Đặt hàng** và **Làm việc với bảng Chỉ số cont**. Quyền Đặt hàng bao gồm sửa/import/export đơn và các thao tác dòng; quyền Chỉ số cont bao gồm tạo/sửa/vòng đời cont và trạng thái cont. API kiểm tra phạm vi ở máy chủ; quyền cũ được duy trì tương thích cho đến khi tài khoản được lưu theo phạm vi mới.
+- Màn hình Đặt hàng có luồng **Thêm nhiều mã** cho phép dán tối đa 500 dòng từ Excel. Cột theo thứ tự: Mã SP, Tên SP, Số thùng, SL/T, Giá Net, Kg/thùng, m³/thùng; có thể chỉ dán Mã SP nếu mã đã có dòng lịch sử để điền các giá trị gần nhất. Mã thiếu trường bắt buộc chặn cả lô; tất cả dòng mới mặc định chờ xếp ở vùng AA.
+- `POST /api/purchase-orders/bulk-create` kiểm tra đầu vào, phân bổ khóa dòng theo lô, dùng batch insert và ghi một audit trong cùng transaction. Giới hạn 500 dòng/lần; không ghi một phần nếu có lỗi.
+
+Cập nhật gần nhất: 16/11/2026.
+
+## Thu mua — lưu liên tục, chiếu read model nền (16/11/2026)
+
+Khi `source_mode='web'` và tích hợp được bật, một giao dịch ghi nghiệp vụ phải ghi một mục outbox bền vững cùng transaction. API chỉ xác nhận sau khi dữ liệu canonical và mục outbox cùng commit. Worker lấy mốc queue hiện có, dựng projection nhất quán từ snapshot, áp dụng cho bảng cont và Dự kiến hàng về, rồi xóa các mục đã được bao phủ. Thay đổi mới phát sinh khi worker đang chạy phải được để lại cho lượt kế tiếp. Worker lỗi không được xóa mục queue; retry và log rõ trạng thái. Công thức cước không hợp lệ vẫn phải từ chối ngay trong giao dịch người dùng.
+
+Không dùng hàng đợi này để thay audit, kiểm phiên bản, idempotency hoặc lưu nháp người dùng. Projection dùng chung được cập nhật sau khi canonical commit; thông báo làm mới cont chỉ phát sau projection để màn hình khác không tải dữ liệu cũ. Tab Thu mua tiếp tục đồng bộ theo revision/SSE. Chỉ số nghiệm thu staging/production: p50/p95 thời gian API lưu, p95 độ trễ queue→projection, số queue tồn đọng, lỗi retry và xác nhận không mất cập nhật khi ghi đồng thời.
+
+Cập nhật gần nhất: 16/11/2026.
+
+## Thu mua — chi phí cont, phụ phí có dấu và vùng (14/11/2026)
+
+- Tổng chi phí nhập ở cột Đơn giá cont là kết quả số hoặc biểu thức nhập. Đơn giá cont quy đổi = Đơn giá cont − tổng Phụ phí cont. VC/m³ = Đơn giá cont quy đổi / m³ ưu tiên (m³ giả định nếu còn, nếu trống thì m³ đang xếp). Ô chỉnh sửa vẫn cho xem biểu thức gốc; thay đổi m³ lập tức cập nhật VC/m³ và tiền vận chuyển phân bổ cho từng mã.
+- Phụ phí cho phép nhập phần trăm âm hoặc dương. Phụ phí mã = phần trăm × Tiền hàng của dòng; NET cộng phụ phí riêng, không tính lặp khoản này trong tiền VC mã.
+- Tiền VC mã = m³ xếp của mã × VC/m³. Chỉ số cont có Đơn giá cont, Phụ phí tổng hợp, Đơn giá quy đổi và trạng thái Chưa xếp khi chưa có lịch.
+- Mỗi cont có ghi chú mở từ nút trong bảng và lưu giữa các lần mở. Danh sách vùng cho phép thêm tên/màu, gán vùng cho đơn mới và cont mới; mã chờ xếp được hiển thị riêng theo vùng. Mã SP đã có trước tự điền vùng của lần đặt gần nhất. Bộ lọc vùng có ở bảng đặt hàng và bảng chỉ số cont.
+- Migrations 0129–0130 bổ sung vùng/ghi chú và cho phép phần trăm phụ phí âm. Cần xác minh staging trước khi áp vào production.
+
 Cập nhật gần nhất: 14/11/2026.
 
-## Thu mua — m³ giả định và phụ phí (14/11/2026)
-- Khi tạo cont, `assumedM3` là bắt buộc và phải lớn hơn 0. Khi sửa, giá trị có thể để trống để xóa giả định. Cont cũ không được backfill.
-- Bảng Chỉ số cont hiển thị `Tổng m³ đang xếp` từ tổng `m3PerCarton × cartonCount` và `Tổng m³ giả định` từ cont. Bỏ nhãn Loại xe khỏi bộ lọc và bảng.
-- Ở chế độ công thức, mẫu số hiệu lực là `assumed_m3` nếu có, nếu không là tổng m³ đang xếp. `M3_XE` trỏ tới mẫu số này; `D2`/`M3_CONT` tiếp tục trỏ tới tổng m³ thực tế cho tương thích công thức cũ. Tiền VC dạng công thức là đơn giá/m³; từng dòng nhận `m³ dòng thực tế × đơn giá/m³`. Cước thủ công tiếp tục được phân bổ theo m³ thực tế.
-- Thuế được thay bằng `surchargePercent`: người dùng nhập số phần trăm (5 nghĩa là 5%), lưu tỷ lệ thập phân `0.05`. Phụ phí = tổng tiền hàng CNY của dòng × tỷ lệ × tỉ giá dòng; không cộng VC trước vào cơ sở phụ phí. Giá NET và SQL projection phải khớp.
-- Migrations `0127` và `0128` được đăng ký ở `ensurePurchaseSchema`; `0128` xóa cột dữ liệu thuế cũ theo yêu cầu. Chưa áp production.
+## Thu mua — Tiền VC theo Đơn giá cont quy đổi (16/11/2026)
 
-Cập nhật gần nhất: 14/11/2026.
+- Đơn giá cont quy đổi = Đơn giá cont − tổng Phụ phí của các mã trong cont.
+- Tiền VC mã = m³ xếp của mã × (Đơn giá cont quy đổi / m³ mẫu số); m³ mẫu số là m³ giả định nếu đã nhập, nếu trống dùng tổng m³ xếp.
+- NET cộng Tiền VC mã và Phụ phí riêng. API xuất và projection dùng chung phép tính để giá lưu trong bảng Đặt hàng khớp chỉ số cont.
+- Sửa hàng loạt khóa theo lô và ghi bằng câu lệnh set-based; giữ kết quả xung đột/không hợp lệ theo từng mã và một audit cho cả thao tác.
+
+Cập nhật gần nhất: 16/11/2026.

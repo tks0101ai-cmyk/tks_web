@@ -303,7 +303,10 @@
       <div class="vt-import-review" id="vtStockOutReview" hidden>
         <div id="vtStockOutResult" class="vt-import-result" aria-live="polite"></div>
         <div class="vt-import-preview" id="vtStockOutErrorsBox" hidden>
-          <h4 class="dp-section-title">Dòng bị bỏ qua</h4>
+          <div class="vt-order-tools">
+            <h4 class="dp-section-title">Dòng bị bỏ qua</h4>
+            <button type="button" class="locations-columns-button vt-btn" id="vtStockOutSkippedExport" hidden title="Tải danh sách dòng bị bỏ qua về file Excel (.xlsx)">Xuất Excel</button>
+          </div>
           <div class="dp-table-wrap vt-import-table-wrap">
             <table class="dp-table vt-import-table" id="vtStockOutErrorsTable" data-table-sort="off">
               <thead><tr><th class="num">Dòng file</th><th>Mã hàng</th><th>Vị trí</th><th>Ghi chú</th><th>Lý do</th></tr></thead>

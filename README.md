@@ -618,9 +618,9 @@ Cập nhật cuối: 12/11/2026.
 
 ## Thu mua — import snapshot Excel (12/11/2026)
 
-Import luôn bắt đầu bằng tải workbook đầy đủ từ `GET /api/purchase-orders/import/snapshot`; workbook có sheet `Đặt hàng`, hướng dẫn từng cột và manifest revision ẩn. Sửa đúng file đã tải rồi upload `.xlsx` (tối đa 10 MB, 10.000 dòng). Ô trống xóa giá trị; dòng bị bỏ khỏi file được tính xóa mềm và hiện rõ trong preview. Hệ thống từ chối snapshot cũ ở preview hoặc xác nhận, và chỉ áp dụng toàn bộ create/update/delete sau xác nhận hợp lệ. Không cần migration.
+Import luôn bắt đầu bằng tải workbook đầy đủ từ `GET /api/purchase-orders/import/snapshot`; workbook có sheet `Đặt hàng`, hướng dẫn từng cột và manifest revision ẩn. Sửa đúng file đã tải rồi upload `.xlsx` (tối đa 10 MB, 10.000 dòng). Ô trống xóa giá trị; dòng bị bỏ khỏi file được tính xóa mềm và hiện rõ trong preview. Preview đề xuất thêm/kích hoạt nhân viên Thu mua theo tên buyer trong file; chỉ ghi cùng snapshot sau khi xác nhận và trong một transaction. Hệ thống từ chối snapshot cũ ở preview hoặc xác nhận, và chỉ áp dụng toàn bộ thay đổi sau xác nhận hợp lệ. Không cần migration.
 
-Cập nhật cuối: 13/11/2026.
+Cập nhật cuối: 15/11/2026.
 
 ## Phiên đăng nhập trượt 7 ngày (13/11/2026)
 
@@ -639,3 +639,27 @@ Cập nhật gần nhất: 14/11/2026.
 - `0127_purchase_container_assumed_m3.sql` thêm `product_containers.assumed_m3`; `0128_purchase_surcharge_percent.sql` xóa `purchase_orders.tax_amount` theo yêu cầu và thêm `surcharge_percent`. Cả hai được đăng ký trong `ensurePurchaseSchema.FILES`. Migrations mới đã có trong mã nhưng chưa áp production; không deploy trong bước này.
 
 Cập nhật gần nhất: 14/11/2026.
+
+
+## Thu mua — cước cont và vùng (14/11/2026)
+
+Đơn giá cont giữ tổng chi phí nhập; VC/m³ bằng tổng chi phí chia cho m³ giả định hoặc m³ đang xếp khi m³ giả định trống. Phụ phí % nhận giá trị âm/dương và tính trên Tiền hàng của mã. Chỉ số cont có đơn giá quy đổi, tổng phụ phí, ghi chú; danh sách vùng hỗ trợ gán vùng cho đơn/cont, nhóm cont chờ xếp và lọc vùng. Migrations 0129–0130 đã được đăng ký, cần xác minh staging trước production.
+
+Cập nhật gần nhất: 14/11/2026.
+
+## Thu mua — lưu nhanh, chiếu dữ liệu nền (16/11/2026)
+Khi tích hợp Thu mua với các bảng dùng chung, giao dịch lưu dữ liệu canonical và ghi một mục bền vững vào `purchase_projection_queue`. Worker nền gộp các yêu cầu đang chờ rồi cập nhật `product_container_lines` và `product_container_expected`; giao dịch người dùng không chờ lượt chiếu toàn bảng. Queue giữ yêu cầu mới phát sinh trong lúc xử lý và thử lại sau lỗi. Sự kiện làm mới cont phát sau commit projection. Migration `0134` được đăng ký trong `ensurePurchaseSchema`; theo dõi log `[Purchase projection]`.
+
+Cập nhật gần nhất: 16/11/2026.
+
+## Thu mua — quyền theo bảng và thêm mã theo lô (16/11/2026)
+Trong màn hình cấp quyền tài khoản, Thu mua chỉ có hai lựa chọn: **Làm việc với bảng Đặt hàng** và **Làm việc với bảng Chỉ số cont**. Mỗi quyền mở đúng bảng và nhóm API ghi tương ứng; tài khoản chỉ có quyền Đặt hàng không thể sửa cont, và ngược lại. Quyền legacy vẫn được hiểu để tài khoản hiện tại không mất quyền cho đến khi quản lý lưu phạm vi mới.
+
+Nút **Thêm nhiều mã** nhận danh sách dán từ Excel, tối đa 500 dòng; các cột hỗ trợ là Mã SP, Tên SP, Số thùng, SL/T, Giá Net, Kg/thùng và m³/thùng. Khi chỉ dán mã đã có lịch sử, giá trị mới nhất của mã được dùng làm mặc định; mọi mã mới được tạo ở vùng AA. Máy chủ kiểm tra cả lô rồi thêm trong một transaction và batch insert, nên lỗi không ghi một phần.
+
+Cập nhật gần nhất: 16/11/2026.
+
+## Thu mua — phân bổ cước quy đổi và sửa hàng loạt (16/11/2026)
+Tiền VC từng mã phân bổ từ Đơn giá cont quy đổi (Đơn giá cont trừ tổng Phụ phí), chia cho m³ giả định hoặc tổng m³ xếp nếu bỏ giả định. Phụ phí được tính riêng trong NET. Sửa hàng loạt khóa và cập nhật theo tập dòng để giảm số lần gọi DB.
+
+Cập nhật gần nhất: 16/11/2026.
