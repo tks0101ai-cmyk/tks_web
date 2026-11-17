@@ -732,31 +732,48 @@ test('paste cannot bypass split-parent freight readonly cells',async t=>{const p
 
 test('Escape after a range paste clears selection without cancelling the staged range',async t=>{const p=await page(t,{extraRows:[{id:'3',rowKey:'D00003',version:1,contId:null,productCode:'B',supplier:'Other',cartonCount:2,qtyPerCarton:1}]}),doc=p.w.document;doc.querySelector('tr[data-id="3"] [data-field="supplier"]').click();doc.querySelector('tr[data-id="1"] [data-field="supplier"]').dispatchEvent(new p.w.MouseEvent('click',{bubbles:true,shiftKey:true}));const paste=new p.w.Event('paste',{bubbles:true,cancelable:true});paste.clipboardData={getData:()=> 'Shared'};doc.querySelector('tr[data-id="3"] [data-edit="supplier"]').dispatchEvent(paste);assert.equal(doc.activeElement.dataset.edit,'supplier');assert.equal(doc.activeElement.closest('tr').dataset.id,'3');doc.activeElement.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(doc.querySelectorAll('.purchase-cell-selected').length,0);const saved=JSON.parse(p.w.sessionStorage.getItem('purchase:buyer:v1'));assert.equal(saved.drafts['1'].changes.supplier,'Shared');assert.equal(saved.drafts['3'].changes.supplier,'Shared')});
 
-test('container metrics export writes what the table shows, following visible columns and filters',async t=>{
+test('container metrics export preserves Vietnamese, numeric cells and date text in a real XLSX workbook',async t=>{
  const p=await page(t),doc=p.w.document;
- const button=doc.getElementById('containerExport');
- assert.ok(button,'bang chi so cont phai co nut xuat file');
- // Chan tai xuong de doc thang noi dung thay vi ghi ra dia.
- let captured=null,revoked=false;
+ const vendor='/prototypes/thu-mua/vendor/xlsx.full.min.js';
+ assert.ok(doc.querySelector('script[src="'+vendor+'"]'));
+ p.w.eval(fs.readFileSync(path.join(dir,'../../',vendor.slice(1)),'utf8'));
+ let captured,downloadName;
  p.w.URL.createObjectURL=blob=>{captured=blob;return 'blob:cont'};
- p.w.URL.revokeObjectURL=()=>{revoked=true};
- let downloadName=null;
- const realCreate=doc.createElement.bind(doc);
- doc.createElement=tag=>{const el=realCreate(tag);if(tag==='a')el.click=()=>{downloadName=el.getAttribute('download')};return el};
- button.click();
- assert.equal(downloadName,'Chi-so-cont.csv');
- assert.ok(captured,'phai tao blob de tai ve');
- // BOM phai kiem o muc byte: blob.text() giai ma UTF-8 va luoc bo BOM theo dung chuan,
- // con Excel thi doc byte nen van can no de khong hong dau tieng Viet.
- const bytes=new Uint8Array(await captured.arrayBuffer());
- assert.deepEqual([...bytes.slice(0,3)],[0xEF,0xBB,0xBF],'phai co BOM UTF-8 o dau file');
- const text=await captured.text();
- const lines=text.split('\r\n');
- assert.match(lines[0],/sep=;/);
- // Hang tieu de phai bo mui ten sap xep, va so dong phai bang so hang dang hien.
- assert.doesNotMatch(text,/[▲▼]/);
+ p.w.URL.revokeObjectURL=()=>{};
+ p.w.HTMLAnchorElement.prototype.click=function(){downloadName=this.download};
+ // Displayed values include Unicode, a large numeric amount and an ambiguous day/month.
+ const tr=doc.querySelector('#containerTable tbody tr');
+ const put=(key,value)=>{const cell=contCell(doc,tr,key);cell.textContent=value};
+ put('name','Cont Hà Nội 中文');put('freight','202,000,000');put('arrivalDate','10/11');put('note','=1+1');
  const shown=doc.querySelectorAll('#containerTable tbody tr').length;
- assert.equal(lines.length-2,shown,'moi hang dang hien ra dung mot dong');
- assert.match(lines[1],/Tên cont/);
- assert.match(doc.getElementById('notice').textContent,new RegExp('Đã xuất '+shown+' cont'));
+ doc.getElementById('containerExport').click();
+ assert.equal(downloadName,'Chi-so-cont.xlsx');
+ assert.equal(captured.type,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+ const bytes=Buffer.from(await captured.arrayBuffer());assert.equal(bytes.subarray(0,2).toString(),'PK');
+ const XLSX=require('xlsx'),book=XLSX.read(bytes,{type:'buffer',cellNF:true}),sheet=book.Sheets['Chỉ số cont'];
+ const values=XLSX.utils.sheet_to_json(sheet,{header:1,defval:''});
+ assert.equal(values.length-1,shown);
+ const column=key=>[...doc.querySelectorAll('#containerTable thead th')].findIndex(th=>th.dataset.containerColumn===key);
+ assert.equal(values[1][column('name')],'Cont Hà Nội 中文');
+ const money=sheet[XLSX.utils.encode_cell({r:1,c:column('freight')})];assert.equal(money.t,'n');assert.equal(money.v,202000000);
+ const date=sheet[XLSX.utils.encode_cell({r:1,c:column('arrivalDate')})];assert.equal(date.t,'s');assert.equal(date.v,'10/11');assert.equal(date.z,'@');
+ const note=sheet[XLSX.utils.encode_cell({r:1,c:column('note')})];assert.equal(note.v,'=1+1');assert.equal(note.f,undefined);
+ assert.doesNotMatch(values[0].join(''),/[▲▼]/);
+ assert.ok(sheet['!ref']);assert.match(doc.getElementById('notice').textContent,new RegExp('Đã xuất '+shown+' cont'));
+ // Export again after using actual visibility/filter/selection controls.
+ doc.getElementById('containerColumns').click();
+ const toggle=doc.querySelector('[data-container-column-toggle="note"]');toggle.checked=false;toggle.dispatchEvent(new p.w.Event('change',{bubbles:true}));
+ doc.getElementById('modalClose').click();
+ doc.getElementById('contSearch').value=p.current.containers[0].name;
+ doc.getElementById('contSearch').dispatchEvent(new p.w.Event('input',{bubbles:true}));
+ doc.getElementById('containerSelect').click();
+ const filtered=doc.querySelectorAll('#containerTable tbody tr').length;assert.ok(filtered>0&&filtered<shown);
+ doc.getElementById('containerExport').click();
+ const filteredBook=XLSX.read(Buffer.from(await captured.arrayBuffer()),{type:'buffer',cellStyles:true});
+ const filteredSheet=filteredBook.Sheets['Chỉ số cont'],filteredValues=XLSX.utils.sheet_to_json(filteredSheet,{header:1});
+ assert.equal(filteredValues.length-1,filtered);
+ assert.ok(!filteredValues[0].includes('Ghi chú'));assert.ok(!filteredValues[0].includes('Chọn'));
+ assert.equal(filteredValues[0].length,doc.querySelectorAll('#containerTable thead th').length-1);
+ assert.ok(filteredSheet['!cols'].every(c=>c.wch>=14));
+
 });

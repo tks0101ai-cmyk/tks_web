@@ -58,3 +58,5 @@ Cập nhật: 16/11/2026
 - [ ] 14/11 — Thu mua: tách tổng chi phí cont khỏi VC/m³, cho phụ phí % âm/dương; thêm Đơn giá quy đổi, ghi chú cont, danh mục/lọc vùng và cont chờ xếp theo vùng (migrations `0127`–`0130`) — kiểm thử liên quan, xác minh staging rồi người vận hành áp migration/deploy
 - [ ] 16/11 — Thu mua: Nhật ký phiên bản kiểu Google Sheets (migration `0136` chỉ thêm index, chưa commit/deploy) — giao diện và API đã có khôi phục phiên bản; xác minh service/route 129/129 và test UI khôi phục riêng đạt; cần review diff rồi người vận hành áp migration/deploy
 - [ ] 16/11 — Thu mua: `purchaseOrdersLive.test.js` hiện 30/79 lỗi (49 đạt; trước phần sửa quyền fixture là 54/78 lỗi trên `c66a3cc5`) — lỗi còn lại chủ yếu là test dùng selector/kỳ vọng UI cũ, cùng một số lỗi giao diện/định dạng cần phân loại; chưa hoàn tất dọn bộ test
+
+- [ ] 17/11 — Thu mua: sửa xuất Chỉ số cont sang XLSX để giữ Unicode, kiểu số/ngày và độ rộng cột (không migration) — deploy web rồi tải lại file trong Excel thực tế.

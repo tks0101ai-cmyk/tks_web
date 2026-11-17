@@ -1488,3 +1488,8 @@ Cập nhật gần nhất: 16/11/2026.
 Tiền VC mã dùng `m³ xếp của mã × ((Đơn giá cont − tổng Phụ phí cont) / m³ mẫu số)`. Mẫu số ưu tiên m³ giả định, nếu trống dùng m³ xếp thực tế. Phụ phí vẫn được cộng riêng vào NET, tránh tính phụ phí lần hai trong phần VC; API xuất và projection SQL dùng cùng quy tắc. Sửa hàng loạt khóa tập dòng bằng một truy vấn, ghi các dòng đã hợp lệ bằng một câu `UPDATE ... FROM jsonb_to_recordset`, và chỉ kiểm danh mục nhân viên một lần cho cả lô.
 
 Cập nhật gần nhất: 16/11/2026.
+
+
+17/11/2026 — Thu mua: xuất bảng Chỉ số cont dưới dạng Excel `.xlsx` thay CSV để giữ tiếng Việt/中文, ô số và chuỗi ngày đúng kiểu; giữ bộ lọc, thứ tự và cột đang hiển thị, bỏ cột checkbox chọn cont, tự đặt độ rộng cột. Không migration.
+
+Cập nhật gần nhất: 17/11/2026.
