@@ -81,7 +81,7 @@ function actor(user) { if(!user?.id)throw fail(401,'AUTH_REQUIRED','Chưa đăng
 const MEASURED_ROW_SQL='p.*,sm.m3_per_unit AS measure_m3_per_unit,sm.per_carton AS measure_per_carton,sm.kg_per_unit AS measure_kg_per_unit';
 async function readPurchaseRow(client,id,lock=false){return (await client.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE p.id=$1${lock?' FOR UPDATE OF p':''}`,[id])).rows[0]}
 async function readPurchaseRows(client,ids){if(!ids.length)return [];return (await client.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE p.id=ANY($1::bigint[]) ORDER BY p.id`,[ids])).rows}
-async function readRows(client,lock=false) { return (await client.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE p.deleted_at IS NULL AND p.inactive_at IS NULL ORDER BY p.id${lock?' FOR UPDATE OF p':''}`)).rows.map(jsRow); }
+async function readRows(client,lock=false,ids=null) { const selected=Array.isArray(ids);return (await client.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE p.deleted_at IS NULL AND p.inactive_at IS NULL${selected?' AND p.id=ANY($1::bigint[])':''} ORDER BY p.id${lock?' FOR UPDATE OF p':''}`,selected?[ids]:[])).rows.map(jsRow); }
 async function readArchivedRows(client,lock=false) { return (await client.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE p.deleted_at IS NOT NULL OR p.inactive_at IS NOT NULL ORDER BY p.id${lock?' FOR UPDATE OF p':''}`)).rows.map(jsRow); }
 async function readImportContainers(client) { return (await client.query('SELECT id,name,region_id,inactive_at,deleted_at FROM product_containers')).rows; }
 // Cột được so khi diff một phiên bản: đúng tập mà người dùng nhìn thấy và sửa được.
@@ -414,10 +414,10 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
       const target=await rowsAtVersion(client,op,{raw:true}),current=(await client.query('SELECT p.*,to_jsonb(p) AS snapshot FROM purchase_orders p ORDER BY p.id FOR UPDATE')).rows;
       const targetById=new Map(target.map(row=>[String(row.id),row])),currentById=new Map(current.map(row=>[String(row.id),row]));
       const restoreFields=['row_key','root_key','root_order_id','split_from_key','container_id','region_id','measurement_overrides','source_sheet','source_row',...dbCols];
-      const idMap=new Map();
-      for(const row of target)if(!currentById.has(String(row.id))){
-        const next=(await client.query("SELECT nextval(pg_get_serial_sequence('purchase_orders','id')::regclass)::text AS id")).rows[0].id;
-        idMap.set(String(row.id),String(next));
+      const idMap=new Map(),missingIds=target.filter(row=>!currentById.has(String(row.id)));
+      if(missingIds.length){
+        const allocated=(await client.query("SELECT nextval(pg_get_serial_sequence('purchase_orders','id')::regclass)::text AS id FROM generate_series(1,$1)",[missingIds.length])).rows;
+        missingIds.forEach((row,index)=>idMap.set(String(row.id),String(allocated[index].id)));
       }
       const same=(a,b)=>{
         if(a instanceof Date)a=a.toISOString();if(b instanceof Date)b=b.toISOString();
@@ -454,8 +454,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         await recordRetiredKeys(client,toRetire);
         await client.query('UPDATE purchase_orders SET deleted_at=now(),version=version+1,updated_at=now() WHERE id=ANY($1::bigint[])',[toRetire.map(row=>row.id)]);
       }
-      const affected=new Set(toRetire.map(row=>String(row.id)));
-      const restoredFamilies=new Map();
+      const affected=new Set(toRetire.map(row=>String(row.id))),restoredFamilies=new Map(),updates=[],inserts=[];
       for(const row of target){
         const oldId=String(row.id),id=idMap.get(oldId)||oldId,prior=currentById.get(oldId);
         const rootOrderId=idMap.get(String(row.root_order_id))||String(row.root_order_id);
@@ -465,13 +464,17 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         if(prior){
           const changed=restoreFields.some(key=>!same(prior[key],values[key]))||prior.deleted_at!=null||prior.inactive_at!=null;
           if(!changed)continue;
-          const cols=restoreFields.filter(key=>Object.hasOwn(values,key));
-          await client.query('UPDATE purchase_orders SET '+cols.map((key,index)=>'"'+key+'"=$'+(index+2)+(key==='measurement_overrides'?'::jsonb':'')).join(',')+',deleted_at=NULL,inactive_at=NULL,version=version+1,updated_at=now() WHERE id=$1',[id,...cols.map(key=>key==='measurement_overrides'?JSON.stringify(values[key]||{}):values[key])]);
-        }else{
-          const cols=['id',...restoreFields];
-          await client.query('INSERT INTO purchase_orders('+cols.map(key=>'"'+key+'"').join(',')+',version) VALUES('+cols.map((key,index)=>'$'+(index+1)+(key==='measurement_overrides'?'::jsonb':'')).join(',')+',1)',[id,...restoreFields.map(key=>key==='measurement_overrides'?JSON.stringify(values[key]||{}):values[key]??null)]);
-        }
+          updates.push({...values,deleted_at:null,inactive_at:null});
+        }else inserts.push(values);
         affected.add(id);
+      }
+      if(updates.length){
+        const cols=[...restoreFields,'deleted_at','inactive_at'];
+        await client.query('UPDATE purchase_orders o SET '+cols.map(key=>'"'+key+'"=s."'+key+'"').join(',')+',version=o.version+1,updated_at=now() FROM jsonb_populate_recordset(NULL::purchase_orders,$1::jsonb) s WHERE o.id=s.id',[JSON.stringify(updates)]);
+      }
+      if(inserts.length){
+        const cols=['id',...restoreFields];
+        await client.query('INSERT INTO purchase_orders('+cols.map(key=>'"'+key+'"').join(',')+',version) SELECT '+cols.map(key=>'s."'+key+'"').join(',')+',1 FROM jsonb_populate_recordset(NULL::purchase_orders,$1::jsonb) s',[JSON.stringify(inserts)]);
       }
       if(!affected.size)return {changed:false,value:{restored:false}};
       await client.query('DELETE FROM purchase_key_pool pool USING purchase_orders row WHERE row.deleted_at IS NULL AND pool.row_key=row.root_key');
@@ -533,13 +536,12 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
         const settings=(await client.query('SELECT source_mode,integration_enabled FROM purchase_settings WHERE id=1')).rows[0];
         const current=(await client.query("SELECT COALESCE(max(id),0)::text AS max_id,count(*)::text AS count,COALESCE(max(id),0)::text || ':' || count(*)::text AS revision FROM purchase_history")).rows[0];
-        const containers=(await client.query('SELECT * FROM product_containers ORDER BY id')).rows,regions=(await client.query('SELECT id,name,color,is_active AS \"isActive\",version FROM purchase_regions ORDER BY name,id')).rows;
-        const metadata={revision:current.revision,rows:[],deletedIds:[],containers,regions,sourceMode:settings?.source_mode||null,integrationEnabled:settings?.integration_enabled===true,employeesChanged:false};
+        const metadata={revision:current.revision,rows:[],deletedIds:[],containers:null,regions:null,sourceMode:settings?.source_mode||null,integrationEnabled:settings?.integration_enabled===true,employeesChanged:false};
         const match=typeof after==='string'&&/^(0|[1-9]\d*):(0|[1-9]\d*)$/.exec(after);
         const cursorId=match?Number(match[1]):NaN,cursorCount=match?Number(match[2]):NaN;
         const maxId=Number(current.max_id),historyCount=Number(current.count);
         if(!match||!Number.isSafeInteger(cursorId)||!Number.isSafeInteger(cursorCount)||cursorId>maxId||cursorCount>historyCount||cursorId===maxId&&cursorCount!==historyCount||cursorId===0&&cursorCount!==0){
-          metadata.reset=true;metadata.employeesChanged=true;await client.query('COMMIT');committed=true;return metadata;
+          metadata.reset=true;metadata.employeesChanged=true;metadata.containers=(await client.query('SELECT * FROM product_containers ORDER BY id')).rows;metadata.regions=(await client.query('SELECT id,name,color,is_active AS \"isActive\",version FROM purchase_regions ORDER BY name,id')).rows;await client.query('COMMIT');committed=true;return metadata;
         }
         const countAfterCursor=Number((await client.query('SELECT count(*)::text AS count FROM purchase_history WHERE id>$1',[cursorId])).rows[0].count);
         const countAtCursor=historyCount-countAfterCursor;
@@ -549,6 +551,9 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
           WHERE h.id>$1 GROUP BY r.row_id ORDER BY r.row_id LIMIT 501`,[cursorId])).rows;
         if(changes.length>500){metadata.reset=true;metadata.employeesChanged=true;await client.query('COMMIT');committed=true;return metadata}
         metadata.employeesChanged=(await client.query("SELECT EXISTS(SELECT 1 FROM purchase_history WHERE id>$1 AND action IN ('employee_create','employee_edit')) AS changed",[cursorId])).rows[0].changed;metadata.regionsChanged=(await client.query("SELECT EXISTS(SELECT 1 FROM purchase_history WHERE id>$1 AND action IN ('region_create','region_edit')) AS changed",[cursorId])).rows[0].changed;
+        const containersChanged=(await client.query("SELECT EXISTS(SELECT 1 FROM purchase_history WHERE id>$1 AND (action LIKE 'container_%' OR action IN ('depart','arrive','import')) AS changed",[cursorId])).rows[0].changed;
+        if(containersChanged)metadata.containers=(await client.query('SELECT * FROM product_containers ORDER BY id')).rows;
+        if(metadata.regionsChanged)metadata.regions=(await client.query('SELECT id,name,color,is_active AS \"isActive\",version FROM purchase_regions ORDER BY name,id')).rows;
         if(changes.length){
           const ids=changes.map(row=>row.id);
           metadata.rows=(await client.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE p.deleted_at IS NULL AND p.inactive_at IS NULL AND p.id=ANY($1::bigint[]) ORDER BY p.id`,[ids])).rows.map(jsRow);
@@ -765,11 +770,12 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         if(!plan.valid)throw fail(409,'VERSION_CONFLICT','Dữ liệu đã thay đổi. Không ghi dòng nào.',{conflicts:plan.conflicts});
         if(checked.operations.length)client.purchaseFormulaValidationRequired=true;
         const employeeChanges=await applyImportEmployees(client,plan.employeeChanges||[],user);
+        const currentById=new Map(current.map(row=>[String(row.id),row])),archivedById=new Map(archived.map(row=>[String(row.id),row]));
         const creates=[],updates=[],recoveries=[],deletes=[],emptyContainerCandidates=new Set(),defaultAaId=plan.operations.some(operation=>operation.action==='create'&&(operation.values.regionId==null||operation.values.regionId===''))?await ensureAaRegion(client):null;
         for(const operation of plan.operations){
           if(operation.action==='delete'){deletes.push(operation);continue}
           if(operation.action==='create'){const values={...operation.values};if(values.buyer==null)values.buyer='';if(values.regionId==null||values.regionId==='')values.regionId=defaultAaId;creates.push(values);continue}
-          const original=current.find(r=>String(r.id)===String(operation.id))||archived.find(r=>String(r.id)===String(operation.id));
+          const original=currentById.get(String(operation.id))||archivedById.get(String(operation.id));
           const record={...original},assignment=Object.fromEntries(operation.changes.map(c=>[c.key,c.after]));
           if(original?.contId!=null&&Object.hasOwn(assignment,'contId')&&String(original.contId)!==String(assignment.contId??''))emptyContainerCandidates.add(String(original.contId));
           operation.changes.forEach(change=>record[change.key]=assignment[change.key]);if(Object.hasOwn(assignment,'buyer')&&assignment.buyer==null){assignment.buyer='';record.buyer=''}
@@ -781,21 +787,16 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         for(const row of retired)if(row.container_id!=null)emptyContainerCandidates.add(String(row.container_id));
         await recordRetiredKeys(client,retired);await releaseInactiveFamilies(client,retired);
         if(updates.length)await client.query('UPDATE purchase_orders o SET '+['container_id','region_id','measurement_overrides',...dbCols].map(c=>c+'=s.'+c).join(',')+',version=o.version+1,updated_at=now() FROM jsonb_populate_recordset(NULL::purchase_orders,$1::jsonb) s WHERE o.id=s.id',[JSON.stringify(updates)]);
-        const restoreFamilies=new Map();
-        for(const recovery of recoveries){
-          if(recovery.action==='restore'){
-            const root=(await client.query('SELECT root_order_id,root_key FROM purchase_orders WHERE id=$1',[recovery.data.id])).rows[0];
-            const familyId=String(root.root_order_id);let family=restoreFamilies.get(familyId);
-            if(!family){family={rootOrderId:root.root_order_id,rootKey:root.root_key,rows:[]};restoreFamilies.set(familyId,family)}
-            family.rows.push(recovery);
-          }else{
-            const data=recovery.data;
-            await client.query('UPDATE purchase_orders o SET '+['container_id','region_id','measurement_overrides',...dbCols].map(c=>c+'=s.'+c).join(',')+',inactive_at=NULL,version=o.version+1,updated_at=now() FROM jsonb_populate_record(NULL::purchase_orders,$1::jsonb) s WHERE o.id=s.id',[JSON.stringify(data)]);
-          }
+        const restoreRows=recoveries.filter(recovery=>recovery.action==='restore'),restoreFamilies=new Map();
+        if(restoreRows.length){
+          const roots=(await client.query('SELECT id,root_order_id,root_key FROM purchase_orders WHERE id=ANY($1::bigint[])',[restoreRows.map(recovery=>recovery.data.id)])).rows;
+          const rootById=new Map(roots.map(root=>[String(root.id),root]));
+          for(const recovery of restoreRows){const root=rootById.get(String(recovery.data.id));if(!root)continue;const key=String(root.root_order_id);let family=restoreFamilies.get(key);if(!family){family={rootOrderId:root.root_order_id,rootKey:root.root_key,rows:[]};restoreFamilies.set(key,family)}family.rows.push(recovery)}
+          for(const family of restoreFamilies.values())await ensureFamilyKey(client,family.rootOrderId,family.rootKey);
         }
-        for(const family of restoreFamilies.values()){
-          await ensureFamilyKey(client,family.rootOrderId,family.rootKey);
-          for(const recovery of family.rows){const data=recovery.data;await client.query('UPDATE purchase_orders o SET '+['container_id','region_id','measurement_overrides',...dbCols].map(c=>c+'=s.'+c).join(',')+',inactive_at=NULL,deleted_at=NULL,version=o.version+1,updated_at=now() FROM jsonb_populate_record(NULL::purchase_orders,$1::jsonb) s WHERE o.id=s.id',[JSON.stringify(data)])}
+        if(recoveries.length){
+          const recoveryData=recoveries.map(recovery=>({...recovery.data,inactive_at:null,deleted_at:null}));
+          await client.query('UPDATE purchase_orders o SET '+['container_id','region_id','measurement_overrides',...dbCols].map(c=>'"'+c+'"=s."'+c+'"').join(',')+',inactive_at=NULL,deleted_at=NULL,version=o.version+1,updated_at=now() FROM jsonb_populate_recordset(NULL::purchase_orders,$1::jsonb) s WHERE o.id=s.id',[JSON.stringify(recoveryData)]);
         }
         const records=[],keys=await allocateKeys(client,creates.length);
         for(let i=0;i<creates.length;i++){const values=creates[i],key=keys[i],record={row_key:key,root_key:key,container_id:values.contId??null,region_id:values.regionId??null,measurement_overrides:Object.fromEntries(overrideColumns.filter(c=>values[c.k]!=null&&values[c.k]!=='').map(c=>[c.k,values[c.k]]))};writable.forEach(c=>record[snake(c.k)]=values[c.k]??null);records.push(record)}

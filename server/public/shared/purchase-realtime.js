@@ -46,7 +46,7 @@
       const merged={...(old||{}),...remote,...(draft?.changes||{})};if(i===undefined){index.set(id,rows.length);rows.push(merged)}else rows[i]=merged;
     }
     const deleted=new Set((delta.deletedIds||[]).map(String));if(deleted.size)rows=rows.filter(row=>!deleted.has(String(row.id)));for(const id of deleted){const draft=drafts[id];if(draft)conflicts.push({id,deleted:true,draft})}
-    return {...current,...delta,rows,conflicts,revision:delta.revision,containers:delta.containers??current?.containers};
+    return {...current,...delta,rows,conflicts,revision:delta.revision,containers:delta.containers??current?.containers,regions:delta.regions??current?.regions};
   }
   function createScheduler({refresh,isHidden=()=>false,gapMs=3000,onError=()=>{},setTimer=setTimeout,clearTimer=clearTimeout,now=Date.now}){
     let dirty=false,running=false,stopped=false,timer=null,last=-Infinity;
@@ -65,7 +65,7 @@
     let running=null,pending=false,stopped=false,lastRevision=null,baseline=null;
     function captureBaseline(snapshot){baseline=snapshot?{...snapshot,rows:(snapshot.rows||[]).slice(),containers:snapshot.containers}:snapshot;lastRevision=snapshot?.revision??lastRevision}
     function compareRevision(a,b){if(a==null||b==null)return 0;const parse=value=>String(value).split(':');const aa=parse(a),bb=parse(b);if(aa.length!==bb.length||aa.some(v=>!/^\d+$/.test(v))||bb.some(v=>!/^\d+$/.test(v)))return 0;for(let i=0;i<aa.length;i++){const x=BigInt(aa[i]),y=BigInt(bb[i]);if(x!==y)return x<y?-1:1}return 0}
-    function validDelta(delta){return delta&&/^\d+:\d+$/.test(String(delta.revision))&&Array.isArray(delta.rows)&&Array.isArray(delta.deletedIds)&&Array.isArray(delta.containers)&&typeof delta.sourceMode==='string'&&typeof delta.integrationEnabled==='boolean'&&typeof delta.employeesChanged==='boolean'&&typeof delta.reset==='boolean'}
+    function validDelta(delta){return delta&&/^\d+:\d+$/.test(String(delta.revision))&&Array.isArray(delta.rows)&&Array.isArray(delta.deletedIds)&&(delta.containers==null||Array.isArray(delta.containers))&&(delta.regions==null||Array.isArray(delta.regions))&&typeof delta.sourceMode==='string'&&typeof delta.integrationEnabled==='boolean'&&typeof delta.employeesChanged==='boolean'&&typeof delta.reset==='boolean'}
     async function applyFull(next){
       if(stopped)return;
       if(compareRevision(next.revision,lastRevision)<0)return;

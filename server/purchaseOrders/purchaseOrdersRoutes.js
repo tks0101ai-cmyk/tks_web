@@ -45,7 +45,7 @@ function createPurchaseOrdersRouter(dependencies={}) {
   router.post(root+'/export',requireFeature('purchase.export'),handle(async(req,res)=>{
     const allowed=new Set(columns.map(c=>c.k)),fields=req.body.fields,ids=req.body.ids;
     if(!Array.isArray(fields)||!fields.length||fields.some(k=>!allowed.has(k))||!Array.isArray(ids)||ids.length>10000||ids.some(id=>!/^\d+$/.test(String(id))))return res.status(400).json({code:'EXPORT_INVALID',error:'Danh sách dòng hoặc cột không hợp lệ.'});
-    const selected=new Set(ids.map(String)),rows=(await service.exportRows(req.user)).filter(r=>selected.has(String(r.id)));
+    const rows=await service.exportRows(req.user,ids.map(String));
     res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').attachment('Thu-mua.xlsx').send(Buffer.from(workbook.bytes(workbook.exportWorkbook(rows,columns,fields))));
   }));
   router.get(root+'/export',requireFeature('purchase.export'),handle(async(req,res)=>{
