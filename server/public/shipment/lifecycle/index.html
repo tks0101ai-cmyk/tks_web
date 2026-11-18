@@ -2210,15 +2210,13 @@
       bulkKiotStatusFilter.value = activeKiotStatusFilter;
     }
 
-    // Cac o loc anh huong lan nhau: may chu dem so don cua tung gia tri theo CAC bo loc khac (body.facets); gia tri
-    // khong con don nao thi khoa lai (mo to, khong chon duoc) tru gia tri dang chon, de khong ai ket hop ra bang rong.
+    // So dem theo cac bo loc khac chi de tham khao. Luon cho chon gia tri, ke ca khi ket qua rong.
     function applyFacetOptions(select, counts){
       if(!select || !counts) return;
       Array.prototype.forEach.call(select.options, function(option){
         if(!option.value) return; // "Tat ca" luon chon duoc
-        const blocked = !counts[option.value] && option.value !== select.value;
-        if(option.disabled !== blocked) option.disabled = blocked;
-        const title = blocked ? 'Không có đơn nào khi kết hợp với các bộ lọc đang chọn' : '';
+        if(option.disabled) option.disabled = false;
+        const title = !counts[option.value] ? 'Không có đơn nào khi kết hợp với các bộ lọc đang chọn' : '';
         if(option.title !== title) option.title = title;
       });
     }
