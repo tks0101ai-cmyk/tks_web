@@ -556,6 +556,15 @@
 .purchase-page #modalBody{display:grid;gap:14px;min-width:0;}
 .purchase-page #modalBody>p{margin:0;color:var(--text-secondary);line-height:1.55;}
 .purchase-page #modalBody>form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:end;}
+.purchase-page #modal:has(.container-note-form){width:min(680px,calc(100vw - 32px));max-height:90dvh}
+.purchase-page #modal:has(.container-note-form) .dp-body{padding:24px}
+.purchase-page #modalBody>.container-note-form{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:stretch}
+.purchase-page #modalBody .container-note-form>label{gap:8px}
+.purchase-page #modalBody .container-note-form textarea{min-height:220px;padding:12px 14px;line-height:1.6;resize:vertical}
+.purchase-page #modalBody .container-note-form>label small{font-size:11px;font-weight:400;color:var(--muted)}
+.purchase-page #modalBody .container-note-actions{display:flex;justify-content:flex-end;gap:10px;padding-top:14px;border-top:1px solid var(--border)}
+.purchase-page #modalBody .container-note-actions button[type=button]{background:transparent;border-color:var(--border);color:var(--text-secondary)}
+.purchase-page #modalBody .container-note-actions button[type=button]:hover{background:var(--surface-hover);color:var(--text)}
 .purchase-page #modalBody form>label,
 .purchase-page #modalBody>label{display:grid;gap:6px;min-width:0;margin:0;width:auto;color:var(--text-secondary);font-size:11px;font-weight:600;}
 .purchase-page #modalBody form>p{grid-column:1/-1;margin:0;}
