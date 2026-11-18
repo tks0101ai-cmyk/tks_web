@@ -674,6 +674,10 @@
 #modalBody .import-recovery label input{width:auto;margin:0}
 #modalBody .import-recovery small{font-size:9px;color:var(--muted)}
 #modalBody .import-archived{background:color-mix(in srgb,var(--primary) 5%,transparent)}
+#modalBody .import-stale-warning{display:grid;gap:8px;margin:10px 0;padding:12px;border:1px solid #e7a23b;border-radius:8px;background:color-mix(in srgb,#e7a23b 12%,var(--panel));color:var(--text)}
+#modalBody .import-stale-warning label{display:flex;align-items:flex-start;gap:8px;margin:0;font-weight:650}
+#modalBody .import-stale-warning input{width:auto;margin:2px 0 0}
+#modalBody .import-preserved{background:color-mix(in srgb,#2c9b79 10%,transparent);color:var(--text)}
 @media(max-width:620px){.purchase-page #modalBody label.import-drop{min-height:170px;padding:18px}}
 
 .purchase-page .purchase-region-chip{display:inline-block;max-width:100%;padding:2px 7px;border-radius:999px;background:color-mix(in srgb,var(--region-color) 18%,transparent);color:var(--region-color);font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

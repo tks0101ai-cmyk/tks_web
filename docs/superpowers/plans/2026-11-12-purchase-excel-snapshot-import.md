@@ -11,7 +11,7 @@
 - Only use `.xlsx`; keep the server limit at 10 MB and the workbook limit at 10,000 data rows.
 - A snapshot download contains every active purchase row and every writable catalog field, independent of filters and pagination.
 - A missing row key is a new row; a present row key updates that active row; an omitted active row is soft-deleted; a blank writable cell clears its value.
-- No create/update/delete writes before a valid preview is explicitly confirmed; any error or stale revision rejects the entire snapshot.
+- No create/update/delete writes before a valid preview is explicitly confirmed. A stale revision is rejected by default; explicit continuation builds a preview against current rows, preserves rows missing from the old snapshot, and requires a separate acknowledgement. Any further revision change after preview rejects the commit.
 - Reuse existing permissions, transaction, audit, projection and realtime behavior; no physical deletes and no schema migration.
 - Do not import or delete real production data during implementation.
 

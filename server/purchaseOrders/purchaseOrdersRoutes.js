@@ -72,12 +72,12 @@ function createPurchaseOrdersRouter(dependencies={}) {
     if(error)return res.status(400).json({code:'IMPORT_FILE_INVALID',error:'Chỉ chọn một file, tối đa 10 MB.'});next();
   }),handle(async(req,res)=>{
     if(!req.file||!/\.xlsx$/i.test(req.file.originalname))return res.status(400).json({code:'IMPORT_FILE_INVALID',error:'Chọn file .xlsx.'});
-    res.json(await service.previewImport(req.user,{buffer:req.file.buffer,sheetName:req.body.sheetName}));
+    res.json(await service.previewImport(req.user,{buffer:req.file.buffer,sheetName:req.body.sheetName,allowStale:req.query.allowStale==='1'}));
   }));
   router.post(root+'/import/revise',requireFeature('purchase.import'),handle(async(req,res)=>{if(!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(req.body.token||''))return res.status(400).json({code:'IMPORT_TOKEN_INVALID',error:'Bản xem trước không hợp lệ.'});res.json(await service.reviseImport(req.user,req.body.token,req.body.rows))}));
   router.post(root+'/import/confirm',requireFeature('purchase.import'),handle(async(req,res)=>{
     if(!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(req.body.token||''))return res.status(400).json({code:'IMPORT_TOKEN_INVALID',error:'Bản xem trước không hợp lệ.'});
-    res.json(await service.commitImport(req.user,req.body.token));
+    res.json(await service.commitImport(req.user,req.body.token,{ackStale:req.body.ackStale===true}));
   }));
   return router;
 }

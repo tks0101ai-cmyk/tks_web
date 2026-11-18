@@ -25,7 +25,8 @@ function comparable(value, col) {
   return blank(value) ? null : workbook.numericTypes.has(col.t) ? Number(value) : String(value);
 }
 const normalizeRegionName = value => normalizeContainerKey(String(value ?? '').normalize('NFKC'));
-function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = false, snapshotRevision, archivedRows = [], regions = [], containers = [], allowSparseCreates = false } = {}) {
+const normalizeContainerLabel = value => String(value ?? '').trim().replace(/^cont\s+/i, '').trim();
+function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = false, snapshotRevision, snapshotStale = false, archivedRows = [], regions = [], containers = [], allowSparseCreates = false } = {}) {
   if (!Array.isArray(sourceRows) || (!sourceRows.length && !snapshot) || sourceRows.length > 10000) throw Error('Đợt nhập phải có 1–10.000 dòng.');
   if (!Array.isArray(existingRows)) throw Error('Thiếu dữ liệu hiện hành để đối chiếu.');
   const existing = new Map(existingRows.map(row => [row.rowKey, row]));
@@ -138,7 +139,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
   }
   if (snapshot) {
     const included = new Set(rows.map(row => row.rowKey).filter(Boolean));
-    for (const current of existingRows) if (!included.has(current.rowKey)) rows.push({ sourceRow: null, rowKey: current.rowKey, action: 'delete', id: current.id, expectedVersion: version(current), errors: [], changes: [], values: { ...current } });
+    for (const current of existingRows) if (!included.has(current.rowKey)) rows.push({ sourceRow: null, rowKey: current.rowKey, action: snapshotStale ? 'stale_preserve' : 'delete', id: current.id, expectedVersion: version(current), errors: [], changes: [], values: { ...current } });
   }
   const valid = rows.every(row => row.errors.length === 0);
   const activeRows=rows.filter(row=>!['archived_skip','delete'].includes(row.action)&&!row.errors.length),usedRegions=new Set(),usedContainers=new Set();
@@ -146,10 +147,10 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
   const masterData={regions:[...plannedRegions.entries()].filter(([key])=>usedRegions.has(key)).map(([key,row])=>({key,name:row.name})),containers:[...plannedContainers.entries()].filter(([key])=>usedContainers.has(key)).map(([key,row])=>({key,name:row.name,regionKey:row.regionKey??null,regionId:row.regionId??null}))};
   return {
     valid,
-    counts: { create: rows.filter(r => r.action === 'create' && !r.errors.length).length, update: rows.filter(r => r.action === 'update' && !r.errors.length).length, unchanged: rows.filter(r => r.action === 'unchanged').length, reactivate:rows.filter(r=>r.action==='reactivate'&&!r.errors.length).length,restore:rows.filter(r=>r.action==='restore'&&!r.errors.length).length,archivedSkip:rows.filter(r=>r.action==='archived_skip'&&!r.errors.length).length, delete: rows.filter(r => r.action === 'delete').length, error: rows.filter(r => r.errors.length).length },
+    counts: { create: rows.filter(r => r.action === 'create' && !r.errors.length).length, update: rows.filter(r => r.action === 'update' && !r.errors.length).length, unchanged: rows.filter(r => r.action === 'unchanged').length, reactivate:rows.filter(r=>r.action==='reactivate'&&!r.errors.length).length,restore:rows.filter(r=>r.action==='restore'&&!r.errors.length).length,archivedSkip:rows.filter(r=>r.action==='archived_skip'&&!r.errors.length).length, delete: rows.filter(r => r.action === 'delete').length, preserved: rows.filter(r => r.action === 'stale_preserve').length, error: rows.filter(r => r.errors.length).length },
     rows,
     // Errors anywhere suppress every write operation, including valid rows.
-    operations: valid ? rows.filter(row => !['unchanged','archived_skip'].includes(row.action)) : [],
+    operations: valid ? rows.filter(row => !['unchanged','archived_skip','stale_preserve'].includes(row.action)) : [],
     sourceRows: sourceRows.map(source => {
       const out = { rowKey: source.rowKey, __sourceRow: source.__sourceRow, __cellErrors: { ...(source.__cellErrors || {}) } };
       if(source.recoverArchived===true)out.recoverArchived=true;
@@ -160,6 +161,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
     listedAt,
     snapshot,
     snapshotRevision,
+    snapshotStale,
     masterData
   };
 }
@@ -170,11 +172,12 @@ function prepareWorkbook(data, existingRows, { sheetName, ...options } = {}) {
   return { ...prepareRows(parsed.rows, existingRows, options), sheetName: parsed.sheetName, ignoredColumns: parsed.ignored };
 }
 
-function prepareSnapshotWorkbook(data, existingRows, { currentRevision, listedAt = today(), archivedRows = [], regions = [], containers = [] } = {}) {
+function prepareSnapshotWorkbook(data, existingRows, { currentRevision, listedAt = today(), archivedRows = [], regions = [], containers = [], allowStale = false } = {}) {
   if (!data || !data.byteLength || data.byteLength > 10 * 1024 * 1024) throw Error('File phải có dữ liệu và không quá 10 MB.');
   const parsed = workbook.parseImportSnapshot(data, columns);
-  if (parsed.revision !== currentRevision) { const error = Error('Dữ liệu đã thay đổi sau khi tải file. Hãy tải snapshot mới rồi sửa lại.'); error.code = 'IMPORT_SNAPSHOT_STALE'; throw error; }
-  return { ...prepareRows(parsed.rows, existingRows, { listedAt, snapshot: true, snapshotRevision: parsed.revision, archivedRows, regions, containers }), sheetName: 'Đặt hàng', ignoredColumns: [], fields: parsed.fields };
+  const snapshotStale = parsed.revision !== currentRevision;
+  if (snapshotStale && !allowStale) { const error = Error('Dữ liệu đã thay đổi sau khi tải file. Hãy tải snapshot mới rồi sửa lại.'); error.code = 'IMPORT_SNAPSHOT_STALE'; error.statusCode = 409; throw error; }
+  return { ...prepareRows(parsed.rows, existingRows, { listedAt, snapshot: true, snapshotRevision: currentRevision, snapshotStale, archivedRows, regions, containers }), sourceSnapshotRevision: parsed.revision, sheetName: 'Đặt hàng', ignoredColumns: [], fields: parsed.fields };
 }
 
 function recheckPreview(preview, currentRows, archivedRows = [], regions = [], containers = []) {
@@ -188,7 +191,7 @@ function recheckPreview(preview, currentRows, archivedRows = [], regions = [], c
   const currentKeys = new Set([...currentRows,...archivedRows].map(row => row.rowKey));
   const missing = preview.snapshot ? preview.rows.filter(row => !['delete','archived_skip'].includes(row.action) && row.rowKey && !currentKeys.has(row.rowKey)) : [];
   if (missing.length) return { valid: false, code: 'VERSION_CONFLICT', conflicts: missing.map(row => ({ rowKey: row.rowKey, sourceRow: row.sourceRow })), operations: [] };
-  return prepareRows(preview.sourceRows, currentRows, { listedAt: preview.listedAt, snapshot: preview.snapshot, snapshotRevision: preview.snapshotRevision, archivedRows, regions, containers });
+  return prepareRows(preview.sourceRows, currentRows, { listedAt: preview.listedAt, snapshot: preview.snapshot, snapshotRevision: preview.snapshotRevision, snapshotStale: preview.snapshotStale, archivedRows, regions, containers });
 }
 
 module.exports = { prepareRows, prepareWorkbook, prepareSnapshotWorkbook, recheckPreview };
