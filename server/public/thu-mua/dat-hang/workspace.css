@@ -745,10 +745,6 @@
 .purchase-page #containerTable select.purchase-status-2{color:#FDE68A;border-color:#FBBF24;background:color-mix(in srgb,#D97706 14%,var(--panel))}
 .purchase-page #containerTable select.purchase-status-3{color:#E9D5FF;border-color:#C084FC;background:color-mix(in srgb,#9333EA 14%,var(--panel))}
 .purchase-page #containerTable select.purchase-status-4{color:#BBF7D0;border-color:#4ADE80;background:color-mix(in srgb,#16A34A 14%,var(--panel))}
-.purchase-page #containerTable .purchase-money-detail,.purchase-page #watchedContainer .purchase-money-detail{position:relative;display:block;width:100%;min-height:24px;padding:2px 4px;border:0;border-radius:3px;background:transparent;color:inherit;font:inherit;text-align:right;font-variant-numeric:tabular-nums;cursor:help}
-.purchase-page #containerTable .purchase-money-detail:hover,.purchase-page #watchedContainer .purchase-money-detail:hover{background:transparent;color:var(--primary)}
-.purchase-page #containerTable .purchase-money-detail:hover::after,.purchase-page #containerTable .purchase-money-detail:focus-visible::after,.purchase-page #watchedContainer .purchase-money-detail:hover::after,.purchase-page #watchedContainer .purchase-money-detail:focus-visible::after{content:attr(data-exact);position:absolute;right:0;bottom:calc(100% + 3px);z-index:30;padding:3px 6px;border:1px solid var(--border-focus);border-radius:4px;background:var(--panel);color:var(--text);box-shadow:0 3px 10px #0004;white-space:nowrap;font-weight:600}
-
 
 /* The held container is a working copy of the pinned row; keep its values readable and resizable. */
 .purchase-page #watchedContainer .watched-scroll{width:max-content;max-width:100%;overflow:auto}
