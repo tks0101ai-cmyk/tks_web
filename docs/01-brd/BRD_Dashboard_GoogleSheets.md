@@ -724,6 +724,12 @@ Người dùng tạo cont với Tổng m³ giả định để dự tính cướ
 
 Cập nhật gần nhất: 14/11/2026.
 
+## Thu mua — import tự tạo vùng và cont mới (18/11/2026)
+
+Khi import snapshot có tên vùng hoặc cont chưa tồn tại, màn hình xem trước nhận diện và liệt kê các danh mục sẽ được thêm. Xác nhận import sẽ tạo vùng/cont mới rồi gán các mã hàng theo nội dung file; nếu cont mới không có vùng thì dùng vùng mặc định AA. Preview, revise và file sai không tạo danh mục. Tên trùng sau chuẩn hóa dùng chung một danh mục; cont mới xuất hiện ở nhiều vùng trong cùng file bị báo lỗi. Tạo danh mục và ghi snapshot cùng một transaction; không thay đổi bảng ngoài phạm vi file, trừ các dòng bị xóa mềm theo quy tắc snapshot.
+
+Cập nhật gần nhất: 18/11/2026.
+
 ## Thu mua — phân bổ Tiền VC mã từ giá quy đổi (16/11/2026)
 Đơn giá cont quy đổi là Đơn giá cont sau khi trừ tổng Phụ phí của các mã. Tiền VC từng mã được tính bằng m³ xếp mã nhân Đơn giá cont quy đổi chia cho m³ giả định; khi không có m³ giả định, dùng tổng m³ xếp. Giá NET cộng phụ phí riêng và không tính lặp phụ phí trong VC.
 

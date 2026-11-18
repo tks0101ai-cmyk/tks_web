@@ -814,3 +814,8 @@ Triển khai migration 0129 (danh mục vùng, vùng đơn hàng/cont và ghi ch
 ORDER VAT / Tra cứu VAT / Nhập VAT treo 82–138 s: tab file trung gian lỗi `#REF!` → đọc file gốc VAT TKS (45 s × 3 lần thử lại tự động), mọi request chờ lần đọc đó. Đã làm: tắt tự thử lại khi đọc Sheets theo sheetId, dùng chung lần đọc trùng tab giữa 3 trang, cache trả bản cũ + làm mới nền (đọc nền lỗi thì báo bản cũ), ORDER VAT chờ Tồn VAT tối đa 3 s rồi tự tải lại, đọc trước Sheets khi web khởi động. Xuất Excel Dự kiến hàng về chạy worker thread (event loop không còn đứng ~0,4–1,9 s). Không đổi schema/API.
 
 Cập nhật gần nhất: 14/11/2026.
+# Thu mua — import snapshot tự tạo vùng/cont (18/11/2026)
+
+- [x] Lập kế hoạch vùng/cont mới ở preview, cho revise nhận tên đã sửa; không ghi danh mục trước xác nhận.
+- [x] Xác nhận tạo danh mục và ánh xạ dòng trong cùng transaction, giữ snapshot recheck và audit; cont mới dùng vùng AA nếu file bỏ trống.
+- [ ] Chưa chạy test theo yêu cầu phiên; cần kiểm thử import trên môi trường test trước khi deploy.

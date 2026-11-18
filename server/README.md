@@ -1494,6 +1494,12 @@ Cập nhật gần nhất: 16/11/2026.
 
 Cập nhật gần nhất: 17/11/2026.
 
+## Thu mua — snapshot import tạo danh mục mới (18/11/2026)
+
+Snapshot import đề xuất vùng/cont mới trong preview. Chỉ `/import/confirm` tạo danh mục và cập nhật/gán dòng trong một transaction; tên cont/vùng chuẩn hóa để gộp trùng, cont mới mặc định thuộc AA khi file không nêu vùng. Không thêm migration; web cần deploy để áp dụng.
+
+Cập nhật gần nhất: 18/11/2026.
+
 
 ## Thu mua — cấu hình chi phí nhóm Chờ xếp (migration 0137)
 Nhóm ảo `container_id IS NULL` dùng hồ sơ hàng chờ singleton trong `purchase_settings`; bảng Chỉ số cont cho thao tác cước, m³ giả định và tỉ giá như cont thật qua `PATCH /api/purchase-orders/waiting-config` với `version` và `changes`, yêu cầu `purchase.orders` + `purchase.edit`. Xóa ô cước khôi phục công thức mặc định; không tạo cont thật. Khi bật cách ly `integration_enabled=false`, lưu không chiếu read model hay xóa cache cont dùng chung.
