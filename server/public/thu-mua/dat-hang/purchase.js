@@ -839,7 +839,7 @@
     let next,turn=0;
     if(e.key==='ArrowLeft'||e.key==='ArrowRight'){const list=cells(tr);next=list[list.indexOf(td)+(e.key==='ArrowLeft'?-1:1)]}
     else{const step=e.key==='ArrowUp'?-1:1;next=rows[i+step]?.querySelector('[data-field="'+td.dataset.field+'"]');if(!rows[i+step]&&page+step>0&&page+step<=Math.ceil(workVisibleRows().length/pageSize))turn=step}
-    if(!next&&!turn)return;
+    if(!next&&!turn){if(e.target.dataset.gridDirty==='true'){delete e.target.dataset.gridDirty;e.target.dispatchEvent(new Event('change',{bubbles:true}))}return}
     const key=next?.dataset.field||td.dataset.field,id=next?.closest('tr').dataset.id;
     if(e.target.dataset.gridDirty==='true'){delete e.target.dataset.gridDirty;e.target.dispatchEvent(new Event('change',{bubbles:true}))}
     if(turn){page+=turn;render()} // Keep the same column across page boundaries.
@@ -862,7 +862,7 @@
   function paintGridSelection(){gridUI?.paint()}
   gridUI=PurchaseGridUI.create({root:$('orderTable'),getRows:()=>workVisibleRows(),getColumns:()=>columns.filter(c=>{const th=$('orderTable').querySelector('th[data-key="'+c.k+'"]');return visible.includes(c.k)&&!(th?.hidden||th?.classList.contains('tks-column-hidden'))}),getCellValue:(r,k)=>r?inputValue(columns.find(c=>c.k===k),value(withDraftOverrides(r,drafts[r.id]),k)):'' ,apply:applyGridCells,notice,onAnchor:anchor=>{clipboardAnchor=anchor}});
   function pasteCells(text,anchor=clipboardAnchor){return gridUI.paste(text,anchor)}
-  $('orderTable').addEventListener('keydown',e=>{if(e.defaultPrevented||!['Enter','Tab'].includes(e.key)||!e.target.matches('input,select'))return;const td=e.target.closest('td[data-field]');if(!td)return;const id=td.closest('tr').dataset.id,key=td.dataset.field,delta=e.shiftKey?-1:1;e.preventDefault();e.target.dispatchEvent(new Event('change',{bubbles:true}));const table=$('orderTable'),cells=[...table.querySelectorAll('td[data-field]')].filter(c=>c.querySelector('input,select')),current=cells.find(c=>c.closest('tr').dataset.id===id&&c.dataset.field===key);let next;if(e.key==='Tab')next=cells[cells.indexOf(current)+delta];else{const rows=[...table.querySelectorAll('tr[data-id]')],i=rows.findIndex(r=>r.dataset.id===id);next=rows[i+delta]?.querySelector('[data-field="'+key+'"]')}if(next){gridUI?.select({id:next.closest('tr').dataset.id,key:next.dataset.field});next.querySelector('input,select')?.focus()}});
+  $('orderTable').addEventListener('keydown',e=>{if(e.defaultPrevented||!['Enter','Tab'].includes(e.key)||!e.target.matches('input,select'))return;const td=e.target.closest('td[data-field]');if(!td)return;const id=td.closest('tr').dataset.id,key=td.dataset.field,delta=e.shiftKey?-1:1;e.preventDefault();delete e.target.dataset.gridDirty;e.target.dispatchEvent(new Event('change',{bubbles:true}));const table=$('orderTable'),cells=[...table.querySelectorAll('td[data-field]')].filter(c=>c.querySelector('input,select')),current=cells.find(c=>c.closest('tr').dataset.id===id&&c.dataset.field===key);let next;if(e.key==='Tab')next=cells[cells.indexOf(current)+delta];else{const rows=[...table.querySelectorAll('tr[data-id]')],i=rows.findIndex(r=>r.dataset.id===id);next=rows[i+delta]?.querySelector('[data-field="'+key+'"]')}if(next){gridUI?.select({id:next.closest('tr').dataset.id,key:next.dataset.field});next.querySelector('input,select')?.focus()}});
 
   initSearchSelects(document);searchSelectObserver.observe(document.body,{childList:true,subtree:true});
   for(const id of ['add','addBulk','import','bulk','newCont','export'])$(id).disabled=true;
