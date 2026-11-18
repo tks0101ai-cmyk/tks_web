@@ -4,9 +4,9 @@
  function rates(rows,containers,summaries=null){
   const sums=new Map();
   if(Array.isArray(summaries)){
-   for(const source of summaries){const key=groupKey(source);sums.set(key,{volume:C.number(source.m3)||0,complete:Number(source.freightMissing||0)===0})}
-  }else rows.forEach(r=>{const key=groupKey(r),v=sums.get(key)||{volume:0,complete:true};if(!(C.positive(r.m3PerCarton)!=null&&C.quantity(r.cartonCount)!=null))v.complete=false;else v.volume=C.add(v.volume,C.mul(r.m3PerCarton,r.cartonCount));sums.set(key,v)});
-  const result=new Map();for(const c of [{id:null,region_id:null,freightMode:'formula'},...containers]){const key=groupKey(c),sum=sums.get(key)||{volume:0,complete:true},fee=calculate(c,sum.volume),denominator=fee.assumedM3??sum.volume,rate=C.divide(fee.amount,denominator);result.set(key,fee.mode==='manual'&&(fee.assumedM3==null&&(!sum.complete||!sum.volume)||fee.amount==null)?null:rate)}return result
+   for(const source of summaries){const key=groupKey(source),current=sums.get(key)||{volume:0,surcharge:0,complete:true};current.volume=C.add(current.volume,C.number(source.m3)||0);current.surcharge=C.add(current.surcharge,C.number(source.surcharge)||0);current.complete=current.complete&&Number(source.freightMissing||0)===0;sums.set(key,current)}
+  }else rows.forEach(r=>{const key=groupKey(r),v=sums.get(key)||{volume:0,surcharge:0,complete:true};if(!(C.positive(r.m3PerCarton)!=null&&C.quantity(r.cartonCount)!=null))v.complete=false;else v.volume=C.add(v.volume,C.mul(r.m3PerCarton,r.cartonCount));const row=C.row(r);if(row.surchargeAmount!=null)v.surcharge=C.add(v.surcharge,row.surchargeAmount);sums.set(key,v)});
+  const result=new Map();for(const c of [{id:null,region_id:null,freightMode:'formula'},...containers]){const key=groupKey(c),sum=sums.get(key)||{volume:0,surcharge:0,complete:true},fee=calculate(c,sum.volume),denominator=fee.assumedM3??sum.volume,converted=fee.amount==null?null:fee.amount-sum.surcharge,rate=C.divide(converted,denominator);result.set(key,fee.mode==='manual'&&(fee.assumedM3==null&&(!sum.complete||!sum.volume)||fee.amount==null)?null:rate)}return result
  }
  function rowAmount(row,rateMap){if(!(C.positive(row.m3PerCarton)!=null&&C.quantity(row.cartonCount)!=null))return null;const rate=rateMap.get(groupKey(row));return rate==null?null:C.mul(row.m3PerCarton,row.cartonCount,rate)}
  return {calculate,rates,rowAmount,groupKey};

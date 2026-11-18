@@ -1052,7 +1052,7 @@ Cập nhật gần nhất: 14/11/2026.
 
 ## Thu mua — cước tổng, vùng cont và ghi chú (migrations 0127–0130, 14/11/2026)
 
-- `product_containers.assumed_m3` là mẫu số ưu tiên khi còn giá trị; khi để trống, dùng m³ đang xếp. `freight` hoặc kết quả `freight_formula` là tổng chi phí cont nhập vào. `VC/m³ = tổng chi phí / m³ ưu tiên`; phân bổ xuống từng mã theo m³ thực tế của mã. `Đơn giá cont` hiển thị tổng chi phí, không phải VC/m³.
+- `product_containers.assumed_m3` là mẫu số ưu tiên khi còn giá trị; khi để trống, dùng m³ đang xếp. `freight` hoặc kết quả `freight_formula` là tổng chi phí cont nhập vào. `Đơn giá quy đổi = Đơn giá cont − tổng Phụ phí cont`; `VC/m³ = Đơn giá quy đổi / m³ ưu tiên`, phân bổ xuống từng mã theo m³ thực tế của mã. Phụ phí theo mã vẫn được cộng riêng vào NET. `Đơn giá cont` hiển thị tổng chi phí, không phải VC/m³.
 - `purchase_orders.surcharge_percent` nhận phần trăm dương hoặc âm. Phụ phí của mã = tỷ lệ × Tiền hàng của mã; không đổi các cột Tổng tệ hay Giá NET.
 - `purchase_regions` lưu tên, màu, trạng thái hoạt động và phiên bản vùng. `purchase_orders.region_id` giữ vùng đơn hàng đang chờ xếp; `product_containers.region_id` giữ vùng cont; `product_containers.note` lưu ghi chú cont. Xóa vùng bị chặn bằng trạng thái ngừng dùng, còn các đơn/cont cũ giữ liên kết.
 - `0129_purchase_regions_and_container_notes.sql` tạo danh mục vùng và thêm region/note vào đơn hàng, cont. `0130_purchase_surcharge_signed.sql` bỏ CHECK không âm của `surcharge_percent`, giữ dữ liệu phần trăm đã có.
