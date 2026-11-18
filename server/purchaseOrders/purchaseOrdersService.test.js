@@ -929,15 +929,15 @@ test('clearing assumed m3 switches the freight formula denominator to actual sta
    assert.equal(updated.freight_formula,formula);assert.equal(updated.freight_mode,'formula');assert.equal(updated.freight,null);
   });
 
-  test('a saved formula that turns invalid after m³ changes returns validation and rolls back the row edit',async()=>{
+  test('a saved freight formula may produce a negative result after m³ changes',async()=>{
    const c=await service.createContainer(manager,{name:'FORMULA RANGE',assumedM3:170});
    let row=await service.create(manager,{...input(),productCode:'FORMULA RANGE',m3PerCarton:.5,cartonCount:100});
    await service.transfer(manager,{id:row.id,version:row.version,quantity:row.cartonCount,destinationId:c.id});
    row=(await service.list(manager)).rows.find(item=>item.id===row.id);
    const saved=await service.updateContainer(manager,c.id,{version:c.version,changes:{freightFormula:'=100-M3_CONT'}});
-   await assert.rejects(service.update(manager,row.id,{version:row.version,changes:{m3PerCarton:1.2}}),error=>error.code==='FREIGHT_FORMULA_INVALID'&&error.statusCode===400);
-   const unchanged=(await service.list(manager)).rows.find(item=>item.id===row.id);
-   assert.equal(unchanged.m3PerCarton,.5);assert.equal((await service.list(manager)).containers.find(item=>item.id===c.id).freight_formula,'=100-M3_CONT');assert.equal(saved.freight_formula,'=100-M3_CONT');
+   const updated=await service.update(manager,row.id,{version:row.version,changes:{m3PerCarton:1.2}});
+   const after=(await service.list(manager)).rows.find(item=>item.id===row.id);
+   assert.equal(updated.m3PerCarton,1.2);assert.equal(after.m3PerCarton,1.2);assert.equal((await service.list(manager)).containers.find(item=>item.id===c.id).freight_formula,'=100-M3_CONT');assert.equal(saved.freight_formula,'=100-M3_CONT');
   });
 
 test('container rejects unsupported or invalid freight formulas without changing the saved formula',async()=>{
@@ -1065,16 +1065,21 @@ test('production saves enqueue shared projection atomically and acknowledge with
  assert.equal(next.status,'processed');assert.equal((await db.query('SELECT count(*)::int AS n FROM purchase_projection_queue')).rows[0].n,0);assert.equal(sharedEvents,2);events.off('containersChanged',onShared);
 });
 
-test('deferred projection validates freight formulas before committing canonical edits',async()=>{
+test('deferred projection allows negative freight formula results when saving canonical edits',async()=>{
  const query=(sql,params)=>db.query(sql,params),deferred=createPurchaseOrdersService({pool:{query,connect:async()=>({query,release(){}})},events,deferProjection:true,project:async()=>{}});
  const c=await deferred.createContainer(manager,{name:'DEFERRED FORMULA',assumedM3:170});
  let row=await deferred.create(manager,{...input(),productCode:'DEFERRED-FORMULA',m3PerCarton:.5,cartonCount:100});
  await deferred.transfer(manager,{id:row.id,version:row.version,quantity:row.cartonCount,destinationId:c.id});row=await deferred.latest(manager,'DEFERRED-FORMULA');
  const current=(await deferred.list(manager)).containers.find(item=>item.id===c.id),saved=await deferred.updateContainer(manager,c.id,{version:current.version,changes:{freightFormula:'=100-M3_CONT'}});
  const queuedBefore=(await db.query('SELECT count(*)::int AS n FROM purchase_projection_queue')).rows[0].n;
- await assert.rejects(deferred.update(manager,row.id,{version:row.version,changes:{m3PerCarton:1.2}}),error=>error.code==='FREIGHT_FORMULA_INVALID'&&error.statusCode===400);
- await assert.rejects(deferred.bulkEdit(manager,{rows:[{id:row.id,version:row.version,before:{m3PerCarton:.5}}],changes:{m3PerCarton:1.2}}),error=>error.code==='FREIGHT_FORMULA_INVALID'&&error.statusCode===400);
- assert.equal((await deferred.latest(manager,'DEFERRED-FORMULA')).m3PerCarton,.5);assert.equal((await db.query('SELECT count(*)::int AS n FROM purchase_projection_queue')).rows[0].n,queuedBefore);assert.equal(saved.freight_formula,'=100-M3_CONT');
+ const direct=await deferred.update(manager,row.id,{version:row.version,changes:{m3PerCarton:1.2}});
+ assert.equal(direct.m3PerCarton,1.2);
+ let latest=await deferred.latest(manager,'DEFERRED-FORMULA');
+ const reset=await deferred.update(manager,latest.id,{version:latest.version,changes:{m3PerCarton:.5}});
+ latest=await deferred.latest(manager,'DEFERRED-FORMULA');
+ const bulk=await deferred.bulkEdit(manager,{rows:[{id:latest.id,version:latest.version,before:{m3PerCarton:.5}}],changes:{m3PerCarton:1.2}});
+ assert.equal(bulk.results[0].status,'updated');assert.equal((await deferred.latest(manager,'DEFERRED-FORMULA')).m3PerCarton,1.2);
+ assert.equal((await db.query('SELECT count(*)::int AS n FROM purchase_projection_queue')).rows[0].n,queuedBefore+3);assert.equal(saved.freight_formula,'=100-M3_CONT');assert.equal(reset.m3PerCarton,.5);
 });
 
 test('NET defaults postpaid FX to 3900 then uses the saved container FX in export and projection',async()=>{
