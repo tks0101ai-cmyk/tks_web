@@ -1494,6 +1494,12 @@ Cập nhật gần nhất: 16/11/2026.
 
 Cập nhật gần nhất: 17/11/2026.
 
+## Thu mua — snapshot import tạo danh mục mới (18/11/2026)
+
+Snapshot import đề xuất vùng/cont mới trong preview. Chỉ `/import/confirm` tạo danh mục và cập nhật/gán dòng trong một transaction; tên cont/vùng chuẩn hóa để gộp trùng, cont mới mặc định thuộc AA khi file không nêu vùng. Không thêm migration; web cần deploy để áp dụng.
+
+Cập nhật gần nhất: 18/11/2026.
+
 
 ## Thu mua — cấu hình chi phí nhóm Chờ xếp (migration 0137)
 Nhóm Chờ xếp là ảo, không phải cont lưu trong `product_containers`; mỗi vùng có đúng một hàng nhóm và cấu hình riêng trong `purchase_waiting_configs`. Cước, phụ phí, đơn giá quy đổi, VC/m³, VC trả sau và Giá NET được tính theo `(container_id IS NULL, region_id)`. `PATCH /api/purchase-orders/waiting-config` nhận `regionId`, `version` và `changes`, yêu cầu `purchase.orders` + `purchase.edit`; sửa vùng H chỉ ảnh hưởng dòng vùng H. Không hiển thị hàng Chờ xếp gốc không vùng. Khi bật cách ly `integration_enabled=false`, lưu không chiếu read model hay xóa cache cont dùng chung.

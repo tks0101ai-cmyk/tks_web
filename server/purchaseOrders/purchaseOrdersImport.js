@@ -6,6 +6,7 @@
 const calculations=require('../public/shared/purchase-calculations');
 const columns = require('../public/shared/purchase-columns');
 const workbook = require('../public/shared/purchase-workbook');
+const { normalizeName: normalizeContainerKey } = require('./containerNames');
 // Cot chi doc duoc danh dau `ro` trong purchase-columns.js — mot nguon duy nhat,
 // khong lap danh sach ten cot o hai noi nhu truoc.
 const writable = columns.filter(c => !c.d && !c.m && !c.ro);
@@ -23,6 +24,7 @@ function version(row) { return row.version ?? row.v; }
 function comparable(value, col) {
   return blank(value) ? null : workbook.numericTypes.has(col.t) ? Number(value) : String(value);
 }
+const normalizeRegionName = value => normalizeContainerKey(String(value ?? '').normalize('NFKC'));
 function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = false, snapshotRevision, archivedRows = [], regions = [], containers = [], allowSparseCreates = false } = {}) {
   if (!Array.isArray(sourceRows) || (!sourceRows.length && !snapshot) || sourceRows.length > 10000) throw Error('Đợt nhập phải có 1–10.000 dòng.');
   if (!Array.isArray(existingRows)) throw Error('Thiếu dữ liệu hiện hành để đối chiếu.');
@@ -34,7 +36,9 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
   const containersById=new Map(),containersByName=new Map();
   for(const container of containers){containersById.set(String(container.id),container);const key=normalizeContainerName(container.name);if(key&&!containersByName.has(key))containersByName.set(key,container)}
   const regionsById=new Map(),regionsByName=new Map();
-  for(const region of regions){regionsById.set(String(region.id),region);const key=String(region.name||'').trim().toLocaleLowerCase('vi');if(key&&!regionsByName.has(key))regionsByName.set(key,region)}
+  const regionsByKey=new Map(),containersByKey=new Map(),plannedRegions=new Map(),plannedContainers=new Map();
+  for(const region of regions){regionsById.set(String(region.id),region);const key=String(region.name||'').trim().toLocaleLowerCase('vi');if(key&&!regionsByName.has(key))regionsByName.set(key,region);const normalized=normalizeRegionName(region.name);if(normalized&&!regionsByKey.has(normalized))regionsByKey.set(normalized,region)}
+  for(const container of containers){const key=normalizeContainerKey(String(container.name||'').trim().replace(/^cont\s+/i,''));if(key&&!containersByKey.has(key))containersByKey.set(key,container)}
   const counts = new Map();
   const recoveryCounts = new Map();
   sourceRows.forEach(row => { const key = String(row.rowKey ?? '').trim(); if (key) counts.set(key, (counts.get(key) || 0) + 1); });
@@ -65,8 +69,21 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
         if(!snapshot)continue;
         const text=String(value??'').trim(),waiting=!text||/^(?:cont\s*)?chờ(?:\s+|-)?xếp(?:\s+[hv?])?$/i.test(text)||/^chờ\s*-\s*h$/i.test(text)||/^tính giá$/i.test(text);
         if(waiting){if(snapshot)values.contId=null;continue}
-        const found=containersById.get(text)||containersByName.get(normalizeContainerName(text));
-        if(!found){result.errors.push('Tên cont: không tìm thấy cont đang hoạt động.');continue}
+        let found=containersById.get(text)||containersByName.get(normalizeContainerName(text));
+        if(!found){
+          if(/^\d+$/.test(text)){result.errors.push('Tên cont: không tìm thấy cont theo mã nội bộ.');continue}
+          const name=text.replace(/^cont\s+/i,'').trim(),key=normalizeContainerKey(name);
+          if(!name||name.length>200){result.errors.push('Tên cont: tên không hợp lệ (tối đa 200 ký tự).');continue}
+          found=containersByKey.get(key)||plannedContainers.get(key);
+          if(!found){found={id:'@new-container:'+key,name,isNew:true};plannedContainers.set(key,found)}
+        }
+        if(found.isNew){
+          const requestedRegion=Object.hasOwn(values,'regionId')?values.regionId:matched?.regionId??null,regionKey=requestedRegion!=null&&String(requestedRegion).startsWith('@new-region:')?String(requestedRegion).slice('@new-region:'.length):null,priorRegion=found.regionKey?'@new-region:'+found.regionKey:found.regionId??null;
+          if(priorRegion!=null&&requestedRegion!=null&&String(priorRegion)!==String(requestedRegion)){result.errors.push('Tên cont: cùng một cont mới không thể thuộc nhiều vùng trong file.');continue}
+          if(regionKey)found.regionKey=regionKey;else if(requestedRegion!=null)found.regionId=String(requestedRegion);
+          if(requestedRegion!=null)values.regionId=String(requestedRegion);
+          values.contId=String(found.id);continue;
+        }
         const isActive=found.is_active!==false&&found.isActive!==false&&!found.inactive_at&&!found.inactiveAt&&!found.deleted_at&&!found.deletedAt;
         if(!isActive&&String(matched?.contId??'')!==String(found.id)){result.errors.push('Tên cont: cont đã ngừng hoạt động hoặc đã xóa.');continue}
         const region=found.region_id??found.regionId??null,requestedRegion=Object.hasOwn(values,'regionId')?values.regionId:matched?.regionId??null;
@@ -75,7 +92,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
         values.contId=String(found.id);continue;
       }
       if (blank(value)) { if (snapshot) values[col.k] = null; continue; }
-      if(col.region){const raw=String(value).trim(),found=regionsById.get(raw)||regionsByName.get(raw.toLocaleLowerCase('vi'));if(!found||found.isActive===false&&String(matched?.regionId??'')!==String(found?.id??''))result.errors.push('Vùng: chọn tên vùng đang hoạt động trong danh sách.');else values.regionId=String(found.id);continue}
+      if(col.region){const raw=String(value).trim(),found=regionsById.get(raw)||regionsByName.get(raw.toLocaleLowerCase('vi'))||regionsByKey.get(normalizeRegionName(raw));if(found){if(found.isActive===false&&String(matched?.regionId??'')!==String(found.id))result.errors.push('Vùng: chọn tên vùng đang hoạt động trong danh sách.');else values.regionId=String(found.id)}else if(!raw||raw.length>80)result.errors.push('Vùng: tên không hợp lệ (tối đa 80 ký tự).');else if(/^\d+$/.test(raw))result.errors.push('Vùng: không tìm thấy vùng theo mã nội bộ.');else if(!snapshot)result.errors.push('Vùng: chọn tên vùng đang hoạt động trong danh sách.');else{const key=normalizeRegionName(raw);let planned=plannedRegions.get(key);if(!planned){planned={id:'@new-region:'+key,name:raw};plannedRegions.set(key,planned)}values.regionId=planned.id}continue}
       if (workbook.numericTypes.has(col.t)) {
         const number = calculations.parse(value);
         // Chi cac cot co the am duoc khai bao trong signedFields.
@@ -102,6 +119,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
     } else if (matched) {
       result.id = matched.id;
       result.expectedVersion = version(matched);
+      result.values = { ...values };
       for (const [key, next] of Object.entries(values)) {
         if(key==='contId')continue;
         if (comparable(matched[key], byKey.get(key)) !== comparable(next, byKey.get(key))) result.changes.push({ key, label: byKey.get(key).l, before: matched[key] ?? null, after: next });
@@ -111,11 +129,21 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
     }
     return result;
   });
+  for(const row of rows){
+    const id=String(row.values?.contId??'');if(!id.startsWith('@new-container:'))continue;
+    const container=plannedContainers.get(id.slice('@new-container:'.length)),regionId=container?.regionKey?'@new-region:'+container.regionKey:container?.regionId??null;
+    if(regionId==null||row.values.regionId!=null)continue;
+    row.values.regionId=regionId;
+    if(['update','reactivate','restore'].includes(row.action)){const matched=existingRows.find(current=>String(current.id)===String(row.id))||archivedRows.find(current=>String(current.id)===String(row.id)),change=row.changes.find(entry=>entry.key==='regionId');if(change)change.after=regionId;else if(String(matched?.regionId??'')!==String(regionId))row.changes.push({key:'regionId',label:byKey.get('regionId').l,before:matched?.regionId??null,after:regionId})}
+  }
   if (snapshot) {
     const included = new Set(rows.map(row => row.rowKey).filter(Boolean));
     for (const current of existingRows) if (!included.has(current.rowKey)) rows.push({ sourceRow: null, rowKey: current.rowKey, action: 'delete', id: current.id, expectedVersion: version(current), errors: [], changes: [], values: { ...current } });
   }
   const valid = rows.every(row => row.errors.length === 0);
+  const activeRows=rows.filter(row=>!['archived_skip','delete'].includes(row.action)&&!row.errors.length),usedRegions=new Set(),usedContainers=new Set();
+  for(const row of activeRows){for(const value of [row.values?.regionId,...row.changes.filter(change=>change.key==='regionId').map(change=>change.after)]){const text=String(value??'');if(text.startsWith('@new-region:'))usedRegions.add(text.slice('@new-region:'.length))}for(const value of [row.values?.contId,...row.changes.filter(change=>change.key==='contId').map(change=>change.after)]){const text=String(value??'');if(text.startsWith('@new-container:'))usedContainers.add(text.slice('@new-container:'.length))}}
+  const masterData={regions:[...plannedRegions.entries()].filter(([key])=>usedRegions.has(key)).map(([key,row])=>({key,name:row.name})),containers:[...plannedContainers.entries()].filter(([key])=>usedContainers.has(key)).map(([key,row])=>({key,name:row.name,regionKey:row.regionKey??null,regionId:row.regionId??null}))};
   return {
     valid,
     counts: { create: rows.filter(r => r.action === 'create' && !r.errors.length).length, update: rows.filter(r => r.action === 'update' && !r.errors.length).length, unchanged: rows.filter(r => r.action === 'unchanged').length, reactivate:rows.filter(r=>r.action==='reactivate'&&!r.errors.length).length,restore:rows.filter(r=>r.action==='restore'&&!r.errors.length).length,archivedSkip:rows.filter(r=>r.action==='archived_skip'&&!r.errors.length).length, delete: rows.filter(r => r.action === 'delete').length, error: rows.filter(r => r.errors.length).length },
@@ -131,7 +159,8 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
     }),
     listedAt,
     snapshot,
-    snapshotRevision
+    snapshotRevision,
+    masterData
   };
 }
 

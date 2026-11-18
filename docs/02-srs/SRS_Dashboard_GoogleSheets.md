@@ -1302,6 +1302,17 @@ Cập nhật cuối: 13/11/2026.
 - Migration `0126_purchase_container_freight_formula.sql` thêm `product_containers.freight_formula`, đăng ký trong `ensurePurchaseSchema.FILES`. Cần kiểm staging trước khi áp vào production; chưa deploy.
 Cập nhật gần nhất: 16/11/2026.
 
+## Thu mua — tự tạo vùng/cont khi import snapshot (18/11/2026)
+
+- `POST /api/purchase-orders/import/preview` và `/revise` chỉ lập kế hoạch danh mục mới, không tạo vùng hoặc cont.
+- Tên vùng mới (tối đa 80 ký tự) và tên cont mới (tối đa 200 ký tự) được chuẩn hóa để gộp lặp trong cùng file; số dạng ID không tồn tại vẫn báo lỗi, không biến thành tên mới. Tên trùng danh mục đã ngừng hoạt động vẫn không được tự kích hoạt.
+- Preview hiển thị danh sách vùng/cont dự kiến tạo cùng các dòng sẽ gán. Người dùng có thể sửa lại tên vùng/cont trước xác nhận.
+- Khi xác nhận, server tải lại dữ liệu danh mục, recheck snapshot và tạo vùng/cont cùng các thay đổi dòng trong cùng transaction; lỗi bất kỳ rollback toàn bộ. Cont mới không ghi đủ các thông tin logistics thì nhận mặc định schema, trạng thái chờ xếp; vùng trống dùng AA.
+- Cont trùng sau chuẩn hóa được gộp; nếu một cont mới bị gán sang nhiều vùng trong file thì preview không hợp lệ. Cont có vùng cụ thể thì các dòng thuộc cont nhận cùng vùng.
+- Không thêm migration hay đổi cấu trúc DB. Đây chỉ là khả năng trên mã nguồn; cần deploy web trước khi dùng thật.
+
+Cập nhật gần nhất: 18/11/2026.
+
 ## Thu mua — hai phạm vi quyền và tạo mã hàng loạt (16/11/2026)
 
 - Danh mục quyền cấp theo tài khoản chỉ hiển thị **Làm việc với bảng Đặt hàng** và **Làm việc với bảng Chỉ số cont**. Quyền Đặt hàng bao gồm sửa/import/export đơn và các thao tác dòng; quyền Chỉ số cont bao gồm tạo/sửa/vòng đời cont và trạng thái cont. API kiểm tra phạm vi ở máy chủ; quyền cũ được duy trì tương thích cho đến khi tài khoản được lưu theo phạm vi mới.
