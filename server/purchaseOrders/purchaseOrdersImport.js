@@ -62,7 +62,10 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
     if(recovered&&(recoveryCounts.get(archived.rowKey)||0)>1)result.errors.push('Một dòng lưu trữ chỉ được chọn khôi phục một lần.');
     if (rowKey && !current&&!archivedRowByKey) result.errors.push(existingPrefixes.has(rowKey) ? 'Khóa đã tách; xuất lại các nhánh hiện hành.' : archivedPrefixes.has(rowKey)?'Khóa đã tách; chọn đúng nhánh đang tắt/đã xóa.':'Khóa dòng không tồn tại.');
     if (matched && (!Number.isSafeInteger(version(matched)) || version(matched) < 1)) result.errors.push('Không đọc được phiên bản dòng hiện hành.');
-    for (const message of Object.values(source.__cellErrors || {})) result.errors.push(String(message));
+    // `measuredOn` is deliberately free-form text. Older preview tokens may still
+    // carry a date/formula validation error created before that column changed to
+    // text, so do not let that stale parser error keep the row invalid on revise.
+    for (const [key,message] of Object.entries(source.__cellErrors || {})) if(key!=='measuredOn') result.errors.push(String(message));
     const values = {};
     for (const col of importable) {
       const value = source[col.k];
