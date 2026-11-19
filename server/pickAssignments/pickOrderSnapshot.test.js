@@ -29,11 +29,11 @@ test('decimal prices and discounts are computed without binary float arithmetic'
   assert.equal(snap.payable, '0.5900001');
 });
 
-test('reject invalid money and fractional original lines rather than conceal them', () => {
+test('reject invalid money and non-positive original lines; fractional lines are priced exactly', () => {
   for (const price of [Infinity, NaN, '', 'not-money', null]) {
     assert.throws(() => makeOrderSnapshot({invoiceDiscount:0, lines:[{productCode:'A', quantity:1, price}]}), {code:'VALIDATION'});
   }
-  for (const quantity of [0, -1, 0.4, 0.6, Infinity, Number.MAX_SAFE_INTEGER+1]) {
+  for (const quantity of [0, -1, Infinity, NaN, 1e13]) {
     assert.throws(() => makeOrderSnapshot({invoiceDiscount:0, lines:[{productCode:'A', quantity, price:1}]}), {code:'VALIDATION'});
   }
 });

@@ -261,7 +261,7 @@ test('Cần nhặt sửa tay: ô nhập số, dòng đỏ theo SL đã sửa, hi
   assert.equal(document.querySelector('.picking-kiot').textContent, 'Kiot: 100');
   // Giá trị không hợp lệ bị từ chối, giữ nguyên số cũ.
   setNeed('0');
-  assert.match(text(page, 'pickingStatus'), /nguyên dương/u);
+  assert.match(text(page, 'pickingStatus'), /số dương/u);
   assert.equal(need().value, '50');
   // Chỉ định gửi needs (chỉ mã đã sửa khác Kiot) và phân bổ theo SL mới; SL sửa chỉ lưu trong chỉ định, không hỏi ghi lên Kiot.
   let askedText = '';
@@ -846,15 +846,19 @@ test('đổi đơn khi GET đang chờ không bị phản hồi cũ ghi đè', a
   page.dom.window.close();
 });
 
-test('số chiếc nhập tay không được lẻ; lỗi nguồn hiện rõ, vẫn cho hủy bản cũ', async () => {
+test('số nhập tay cho phép lẻ, chữ thì bị từ chối; lỗi nguồn hiện rõ, vẫn cho hủy bản cũ', async () => {
   const page = await renderPage();
   await openPopup(page);
   const input = page.document.querySelector('[data-qty]');
-  assert.equal(input.getAttribute('step'), '1');
-  input.value = '0.4';
+  assert.equal(input.getAttribute('step'), 'any');
+  input.value = 'abc';
   input.dispatchEvent(new page.window.Event('change', { bubbles:true }));
-  assert.match(text(page, 'pickingStatus'), /số nguyên/i);
+  assert.match(text(page, 'pickingStatus'), /số không âm/i);
   assert.equal(page.window.TKSPick._state.allocations[0][0].quantity, 100);
+  const again = page.document.querySelector('[data-qty]');
+  again.value = '0.4';
+  again.dispatchEvent(new page.window.Event('change', { bubbles:true }));
+  assert.equal(page.window.TKSPick._state.allocations[0][0].quantity, 0.4);
   const store = newStore({ assignment:makeAssignment('picking') });
   store.order.eligible = false;
   store.order.validationErrors = ['A: số lượng phải là số nguyên dương'];

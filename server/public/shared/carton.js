@@ -14,6 +14,7 @@
   // Ghi chú của vị trí đã nhặt hết: SL = 0, không cảnh báo, chưa có quy cách để chỉ định.
   const EMPTY_NOTE='Hết hàng';
   const positiveInt=n=>Number.isInteger(n)&&n>0;
+  const positiveNum=n=>Number.isFinite(n)&&n>0;
   // Tiền tố do dữ liệu cũ ghép thêm trước một quy cách đã có đủ số thùng.
   const stripLegacyPrefix=text=>String(text??'').replace(/^(?:\s*T\s*[x*×]\s*)+(?=\d+(?:[.,]\d+)?\s*(?:th?|b|[x*×]))/iu,'');
   const NOTE_TERM=new RegExp('^('+NUM+')\\s*(?:(th?|b)\\s*(?:[x*×]\\s*)?|([x*×])\\s*)('+NUM+')([cC])?(?![\\p{L}\\d])','iu');
@@ -101,8 +102,8 @@
     if(trimmed===''||emptyWord)return {terms:[],loose:0,quantity:0,cartons:0,perCarton:null,multi:false,empty:true};
     const s=scan(text);if(!s)return null;
     if(!s.terms.every(t=>positiveInt(t.cartons)&&positiveInt(t.perCarton)))return null;
-    if(s.loose!==0&&!positiveInt(s.loose))return null;
-    const quantity=s.terms.reduce((sum,t)=>sum+t.cartons*t.perCarton,0)-s.loose;
+    if(s.loose!==0&&!positiveNum(s.loose))return null;
+    const quantity=round6(s.terms.reduce((sum,t)=>sum+t.cartons*t.perCarton,0)-s.loose);
     if(quantity<0)return null;
     // Số hạng cùng SL/thùng gộp thành một (cộng thùng, giữ thứ tự xuất hiện đầu tiên); nhiều quy cách tính sau khi gộp.
     const terms=[];for(const t of s.terms){const same=terms.find(x=>x.perCarton===t.perCarton);if(same)same.cartons+=t.cartons;else terms.push({...t});}
@@ -120,14 +121,14 @@
   }
   // Ghi chú âm cho phần thiếu `deficit`: chẵn theo quy cách thì "-kT x p", không thì "-1T x deficit" (vẫn đọc lại đúng số lượng).
   function negativeNote(deficit,perCarton){
-    const q=Math.round(deficit);
-    return perCarton>0&&q%perCarton===0?'-'+q/perCarton+'T x '+perCarton:'-1T x '+q;
+    const q=round6(deficit);
+    return perCarton>0&&Number.isInteger(q)&&q%perCarton===0?'-'+q/perCarton+'T x '+perCarton:'-1T x '+q;
   }
   /* Trừ `quantity` (số nguyên dương) khỏi ghi chú, cho phép âm. Đủ hàng thì trừ thông minh như deduct; thiếu thì ra ghi chú âm.
      perCartonHint: quy cách ưu tiên khi biểu diễn phần thiếu (thường là quy cách của dòng xuất). Trả {text, quantity (sau khi trừ)} hoặc null nếu ghi chú sai định dạng. */
   function subtractNotes(current,quantity,perCartonHint){
     const spec=parseSigned(normalizeStoredNote(current));
-    if(!spec||!Number.isSafeInteger(quantity)||quantity<=0)return null;
+    if(!spec||!Number.isFinite(quantity)||quantity<=0)return null;
     const have=spec.quantity;
     if(have>=quantity){
       const result=deduct(spec,quantity);
@@ -196,11 +197,11 @@
      Lấy tròn thùng: 250 từ 7T x 50 → "5Tx50". Lấy lẻ: 100 từ 2T x 60 → "2Tx60-20" (2 thùng 60 = 120, trừ 20).
      Nhiều quy cách ghép thông minh: 250 từ 3T x 200 + 1T x 50 → "1Tx200+1Tx50". null = không tính được (ghi chú sai/rỗng, SL không nguyên hoặc vượt tồn). */
   function pickText(spec,quantity){
-    if(!spec||!spec.terms.length||!Number.isInteger(quantity)||quantity<=0||quantity>spec.quantity+1e-6)return null;
-    const hit=searchCartons(spec.terms,quantity,true);
+    if(!spec||!spec.terms.length||!Number.isFinite(quantity)||quantity<=0||quantity>spec.quantity+1e-6)return null;
+    const hit=searchCartons(spec.terms,Math.ceil(quantity-1e-9),true);
     if(!hit)return null;
     const body=spec.terms.map((t,i)=>hit.counts[i]>0?hit.counts[i]+'Tx'+t.perCarton:'').filter(Boolean).join('+');
-    const excess=hit.total-quantity;
+    const excess=round6(hit.total-quantity);
     return body+(excess>0?'-'+excess:'');
   }
   /* ST hiển thị/in của một lượt nhặt = số thùng phải chạm tới (nguyên), kèm phần thiếu khi mở thùng mà không lấy hết:
@@ -208,12 +209,12 @@
      Khác cartonsFor (số thùng lẻ dùng để trừ tồn): hàm này không bao giờ trả phân số. null = không tính được. */
   function stFor(spec,quantity){
     const raw=pickText(spec,quantity);if(raw===null)return null;
-    const hit=searchCartons(spec.terms,quantity,true);
-    return {cartons:hit.counts.reduce((n,k)=>n+k,0),excess:hit.total-quantity,text:raw.replace(/Tx/g,'T x ').replace(/\+/g,' + ').replace(/-/g,' - ')};
+    const hit=searchCartons(spec.terms,Math.ceil(quantity-1e-9),true);
+    return {cartons:hit.counts.reduce((n,k)=>n+k,0),excess:round6(hit.total-quantity),text:raw.replace(/Tx/g,'T x ').replace(/\+/g,' + ').replace(/-/g,' - ')};
   }
   /* Đọc lại chuỗi ST của một lượt nhặt ("1Tx200+1Tx50-30", "1T x 150 - 50") thành {terms:[{cartons,perCarton}], excess}; null nếu sai dạng. */
   function parseStText(text){
-    const m=/^([^-−]*?)(?:\s*[-−]\s*(\d+))?$/.exec(String(text??'').trim());
+    const m=/^([^-−]*?)(?:\s*[-−]\s*(\d+(?:\.\d+)?))?$/.exec(String(text??'').trim());
     if(!m||!m[1].trim())return null;
     const terms=[];
     for(const part of m[1].split('+')){
@@ -241,12 +242,12 @@
      của các quy cách đó, về 0 thì bỏ số hạng. Không khớp, hoặc đã có phần trừ lẻ, thì cộng dồn vào " - N".
      taken = số thùng đã lấy (ST): thùng nguyên theo từng quy cách, phần lẻ chia SL/thùng của số hạng đầu (có thể lẻ). */
   function deduct(spec,quantity){
-    if(!spec||!spec.terms.length||!Number.isSafeInteger(quantity)||quantity<0||quantity>spec.quantity)return null;
+    if(!spec||!spec.terms.length||!Number.isFinite(quantity)||quantity<0||quantity>spec.quantity+1e-6)return null;
     const terms=spec.terms.map(t=>({...t}));
     let loose=spec.loose,taken;
     const counts=loose>0?null:wholeCartons(terms,quantity);
     if(counts){taken=counts.reduce((sum,k)=>sum+k,0);counts.forEach((k,i)=>{terms[i].cartons-=k;});}
-    else{loose+=quantity;taken=round6(quantity/terms[0].perCarton);}
+    else{loose=round6(loose+quantity);taken=round6(quantity/terms[0].perCarton);}
     const text=formatSpec({terms,loose,annotation:spec.annotation});
     return {spec:parseSpec(text),text,taken};
   }
@@ -255,13 +256,13 @@
   /* Cộng trả lại khi hoàn tác mà ghi chú đã bị lượt khác thay đổi (không khôi phục nguyên chuỗi được):
      ưu tiên giảm phần trừ lẻ, phần còn lại cộng vào thùng của quy cách chia hết, không thì thêm 1 thùng gồm phần còn lại. */
   function restore(spec,quantity){
-    if(!spec||!Number.isSafeInteger(quantity)||quantity<0||!Number.isSafeInteger(spec.quantity+quantity))return null;
+    if(!spec||!Number.isFinite(quantity)||quantity<0||!Number.isFinite(spec.quantity+quantity))return null;
     const terms=spec.terms.map(t=>({...t}));
     let loose=spec.loose,rest=quantity;
-    const fromLoose=Math.min(loose,rest);loose-=fromLoose;rest-=fromLoose;
+    const fromLoose=Math.min(loose,rest);loose=round6(loose-fromLoose);rest=round6(rest-fromLoose);
     if(rest>0){
-      const hit=terms.find(t=>rest%t.perCarton===0);
-      if(hit)hit.cartons+=rest/hit.perCarton;else terms.push({cartons:1,perCarton:rest});
+      const hit=terms.find(t=>Number.isInteger(rest)&&rest%t.perCarton===0);
+      if(hit)hit.cartons+=Math.round(rest/hit.perCarton);else if(!Number.isInteger(rest))return null;else terms.push({cartons:1,perCarton:rest});
     }
     const text=formatSpec({terms,loose,annotation:spec.annotation});
     return {spec:parseSpec(text),text};

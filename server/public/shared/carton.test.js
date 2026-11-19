@@ -2,12 +2,17 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const C=require('./carton.js');
 const pick=s=>({terms:s.terms,loose:s.loose,quantity:s.quantity});
-test('deduct/restore reject fractional or unsafe pieces instead of rounding',()=>{
+test('deduct/restore reject negative or non-finite quantities; fractional pieces are kept exactly',()=>{
   const spec=C.parseSpec('1Tx100');
-  for(const quantity of [0.4,0.6,-1,Infinity,NaN,Number.MAX_SAFE_INTEGER+1]){
+  for(const quantity of [-1,Infinity,NaN]){
     assert.equal(C.deduct(spec,quantity),null);
     assert.equal(C.restore(spec,quantity),null);
   }
+  assert.equal(C.deduct(spec,Number.MAX_SAFE_INTEGER+1),null);
+  const part=C.deduct(spec,0.4);
+  assert.equal(part.text,'1T x 100 - 0.4');assert.equal(part.spec.quantity,99.6);
+  assert.equal(C.restore(part.spec,0.4).spec.quantity,100);
+  assert.equal(C.pickText(spec,0.4),'1Tx100-99.6');
   assert.equal(C.deduct(spec,30).spec.quantity,70);
   assert.equal(C.restore(C.parseSpec('1Tx100-30'),30).spec.quantity,100);
   assert.equal(C.deduct(spec,0).spec.quantity,100);
@@ -33,7 +38,8 @@ test('parseSpec nhiều quy cách nối bằng +, và phần trừ lẻ tùy ch�
   const single=C.parseSpec('1Tx50 - 30');assert.equal(single.quantity,20);assert.equal(single.multi,false,'một quy cách kèm trừ lẻ vẫn là một quy cách');
 });
 test('parseSpec từ chối chuỗi không đúng quy cách, số thùng hoặc SL/thùng không nguyên dương, hoặc trừ quá SL',()=>{
-  for(const bad of ['0.5T x 100','0,5Tx100','0T x 50','1T x 50.5','1Tx50 - 0.5','abc','Thùng 100 chiếc','Dãy cửa kho','5T','x100','5T x 0','-1T x 5','5T x 100 ghi chú','1T x 50 / 2T x 60','1Tx50 +','+ 1Tx50','1Tx50 + hàng lẻ','1Tx50 - 60','- 30'])assert.equal(C.parseSpec(bad),null,String(bad));
+  for(const bad of ['0.5T x 100','0,5Tx100','0T x 50','1T x 50.5','abc','Thùng 100 chiếc','Dãy cửa kho','5T','x100','5T x 0','-1T x 5','5T x 100 ghi chú','1T x 50 / 2T x 60','1Tx50 +','+ 1Tx50','1Tx50 + hàng lẻ','1Tx50 - 60','- 30'])assert.equal(C.parseSpec(bad),null,String(bad));
+  assert.equal(C.parseSpec('1Tx50 - 0.5').quantity,49.5);
 });
 test('formatSpec và cartonsOf làm tròn số thùng, không để lộ sai số số thực',()=>{
   assert.equal(C.formatSpec(3,100),'3T x 100');

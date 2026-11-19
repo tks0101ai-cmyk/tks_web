@@ -140,8 +140,8 @@ function quantityErrors(order) {
     if (!key || line.isService || key.startsWith('vat')) continue;
     const qty = Number(line.quantity);
     const total = (totals.get(key) || 0) + qty;
-    if (!Number.isSafeInteger(qty) || qty <= 0 || !Number.isSafeInteger(total)) {
-      errors.push(`${line.productCode}: số lượng nhặt phải là số chiếc nguyên dương trong giới hạn cho phép.`);
+    if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(total) || total > 1e12) {
+      errors.push(`${line.productCode}: số lượng nhặt phải là số dương trong giới hạn cho phép.`);
     }
     totals.set(key, total);
   }
@@ -193,9 +193,9 @@ function applyNeeds(order, lines, needs) {
     const key = codeKey(code);
     const line = lines.find(item => codeKey(item.productCode) === key);
     if (!line) throw fail(400, 'VALIDATION', `Mã hàng ${code || '(trống)'} không có trong đơn.`, { field: 'needs' });
-    const qty = Number(value);
-    if (typeof value === 'boolean' || value === null || value === '' || !Number.isSafeInteger(qty) || qty <= 0) {
-      throw fail(400, 'VALIDATION', `${line.productCode}: số lượng cần nhặt phải là số chiếc nguyên dương.`, { field: 'needs' });
+    const qty = Math.round(Number(value) * 1e6) / 1e6;
+    if (typeof value === 'boolean' || value === null || value === '' || !Number.isFinite(qty) || qty <= 0 || qty > 1e12) {
+      throw fail(400, 'VALIDATION', `${line.productCode}: số lượng cần nhặt phải là số dương.`, { field: 'needs' });
     }
     if (qty !== line.quantity) wanted.set(key, qty);
   }
@@ -575,12 +575,12 @@ function createPickAssignmentsService({ getDb = getPool, loadOrder = defaultLoad
     for (const item of raw) {
       const index = lineIndex.get(codeKey(item && item.productCode));
       const positionId = Number(item && item.positionId);
-      const qty = Number(item && item.qty);
+      const qty = Math.round(Number(item && item.qty) * 1e6) / 1e6;
       if (index === undefined) throw fail(400, 'VALIDATION', `Mã hàng ${item && item.productCode ? item.productCode : '(trống)'} không có trong đơn.`, { field: 'allocations' });
       if (!Number.isInteger(positionId) || positionId < 1) throw fail(400, 'VALIDATION', 'Mã dòng vị trí không hợp lệ.', { field: 'allocations' });
-      if (!Number.isSafeInteger(qty) || qty <= 0) throw fail(400, 'VALIDATION', 'Số lượng chỉ định phải là số chiếc nguyên dương.', { field: 'allocations' });
-      const total = (perLine[index].get(positionId) || 0) + qty;
-      if (!Number.isSafeInteger(total)) throw fail(400, 'VALIDATION', 'Tổng số lượng vượt giới hạn cho phép.', { field: 'allocations' });
+      if (!Number.isFinite(qty) || qty <= 0) throw fail(400, 'VALIDATION', 'Số lượng chỉ định phải là số dương.', { field: 'allocations' });
+      const total = Math.round(((perLine[index].get(positionId) || 0) + qty) * 1e6) / 1e6;
+      if (!Number.isFinite(total) || total > 1e12) throw fail(400, 'VALIDATION', 'Tổng số lượng vượt giới hạn cho phép.', { field: 'allocations' });
       perLine[index].set(positionId, total);
     }
     return perLine;
