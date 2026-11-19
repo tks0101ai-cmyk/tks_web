@@ -142,6 +142,7 @@
         // Formula columns are presentation-only in snapshots. Replacing a formula
         // with a literal remains a supported way to enter a measurement override.
         if(snapshot&&col.d&&cell?.f){if(!col.o)return;if(cell.t==='e'){row[col.k]=cell.w||'#LỖI';row.__cellErrors[col.k]=caption(col)+': công thức lỗi hoặc chưa có kết quả; sửa thành giá trị';return}if(value==null||value===''){row[col.k]=null;return}}
+        if(col.k==='measuredOn'&&(cell?.f||cell?.t==='e')){row[col.k]=String(cell.w||(cell.f?'='+cell.f:value??'')).trim();return}
         if (cell?.t === 'e' || (cell?.f && (value === '' || value == null))) {
           row[col.k] = cell.w || '#LỖI';
           row.__cellErrors[col.k] = caption(col) + ': công thức lỗi hoặc chưa có kết quả; sửa thành giá trị';
@@ -156,7 +157,7 @@
           const date = (col.t==='datetime'?dateTimeValue:dateValue)(value, !!workbook.Workbook?.WBProps?.date1904);
           row[col.k] = date || String(value);
           if (!date) row.__cellErrors[col.k] = caption(col) + ': ngày không hợp lệ';
-        } else row[col.k] = String(value).trim();
+        } else row[col.k] = String(col.k==='measuredOn'&&cell?.w?cell.w:value).trim();
       });
       rows.push(row);
     });
