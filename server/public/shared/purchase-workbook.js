@@ -16,7 +16,7 @@
     const data = [cols.map(caption), ...rows.map(row => cols.map(col => col.region?(row.regionName??row.regionId??null):(row[col.k]??null)))];
     const sheet = XLSX.utils.aoa_to_sheet(data);
     cols.forEach((col,c)=>{if(!numericTypes.has(col.t))return;rows.forEach((row,r)=>{const cell=sheet[XLSX.utils.encode_cell({r:r+1,c})];if(cell?.t!=='n')return;const whole=Number.isInteger(Number(cell.v));cell.z=col.t==='ratio'?(whole?'0%':'0.###############%'):col.t==='pct'?(whole?'+0%;-0%;0%':'+0.###############%;-0.###############%;0.###############%'):(whole?'#,##0':'#,##0.###############')})});
-    cols.forEach((col,c)=>{if(col.t!=='datetime')return;rows.forEach((row,r)=>{const text=dateTimeValue(row[col.k]);if(!text)return;const parts=text.split('T'),ymd=parts[0].split('-').map(Number),hm=(parts[1]||'00:00').split(':').map(Number);const cell=sheet[XLSX.utils.encode_cell({r:r+1,c})];cell.t='n';cell.v=(Date.UTC(ymd[0],ymd[1]-1,ymd[2],hm[0],hm[1])-Date.UTC(1899,11,30))/86400000;cell.z=parts[1]?'dd/mm/yyyy hh:mm':'dd/mm/yyyy'})});
+    cols.forEach((col,c)=>{if(col.t!=='datetime'||col.k==='measuredOn')return;rows.forEach((row,r)=>{const text=dateTimeValue(row[col.k]);if(!text)return;const parts=text.split('T'),ymd=parts[0].split('-').map(Number),hm=(parts[1]||'00:00').split(':').map(Number);const cell=sheet[XLSX.utils.encode_cell({r:r+1,c})];cell.t='n';cell.v=(Date.UTC(ymd[0],ymd[1]-1,ymd[2],hm[0],hm[1])-Date.UTC(1899,11,30))/86400000;cell.z=parts[1]?'dd/mm/yyyy hh:mm':'dd/mm/yyyy'})});
     sheet['!cols'] = cols.map(col => ({ wch: Math.min(44, Math.max(12, caption(col).length + 2)) }));
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, sheet, 'Đặt hàng');
@@ -153,6 +153,8 @@
           if (!Number.isFinite(C.parse(value))) {
             row[col.k] = String(value); row.__cellErrors[col.k] = caption(col) + ': số không hợp lệ';
           } else row[col.k] = C.parse(value);
+        } else if (col.k==='measuredOn') {
+          row[col.k] = String(cell?.w||value).trim();
         } else if ((col.t === 'date'||col.t==='datetime')) {
           const date = (col.t==='datetime'?dateTimeValue:dateValue)(value, !!workbook.Workbook?.WBProps?.date1904);
           row[col.k] = date || String(value);

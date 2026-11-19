@@ -42,6 +42,7 @@ function jsRow(row) {
 }
 function normalizeMeasurementOverride(column,value) {
   if(value==null||typeof value==='string'&&!value.trim())return null;
+  if(column.k==='measuredOn')return String(value).trim();
   if(column.t==='datetime'){
     const parsed=require('../public/shared/purchase-workbook').dateTimeValue(value,false);
     if(!parsed)throw fail(400,'VALIDATION_ERROR',column.l+': ngày không hợp lệ.');

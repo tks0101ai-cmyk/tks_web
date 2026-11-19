@@ -94,6 +94,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
       }
       if (blank(value)) { if (snapshot) values[col.k] = null; continue; }
       if(col.region){const raw=String(value).trim(),found=regionsById.get(raw)||regionsByName.get(raw.toLocaleLowerCase('vi'))||regionsByKey.get(normalizeRegionName(raw));if(found){if(found.isActive===false&&String(matched?.regionId??'')!==String(found.id))result.errors.push('Vùng: chọn tên vùng đang hoạt động trong danh sách.');else values.regionId=String(found.id)}else if(!raw||raw.length>80)result.errors.push('Vùng: tên không hợp lệ (tối đa 80 ký tự).');else if(/^\d+$/.test(raw))result.errors.push('Vùng: không tìm thấy vùng theo mã nội bộ.');else if(!snapshot)result.errors.push('Vùng: chọn tên vùng đang hoạt động trong danh sách.');else{const key=normalizeRegionName(raw);let planned=plannedRegions.get(key);if(!planned){planned={id:'@new-region:'+key,name:raw};plannedRegions.set(key,planned)}values.regionId=planned.id}continue}
+      if(col.k==='measuredOn'){const text=String(value).trim();if(text.length>4000)result.errors.push(col.l+': tối đa 4.000 ký tự.');else values[col.k]=text;continue}
       if (workbook.numericTypes.has(col.t)) {
         const number = calculations.parse(value);
         // Chi cac cot co the am duoc khai bao trong signedFields.
