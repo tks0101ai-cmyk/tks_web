@@ -685,6 +685,8 @@
 #modalBody .import-recovery small{font-size:9px;color:var(--muted)}
 #modalBody .import-archived{background:color-mix(in srgb,var(--primary) 5%,transparent)}
 #modalBody .import-stale-warning{display:grid;gap:8px;margin:10px 0;padding:12px;border:1px solid #e7a23b;border-radius:8px;background:color-mix(in srgb,#e7a23b 12%,var(--panel));color:var(--text)}
+#modalBody .import-error-summary{display:grid;gap:8px;margin:10px 0;padding:12px;border:1px solid #ef6b73;border-radius:8px;background:color-mix(in srgb,#ef6b73 12%,var(--panel));color:var(--text)}
+#modalBody .import-error-summary button{justify-self:start}
 #modalBody .import-stale-warning label{display:flex;align-items:flex-start;gap:8px;margin:0;font-weight:650}
 #modalBody .import-stale-warning input{width:auto;margin:2px 0 0}
 #modalBody .import-preserved{background:color-mix(in srgb,#2c9b79 10%,transparent);color:var(--text)}
