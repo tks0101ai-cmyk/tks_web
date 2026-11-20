@@ -6,9 +6,9 @@
 .purchase-tabs{margin:0 0 12px;padding:0;gap:18px;border-bottom:1px solid var(--border);min-height:43px}
 .purchase-tabs button{align-self:stretch;background:transparent;border:0;border-bottom:2px solid transparent;border-radius:0;font-size:11px;padding:10px 4px;color:var(--muted)}
 .purchase-tabs button.active{border-bottom-color:var(--primary);color:var(--text);font-weight:650}
-#notice:empty{display:none}
+#notice:empty,#modalNotice:empty{display:none}
 #notice{padding:8px 10px;margin:10px 0;background:var(--warn-bg,rgba(242,196,109,.08));border-left:2px solid var(--purchase-amber);font-size:11px}
-#notice.toast{position:fixed;z-index:1500;right:20px;bottom:20px;width:min(440px,calc(100vw - 32px));min-height:0;margin:0;padding:14px 16px;border:1px solid var(--purchase-amber);border-left:4px solid var(--purchase-amber);border-radius:8px;background:var(--panel);color:var(--text);font-size:14px;line-height:1.4;box-shadow:0 12px 36px #0005}
+#notice.toast,#modalNotice.toast{position:fixed;z-index:1500;right:20px;bottom:20px;width:min(440px,calc(100vw - 32px));min-height:0;margin:0;padding:14px 16px;border:1px solid var(--purchase-amber);border-left:4px solid var(--purchase-amber);border-radius:8px;background:var(--panel);color:var(--text);font-size:14px;line-height:1.4;box-shadow:0 12px 36px #0005}
 #sourceBanner{padding:9px 12px;border:1px solid var(--border);border-radius:5px;background:var(--panel);color:var(--muted);margin-bottom:12px}
 #purchaseOverview{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));margin:12px 0 16px}
 #purchaseOverview .kpi{padding:12px;min-width:0}

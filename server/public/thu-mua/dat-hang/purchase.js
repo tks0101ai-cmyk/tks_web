@@ -31,7 +31,7 @@
   let codeEditing=null,codeClickTimer=null;
   // Cột ngày nghỉ thì chỉ hiện ngày/tháng; bấm vào mới mở ô ngày đầy đủ để còn thấy năm khi nhập.
   let cellEditing=null,focusedOrderEdit=null;
-  let noticeTimer;const notice=m=>{const el=$('notice');el.textContent=m;el.classList.toggle('toast',!!m);clearTimeout(noticeTimer);if(m)noticeTimer=setTimeout(()=>{if(el.textContent===m){el.textContent='';el.classList.remove('toast')}},7000)};
+  let noticeTimer;const notice=m=>{const dialog=$('modal'),el=dialog.open?$('modalNotice')||(()=>{const node=document.createElement('p');node.id='modalNotice';node.setAttribute('role','alert');dialog.append(node);return node})():$('notice');if(el!==$('notice')){$('notice').textContent='';$('notice').classList.remove('toast')}el.textContent=m;el.classList.toggle('toast',!!m);clearTimeout(noticeTimer);if(m)noticeTimer=setTimeout(()=>{if(el.textContent===m){el.textContent='';el.classList.remove('toast')}},7000)};
   function requestKey(){if(crypto.randomUUID)return crypto.randomUUID();const bytes=crypto.getRandomValues(new Uint8Array(16));bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;const hex=[...bytes].map(x=>x.toString(16).padStart(2,'0')).join('');return [hex.slice(0,8),hex.slice(8,12),hex.slice(12,16),hex.slice(16,20),hex.slice(20)].join('-')}
   function persistOutbox(){try{if(pendingRequest)sessionStorage.setItem(scope+':outbox',JSON.stringify(pendingRequest));else sessionStorage.removeItem(scope+':outbox')}catch{autoSaveError='Trình duyệt chưa lưu được trạng thái đồng bộ của tab.'}if(!pendingRequest&&pendingWriteWaiters.length){const waiters=pendingWriteWaiters.splice(0);setTimeout(()=>waiters.forEach(resolve=>resolve()),0)}}
   function requestDraftSnapshot(path,body,method){const snap=undoSnapshot(),ids=new Set((method==='PATCH'?[path.slice(1)]:path==='/plan'?[...(body.rows||[]).map(r=>r.id),...(body.splits||[]).map(r=>r.id),...(body.creates||[]).map(r=>r.clientId??(r.values||r).id)]:path==='/bulk'?(body.rows||[]).map(r=>r.id):[]).map(String));snap.drafts=Object.fromEntries(Object.entries(snap.drafts).filter(([id])=>ids.has(String(id))));return snap}
@@ -79,8 +79,8 @@
   const orderEditable=c=>writable.some(x=>x.k===c.k)||overrideCell(c);
   // Hop chi tiet theo khuon .dp-* dung chung (shared/detail-panel.css): tieu de vao
   // .dp-title, phan con lai vao .dp-body. Cho goi van truyen '<h2>Tieu de</h2>'+noi dung.
-  function modal(html){const body=$('modalBody'),head=/^\s*<h2>([\s\S]*?)<\/h2>/.exec(html);body.onchange=null;body.oninput=null;$('modalTitle').innerHTML=head?head[1]:'Thu mua';body.innerHTML=head?html.slice(head[0].length):html;if(!$('modal').open)$('modal').showModal();resizeTables(body)}
-  async function modalSuccess(message){if(!$('modal').open)return;const body=$('modalBody');body.onchange=null;body.oninput=null;body.innerHTML='<div class="purchase-modal-success" role="status" aria-live="polite"><span aria-hidden="true">✓</span><strong>'+esc(message)+'</strong></div>';$('modalClose').disabled=true;await new Promise(resolve=>setTimeout(resolve,650));if($('modal').open)close();$('modalClose').disabled=false}
+  function modal(html){const body=$('modalBody'),head=/^\s*<h2>([\s\S]*?)<\/h2>/.exec(html);body.onchange=null;body.oninput=null;$('modalTitle').innerHTML=head?head[1]:'Thu mua';body.innerHTML=head?html.slice(head[0].length):html;if($('modalNotice')){$('modalNotice').textContent='';$('modalNotice').classList.remove('toast')}if(!$('modal').open)$('modal').showModal();if($('notice').textContent)notice($('notice').textContent);resizeTables(body)}
+  async function modalSuccess(message){if(!$('modal').open)return;notice('');const body=$('modalBody');body.onchange=null;body.oninput=null;body.innerHTML='<div class="purchase-modal-success" role="status" aria-live="polite"><span aria-hidden="true">✓</span><strong>'+esc(message)+'</strong></div>';$('modalClose').disabled=true;await new Promise(resolve=>setTimeout(resolve,650));if($('modal').open)close();$('modalClose').disabled=false}
   async function popupSuccess(message){modal('<h2>Thành công</h2>');await modalSuccess(message)}
   // One owner for widths/resizing: pass authored widths and stable field keys to TKSTables.
   function resizeTables(root){root.querySelectorAll('table').forEach(table=>{
@@ -403,10 +403,10 @@
       const lines=parse(),today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
       const rows=lines.map(line=>{
         const match=line.match(/^(.*?)\s+([\d,]+)$/),code=(match?.[1]||line).trim(),previous=latestByCode.get(code.toLocaleLowerCase('vi')),input={productCode:code,cartonCount:match?Number(match[2].replaceAll(',','')):null};
-        if(previous)for(const key of ['productName','supplier','buyer','listedAt','qtyPerCarton','unitPriceCny','kgPerCarton','m3PerCarton','regionId'])if(previous[key]!=null)input[key]=previous[key];
+        if(previous)for(const key of ['productName','supplier','buyer','listedAt','qtyPerCarton','unitPriceCny','kgPerCarton','m3PerCarton','regionId'])if(previous[key]!=null&&(key!=='qtyPerCarton'||Number.isSafeInteger(Number(previous[key]))&&Number(previous[key])>0))input[key]=previous[key];
         if(input.regionId&&!(data.regions||[]).some(region=>String(region.id)===String(input.regionId)&&region.isActive!==false))delete input.regionId;
         input.listedAt=input.listedAt||normalizeDay(today);
-        if(input.qtyPerCarton==null&&!previous)input.qtyPerCarton=0;if(input.productName==null&&!previous)input.productName='';return input;
+        if(input.productName==null&&!previous)input.productName='';return input;
       });
       const invalid=rows.map((row,index)=>!row.productCode||!Number.isSafeInteger(row.cartonCount)||row.cartonCount<=0?index+1:null).filter(Boolean);
       status.textContent=`${rows.length} mã · ${invalid.length?`thiếu Mã SP hoặc Số thùng hợp lệ ở dòng ${invalid.slice(0,8).join(', ')}${invalid.length>8?'…':''}`:'đã sẵn sàng để thêm'}${rows.length>500?' · vượt giới hạn 500':''}`;save.disabled=!rows.length||rows.length>500||invalid.length>0;return rows;
