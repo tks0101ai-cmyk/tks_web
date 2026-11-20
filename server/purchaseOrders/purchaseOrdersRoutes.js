@@ -6,6 +6,7 @@ const { requireAuth, requireFeature } = require('../auth/authMiddleware');
 const { hasFeature } = require('../auth/featureRegistry');
 const { createPurchaseOrdersService } = require('./purchaseOrdersService');
 const workbook = require('../public/shared/purchase-workbook');
+const { formatPurchaseSnapshot } = require('./purchaseSnapshotFormatter');
 const columns = require('../public/shared/purchase-columns');
 function createPurchaseOrdersRouter(dependencies={}) {
   const router=express.Router(),service=dependencies.service||createPurchaseOrdersService({deferProjection:true});
@@ -67,7 +68,7 @@ function createPurchaseOrdersRouter(dependencies={}) {
   router.post(root+'/transfer',ordersScope,handle(async(req,res)=>res.json(await service.transfer(req.user,req.body))));
   router.post(root+'/depart',requireFeature('purchase.depart'),handle(async(req,res)=>res.json(await service.depart(req.user,req.body))));
   router.post(root+'/arrive',requireFeature('purchase.arrive'),handle(async(req,res)=>res.json(await service.arrive(req.user,req.body))));
-  router.get(root+'/import/snapshot',requireFeature('purchase.import'),handle(async(req,res)=>{const snapshot=await service.importSnapshot(req.user);const data=workbook.exportImportSnapshot({...snapshot,columns});res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').set('Content-Disposition','attachment; filename="tokosi-purchase-snapshot.xlsx"').send(Buffer.from(data))}));
+  router.get(root+'/import/snapshot',requireFeature('purchase.import'),handle(async(req,res)=>{const snapshot=await service.importSnapshot(req.user);const data=workbook.exportImportSnapshot({...snapshot,columns}),formatted=await formatPurchaseSnapshot(data,columns);res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').set('Content-Disposition','attachment; filename="tokosi-purchase-snapshot.xlsx"').send(formatted)}));
   router.post(root+'/import/preview',requireFeature('purchase.import'),(req,res,next)=>upload.single('file')(req,res,error=>{
     if(error)return res.status(400).json({code:'IMPORT_FILE_INVALID',error:'Chỉ chọn một file, tối đa 10 MB.'});next();
   }),async(req,res)=>{
