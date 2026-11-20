@@ -685,7 +685,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
     })},
     async restoreContainer(user,{id,version}) {return transaction(user,async client=>{const row=(await client.query('SELECT * FROM product_containers WHERE id=$1 FOR UPDATE',[id])).rows[0];if(!row?.deleted_at||Number(row.version)!==Number(version))throw fail(409,'VERSION_CONFLICT','Cont đã thay đổi hoặc đã khôi phục.');const updated=(await client.query('UPDATE product_containers SET deleted_at=NULL,version=version+1,updated_at=now() WHERE id=$1 RETURNING *',[id])).rows[0];await audit(client,user,'container_restore',{containerId:String(id),name:row.name});return {changed:true,value:updated}})},
 
-    async updateContainer(user,id,{version,before={},changes={},rows}) {
+    async updateContainer(user,id,{version,before={},changes={},rows,rowsSnapshotComplete}) {
       return transaction(user,async client=>{
         if(!Number.isSafeInteger(Number(version))||Number(version)<1)throw fail(400,'VERSION_REQUIRED','Cần phiên bản cont đang xem.');
         if(!changes||typeof changes!=='object'||Array.isArray(changes))throw fail(400,'VALIDATION_ERROR','Thay đổi cont không hợp lệ.');
@@ -734,7 +734,13 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
           actual=(await client.query('SELECT * FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL AND container_id=$1 ORDER BY id FOR UPDATE',[id])).rows;
         }
         if(shared){
-          if(!Array.isArray(rows)||rows.length!==actual.length||rows.some(r=>!r||!Number.isSafeInteger(Number(r.version))||Number(r.version)<1)||new Set(rows.map(r=>String(r.id))).size!==actual.length||actual.some(r=>!rows.some(x=>String(x.id)===String(r.id)&&Number(x.version)===Number(r.version))))throw fail(409,'VERSION_CONFLICT','Danh sách hoặc phiên bản dòng trong cont đã thay đổi.');
+          // A paginated purchase list cannot send every row version. In that
+          // case, intentionally apply the container-level date/note to the
+          // current locked membership; the SQL below only updates these
+          // columns, so concurrent edits to other row fields are preserved.
+          if(!Array.isArray(rows)){
+            if(rowsSnapshotComplete!==false)throw fail(409,'VERSION_CONFLICT','Danh sách hoặc phiên bản dòng trong cont đã thay đổi.');
+          }else if(rows.length!==actual.length||rows.some(r=>!r||!Number.isSafeInteger(Number(r.version))||Number(r.version)<1)||new Set(rows.map(r=>String(r.id))).size!==actual.length||actual.some(r=>!rows.some(x=>String(x.id)===String(r.id)&&Number(x.version)===Number(r.version))))throw fail(409,'VERSION_CONFLICT','Danh sách hoặc phiên bản dòng trong cont đã thay đổi.');
           const patch={};if(Object.hasOwn(changes,'arrivalNote'))patch.eta_note=entries.find(([key])=>key==='arrival_note')[1]||null;if(Object.hasOwn(changes,'arrivalDate'))patch.arrived_note=entries.find(([key])=>key==='arrival_date')[1]||null;
           const updated=(await client.query(`UPDATE purchase_orders SET ${Object.keys(patch).map((key,index)=>`${key}=$${index+2}`).join(',')},version=version+1,updated_at=now() WHERE id=ANY($1::bigint[]) RETURNING *`,[actual.map(row=>row.id),...Object.values(patch)])).rows,byId=new Map(updated.map(row=>[String(row.id),row]));
           for(const raw of actual){const after=byId.get(String(raw.id));details.push({before:jsRow(raw),after:jsRow({...raw,...after})})}

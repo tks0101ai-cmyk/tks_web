@@ -80,6 +80,13 @@ app.get(['/reports', '/reports/'], (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Some browsers still request the conventional root favicon even when a page
+// declares its own icon. Reuse the public TOKOSI logo instead of returning 404.
+app.get('/favicon.ico', (req, res) => {
+  res.setHeader('Cache-Control', 'public, max-age=604800');
+  res.sendFile(path.join(__dirname, 'public', 'Logo.jpg'));
+});
+
 // Static files (html, css, js, images...)
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders(res, filePath) {
