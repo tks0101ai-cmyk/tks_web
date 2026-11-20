@@ -482,7 +482,7 @@ function kiotMeta(kiotResult) {
 // Khoa: noi dung sheet + lich su ghi de, danh sach don Kiot (theo THAM CHIEU mang — repository chi doi mang
 // khi doc lai DB) va PHUT hien tai (canh bao qua 24h phu thuoc dong ho, khong chi du lieu).
 const WARNING_BUCKET_MS = 60 * 1000;
-let mergedCache = null; // { sheetKey, kiotRef, bucket, rows }
+let mergedCache = null; // { records, historyRows, kiotRef, bucket, rows }
 const selectionCache = query.createSelectionCache(); // tu bo het khi mang dong nguon doi (xem createSelectionCache)
 
 async function loadMergedRows(kiot, { allowStale = false } = {}) {
@@ -491,15 +491,14 @@ async function loadMergedRows(kiot, { allowStale = false } = {}) {
     repo.readOverrideHistory({ allowStale }),
     kiot ? kiot.readOrders() : Promise.resolve(null)
   ]);
-  const sheetKey = JSON.stringify([records, historyRows]);
   const kiotRef = !kiotResult ? 'none' : (kiotResult.ok && Array.isArray(kiotResult.orders) ? kiotResult.orders : 'failed');
   const bucket = Math.floor(Date.now() / WARNING_BUCKET_MS);
-  if (mergedCache && mergedCache.sheetKey === sheetKey && mergedCache.kiotRef === kiotRef && mergedCache.bucket === bucket) {
+  if (mergedCache && mergedCache.records === records && mergedCache.historyRows === historyRows && mergedCache.kiotRef === kiotRef && mergedCache.bucket === bucket) {
     return { rows: mergedCache.rows, kiotResult };
   }
   const overrides = latestOverrideByCode(historyRows);
   const rows = mergeRows({ records, overrides, kiotResult });
-  mergedCache = { sheetKey, kiotRef, bucket, rows };
+  mergedCache = { records, historyRows, kiotRef, bucket, rows };
   return { rows, kiotResult };
 }
 
@@ -524,7 +523,7 @@ async function withProductKeys(params, kiot) {
  */
 async function queryOrders(rawParams, { kiot, pickStatuses } = {}) {
   const params = await withProductKeys(query.parseParams(rawParams), kiot);
-  const { rows, kiotResult } = await loadMergedRows(kiot);
+  const { rows, kiotResult } = await loadMergedRows(kiot, { allowStale: true });
   const pickMap = pickStatuses ? await pickStatuses() : null;
   // Loc theo trang thai chi dinh vi tri: thu hep tap dong (chi dinh it, don ~60 nghin) roi loc/sap xep nhu thuong, khong qua
   // selectionCache (gan voi mang dong nguon). Khong loc thi van dung cache; pickStatus chi gan len cac dong cua trang tra ve.

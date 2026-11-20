@@ -14,6 +14,13 @@
 const CONFIG = require('../config');
 const client = require('../sheets/orderLifecycleSheetsClient');
 const historyClient = require('../sheets/orderLifecycleHistoryClient');
+// The Sheets client returns the same values array while its cache is current.
+// Keep parsed rows by source identity so filtering the table does not parse six tabs again.
+const parsedTabs = new Map();
+const EMPTY_ROWS = [];
+let parsedAccounting = null;
+let combinedTabs = null;
+let parsedHistory = null;
 
 // Ma nhanh dung cho _branch/API branch filter — RIENG cho tinh nang nay,
 // KHONG dung BRANCHES.HANOI/SAIGON ('Hà Nội'/'Sài Gòn') cua branch/branches.js
@@ -153,7 +160,7 @@ const ACCOUNTING_HEADER_ALIASES = {
 };
 
 function readAccountingRows(values) {
-  if (!values || values.length === 0) return [];
+  if (!values || values.length === 0) return EMPTY_ROWS;
   const headers = (values[0] || []).map(normalizeHeaderText);
   const indexOf = key => headers.findIndex(h => ACCOUNTING_HEADER_ALIASES[key].map(normalizeHeaderText).includes(h));
   const columns = { orderCode: indexOf('orderCode'), accountingSender: indexOf('accountingSender'), saleSentAt: indexOf('saleSentAt') };
@@ -174,21 +181,28 @@ function readAccountingRows(values) {
 
 async function readAccountingTab(readOptions) {
   try {
-    return readAccountingRows(await client.getValues(CONFIG.ORDER_LIFECYCLE_SHEET_ACCOUNTING, readOptions));
+    const values = await client.getValues(CONFIG.ORDER_LIFECYCLE_SHEET_ACCOUNTING, readOptions);
+    if (parsedAccounting?.values === values) return parsedAccounting.rows;
+    const rows = readAccountingRows(values);
+    parsedAccounting = { values, rows };
+    return rows;
   } catch (err) {
     console.error(`=== CANH BAO: Khong doc duoc tab "${CONFIG.ORDER_LIFECYCLE_SHEET_ACCOUNTING}" (don ke toan/chung tu, bo qua) ===`);
     console.error(err.message);
     console.error('==========================================================================');
-    return [];
+    return EMPTY_ROWS;
   }
 }
 
 async function readTab(sheetName, branch, { fieldKeys = DELIVERY_FIELD_KEYS, flow = FLOW_DELIVERY } = {}, readOptions) {
   const values = await client.getValues(sheetName, readOptions);
-  if (!values || values.length === 0) return [];
+  const cacheKey = `${sheetName}:${branch}:${flow}`;
+  const cached = parsedTabs.get(cacheKey);
+  if (cached?.values === values) return cached.rows;
+  if (!values || values.length === 0) return EMPTY_ROWS;
   const columnIndex = buildColumnIndex(values[0]);
   const dataRows = values.slice(1);
-  return dataRows
+  const rows = dataRows
     .filter(row => row.some(cell => cell !== '' && cell !== undefined))
     .map(row => {
       const record = {};
@@ -197,6 +211,8 @@ async function readTab(sheetName, branch, { fieldKeys = DELIVERY_FIELD_KEYS, flo
       if (flow) record._flow = flow;
       return record;
     });
+  parsedTabs.set(cacheKey, { values, rows });
+  return rows;
 }
 
 /**
@@ -210,7 +226,7 @@ async function readOptionalTab(sheetName, branch, options, label, readOptions) {
     console.error(`=== CANH BAO: Khong doc duoc tab "${sheetName}" (${label}, bo qua) ===`);
     console.error(err.message);
     console.error('==========================================================================');
-    return [];
+    return EMPTY_ROWS;
   }
 }
 
@@ -230,7 +246,11 @@ async function readAll(readOptions) {
     readOptionalTab(CONFIG.ORDER_LIFECYCLE_SHEET_PICKUP_SG, LIFECYCLE_BRANCH.SG, pickup, 'khach/ship lay SG', readOptions),
     readAccountingTab(readOptions)
   ]);
-  return [...hnRows, ...northSouthRows, ...pickupHnRows, ...sgRows, ...pickupSgRows, ...accountingRows];
+  const parts = [hnRows, northSouthRows, pickupHnRows, sgRows, pickupSgRows, accountingRows];
+  if (combinedTabs && parts.every((part, index) => part === combinedTabs.parts[index])) return combinedTabs.rows;
+  const rows = parts.flat();
+  combinedTabs = { parts, rows };
+  return rows;
 }
 
 /**
@@ -250,12 +270,15 @@ async function readOverrideHistory(readOptions) {
     console.error('=== CANH BAO: Khong doc duoc tab "Lich su cap nhat" (bo qua override) ===');
     console.error(err.message);
     console.error('==========================================================================');
-    return [];
+    return EMPTY_ROWS;
   }
-  if (!values || values.length === 0) return [];
-  return values.slice(1)
+  if (parsedHistory?.values === values) return parsedHistory.rows;
+  if (!values || values.length === 0) return EMPTY_ROWS;
+  const rows = values.slice(1)
     .filter(row => row.some(cell => cell !== '' && cell !== undefined))
     .map(row => rowToObject(row, HISTORY_SCHEMA.fieldKeys));
+  parsedHistory = { values, rows };
+  return rows;
 }
 
 /**
