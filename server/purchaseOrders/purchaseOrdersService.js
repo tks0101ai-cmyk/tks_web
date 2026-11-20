@@ -4,7 +4,8 @@ const freightModel=require('../public/shared/purchase-freight');
 const { randomUUID } = require('node:crypto');
 const { getPool } = require('../db/pool');
 const columns = require('../public/shared/purchase-columns');
-const { prepareRows, prepareWorkbook, prepareSnapshotWorkbook, recheckPreview } = require('./purchaseOrdersImport');
+const { prepareRows, prepareSnapshotWorkbook, recheckPreview } = require('./purchaseOrdersImport');
+const workbook=require('../public/shared/purchase-workbook');
 const { invalidateContainerDetails } = require('../productContainers/repository');
 const { projectContainers } = require('./purchaseOrdersProjection');
 const { dashboardRollupEvents } = require('../kiotvietSync/dashboardRollupEvents');
@@ -21,6 +22,8 @@ const containerProjectionFields = new Set(['assumedM3','containerFxRate','arriva
 const PROJECTION_LOCK_KEY=20531074;
 const fail = (statusCode,code,message,extra={}) => Object.assign(new Error(message),{statusCode,code,...extra});
 const { normalizeName } = require('./containerNames');
+const searchFoldGroups={a:'àáảãạăằắẳẵặâầấẩẫậ',e:'èéẻẽẹêềếểễệ',i:'ìíỉĩị',o:'òóỏõọôồốổỗộơờớởỡợ',u:'ùúủũụưừứửữự',y:'ỳýỷỹỵ',d:'đ'};
+const searchFoldFrom=Object.values(searchFoldGroups).join(''),searchFoldTo=Object.entries(searchFoldGroups).map(([letter,chars])=>letter.repeat([...chars].length)).join('');
 async function ensureAaRegion(client){let row=(await client.query("SELECT id FROM purchase_regions WHERE lower(btrim(name))='aa' AND is_active=true ORDER BY id LIMIT 1")).rows[0];if(!row)row=(await client.query("INSERT INTO purchase_regions(name,name_key,color,is_active) VALUES('AA','aa','#2563EB',true) ON CONFLICT(name_key) DO UPDATE SET name=EXCLUDED.name,is_active=true RETURNING id")).rows[0];return String(row.id)}
 const regionName=value=>{const text=String(value??'').trim();if(!text||text.length>80)throw fail(400,'REGION_INVALID','Tên vùng tối đa 80 ký tự.');return text};
 const employeeColor=value=>{if(typeof value!=='string'||!/^#[0-9A-Fa-f]{6}$/.test(value))throw fail(400,'COLOR_INVALID','Chọn màu RGB hợp lệ.');return value.toUpperCase()};
@@ -39,6 +42,7 @@ function jsRow(row) {
 }
 function normalizeMeasurementOverride(column,value) {
   if(value==null||typeof value==='string'&&!value.trim())return null;
+  if(column.k==='measuredOn')return String(value).trim();
   if(column.t==='datetime'){
     const parsed=require('../public/shared/purchase-workbook').dateTimeValue(value,false);
     if(!parsed)throw fail(400,'VALIDATION_ERROR',column.l+': ngày không hợp lệ.');
@@ -63,23 +67,14 @@ function measurementOverridePlan(current,changes) {
   }
   return {values,diff};
 }
-function withFreight(rows,containers,waitingConfig){const rates=freightModel.rates(rows,[...containers,{id:null,...waitingConfig}]);return rows.map(r=>({...r,freightAmount:freightModel.rowAmount(r,rates)}))}
-async function validateProjectionFormulas(client){
-  if(!(await client.query('SELECT 1 FROM product_containers WHERE freight_formula IS NOT NULL LIMIT 1')).rowCount)return;
-  const rows=(await client.query(`SELECT c.name,c.freight_formula,c.assumed_m3,c.freight_base,c.freight_capacity,
-      COALESCE(sum(o.carton_count*o.m3_per_carton),0)::numeric AS volume
-    FROM product_containers c LEFT JOIN purchase_orders o ON o.container_id=c.id AND o.deleted_at IS NULL AND o.inactive_at IS NULL
-    WHERE c.freight_formula IS NOT NULL GROUP BY c.id`)).rows;
-  for(const row of rows){
-    const volume=Number(row.volume),fee=freightModel.calculate(row,volume);
-    if(volume>0&&fee.rate==null)throw fail(400,'FREIGHT_FORMULA_INVALID',`Công thức cước cont ${row.name} cho kết quả không hợp lệ với tổng m³ hiện tại. Sửa công thức hoặc chuyển sang nhập số tiền.`);
-  }
-}
+const defaultWaitingConfig={freightMode:'formula',freight:null,freightFormula:null,freightBase:202000000,freightCapacity:170,assumedM3:null,containerFxRate:null,version:1};
+function waitingContainerConfigs(regions,configs){return [...regions.map(region=>({id:null,region_id:String(region.id),...(configs[String(region.id)]||defaultWaitingConfig)})),{id:null,region_id:null,...defaultWaitingConfig}]}
+function withFreight(rows,containers,waitingContainers=[],summaries=null){const rates=freightModel.rates(rows,[...containers,...waitingContainers],summaries);return rows.map(r=>({...r,freightAmount:freightModel.rowAmount(r,rates)}))}
 function actor(user) { if(!user?.id)throw fail(401,'AUTH_REQUIRED','Chưa đăng nhập.');return {id:String(user.id),name:String(user.hoTen||user.username||user.id)}; }
 const MEASURED_ROW_SQL='p.*,sm.m3_per_unit AS measure_m3_per_unit,sm.per_carton AS measure_per_carton,sm.kg_per_unit AS measure_kg_per_unit';
 async function readPurchaseRow(client,id,lock=false){return (await client.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE p.id=$1${lock?' FOR UPDATE OF p':''}`,[id])).rows[0]}
 async function readPurchaseRows(client,ids){if(!ids.length)return [];return (await client.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE p.id=ANY($1::bigint[]) ORDER BY p.id`,[ids])).rows}
-async function readRows(client,lock=false) { return (await client.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE p.deleted_at IS NULL AND p.inactive_at IS NULL ORDER BY p.id${lock?' FOR UPDATE OF p':''}`)).rows.map(jsRow); }
+async function readRows(client,lock=false,ids=null) { const selected=Array.isArray(ids);return (await client.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE p.deleted_at IS NULL AND p.inactive_at IS NULL${selected?' AND p.id=ANY($1::bigint[])':''} ORDER BY p.id${lock?' FOR UPDATE OF p':''}`,selected?[ids]:[])).rows.map(jsRow); }
 async function readArchivedRows(client,lock=false) { return (await client.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE p.deleted_at IS NOT NULL OR p.inactive_at IS NOT NULL ORDER BY p.id${lock?' FOR UPDATE OF p':''}`)).rows.map(jsRow); }
 async function readImportContainers(client) { return (await client.query('SELECT id,name,region_id,inactive_at,deleted_at FROM product_containers')).rows; }
 // Cột được so khi diff một phiên bản: đúng tập mà người dùng nhìn thấy và sửa được.
@@ -144,20 +139,71 @@ async function writeRows(client,patches) {
   if(result.rowCount!==patches.length)throw fail(409,'VERSION_CONFLICT','Một số dòng đã thay đổi. Tải lại bảng rồi thử lại.');
 }
 async function patchRow(client,row,changes) { const updated=await writeRow(client,row,changes);return updated===row?row:readPurchaseRow(client,updated.id); }
+function pagedOrderFilter(options,user){
+  const values=[],where=['p.deleted_at IS NULL AND p.inactive_at IS NULL'];
+  const bind=value=>{values.push(value);return '$'+values.length};
+  const search=String(options.search||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').replace(/Đ/g,'D').toLocaleLowerCase('vi').trim();
+  if(search){const arg=bind('%'+search+'%'),folded=`translate(lower(concat_ws(' ',p.row_key,p.source_sheet,p.product_code,p.product_name,p.product_name_cn,p.supplier,p.sale_note,p.buy_note,p.extra_note)),'${searchFoldFrom}','${searchFoldTo}')`;where.push(`(${folded} LIKE ${arg})`)}
+  if(options.container!==undefined&&options.container!=='all')where.push(!options.container||options.container==='__waiting__'?'p.container_id IS NULL':'p.container_id='+bind(options.container));
+  if(options.region==='__unassigned__')where.push('p.region_id IS NULL');else if(options.region)where.push('p.region_id='+bind(options.region));
+  const statuses=String(options.status??'').split(',').filter(value=>/^[0-4]$/.test(value)).map(Number);
+  if(statuses.length){const clauses=[];if(statuses.includes(0))clauses.push('p.container_id IS NULL');const assigned=statuses.filter(value=>value>0);if(assigned.length)clauses.push('EXISTS(SELECT 1 FROM product_containers c WHERE c.id=p.container_id AND c.status=ANY('+bind(assigned)+'::int[]))');where.push('('+clauses.join(' OR ')+')')}
+  if(options.buyer){const [kind,...rest]=String(options.buyer).split(':');const value=rest.join(':');if(kind==='id')where.push('p.buyer_employee_id='+bind(value));else where.push('lower(btrim(p.buyer))='+bind(value.toLocaleLowerCase('vi')))}
+  if(options.from)where.push('p.listed_at::date >= '+bind(options.from)+'::date');
+  if(options.to)where.push('p.listed_at::date <= '+bind(options.to)+'::date');
+  if(options.quick==='mine'){const id=bind(String(user?.hrEmployeeId||user?.employeeId||'')),name=bind(String(user?.hoTen||user?.username||'').toLocaleLowerCase('vi'));where.push(`(p.buyer_employee_id=${id} OR lower(btrim(p.buyer))=${name})`)}
+  if(options.quick==='eta')where.push("(p.eta_note IS NULL OR btrim(p.eta_note)='')");
+  if(options.quick==='measure')where.push('(p.carton_count IS NULL OR p.carton_count<=0 OR p.kg_per_carton IS NULL OR p.kg_per_carton<=0 OR p.m3_per_carton IS NULL OR p.m3_per_carton<=0)');
+  if(options.flag==='measure')where.push('(p.carton_count IS NULL OR p.carton_count<=0 OR p.kg_per_carton IS NULL OR p.kg_per_carton<=0 OR p.m3_per_carton IS NULL OR p.m3_per_carton<=0)');
+  if(options.flag==='price')where.push('(p.qty_per_carton IS NULL OR p.qty_per_carton<=0 OR p.carton_count IS NULL OR p.carton_count<=0 OR p.unit_price_cny IS NULL OR p.unit_price_cny<0 OR p.fx_rate IS NULL OR p.fx_rate<=0)');
+  if(options.flag==='diff'){
+    const literWarehouse="COALESCE(NULLIF(p.measurement_overrides->>'literWarehouse','')::numeric,sm.m3_per_unit*1000)",gramWarehouse="COALESCE(NULLIF(p.measurement_overrides->>'gramWarehouse','')::numeric,sm.kg_per_unit*1000)",literChina="COALESCE(NULLIF(p.measurement_overrides->>'literChina','')::numeric,p.m3_per_carton*1000/NULLIF(p.qty_per_carton,0))",gramChina="COALESCE(NULLIF(p.measurement_overrides->>'gramChina','')::numeric,p.kg_per_carton*1000/NULLIF(p.qty_per_carton,0))",literDiff="COALESCE(NULLIF(p.measurement_overrides->>'literDiff','')::numeric,("+literChina+"-"+literWarehouse+")/NULLIF("+literWarehouse+",0))",gramDiff="COALESCE(NULLIF(p.measurement_overrides->>'gramDiff','')::numeric,("+gramChina+"-"+gramWarehouse+")/NULLIF("+gramWarehouse+",0))";
+    where.push('(abs('+literDiff+')>0.100000000001 OR abs('+gramDiff+')>0.100000000001)');
+  }
+  if(['bulky','heavy'].includes(options.flag)){
+    const ratio='(p.kg_per_carton::numeric/(1000*p.m3_per_carton))',maxTon='COALESCE((SELECT NULLIF(c.max_ton,0) FROM product_containers c WHERE c.id=p.container_id),32)',maxM3='COALESCE((SELECT NULLIF(c.m3_max,0) FROM product_containers c WHERE c.id=p.container_id),170)',minM3='COALESCE((SELECT NULLIF(c.m3_min,0) FROM product_containers c WHERE c.id=p.container_id),160)',bound='('+(options.flag==='bulky'?maxTon+'/'+maxM3:maxTon+'/'+minM3)+')';
+    where.push('p.carton_count>0 AND p.kg_per_carton>0 AND p.m3_per_carton>0 AND '+ratio+(options.flag==='bulky'?' < ':' > ')+bound);
+  }
+  const ids=(Array.isArray(options.ids)?options.ids:String(options.ids||'').split(',')).map(String).filter(id=>/^[1-9]\d*$/.test(id)).slice(0,10000);
+  if(ids.length)where.push('p.id=ANY('+bind(ids)+'::bigint[])');
+  else if(options.onlyIds==='true'||options.onlyIds===true)where.push('false');
+  let order=options.sort==='date'?'p.listed_at DESC NULLS LAST,p.id DESC':options.sort==='code'?'p.product_code ASC,p.id DESC':"p.container_id NULLS FIRST,(p.split_from_key IS NOT NULL) DESC,CASE WHEN p.split_from_key IS NOT NULL THEN max(p.id) OVER (PARTITION BY p.split_from_key) END DESC NULLS LAST,CASE WHEN p.split_from_key IS NOT NULL THEN p.row_key END ASC,CASE WHEN p.split_from_key IS NULL THEN p.id END DESC,p.id DESC";
+  let colSort=options.colSort;if(typeof colSort==='string'){try{colSort=JSON.parse(colSort)}catch{colSort=[]}}
+  let clientSort=false;
+  if(Array.isArray(colSort)&&colSort.length){const clauses=[],overrides="p.measurement_overrides->>'",override=key=>"NULLIF("+overrides+key+"','')::numeric";const expressions={rowKey:'p.row_key',container:"COALESCE((SELECT c.name FROM product_containers c WHERE c.id=p.container_id),'')",status:'COALESCE((SELECT c.status FROM product_containers c WHERE c.id=p.container_id),0)',totalQty:'p.qty_per_carton*p.carton_count',totalCny:'p.qty_per_carton*p.carton_count*p.unit_price_cny+COALESCE(p.freight_prepaid,0)',goodsAmount:'(p.qty_per_carton*p.carton_count*p.unit_price_cny+COALESCE(p.freight_prepaid,0))*p.fx_rate',surchargePercent:'(p.qty_per_carton*p.carton_count*p.unit_price_cny+COALESCE(p.freight_prepaid,0))*p.fx_rate*p.surcharge_percent',totalTon:'p.kg_per_carton*p.carton_count/1000',totalM3:'p.m3_per_carton*p.carton_count',literWarehouse:'COALESCE('+override('literWarehouse')+',sm.m3_per_unit*1000)',m3Warehouse:'COALESCE('+override('m3Warehouse')+',sm.m3_per_unit*sm.per_carton)',literChina:'COALESCE('+override('literChina')+',p.m3_per_carton*1000/NULLIF(p.qty_per_carton,0))',gramWarehouse:'COALESCE('+override('gramWarehouse')+',sm.kg_per_unit*1000)',gramChina:'COALESCE('+override('gramChina')+',p.kg_per_carton*1000/NULLIF(p.qty_per_carton,0))',literDiff:'COALESCE('+override('literDiff')+',((COALESCE('+override('literChina')+',p.m3_per_carton*1000/NULLIF(p.qty_per_carton,0))-COALESCE('+override('literWarehouse')+',sm.m3_per_unit*1000))/NULLIF(COALESCE('+override('literWarehouse')+',sm.m3_per_unit*1000),0)))',gramDiff:'COALESCE('+override('gramDiff')+',((COALESCE('+override('gramChina')+',p.kg_per_carton*1000/NULLIF(p.qty_per_carton,0))-COALESCE('+override('gramWarehouse')+',sm.kg_per_unit*1000))/NULLIF(COALESCE('+override('gramWarehouse')+',sm.kg_per_unit*1000),0)))',ratio:'p.kg_per_carton/(1000*NULLIF(p.m3_per_carton,0))'};
+    for(const sort of colSort.slice(0,3)){if(!['asc','desc'].includes(sort.dir))continue;const column=columns.find(c=>c.k===sort.key),key=column&&snake(column.k),expression=expressions[sort.key]||(dbCols.includes(key)?'p."'+key+'"':null);if(expression)clauses.push(expression+' '+sort.dir.toUpperCase()+' NULLS LAST');else clientSort=true}
+    if(clauses.length)order=clauses.join(',')+',p.id DESC';
+  }
+  return {where:where.join(' AND '),values,order,clientSort};
+}
+async function readContainerSummaries(client){return (await client.query(`SELECT container_id AS "contId",region_id AS "regionId",count(*)::int AS count,
+  count(*) FILTER(WHERE carton_count IS NULL OR carton_count<=0 OR kg_per_carton IS NULL OR kg_per_carton<=0 OR m3_per_carton IS NULL OR m3_per_carton<=0)::int AS missing,
+  COALESCE(sum(CASE WHEN carton_count>0 AND kg_per_carton>0 THEN carton_count::numeric*kg_per_carton/1000 ELSE 0 END),0)::float8 AS ton,
+  COALESCE(sum(CASE WHEN carton_count>0 AND m3_per_carton>0 THEN carton_count::numeric*m3_per_carton ELSE 0 END),0)::float8 AS m3,
+  count(*) FILTER(WHERE carton_count IS NULL OR carton_count<=0 OR m3_per_carton IS NULL OR m3_per_carton<=0)::int AS "freightMissing",
+  COALESCE(sum(CASE WHEN qty_per_carton>0 AND carton_count>0 AND unit_price_cny>=0 AND fx_rate>0 THEN (qty_per_carton::numeric*carton_count*unit_price_cny+COALESCE(freight_prepaid,0))*fx_rate*COALESCE(surcharge_percent,0) ELSE 0 END),0)::float8 AS surcharge,
+  COALESCE(sum(COALESCE(freight_postpaid,0)),0)::float8 AS postpaid
+  FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL GROUP BY container_id,region_id`)).rows}
 function createPurchaseOrdersService({ pool=getPool(), project=projectContainers, events=dashboardRollupEvents, lockKey=20531015, invalidate=invalidateContainerDetails, deferProjection=false }={}) {
+  let cachedContainerSummaryRevision=null,cachedContainerSummaries=null,containerSummaryInFlight=null;
   async function transaction(user,fn) {
     actor(user);const client=await pool.connect();let committed=false;
-    try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock($1)',[lockKey]);
-      const settings=await client.query('SELECT source_mode,integration_enabled FROM purchase_settings WHERE id=1 FOR UPDATE');
+    try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock_shared($1)',[lockKey]);
+      // FOR SHARE is compatible with other purchase writes, while blocking any
+      // source-mode UPDATE until this transaction finishes.
+      const settings=await client.query('SELECT source_mode,integration_enabled FROM purchase_settings WHERE id=1 FOR SHARE');
       if(settings.rows[0]?.source_mode!=='web')throw fail(503,'PURCHASE_SOURCE_NOT_ACTIVE','Thu mua chưa chuyển nguồn sang web.');
       // Cach ly (integration_enabled=false, xem migration 0117): ghi that vao bang
       // canonical cua Thu mua va van ghi lich su/audit, nhung KHONG cham gi sang
       // du lieu dung chung — khong projection, khong xoa cache cont, khong phat
-      // containersChanged. Doc trong cung giao dich da FOR UPDATE nen mot luot ghi
-      // khong the vua cach ly vua noi vao he thong.
+      // containersChanged. The shared settings-row lock keeps this decision stable
+      // for the transaction while allowing unrelated purchase edits to run together.
       const integrated=settings.rows[0]?.integration_enabled===true;
-      const request=user._purchaseRequest;if(request){const prior=(await client.query('SELECT fingerprint,result FROM purchase_requests WHERE actor_id=$1 AND request_key=$2',[actor(user).id,request.key])).rows[0];if(prior){if(prior.fingerprint!==request.fingerprint)throw fail(409,'REQUEST_KEY_REUSED','Mã lần lưu đã dùng cho dữ liệu khác.');await client.query('COMMIT');committed=true;return prior.result}}
-      const operation=randomUUID();client.purchaseOperation=operation;client.purchaseAction='';await client.query('INSERT INTO purchase_operations(id,actor_id) VALUES($1,$2)',[operation,actor(user).id]);await client.query("SELECT set_config('purchase.operation_id',$1,true)",[operation]);const result=await fn(client);await client.query('UPDATE purchase_operations SET action=$2 WHERE id=$1',[operation,client.purchaseAction||'']);if(result.changed&&integrated&&client.purchaseProjectionRequired!==false){if(deferProjection){if(client.purchaseFormulaValidationRequired)await validateProjectionFormulas(client);await client.query('INSERT INTO purchase_projection_queue(requested_at) VALUES(now())');client.purchaseProjectionRequested=true;client.purchaseProjectionDeferred=true}else{await client.query('SELECT pg_advisory_xact_lock($1)',[PROJECTION_LOCK_KEY]);await project(client)}}const response=result.changed&&['create','edit','bulk_edit','transfer','balance_plan','delete','restore','deactivate','reactivate','restore_version','container_delete','container_restore','container_deactivate','container_reactivate'].includes(client.purchaseAction)&&result.value&&typeof result.value==='object'?{...result.value,operationId:operation}:result.value;if(request)await client.query('INSERT INTO purchase_requests(actor_id,request_key,fingerprint,result) VALUES($1,$2,$3,$4)',[actor(user).id,request.key,request.fingerprint,JSON.stringify(response)]);await client.query('COMMIT');committed=true;
+      const request=user._purchaseRequest;if(request){
+        // Serialize only retries of the same idempotency key, not unrelated users' writes.
+        await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[String(actor(user).id)+':'+request.key]);
+        const prior=(await client.query('SELECT fingerprint,result FROM purchase_requests WHERE actor_id=$1 AND request_key=$2',[actor(user).id,request.key])).rows[0];if(prior){if(prior.fingerprint!==request.fingerprint)throw fail(409,'REQUEST_KEY_REUSED','Mã lần lưu đã dùng cho dữ liệu khác.');await client.query('COMMIT');committed=true;return prior.result}}
+      const operation=randomUUID();client.purchaseOperation=operation;client.purchaseAction='';await client.query('INSERT INTO purchase_operations(id,actor_id) VALUES($1,$2)',[operation,actor(user).id]);await client.query("SELECT set_config('purchase.operation_id',$1,true)",[operation]);const result=await fn(client);await client.query('UPDATE purchase_operations SET action=$2 WHERE id=$1',[operation,client.purchaseAction||'']);if(result.changed&&integrated&&client.purchaseProjectionRequired!==false){if(deferProjection){await client.query('INSERT INTO purchase_projection_queue(requested_at) VALUES(now())');client.purchaseProjectionRequested=true;client.purchaseProjectionDeferred=true}else{await client.query('SELECT pg_advisory_xact_lock($1)',[PROJECTION_LOCK_KEY]);await project(client)}}const response=result.changed&&['create','edit','bulk_edit','transfer','balance_plan','delete','restore','deactivate','reactivate','restore_version','container_delete','container_restore','container_deactivate','container_reactivate'].includes(client.purchaseAction)&&result.value&&typeof result.value==='object'?{...result.value,operationId:operation}:result.value;if(request)await client.query('INSERT INTO purchase_requests(actor_id,request_key,fingerprint,result) VALUES($1,$2,$3,$4)',[actor(user).id,request.key,request.fingerprint,JSON.stringify(response)]);await client.query('COMMIT');committed=true;
       if(result.changed){try{if(!client.purchaseProjectionDeferred&&((integrated&&client.purchaseProjectionRequired!==false)||client.purchaseContainersChanged)){invalidate(pool);events.emit('containersChanged',{source:'purchase'})}events.emit('purchase-orders-changed',{})}catch{}}
       return response;
     }catch(error){if(!committed)await client.query('ROLLBACK').catch(()=>{});if(['22P02','22007','23514','23502'].includes(error.code))throw fail(400,'VALIDATION_ERROR','Dữ liệu không hợp lệ.');if(error.code==='42P01')throw fail(503,'PURCHASE_MIGRATION_REQUIRED','Chưa áp dụng migration Thu mua.');throw error}finally{client.release()}
@@ -205,8 +251,8 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
     await client.query('INSERT INTO purchase_key_pool(row_key) VALUES($1) ON CONFLICT(row_key) DO NOTHING',[key]);
     return true;
   }
-  async function ensureFamilyKey(client,rootOrderId,rootKey) {
-    const conflict=(await client.query(`SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE root_key=$1 AND deleted_at IS NULL AND root_order_id<>$2)
+  async function ensureFamilyKey(client,rootOrderId,rootKey,reservedKeys=null) {
+    const conflict=reservedKeys?.has(String(rootKey))||(await client.query(`SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE root_key=$1 AND deleted_at IS NULL AND root_order_id<>$2)
       OR EXISTS(SELECT 1 FROM purchase_key_reservations WHERE row_key=$1 AND expires_at>now()) AS used`,[rootKey,rootOrderId])).rows[0].used;
     if(!conflict){await client.query('DELETE FROM purchase_key_pool WHERE row_key=$1',[rootKey]);return rootKey;}
     await client.query('DELETE FROM purchase_key_pool WHERE row_key=$1',[rootKey]);
@@ -229,7 +275,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
 
   async function reserveKey(user) {
     const who=actor(user),client=await pool.connect();let committed=false;
-    try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock($1)',[lockKey]);const settings=await client.query('SELECT source_mode FROM purchase_settings WHERE id=1 FOR UPDATE');if(settings.rows[0]?.source_mode!=='web')throw fail(503,'PURCHASE_SOURCE_NOT_ACTIVE','Thu mua chưa chuyển nguồn sang web.');
+    try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock_shared($1)',[lockKey]);const settings=await client.query('SELECT source_mode FROM purchase_settings WHERE id=1 FOR SHARE');if(settings.rows[0]?.source_mode!=='web')throw fail(503,'PURCHASE_SOURCE_NOT_ACTIVE','Thu mua chưa chuyển nguồn sang web.');
       await client.query(`WITH expired AS (DELETE FROM purchase_key_reservations WHERE expires_at<=now() RETURNING row_key)
         INSERT INTO purchase_key_pool(row_key) SELECT expired.row_key FROM expired
         WHERE NOT EXISTS(SELECT 1 FROM purchase_orders WHERE root_key=expired.row_key AND deleted_at IS NULL)
@@ -240,13 +286,20 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
   }
   async function releaseKey(user,{reservationId}={}) {
     const who=actor(user),client=await pool.connect();let committed=false;
-    try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock($1)',[lockKey]);
+    try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock_shared($1)',[lockKey]);
       const row=(await client.query('DELETE FROM purchase_key_reservations WHERE reservation_id=$1 AND actor_id=$2 AND expires_at>now() RETURNING row_key',[reservationId,who.id])).rows[0];
       if(row)await client.query('INSERT INTO purchase_key_pool(row_key) VALUES($1) ON CONFLICT(row_key) DO NOTHING',[row.row_key]);
       await client.query('COMMIT');committed=true;return {released:!!row};
     }catch(error){if(!committed)await client.query('ROLLBACK').catch(()=>{});if(error.code==='42P01')throw fail(503,'PURCHASE_MIGRATION_REQUIRED','Chưa áp dụng migration Thu mua.');throw error}finally{client.release()}
   }
   async function getRow(client,id,version) {const row=await readPurchaseRow(client,id,true);if(!row||row.deleted_at||Number(row.version)!==Number(version))throw fail(409,'VERSION_CONFLICT','Dòng đã thay đổi.');return row;}
+  async function lockRowsAtVersions(client,rows) {
+    const locked=(await client.query('SELECT * FROM purchase_orders WHERE id=ANY($1::bigint[]) ORDER BY id FOR UPDATE',[rows.map(row=>row.id)])).rows;
+    if(locked.length!==rows.length)throw fail(409,'VERSION_CONFLICT','Một số dòng đã thay đổi. Tải lại bảng rồi thử lại.');
+    const byId=new Map(locked.map(row=>[String(row.id),row]));
+    for(const requested of rows){const row=byId.get(String(requested.id));if(!row||row.deleted_at||Number(row.version)!==Number(requested.version))throw fail(409,'VERSION_CONFLICT','Một số dòng đã thay đổi. Tải lại bảng rồi thử lại.');}
+    return locked;
+  }
   async function getContainer(client,id,version) {if(arguments.length>=3&&(!Number.isSafeInteger(Number(version))||Number(version)<1))throw fail(400,'VERSION_REQUIRED','Cần phiên bản cont đang xem.');if(id==null)return null;const row=(await client.query('SELECT * FROM product_containers WHERE id=$1 FOR UPDATE',[id])).rows[0];if(!row||(version!=null&&Number(row.version)!==Number(version)))throw fail(409,'VERSION_CONFLICT','Cont đã thay đổi.');return row;}
 
 
@@ -279,10 +332,10 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
   function employeeName(name){if(typeof name!=='string'||!name.trim()||name.trim().length>200)throw fail(400,'NAME_INVALID','Tên nhân viên phải có 1–200 ký tự.');return name.trim()}
   async function validateImportEmployees(client,plan,current,archived=[],lock=false){
     const employees=(await client.query('SELECT id,name,color,is_active AS "isActive",version FROM purchase_employees ORDER BY id'+(lock?' FOR UPDATE':''))).rows;
-    const byName=new Map(employees.map(employee=>[employee.name.trim().toLowerCase(),employee])),planned=new Map(),employeeChanges=[];
+    const byName=new Map(employees.map(employee=>[employee.name.trim().toLowerCase(),employee])),currentByKey=new Map(current.map(row=>[row.rowKey,row])),archivedByKey=new Map(archived.map(row=>[row.rowKey,row])),planned=new Map(),employeeChanges=[];
     for(const row of plan.rows){
-      if(['archived_skip','delete'].includes(row.action))continue;
-      const matched=current.find(r=>r.rowKey===row.rowKey)||archived.find(r=>r.rowKey===row.rowKey),buyerChange=row.changes.find(change=>change.key==='buyer'),buyer=row.action==='create'?row.values?.buyer:buyerChange?buyerChange.after:matched?.buyer;
+      if(['archived_skip','delete','stale_preserve'].includes(row.action))continue;
+      const matched=currentByKey.get(row.rowKey)||archivedByKey.get(row.rowKey),buyerChange=row.changes.find(change=>change.key==='buyer'),buyer=row.action==='create'?row.values?.buyer:buyerChange?buyerChange.after:matched?.buyer;
       if(buyer==null||buyer==='')continue;
       let name;try{name=employeeName(buyer)}catch(error){row.errors.push(error.message);continue}
       const key=name.toLowerCase(),existing=byName.get(key),prior=planned.get(key);
@@ -294,8 +347,8 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
     employeeChanges.push(...planned.values());
     plan.employeeChanges=employeeChanges;
     plan.valid=plan.rows.every(r=>!r.errors.length);
-    plan.counts={create:plan.rows.filter(r=>r.action==='create'&&!r.errors.length).length,update:plan.rows.filter(r=>r.action==='update'&&!r.errors.length).length,unchanged:plan.rows.filter(r=>r.action==='unchanged'&&!r.errors.length).length,reactivate:plan.rows.filter(r=>r.action==='reactivate'&&!r.errors.length).length,restore:plan.rows.filter(r=>r.action==='restore'&&!r.errors.length).length,archivedSkip:plan.rows.filter(r=>r.action==='archived_skip'&&!r.errors.length).length,delete:plan.rows.filter(r=>r.action==='delete'&&!r.errors.length).length,error:plan.rows.filter(r=>r.errors.length).length};
-    plan.operations=plan.valid?plan.rows.filter(r=>!['unchanged','archived_skip'].includes(r.action)):[];
+    plan.counts={create:plan.rows.filter(r=>r.action==='create'&&!r.errors.length).length,update:plan.rows.filter(r=>r.action==='update'&&!r.errors.length).length,unchanged:plan.rows.filter(r=>r.action==='unchanged'&&!r.errors.length).length,reactivate:plan.rows.filter(r=>r.action==='reactivate'&&!r.errors.length).length,restore:plan.rows.filter(r=>r.action==='restore'&&!r.errors.length).length,archivedSkip:plan.rows.filter(r=>r.action==='archived_skip'&&!r.errors.length).length,delete:plan.rows.filter(r=>r.action==='delete'&&!r.errors.length).length,preserved:plan.rows.filter(r=>r.action==='stale_preserve').length,error:plan.rows.filter(r=>r.errors.length).length};
+    plan.operations=plan.valid?plan.rows.filter(r=>!['unchanged','archived_skip','stale_preserve'].includes(r.action)):[];
     return plan;
   }
   async function applyImportEmployees(client,changes,user){
@@ -323,7 +376,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
     if(!changes||typeof changes!=='object'||Array.isArray(changes))throw fail(400,'PLAN_INVALID','Thay đổi không hợp lệ.');
     if(Object.keys(changes).some(k=>!['contId','regionId'].includes(k)&&!writable.some(c=>c.k===k)&&!overrideByKey.has(k)))throw fail(400,'FIELD_NOT_WRITABLE','Trường không được sửa.');
     const normal=Object.fromEntries(Object.entries(changes).filter(([k])=>writable.some(c=>c.k===k)||k==='contId'||k==='regionId'));
-    await resolveEmployee(client,normal,raw);const current=jsRow(raw),rowChanges=Object.fromEntries(Object.entries(normal).filter(([key])=>key!=='regionId')),plan=prepareRows([{rowKey:current.rowKey,productCode:current.productCode,...rowChanges}],[current]);
+    await resolveEmployee(client,normal,raw);const current=jsRow(raw),rowChanges=Object.fromEntries(Object.entries(normal).filter(([key])=>key!=='regionId')),assignmentOnly=Object.keys(normal).every(key=>key==='contId'||key==='regionId'),plan=assignmentOnly?{valid:true,rows:[{changes:[]}]}:prepareRows([{rowKey:current.rowKey,productCode:current.productCode,...rowChanges}],[current]);
     if(!plan.valid)throw fail(400,'VALIDATION_ERROR','Phương án chưa hợp lệ.',{rows:plan.rows});
     const diff=plan.rows[0].changes;
     for(const [key,value] of Object.entries(normal)){if(key==='regionId'){const id=value==null||value===''?null:String(value);if(id&&(!(await client.query('SELECT 1 FROM purchase_regions WHERE id=$1 AND is_active=true',[id])).rowCount))throw fail(400,'REGION_INVALID','Vùng không còn hoạt động.');if(String(current.regionId??'')!==String(id??''))diff.push({key,before:current.regionId??null,after:id})}else if(key==='contId'){const id=value==null||value===''?null:String(value);await getAssignableContainer(client,id);if(current.contId!==id){diff.push({key,label:'Tên cont',before:current.contId,after:id});const target=await getAssignableContainer(client,id),nextRegionId=id==null?current.regionId:target?.region_id??null;if(String(current.regionId??'')!==String(nextRegionId??''))diff.push({key:'regionId',before:current.regionId??null,after:nextRegionId==null?null:String(nextRegionId)})}}else if(value===null||value===''){if(['productCode','productName','qtyPerCarton','cartonCount'].includes(key))throw fail(400,'VALIDATION_ERROR','Không được xóa trường bắt buộc.');const next=(key==='listedAt'||key==='buyerEmployeeId')||numeric.has(writable.find(c=>c.k===key).t)?null:'';if(current[key]!==next)diff.push({key,before:current[key],after:next})}}
@@ -400,10 +453,10 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
       const target=await rowsAtVersion(client,op,{raw:true}),current=(await client.query('SELECT p.*,to_jsonb(p) AS snapshot FROM purchase_orders p ORDER BY p.id FOR UPDATE')).rows;
       const targetById=new Map(target.map(row=>[String(row.id),row])),currentById=new Map(current.map(row=>[String(row.id),row]));
       const restoreFields=['row_key','root_key','root_order_id','split_from_key','container_id','region_id','measurement_overrides','source_sheet','source_row',...dbCols];
-      const idMap=new Map();
-      for(const row of target)if(!currentById.has(String(row.id))){
-        const next=(await client.query("SELECT nextval(pg_get_serial_sequence('purchase_orders','id')::regclass)::text AS id")).rows[0].id;
-        idMap.set(String(row.id),String(next));
+      const idMap=new Map(),missingIds=target.filter(row=>!currentById.has(String(row.id)));
+      if(missingIds.length){
+        const allocated=(await client.query("SELECT nextval(pg_get_serial_sequence('purchase_orders','id')::regclass)::text AS id FROM generate_series(1,$1)",[missingIds.length])).rows;
+        missingIds.forEach((row,index)=>idMap.set(String(row.id),String(allocated[index].id)));
       }
       const same=(a,b)=>{
         if(a instanceof Date)a=a.toISOString();if(b instanceof Date)b=b.toISOString();
@@ -440,8 +493,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         await recordRetiredKeys(client,toRetire);
         await client.query('UPDATE purchase_orders SET deleted_at=now(),version=version+1,updated_at=now() WHERE id=ANY($1::bigint[])',[toRetire.map(row=>row.id)]);
       }
-      const affected=new Set(toRetire.map(row=>String(row.id)));
-      const restoredFamilies=new Map();
+      const affected=new Set(toRetire.map(row=>String(row.id))),restoredFamilies=new Map(),updates=[],inserts=[];
       for(const row of target){
         const oldId=String(row.id),id=idMap.get(oldId)||oldId,prior=currentById.get(oldId);
         const rootOrderId=idMap.get(String(row.root_order_id))||String(row.root_order_id);
@@ -451,13 +503,17 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         if(prior){
           const changed=restoreFields.some(key=>!same(prior[key],values[key]))||prior.deleted_at!=null||prior.inactive_at!=null;
           if(!changed)continue;
-          const cols=restoreFields.filter(key=>Object.hasOwn(values,key));
-          await client.query('UPDATE purchase_orders SET '+cols.map((key,index)=>'"'+key+'"=$'+(index+2)+(key==='measurement_overrides'?'::jsonb':'')).join(',')+',deleted_at=NULL,inactive_at=NULL,version=version+1,updated_at=now() WHERE id=$1',[id,...cols.map(key=>key==='measurement_overrides'?JSON.stringify(values[key]||{}):values[key])]);
-        }else{
-          const cols=['id',...restoreFields];
-          await client.query('INSERT INTO purchase_orders('+cols.map(key=>'"'+key+'"').join(',')+',version) VALUES('+cols.map((key,index)=>'$'+(index+1)+(key==='measurement_overrides'?'::jsonb':'')).join(',')+',1)',[id,...restoreFields.map(key=>key==='measurement_overrides'?JSON.stringify(values[key]||{}):values[key]??null)]);
-        }
+          updates.push({...values,deleted_at:null,inactive_at:null});
+        }else inserts.push(values);
         affected.add(id);
+      }
+      if(updates.length){
+        const cols=[...restoreFields,'deleted_at','inactive_at'];
+        await client.query('UPDATE purchase_orders o SET '+cols.map(key=>'"'+key+'"=s."'+key+'"').join(',')+',version=o.version+1,updated_at=now() FROM jsonb_populate_recordset(NULL::purchase_orders,$1::jsonb) s WHERE o.id=s.id',[JSON.stringify(updates)]);
+      }
+      if(inserts.length){
+        const cols=['id',...restoreFields];
+        await client.query('INSERT INTO purchase_orders('+cols.map(key=>'"'+key+'"').join(',')+',version) SELECT '+cols.map(key=>'s."'+key+'"').join(',')+',1 FROM jsonb_populate_recordset(NULL::purchase_orders,$1::jsonb) s',[JSON.stringify(inserts)]);
       }
       if(!affected.size)return {changed:false,value:{restored:false}};
       await client.query('DELETE FROM purchase_key_pool pool USING purchase_orders row WHERE row.deleted_at IS NULL AND pool.row_key=row.root_key');
@@ -467,7 +523,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
       return {changed:true,value:{restored:true,rows:affected.size,versionId:String(operationId)}};
     })},
     async operations(user){const items=(await pool.query("SELECT id,action,created_at,(SELECT jsonb_agg(COALESCE(r.after_row->>'row_key',r.before_row->>'row_key')) FROM purchase_operation_rows r WHERE r.operation_id=p.id) row_keys FROM purchase_operations p WHERE actor_id=$1 AND undone_by IS NULL AND action IN ('create','edit','bulk_edit','transfer','balance_plan','delete','restore','deactivate','reactivate') AND EXISTS(SELECT 1 FROM purchase_operation_rows r WHERE r.operation_id=p.id) ORDER BY created_at DESC LIMIT 50",[actor(user).id])).rows;if(items[0]){const changes=(await pool.query('SELECT before_row,after_row FROM purchase_operation_rows WHERE operation_id=$1 ORDER BY row_id',[items[0].id])).rows;items[0].preview=changes.map(x=>{const before=x.before_row?jsRow(x.before_row):null,after=x.after_row?jsRow(x.after_row):null;const diff=before&&after?[...writable,...overrideColumns,{k:'contId',l:'Tên cont'},{k:'rowKey',l:'Mã dòng'}].filter(c=>String(before[c.k]??'')!==String(after[c.k]??'')).map(c=>({field:c.k,label:c.l||c.k,from:after[c.k],to:before[c.k]})):[];if(x.before_row&&x.after_row&&(!!x.before_row.deleted_at!==!!x.after_row.deleted_at||!!x.before_row.inactive_at!==!!x.after_row.inactive_at))diff.push({field:'state',label:'Trạng thái dòng',from:x.after_row.deleted_at?'Đã xóa':x.after_row.inactive_at?'Đã tắt':'Đang dùng',to:x.before_row.deleted_at?'Đã xóa':x.before_row.inactive_at?'Đã tắt':'Đang dùng'});return {rowKey:after?.rowKey||before?.rowKey,productCode:after?.productCode||before?.productCode,action:!before?'Xóa mã mới':'Khôi phục trước thao tác',changes:diff}})}return items},
-    async remove(user,{rows}){return transaction(user,async client=>{if(!Array.isArray(rows)||!rows.length||rows.length>500||rows.some(r=>!r||!Number.isSafeInteger(Number(r.id))||Number(r.id)<1||!Number.isSafeInteger(Number(r.version))||Number(r.version)<1)||new Set(rows.map(r=>String(r.id))).size!==rows.length)throw fail(400,'DELETE_INVALID','Chọn 1–500 dòng không trùng.');const locked=[];for(const r of rows)locked.push(await getRow(client,r.id,r.version));if(locked.some(r=>r.container_id!=null))client.purchaseFormulaValidationRequired=true;for(const r of locked){await recordRetiredKey(client,r);await client.query('UPDATE purchase_orders SET deleted_at=now(),version=version+1,updated_at=now() WHERE id=$1',[r.id])}for(const family of new Map(locked.map(r=>[String(r.root_order_id),r])).values())await releaseInactiveFamilyKey(client,family.root_order_id,family.root_key);await audit(client,user,'delete',{rows:locked.map(r=>({id:String(r.id),rowKey:r.row_key,productCode:r.product_code}))});return {changed:true,value:{deleted:locked.length}}})},
+    async remove(user,{rows}){return transaction(user,async client=>{if(!Array.isArray(rows)||!rows.length||rows.length>500||rows.some(r=>!r||!Number.isSafeInteger(Number(r.id))||Number(r.id)<1||!Number.isSafeInteger(Number(r.version))||Number(r.version)<1)||new Set(rows.map(r=>String(r.id))).size!==rows.length)throw fail(400,'DELETE_INVALID','Chọn 1–500 dòng không trùng.');const locked=await lockRowsAtVersions(client,rows);if(locked.some(r=>r.container_id!=null))client.purchaseFormulaValidationRequired=true;await recordRetiredKeys(client,locked);await client.query('UPDATE purchase_orders SET deleted_at=now(),version=version+1,updated_at=now() WHERE id=ANY($1::bigint[])',[locked.map(r=>r.id)]);await releaseInactiveFamilies(client,locked);await audit(client,user,'delete',{rows:locked.map(r=>({id:String(r.id),rowKey:r.row_key,productCode:r.product_code}))});return {changed:true,value:{deleted:locked.length}}})},
     async restore(user,{id,version}){return transaction(user,async client=>{const r=(await client.query('SELECT * FROM purchase_orders WHERE id=$1 FOR UPDATE',[id])).rows[0];if(!r?.deleted_at||Number(r.version)!==Number(version))throw fail(409,'VERSION_CONFLICT','Dòng đã thay đổi hoặc đã khôi phục.');if(r.container_id!=null)client.purchaseFormulaValidationRequired=true;await ensureFamilyKey(client,r.root_order_id,r.root_key);await client.query('UPDATE purchase_orders SET deleted_at=NULL,version=version+1,updated_at=now() WHERE id=$1',[id]);await audit(client,user,'restore',{id:String(id),rootOrderId:String(r.root_order_id),rowKey:r.row_key});return {changed:true,value:{restored:String(id)}}})},
     async undo(user,{operationId}={}){return transaction(user,async client=>{
       client.purchaseFormulaValidationRequired=true;
@@ -509,7 +565,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
     async inactive(user){actor(user);return (await pool.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE p.deleted_at IS NULL AND p.inactive_at IS NOT NULL ORDER BY p.inactive_at DESC LIMIT 1000`)).rows.map(jsRow)},
     async containerTrash(user){actor(user);return (await pool.query('SELECT * FROM product_containers WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT 500')).rows},
     async inactiveContainers(user){actor(user);return (await pool.query('SELECT * FROM product_containers WHERE deleted_at IS NULL AND inactive_at IS NOT NULL ORDER BY inactive_at DESC LIMIT 1000')).rows},
-    async deactivate(user,{rows}){return transaction(user,async client=>{if(!Array.isArray(rows)||!rows.length||rows.length>500||rows.some(r=>!r||!Number.isSafeInteger(Number(r.id))||Number(r.id)<1||!Number.isSafeInteger(Number(r.version))||Number(r.version)<1)||new Set(rows.map(r=>String(r.id))).size!==rows.length)throw fail(400,'DEACTIVATE_INVALID','Chọn 1–500 dòng không trùng.');const locked=[];for(const r of rows)locked.push(await getRow(client,r.id,r.version));if(locked.some(r=>r.container_id!=null))client.purchaseFormulaValidationRequired=true;for(const r of locked)await client.query('UPDATE purchase_orders SET inactive_at=now(),version=version+1,updated_at=now() WHERE id=$1',[r.id]);await audit(client,user,'deactivate',{rows:locked.map(r=>({id:String(r.id),rowKey:r.row_key,productCode:r.product_code}))});return {changed:true,value:{deactivated:locked.length}}})},
+    async deactivate(user,{rows}){return transaction(user,async client=>{if(!Array.isArray(rows)||!rows.length||rows.length>500||rows.some(r=>!r||!Number.isSafeInteger(Number(r.id))||Number(r.id)<1||!Number.isSafeInteger(Number(r.version))||Number(r.version)<1)||new Set(rows.map(r=>String(r.id))).size!==rows.length)throw fail(400,'DEACTIVATE_INVALID','Chọn 1–500 dòng không trùng.');const locked=await lockRowsAtVersions(client,rows);if(locked.some(r=>r.container_id!=null))client.purchaseFormulaValidationRequired=true;await client.query('UPDATE purchase_orders SET inactive_at=now(),version=version+1,updated_at=now() WHERE id=ANY($1::bigint[])',[locked.map(r=>r.id)]);await audit(client,user,'deactivate',{rows:locked.map(r=>({id:String(r.id),rowKey:r.row_key,productCode:r.product_code}))});return {changed:true,value:{deactivated:locked.length}}})},
     async reactivate(user,{id,version}){return transaction(user,async client=>{const r=(await client.query('SELECT * FROM purchase_orders WHERE id=$1 FOR UPDATE',[id])).rows[0];if(!r||r.deleted_at||!r.inactive_at||Number(r.version)!==Number(version))throw fail(409,'VERSION_CONFLICT','Dòng đã thay đổi hoặc đã được bật lại.');if(r.container_id!=null)client.purchaseFormulaValidationRequired=true;await client.query('UPDATE purchase_orders SET inactive_at=NULL,version=version+1,updated_at=now() WHERE id=$1',[id]);await audit(client,user,'reactivate',{rowKey:r.row_key,productCode:r.product_code});return {changed:true,value:{reactivated:String(id)}}})},
 
     async revision(user) {actor(user);return {revision:(await pool.query("SELECT COALESCE(max(id),0)::text || ':' || count(*)::text AS version FROM purchase_history")).rows[0].version}},
@@ -519,13 +575,12 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
         const settings=(await client.query('SELECT source_mode,integration_enabled FROM purchase_settings WHERE id=1')).rows[0];
         const current=(await client.query("SELECT COALESCE(max(id),0)::text AS max_id,count(*)::text AS count,COALESCE(max(id),0)::text || ':' || count(*)::text AS revision FROM purchase_history")).rows[0];
-        const containers=(await client.query('SELECT * FROM product_containers ORDER BY id')).rows,regions=(await client.query('SELECT id,name,color,is_active AS \"isActive\",version FROM purchase_regions ORDER BY name,id')).rows;
-        const metadata={revision:current.revision,rows:[],deletedIds:[],containers,regions,sourceMode:settings?.source_mode||null,integrationEnabled:settings?.integration_enabled===true,employeesChanged:false};
+        const metadata={revision:current.revision,rows:[],deletedIds:[],containers:null,regions:null,sourceMode:settings?.source_mode||null,integrationEnabled:settings?.integration_enabled===true,employeesChanged:false};
         const match=typeof after==='string'&&/^(0|[1-9]\d*):(0|[1-9]\d*)$/.exec(after);
         const cursorId=match?Number(match[1]):NaN,cursorCount=match?Number(match[2]):NaN;
         const maxId=Number(current.max_id),historyCount=Number(current.count);
         if(!match||!Number.isSafeInteger(cursorId)||!Number.isSafeInteger(cursorCount)||cursorId>maxId||cursorCount>historyCount||cursorId===maxId&&cursorCount!==historyCount||cursorId===0&&cursorCount!==0){
-          metadata.reset=true;metadata.employeesChanged=true;await client.query('COMMIT');committed=true;return metadata;
+          metadata.reset=true;metadata.employeesChanged=true;metadata.containers=(await client.query('SELECT * FROM product_containers ORDER BY id')).rows;metadata.regions=(await client.query('SELECT id,name,color,is_active AS \"isActive\",version FROM purchase_regions ORDER BY name,id')).rows;await client.query('COMMIT');committed=true;return metadata;
         }
         const countAfterCursor=Number((await client.query('SELECT count(*)::text AS count FROM purchase_history WHERE id>$1',[cursorId])).rows[0].count);
         const countAtCursor=historyCount-countAfterCursor;
@@ -535,6 +590,9 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
           WHERE h.id>$1 GROUP BY r.row_id ORDER BY r.row_id LIMIT 501`,[cursorId])).rows;
         if(changes.length>500){metadata.reset=true;metadata.employeesChanged=true;await client.query('COMMIT');committed=true;return metadata}
         metadata.employeesChanged=(await client.query("SELECT EXISTS(SELECT 1 FROM purchase_history WHERE id>$1 AND action IN ('employee_create','employee_edit')) AS changed",[cursorId])).rows[0].changed;metadata.regionsChanged=(await client.query("SELECT EXISTS(SELECT 1 FROM purchase_history WHERE id>$1 AND action IN ('region_create','region_edit')) AS changed",[cursorId])).rows[0].changed;
+        const containersChanged=(await client.query("SELECT EXISTS(SELECT 1 FROM purchase_history WHERE id>$1 AND (action LIKE 'container_%' OR action IN ('depart','arrive','import'))) AS changed",[cursorId])).rows[0].changed;
+        if(containersChanged)metadata.containers=(await client.query('SELECT * FROM product_containers ORDER BY id')).rows;
+        if(metadata.regionsChanged)metadata.regions=(await client.query('SELECT id,name,color,is_active AS \"isActive\",version FROM purchase_regions ORDER BY name,id')).rows;
         if(changes.length){
           const ids=changes.map(row=>row.id);
           metadata.rows=(await client.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE p.deleted_at IS NULL AND p.inactive_at IS NULL AND p.id=ANY($1::bigint[]) ORDER BY p.id`,[ids])).rows.map(jsRow);
@@ -543,10 +601,56 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         metadata.reset=false;await client.query('COMMIT');committed=true;return metadata;
       }catch(error){if(!committed)await client.query('ROLLBACK').catch(()=>{});throw error}finally{client.release()}
     },
-    async list(user) {actor(user);const client=await pool.connect();try{const revision=(await client.query("SELECT COALESCE(max(id),0)::text || ':' || count(*)::text AS version FROM purchase_history")).rows[0].version;const settings=(await client.query('SELECT * FROM purchase_settings WHERE id=1')).rows[0];const source=settings?.source_mode;const containers=(await client.query('SELECT * FROM product_containers ORDER BY id')).rows;const regions=(await client.query('SELECT id,name,color,is_active AS \"isActive\",version FROM purchase_regions ORDER BY name,id')).rows;const waitingConfig={freightMode:settings.waiting_freight_mode,freight:settings.waiting_freight,freightFormula:settings.waiting_freight_formula,freightBase:settings.waiting_freight_base,freightCapacity:settings.waiting_freight_capacity,assumedM3:settings.waiting_assumed_m3,assumed_m3:settings.waiting_assumed_m3,containerFxRate:settings.waiting_container_fx_rate,container_fx_rate:settings.waiting_container_fx_rate,version:settings.waiting_version};return {revision,sourceMode:source,integrationEnabled:settings?.integration_enabled===true,waitingConfig,rows:withFreight(await readRows(client),containers,waitingConfig),containers,regions}}finally{client.release()}},
-    async updateWaitingConfig(user,{version,changes={}}){return transaction(user,async client=>{if(!Number.isSafeInteger(Number(version))||Number(version)<1)throw fail(400,'VERSION_REQUIRED','Cần phiên bản cấu hình đang xem.');if(!changes||typeof changes!=='object'||Array.isArray(changes)||Object.keys(changes).some(key=>!['freight','freightMode','freightFormula','freightBase','freightCapacity','assumedM3','containerFxRate'].includes(key)))throw fail(400,'FIELD_NOT_WRITABLE','Trường cấu hình không được sửa.');const current=(await client.query('SELECT waiting_freight AS freight,waiting_freight_mode AS freight_mode,waiting_freight_formula AS freight_formula,waiting_freight_base AS freight_base,waiting_freight_capacity AS freight_capacity,waiting_assumed_m3 AS assumed_m3,waiting_container_fx_rate AS container_fx_rate,waiting_version AS version FROM purchase_settings WHERE id=1 FOR UPDATE')).rows[0];if(Number(current.version)!==Number(version))throw fail(409,'VERSION_CONFLICT','Cấu hình Chờ xếp đã thay đổi. Tải lại bảng rồi thử lại.');const next={...current,...Object.fromEntries(Object.entries(changes).map(([k,v])=>[{freight:'freight',freightMode:'freight_mode',freightFormula:'freight_formula',freightBase:'freight_base',freightCapacity:'freight_capacity',assumedM3:'assumed_m3',containerFxRate:'container_fx_rate'}[k],v]))};if(next.freight_mode==='manual'&&next.freight!=null&&(!Number.isFinite(Number(next.freight))||Number(next.freight)<0))throw fail(400,'VALIDATION_ERROR','Cước cont không hợp lệ.');if(next.assumed_m3!=null&&calculations.positive(next.assumed_m3)==null||next.container_fx_rate!=null&&calculations.positive(next.container_fx_rate)==null)throw fail(400,'VALIDATION_ERROR','Tổng m³ giả định và tỉ giá phải lớn hơn 0 hoặc để trống.');if(!['manual','formula'].includes(next.freight_mode)||calculations.number(next.freight_base)==null||Number(next.freight_base)<0||calculations.positive(next.freight_capacity)==null||next.freight_formula!=null&&(typeof next.freight_formula!=='string'||next.freight_formula.length>512))throw fail(400,'VALIDATION_ERROR','Cấu hình cước Chờ xếp không hợp lệ.');client.purchaseProjectionRequired=false;client.purchaseContainersChanged=false;const row=(await client.query('UPDATE purchase_settings SET waiting_freight=$1,waiting_freight_mode=$2,waiting_freight_formula=$3,waiting_freight_base=$4,waiting_freight_capacity=$5,waiting_assumed_m3=$6,waiting_container_fx_rate=$7,waiting_version=waiting_version+1 WHERE id=1 AND waiting_version=$8 RETURNING waiting_freight AS freight,waiting_freight_mode AS "freightMode",waiting_freight_formula AS "freightFormula",waiting_freight_base AS "freightBase",waiting_freight_capacity AS "freightCapacity",waiting_assumed_m3 AS "assumedM3",waiting_container_fx_rate AS "containerFxRate",waiting_version AS version',[next.freight,next.freight_mode,next.freight_formula,next.freight_base,next.freight_capacity,next.assumed_m3,next.container_fx_rate,version])).rows[0];if(!row)throw fail(409,'VERSION_CONFLICT','Cấu hình Chờ xếp đã thay đổi.');await audit(client,user,'waiting_config_edit',{changes});return {changed:true,value:row}})},
-    async importSnapshot(user) {actor(user);const client=await pool.connect();try{await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');const settings=(await client.query('SELECT source_mode FROM purchase_settings WHERE id=1')).rows[0];if(settings?.source_mode!=='web')throw fail(503,'PURCHASE_SOURCE_NOT_ACTIVE','Thu mua chưa chuyển nguồn sang web.');const revision=(await client.query("SELECT COALESCE(max(id),0)::text || ':' || count(*)::text AS version FROM purchase_history")).rows[0].version,rows=await readRows(client),regions=(await client.query('SELECT id,name,is_active AS "isActive" FROM purchase_regions ORDER BY name,id')).rows,containers=await readImportContainers(client),regionNames=new Map(regions.map(region=>[String(region.id),region.name])),containerNames=new Map(containers.map(container=>[String(container.id),container.name]));for(const row of rows){row.regionName=regionNames.get(String(row.regionId??''))||'';row.container=containerNames.get(String(row.contId??''))||'CONT CHỜ XẾP'}await client.query('COMMIT');return {revision,rows,regions}}catch(error){await client.query('ROLLBACK').catch(()=>{});throw error}finally{client.release()}},
+    async list(user,options={}) {actor(user);const client=await pool.connect();try{
+      const revision=(await client.query("SELECT COALESCE(max(id),0)::text || ':' || count(*)::text AS version FROM purchase_history")).rows[0].version;
+      const settings=(await client.query('SELECT * FROM purchase_settings WHERE id=1')).rows[0],source=settings?.source_mode;
+      const containers=(await client.query('SELECT * FROM product_containers ORDER BY id')).rows;
+      const regions=(await client.query('SELECT id,name,color,is_active AS "isActive",version FROM purchase_regions ORDER BY name,id')).rows;
+      const configs=(await client.query('SELECT region_id AS "regionId",freight_mode AS "freightMode",freight,freight_formula AS "freightFormula",freight_base AS "freightBase",freight_capacity AS "freightCapacity",assumed_m3 AS "assumedM3",container_fx_rate AS "containerFxRate",version FROM purchase_waiting_configs')).rows;
+      const savedWaitingConfigs=Object.fromEntries(configs.map(config=>[String(config.regionId),config])),waitingConfigs=Object.fromEntries(regions.map(region=>[String(region.id),savedWaitingConfigs[String(region.id)]||{regionId:String(region.id),...defaultWaitingConfig}])),waitingContainerRows=waitingContainerConfigs(regions,waitingConfigs);
+      const waitingConfig={freightMode:settings.waiting_freight_mode,freight:settings.waiting_freight,freightFormula:settings.waiting_freight_formula,freightBase:settings.waiting_freight_base,freightCapacity:settings.waiting_freight_capacity,assumedM3:settings.waiting_assumed_m3,assumed_m3:settings.waiting_assumed_m3,containerFxRate:settings.waiting_container_fx_rate,container_fx_rate:settings.waiting_container_fx_rate,version:settings.waiting_version};
+      if(options.page!=null){
+        let page=Math.max(1,Math.min(100000,Number.parseInt(options.page,10)||1));const pageSize=Math.max(10,Math.min(200,Number.parseInt(options.pageSize,10)||50)),filter=pagedOrderFilter(options,user),whereValues=[...filter.values],where=filter.where;
+        const total=Number((await client.query('SELECT count(*)::text AS count FROM purchase_orders p LEFT JOIN product_containers pc ON pc.id=p.container_id LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE '+where,whereValues)).rows[0].count);
+        page=Math.min(page,Math.max(1,Math.ceil(total/pageSize)));
+        const offset=(page-1)*pageSize,limitParam='$'+(whereValues.length+1),offsetParam='$'+(whereValues.length+2),pageSql=filter.clientSort?'':` LIMIT ${limitParam} OFFSET ${offsetParam}`,pageArgs=filter.clientSort?whereValues:[...whereValues,pageSize,offset];
+        const activeRows=(await client.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) LEFT JOIN product_containers pc ON pc.id=p.container_id WHERE ${where} ORDER BY ${filter.order}${pageSql}`,pageArgs)).rows.map(jsRow);
+        const extraIds=[...new Set((Array.isArray(options.includeIds)?options.includeIds:String(options.includeIds||'').split(',')).map(String).filter(id=>/^\d+$/.test(id)))].filter(id=>!activeRows.some(row=>String(row.id)===id)).slice(0,1000);
+        const supplementalRows=extraIds.length?await readRows(client,false,extraIds):[];
+        let summaries=cachedContainerSummaries;
+        if(cachedContainerSummaryRevision!==revision||!cachedContainerSummaries){
+          if(containerSummaryInFlight?.revision!==revision){
+            const pending=readContainerSummaries(client);containerSummaryInFlight={revision,promise:pending};
+            pending.then(summaries=>{if(containerSummaryInFlight?.promise===pending){cachedContainerSummaries=summaries;cachedContainerSummaryRevision=revision;containerSummaryInFlight=null}},()=>{if(containerSummaryInFlight?.promise===pending)containerSummaryInFlight=null});
+          }
+          summaries=await containerSummaryInFlight.promise;
+        }
+        return {revision,sourceMode:source,integrationEnabled:settings?.integration_enabled===true,waitingConfig,waitingConfigs,rows:withFreight(activeRows,containers,waitingContainerRows,summaries),supplementalRows:withFreight(supplementalRows,containers,waitingContainerRows,summaries),containers,regions,containerSummaries:summaries,...(filter.clientSort?{}:{pagination:{page,pageSize,total,pages:Math.max(1,Math.ceil(total/pageSize))}})};
+      }
+      return {revision,sourceMode:source,integrationEnabled:settings?.integration_enabled===true,waitingConfig,waitingConfigs,rows:withFreight(await readRows(client),containers,waitingContainerRows),containers,regions};
+    }finally{client.release()}},
+    async updateWaitingConfig(user,{regionId,version,changes={}}){return transaction(user,async client=>{
+      if(!/^\d+$/.test(String(regionId??'')))throw fail(400,'REGION_INVALID','Chọn vùng Chờ xếp hợp lệ.');
+      if(!Number.isSafeInteger(Number(version))||Number(version)<1)throw fail(400,'VERSION_REQUIRED','Cần phiên bản cấu hình đang xem.');
+      if(!changes||typeof changes!=='object'||Array.isArray(changes)||Object.keys(changes).some(key=>!['freight','freightMode','freightFormula','freightBase','freightCapacity','assumedM3','containerFxRate'].includes(key)))throw fail(400,'FIELD_NOT_WRITABLE','Trường cấu hình không được sửa.');
+      const region=(await client.query('SELECT id FROM purchase_regions WHERE id=$1 FOR UPDATE',[String(regionId)])).rows[0];
+      if(!region)throw fail(404,'REGION_NOT_FOUND','Không tìm thấy vùng Chờ xếp.');
+      await client.query('INSERT INTO purchase_waiting_configs(region_id) VALUES($1) ON CONFLICT(region_id) DO NOTHING',[String(regionId)]);
+      const current=(await client.query('SELECT freight,freight_mode,freight_formula,freight_base,freight_capacity,assumed_m3,container_fx_rate,version FROM purchase_waiting_configs WHERE region_id=$1 FOR UPDATE',[String(regionId)])).rows[0];
+      if(Number(current.version)!==Number(version))throw fail(409,'VERSION_CONFLICT','Cấu hình Chờ xếp đã thay đổi. Tải lại bảng rồi thử lại.');
+      const fields={freight:'freight',freightMode:'freight_mode',freightFormula:'freight_formula',freightBase:'freight_base',freightCapacity:'freight_capacity',assumedM3:'assumed_m3',containerFxRate:'container_fx_rate'},next={...current,...Object.fromEntries(Object.entries(changes).map(([key,value])=>[fields[key],value]))};
+      if(next.freight_mode==='manual'&&next.freight!=null&&(!Number.isFinite(Number(next.freight))||Number(next.freight)<0))throw fail(400,'VALIDATION_ERROR','Cước cont không hợp lệ.');
+      if(next.assumed_m3!=null&&calculations.positive(next.assumed_m3)==null||next.container_fx_rate!=null&&calculations.positive(next.container_fx_rate)==null)throw fail(400,'VALIDATION_ERROR','Tổng m³ giả định và tỉ giá phải lớn hơn 0 hoặc để trống.');
+      if(!['manual','formula'].includes(next.freight_mode)||calculations.number(next.freight_base)==null||Number(next.freight_base)<0||calculations.positive(next.freight_capacity)==null||next.freight_formula!=null&&(typeof next.freight_formula!=='string'||next.freight_formula.length>512))throw fail(400,'VALIDATION_ERROR','Cấu hình cước Chờ xếp không hợp lệ.');
+      if(next.freight_formula!=null){const volume=Number((await client.query('SELECT COALESCE(sum(carton_count*m3_per_carton),0)::numeric AS volume FROM purchase_orders WHERE container_id IS NULL AND region_id=$1 AND deleted_at IS NULL AND inactive_at IS NULL',[String(regionId)])).rows[0].volume)||0,probe=volume||1,denominator=calculations.positive(next.assumed_m3)||probe,result=typeof next.freight_formula==='string'&&next.freight_formula.trim().startsWith('=')?calculations.evaluateFormula(next.freight_formula,{M3_CONT:probe,M3_XE:denominator,D2:probe}):NaN;if(!Number.isFinite(result))throw fail(400,'VALIDATION_ERROR','Công thức cước Chờ xếp phải bắt đầu bằng = và chỉ dùng phép tính, biến, hàm được hỗ trợ.');}
+      client.purchaseProjectionRequired=false;client.purchaseContainersChanged=false;
+      const saved=(await client.query('UPDATE purchase_waiting_configs SET freight=$1,freight_mode=$2,freight_formula=$3,freight_base=$4,freight_capacity=$5,assumed_m3=$6,container_fx_rate=$7,version=version+1,updated_at=now() WHERE region_id=$8 AND version=$9 RETURNING region_id AS "regionId",freight,freight_mode AS "freightMode",freight_formula AS "freightFormula",freight_base AS "freightBase",freight_capacity AS "freightCapacity",assumed_m3 AS "assumedM3",container_fx_rate AS "containerFxRate",version',[next.freight,next.freight_mode,next.freight_formula,next.freight_base,next.freight_capacity,next.assumed_m3,next.container_fx_rate,String(regionId),version])).rows[0];
+      if(!saved)throw fail(409,'VERSION_CONFLICT','Cấu hình Chờ xếp đã thay đổi.');
+      await audit(client,user,'waiting_config_edit',{regionId:String(regionId),changes});return {changed:true,value:saved};
+    })},
+    async importSnapshot(user) {actor(user);const client=await pool.connect();try{await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');const settings=(await client.query('SELECT source_mode FROM purchase_settings WHERE id=1')).rows[0];if(settings?.source_mode!=='web')throw fail(503,'PURCHASE_SOURCE_NOT_ACTIVE','Thu mua chưa chuyển nguồn sang web.');const revision=(await client.query("SELECT COALESCE(max(id),0)::text || ':' || count(*)::text AS version FROM purchase_history")).rows[0].version,rows=await readRows(client),regions=(await client.query('SELECT id,name,is_active AS "isActive" FROM purchase_regions ORDER BY name,id')).rows,containers=(await client.query('SELECT * FROM product_containers')).rows,configs=(await client.query('SELECT region_id AS "regionId",freight_mode AS "freightMode",freight,freight_formula AS "freightFormula",freight_base AS "freightBase",freight_capacity AS "freightCapacity",assumed_m3 AS "assumedM3",container_fx_rate AS "containerFxRate",version FROM purchase_waiting_configs')).rows,waitingMap=Object.fromEntries(configs.map(config=>[String(config.regionId),config])),waitingRows=waitingContainerConfigs(regions,waitingMap),regionNames=new Map(regions.map(region=>[String(region.id),region.name])),containerMap=new Map(containers.map(container=>[String(container.id),container])),waitingByRegion=new Map(waitingRows.map(container=>[String(container.region_id??''),container])),withCosts=withFreight(rows,containers,waitingRows);for(let i=0;i<rows.length;i++){const row=withCosts[i],container=row.contId==null?waitingByRegion.get(String(row.regionId??'')):containerMap.get(String(row.contId));Object.assign(row,{regionName:regionNames.get(String(row.regionId??''))||'',container:container?.name||'CONT CHỜ XẾP',status:container?.status||0,containerFxRate:container?.container_fx_rate??container?.containerFxRate??null,...calculations.row(row,row.freightAmount,container?.container_fx_rate??container?.containerFxRate)})}await client.query('COMMIT');return {revision,rows:withCosts,regions}}catch(error){await client.query('ROLLBACK').catch(()=>{});throw error}finally{client.release()}},
     async latest(user,code) {actor(user);if(!String(code||'').trim())throw fail(400,'CODE_REQUIRED','Nhập Mã SP.');const result=await pool.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE p.deleted_at IS NULL AND p.inactive_at IS NULL AND lower(btrim(p.product_code))=lower(btrim($1)) ORDER BY p.listed_at DESC NULLS LAST,p.id DESC LIMIT 1`,[String(code).trim()]);return result.rows[0]?jsRow(result.rows[0]):null},
+    async latestMany(user,codes) {actor(user);if(!Array.isArray(codes)||codes.length>500||codes.some(code=>typeof code!=='string'||code.length>200))throw fail(400,'CODES_INVALID','Danh sách mã SP không hợp lệ.');const normalized=[...new Set(codes.map(code=>code.trim().toLocaleLowerCase('vi')).filter(Boolean))];if(!normalized.length)return [];return (await pool.query(`SELECT DISTINCT ON (lower(btrim(p.product_code))) ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE p.deleted_at IS NULL AND p.inactive_at IS NULL AND lower(btrim(p.product_code))=ANY($1::text[]) ORDER BY lower(btrim(p.product_code)),p.listed_at DESC NULLS LAST,p.id DESC`,[normalized])).rows.map(jsRow)},
     // nextval khong quay lui khi rollback, nen dat cho lam thung day so — dung quy tac khong tai su dung khoa.
 
     reserveKey,
@@ -569,7 +673,16 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
 
     async deactivateContainer(user,{id,version}) {return transaction(user,async client=>{const row=await getContainer(client,id,version);if(!row||row.deleted_at)throw fail(404,'CONTAINER_NOT_FOUND','Không có cont đang hoạt động.');if(row.inactive_at)return {changed:false,value:row};const updated=(await client.query('UPDATE product_containers SET inactive_at=now(),version=version+1,updated_at=now() WHERE id=$1 RETURNING *',[id])).rows[0];await audit(client,user,'container_deactivate',{containerId:String(id),name:row.name});return {changed:true,value:updated}})},
     async reactivateContainer(user,{id,version}) {return transaction(user,async client=>{const row=await getContainer(client,id,version);if(!row||row.deleted_at||!row.inactive_at)throw fail(409,'VERSION_CONFLICT','Cont đã thay đổi hoặc đã được bật lại.');const updated=(await client.query('UPDATE product_containers SET inactive_at=NULL,version=version+1,updated_at=now() WHERE id=$1 RETURNING *',[id])).rows[0];await audit(client,user,'container_reactivate',{containerId:String(id),name:row.name});return {changed:true,value:updated}})},
-    async removeContainer(user,{id,version}) {return transaction(user,async client=>{const row=await getContainer(client,id,version);if(!row)throw fail(404,'CONTAINER_NOT_FOUND','Không có cont cần xóa.');const updated=(await client.query('UPDATE product_containers SET deleted_at=now(),version=version+1,updated_at=now() WHERE id=$1 RETURNING *',[id])).rows[0];await audit(client,user,'container_delete',{containerId:String(id),name:row.name});return {changed:true,value:updated}})},
+    async removeContainer(user,{id,version,rows}) {return transaction(user,async client=>{
+      if(rows!==undefined){
+        if(!Array.isArray(rows)||!rows.length||rows.length>500||rows.some(r=>!r||!Number.isSafeInteger(Number(r.id))||Number(r.id)<1||!Number.isSafeInteger(Number(r.version))||Number(r.version)<1)||new Set(rows.map(r=>String(r.id))).size!==rows.length)throw fail(400,'CONTAINER_DELETE_INVALID','Chọn 1–500 cont không trùng.');
+        const locked=(await client.query('SELECT * FROM product_containers WHERE id=ANY($1::bigint[]) ORDER BY id FOR UPDATE',[rows.map(r=>r.id)])).rows,byId=new Map(locked.map(row=>[String(row.id),row]));
+        if(locked.length!==rows.length||rows.some(ref=>{const row=byId.get(String(ref.id));return !row||row.deleted_at||Number(row.version)!==Number(ref.version)}))throw fail(409,'VERSION_CONFLICT','Một số cont đã thay đổi. Tải lại bảng rồi thử lại.');
+        const deleted=(await client.query('UPDATE product_containers SET deleted_at=now(),version=version+1,updated_at=now() WHERE id=ANY($1::bigint[]) RETURNING *',[locked.map(row=>row.id)])).rows;
+        await audit(client,user,'container_delete',{containers:deleted.map(row=>({containerId:String(row.id),name:row.name}))});return {changed:true,value:{rows:deleted,deleted:deleted.length}};
+      }
+      const row=await getContainer(client,id,version);if(!row)throw fail(404,'CONTAINER_NOT_FOUND','Không có cont cần xóa.');const updated=(await client.query('UPDATE product_containers SET deleted_at=now(),version=version+1,updated_at=now() WHERE id=$1 RETURNING *',[id])).rows[0];await audit(client,user,'container_delete',{containerId:String(id),name:row.name});return {changed:true,value:updated}
+    })},
     async restoreContainer(user,{id,version}) {return transaction(user,async client=>{const row=(await client.query('SELECT * FROM product_containers WHERE id=$1 FOR UPDATE',[id])).rows[0];if(!row?.deleted_at||Number(row.version)!==Number(version))throw fail(409,'VERSION_CONFLICT','Cont đã thay đổi hoặc đã khôi phục.');const updated=(await client.query('UPDATE product_containers SET deleted_at=NULL,version=version+1,updated_at=now() WHERE id=$1 RETURNING *',[id])).rows[0];await audit(client,user,'container_restore',{containerId:String(id),name:row.name});return {changed:true,value:updated}})},
 
     async updateContainer(user,id,{version,changes={},rows}) {
@@ -583,7 +696,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
           const formula=changes.freightFormula;
           const volume=(await client.query('SELECT COALESCE(sum(carton_count*m3_per_carton),0)::numeric AS volume FROM purchase_orders WHERE container_id=$1 AND deleted_at IS NULL AND inactive_at IS NULL',[id])).rows[0].volume;
           const actual=Number(volume)||0,probe=actual||1,assumed=calculations.positive(changes.assumedM3??container.assumed_m3),denominator=assumed??probe,result=typeof formula==='string'&&formula.trim().startsWith('=')&&formula.length<=512?calculations.evaluateFormula(formula,{M3_CONT:probe,M3_XE:denominator,D2:probe}):NaN;
-          if(!Number.isFinite(result)||result<0)throw fail(400,'VALIDATION_ERROR','Công thức cước phải bắt đầu bằng = và chỉ dùng phép tính, biến và hàm được hỗ trợ.');
+          if(!Number.isFinite(result))throw fail(400,'VALIDATION_ERROR','Công thức cước phải bắt đầu bằng = và chỉ dùng phép tính, biến và hàm được hỗ trợ.');
         }
         const entries=[];
         for(const [key,value] of Object.entries(changes)){
@@ -606,19 +719,22 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         if(Number(changes.m3Max??container.m3_max)<Number(changes.m3Min??container.m3_min))throw fail(400,'VALIDATION_ERROR','m³ tối đa phải lớn hơn hoặc bằng tối thiểu.');
         if(!entries.length)return {changed:false,value:container};
         const shared=Object.hasOwn(changes,'arrivalNote')||Object.hasOwn(changes,'arrivalDate'),details=[];
+        let actual=[];
+        if(shared||Object.hasOwn(changes,'regionId')){
+          actual=(await client.query('SELECT * FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL AND container_id=$1 ORDER BY id FOR UPDATE',[id])).rows;
+        }
         if(shared){
-          const actual=(await client.query('SELECT * FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL AND container_id=$1 ORDER BY id FOR UPDATE',[id])).rows;
           if(!Array.isArray(rows)||rows.length!==actual.length||rows.some(r=>!r||!Number.isSafeInteger(Number(r.version))||Number(r.version)<1)||new Set(rows.map(r=>String(r.id))).size!==actual.length||actual.some(r=>!rows.some(x=>String(x.id)===String(r.id)&&Number(x.version)===Number(r.version))))throw fail(409,'VERSION_CONFLICT','Danh sách hoặc phiên bản dòng trong cont đã thay đổi.');
-          for(const raw of actual){const patch={};if(Object.hasOwn(changes,'arrivalNote'))patch.eta_note=entries.find(([key])=>key==='arrival_note')[1]||null;if(Object.hasOwn(changes,'arrivalDate'))patch.arrived_note=entries.find(([key])=>key==='arrival_date')[1]||null;
-            const updated=await patchRow(client,raw,patch);details.push({before:jsRow(raw),after:jsRow(updated)});
-          }
+          const patch={};if(Object.hasOwn(changes,'arrivalNote'))patch.eta_note=entries.find(([key])=>key==='arrival_note')[1]||null;if(Object.hasOwn(changes,'arrivalDate'))patch.arrived_note=entries.find(([key])=>key==='arrival_date')[1]||null;
+          const updated=(await client.query(`UPDATE purchase_orders SET ${Object.keys(patch).map((key,index)=>`${key}=$${index+2}`).join(',')},version=version+1,updated_at=now() WHERE id=ANY($1::bigint[]) RETURNING *`,[actual.map(row=>row.id),...Object.values(patch)])).rows,byId=new Map(updated.map(row=>[String(row.id),row]));
+          for(const raw of actual){const after=byId.get(String(raw.id));details.push({before:jsRow(raw),after:jsRow({...raw,...after})})}
         }
         let regionRows=[];
         if(Object.hasOwn(changes,'regionId')){
           const regionId=changes.regionId==null||changes.regionId===''?null:String(changes.regionId);
-          regionRows=(await client.query('SELECT id,version,region_id FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL AND container_id=$1 ORDER BY id FOR UPDATE',[id])).rows;
+          regionRows=actual.filter(row=>String(row.region_id??'')!==String(regionId??''));
           if(regionRows.length){
-            const updated=(await client.query('UPDATE purchase_orders SET region_id=$2,version=version+1,updated_at=now() WHERE container_id=$1 AND deleted_at IS NULL AND inactive_at IS NULL AND region_id IS DISTINCT FROM $2 RETURNING id,version,region_id',[id,regionId])).rows;
+            const updated=(await client.query('UPDATE purchase_orders SET region_id=$2,version=version+1,updated_at=now() WHERE id=ANY($1::bigint[]) RETURNING id,version,region_id',[regionRows.map(row=>row.id),regionId])).rows;
             details.push(...updated.map(r=>({id:String(r.id),regionId:r.region_id==null?null:String(r.region_id)})));
           }
         }
@@ -636,7 +752,19 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
       const requests=[...rows,...splits];if(new Set(requests.map(r=>String(r.id))).size!==requests.length)throw fail(400,'PLAN_DUPLICATE','Một dòng chỉ được xuất hiện một lần trong phương án.');
       const lockedRows=requests.length?(await client.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE p.id=ANY($1::bigint[]) ORDER BY p.id FOR UPDATE OF p`,[requests.map(request=>request.id)])).rows:[];
       const locked=new Map(lockedRows.map(row=>[String(row.id),row]));
-      for(const requested of requests){const row=locked.get(String(requested.id));if(!row||row.deleted_at||row.inactive_at||Number(row.version)!==Number(requested.version))throw fail(409,'VERSION_CONFLICT','Dòng đã thay đổi.');}
+      const rowRequests=new Map(rows.map(requested=>[String(requested.id),requested]));
+      for(const requested of requests){
+        const row=locked.get(String(requested.id));
+        if(!row||row.deleted_at||row.inactive_at)throw fail(409,'VERSION_CONFLICT','Dòng đã thay đổi.');
+        if(Number(row.version)===Number(requested.version))continue;
+        const rowRequest=rowRequests.get(String(requested.id)),before=rowRequest?.before,changes=rowRequest?.changes;
+        // Ordinary edits can merge across concurrent changes to other cells. Splits
+        // still require the exact row version because they depend on its quantity
+        // and container assignment as a whole.
+        if(!rowRequest||!before||typeof before!=='object'||Array.isArray(before)||!changes||typeof changes!=='object'||Array.isArray(changes))throw fail(409,'VERSION_CONFLICT','Dòng đã thay đổi.');
+        const current=jsRow(row),hasCellConflict=Object.entries(changes).some(([key,value])=>!Object.hasOwn(before,key)||(String(current[key]??'')!==String(before[key]??'')&&String(current[key]??'')!==String(value??'')));
+        if(hasCellConflict)throw fail(409,'VERSION_CONFLICT','Ô đã được người khác sửa.');
+      }
       const detail=[],branches=[],created=[],createdRows=[],changedIds=new Set(),rowPatches=[],defaultAaId=creates.some(input=>{const values=input.values||input;return values.regionId==null||values.regionId==='';})?await ensureAaRegion(client):null;
       for(const requested of rows){const result=await editPlanFields(client,locked.get(String(requested.id)),requested.changes,{deferWrite:true});if(result.diff.length){detail.push({rowKey:result.row.row_key,changes:result.diff});changedIds.add(String(result.row.id));rowPatches.push({id:result.row.id,changes:result.patch})}}
       await writeRows(client,rowPatches);
@@ -680,20 +808,31 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
       if(details.length)await audit(client,user,'bulk_edit',{rows:details});
       return {changed:details.length>0,value:{results}};
     })},
-    async reviseImport(user,token,inputRows) {return transaction(user,async client=>{const saved=(await client.query('SELECT *,expires_at>now() AS live FROM purchase_import_previews WHERE token=$1 AND actor_id=$2 FOR UPDATE',[token,actor(user).id])).rows[0];if(!saved||!saved.live||saved.result)throw fail(409,'PREVIEW_NOT_EDITABLE','Bản xem trước không còn sửa được.');if(!Array.isArray(inputRows)||inputRows.length!==saved.payload.sourceRows.length)throw fail(400,'IMPORT_ROW_COUNT','Phải sửa toàn bộ file, không được bỏ dòng lỗi.');const clean=inputRows.map((row,i)=>{const out={rowKey:row.rowKey,__sourceRow:saved.payload.sourceRows[i].__sourceRow,recoverArchived:row.recoverArchived===true,recoverRowKey:typeof row.recoverRowKey==='string'?row.recoverRowKey:saved.payload.sourceRows[i].recoverRowKey};writable.forEach(c=>{if(Object.hasOwn(row,c.k))out[c.k]=row[c.k]});if(Object.hasOwn(row,'regionId'))out.regionId=row.regionId;if(Object.hasOwn(row,'container'))out.container=row.container;return out});const current=await readRows(client),archived=await readArchivedRows(client);await ensureAaRegion(client);const regions=(await client.query('SELECT id,name,is_active AS "isActive" FROM purchase_regions')).rows,containers=await readImportContainers(client),revision=(await client.query("SELECT COALESCE(max(id),0)::text || ':' || count(*)::text AS version FROM purchase_history")).rows[0].version;if(saved.payload.snapshotRevision&&revision!==saved.payload.snapshotRevision)throw fail(409,'IMPORT_SNAPSHOT_STALE','Dữ liệu đã thay đổi. Tải snapshot mới rồi sửa lại.');const plan=await validateImportEmployees(client,prepareRows(clean,current,{listedAt:saved.payload.listedAt,snapshot:saved.payload.snapshot,snapshotRevision:saved.payload.snapshotRevision,archivedRows:archived,regions,containers}),current,archived);await client.query('UPDATE purchase_import_previews SET payload=$2 WHERE token=$1',[token,JSON.stringify(plan)]);return {changed:false,value:{token,valid:plan.valid,counts:plan.counts,rows:plan.rows,inputRows:plan.sourceRows,employeeChanges:plan.employeeChanges,masterData:plan.masterData}}})},
+    async reviseImport(user,token,inputRows) {return transaction(user,async client=>{const saved=(await client.query('SELECT *,expires_at>now() AS live FROM purchase_import_previews WHERE token=$1 AND actor_id=$2 FOR UPDATE',[token,actor(user).id])).rows[0];if(!saved||!saved.live||saved.result)throw fail(409,'PREVIEW_NOT_EDITABLE','Bản xem trước không còn sửa được.');if(!Array.isArray(inputRows)||inputRows.length!==saved.payload.sourceRows.length)throw fail(400,'IMPORT_ROW_COUNT','Phải sửa toàn bộ file, không được bỏ dòng lỗi.');const clean=inputRows.map((row,i)=>{const out={rowKey:row.rowKey,__sourceRow:saved.payload.sourceRows[i].__sourceRow,recoverArchived:row.recoverArchived===true,recoverRowKey:typeof row.recoverRowKey==='string'?row.recoverRowKey:saved.payload.sourceRows[i].recoverRowKey};[...writable,...overrideColumns].forEach(c=>{if(Object.hasOwn(row,c.k))out[c.k]=row[c.k]});if(Object.hasOwn(row,'regionId'))out.regionId=row.regionId;if(Object.hasOwn(row,'container'))out.container=row.container;return out});const current=await readRows(client),archived=await readArchivedRows(client);await ensureAaRegion(client);const regions=(await client.query('SELECT id,name,is_active AS "isActive" FROM purchase_regions')).rows,containers=await readImportContainers(client),revision=(await client.query("SELECT COALESCE(max(id),0)::text || ':' || count(*)::text AS version FROM purchase_history")).rows[0].version;if(saved.payload.snapshotRevision&&revision!==saved.payload.snapshotRevision)throw fail(409,'IMPORT_SNAPSHOT_STALE','Dữ liệu đã thay đổi. Tải snapshot mới rồi sửa lại.');const plan=await validateImportEmployees(client,prepareRows(clean,current,{listedAt:saved.payload.listedAt,snapshot:saved.payload.snapshot,snapshotRevision:revision,snapshotStale:saved.payload.snapshotStale,archivedRows:archived,regions,containers}),current,archived);plan.sourceSnapshotRevision=saved.payload.sourceSnapshotRevision;await client.query('UPDATE purchase_import_previews SET payload=$2 WHERE token=$1',[token,JSON.stringify(plan)]);return {changed:false,value:{token,valid:plan.valid,counts:plan.counts,rows:plan.rows,inputRows:plan.sourceRows,employeeChanges:plan.employeeChanges,masterData:plan.masterData,snapshotStale:plan.snapshotStale,sourceSnapshotRevision:plan.sourceSnapshotRevision,currentRevision:plan.snapshotRevision}}})},
     async transfer(user,{id,version,quantity,destinationId=null}) {return transaction(user,async client=>{const row=await getRow(client,id,version);await getAssignableContainer(client,destinationId);if(String(row.container_id)===String(destinationId))throw fail(400,'SAME_CONTAINER','Nguồn và đích trùng nhau.');const qty=Number(quantity);let result;const target=await getAssignableContainer(client,destinationId),regionId=destinationId==null?row.region_id:target?.region_id??null;if(qty===Number(row.carton_count))result={row:jsRow(await patchRow(client,row,{container_id:destinationId,region_id:regionId}))};else{const parts=await split(client,row,qty,destinationId);result={previousKey:parts.previousKey,remaining:jsRow(parts.remaining),created:jsRow(parts.created),previousCosts:parts.previousCosts}}await audit(client,user,'transfer',{from:row.container_id,to:destinationId,...result});return {changed:true,value:result}})},
-    async depart(user,{containerId,version,rows}) {return transaction(user,async client=>{const container=await getContainer(client,containerId,version);if(!container||container.status>=3)throw fail(409,'CONTAINER_STATE','Cont không ở trạng thái chờ xuất.');const actual=(await client.query('SELECT * FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL AND container_id=$1 ORDER BY id FOR UPDATE',[containerId])).rows;if(!Array.isArray(rows)||!actual.length||rows.length!==actual.length||new Set(rows.map(r=>String(r.id))).size!==actual.length)throw fail(409,'VERSION_CONFLICT','Danh sách thực xuất không khớp.');client.purchaseFormulaValidationRequired=true;let total=0;for(const row of actual){const input=rows.find(r=>String(r.id)===String(row.id));if(!input||Number(input.version)!==Number(row.version)||!Number.isSafeInteger(input.actual)||input.actual<0||input.actual>Number(row.carton_count))throw fail(409,'VERSION_CONFLICT','Số lượng hoặc phiên bản thực xuất không hợp lệ.');total+=input.actual}if(!total)throw fail(400,'EMPTY_DEPARTURE','Chưa có hàng thực xuất.');const details=[];for(const row of actual){const input=rows.find(r=>String(r.id)===String(row.id));if(input.actual===0)await patchRow(client,row,{container_id:null});else if(input.actual<Number(row.carton_count)){const parts=await split(client,row,Number(row.carton_count)-input.actual,null);details.push({previousKey:parts.previousKey,remainingKey:parts.remaining.row_key,waitingKey:parts.created.row_key})}}
+    async depart(user,{containerId,version,rows}) {return transaction(user,async client=>{const container=await getContainer(client,containerId,version);if(!container||container.status>=3)throw fail(409,'CONTAINER_STATE','Cont không ở trạng thái chờ xuất.');const actual=(await client.query('SELECT * FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL AND container_id=$1 ORDER BY id FOR UPDATE',[containerId])).rows;if(!Array.isArray(rows)||!actual.length||rows.length!==actual.length||new Set(rows.map(r=>String(r.id))).size!==actual.length)throw fail(409,'VERSION_CONFLICT','Danh sách thực xuất không khớp.');const requestedById=new Map(rows.map(r=>[String(r.id),r]));client.purchaseFormulaValidationRequired=true;let total=0;for(const row of actual){const input=requestedById.get(String(row.id));if(!input||Number(input.version)!==Number(row.version)||!Number.isSafeInteger(input.actual)||input.actual<0||input.actual>Number(row.carton_count))throw fail(409,'VERSION_CONFLICT','Số lượng hoặc phiên bản thực xuất không hợp lệ.');total+=input.actual}if(!total)throw fail(400,'EMPTY_DEPARTURE','Chưa có hàng thực xuất.');
+      const details=[],detached=[],splits=[];
+      for(const row of actual){const input=requestedById.get(String(row.id));if(input.actual===0)detached.push(row);else if(input.actual<Number(row.carton_count))splits.push({row,actual:input.actual,waiting:Number(row.carton_count)-input.actual})}
+      if(detached.length)await client.query('UPDATE purchase_orders SET container_id=NULL,version=version+1,updated_at=now() WHERE id=ANY($1::bigint[])',[detached.map(row=>row.id)]);
+      if(splits.length){
+        await recordRetiredKeys(client,splits.map(({row})=>row));
+        await writeRows(client,splits.map(({row,actual:loaded})=>({id:row.id,changes:{row_key:row.row_key+'.01',split_from_key:row.row_key,carton_count:loaded,freight_prepaid:null,freight_postpaid:null,freight_amount:null}})));
+        const children=splits.map(({row,waiting})=>({...row,row_key:row.row_key+'.02',root_key:row.root_key,root_order_id:row.root_order_id,split_from_key:row.row_key,container_id:null,region_id:row.region_id,carton_count:waiting,freight_prepaid:null,freight_postpaid:null,freight_amount:null}));
+        await insertMany(client,children);
+        details.push(...splits.map(({row})=>({previousKey:row.row_key,remainingKey:row.row_key+'.01',waitingKey:row.row_key+'.02'})));
+      }
       const snapshot=(await client.query('SELECT * FROM purchase_orders WHERE container_id=$1 ORDER BY id',[containerId])).rows.map(jsRow),who=actor(user);await client.query('INSERT INTO purchase_departures(container_id,snapshot,actor_id,actor_name) VALUES($1,$2,$3,$4)',[containerId,JSON.stringify(snapshot),who.id,who.name]);await client.query('UPDATE product_containers SET status=3,version=version+1,updated_at=now() WHERE id=$1',[containerId]);await audit(client,user,'depart',{containerId,rows:snapshot,details});return {changed:true,value:{containerId,status:3,rows:snapshot}}})},
     async arrive(user,{containerId,version,date,warehouse}) {return transaction(user,async client=>{const c=await getContainer(client,containerId,version);const arrivalDate=String(date||'').trim();if(!c||c.status!==3)throw fail(409,'CONTAINER_STATE','Cont chưa ở trạng thái đã xuất.');if(!arrivalDate||arrivalDate.length>500||!String(warehouse||'').trim())throw fail(400,'ARRIVAL_INVALID','Nhập ngày về và kho nhận.');const who=actor(user);const row=(await client.query('UPDATE product_containers SET status=4,arrival_date=$2,arrival_warehouse=$3,arrival_by=$4,version=version+1,updated_at=now() WHERE id=$1 RETURNING *',[containerId,arrivalDate,String(warehouse).trim(),who.name])).rows[0];await audit(client,user,'arrive',{containerId,date:arrivalDate,warehouse,confirmedBy:who.name});return {changed:true,value:row}})},
 
-    async previewImport(user,{buffer}) {return transaction(user,async client=>{const revision=(await client.query("SELECT COALESCE(max(id),0)::text || ':' || count(*)::text AS version FROM purchase_history")).rows[0].version,current=await readRows(client),archived=await readArchivedRows(client),regions=(await client.query('SELECT id,name,is_active AS "isActive" FROM purchase_regions')).rows,containers=await readImportContainers(client),plan=await validateImportEmployees(client,prepareSnapshotWorkbook(buffer,current,{currentRevision:revision,archivedRows:archived,regions,containers}),current,archived),token=randomUUID();await client.query('INSERT INTO purchase_import_previews(token,actor_id,payload) VALUES($1,$2,$3)',[token,actor(user).id,JSON.stringify(plan)]);return {changed:false,value:{token,valid:plan.valid,counts:plan.counts,rows:plan.rows,inputRows:plan.sourceRows,employeeChanges:plan.employeeChanges,masterData:plan.masterData}}})},
-    async commitImport(user,token) {
+    async previewImport(user,{buffer,allowStale=false,onProgress=()=>{}}) {return transaction(user,async client=>{await onProgress(12,'Đang lấy dữ liệu hiện tại…');const revision=(await client.query("SELECT COALESCE(max(id),0)::text || ':' || count(*)::text AS version FROM purchase_history")).rows[0].version,current=await readRows(client),archived=await readArchivedRows(client),regions=(await client.query('SELECT id,name,is_active AS "isActive" FROM purchase_regions')).rows,containers=await readImportContainers(client);await onProgress(32,'Đang phân tích các dòng trong file…');const prepared=prepareSnapshotWorkbook(buffer,current,{currentRevision:revision,archivedRows:archived,regions,containers,allowStale});await onProgress(68,'Đang kiểm tra dữ liệu và đối chiếu…');const plan=await validateImportEmployees(client,prepared,current,archived),token=randomUUID();await onProgress(88,'Đang lưu bản xem trước…');await client.query('INSERT INTO purchase_import_previews(token,actor_id,payload) VALUES($1,$2,$3)',[token,actor(user).id,JSON.stringify(plan)]);await onProgress(100,'Đã xử lý xong.');return {changed:false,value:{token,valid:plan.valid,counts:plan.counts,rows:plan.rows,inputRows:plan.sourceRows,employeeChanges:plan.employeeChanges,masterData:plan.masterData,snapshotStale:plan.snapshotStale,sourceSnapshotRevision:plan.sourceSnapshotRevision,currentRevision:plan.snapshotRevision}}})},
+    async commitImport(user,token,{ackStale=false}={}) {
       return transaction(user,async client=>{
         const saved=(await client.query('SELECT *,expires_at>now() AS live FROM purchase_import_previews WHERE token=$1 AND actor_id=$2 FOR UPDATE',[token,actor(user).id])).rows[0];
         if(!saved)throw fail(404,'PREVIEW_NOT_FOUND','Không có bản xem trước.');
         if(saved.result)return {changed:false,value:saved.result};
         if(!saved.live)throw fail(410,'PREVIEW_EXPIRED','Bản xem trước đã hết hạn.');
         if(!saved.payload.valid)throw fail(400,'IMPORT_INVALID','Toàn bộ file phải hợp lệ.');
+        if(saved.payload.snapshotStale&&!ackStale)throw fail(409,'IMPORT_STALE_ACK_REQUIRED','Cần xác nhận đã rà soát preview của snapshot cũ.');
         const revision=(await client.query("SELECT COALESCE(max(id),0)::text || ':' || count(*)::text AS version FROM purchase_history")).rows[0].version;
         if(saved.payload.snapshotRevision&&revision!==saved.payload.snapshotRevision)throw fail(409,'IMPORT_SNAPSHOT_STALE','Dữ liệu đã thay đổi. Tải snapshot mới rồi sửa lại.');
         const current=await readRows(client),archived=await readArchivedRows(client),regions=(await client.query('SELECT id,name,is_active AS "isActive" FROM purchase_regions')).rows,containers=await readImportContainers(client),checked=recheckPreview(saved.payload,current,archived,regions,containers);
@@ -721,11 +860,12 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         for(const row of plan.rows){if(row.values){row.values.regionId=materialize(row.values.regionId);row.values.contId=materialize(row.values.contId)}for(const change of row.changes||[])if(change.key==='regionId'||change.key==='contId')change.after=materialize(change.after)}
         if(checked.operations.length)client.purchaseFormulaValidationRequired=true;
         const employeeChanges=await applyImportEmployees(client,plan.employeeChanges||[],user);
+        const currentById=new Map(current.map(row=>[String(row.id),row])),archivedById=new Map(archived.map(row=>[String(row.id),row]));
         const creates=[],updates=[],recoveries=[],deletes=[],emptyContainerCandidates=new Set(),defaultAaId=plan.operations.some(operation=>operation.action==='create'&&(operation.values.regionId==null||operation.values.regionId===''))?await ensureAaRegion(client):null;
         for(const operation of plan.operations){
           if(operation.action==='delete'){deletes.push(operation);continue}
           if(operation.action==='create'){const values={...operation.values};if(values.buyer==null)values.buyer='';if(values.regionId==null||values.regionId==='')values.regionId=defaultAaId;creates.push(values);continue}
-          const original=current.find(r=>String(r.id)===String(operation.id))||archived.find(r=>String(r.id)===String(operation.id));
+          const original=currentById.get(String(operation.id))||archivedById.get(String(operation.id));
           const record={...original},assignment=Object.fromEntries(operation.changes.map(c=>[c.key,c.after]));
           if(original?.contId!=null&&Object.hasOwn(assignment,'contId')&&String(original.contId)!==String(assignment.contId??''))emptyContainerCandidates.add(String(original.contId));
           operation.changes.forEach(change=>record[change.key]=assignment[change.key]);if(Object.hasOwn(assignment,'buyer')&&assignment.buyer==null){assignment.buyer='';record.buyer=''}
@@ -737,21 +877,16 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         for(const row of retired)if(row.container_id!=null)emptyContainerCandidates.add(String(row.container_id));
         await recordRetiredKeys(client,retired);await releaseInactiveFamilies(client,retired);
         if(updates.length)await client.query('UPDATE purchase_orders o SET '+['container_id','region_id','measurement_overrides',...dbCols].map(c=>c+'=s.'+c).join(',')+',version=o.version+1,updated_at=now() FROM jsonb_populate_recordset(NULL::purchase_orders,$1::jsonb) s WHERE o.id=s.id',[JSON.stringify(updates)]);
-        const restoreFamilies=new Map();
-        for(const recovery of recoveries){
-          if(recovery.action==='restore'){
-            const root=(await client.query('SELECT root_order_id,root_key FROM purchase_orders WHERE id=$1',[recovery.data.id])).rows[0];
-            const familyId=String(root.root_order_id);let family=restoreFamilies.get(familyId);
-            if(!family){family={rootOrderId:root.root_order_id,rootKey:root.root_key,rows:[]};restoreFamilies.set(familyId,family)}
-            family.rows.push(recovery);
-          }else{
-            const data=recovery.data;
-            await client.query('UPDATE purchase_orders o SET '+['container_id','region_id','measurement_overrides',...dbCols].map(c=>c+'=s.'+c).join(',')+',inactive_at=NULL,version=o.version+1,updated_at=now() FROM jsonb_populate_record(NULL::purchase_orders,$1::jsonb) s WHERE o.id=s.id',[JSON.stringify(data)]);
-          }
+        const restoreRows=recoveries.filter(recovery=>recovery.action==='restore'),restoreFamilies=new Map();
+        if(restoreRows.length){
+          const roots=(await client.query('SELECT id,root_order_id,root_key FROM purchase_orders WHERE id=ANY($1::bigint[])',[restoreRows.map(recovery=>recovery.data.id)])).rows;
+          const rootById=new Map(roots.map(root=>[String(root.id),root]));
+          for(const recovery of restoreRows){const root=rootById.get(String(recovery.data.id));if(!root)continue;const key=String(root.root_order_id);let family=restoreFamilies.get(key);if(!family){family={rootOrderId:root.root_order_id,rootKey:root.root_key,rows:[]};restoreFamilies.set(key,family)}family.rows.push(recovery)}
+          const reservedRootKeys=new Set();for(const family of restoreFamilies.values()){const assigned=await ensureFamilyKey(client,family.rootOrderId,family.rootKey,reservedRootKeys);reservedRootKeys.add(String(assigned))}
         }
-        for(const family of restoreFamilies.values()){
-          await ensureFamilyKey(client,family.rootOrderId,family.rootKey);
-          for(const recovery of family.rows){const data=recovery.data;await client.query('UPDATE purchase_orders o SET '+['container_id','region_id','measurement_overrides',...dbCols].map(c=>c+'=s.'+c).join(',')+',inactive_at=NULL,deleted_at=NULL,version=o.version+1,updated_at=now() FROM jsonb_populate_record(NULL::purchase_orders,$1::jsonb) s WHERE o.id=s.id',[JSON.stringify(data)])}
+        if(recoveries.length){
+          const recoveryData=recoveries.map(recovery=>({...recovery.data,inactive_at:null,deleted_at:null}));
+          await client.query('UPDATE purchase_orders o SET '+['container_id','region_id','measurement_overrides',...dbCols].map(c=>'"'+c+'"=s."'+c+'"').join(',')+',inactive_at=NULL,deleted_at=NULL,version=o.version+1,updated_at=now() FROM jsonb_populate_recordset(NULL::purchase_orders,$1::jsonb) s WHERE o.id=s.id',[JSON.stringify(recoveryData)]);
         }
         const records=[],keys=await allocateKeys(client,creates.length);
         for(let i=0;i<creates.length;i++){const values=creates[i],key=keys[i],record={row_key:key,root_key:key,container_id:values.contId??null,region_id:values.regionId??null,measurement_overrides:Object.fromEntries(overrideColumns.filter(c=>values[c.k]!=null&&values[c.k]!=='').map(c=>[c.k,values[c.k]]))};writable.forEach(c=>record[snake(c.k)]=values[c.k]??null);records.push(record)}
@@ -764,9 +899,13 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         return {changed:plan.operations.length>0||employeeChanges.created.length>0||employeeChanges.reactivated.length>0,value:result};
       });
     },
-    async exportRows(user) {
-      actor(user);const containers=(await pool.query('SELECT * FROM product_containers')).rows,regions=(await pool.query('SELECT id,name FROM purchase_regions')).rows,rows=withFreight(await readRows(pool),containers);
-      const byId=new Map(containers.map(c=>[String(c.id),c])),regionNames=new Map(regions.map(region=>[String(region.id),region.name]));return rows.map(row=>{const c=byId.get(String(row.contId));return {...row,regionName:regionNames.get(String(row.regionId??''))||'',container:c?.name||'CONT CHỜ XẾP',status:c?.status||0,...calculations.row(row,row.freightAmount,c?.container_fx_rate)}});
+    async exportRows(user,ids=null,filters=null) {
+      actor(user);const containers=(await pool.query('SELECT * FROM product_containers')).rows,regions=(await pool.query('SELECT id,name FROM purchase_regions')).rows,configs=(await pool.query('SELECT region_id AS "regionId",freight_mode AS "freightMode",freight,freight_formula AS "freightFormula",freight_base AS "freightBase",freight_capacity AS "freightCapacity",assumed_m3 AS "assumedM3",container_fx_rate AS "containerFxRate",version FROM purchase_waiting_configs')).rows,waitingMap=Object.fromEntries(configs.map(config=>[String(config.regionId),config])),waitingRows=waitingContainerConfigs(regions,waitingMap);
+      let selectedRows;
+      if(filters&&typeof filters==='object'&&!Array.isArray(filters)){const query=pagedOrderFilter(filters,user);selectedRows=(await pool.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE ${query.where} ORDER BY ${query.order}`,[...query.values])).rows.map(jsRow)}
+      else selectedRows=await readRows(pool,false,ids);
+      const summaries=filters&&typeof filters==='object'&&!Array.isArray(filters)?await readContainerSummaries(pool):null,rows=withFreight(selectedRows,containers,waitingRows,summaries);
+      const byId=new Map(containers.map(c=>[String(c.id),c])),waitingByRegion=new Map(Object.entries(waitingMap)),regionNames=new Map(regions.map(region=>[String(region.id),region.name]));return rows.map(row=>{const c=row.contId==null?waitingByRegion.get(String(row.regionId??'')):byId.get(String(row.contId));return {...row,regionName:regionNames.get(String(row.regionId??''))||'',container:c?.name||'CONT CHỜ XẾP',status:c?.status||0,...calculations.row(row,row.freightAmount,c?.container_fx_rate??c?.containerFxRate)}});
     },
     async history(user,orderId) {actor(user);if(!/^[1-9]\d*$/.test(String(orderId||''))||BigInt(orderId)>9223372036854775807n)throw fail(400,'ORDER_ID_INVALID','Mã dòng nội bộ không hợp lệ.');const root=(await pool.query('SELECT COALESCE((SELECT root_order_id FROM purchase_orders WHERE id=$1),(SELECT root_order_id FROM purchase_operation_rows WHERE row_id=$1 ORDER BY operation_id LIMIT 1)) AS root_order_id',[String(orderId)])).rows[0]?.root_order_id;if(root==null)return [];return (await pool.query(`SELECT h.* FROM purchase_history h WHERE EXISTS(
         SELECT 1 FROM purchase_operation_rows row_history WHERE row_history.operation_id::text=h.summary->>'operationId' AND row_history.root_order_id=$1

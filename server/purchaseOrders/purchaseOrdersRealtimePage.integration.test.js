@@ -117,7 +117,7 @@ test('container VC/m3 uses converted price divided by preferred then actual m3',
  const row=doc.querySelector('#containerTable [data-container-filter="2"]').closest('tr'),rate=()=>row.querySelector('[data-container-column="rate"]').textContent;assert.equal(row.querySelector('[data-container-column="converted"]').textContent,'2,000');assert.equal(rate(),'200');
  const assumed=doc.querySelector('#containerTable [data-container-field="assumedM3"]');assumed.focus();assumed.value='';assumed.dispatchEvent(new p.w.Event('input',{bubbles:true}));assert.equal(rate(),'1,000');
 });
-test('container VC/m3 subtracts surcharge before dividing by actual m3',async t=>{
+test('container VC/m3 divides converted freight by actual m3 and keeps surcharge separate',async t=>{
  const p=await page(t),doc=p.w.document,row=p.data.rows[0];Object.assign(row,{cartonCount:1,qtyPerCarton:1,unitPriceCny:83038670,fxRate:1,surchargePercent:.1,kgPerCarton:1,m3PerCarton:562.85});
  p.data.containers[0].freight_mode='formula';p.data.containers[0].freight=null;p.listeners.changed();await tick();await tick();
  const summary=doc.querySelector('#containerTable [data-container-filter="2"]').closest('tr');

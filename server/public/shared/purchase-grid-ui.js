@@ -15,10 +15,13 @@
    if(selected.length&&selected.every(cell=>{const c=columns().find(c=>c.k===cell.key);return c&&!c.d&&!c.m&&!c.ro&&c.k!=='buyer'})){const last=selected.at(-1),td=[...root.querySelectorAll('td[data-field]')].find(td=>td.closest('tr').dataset.id===String(last.id)&&td.dataset.field===last.key);if(td){const handle=doc.createElement('button');handle.type='button';handle.className='purchase-fill-handle';handle.tabIndex=-1;handle.setAttribute('aria-label','Kéo để điền xuống');handle.title='Kéo để điền; Ctrl+D điền từ dòng đầu vùng chọn';td.append(handle)}}
   }
   function choose(pos,extend){if(!pos)return;anchor=extend&&anchor?anchor:pos;focus=pos;onAnchor(anchor);paint()}
+  function clearSelection(){if(!anchor&&!focus)return;anchor=focus=null;onAnchor(null);paint()}
+  function clearSelectionOutside(event){if(!root.contains(event.target))clearSelection()}
   function restoreAnchorFocus(){if(!anchor)return;const td=[...root.querySelectorAll('td[data-field]')].find(td=>td.closest('tr').dataset.id===String(anchor.id)&&td.dataset.field===anchor.key);(td?.querySelector('input:not(:disabled),select:not(:disabled),.code-label,.date-label')||td)?.focus({preventScroll:true})}
   function run(plan,label){if(!plan.length)return;try{apply(plan,label);paint();restoreAnchorFocus()}catch(error){notice('Chưa sửa: '+error.message)}}
   function paste(text,at=anchor){if(!at)throw Error('Chọn ô bắt đầu trước khi dán.');const plan=Grid.planPaste({text,rows:getRows(),columns:columns(),anchor:at,focus:anchor&&at.id===anchor.id&&at.key===anchor.key?focus:at});apply(plan,'Dán Excel');paint();restoreAnchorFocus();return plan.length}
   root.addEventListener('mousedown',e=>{if(e.button!==0)return;const pos=position(e.target);if(!pos)return;if(e.target.closest('.purchase-fill-handle')){filling=true;fillTarget=null;e.preventDefault();e.stopPropagation();return}if(e.target.closest('button,.code-label,.date-label,select')&&!e.shiftKey)return;dragging=true;moved=false;choose(pos,e.shiftKey);if(e.shiftKey){e.preventDefault();e.stopPropagation()}},true);
+  doc.addEventListener('mousedown',clearSelectionOutside,true);
   root.addEventListener('mousemove',e=>{if(!dragging&&!filling)return;const pos=position(e.target);if(!pos)return;if(filling){fillTarget=pos;return}if(focus?.id===pos.id&&focus.key===pos.key)return;moved=true;focus=pos;paint();e.preventDefault()});
   function finish(){if(filling&&fillTarget){const rows=getRows(),ops=Grid.fill({rows,columns:columns(),anchor,focus,target:fillTarget}).map(c=>({id:c.id,key:c.key,raw:String(getCellValue(rows.find(r=>String(r.id)===String(c.fromId)),c.fromKey)??'')}));run(ops,'Kéo điền')}dragging=false;filling=false;fillTarget=null}
   doc.addEventListener('mouseup',finish);root.addEventListener('click',e=>{if(e.target.closest('.purchase-fill-handle')){e.preventDefault();e.stopPropagation();return}const pos=position(e.target);if(!pos)return;if(e.shiftKey){choose(pos,true);e.preventDefault();e.stopPropagation()}else if(moved){moved=false;e.preventDefault();e.stopPropagation()}else choose(pos,false)},true);
@@ -31,7 +34,7 @@
    else if(e.key==='Delete'&&cells().length>1){run(cells().map(c=>({...c,raw:''})),'Xóa vùng');e.preventDefault();e.stopPropagation()}
    else if(e.key==='Escape'&&cells().length>1){anchor=focus=null;paint();e.preventDefault();e.stopPropagation()}
   },true);
-  return {paint,paste,select:choose,get selection(){return {anchor,focus}},destroy(){doc.removeEventListener('mouseup',finish);status.remove()}};
+  return {paint,paste,select:choose,clear:clearSelection,get selection(){return {anchor,focus}},destroy(){doc.removeEventListener('mouseup',finish);doc.removeEventListener('mousedown',clearSelectionOutside,true);status.remove()}};
  }
  return {create};
 });

@@ -42,12 +42,13 @@ function makeOrderSnapshot(order) {
   for (const line of Array.isArray(order.lines) ? order.lines : []) {
     const code = key(line.productCode);
     if (!code || line.isService || code.startsWith('vat')) continue;
-    const quantity = Number(line.quantity);
-    if (!Number.isSafeInteger(quantity) || quantity <= 0) {
-      throw invalid(`Mã ${line.productCode}: số lượng nhặt phải là số chiếc nguyên dương.`);
+    const quantity = Math.round(Number(line.quantity) * 1e6) / 1e6;
+    if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1e12) {
+      throw invalid(`Mã ${line.productCode}: số lượng nhặt phải là số dương.`);
     }
     const unit = add(decimal(line.price), decimal(line.discount ?? 0), true);
-    const amount = {scale:unit.scale, coefficient:unit.coefficient * BigInt(quantity)};
+    const qty = decimal(quantity);
+    const amount = {scale:unit.scale + qty.scale, coefficient:unit.coefficient * qty.coefficient};
     total = add(total, amount);
     lines.push({productCode:String(line.productCode).trim(), productName:String(line.productName || '').trim(),
       quantity, ...(line.kiotQuantity===undefined?{}:{kiotQuantity:line.kiotQuantity}), price:line.price, discount:line.discount ?? 0, note:line.note || '',

@@ -23,6 +23,7 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 ## Đang dở / chờ
 
 - [ ] 18/11 — Thu mua: import snapshot tự tạo vùng/cont mới đã sửa cục bộ (không migration) — chạy kiểm thử import liên quan, review rồi deploy web; chưa áp dụng lên hệ thống thật.
+- [ ] 18/11 — Thu mua: import snapshot tự tạo vùng/cont mới + preview snapshot cũ có xác nhận, giữ nguyên dòng ngoài file (cục bộ, không migration) — chưa chạy test; review rồi deploy web, chưa áp dụng hệ thống thật.
 
 - [ ] 15/11 — Thu mua: xử lý 409 snapshot confirm do Mã dòng tái sử dụng trùng bản lưu trữ; regression test mô phỏng `D00556`/`D00561` — push/deploy rồi tạo preview mới và xác nhận lại.
 - [ ] 16/11 — Thu mua: outbox `0134` tách lưu canonical khỏi chiếu read model; deploy web + worker, xác nhận migration/queue trên production và đo p50/p95 thời gian lưu cùng độ trễ chiếu.
@@ -66,3 +67,5 @@ Cập nhật: 16/11/2026
 - [ ] 17/11 — Thu mua: sửa xuất Chỉ số cont sang XLSX để giữ Unicode, kiểu số/ngày và độ rộng cột (không migration) — deploy web rồi tải lại file trong Excel thực tế.
 
 - [ ] 17/11 — Thu mua: cấu hình hàng Chờ xếp dạng nhóm ảo trong purchase_settings (migration 0137), thao tác ô cước/m³ giả định/tỉ giá và cùng tính NET theo công thức cont; xác minh migration và sửa/xóa cước trên staging, deploy rồi kiểm tra Chờ xếp không tác động cont thật.
+
+- [ ] 17/11 — VPS `159.195.8.95` chạy `tokosi-dash-web/worker` (cổng 3100, `deploy/`, tự cập nhật bằng cron) — mở ra ngoài bằng HTTPS (cookie `secure`; 80/443 do Docker `production-web-1` giữ); tắt job nền trên Render nếu chuyển hẳn (đang chạy trùng, cùng DB); `deploy/` chưa commit

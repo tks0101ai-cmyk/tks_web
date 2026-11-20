@@ -1052,7 +1052,7 @@ Cập nhật gần nhất: 14/11/2026.
 
 ## Thu mua — cước tổng, vùng cont và ghi chú (migrations 0127–0130, 14/11/2026)
 
-- `product_containers.assumed_m3` là mẫu số ưu tiên khi còn giá trị; khi để trống, dùng m³ đang xếp. `freight` hoặc kết quả `freight_formula` là tổng chi phí cont nhập vào. `VC/m³ = tổng chi phí / m³ ưu tiên`; phân bổ xuống từng mã theo m³ thực tế của mã. `Đơn giá cont` hiển thị tổng chi phí, không phải VC/m³.
+- `product_containers.assumed_m3` là mẫu số ưu tiên khi còn giá trị; khi để trống, dùng m³ đang xếp. `freight` hoặc kết quả `freight_formula` là tổng chi phí cont nhập vào. `Đơn giá quy đổi = Đơn giá cont − tổng Phụ phí cont`; `VC/m³ = Đơn giá quy đổi / m³ ưu tiên`, phân bổ xuống từng mã theo m³ thực tế của mã. Phụ phí theo mã vẫn được cộng riêng vào NET. `Đơn giá cont` hiển thị tổng chi phí, không phải VC/m³.
 - `purchase_orders.surcharge_percent` nhận phần trăm dương hoặc âm. Phụ phí của mã = tỷ lệ × Tiền hàng của mã; không đổi các cột Tổng tệ hay Giá NET.
 - `purchase_regions` lưu tên, màu, trạng thái hoạt động và phiên bản vùng. `purchase_orders.region_id` giữ vùng đơn hàng đang chờ xếp; `product_containers.region_id` giữ vùng cont; `product_containers.note` lưu ghi chú cont. Xóa vùng bị chặn bằng trạng thái ngừng dùng, còn các đơn/cont cũ giữ liên kết.
 - `0129_purchase_regions_and_container_notes.sql` tạo danh mục vùng và thêm region/note vào đơn hàng, cont. `0130_purchase_surcharge_signed.sql` bỏ CHECK không âm của `surcharge_percent`, giữ dữ liệu phần trăm đã có.
@@ -1064,4 +1064,13 @@ Cập nhật gần nhất: 14/11/2026.
 
 
 ## Migration 0137 — Cước nhóm Chờ xếp (17/11/2026)
-`purchase_settings` singleton giữ hồ sơ nhóm ảo Chờ xếp: `waiting_freight_mode`, `waiting_freight`, `waiting_freight_formula`, `waiting_freight_base` (mặc định 202.000.000), `waiting_freight_capacity` (mặc định 170), `waiting_assumed_m3`, `waiting_container_fx_rate` và `waiting_version`. Bảng Chỉ số cont cho thao tác các ô cước, m³ giả định và tỉ giá như cont thật; hồ sơ áp dụng cho các dòng `purchase_orders.container_id IS NULL`, không tạo cont giả. API ghi kiểm tra version, trả 409 khi stale. Khi cách ly, không projection/cache invalidation/events `containersChanged`.
+`0137_purchase_waiting_freight.sql` thêm công thức cước mặc định cho nhóm Chờ xếp vào `purchase_settings`. Migration 0138 chuyển cấu hình sang từng vùng riêng.
+
+
+## Migration 0138 — cấu hình Chờ xếp theo vùng (17/11/2026)
+
+`0138_purchase_waiting_region_freight.sql` tạo `purchase_waiting_configs` với khóa ngoại tới `purchase_regions`; mỗi vùng chỉ có một cấu hình. Cấu hình singleton cũ được chép sang từng vùng khi migrate. Migration cũng bổ sung `waiting_assumed_m3` và `waiting_container_fx_rate` nếu DB đã đánh dấu phiên bản đầu của 0137 là hoàn tất trước khi hai cột này được thêm vào file migration. Các phép tính VC và giá NET gom dòng chưa xếp theo `(container_id IS NULL, region_id)` để nhập ở Chờ H chỉ cập nhật công thức của vùng H.
+
+## Migration 0140 — tăng tốc tìm kiếm Thu mua (19/11/2026)
+
+`0140_purchase_order_search_trgm.sql` bật `pg_trgm` và tạo GIN index cho đúng biểu thức tìm kiếm không phân biệt dấu của lưới Đặt hàng. Các điều kiện lọc và kết quả tìm kiếm không đổi; truy vấn chứa từ khóa từ 3 ký tự trở lên có thể dùng index thay vì quét toàn bộ đơn đang hoạt động.

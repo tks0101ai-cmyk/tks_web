@@ -9,7 +9,7 @@ const columns = require('../public/shared/purchase-columns');
 async function start(t,user) {
   const calls=[];
   const record=name=>async(...args)=>{calls.push({name,args});return name==='revision'?{revision:'9:4'}:name==='importSnapshot'?{revision:'9:4',rows:[]}:name==='history'?[]:{ok:true}};
-  const service=Object.fromEntries(['revision','changes','employees','saveEmployees','regions','saveRegions','createEmployee','updateEmployee','trash','inactive','containerTrash','inactiveContainers','deactivateContainer','reactivateContainer','removeContainer','restoreContainer','operations','remove','deactivate','reactivate','restore','restoreVersion','versions','versionAt','undo','applyPlan','list','history','create','createMany','update','createContainer','updateContainer','schedule','changeStatus','bulkEdit','transfer','depart','arrive','importSnapshot','previewImport','reviseImport','commitImport','reserveKey','releaseKey'].map(name=>[name,record(name)]));
+  const service=Object.fromEntries(['revision','changes','employees','saveEmployees','regions','saveRegions','createEmployee','updateEmployee','trash','inactive','containerTrash','inactiveContainers','deactivateContainer','reactivateContainer','removeContainer','restoreContainer','operations','remove','deactivate','reactivate','restore','restoreVersion','versions','versionAt','undo','applyPlan','list','history','create','createMany','update','createContainer','updateContainer','updateWaitingConfig','schedule','changeStatus','bulkEdit','transfer','depart','arrive','importSnapshot','previewImport','reviseImport','commitImport','reserveKey','releaseKey'].map(name=>[name,record(name)]));
   const app=express();app.use(express.json());app.use((req,res,next)=>{req.user=user;next()});
   app.use(createPurchaseOrdersRouter({service,requireAuth:(req,res,next)=>req.user?next():res.status(401).json({error:'Chưa đăng nhập'})}));
   const server=await new Promise(resolve=>{const server=app.listen(0,'127.0.0.1',()=>resolve(server))});t.after(()=>server.close());
@@ -29,6 +29,13 @@ test('table scopes authorize only their own write endpoints',async t=>{
  const containers=await start(t,{id:'containers',vaiTro:ROLES.NHAN_VIEN_MUA_HANG,featurePermissions:{'purchase.containers':true}});
  assert.equal((await fetch(containers.base+'/containers',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,201);
  assert.equal((await fetch(containers.base+'/bulk-create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:[]})})).status,403);
+});
+test('waiting group writes require order edit access and forward the region identifier',async t=>{
+ const user={id:'manager',vaiTro:ROLES.QUAN_LY},manager=await start(t,user),body={regionId:'12',version:3,changes:{assumedM3:10}};
+ const response=await fetch(manager.base+'/waiting-config',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ assert.equal(response.status,200);const call=manager.calls.find(entry=>entry.name==='updateWaitingConfig');assert.deepEqual(call.args[1],body);
+ const reader=await start(t,{id:'reader',vaiTro:ROLES.NHAN_VIEN_MUA_HANG,featurePermissions:{'purchase.view':true,'purchase.containers':true}});
+ assert.equal((await fetch(reader.base+'/waiting-config',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).status,403);
 });
 test('unauthenticated and unauthorized users never reach service',async t=>{
   for(const [user,status] of [[null,401],[{id:'buyer',vaiTro:ROLES.NHAN_VIEN_MUA_HANG},403]]){

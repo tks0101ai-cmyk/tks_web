@@ -5,9 +5,13 @@ function createPresenceStore(poolOverride) {
   const pool=()=>poolOverride||require('../db/pool').getPool();
   const store={
     async renew(id,user){await pool().query("INSERT INTO purchase_presence(connection_id,actor_id,actor_name,expires_at) VALUES($1,$2,$3,now()+interval '45 seconds') ON CONFLICT(connection_id) DO UPDATE SET expires_at=excluded.expires_at",[id,String(user.id),String(user.hoTen||user.username||user.id)])},
+    async renewMany(items){if(!items.length)return;await pool().query(`INSERT INTO purchase_presence(connection_id,actor_id,actor_name,expires_at)
+      SELECT item.connection_id,item.actor_id,item.actor_name,now()+interval '45 seconds'
+      FROM jsonb_to_recordset($1::jsonb) AS item(connection_id uuid,actor_id text,actor_name text)
+      ON CONFLICT(connection_id) DO UPDATE SET actor_id=excluded.actor_id,actor_name=excluded.actor_name,expires_at=excluded.expires_at`,[JSON.stringify(items.map(item=>({connection_id:item.id,actor_id:String(item.user.id),actor_name:String(item.user.hoTen||item.user.username||item.user.id)})))] )},
     async snapshot(){
-      await pool().query('DELETE FROM purchase_presence WHERE expires_at<now()');
-      const users=(await pool().query('SELECT DISTINCT actor_id AS id,actor_name AS name FROM purchase_presence WHERE expires_at>now() ORDER BY actor_name')).rows;
+      const users=(await pool().query(`WITH expired AS (DELETE FROM purchase_presence WHERE expires_at<now() RETURNING connection_id)
+        SELECT DISTINCT actor_id AS id,actor_name AS name FROM purchase_presence WHERE expires_at>now() ORDER BY actor_name`)).rows;
       const version=(await pool().query("SELECT COALESCE(max(id),0)::text || ':' || count(*)::text AS version FROM purchase_history")).rows[0].version;
       return {users,version};
     },
@@ -17,6 +21,7 @@ function createPresenceStore(poolOverride) {
 }
 function attachRealtime(router, root, events=dashboardRollupEvents, store=createPresenceStore(), options={}) {
   const peers=new Map();let timer=null,polling=null;
+  const renewMs=options.renewMs||15000;
   const send=(res,event,data)=>{try{if(res.destroyed||res.writableEnded)return;res.write('event: '+event+'\ndata: '+JSON.stringify(data)+'\n\n');res.flush?.()}catch{res.destroy?.()}};
   const broadcast=()=>{for(const p of peers.values())send(p.res,'changed',{})};
   const roster=()=>{const users=[...new Map([...peers.values()].map(p=>[String(p.user.id),{id:String(p.user.id),name:String(p.user.hoTen||p.user.username||p.user.id)}])).values()];for(const p of peers.values())send(p.res,'presence',users)};
@@ -29,12 +34,24 @@ function attachRealtime(router, root, events=dashboardRollupEvents, store=create
         if(p.closed){await store.remove(p.key);return}
         p.snapshot=snapshot;
       }catch{if(!p.closed)degraded(p)}
-    })().finally(()=>{p.renewing=null});return p.renewing;
+    })().finally(()=>{p.nextRenewAt=Date.now()+renewMs;p.renewing=null});return p.renewing;
+  }
+  async function renewDue(){
+    const due=[...peers.values()].filter(p=>!p.renewing&&Date.now()>=(p.nextRenewAt||0));
+    if(!due.length)return;
+    if(!store.renewMany){await Promise.all(due.map(renew));return}
+    const promise=(async()=>{
+      try{await store.renewMany(due.map(p=>({id:p.key,user:p.user})));}
+      catch{for(const p of due)if(!p.closed)degraded(p)}
+      finally{for(const p of due){if(p.closed)await store.remove(p.key).catch(()=>{});p.nextRenewAt=Date.now()+renewMs;p.renewing=null}}
+    })();
+    for(const p of due)p.renewing=promise;
+    await promise;
   }
   function heartbeat(){
     if(polling)return polling;
     polling=(async()=>{
-      await Promise.all([...peers.values()].map(renew));
+      await renewDue();
       if(!peers.size)return;
       let snapshot;
       try{if(store.snapshot)snapshot=await store.snapshot()}
@@ -51,7 +68,7 @@ function attachRealtime(router, root, events=dashboardRollupEvents, store=create
   router.get(root+'/events',(req,res)=>{
     res.set({'Content-Type':'text/event-stream','Cache-Control':'no-store','Connection':'keep-alive','X-Accel-Buffering':'no'});res.flushHeaders();
     const key=randomUUID(),p={key,user:req.user,res,closed:false,renewing:null};peers.set(key,p);
-    if(peers.size===1){events.on('purchase-orders-changed',broadcast);timer=setInterval(heartbeat,options.intervalMs||3000);timer.unref()}
+    if(peers.size===1){events.on('purchase-orders-changed',broadcast);timer=setInterval(heartbeat,options.intervalMs||5000);timer.unref()}
     send(res,'ready',{});roster();
     const cleanup=()=>{
       if(p.closed)return;p.closed=true;req.off('close',cleanup);res.off?.('close',cleanup);res.off?.('error',cleanup);peers.delete(key);

@@ -6,8 +6,8 @@
     const scope=el.closest('#orderTable,#containerTable,#watchedContainer');
     if(!scope)return null;
     const d=el.dataset,row=el.closest('[data-id]');
-    const field=d.containerField||d.edit||d.status|| (d.contFreight!==undefined?'freight':d.childQty!==undefined?'childQty':d.childCont!==undefined?'childCont':null);
-    const id=d.containerId||d.contFreight||d.childQty||d.childCont||row?.dataset.id;
+    const field=d.containerField||d.edit||d.searchSelectFor||d.status|| (d.contFreight!==undefined?'freight':d.childQty!==undefined?'childQty':d.childCont!==undefined?'childCont':null);
+    const id=d.containerId||d.contFreight||d.childQty||d.childCont||d.status||row?.dataset.id;
     return field!=null&&id!=null?JSON.stringify([scope.id,String(id),field]):null;
   }
   function captureFocus(root,getKey=inputKey){
@@ -46,7 +46,7 @@
       const merged={...(old||{}),...remote,...(draft?.changes||{})};if(i===undefined){index.set(id,rows.length);rows.push(merged)}else rows[i]=merged;
     }
     const deleted=new Set((delta.deletedIds||[]).map(String));if(deleted.size)rows=rows.filter(row=>!deleted.has(String(row.id)));for(const id of deleted){const draft=drafts[id];if(draft)conflicts.push({id,deleted:true,draft})}
-    return {...current,...delta,rows,conflicts,revision:delta.revision,containers:delta.containers??current?.containers};
+    return {...current,...delta,rows,conflicts,revision:delta.revision,containers:delta.containers??current?.containers,regions:delta.regions??current?.regions};
   }
   function createScheduler({refresh,isHidden=()=>false,gapMs=3000,onError=()=>{},setTimer=setTimeout,clearTimer=clearTimeout,now=Date.now}){
     let dirty=false,running=false,stopped=false,timer=null,last=-Infinity;
@@ -62,31 +62,32 @@
   }
   function createCoordinator(options){
     const {fetchSnapshot,fetchDelta,applySnapshot,applyDelta,getRoot=()=>document,getKey=inputKey,onConflict=()=>{},getDrafts=()=>({})}=options;
-    let running=null,pending=false,stopped=false,lastRevision=null,baseline=null;
-    function captureBaseline(snapshot){baseline=snapshot?{...snapshot,rows:(snapshot.rows||[]).slice(),containers:snapshot.containers}:snapshot;lastRevision=snapshot?.revision??lastRevision}
+    let running=null,pending=false,forceSnapshot=false,stopped=false,lastRevision=null,baseline=null;
+    function captureBaseline(snapshot){baseline=snapshot?{...snapshot,rows:[...(snapshot.rows||[]),...(snapshot.supplementalRows||[])],supplementalRows:[],containers:snapshot.containers}:snapshot;lastRevision=snapshot?.revision??lastRevision}
     function compareRevision(a,b){if(a==null||b==null)return 0;const parse=value=>String(value).split(':');const aa=parse(a),bb=parse(b);if(aa.length!==bb.length||aa.some(v=>!/^\d+$/.test(v))||bb.some(v=>!/^\d+$/.test(v)))return 0;for(let i=0;i<aa.length;i++){const x=BigInt(aa[i]),y=BigInt(bb[i]);if(x!==y)return x<y?-1:1}return 0}
-    function validDelta(delta){return delta&&/^\d+:\d+$/.test(String(delta.revision))&&Array.isArray(delta.rows)&&Array.isArray(delta.deletedIds)&&Array.isArray(delta.containers)&&typeof delta.sourceMode==='string'&&typeof delta.integrationEnabled==='boolean'&&typeof delta.employeesChanged==='boolean'&&typeof delta.reset==='boolean'}
+    function validDelta(delta){return delta&&/^\d+:\d+$/.test(String(delta.revision))&&Array.isArray(delta.rows)&&Array.isArray(delta.deletedIds)&&(delta.containers==null||Array.isArray(delta.containers))&&(delta.regions==null||Array.isArray(delta.regions))&&typeof delta.sourceMode==='string'&&typeof delta.integrationEnabled==='boolean'&&typeof delta.employeesChanged==='boolean'&&typeof delta.reset==='boolean'}
     async function applyFull(next){
       if(stopped)return;
       if(compareRevision(next.revision,lastRevision)<0)return;
-      const root=getRoot(),focus=captureFocus(root,getKey),merged=mergeRows(next.rows||[],getDrafts());
+      const root=getRoot(),focus=captureFocus(root,getKey),merged=mergeRows([...(next.rows||[]),...(next.supplementalRows||[])],getDrafts());
       try{await applySnapshot(next,{...merged,baseline});if(focus){const replacement=Array.from(root.querySelectorAll(selector)).find(e=>getKey(e)===focus.key);if(!replacement)merged.conflicts.push({key:focus.key,local:focus.value,deleted:true,focused:true});else if(focus.value!==focus.baselineValue&&replacement.value!==focus.baselineValue&&replacement.value!==focus.value)merged.conflicts.push({key:focus.key,before:focus.baselineValue,local:focus.value,remote:replacement.value,deleted:false,focused:true})}}finally{restoreFocus(root,focus,getKey)}
       captureBaseline(next);onConflict(merged.conflicts);
     }
     async function drain(){
       while(pending&&!stopped){
         pending=false;
-        if(baseline&&lastRevision!=null&&fetchDelta&&applyDelta){
+        if(!forceSnapshot&&baseline&&lastRevision!=null&&fetchDelta&&applyDelta){
           let delta;try{delta=await fetchDelta(lastRevision)}catch{delta=null}
           if(stopped)break;
           const metadataChanged=validDelta(delta)&&((baseline.sourceMode!=null&&delta.sourceMode!==baseline.sourceMode)||(baseline.integrationEnabled!=null&&delta.integrationEnabled!==baseline.integrationEnabled));
-          if(validDelta(delta)&&!delta.reset&&!metadataChanged){if(compareRevision(delta.revision,lastRevision)<0)continue;const root=getRoot(),focus=captureFocus(root,getKey),merged=mergeDelta(baseline,delta,getDrafts());let applied=false;try{await applyDelta(delta,merged);applied=true;if(focus){const replacement=Array.from(root.querySelectorAll(selector)).find(e=>getKey(e)===focus.key);if(!replacement)merged.conflicts.push({key:focus.key,local:focus.value,deleted:true,focused:true});else if(focus.value!==focus.baselineValue&&replacement.value!==focus.baselineValue&&replacement.value!==focus.value)merged.conflicts.push({key:focus.key,before:focus.baselineValue,local:focus.value,remote:replacement.value,deleted:false,focused:true})}}catch{}finally{restoreFocus(root,focus,getKey)}if(applied){captureBaseline(mergeDelta(baseline,delta));lastRevision=delta.revision;onConflict(merged.conflicts);continue}}
+          if(validDelta(delta)&&!delta.reset&&!metadataChanged){if(compareRevision(delta.revision,lastRevision)<0)continue;const root=getRoot(),focus=captureFocus(root,getKey),merged=mergeDelta(baseline,delta,getDrafts());let applied=false,appliedSnapshot=null;try{appliedSnapshot=await applyDelta(delta,merged);applied=true;if(focus){const replacement=Array.from(root.querySelectorAll(selector)).find(e=>getKey(e)===focus.key);if(!replacement)merged.conflicts.push({key:focus.key,local:focus.value,deleted:true,focused:true});else if(focus.value!==focus.baselineValue&&replacement.value!==focus.baselineValue&&replacement.value!==focus.value)merged.conflicts.push({key:focus.key,before:focus.baselineValue,local:focus.value,remote:replacement.value,deleted:false,focused:true})}}catch{}finally{restoreFocus(root,focus,getKey)}if(applied){captureBaseline(appliedSnapshot&&Array.isArray(appliedSnapshot.rows)?appliedSnapshot:mergeDelta(baseline,delta));lastRevision=baseline?.revision||delta.revision;onConflict(merged.conflicts);continue}}
         }
-        const next=await fetchSnapshot();if(stopped)break;await applyFull(next);
+        forceSnapshot=false;const next=await fetchSnapshot();if(stopped)break;await applyFull(next);
       }
     }
-    function refresh(){
+    function refresh(snapshot=false){
       if(stopped)return Promise.resolve();pending=true;
+      if(snapshot)forceSnapshot=true;
       if(!running)running=drain().finally(()=>{running=null});
       return running;
     }

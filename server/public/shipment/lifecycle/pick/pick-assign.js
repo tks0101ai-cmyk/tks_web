@@ -444,7 +444,7 @@
       const uncertainty=unknown?' (chưa xác định)':'';
       // Số chọn khác SL khách đặt (thiếu, thừa hoặc chưa chọn) → bôi đỏ cả dòng.
       const mismatch=round6(total)!==round6(l.quantity);
-      const needCell=editable()?`<div class="picking-need-stepper"><button type="button" data-need-step="-1" data-need-line="${i}" aria-label="Giảm SL cần nhặt ${esc(l.productCode)}" ${l.quantity<=1?'disabled':''}>−</button><input type="text" inputmode="numeric" class="picking-need-input" data-need data-need-line="${i}" value="${fmt(l.quantity)}" aria-label="SL cần nhặt ${esc(l.productCode)}" title="Sửa số lượng cần nhặt (chỉ lưu trong chỉ định và phiếu in, không sửa đơn Kiot)"><button type="button" data-need-step="1" data-need-line="${i}" aria-label="Tăng SL cần nhặt ${esc(l.productCode)}" ${l.quantity>=Number.MAX_SAFE_INTEGER?'disabled':''}>+</button></div>`:`<strong>${fmt(l.quantity)}</strong>`;
+      const needCell=editable()?`<div class="picking-need-stepper"><button type="button" data-need-step="-1" data-need-line="${i}" aria-label="Giảm SL cần nhặt ${esc(l.productCode)}" ${l.quantity<=1?'disabled':''}>−</button><input type="text" inputmode="decimal" class="picking-need-input" data-need data-need-line="${i}" value="${fmt(l.quantity)}" aria-label="SL cần nhặt ${esc(l.productCode)}" title="Sửa số lượng cần nhặt (chỉ lưu trong chỉ định và phiếu in, không sửa đơn Kiot)"><button type="button" data-need-step="1" data-need-line="${i}" aria-label="Tăng SL cần nhặt ${esc(l.productCode)}" ${l.quantity>=Number.MAX_SAFE_INTEGER?'disabled':''}>+</button></div>`:`<strong>${fmt(l.quantity)}</strong>`;
       const kiotNote=l.kiotQuantity!==l.quantity?`<small class="picking-kiot" title="Số lượng trên đơn Kiot">Kiot: ${fmt(l.kiotQuantity)}</small>`:'';
       const removeBtn=canRemove(i)?`<button type="button" class="picking-remove" data-remove-line="${i}" title="Bỏ dòng này khỏi chỉ định và phiếu in (không sửa đơn Kiot)" aria-label="Bỏ ${esc(l.productCode)} khỏi chỉ định">Xóa dòng</button>`:'';
       return `<tr data-line="${i}"${mismatch?' class="picking-mismatch" data-mismatch="true"':''}><td class="picking-code"><span class="picking-grip" role="img" aria-label="Nhấn giữ và kéo để đổi thứ tự" title="Nhấn giữ và kéo lên/xuống để đổi thứ tự (phiếu in theo thứ tự này)">⋮⋮</span><span class="picking-code-text">${esc(l.productCode)}</span>${removeBtn}</td><td>${esc(l.productName)}</td><td class="picking-note">${esc(l.note)}</td><td class="picking-need">${needCell}<small class="picking-allocation ${lineOk(i)?'picking-good':'picking-bad'}" data-allocated="${total}"><span aria-hidden="true" class="picking-allocation-icon">${lineOk(i)?'✓':'!'}</span> Đã phân bổ ${fmt(total)}/${fmt(l.quantity)}</small>${kiotNote}</td>${stCell(st)}<td class="picking-total" data-total-code="${esc(l.productCode)}" data-shared-available="${shared===null?'unknown':shared}" data-remaining="${unknown?'unknown':before-selected}"><strong class="${shared===null?'picking-bad':'picking-good'}">${fmt(before)}${uncertainty}</strong><small class="picking-pickable" data-pickable="${Math.max(0,before-selected)}" title="Số lượng có thể bốc trừ phần đang chọn cho đơn này">Còn sau chỉ định: ${fmt(Math.max(0,before-selected))}${uncertainty}</small></td><td><div class="picking-locations">${rows.map(r=>{
@@ -454,7 +454,7 @@
         const zone=zoneOf((state.order||{}).branch,r.location),locTitle=r.location?(zone.name?r.location+' · '+zone.name:r.location):'Chưa có vị trí';
         const specNote=r.specText&&available!==null?`<small class="picking-spec ${r.warnings.length?'picking-st-frac':''}" title="${esc(r.warnings.map(w=>C.WARNING_LABEL[w]||w).join(', '))}">${esc(r.specText)}</small>`:'';
         const label=available===null?(r.warnings.length?esc(C.WARNING_LABEL[r.warnings[0]]||r.warnings[0]):(a?esc(r.specText):'Chưa rõ SL')):fmt(available);
-        return `<div class="picking-loc ${take?'selected':''}" data-zone="${zone.key}"><button type="button" class="picking-location ${take?'selected':''} ${hint?'suggested':''}" data-line="${i}" data-location="${esc(r.id)}" aria-pressed="${!!take}" ${off}><strong title="${esc(locTitle)}">${esc(r.location||'Chưa có vị trí')}</strong><span title="Số lượng có thể bốc tại vị trí sau khi trừ giữ chỗ của các đơn khác"${available===null?' class="picking-warn"':''}>${label}</span></button><div class="picking-qty"><div class="picking-stepper"><button type="button" data-step="-1" data-qline="${i}" data-qloc="${esc(r.id)}" aria-label="Giảm SL nhặt ${esc(l.productCode)} ${esc(r.location)}" ${off}>−</button><input type="text" inputmode="numeric" step="1" data-qty data-qline="${i}" data-qloc="${esc(r.id)}" value="${fmt(take)}" aria-label="SL nhặt ${esc(l.productCode)} ${esc(r.location)}" ${off}><button type="button" data-step="1" data-qline="${i}" data-qloc="${esc(r.id)}" aria-label="Tăng SL nhặt ${esc(l.productCode)} ${esc(r.location)}" ${off}>+</button></div></div>${specNote}${posToolsHtml(l,i,r)}</div>`;
+        return `<div class="picking-loc ${take?'selected':''}" data-zone="${zone.key}"><button type="button" class="picking-location ${take?'selected':''} ${hint?'suggested':''}" data-line="${i}" data-location="${esc(r.id)}" aria-pressed="${!!take}" ${off}><strong title="${esc(locTitle)}">${esc(r.location||'Chưa có vị trí')}</strong><span title="Số lượng có thể bốc tại vị trí sau khi trừ giữ chỗ của các đơn khác"${available===null?' class="picking-warn"':''}>${label}</span></button><div class="picking-qty"><div class="picking-stepper"><button type="button" data-step="-1" data-qline="${i}" data-qloc="${esc(r.id)}" aria-label="Giảm SL nhặt ${esc(l.productCode)} ${esc(r.location)}" ${off}>−</button><input type="text" inputmode="decimal" step="any" data-qty data-qline="${i}" data-qloc="${esc(r.id)}" value="${fmt(take)}" aria-label="SL nhặt ${esc(l.productCode)} ${esc(r.location)}" ${off}><button type="button" data-step="1" data-qline="${i}" data-qloc="${esc(r.id)}" aria-label="Tăng SL nhặt ${esc(l.productCode)} ${esc(r.location)}" ${off}>+</button></div></div>${specNote}${posToolsHtml(l,i,r)}</div>`;
       }).join('')||'<span class="picking-bad">Chưa tìm thấy vị trí của mã này.</span>'}${posAddHtml(l,i)}</div></td></tr>`;
     }).join('');
     const errors=order?allocErrors():['no-order'];
@@ -725,13 +725,13 @@
   }
   const parseQty=text=>{
     const raw=String(text).trim();
-    if(!/^(?:\d+|\d{1,3}(?:,\d{3})+)$/.test(raw))return null;
-    const n=Number(raw.replace(/,/g,''));return Number.isSafeInteger(n)&&n>=0?n:null;
+    if(!/^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,6})?$/.test(raw))return null;
+    const n=Number(raw.replace(/,/g,''));return Number.isFinite(n)&&n>=0&&n<=1e12?n:null;
   };
   // SL nhặt tại một vị trí: không âm, không vượt tồn khả dụng của vị trí và không làm tổng của dòng vượt SL cần nhặt.
   function setQty(i,id,value){
     const line=lines()[i],rows=rowsFor(line),row=rows.find(r=>r.id===id),available=R.quantity(row&&row.available);
-    if(!line||available===null||!Number.isSafeInteger(value)||value<0)return;
+    if(!line||available===null||!Number.isFinite(value)||value<0)return;
     const picks=state.allocations[i]||[],others=picks.filter(p=>p.id!==id).reduce((s,p)=>s+p.quantity,0);
     const usedByOtherLines=lines().reduce((s,_,j)=>s+(j===i?0:(state.allocations[j]||[]).filter(p=>p.id===id).reduce((n,p)=>n+p.quantity,0)),0);
     // Chỉ chặn theo tồn khả dụng của vị trí; nhặt vượt SL cần (thừa hàng) được phép và sẽ có cảnh báo khi chỉ định.
@@ -746,8 +746,8 @@
     if(needStep){
       const i=Number(needStep.dataset.needLine),line=lines()[i];
       if(!line)return;
-      const qty=Math.max(1,line.quantity+Number(needStep.dataset.needStep));
-      if(!Number.isSafeInteger(qty))return;
+      const qty=round6(Math.max(1,line.quantity+Number(needStep.dataset.needStep)));
+      if(!Number.isFinite(qty)||qty>1e12)return;
       setStatus('');setNeed(i,qty);render();
       $('pickingRows').querySelector(`[data-need-step="${needStep.dataset.needStep}"][data-need-line="${i}"]:not(:disabled)`)?.focus({preventScroll:true});
       return;
@@ -770,14 +770,14 @@
     }
     render();
   }
-  // SL cần nhặt sửa tay: số nguyên dương; trùng SL Kiot thì bỏ SL sửa. Phân bổ đã chọn giữ nguyên (lệch thì dòng đỏ).
+  // SL cần nhặt sửa tay: số dương (cho phép số lẻ); trùng SL Kiot thì bỏ SL sửa. Phân bổ đã chọn giữ nguyên (lệch thì dòng đỏ).
   function setNeed(i,value){
     const line=lines()[i];if(!line)return;
     if(value===line.kiotQuantity)delete state.needs[key(line.productCode)];else state.needs[key(line.productCode)]=value;
   }
   function onNeedChange(event){
     const qty=parseQty(event.target.value);
-    if(qty===null||qty<1){setStatus('Số lượng cần nhặt phải là số nguyên dương.',true);render();return;}
+    if(qty===null||qty<=0){setStatus('Số lượng cần nhặt phải là số dương.',true);render();return;}
     setStatus('');setNeed(Number(event.target.dataset.needLine),qty);render();
   }
   function onRowsChange(event){
@@ -785,7 +785,7 @@
     if(event.target.matches('[data-need]'))return onNeedChange(event);
     if(!event.target.matches('[data-qty]'))return;
     const qty=parseQty(event.target.value);
-    if(qty===null){setStatus('Số lượng nhặt phải là số nguyên không âm.',true);render();return;}
+    if(qty===null){setStatus('Số lượng nhặt phải là số không âm.',true);render();return;}
     setStatus('');setQty(Number(event.target.dataset.qline),event.target.dataset.qloc,qty);render();
   }
 

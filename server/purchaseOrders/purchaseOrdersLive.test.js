@@ -52,6 +52,20 @@ test('activity status column can be hidden and shown in order and container tabl
  const container=doc.querySelector('[data-container-column-toggle="lifecycle"]');assert.ok(container);assert.equal(container.parentElement.textContent.includes('Trạng thái'),true);
  container.checked=false;container.dispatchEvent(new p.w.Event('change',{bubbles:true}));assert.equal(doc.querySelector('#containerTable th[data-container-column="lifecycle"]'),null);
 });
+test('waiting rows appear once per region and changing one group updates its formulas immediately',async t=>{
+ const p=await page(t,{extraRows:[{id:'3',rowKey:'D00003',version:1,regionId:'1',contId:null,productCode:'H-ITEM',cartonCount:10,qtyPerCarton:1,m3PerCarton:.2}],saved:{columnLayout:11,visible:['rowKey','productCode','freightAmount']}}),doc=p.w.document;
+ assert.equal(doc.querySelectorAll('#containerTable [data-container-filter="wait:1"]').length,1);assert.equal(doc.querySelector('#containerTable [data-container-filter="wait:"]'),null);
+ const row=doc.querySelector('#containerTable [data-container-filter="wait:1"]').closest('tr'),rate=row.querySelector('[data-container-column="rate"]'),before=rate.textContent,input=row.querySelector('[data-wait-field="assumedM3"]');
+ input.focus();input.value='10';input.dispatchEvent(new p.w.Event('input',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,10));
+ assert.notEqual(rate.textContent,before);assert.equal(p.w.document.querySelector('#orderTable tr[data-id="3"] [data-field="freightAmount"]').textContent,'40,400,000');
+ input.dispatchEvent(new p.w.Event('change',{bubbles:true}));await tick();await tick();assert.equal(p.calls.filter(call=>call.url.endsWith('/waiting-config')).length,1);assert.equal(JSON.parse(p.calls.find(call=>call.url.endsWith('/waiting-config')).options.body).regionId,'1');
+});
+test('container surcharge keeps precise value available on hover and click',async t=>{
+ const p=await page(t),row=p.current.rows[0];Object.assign(row,{qtyPerCarton:2,cartonCount:3,unitPriceCny:4,fxRate:1.5,surchargePercent:.125});p.current.containerSummaries=[{contId:null,regionId:'1',count:1,missing:0,ton:0,m3:0,surcharge:4.500123456789,postpaid:0}];p.listeners.changed();await tick();await tick();
+ const button=p.w.document.querySelector('#containerTable [data-container-filter="wait:1"]')?.closest('tr')?.querySelector('[data-container-column="surcharge"] [data-money-detail]');
+ assert.ok(button);assert.equal(button.dataset.rounded,'5');assert.equal(button.dataset.exact,'4.500123456789');assert.match(button.title,/4\.500123456789/);
+ button.focus();button.click();assert.equal(button.textContent,'4.500123456789');assert.equal(button.getAttribute('aria-pressed'),'true');button.blur();assert.equal(button.textContent,'5');
+});
 test('pinned column offsets follow a resized column so pinned headers stay flush',async t=>{
  const p=await page(t),doc=p.w.document,table=doc.querySelector('#orderTable table'),right=table.querySelector('th[data-key="productName"]');
  const before=parseFloat(right.style.left),handle=table.querySelector('th[data-key="productCode"] .tks-column-resizer');
@@ -60,11 +74,21 @@ test('pinned column offsets follow a resized column so pinned headers stay flush
  assert.ok(Number(table.querySelector('thead th.purchase-pinned-column').style.zIndex)<25,'pinned order headers must sit below the watched container');
  assert.match(fs.readFileSync(path.join(dir,'../../shared/purchase-workspace.css'),'utf8'),/#watchedContainer\{[^}]*z-index:25/);
 });
-test('Excel import requires a fresh snapshot download before file selection',async t=>{
+test('container metric headers stay sticky and allow columns to shrink',async t=>{
+ const p=await page(t),doc=p.w.document,table=doc.querySelector('#containerTable table'),header=table.querySelector('th[data-container-column="name"]'),handle=header.querySelector('.tks-column-resizer');
+ assert.equal(header.dataset.minWidth,'24');assert.ok(handle,'container header should expose a resize handle');
+ const before=Number(handle.getAttribute('aria-valuenow'));
+ handle.dispatchEvent(new p.w.MouseEvent('pointerdown',{button:0,clientX:100,bubbles:true}));
+ doc.dispatchEvent(new p.w.MouseEvent('pointermove',{clientX:80,bubbles:true}));
+ doc.dispatchEvent(new p.w.MouseEvent('pointerup',{clientX:80,bubbles:true}));
+ assert.equal(Number(handle.getAttribute('aria-valuenow')),before-20);
+ assert.match(fs.readFileSync(path.join(dir,'workspace.css'),'utf8'),/#containerTable th\{position:sticky;top:0/);
+});
+test('Excel import accepts an existing snapshot and offers fresh download',async t=>{
  const p=await page(t),doc=p.w.document;doc.getElementById('import').click();
  assert.match(doc.getElementById('modalTitle').textContent,/Nhập Excel theo dữ liệu hiện tại/);
- assert.ok(doc.getElementById('downloadSnapshot'));assert.equal(doc.getElementById('importUploadArea').hidden,true);
- assert.equal(doc.querySelector('#modalBody #importFile').disabled,true);
+ assert.ok(doc.getElementById('downloadSnapshot'));assert.equal(doc.getElementById('importUploadArea').hidden,false);
+ assert.equal(doc.querySelector('#modalBody #importFile').disabled,false);
  assert.ok(doc.querySelector('#importDrop .import-drop-icon'));assert.match(doc.querySelector('#importDrop').textContent,/Kéo thả file Excel vào đây/);assert.match(doc.querySelector('#importDrop .import-choose').textContent,/Chọn file/);
  p.w.URL.createObjectURL=()=> 'blob:test';p.w.URL.revokeObjectURL=()=>{};p.w.HTMLAnchorElement.prototype.click=function(){};p.w.fetch=async()=>({ok:true,blob:async()=>new p.w.Blob()});doc.getElementById('downloadSnapshot').click();for(let i=0;i<4;i++)await tick();
  assert.equal(doc.getElementById('importUploadArea').hidden,false);assert.equal(doc.querySelector('#importFile').disabled,false);assert.match(doc.getElementById('importStatus').textContent,/Đã tải snapshot/);
@@ -95,13 +119,13 @@ async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees
  let current={sourceMode,integrationEnabled,// `orders`/`containers` la quyen theo tung bang, them tu bb0b27d8: allowed('edit') doc
  // permissions.orders chu khong con doc permissions.edit, thieu hai khoa nay thi ca bang
  // render o che do chi doc va moi test co thao tac deu hong.
- permissions:{orders:true,containers:true,edit:true,import:true,export:true,depart:true,arrive:true,...permissions},rows:[{id:'1',rowKey:'D00001',version:1,contId:null,productCode:'AC305',productName:'Băng dính',cartonCount:10,qtyPerCarton:100,supplier:'A'}],containers:[{id:'2',name:'CONT 11-1V',status:2,version:1}]};
- current.rows.push(...extraRows.map(r=>({productName:r.productCode,...r})));current.containers.push(...inactiveContainers);const calls=[],listeners={};
+ permissions:{orders:true,containers:true,edit:true,import:true,export:true,depart:true,arrive:true,...permissions},regions:[{id:'1',name:'H',color:'#16A34A',isActive:true,version:1}],waitingConfigs:{'1':{regionId:'1',freightMode:'formula',freightBase:202000000,freightCapacity:170,version:1}},rows:[{id:'1',rowKey:'D00001',version:1,regionId:'1',contId:null,productCode:'AC305',productName:'Băng dính',cartonCount:10,qtyPerCarton:100,supplier:'A'}],containers:[{id:'2',name:'CONT 11-1V',status:2,version:1}]};
+ current.rows.push(...extraRows.map(r=>({regionId:'1',productName:r.productCode,...r})));current.containers.push(...inactiveContainers);const calls=[],listeners={};
  w.PurchaseCalculations=require('../public/shared/purchase-calculations');w.PurchaseFreight=require('../public/shared/purchase-freight');w.PurchaseColumns=require('../public/shared/purchase-columns');w.PurchaseTasks=require('../public/shared/purchase-tasks');w.TKSNav={authGuard:async()=>({id:'buyer'})};
  w.PurchaseRealtime=require('../public/shared/purchase-realtime');w.PurchaseDraftHistory=require('../public/shared/purchase-draft-history');w.PurchaseContainerWorkspace=require('../public/shared/purchase-container-workspace');
  w.EventSource=class{addEventListener(k,fn){listeners[k]=fn}close(){}};
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false};
- w.fetch=async(url,options={})=>{if(url.startsWith('/api/me/table-prefs'))return {ok:true,json:async()=>({tables:{}})};calls.push({url,options});if(url.endsWith('/employees/batch')&&options.method==='PUT'){const {entries}=JSON.parse(options.body),next=[];for(const input of entries){let entry;if(input.id==null){entry={...input,id:'employee-'+(employees.length+1),version:1};delete entry.id;entry.id='employee-'+(employees.length+1);employees.push(entry)}else{entry=employees.find(e=>String(e.id)===String(input.id));if(!entry||input.version!==entry.version)return {ok:false,status:409,json:async()=>({error:'Danh sách NV đã đổi.'})};Object.assign(entry,input,{version:entry.version+1})}next.push(structuredClone(entry))}return {ok:true,json:async()=>({rows:next})}}
+ w.fetch=async(url,options={})=>{if(url.startsWith('/api/me/table-prefs'))return {ok:true,json:async()=>({tables:{}})};calls.push({url,options});if(url.endsWith('/waiting-config')&&options.method==='PATCH'){const input=JSON.parse(options.body),key=String(input.regionId),prior=current.waitingConfigs[key]||{regionId:key,freightMode:'formula',freightBase:202000000,freightCapacity:170,version:1};if(Number(input.version)!==Number(prior.version))return {ok:false,status:409,json:async()=>({error:'Cấu hình Chờ xếp đã đổi.'})};const next={...prior,...input.changes,version:prior.version+1};current.waitingConfigs[key]=next;return {ok:true,json:async()=>structuredClone(next)}}if(url.endsWith('/employees/batch')&&options.method==='PUT'){const {entries}=JSON.parse(options.body),next=[];for(const input of entries){let entry;if(input.id==null){entry={...input,id:'employee-'+(employees.length+1),version:1};delete entry.id;entry.id='employee-'+(employees.length+1);employees.push(entry)}else{entry=employees.find(e=>String(e.id)===String(input.id));if(!entry||input.version!==entry.version)return {ok:false,status:409,json:async()=>({error:'Danh sách NV đã đổi.'})};Object.assign(entry,input,{version:entry.version+1})}next.push(structuredClone(entry))}return {ok:true,json:async()=>({rows:next})}}
   if(url.endsWith('/employees')){
   if(options.method==='POST'){const input=JSON.parse(options.body),entry={id:'employee-'+(employees.length+1),name:input.name,version:1,isActive:true};employees.push(entry);return {ok:true,json:async()=>structuredClone(entry)}}
   return {ok:true,json:async()=>({rows:structuredClone(employees)})};
@@ -129,6 +153,10 @@ async function page(t,{saved,savedOutbox,sourceMode='web',extraRows=[],employees
  const change=(selector,v)=>{const el=w.document.querySelector(selector);el.value=v;el.dispatchEvent(new w.Event('change',{bubbles:true}))};
  return {w,calls,listeners,change,get current(){return current}};
 }
+test('shared branch switcher remains a native select outside purchase search widgets',async t=>{
+ const p=await page(t),doc=p.w.document,branch=doc.createElement('select');branch.className='tks-branch-select';branch.innerHTML='<option>Hà Nội</option><option>Sài Gòn</option>';doc.body.append(branch);await tick();
+ assert.equal(branch.parentElement,doc.body);assert.equal(branch.classList.contains('purchase-search-select-native'),false);assert.equal(branch.tabIndex,0);
+});
 test('version history restores the selected snapshot after confirmation',async t=>{
  const p=await page(t),doc=p.w.document,first='00000000-0000-4000-8000-000000000001',restored='00000000-0000-4000-8000-000000000002';
  let versions=[{id:first,action:'edit',created_at:'2026-11-16T08:00:00Z',actor_id:'manager',actor_name:'Người quản lý',row_count:1}];

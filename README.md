@@ -673,3 +673,14 @@ Cập nhật gần nhất: 17/11/2026.
 
 
 17/11/2026 — Thu mua: cấu hình cước dùng chung cho nhóm Chờ xếp trong `purchase_settings`, version chống ghi đè; không tạo cont giả.
+
+## Triển khai VPS + tự cập nhật (17/11/2026)
+
+Thư mục `deploy/` (không thuộc ứng dụng, chỉ dùng trên VPS; bản chạy thật nằm ở `/root/tokosi_deploy_dash/`, chép lại bằng `scp` khi sửa):
+
+- `ecosystem.config.cjs`: PM2 `tokosi-dash-web` (**cluster, đúng 1 instance** để `pm2 reload` không gián đoạn; không tăng vì web còn chạy job thông báo/Telegram) và `tokosi-dash-worker` (fork). Cổng `3100` (3000/3001 do dự án khác trên VPS giữ).
+- `run.cjs`: nạp `server/.env` bằng `process.loadEnvFile` rồi chạy `index.js`/`worker.js` (`--env-file` làm cluster thoát code 9; `dotenv` là devDependency).
+- `autodeploy.sh`: cron mỗi phút (`flock`). `git fetch` → có commit mới → **chặn nếu có migration mới** (DB Supabase dùng chung, ap tay rồi chạy `FORCE=1 autodeploy.sh`) → `merge --ff-only` → `npm ci` vào thư mục tạm rồi đổi tên (chỉ khi `package*.json` đổi) → kiểm tra cú pháp + biến bắt buộc → `pm2 reload` → chờ `/health`; lỗi thì quay về commit cũ. Commit lỗi không bị thử lại tới khi `origin/main` đổi. Chỉ đổi ngoài `server/` thì không reload. Log: `/var/log/tokosi-autodeploy.log`.
+- Đo thật 17/11/2026: deploy 8f638c4 → 400/400 lần gọi `/health` (mỗi 0,1 s) trả 200; `pm2 reload` riêng lẻ từng thấy 1/250 lần lỗi.
+
+Cập nhật gần nhất: 17/11/2026.

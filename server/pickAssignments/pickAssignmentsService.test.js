@@ -184,8 +184,17 @@ test('assign inserts every position in one batch and never fetches seller contac
   }finally{await db.close();}
 });
 
-test('reject fractional source lines before merging and fractional allocations', async () => {
-  for (const quantities of [[0.4], [0.6], [0.4, 0.6], [-1], [0]]) {
+test('reject non-positive source lines; fractional lines and allocations are accepted', async () => {
+  {
+    const {db,service}=await fixture({orders:{DH001:order({lines:[0.4,0.6].map(quantity=>({productCode:'AAA1',quantity,price:10}))})}});
+    try {
+      const view=await service.candidates(ctx(),{branch:'HN',orderCode:'DH001'});
+      assert.equal(view.order.eligible,true);
+      const {assignment}=await service.assign(ctx(),assignBody([{productCode:'AAA1',positionId:1,qty:1}]));
+      assert.ok(assignment.id);
+    } finally { await db.close(); }
+  }
+  for (const quantities of [[-1], [0]]) {
     const {db,service}=await fixture({orders:{DH001:order({lines:quantities.map(quantity=>({productCode:'AAA1',quantity,price:10}))})}});
     try {
       await assert.rejects(()=>service.assign(ctx(),assignBody([{productCode:'AAA1',positionId:1,qty:1}])),{code:'VALIDATION'});
@@ -196,7 +205,7 @@ test('reject fractional source lines before merging and fractional allocations',
     } finally { await db.close(); }
   }
   const {db,service}=await fixture();
-  try { await assert.rejects(()=>service.assign(ctx(),assignBody([{productCode:'AAA1',positionId:1,qty:0.6}])),{code:'VALIDATION'}); }
+  try { await assert.rejects(()=>service.assign(ctx(),assignBody([{productCode:'AAA1',positionId:1,qty:-0.6}])),{code:'VALIDATION'}); }
   finally { await db.close(); }
 });
 

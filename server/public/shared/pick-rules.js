@@ -53,18 +53,18 @@
     const used = new Map();
     const errors = [];
     lines.forEach((line, index) => {
-      if (!Number.isSafeInteger(line.quantity) || line.quantity <= 0) {
-        errors.push(line.productCode + ': số lượng cần nhặt phải là số chiếc nguyên dương');
+      if (!Number.isFinite(line.quantity) || line.quantity <= 0) {
+        errors.push(line.productCode + ': số lượng cần nhặt phải là số dương');
       }
       let total = 0, cartoned = true, maxCarton = 0;
       for (const pick of allocations[index] || []) {
         const row = locations.find(c => c.id === pick.id && key(c.code) === key(line.productCode));
-        if (!row || !row.location || quantity(row.available) === null || !Number.isSafeInteger(pick.quantity) || pick.quantity < 0) { errors.push('Chỉ định không hợp lệ (số chiếc phải nguyên): ' + line.productCode); continue; }
+        if (!row || !row.location || quantity(row.available) === null || !Number.isFinite(pick.quantity) || pick.quantity < 0) { errors.push('Chỉ định không hợp lệ: ' + line.productCode); continue; }
         total += pick.quantity;
-        if (!Number.isSafeInteger(total)) errors.push(line.productCode + ': tổng số lượng vượt giới hạn');
+        if (!Number.isFinite(total) || total > 1e12) errors.push(line.productCode + ': tổng số lượng vượt giới hạn');
         if (pick.quantity > 0) { if (row.perCarton > 0) maxCarton = Math.max(maxCarton, row.perCarton); else cartoned = false; }
         used.set(row.id, (used.get(row.id) || 0) + pick.quantity);
-        if (!Number.isSafeInteger(used.get(row.id))) errors.push(row.code + ': tổng phân bổ vượt giới hạn');
+        if (!Number.isFinite(used.get(row.id)) || used.get(row.id) > 1e12) errors.push(row.code + ': tổng phân bổ vượt giới hạn');
       }
       /* Nhặt tròn thùng: khi mọi vị trí được chọn có quy cách thùng, SL thực nhặt được vượt SL cần
          nhưng phải ít hơn một thùng (bỏ bớt được một thùng thì đã thiếu). */
