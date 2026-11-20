@@ -53,6 +53,7 @@ function freshRepository({ hn, sg, northSouth, northSouthError, pickupHn, pickup
 
   return {
     repo,
+    values,
     appendedRows,
     restore() {
       delete require.cache[repoPath];
@@ -113,6 +114,20 @@ test('readAll đọc cả 2 tab, gộp lại và gắn đúng _branch', async ()
   } finally {
     ctx.restore();
   }
+});
+
+test('readAll reuses parsed rows until a Sheets tab supplies a new values array', async () => {
+  const ctx = freshRepository({ hn: [HEADERS, ['HD001']], sg: [HEADERS, ['HD002']] });
+  try {
+    const first = await ctx.repo.readAll();
+    assert.strictEqual(await ctx.repo.readAll(), first);
+    const config = require('../config');
+    ctx.values[config.ORDER_LIFECYCLE_SHEET_HN] = [HEADERS, ['HD003']];
+    const refreshed = await ctx.repo.readAll();
+    assert.notStrictEqual(refreshed, first);
+    assert.equal(refreshed[0].orderCode, 'HD003');
+    assert.equal(refreshed[1], first[1], 'unchanged SG rows are reused');
+  } finally { ctx.restore(); }
 });
 
 test('readAll bỏ hàng trống (mọi cột rỗng)', async () => {

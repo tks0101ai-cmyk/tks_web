@@ -9,9 +9,10 @@ function freshService(rows, historyRows) {
   const previousRepo = require.cache[repoPath];
 
   const appended = [];
+  const stableHistory = historyRows || [];
   const repoExports = {
     readAll: async () => rows,
-    readOverrideHistory: async () => historyRows || [],
+    readOverrideHistory: async () => stableHistory,
     appendOverride: async (entry) => {
       const full = Object.assign({ history_id: 'OVR-TEST', changed_at: '2026-09-12 10:00:00' }, entry);
       appended.push(full);
@@ -651,6 +652,18 @@ test('queryOrders: danh sách đã gộp được dùng lại khi dữ liệu ng
     Date.now = realNow;
     ctx.restore();
   }
+});
+
+test('queryOrders reads a stale cached Sheets snapshot while refresh runs in background', async () => {
+  const ctx = freshService([record({ orderCode: 'DH000001' })]);
+  try {
+    const repo = require.cache[require.resolve('./orderLifecycleRepository')].exports;
+    const options = [];
+    repo.readAll = async opts => { options.push(opts); return [record({ orderCode: 'DH000001' })]; };
+    repo.readOverrideHistory = async opts => { options.push(opts); return []; };
+    await ctx.service.queryOrders({});
+    assert.deepEqual(options, [{ allowStale: true }, { allowStale: true }]);
+  } finally { ctx.restore(); }
 });
 
 test('lookup (findOrder) và ghi đè KHÔNG dùng dữ liệu Kiot: đơn chỉ có ở Kiot -> chưa gửi kế toán / 404', async () => {
