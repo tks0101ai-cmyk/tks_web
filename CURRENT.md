@@ -22,6 +22,7 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 
 ## Đang dở / chờ
 
+- [ ] 20/11 — Thu mua: cho phép lưu đồng thời các trường cont khác nhau và chỉ báo xung đột khi cùng trường bị sửa; chưa kiểm thử hoặc deploy.
 - [ ] 18/11 — Thu mua: import snapshot tự tạo vùng/cont mới đã sửa cục bộ (không migration) — chạy kiểm thử import liên quan, review rồi deploy web; chưa áp dụng lên hệ thống thật.
 - [ ] 18/11 — Thu mua: import snapshot tự tạo vùng/cont mới + preview snapshot cũ có xác nhận, giữ nguyên dòng ngoài file (cục bộ, không migration) — chưa chạy test; review rồi deploy web, chưa áp dụng hệ thống thật.
 

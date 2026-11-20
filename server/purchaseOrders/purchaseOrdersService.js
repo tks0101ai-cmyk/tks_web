@@ -685,13 +685,23 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
     })},
     async restoreContainer(user,{id,version}) {return transaction(user,async client=>{const row=(await client.query('SELECT * FROM product_containers WHERE id=$1 FOR UPDATE',[id])).rows[0];if(!row?.deleted_at||Number(row.version)!==Number(version))throw fail(409,'VERSION_CONFLICT','Cont đã thay đổi hoặc đã khôi phục.');const updated=(await client.query('UPDATE product_containers SET deleted_at=NULL,version=version+1,updated_at=now() WHERE id=$1 RETURNING *',[id])).rows[0];await audit(client,user,'container_restore',{containerId:String(id),name:row.name});return {changed:true,value:updated}})},
 
-    async updateContainer(user,id,{version,changes={},rows}) {
+    async updateContainer(user,id,{version,before={},changes={},rows}) {
       return transaction(user,async client=>{
+        if(!Number.isSafeInteger(Number(version))||Number(version)<1)throw fail(400,'VERSION_REQUIRED','Cần phiên bản cont đang xem.');
         if(!changes||typeof changes!=='object'||Array.isArray(changes))throw fail(400,'VALIDATION_ERROR','Thay đổi cont không hợp lệ.');
+        if(!before||typeof before!=='object'||Array.isArray(before))throw fail(400,'VALIDATION_ERROR','Giá trị cont trước khi sửa không hợp lệ.');
         if(Object.hasOwn(changes,'freightFormula')&&changes.freightFormula!=null){changes.freightMode='formula';changes.freight=null}else if(Object.hasOwn(changes,'freight')&&changes.freight===null){changes.freightMode='formula';changes.freightFormula=null;changes.freightBase=202000000;changes.freightCapacity=170}else if(Object.hasOwn(changes,'freight')){changes.freightMode='manual';changes.freightFormula=null}else if(changes.freightMode==='manual')changes.freightFormula=null;
-        const container=await getContainer(client,id,version);
+        const container=await getContainer(client,id);
         if(!container)throw fail(404,'CONTAINER_NOT_FOUND','Không có cont.');
         const fields={assumedM3:'assumed_m3',containerFxRate:'container_fx_rate',arrivalNote:'arrival_note',arrivalDate:'arrival_date',arrivalWarehouse:'arrival_warehouse',moneyMatchStatus:'money_match_status',maxTon:'max_ton',m3Min:'m3_min',m3Max:'m3_max',name:'name',carrier:'carrier',loader:'loader',nameCn:'name_cn',truckName:'truck_name',loading:'loading',regionId:'region_id',note:'note',freight:'freight',freightMode:'freight_mode',freightFormula:'freight_formula',freightBase:'freight_base',freightCapacity:'freight_capacity'};
+        const numericFields=new Set(['assumedM3','containerFxRate','maxTon','m3Min','m3Max','freight','freightBase','freightCapacity']);
+        const sameValue=(key,left,right)=>{if(left==null||left==='')return right==null||right==='';if(right==null||right==='')return false;if(numericFields.has(key)){const a=Number(left),b=Number(right);return Number.isFinite(a)&&Number.isFinite(b)&&a===b}return String(left)===String(right)};
+        if(Number(container.version)!==Number(version)){
+          const conflicts=Object.keys(changes).filter(key=>!fields[key]||!Object.hasOwn(before,key)||!sameValue(key,container[fields[key]],before[key])&&!sameValue(key,container[fields[key]],changes[key]));
+          if(conflicts.length)throw fail(409,'VERSION_CONFLICT','Cont có trường bạn đang sửa đã được người khác thay đổi.',{conflicts});
+        }
+        changes=Object.fromEntries(Object.entries(changes).filter(([key,value])=>!fields[key]||!sameValue(key,container[fields[key]],value)));
+        if(!Object.keys(changes).length)return {changed:false,value:container};
         if(Object.hasOwn(changes,'freightFormula')&&changes.freightFormula!=null){
           const formula=changes.freightFormula;
           const volume=(await client.query('SELECT COALESCE(sum(carton_count*m3_per_carton),0)::numeric AS volume FROM purchase_orders WHERE container_id=$1 AND deleted_at IS NULL AND inactive_at IS NULL',[id])).rows[0].volume;
