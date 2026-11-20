@@ -7,6 +7,7 @@ const { hasFeature } = require('../auth/featureRegistry');
 const { createPurchaseOrdersService } = require('./purchaseOrdersService');
 const workbook = require('../public/shared/purchase-workbook');
 const { formatPurchaseSnapshot } = require('./purchaseSnapshotFormatter');
+const { formatPurchaseExport } = require('./purchaseExportFormatter');
 const columns = require('../public/shared/purchase-columns');
 function createPurchaseOrdersRouter(dependencies={}) {
   const router=express.Router(),service=dependencies.service||createPurchaseOrdersService({deferProjection:true});
@@ -48,13 +49,14 @@ function createPurchaseOrdersRouter(dependencies={}) {
     const allowed=new Set(columns.map(c=>c.k)),fields=req.body.fields,ids=req.body.ids,filters=req.body.filters,validIds=Array.isArray(ids)&&ids.length<=10000&&!ids.some(id=>!/^[1-9]\d*$/.test(String(id))),validFilters=filters&&typeof filters==='object'&&!Array.isArray(filters)&&Object.keys(filters).every(key=>['search','container','region','status','buyer','from','to','quick','flag','sort','colSort','onlyIds','ids'].includes(key))&&(filters.ids==null||Array.isArray(filters.ids)&&filters.ids.length<=10000&&!filters.ids.some(id=>!/^[1-9]\d*$/.test(String(id))));
     if(!Array.isArray(fields)||!fields.length||fields.some(k=>!allowed.has(k))||!(validIds||validFilters))return res.status(400).json({code:'EXPORT_INVALID',error:'Danh sách dòng hoặc bộ lọc/cột không hợp lệ.'});
     const rows=await service.exportRows(req.user,validIds?ids.map(String):null,validFilters?filters:null);
-    res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').attachment('Thu-mua.xlsx').send(Buffer.from(workbook.bytes(workbook.exportWorkbook(rows,columns,fields))));
+    const file=await formatPurchaseExport(rows,columns,fields,req.body.language==='zh'?'zh':'vi');
+    res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').attachment('Thu-mua.xlsx').send(Buffer.from(file));
   }));
   router.get(root+'/export',requireFeature('purchase.export'),handle(async(req,res)=>{
     const allowed=new Set(columns.map(c=>c.k)),fields=req.query.fields?String(req.query.fields).split(','):columns.map(c=>c.k);
     if(fields.some(k=>!allowed.has(k)))return res.status(400).json({code:'EXPORT_FIELDS_INVALID',error:'Cột xuất không hợp lệ.'});
-    const rows=await service.exportRows(req.user);const book=workbook.exportWorkbook(rows,columns,fields);
-    res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').attachment('Thu-mua.xlsx').send(Buffer.from(workbook.bytes(book)));
+    const rows=await service.exportRows(req.user),file=await formatPurchaseExport(rows,columns,fields,req.query.language==='zh'?'zh':'vi');
+    res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').attachment('Thu-mua.xlsx').send(Buffer.from(file));
   }));
   router.post(root+'/bulk-create',ordersScope,handle(async(req,res)=>res.status(201).json(await service.createMany(req.user,req.body))));
   router.post(root,ordersScope,handle(async(req,res)=>res.status(201).json(await service.create(req.user,req.body))));
