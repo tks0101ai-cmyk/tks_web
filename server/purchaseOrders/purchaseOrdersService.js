@@ -203,7 +203,27 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         // Serialize only retries of the same idempotency key, not unrelated users' writes.
         await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[String(actor(user).id)+':'+request.key]);
         const prior=(await client.query('SELECT fingerprint,result FROM purchase_requests WHERE actor_id=$1 AND request_key=$2',[actor(user).id,request.key])).rows[0];if(prior){if(prior.fingerprint!==request.fingerprint)throw fail(409,'REQUEST_KEY_REUSED','Mã lần lưu đã dùng cho dữ liệu khác.');await client.query('COMMIT');committed=true;return prior.result}}
-      const operation=randomUUID();client.purchaseOperation=operation;client.purchaseAction='';await client.query('INSERT INTO purchase_operations(id,actor_id) VALUES($1,$2)',[operation,actor(user).id]);await client.query("SELECT set_config('purchase.operation_id',$1,true)",[operation]);const result=await fn(client);await client.query('UPDATE purchase_operations SET action=$2 WHERE id=$1',[operation,client.purchaseAction||'']);if(result.changed&&integrated&&client.purchaseProjectionRequired!==false){if(deferProjection){await client.query('INSERT INTO purchase_projection_queue(requested_at) VALUES(now())');client.purchaseProjectionRequested=true;client.purchaseProjectionDeferred=true}else{await client.query('SELECT pg_advisory_xact_lock($1)',[PROJECTION_LOCK_KEY]);await project(client)}}const response=result.changed&&['create','edit','bulk_edit','transfer','balance_plan','delete','restore','deactivate','reactivate','restore_version','container_delete','container_restore','container_deactivate','container_reactivate'].includes(client.purchaseAction)&&result.value&&typeof result.value==='object'?{...result.value,operationId:operation}:result.value;if(request)await client.query('INSERT INTO purchase_requests(actor_id,request_key,fingerprint,result) VALUES($1,$2,$3,$4)',[actor(user).id,request.key,request.fingerprint,JSON.stringify(response)]);await client.query('COMMIT');committed=true;
+      const operation=randomUUID();client.purchaseOperation=operation;client.purchaseAction='';
+      // Create the operation and set its transaction-local trigger context in one
+      // database round trip. The trigger still sees the same operation UUID.
+      await client.query("WITH operation AS (INSERT INTO purchase_operations(id,actor_id) VALUES($1,$2) RETURNING id) SELECT set_config('purchase.operation_id',id::text,true) FROM operation",[operation,actor(user).id]);
+      const result=await fn(client),response=result.changed&&['create','edit','bulk_edit','transfer','balance_plan','delete','restore','deactivate','reactivate','restore_version','container_delete','container_restore','container_deactivate','container_reactivate'].includes(client.purchaseAction)&&result.value&&typeof result.value==='object'?{...result.value,operationId:operation}:result.value;
+      const enqueueProjection=!!(result.changed&&integrated&&client.purchaseProjectionRequired!==false&&deferProjection);
+      if(result.changed&&integrated&&client.purchaseProjectionRequired!==false){if(deferProjection){client.purchaseProjectionRequested=true;client.purchaseProjectionDeferred=true}else{await client.query('SELECT pg_advisory_xact_lock($1)',[PROJECTION_LOCK_KEY]);await project(client)}}
+      if(deferProjection){
+        // HTTP writes use deferred projection. Finalize the operation, optional
+        // projection outbox row, and idempotent response together to avoid three
+        // sequential network round trips to the database on every save.
+        await client.query(`WITH operation AS (UPDATE purchase_operations SET action=$2 WHERE id=$1 RETURNING id),
+          projection AS (INSERT INTO purchase_projection_queue(requested_at) SELECT now() FROM operation WHERE $3::boolean RETURNING id),
+          request AS (INSERT INTO purchase_requests(actor_id,request_key,fingerprint,result)
+            SELECT $4,$5,$6,$7::jsonb FROM operation WHERE $8::boolean RETURNING request_key)
+          SELECT id FROM operation`,[operation,client.purchaseAction||'',enqueueProjection,actor(user).id,request?.key||null,request?.fingerprint||null,JSON.stringify(response),!!request]);
+      }else{
+        await client.query('UPDATE purchase_operations SET action=$2 WHERE id=$1',[operation,client.purchaseAction||'']);
+        if(request)await client.query('INSERT INTO purchase_requests(actor_id,request_key,fingerprint,result) VALUES($1,$2,$3,$4)',[actor(user).id,request.key,request.fingerprint,JSON.stringify(response)]);
+      }
+      await client.query('COMMIT');committed=true;
       if(result.changed){try{if(!client.purchaseProjectionDeferred&&((integrated&&client.purchaseProjectionRequired!==false)||client.purchaseContainersChanged)){invalidate(pool);events.emit('containersChanged',{source:'purchase'})}events.emit('purchase-orders-changed',{})}catch{}}
       return response;
     }catch(error){if(!committed)await client.query('ROLLBACK').catch(()=>{});if(['22P02','22007','23514','23502'].includes(error.code))throw fail(400,'VALIDATION_ERROR','Dữ liệu không hợp lệ.');if(error.code==='42P01')throw fail(503,'PURCHASE_MIGRATION_REQUIRED','Chưa áp dụng migration Thu mua.');throw error}finally{client.release()}
