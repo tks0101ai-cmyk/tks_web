@@ -6,6 +6,8 @@ const PurchaseWorkbook=require('../public/shared/purchase-workbook');
 
 const NUMBER_TYPES=new Set(['num','num1','num2','num3','num4','cny','money','pct','ratio']);
 const HEADER_FILL={type:'pattern',pattern:'solid',fgColor:{argb:'FFEAF1F8'}};
+const CELL_BORDER={top:{style:'thin',color:{argb:'FFD9E0EA'}},bottom:{style:'thin',color:{argb:'FFD9E0EA'}},left:{style:'thin',color:{argb:'FFD9E0EA'}},right:{style:'thin',color:{argb:'FFD9E0EA'}}};
+const HEADER_BORDER={top:{style:'thin',color:{argb:'FFB8C6D8'}},bottom:{style:'thin',color:{argb:'FF9AAABD'}},left:{style:'thin',color:{argb:'FFB8C6D8'}},right:{style:'thin',color:{argb:'FFB8C6D8'}}};
 
 function dateOnly(value){
   if(value==null||value==='')return null;
@@ -55,7 +57,7 @@ async function formatPurchaseExport(rows,columns,fields,language='vi'){
   const sheet=book.addWorksheet('Đặt hàng',{views:[{state:'frozen',ySplit:1,showGridLines:false}]});
   sheet.columns=exportColumns.map((column,index)=>({key:column.k,width:widthForColumn(column,values.map(row=>row[index]))}));
   const header=sheet.addRow(exportColumns.map(column=>PurchaseHeaders.label(column,language)));
-  header.height=32;header.eachCell({includeEmpty:true},cell=>{cell.font={name:'Arial',size:10,bold:true,color:{argb:'FF1D3553'}};cell.fill=HEADER_FILL;cell.alignment={vertical:'middle',horizontal:'center',wrapText:true};cell.border={bottom:{style:'thin',color:{argb:'FF9AAABD'}}}});
+  header.height=32;header.eachCell({includeEmpty:true},cell=>{cell.font={name:'Arial',size:10,bold:true,color:{argb:'FF1D3553'}};cell.fill=HEADER_FILL;cell.alignment={vertical:'middle',horizontal:'center',wrapText:true};cell.border=HEADER_BORDER});
   for(const rowValues of values)sheet.addRow(rowValues);
   for(let index=0;index<exportColumns.length;index++){
     const column=exportColumns[index],target=sheet.getColumn(index+1);
@@ -63,7 +65,7 @@ async function formatPurchaseExport(rows,columns,fields,language='vi'){
     else if(NUMBER_TYPES.has(column.t))target.numFmt=numberFormat(column);
     target.alignment={vertical:'middle',horizontal:NUMBER_TYPES.has(column.t)?'right':column.t==='datetime'?'center':'left'};
   }
-  sheet.eachRow((row,rowNumber)=>{if(rowNumber===1)return;row.eachCell({includeEmpty:true},cell=>{cell.font={name:'Arial',size:10};cell.alignment={...cell.alignment,vertical:'middle'}})});
+  sheet.eachRow((row,rowNumber)=>{if(rowNumber===1)return;row.eachCell({includeEmpty:true},cell=>{cell.font={name:'Arial',size:10};cell.alignment={...cell.alignment,vertical:'middle'};cell.border=CELL_BORDER})});
   if(sheet.rowCount)sheet.autoFilter={from:{row:1,column:1},to:{row:sheet.rowCount,column:exportColumns.length}};
   return book.xlsx.writeBuffer();
 }
