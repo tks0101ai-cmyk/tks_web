@@ -70,10 +70,23 @@ function createPurchaseOrdersRouter(dependencies={}) {
   router.get(root+'/import/snapshot',requireFeature('purchase.import'),handle(async(req,res)=>{const snapshot=await service.importSnapshot(req.user);const data=workbook.exportImportSnapshot({...snapshot,columns});res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').set('Content-Disposition','attachment; filename="tokosi-purchase-snapshot.xlsx"').send(Buffer.from(data))}));
   router.post(root+'/import/preview',requireFeature('purchase.import'),(req,res,next)=>upload.single('file')(req,res,error=>{
     if(error)return res.status(400).json({code:'IMPORT_FILE_INVALID',error:'Chỉ chọn một file, tối đa 10 MB.'});next();
-  }),handle(async(req,res)=>{
+  }),async(req,res)=>{
     if(!req.file||!/\.xlsx$/i.test(req.file.originalname))return res.status(400).json({code:'IMPORT_FILE_INVALID',error:'Chọn file .xlsx.'});
-    res.json(await service.previewImport(req.user,{buffer:req.file.buffer,sheetName:req.body.sheetName,allowStale:req.query.allowStale==='1'}));
-  }));
+    res.status(200).set({'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache, no-transform','Connection':'keep-alive','X-Accel-Buffering':'no'});
+    res.flushHeaders?.();
+    const send=payload=>{if(!res.destroyed)res.write('data: '+JSON.stringify(payload)+'\n\n')};
+    const yieldToClient=()=>new Promise(resolve=>setImmediate(resolve));
+    try{
+      send({type:'progress',percent:5,message:'File đã tải lên. Máy chủ đang bắt đầu xử lý…'});await yieldToClient();
+      const result=await service.previewImport(req.user,{buffer:req.file.buffer,allowStale:req.query.allowStale==='1',onProgress:async(percent,message)=>{send({type:'progress',percent,message});await yieldToClient()}});
+      send({type:'result',result});res.end();
+    }catch(error){
+      if(error.code==='42P01'){error.statusCode=503;error.code='PURCHASE_MIGRATION_REQUIRED';error.message='Thu mua chưa khởi tạo xong dữ liệu. Các module khác vẫn hoạt động.'}
+      const status=error.statusCode||500,requestId=status>=500?randomUUID():null;
+      if(status>=500)console.error('[Purchase API] Request failed',{requestId,method:req.method,path:String(req.originalUrl||req.path||'').split('?')[0],name:error?.name,code:error?.code,message:String(error?.message||error).slice(0,300),stack:String(error?.stack||'').split('\n').slice(1,6).join('\n')});
+      send({type:'error',status,code:error.code||'PURCHASE_FAILED',error:status<500?error.message:status===503?error.message:'Không xử lý được Thu mua.',...(error.rows?{rows:error.rows}:{}),...(error.conflicts?{conflicts:error.conflicts}:{}),...(error.clientId?{clientId:error.clientId}:{}),...(requestId?{requestId}:{})});res.end();
+    }
+  });
   router.post(root+'/import/revise',requireFeature('purchase.import'),handle(async(req,res)=>{if(!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(req.body.token||''))return res.status(400).json({code:'IMPORT_TOKEN_INVALID',error:'Bản xem trước không hợp lệ.'});res.json(await service.reviseImport(req.user,req.body.token,req.body.rows))}));
   router.post(root+'/import/confirm',requireFeature('purchase.import'),handle(async(req,res)=>{
     if(!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(req.body.token||''))return res.status(400).json({code:'IMPORT_TOKEN_INVALID',error:'Bản xem trước không hợp lệ.'});
