@@ -31,7 +31,7 @@ function measurementFallbacks(row) {
   const perUnit=row.measure_m3_per_unit==null?null:Number(row.measure_m3_per_unit),perCarton=row.measure_per_carton==null?null:Number(row.measure_per_carton),kgPerUnit=row.measure_kg_per_unit==null?null:Number(row.measure_kg_per_unit);
   const literWarehouse=perUnit==null?null:perUnit*1000,gramWarehouse=kgPerUnit==null?null:kgPerUnit*1000;
   const derived=calculations.row({...row,literWarehouse,gramWarehouse,measurementOverrides:{}},null);
-  return {literWarehouse,m3Warehouse:perUnit==null||perCarton==null?null:Number((perUnit*perCarton).toFixed(12)),literChina:derived.literChina,literDiff:derived.literDiff,gramWarehouse,gramChina:derived.gramChina,gramDiff:derived.gramDiff,measuredOn:null,ratio:derived.ratio};
+  return {literWarehouse,m3Warehouse:perUnit==null||perCarton==null?null:calculations.mul(perUnit,perCarton),literChina:derived.literChina,literDiff:derived.literDiff,gramWarehouse,gramChina:derived.gramChina,gramDiff:derived.gramDiff,measuredOn:null,ratio:derived.ratio};
 }
 function jsRow(row) {
   const out={freightAmount:null,regionId:row.region_id==null?null:String(row.region_id),id:String(row.id),rowKey:row.row_key,sourceSheet:row.source_sheet??null,sourceRow:row.source_row==null?null:Number(row.source_row),rootKey:row.root_key,splitFromKey:row.split_from_key,contId:row.container_id==null?null:String(row.container_id),version:Number(row.version),buyerEmployeeId:row.buyer_employee_id==null?null:String(row.buyer_employee_id),inactiveAt:row.inactive_at??null,deletedAt:row.deleted_at??null};
