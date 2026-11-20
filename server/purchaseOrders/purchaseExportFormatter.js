@@ -34,16 +34,23 @@ function visibleText(value,column){
   return String(value).split(/\r?\n/).reduce((longest,line)=>Math.max(longest,[...line].length),0);
 }
 
+function orderTableContainer(row){
+  if(row.contId==null)return 'Chờ'+(row.regionName?' '+row.regionName:'');
+  return String(row.container??'').replace(/^CONT\s+/i,'').replace(/\s+(?:CHƯA CÓ LỊCH|CHỜ BỐC|ĐÃ BỐC|ĐÃ VỀ).*$/i,'').trim();
+}
+
 function widthForColumn(column,values){
   let width=0;
   for(const value of values){const text=visibleText(value,column);width=Math.max(width,typeof text==='number'?text:[...text].length)}
-  return Math.min(32,Math.max(7,width+1));
+  // Headers wrap onto multiple lines; size each column to the displayed cell
+  // values so a long title does not leave unused horizontal space.
+  return Math.max(4,width);
 }
 
 async function formatPurchaseExport(rows,columns,fields,language='vi'){
   const selected=new Set(fields||columns.map(column=>column.k)),exportColumns=columns.filter(column=>selected.has(column.k));
   if(!exportColumns.length)throw Error('Chọn ít nhất một cột để xuất.');
-  const values=rows.map(row=>exportColumns.map(column=>column.region?(row.regionName??row.regionId??null):column.t==='datetime'&&column.k!=='measuredOn'?(dateOnly(row[column.k])||row[column.k]||null):(row[column.k]??null)));
+  const values=rows.map(row=>exportColumns.map(column=>column.k==='container'?orderTableContainer(row):column.region?(row.regionName??row.regionId??null):column.t==='datetime'&&column.k!=='measuredOn'?(dateOnly(row[column.k])||row[column.k]||null):(row[column.k]??null)));
   const book=new ExcelJS.Workbook();book.creator='TOKOSI';book.created=new Date();book.modified=book.created;
   const sheet=book.addWorksheet('Đặt hàng',{views:[{state:'frozen',ySplit:1,showGridLines:false}]});
   sheet.columns=exportColumns.map((column,index)=>({key:column.k,width:widthForColumn(column,values.map(row=>row[index]))}));
