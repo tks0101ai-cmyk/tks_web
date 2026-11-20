@@ -395,18 +395,17 @@
   };
   $('addBulk').onclick=()=>{
     if(!allowed('edit','orders'))return;
-    modal('<h2>Thêm mã</h2><p>Dán nhiều dòng từ Excel. Mỗi dòng bắt buộc có <b>Mã SP</b> và <b>Số thùng</b>; tên hàng, SL/T, giá và số đo có thể để trống. Nếu mã đã có dữ liệu, các thông tin còn thiếu sẽ lấy từ lần gần nhất.</p><label for="bulkTarget">Thêm vào cont</label><select id="bulkTarget">'+options(false,true,'Chờ xếp')+'</select><p>Chọn Chờ xếp để đưa mã mới vào vùng AA.</p><label for="bulkCodes">Danh sách mã</label><textarea id="bulkCodes" rows="14" placeholder="Mã SP&#9;Số thùng&#10;ABC001&#9;10&#10;ABC002&#9;15"></textarea><p id="bulkCodesStatus" role="status">Dán các cột Mã SP và Số thùng; tối đa 500 mã.</p><button type="button" id="bulkCodesSave">Thêm vào bảng</button>');
-    const textarea=$('bulkCodes'),status=$('bulkCodesStatus'),save=$('bulkCodesSave'),fieldOrder=['productCode','cartonCount','productName','qtyPerCarton','unitPriceCny','kgPerCarton','m3PerCarton'];
-    const aliases={'mã sp':'productCode','ma sp':'productCode','mã sản phẩm':'productCode','product code':'productCode','số thùng':'cartonCount','so thung':'cartonCount','thùng':'cartonCount','cartons':'cartonCount','carton count':'cartonCount','tên sp':'productName','ten sp':'productName','tên hàng':'productName','ten hang':'productName','product name':'productName','sl/t':'qtyPerCarton','giá net':'unitPriceCny','gia net':'unitPriceCny','kg/thùng':'kgPerCarton','m³/thùng':'m3PerCarton'};
+    modal('<h2>Thêm mã</h2><p>Mỗi dòng nhập <b>Mã SP</b>, một khoảng trắng hoặc tab, rồi <b>Số thùng</b>. Mã đã có sẽ lấy Tên SP, NCC, nhân viên, ngày lên list, SL/T, giá tệ, Kg/T, m³/thùng và vùng từ lần gần nhất.</p><label for="bulkTarget">Thêm vào cont</label><select id="bulkTarget">'+options(false,true,'Chờ xếp')+'</select><p>Mã mới vào vùng AA khi chọn Chờ xếp.</p><label for="bulkCodes">Danh sách mã</label><textarea id="bulkCodes" rows="14" placeholder="ABC001 10&#10;ABC002 15"></textarea><p id="bulkCodesStatus" role="status">Mỗi dòng: Mã SP Số thùng; tối đa 500 mã.</p><button type="button" id="bulkCodesSave">Thêm vào bảng</button>');
+    const textarea=$('bulkCodes'),status=$('bulkCodesStatus'),save=$('bulkCodesSave');
     const latestByCode=new Map();for(const item of data.rows){const code=String(item.productCode||'').trim(),previous=latestByCode.get(code.toLocaleLowerCase('vi'));if(code&&(!previous||String(item.listedAt||'')>String(previous.listedAt||'')||String(item.listedAt||'')===String(previous.listedAt||'')&&Number(item.id)>Number(previous.id)))latestByCode.set(code.toLocaleLowerCase('vi'),item)}
-    const parse=()=>textarea.value.split(/\r?\n/).map(line=>line.trimEnd()).filter(line=>line.trim()).map(line=>line.split('\t'));
+    const parse=()=>textarea.value.split(/\r?\n/).map(line=>line.trim()).filter(Boolean);
     const preview=()=>{
-      const lines=parse(),first=lines[0]?.map(value=>value.trim().toLocaleLowerCase()),header=first&&aliases[first[0]]==='productCode'?lines.shift():null,headerKeys=header?.map(value=>aliases[value.trim().toLocaleLowerCase()]),today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-      const rows=lines.map(cells=>{
-        const input={};if(header)headerKeys.forEach((key,index)=>{if(key&&cells[index]!=null&&cells[index].trim()!=='')input[key]=cells[index].trim()});else fieldOrder.forEach((key,index)=>{if(cells[index]!=null&&cells[index].trim()!=='')input[key]=cells[index].trim()});
-        const code=String(input.productCode||'').trim(),previous=latestByCode.get(code.toLocaleLowerCase('vi'));if(previous)for(const c of writable)if(!['productCode','cartonCount','regionId','contId'].includes(c.k)&&input[c.k]==null&&previous[c.k]!=null)input[c.k]=previous[c.k];
-        input.productCode=code;const cartonRaw=String(input.cartonCount??'').replaceAll(',','').trim();input.cartonCount=cartonRaw===''?null:Number(cartonRaw);input.listedAt=normalizeDay(today);
-        for(const key of ['qtyPerCarton','unitPriceCny','kgPerCarton','m3PerCarton'])if(typeof input[key]==='string'){const raw=input[key].replaceAll(',','').trim();input[key]=raw===''?null:Number(raw)}
+      const lines=parse(),today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+      const rows=lines.map(line=>{
+        const match=line.match(/^(.*?)\s+([\d,]+)$/),code=(match?.[1]||line).trim(),previous=latestByCode.get(code.toLocaleLowerCase('vi')),input={productCode:code,cartonCount:match?Number(match[2].replaceAll(',','')):null};
+        if(previous)for(const key of ['productName','supplier','buyer','listedAt','qtyPerCarton','unitPriceCny','kgPerCarton','m3PerCarton','regionId'])if(previous[key]!=null)input[key]=previous[key];
+        if(input.regionId&&!(data.regions||[]).some(region=>String(region.id)===String(input.regionId)&&region.isActive!==false))delete input.regionId;
+        input.listedAt=input.listedAt||normalizeDay(today);
         if(input.qtyPerCarton==null&&!previous)input.qtyPerCarton=0;if(input.productName==null&&!previous)input.productName='';return input;
       });
       const invalid=rows.map((row,index)=>!row.productCode||!Number.isSafeInteger(row.cartonCount)||row.cartonCount<=0?index+1:null).filter(Boolean);

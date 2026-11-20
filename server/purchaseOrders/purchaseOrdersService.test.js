@@ -35,6 +35,13 @@ test('bulk add can insert directly into an active container',async()=>{
  await assert.rejects(service.createMany(manager,{containerId:container.id,rows:[{productCode:'DIRECT-02',cartonCount:7}]}),error=>error.code==='CONTAINER_INACTIVE');
  assert.equal((await db.query("SELECT count(*)::int AS count FROM purchase_orders WHERE product_code='DIRECT-02'")).rows[0].count,0);
 });
+test('bulk add preserves an active region when adding to waiting',async()=>{
+ const region=(await db.query("INSERT INTO purchase_regions(name,name_key,color,is_active) VALUES('H','h','#2563EB',true) RETURNING id")).rows[0];
+ const result=await service.createMany(manager,{rows:[{productCode:'REGION-01',cartonCount:7,regionId:String(region.id)}]});
+ assert.equal(result.rows[0].regionId,String(region.id));assert.equal(result.rows[0].contId,null);
+ await assert.rejects(service.createMany(manager,{rows:[{productCode:'REGION-02',cartonCount:7,regionId:'999999'}]}),error=>error.code==='REGION_INVALID');
+ await db.query("DELETE FROM purchase_orders WHERE product_code='REGION-01'");await db.query('DELETE FROM purchase_regions WHERE id=$1',[region.id]);
+});
 test('server sorting handles numeric values numerically and text values alphabetically',async()=>{
  const b=await service.create(manager,{...input(),productCode:'B-ITEM',productName:'Beta',supplier:'Zeta',cartonCount:50,kgPerCarton:100,m3PerCarton:.2,surchargePercent:.01});
  const a=await service.create(manager,{...input(),productCode:'A-ITEM',productName:'Alpha',supplier:'Alpha',cartonCount:10,kgPerCarton:10,m3PerCarton:.2,surchargePercent:.5});
