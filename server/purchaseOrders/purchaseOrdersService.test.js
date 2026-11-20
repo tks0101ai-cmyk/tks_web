@@ -27,6 +27,14 @@ test('bulk add requires only product code and carton count',async()=>{
  const result=await service.createMany(manager,{rows:[{productCode:'MINIMAL-01',cartonCount:7}]});
  assert.equal(result.count,1);assert.equal(result.rows[0].productCode,'MINIMAL-01');assert.equal(result.rows[0].cartonCount,7);assert.equal(result.rows[0].productName,'');assert.equal(result.rows[0].qtyPerCarton,0);
 });
+test('bulk add can insert directly into an active container',async()=>{
+ const container=await service.createContainer(manager,{name:'CONT DIRECT',assumedM3:170});
+ const result=await service.createMany(manager,{containerId:container.id,rows:[{productCode:'DIRECT-01',cartonCount:7}]});
+ assert.equal(result.rows[0].contId,String(container.id));
+ await service.deactivateContainer(manager,{id:container.id,version:container.version});
+ await assert.rejects(service.createMany(manager,{containerId:container.id,rows:[{productCode:'DIRECT-02',cartonCount:7}]}),error=>error.code==='CONTAINER_INACTIVE');
+ assert.equal((await db.query("SELECT count(*)::int AS count FROM purchase_orders WHERE product_code='DIRECT-02'")).rows[0].count,0);
+});
 test('server sorting handles numeric values numerically and text values alphabetically',async()=>{
  const b=await service.create(manager,{...input(),productCode:'B-ITEM',productName:'Beta',supplier:'Zeta',cartonCount:50,kgPerCarton:100,m3PerCarton:.2,surchargePercent:.01});
  const a=await service.create(manager,{...input(),productCode:'A-ITEM',productName:'Alpha',supplier:'Alpha',cartonCount:10,kgPerCarton:10,m3PerCarton:.2,surchargePercent:.5});
@@ -62,7 +70,10 @@ before(async () => {
   db = new PGlite();
   // Danh sach migration Thu mua lay tu FILES de them migration moi khong lam
   // do test (truoc day ghim cung nen 0114/0115 bi bo sot).
-  for (const name of ['0053_product_containers.sql','0072_product_container_unit_price_cny.sql','0075_product_container_expected.sql','0078_product_container_expected_prices.sql','0086_product_container_other_note.sql',...PURCHASE_FILES]) await db.exec(fs.readFileSync(path.join(__dirname,'../db/migrations',name),'utf8'));
+  for (const name of ['0053_product_containers.sql','0072_product_container_unit_price_cny.sql','0075_product_container_expected.sql','0078_product_container_expected_prices.sql','0086_product_container_other_note.sql',...PURCHASE_FILES]) {
+    if(name==='0140_purchase_order_search_trgm.sql')continue; // PGlite does not bundle pg_trgm; production still applies this index.
+    await db.exec(fs.readFileSync(path.join(__dirname,'../db/migrations',name),'utf8'));
+  }
   await db.exec('CREATE TABLE shipping_measures(code_key text PRIMARY KEY, per_carton numeric, m3_per_unit numeric, kg_per_unit numeric)');
   // Expected-arrivals projection also reads the Kiot product-name fallback.
   await db.exec('CREATE TABLE product_report(product_code text,product_name text); CREATE TABLE products(code text,name text); CREATE TABLE kiot_test_stock(on_hand numeric);INSERT INTO kiot_test_stock VALUES(99)');
