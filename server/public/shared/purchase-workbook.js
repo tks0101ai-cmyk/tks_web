@@ -13,7 +13,7 @@
   const writable = col => col.k === 'rowKey' || !!col.region || !!col.o || !col.d && !col.m && !col.ro && !['container', 'status'].includes(col.k);
   const isExcludedImportColumn = col => !!col.d || !!col.m || excludedImportFields.has(col.k);
   const importColumns = columns => columns.filter(col=>(writable(col)||col.si)&&!isExcludedImportColumn(col));
-  const newCodeColumns = columns => columns.filter(col=>col.k!=='rowKey'&&!col.si&&!isExcludedImportColumn(col)&&(!col.ro||col.region));
+  const newCodeColumns = columns => columns.filter(col=>col.k!=='rowKey'&&(!col.si||col.k==='container')&&!isExcludedImportColumn(col)&&(!col.ro||col.region||col.k==='container'));
 
   function exportWorkbook(rows, columns, visibleKeys) {
     const selected = new Set(visibleKeys || columns.map(col => col.k));
@@ -59,12 +59,12 @@
     cols.forEach((col,c)=>rows.forEach((row,r)=>{const formula=snapshotFormula(col,row,cols,r);if(!formula)return;const address=XLSX.utils.encode_cell({r:r+1,c}),cell=sheet[address]||(sheet[address]={t:'n',v:0});cell.f=formula.slice(1);if(typeof row[col.k]==='number'&&Number.isFinite(row[col.k])){cell.t='n';cell.v=row[col.k]}else{cell.t='str';cell.v=''}}));
     const kind=col=>numericTypes.has(col.t)?'Số'+(col.decimals!=null?' · tối đa '+col.decimals+' chữ số thập phân':''):col.t==='datetime'?'Ngày dd/mm/yyyy hoặc dd/mm/yyyy hh:mm':'Văn bản';
     const required=col=>col.k==='productCode'?'Có · mọi dòng':['productName','qtyPerCarton','cartonCount'].includes(col.k)?'Có · dòng mới':'Không';
-    const hints=cols.map(col=>[caption(col),required(col),col.region?'Tên vùng hoặc mã vùng':kind(col),col.d?'Cột công thức Excel; thay công thức bằng giá trị nếu cần ghi đè.':!importable.includes(col)?'Chỉ xem; không được nhập ngược vào hệ thống.':col.region?'Nhập đúng tên vùng đang dùng; để trống sẽ bỏ gán vùng.':col.k==='container'?'Nhập cont đang hoạt động; để trống hoặc chọn Chờ xếp sẽ đưa vào hàng chờ.':col.k==='rowKey'?'Có Mã dòng: cập nhật dòng đó. Để trống: tạo mã mới.':col.k==='productCode'?'Bắt buộc; không trùng trong file.':col.k==='productName'?'Bắt buộc khi tạo mã mới.':['qtyPerCarton','cartonCount'].includes(col.k)?'Mã mới cần số nguyên dương.':col.t==='datetime'?'Để trống sẽ xóa ngày hiện tại.':'Để trống sẽ xóa giá trị hiện tại.']);
+    const hints=cols.map(col=>[caption(col),required(col),col.region?'Tên vùng hoặc mã vùng':kind(col),col.d?'Cột công thức Excel; thay công thức bằng giá trị nếu cần ghi đè.':!importable.includes(col)?'Chỉ xem; không được nhập ngược vào hệ thống.':col.region?'Nhập đúng tên vùng đang dùng; để trống sẽ bỏ gán vùng.':col.k==='container'?'Nhập cont đang hoạt động; để trống hoặc chọn Chờ xếp sẽ đưa vào hàng chờ.':col.k==='rowKey'?'Có Mã dòng: cập nhật đúng dòng đó. Để trống: thêm dòng mới; Mã dòng phải riêng biệt.':col.k==='productCode'?'Bắt buộc; được phép trùng vì Mã dòng là khóa riêng.':col.k==='productName'?'Bắt buộc khi tạo dòng mới.':['qtyPerCarton','cartonCount'].includes(col.k)?'Dòng mới cần số nguyên dương.':col.t==='datetime'?'Để trống sẽ xóa ngày hiện tại.':'Để trống sẽ xóa giá trị hiện tại.']);
     const exampleKeys=['rowKey','productCode','productName','qtyPerCarton','cartonCount','supplier','unitPriceCny','listedAt'],exampleColumns=exampleKeys.map(key=>cols.find(col=>col.k===key));
     const guide=XLSX.utils.aoa_to_sheet([
       ['HƯỚNG DẪN SỬA FILE THU MUA'],
       ['Đây là snapshot các trường đặt hàng tải từ dữ liệu hiện tại. '+excludedImportDescription+' Các trường này được giữ nguyên khi nhập lại. Sửa sheet “Đặt hàng” rồi tải lại chính file này. Không xóa sheet __TOKOSI.'],
-      ['Mỗi dòng là một mã. Mã dòng có sẵn sẽ cập nhật; Mã dòng để trống sẽ tạo mã mới. Mã SP bắt buộc; mã mới cần Tên SP, SL/T và Số thùng.'],
+      ['Mỗi dòng là một dòng đặt hàng. Mã dòng có sẵn sẽ cập nhật đúng dòng; Mã dòng để trống sẽ tạo dòng mới. Mã dòng phải không trùng; Mã SP được phép lặp. Dòng mới cần Tên SP, SL/T và Số thùng.'],
       ['Giá trị ô trống sẽ xóa giá trị hiện tại. Xóa cả dòng khỏi sheet Đặt hàng sẽ xóa mềm mã đó. Xem lại số dòng xóa ở bước xem trước trước khi xác nhận.'],
       ['Cột Vùng nhận tên vùng trong danh sách đã cấu hình; không nhập vùng mới trong file. Cột Tên cont nhận tên cont đang hoạt động; để trống hoặc nhập Chờ xếp sẽ gán vào hàng chờ. Trạng thái cont tự tính, không import.'],
       ['Nếu dữ liệu trên hệ thống đổi sau lúc tải file, snapshot sẽ bị từ chối; hãy tải snapshot mới, áp lại chỉnh sửa và gửi lại. Một lỗi sẽ chặn toàn bộ file.'],
@@ -91,16 +91,16 @@
     sheet['!cols']=cols.map(col=>({wch:Math.min(28,Math.max(12,[...caption(col)].length+2))}));
     const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,sheet,'Mã mới');
     const guide=XLSX.utils.aoa_to_sheet([
-      ['MẪU THÊM MÃ THU MUA'],
-      ['File này chỉ tạo mã mới. Không chứa snapshot, Mã dòng hoặc dữ liệu đơn hàng hiện có. '+excludedImportDescription],
-      ['Chỉ điền các dòng mới ở sheet “Mã mới”; không đổi tên tiêu đề. Mã SP và Số thùng bắt buộc; Mã SP không được trùng trong file hoặc mã đã có trên hệ thống.'],
-      ['Giới hạn: tối đa 1.000 mã mới trong mỗi lần nhập.'],
-      ['Các dòng sẽ được thêm vào trạng thái Chờ xếp. Vùng có thể chọn theo danh sách “Danh sách vùng”; để trống sẽ dùng vùng AA.'],
-      ['Dữ liệu hiện có không được cập nhật hoặc xóa. Nếu một Mã SP đã tồn tại, toàn bộ lần nhập sẽ bị từ chối để bạn xử lý file trước.'],
-      [],['CỘT','BẮT BUỘC','KIỂU'],
-      ...cols.map(col=>[caption(col),['productCode','cartonCount'].includes(col.k)?'Có':'Không',numericTypes.has(col.t)?'Số':col.t==='date'||col.t==='datetime'?'Ngày':'Văn bản'])
+      ['HƯỚNG DẪN NHẬP FILE THU MUA'],
+      ['File này chỉ thêm dòng mới, không chứa snapshot hoặc Mã dòng. '+excludedImportDescription],
+      ['Chỉ điền các dòng mới ở sheet “Mã mới”; giữ nguyên tiêu đề cột. Mã SP và Số thùng là bắt buộc. Mã SP được phép trùng; hệ thống tự cấp Mã dòng riêng cho mỗi dòng mới.'],
+      ['Giới hạn: tối đa 1.000 dòng mới trong mỗi lần nhập.'],
+      ['Tên cont: nhập tên cont đã có để gán mã vào cont đó. Nếu chưa có, cont sẽ được tạo mới trong Vùng đã chọn; để trống Tên cont thì mã vào Chờ xếp. Vùng để trống sẽ dùng vùng AA.'],
+      ['Mã SP trùng trong file hoặc trên hệ thống không phải lỗi. Mã dòng riêng do hệ thống cấp cho từng dòng; dữ liệu hiện có không bị cập nhật hoặc xóa.'],
+      [],['CỘT','BẮT BUỘC','KIỂU / ĐỊNH DẠNG','LƯU Ý'],
+      ...cols.map(col=>[caption(col),['productCode','cartonCount'].includes(col.k)?'Có':'Không',col.region?'Tên vùng hoặc mã vùng':numericTypes.has(col.t)?'Số'+(col.decimals!=null?' · tối đa '+col.decimals+' chữ số thập phân':''):col.t==='date'||col.t==='datetime'?'Ngày':'Văn bản',col.k==='productCode'?'Mã SP được phép trùng. Mỗi dòng mới nhận Mã dòng riêng.':col.k==='cartonCount'?'Số nguyên dương.':col.k==='container'?'Cont đã có sẽ được gán; tên chưa có sẽ tạo cont mới thuộc Vùng đã chọn. Để trống để vào Chờ xếp.':col.region?'Để trống sẽ dùng vùng AA.':'Để trống nếu chưa có dữ liệu.'])
     ]);
-    guide['!cols']=[{wch:36},{wch:18},{wch:26}];XLSX.utils.book_append_sheet(book,guide,'Hướng dẫn');
+    guide['!cols']=[{wch:30},{wch:18},{wch:34},{wch:68}];XLSX.utils.book_append_sheet(book,guide,'Hướng dẫn');
     const regionSheet=XLSX.utils.aoa_to_sheet([['MÃ VÙNG','TÊN VÙNG','MÀU'],...regions.map(region=>[String(region.id),region.name,region.color||''])]);
     regionSheet['!cols']=[{wch:16},{wch:28},{wch:12}];XLSX.utils.book_append_sheet(book,regionSheet,'Danh sách vùng');
     return bytes(book);
@@ -127,9 +127,9 @@
     if(!match)return dateValue(text,date1904);
     const date=dateValue(match[1],date1904);return date&&Number(match[2])<24&&Number(match[3])<60?date+'T'+match[2]+':'+match[3]:null;
   }
-  function parseWorkbook(workbook, columns, sheetName, {includeEmpty=false,allowEmpty=false,snapshot=false}={}) {
+  function parseWorkbook(workbook, columns, sheetName, {includeEmpty=false,allowEmpty=false,snapshot=false,allowContainer=false}={}) {
     const snapshotKeys=snapshot?new Set(importColumns(columns).map(col=>col.k)):null;
-    const canImport=col=>!isExcludedImportColumn(col)&&(snapshot?snapshotKeys.has(col.k):writable(col));
+    const canImport=col=>!isExcludedImportColumn(col)&&(snapshot?snapshotKeys.has(col.k):writable(col)||allowContainer&&col.k==='container');
     const name = sheetName || (workbook.SheetNames.includes('Đặt hàng') ? 'Đặt hàng' : workbook.SheetNames[0]);
     const sheet = workbook.Sheets[name];
     if (!sheet || !sheet['!ref']) throw Error('Trang tính không có dữ liệu.');

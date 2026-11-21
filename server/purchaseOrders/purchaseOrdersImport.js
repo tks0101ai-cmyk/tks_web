@@ -19,7 +19,7 @@ const integerFields = new Set(['qtyPerCarton', 'cartonCount']);
 const signedFields = new Set([...calculations.SIGNED,'literDiff','gramDiff']);
 const blank = value => value == null || value === '';
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-function normalizeImportOptions(options={}){const allowed=new Set(importable.map(column=>column.k).filter(key=>key!=='rowKey'));return {preserveMissing:options.preserveMissing===true,matchByProductCode:options.matchByProductCode===true,duplicateMode:options.duplicateMode==='update'?'update':'error',updateFields:[...new Set(Array.isArray(options.updateFields)?options.updateFields.filter(key=>allowed.has(key)):[])],clearBlanks:options.clearBlanks===true}}
+function normalizeImportOptions(options={}){const allowed=new Set(importable.map(column=>column.k).filter(key=>key!=='rowKey'));return {preserveMissing:options.preserveMissing===true,updateExistingByRowKey:options.updateExistingByRowKey===true,updateFields:[...new Set(Array.isArray(options.updateFields)?options.updateFields.filter(key=>allowed.has(key)):[])],clearBlanks:options.clearBlanks===true}}
 
 function version(row) { return row.version ?? row.v; }
 function comparable(value, col) {
@@ -27,11 +27,11 @@ function comparable(value, col) {
 }
 const normalizeRegionName = value => normalizeContainerKey(String(value ?? '').normalize('NFKC'));
 const normalizeContainerLabel = value => String(value ?? '').trim().replace(/^cont\s+/i, '').trim();
-function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = false, snapshotRevision, snapshotStale = false, archivedRows = [], regions = [], containers = [], allowSparseCreates = false, importOptions = {} } = {}) {
+function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = false, snapshotRevision, snapshotStale = false, archivedRows = [], regions = [], containers = [], allowSparseCreates = false, allowContainerAssignment = false, importOptions = {} } = {}) {
   if (!Array.isArray(sourceRows) || (!sourceRows.length && !snapshot) || sourceRows.length > 10000) throw Error('Đợt nhập phải có 1–10.000 dòng.');
   if (!Array.isArray(existingRows)) throw Error('Thiếu dữ liệu hiện hành để đối chiếu.');
   importOptions=normalizeImportOptions(importOptions);
-  const existing = new Map(existingRows.map(row => [row.rowKey, row])),existingByCode=new Map();for(const row of existingRows){const code=String(row.productCode||'').trim().normalize('NFKC').toLocaleLowerCase('vi');if(code){if(!existingByCode.has(code))existingByCode.set(code,[]);existingByCode.get(code).push(row)}}
+  const existing = new Map(existingRows.map(row => [row.rowKey, row]));
   const archivedByKey = new Map(archivedRows.map(row => [row.rowKey, row]));
   const prefixes = rows => {const found=new Set();for(const row of rows){const parts=String(row.rowKey||'').split('.');while(parts.length>1){parts.pop();found.add(parts.join('.'))}}return found};
   const existingPrefixes=prefixes(existingRows),archivedPrefixes=prefixes(archivedRows);
@@ -42,16 +42,13 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
   const regionsByKey=new Map(),containersByKey=new Map(),plannedRegions=new Map(),plannedContainers=new Map();
   for(const region of regions){regionsById.set(String(region.id),region);const key=String(region.name||'').trim().toLocaleLowerCase('vi');if(key&&!regionsByName.has(key))regionsByName.set(key,region);const normalized=normalizeRegionName(region.name);if(normalized&&!regionsByKey.has(normalized))regionsByKey.set(normalized,region)}
   for(const container of containers){const key=normalizeContainerKey(String(container.name||'').trim().replace(/^cont\s+/i,''));if(key&&!containersByKey.has(key))containersByKey.set(key,container)}
-  const counts = new Map(),codeCounts=new Map();
+  const counts = new Map();
   const recoveryCounts = new Map();
   sourceRows.forEach(row => { const key = String(row.rowKey ?? '').trim(); if (key) counts.set(key, (counts.get(key) || 0) + 1); });
-  sourceRows.forEach(row=>{const key=String(row.productCode||'').trim().normalize('NFKC').toLocaleLowerCase('vi');if(key&&blank(row.rowKey))codeCounts.set(key,(codeCounts.get(key)||0)+1)});
   sourceRows.forEach(row=>{if(row.recoverArchived===true){const key=String(row.recoverRowKey||row.rowKey||'').trim();if(key)recoveryCounts.set(key,(recoveryCounts.get(key)||0)+1)}});
   const rows = sourceRows.map((source, index) => {
     const rowKey = blank(source.rowKey) ? null : String(source.rowKey).trim();
-    const codeKey=String(source.productCode||'').trim().normalize('NFKC').toLocaleLowerCase('vi'),codeCandidates=!rowKey&&importOptions.matchByProductCode?existingByCode.get(codeKey)||[]:[],codeMatch=codeCandidates.length===1?codeCandidates[0]:null;
-    const current = rowKey ? existing.get(rowKey) : codeMatch||null,matchedByCode=!!(codeMatch&&current===codeMatch);
-    const archivedCodeMatch=!rowKey&&importOptions.matchByProductCode?archivedRows.find(row=>String(row.productCode||'').trim().normalize('NFKC').toLocaleLowerCase('vi')===codeKey):null;
+    const current = rowKey ? existing.get(rowKey) : null;
     const archivedRowByKey=!current&&rowKey?archivedByKey.get(rowKey):null;
     const selectedArchived=source.recoverRowKey?archivedByKey.get(source.recoverRowKey):null;
     const archived=current?null:selectedArchived||archivedRowByKey;
@@ -64,10 +61,6 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
     const matched = current || (recovered?archived:null);
     if (rowKey && !keyPattern.test(rowKey)) result.errors.push('Khóa dòng sai định dạng.');
     if (rowKey && counts.get(rowKey) > 1) result.errors.push('Khóa dòng trùng trong file.');
-    if(importOptions.matchByProductCode&&!rowKey&&codeKey&&codeCounts.get(codeKey)>1)result.errors.push('Mã SP trùng trong file.');
-    if(codeCandidates.length>1)result.errors.push('Mã SP trùng nhiều dòng trong hệ thống; cần giữ Mã dòng để xác định đúng dòng.');
-    if(archivedCodeMatch&&!current)result.errors.push('Mã SP đang tắt hoặc đã xóa; hãy nhập đúng Mã dòng để chọn bật lại/khôi phục.');
-    if(matchedByCode&&importOptions.duplicateMode==='error')result.errors.push('Mã SP đã tồn tại. Chọn cập nhật mã trùng nếu muốn sửa mã cũ.');
     if(recovered&&(recoveryCounts.get(archived.rowKey)||0)>1)result.errors.push('Một dòng lưu trữ chỉ được chọn khôi phục một lần.');
     if (rowKey && !current&&!archivedRowByKey) result.errors.push(existingPrefixes.has(rowKey) ? 'Khóa đã tách; xuất lại các nhánh hiện hành.' : archivedPrefixes.has(rowKey)?'Khóa đã tách; chọn đúng nhánh đang tắt/đã xóa.':'Khóa dòng không tồn tại.');
     if (matched && (!Number.isSafeInteger(version(matched)) || version(matched) < 1)) result.errors.push('Không đọc được phiên bản dòng hiện hành.');
@@ -77,13 +70,13 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
     for (const [key,message] of Object.entries(source.__cellErrors || {})) if(key!=='measuredOn') result.errors.push(String(message));
     const values = {};
     for (const col of importable) {
-      if(matched&&importOptions.matchByProductCode&&(importOptions.duplicateMode!=='update'||!importOptions.updateFields.includes(col.k)))continue;
-      if(matched&&importOptions.matchByProductCode&&importOptions.duplicateMode==='update'&&!importOptions.clearBlanks&&blank(source[col.k]))continue;
+      if(matched&&importOptions.updateExistingByRowKey&&!importOptions.updateFields.includes(col.k))continue;
+      if(matched&&importOptions.updateExistingByRowKey&&!importOptions.clearBlanks&&blank(source[col.k]))continue;
       const value = source[col.k];
       if(col.si){
-        if(!snapshot)continue;
+        if(!snapshot&&!allowContainerAssignment)continue;
         const text=String(value??'').trim(),waiting=!text||/^(?:cont\s*)?chờ(?:\s+|-)?xếp(?:\s+[hv?])?$/i.test(text)||/^chờ\s*-\s*h$/i.test(text)||/^tính giá$/i.test(text);
-        if(waiting){if(snapshot)values.contId=null;continue}
+        if(waiting){if(snapshot||allowContainerAssignment)values.contId=null;continue}
         let found=containersById.get(text)||containersByName.get(normalizeContainerName(text));
         if(!found){
           if(/^\d+$/.test(text)){result.errors.push('Tên cont: không tìm thấy cont theo mã nội bộ.');continue}
@@ -107,7 +100,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
         values.contId=String(found.id);continue;
       }
       if (blank(value)) { if (snapshot) values[col.k] = null; continue; }
-      if(col.region){const raw=String(value).trim(),found=regionsById.get(raw)||regionsByName.get(raw.toLocaleLowerCase('vi'))||regionsByKey.get(normalizeRegionName(raw));if(found){if(found.isActive===false&&String(matched?.regionId??'')!==String(found.id))result.errors.push('Vùng: chọn tên vùng đang hoạt động trong danh sách.');else values.regionId=String(found.id)}else if(!raw||raw.length>80)result.errors.push('Vùng: tên không hợp lệ (tối đa 80 ký tự).');else if(/^\d+$/.test(raw))result.errors.push('Vùng: không tìm thấy vùng theo mã nội bộ.');else if(!snapshot)result.errors.push('Vùng: chọn tên vùng đang hoạt động trong danh sách.');else{const key=normalizeRegionName(raw);let planned=plannedRegions.get(key);if(!planned){planned={id:'@new-region:'+key,name:raw};plannedRegions.set(key,planned)}values.regionId=planned.id}continue}
+      if(col.region){const raw=String(value).trim(),found=regionsById.get(raw)||regionsByName.get(raw.toLocaleLowerCase('vi'))||regionsByKey.get(normalizeRegionName(raw));if(found){if(found.isActive===false&&String(matched?.regionId??'')!==String(found.id))result.errors.push('Vùng: chọn tên vùng đang hoạt động trong danh sách.');else values.regionId=String(found.id)}else if(!raw||raw.length>80)result.errors.push('Vùng: tên không hợp lệ (tối đa 80 ký tự).');else if(/^\d+$/.test(raw))result.errors.push('Vùng: không tìm thấy vùng theo mã nội bộ.');else if(!snapshot&&!allowContainerAssignment)result.errors.push('Vùng: chọn tên vùng đang hoạt động trong danh sách.');else{const key=normalizeRegionName(raw);let planned=plannedRegions.get(key);if(!planned){planned={id:'@new-region:'+key,name:raw};plannedRegions.set(key,planned)}values.regionId=planned.id}continue}
       if(col.k==='measuredOn'){const text=String(value).trim();if(text.length>4000)result.errors.push(col.l+': tối đa 4.000 ký tự.');else values[col.k]=text;continue}
       if (workbook.numericTypes.has(col.t)) {
         const number = calculations.parse(value);
@@ -147,9 +140,15 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
   });
   for(const row of rows){
     const id=String(row.values?.contId??'');if(!id.startsWith('@new-container:'))continue;
-    const container=plannedContainers.get(id.slice('@new-container:'.length)),regionId=container?.regionKey?'@new-region:'+container.regionKey:container?.regionId??null;
-    if(regionId==null||row.values.regionId!=null)continue;
-    row.values.regionId=regionId;
+    const container=plannedContainers.get(id.slice('@new-container:'.length)),requestedRegion=row.values.regionId??null;
+    if(requestedRegion!=null&&container){
+      const requestedKey=String(requestedRegion).startsWith('@new-region:')?String(requestedRegion).slice('@new-region:'.length):null,priorRegion=container.regionKey?'@new-region:'+container.regionKey:container.regionId??null;
+      if(priorRegion!=null&&String(priorRegion)!==String(requestedRegion))row.errors.push('Tên cont: cùng một cont mới không thể thuộc nhiều vùng trong file.');
+      else if(requestedKey)container.regionKey=requestedKey;else container.regionId=String(requestedRegion);
+    }
+    const regionId=container?.regionKey?'@new-region:'+container.regionKey:container?.regionId??null;
+    if(regionId==null)continue;
+    if(row.values.regionId==null)row.values.regionId=regionId;
     if(['update','reactivate','restore'].includes(row.action)){const matched=existingRows.find(current=>String(current.id)===String(row.id))||archivedRows.find(current=>String(current.id)===String(row.id)),change=row.changes.find(entry=>entry.key==='regionId');if(change)change.after=regionId;else if(String(matched?.regionId??'')!==String(regionId))row.changes.push({key:'regionId',label:byKey.get('regionId').l,before:matched?.regionId??null,after:regionId})}
   }
   let preservedCount=0;
