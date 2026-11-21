@@ -569,6 +569,15 @@
 .purchase-page #modalBody .container-note-form>label{gap:8px}
 .purchase-page #modalBody .container-note-form textarea{min-height:220px;padding:12px 14px;line-height:1.6;resize:vertical}
 .purchase-page #modalBody .container-note-form>label small{font-size:11px;font-weight:400;color:var(--muted)}
+.purchase-page #modal:has(.container-create-form){width:min(680px,calc(100vw - 32px))}
+.purchase-page #modalBody .container-create-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px}
+.purchase-page #modalBody .container-create-form>label{display:grid;gap:6px;min-width:0;margin:0;width:auto;font-size:12px;font-weight:650}
+.purchase-page #modalBody .container-create-form input,.purchase-page #modalBody .container-create-form select{width:100%;min-width:0;box-sizing:border-box}
+.purchase-page #modalBody .container-create-help,.purchase-page #modalBody .container-create-actions{grid-column:1/-1;margin:0}
+.purchase-page #modalBody .container-create-help{color:var(--muted);font-size:11px}
+.purchase-page #modalBody .container-create-actions{display:flex;justify-content:flex-end;gap:8px;padding-top:4px}
+.purchase-page #containerTable td[data-container-column="name"] button{cursor:pointer}
+@media(max-width:620px){.purchase-page #modalBody .container-create-form{grid-template-columns:minmax(0,1fr)}}
 .purchase-page #modalBody .container-note-actions{display:flex;justify-content:flex-end;gap:10px;padding-top:14px;border-top:1px solid var(--border)}
 .purchase-page #modalBody .container-note-actions button[type=button]{background:transparent;border-color:var(--border);color:var(--text-secondary)}
 .purchase-page #modalBody .container-note-actions button[type=button]:hover{background:var(--surface-hover);color:var(--text)}
