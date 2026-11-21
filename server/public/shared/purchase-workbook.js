@@ -5,10 +5,11 @@
   'use strict';
   const numericTypes = new Set(['num', 'num1', 'num2', 'num3', 'num4', 'cny', 'money', 'pct', 'ratio']);
   const labels = { productName: 'Tên SP (Việt)', productNameCn: 'Tên SP (Trung)', literDiff: 'Lệch L/c (%)', gramDiff: 'Lệch g/c (%)' };
+  const excludedImportFields = new Set(['totalTon','totalM3','netPrice','goodsAmount','freightAmount','totalCny','totalQty','literChina','literDiff','ratio','gramChina','gramDiff']);
   const normalize = value => String(value ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
   const caption = col => labels[col.k] || (col.cn ? col.l + ' · ' + col.cn : col.l);
   const writable = col => col.k === 'rowKey' || !!col.region || !!col.o || !col.d && !col.m && !col.ro && !['container', 'status'].includes(col.k);
-  const importColumns = columns => columns.filter(col=>(writable(col)||col.si)&&!col.d&&!col.m&&col.k!=='m3Warehouse');
+  const importColumns = columns => columns.filter(col=>(writable(col)||col.si)&&!col.d&&!col.m&&col.k!=='m3Warehouse'&&!excludedImportFields.has(col.k));
 
   function exportWorkbook(rows, columns, visibleKeys) {
     const selected = new Set(visibleKeys || columns.map(col => col.k));
@@ -58,7 +59,7 @@
     const exampleKeys=['rowKey','productCode','productName','qtyPerCarton','cartonCount','supplier','unitPriceCny','listedAt'],exampleColumns=exampleKeys.map(key=>cols.find(col=>col.k===key));
     const guide=XLSX.utils.aoa_to_sheet([
       ['HƯỚNG DẪN SỬA FILE THU MUA'],
-      ['Đây là snapshot các trường đặt hàng tải từ dữ liệu hiện tại. Cột công thức và các cột cân đo đã được bỏ; những trường đó sẽ được giữ nguyên khi nhập lại. Sửa sheet “Đặt hàng” rồi tải lại chính file này. Không xóa sheet __TOKOSI.'],
+      ['Đây là snapshot các trường đặt hàng tải từ dữ liệu hiện tại. Các cột tính toán và đối chiếu được bỏ khỏi file: Tổng Tấn, Tổng m3, Giá NET, Tiền hàng, Tiền VC, TỔNG TỆ, Tổng SL, M³ kho đo, L/c (TQ), Lệch L/c, Tỉ lệ, g/c (TQ), Lệch g/c. Các trường này được giữ nguyên khi nhập lại. Sửa sheet “Đặt hàng” rồi tải lại chính file này. Không xóa sheet __TOKOSI.'],
       ['Mỗi dòng là một mã. Mã dòng có sẵn sẽ cập nhật; Mã dòng để trống sẽ tạo mã mới. Mã SP bắt buộc; mã mới cần Tên SP, SL/T và Số thùng.'],
       ['Giá trị ô trống sẽ xóa giá trị hiện tại. Xóa cả dòng khỏi sheet Đặt hàng sẽ xóa mềm mã đó. Xem lại số dòng xóa ở bước xem trước trước khi xác nhận.'],
       ['Cột Vùng nhận tên vùng trong danh sách đã cấu hình; không nhập vùng mới trong file. Cột Tên cont nhận tên cont đang hoạt động; để trống hoặc nhập Chờ xếp sẽ gán vào hàng chờ. Trạng thái cont tự tính, không import.'],
@@ -80,14 +81,14 @@
   }
 
   function exportNewCodesTemplate(columns,regions=[]) {
-    const cols=columns.filter(col=>col.k!=='rowKey'&&!col.si&&!col.d&&!col.m&&(!col.ro||col.region));
+    const cols=columns.filter(col=>col.k!=='rowKey'&&!col.si&&!col.d&&!col.m&&col.k!=='m3Warehouse'&&!excludedImportFields.has(col.k)&&(!col.ro||col.region));
     if(!cols.some(col=>col.k==='productCode'))throw Error('Thiếu cột Mã SP trong cấu hình Thu mua.');
     const sheet=XLSX.utils.aoa_to_sheet([cols.map(caption)]);
     sheet['!cols']=cols.map(col=>({wch:Math.min(28,Math.max(12,[...caption(col)].length+2))}));
     const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,sheet,'Mã mới');
     const guide=XLSX.utils.aoa_to_sheet([
       ['MẪU THÊM MÃ THU MUA'],
-      ['File này chỉ tạo mã mới. Không chứa snapshot, Mã dòng hoặc dữ liệu đơn hàng hiện có.'],
+      ['File này chỉ tạo mã mới. Không chứa snapshot, Mã dòng hoặc dữ liệu đơn hàng hiện có. Các cột tính toán và đối chiếu như Tổng Tấn, Tổng m3, Giá NET, Tiền hàng, Tiền VC, TỔNG TỆ, Tổng SL, M³ kho đo, L/c (TQ), Lệch L/c, Tỉ lệ, g/c (TQ), Lệch g/c không có trong mẫu.'],
       ['Chỉ điền các dòng mới ở sheet “Mã mới”; không đổi tên tiêu đề. Mã SP và Số thùng bắt buộc; Mã SP không được trùng trong file hoặc mã đã có trên hệ thống.'],
       ['Các dòng sẽ được thêm vào trạng thái Chờ xếp. Vùng có thể chọn theo danh sách “Danh sách vùng”; để trống sẽ dùng vùng AA.'],
       ['Dữ liệu hiện có không được cập nhật hoặc xóa. Nếu một Mã SP đã tồn tại, toàn bộ lần nhập sẽ bị từ chối để bạn xử lý file trước.'],
@@ -122,7 +123,8 @@
     const date=dateValue(match[1],date1904);return date&&Number(match[2])<24&&Number(match[3])<60?date+'T'+match[2]+':'+match[3]:null;
   }
   function parseWorkbook(workbook, columns, sheetName, {includeEmpty=false,allowEmpty=false,snapshot=false}={}) {
-    const canImport=col=>writable(col)||(snapshot&&col.si);
+    const snapshotKeys=snapshot?new Set(importColumns(columns).map(col=>col.k)):null;
+    const canImport=col=>!excludedImportFields.has(col.k)&&(snapshot?snapshotKeys.has(col.k):writable(col));
     const name = sheetName || (workbook.SheetNames.includes('Đặt hàng') ? 'Đặt hàng' : workbook.SheetNames[0]);
     const sheet = workbook.Sheets[name];
     if (!sheet || !sheet['!ref']) throw Error('Trang tính không có dữ liệu.');
@@ -197,5 +199,5 @@
   }
   function read(data) { return XLSX.read(data, { type: 'array', cellDates: false, cellFormula: true }); }
   function bytes(workbook) { return XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }); }
-  return { caption, numericTypes, dateValue, dateTimeValue, exportWorkbook, exportImportSnapshot, exportNewCodesTemplate, parseWorkbook, parseImportSnapshot, read, bytes };
+  return { caption, numericTypes, importColumns, dateValue, dateTimeValue, exportWorkbook, exportImportSnapshot, exportNewCodesTemplate, parseWorkbook, parseImportSnapshot, read, bytes };
 });

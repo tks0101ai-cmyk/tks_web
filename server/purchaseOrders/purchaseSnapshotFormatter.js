@@ -1,6 +1,7 @@
 'use strict';
 
 const ExcelJS = require('exceljs');
+const purchaseWorkbook = require('../public/shared/purchase-workbook');
 
 const HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEAF1F8' } };
 const HEADER_BORDER = { style: 'thin', color: { argb: 'FF9AAABD' } };
@@ -102,7 +103,8 @@ async function formatPurchaseSnapshot(source, columns) {
   await workbook.xlsx.load(Buffer.from(source));
   const order = workbook.getWorksheet('Đặt hàng');
   if (!order) throw new Error('Snapshot thiếu sheet Đặt hàng.');
-  styleOrderSheet(order, columns);
+  const importColumns = purchaseWorkbook.importColumns(columns);
+  styleOrderSheet(order, [columns.find(column => column.k === 'rowKey'), ...importColumns.filter(column => column.k !== 'rowKey')].filter(Boolean));
   const guide = workbook.getWorksheet('Hướng dẫn');
   if (guide) styleGuideSheet(guide);
   const regions = workbook.getWorksheet('Danh sách vùng');

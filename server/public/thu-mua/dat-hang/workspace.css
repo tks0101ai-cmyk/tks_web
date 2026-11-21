@@ -710,6 +710,14 @@
 .purchase-page #modalBody .purchase-new-codes-import>p,#modalBody #mergeImportOptions>p{margin:0;color:var(--muted);line-height:1.6}
 .purchase-page #modalBody .purchase-new-codes-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .purchase-page #modalBody .purchase-new-codes-actions label{display:grid;width:auto;gap:5px;margin:0;color:var(--muted);font-size:11px}
+.purchase-page #modalBody .purchase-new-codes-actions .purchase-new-codes-file{position:relative;display:flex;width:min(440px,100%);min-height:58px;box-sizing:border-box;align-items:center;gap:11px;padding:9px 11px;border:1px solid var(--border);border-radius:10px;background:var(--panel-2);color:var(--text);cursor:pointer;transition:border-color .15s ease,background .15s ease,box-shadow .15s ease}
+.purchase-page #modalBody .purchase-new-codes-file:hover,.purchase-page #modalBody .purchase-new-codes-file:focus-within{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 7%,var(--panel-2));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--primary) 45%,transparent)}
+.purchase-page #modalBody .purchase-new-codes-file-icon{display:grid;width:36px;height:36px;flex:0 0 36px;place-items:center;border:1px solid color-mix(in srgb,var(--primary) 35%,var(--border));border-radius:9px;background:var(--panel);color:var(--primary);font-size:20px;font-weight:750}
+.purchase-page #modalBody .purchase-new-codes-file-copy{display:grid;min-width:0;flex:1;gap:4px}
+.purchase-page #modalBody .purchase-new-codes-file-copy strong{font-size:11px;color:var(--text)}
+.purchase-page #modalBody .purchase-new-codes-file-copy small{overflow:hidden;color:var(--muted);font-size:10px;text-overflow:ellipsis;white-space:nowrap}
+.purchase-page #modalBody .purchase-new-codes-file-button{padding:7px 10px;border:1px solid color-mix(in srgb,var(--primary) 40%,var(--border));border-radius:7px;background:color-mix(in srgb,var(--primary) 10%,var(--panel));color:var(--text);font-size:10px;font-weight:700;white-space:nowrap}
+.purchase-page #modalBody .purchase-new-codes-file input[type=file]{position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;opacity:0;cursor:pointer}
 .purchase-page #modalBody .purchase-import-select-label{display:grid;width:min(420px,100%);gap:6px;margin:0;font-weight:700}
 .purchase-page #modalBody .purchase-import-select-label select{width:100%}
 .purchase-page #modalBody .purchase-column-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px 12px;max-height:190px;overflow:auto;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--panel-2)}
