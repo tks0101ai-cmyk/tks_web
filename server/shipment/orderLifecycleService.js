@@ -392,9 +392,17 @@ function dedupeRecords(records) {
   return out;
 }
 
+// Nho ket qua theo MANG nguon: repository tra lai dung mang cu khi sheet khong doi, nen mang da gop cung giu nguyen
+// tham chieu -> cache danh sach gop (loadMergedRows, so sanh ===) van trung.
+const dedupedByRecords = new WeakMap();
+
 /** Toan bo dong sheet da gop dong trung (xem dedupeRecords) — moi noi trong service doc sheet qua day. */
 async function readRecords(readOptions) {
-  return dedupeRecords(await repo.readAll(readOptions));
+  const records = await repo.readAll(readOptions);
+  if (!records || typeof records !== 'object') return dedupeRecords(records || []);
+  let deduped = dedupedByRecords.get(records);
+  if (!deduped) { deduped = dedupeRecords(records); dedupedByRecords.set(records, deduped); }
+  return deduped;
 }
 
 /**
