@@ -19,10 +19,15 @@ function dateOnly(value){
   return new Date(Date.UTC(year,month-1,day));
 }
 
-function numberFormat(column){
-  if(['literDiff','gramDiff','pct'].includes(column.k)||column.t==='pct')return '+0.##%;-0.##%;0%';
-  if(column.t==='ratio')return '0.##%';
-  return NUMBER_TYPES.has(column.t)?'#,##0.##;[Red]-#,##0.##;0':'@';
+function numberFormat(column,value){
+  if(!NUMBER_TYPES.has(column.t))return '@';
+  const percent=column.t==='pct'||column.t==='ratio'||['literDiff','gramDiff'].includes(column.k),number=Number(value);
+  const shown=Number.isFinite(number)?Number((percent?number*100:number).toFixed(2)):0;
+  const decimals=(String(shown).split('.')[1]||'').length;
+  const positive=(percent?'+0':'#,##0')+(decimals?'.'+'0'.repeat(decimals):'')+(percent?'%':'');
+  const negative=(percent?'-0':'[Red]-#,##0')+(decimals?'.'+'0'.repeat(decimals):'')+(percent?'%':'');
+  const zero=(percent?'0':'0')+(decimals?'.'+'0'.repeat(decimals):'')+(percent?'%':'');
+  return `${positive};${negative};${zero}`;
 }
 
 function visibleText(value,column){
@@ -66,10 +71,9 @@ async function formatPurchaseExport(rows,columns,fields,language='vi'){
   for(let index=0;index<exportColumns.length;index++){
     const column=exportColumns[index],target=sheet.getColumn(index+1);
     if(column.t==='datetime'&&column.k!=='measuredOn')target.numFmt='dd/mm/yyyy';
-    else if(NUMBER_TYPES.has(column.t))target.numFmt=numberFormat(column);
     target.alignment={vertical:'middle',horizontal:NUMBER_TYPES.has(column.t)?'right':column.t==='datetime'?'center':'left'};
   }
-  sheet.eachRow((row,rowNumber)=>{if(rowNumber===1)return;let lineCount=1;row.eachCell({includeEmpty:true},(cell,columnNumber)=>{const column=exportColumns[columnNumber-1],wrap=HEADER_FIT_COLUMNS.has(column?.k);cell.font={name:'Calibri',size:10};cell.alignment={...cell.alignment,vertical:'middle',wrapText:wrap};cell.border=CELL_BORDER;if(wrap&&cell.value!=null&&cell.value!==''){const width=Math.max(1,sheet.getColumn(columnNumber).width-1);lineCount=Math.max(lineCount,String(cell.value).split(/\r?\n/).reduce((count,line)=>count+Math.max(1,Math.ceil(textWidth(line)/width)),0))}});if(lineCount>1)row.height=Math.max(18,lineCount*14+2)});
+  sheet.eachRow((row,rowNumber)=>{if(rowNumber===1)return;let lineCount=1;row.eachCell({includeEmpty:true},(cell,columnNumber)=>{const column=exportColumns[columnNumber-1],wrap=HEADER_FIT_COLUMNS.has(column?.k);cell.font={name:'Calibri',size:10};cell.alignment={...cell.alignment,vertical:'middle',wrapText:wrap};cell.border=CELL_BORDER;if(NUMBER_TYPES.has(column?.t))cell.numFmt=numberFormat(column,cell.value);if(wrap&&cell.value!=null&&cell.value!==''){const width=Math.max(1,sheet.getColumn(columnNumber).width-1);lineCount=Math.max(lineCount,String(cell.value).split(/\r?\n/).reduce((count,line)=>count+Math.max(1,Math.ceil(textWidth(line)/width)),0))}});if(lineCount>1)row.height=Math.max(18,lineCount*14+2)});
   if(sheet.rowCount)sheet.autoFilter={from:{row:1,column:1},to:{row:sheet.rowCount,column:exportColumns.length}};
   return book.xlsx.writeBuffer();
 }

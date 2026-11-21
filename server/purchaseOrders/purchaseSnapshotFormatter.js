@@ -21,12 +21,17 @@ function columnWidth(column) {
   return Math.max(10, Math.min(column.t === 'datetime' ? 19 : 36, Math.max(preferred, header)));
 }
 
-function numberFormat(column) {
-  if (column.k === 'literDiff' || column.k === 'gramDiff') return '+0.##%;-0.##%;0%';
-  if (column.t === 'pct') return '+0.##%;-0.##%;0%';
-  if (column.t === 'ratio') return '0.##%';
-  const formats = { num: '#,##0.####', num1: '#,##0.#', num2: '#,##0.##', num3: '#,##0.###', num4: '#,##0.####', cny: '#,##0.###', money: '#,##0.##' };
-  return formats[column.t] || null;
+function numberFormat(column, value) {
+  if (!purchaseWorkbook.numericTypes.has(column.t)) return null;
+  const percent = column.k === 'literDiff' || column.k === 'gramDiff' || column.t === 'pct' || column.t === 'ratio';
+  const raw = value && typeof value === 'object' && 'result' in value ? value.result : value;
+  const numeric = Number(raw), shown = Number.isFinite(numeric) ? Number((percent ? numeric * 100 : numeric).toFixed(2)) : 0;
+  const decimals = (String(shown).split('.')[1] || '').length;
+  const signedPercent = column.k === 'literDiff' || column.k === 'gramDiff' || column.t === 'pct';
+  const positive = (percent ? (signedPercent ? '+0' : '0') : '#,##0') + (decimals ? '.' + '0'.repeat(decimals) : '') + (percent ? '%' : '');
+  const negative = (percent ? '-0' : '[Red]-#,##0') + (decimals ? '.' + '0'.repeat(decimals) : '') + (percent ? '%' : '');
+  const zero = '0' + (decimals ? '.' + '0'.repeat(decimals) : '') + (percent ? '%' : '');
+  return `${positive};${negative};${zero}`;
 }
 
 function styleHeader(row) {
@@ -55,16 +60,24 @@ function styleOrderSheet(sheet, columns) {
   styleHeader(sheet.getRow(1));
   columns.forEach((column, index) => {
     const col = sheet.getColumn(index + 1);
-    const format = column.k === 'measuredOn' ? '@' : numberFormat(column) || (column.t === 'datetime' ? 'dd/mm/yyyy hh:mm' : null);
+    const format = column.k === 'measuredOn' ? '@' : column.t === 'datetime' ? 'dd/mm/yyyy hh:mm' : null;
     if (format) col.numFmt = format;
     const horizontal = ['num', 'num1', 'num2', 'num3', 'num4', 'cny', 'money', 'pct', 'ratio'].includes(column.t) ? 'right' : column.t === 'datetime' ? 'center' : 'left';
     col.alignment = { vertical: 'middle', horizontal };
+    if (purchaseWorkbook.numericTypes.has(column.t)) {
+      col.eachCell({ includeEmpty: false }, cell => { if (cell.row > 1) cell.numFmt = numberFormat(column, cell.value); });
+    }
   });
 }
 
 function styleGuideSheet(sheet) {
   sheet.columns = GUIDE_WIDTHS.map(width => ({ width }));
   sheet.views = [{ state: 'normal', showGridLines: false }];
+  sheet.eachRow(row => row.eachCell({ includeEmpty: true }, cell => {
+    cell.font = { name: 'Calibri', size: 10 };
+    cell.alignment = { vertical: 'middle', wrapText: true };
+    cell.border = { bottom: { style: 'thin', color: { argb: 'FFD9E0EA' } } };
+  }));
   for (let rowNumber = 2; rowNumber <= 6; rowNumber++) {
     sheet.mergeCells(rowNumber, 1, rowNumber, 4);
     const row = sheet.getRow(rowNumber);
@@ -116,4 +129,21 @@ async function formatPurchaseSnapshot(source, columns) {
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
-module.exports = { formatPurchaseSnapshot };
+async function formatPurchaseNewCodesTemplate(source, columns) {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(Buffer.from(source));
+  const template = workbook.getWorksheet('Mã mới');
+  if (!template) throw new Error('File mẫu thiếu sheet Mã mới.');
+  styleOrderSheet(template, purchaseWorkbook.newCodeColumns(columns));
+  const guide = workbook.getWorksheet('Hướng dẫn');
+  if (guide) styleGuideSheet(guide);
+  const regions = workbook.getWorksheet('Danh sách vùng');
+  if (regions) {
+    regions.columns = [{ width: 16 }, { width: 30 }, { width: 14 }];
+    setTableView(regions, 3);
+    styleHeader(regions.getRow(1));
+  }
+  return Buffer.from(await workbook.xlsx.writeBuffer());
+}
+
+module.exports = { formatPurchaseSnapshot, formatPurchaseNewCodesTemplate };

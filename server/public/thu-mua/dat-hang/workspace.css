@@ -692,6 +692,8 @@
 #modalBody .import-archived{background:color-mix(in srgb,var(--primary) 5%,transparent)}
 #modalBody .import-stale-warning{display:grid;gap:8px;margin:10px 0;padding:12px;border:1px solid #e7a23b;border-radius:8px;background:color-mix(in srgb,#e7a23b 12%,var(--panel));color:var(--text)}
 #modalBody .import-error-summary{display:grid;gap:8px;margin:10px 0;padding:12px;border:1px solid #ef6b73;border-radius:8px;background:color-mix(in srgb,#ef6b73 12%,var(--panel));color:var(--text)}
+#modalBody .import-ready-summary{display:grid;gap:6px;margin:10px 0;padding:12px;border:1px solid #2b9b73;border-radius:8px;background:color-mix(in srgb,#2b9b73 10%,var(--panel));color:var(--text)}
+#modalBody .import-error-summary span,#modalBody .import-ready-summary span{line-height:1.5}
 #modalBody .import-error-summary button{justify-self:start}
 #modalBody .import-stale-warning label{display:flex;align-items:flex-start;gap:8px;margin:0;font-weight:650}
 #modalBody .import-stale-warning input{width:auto;margin:2px 0 0}
@@ -797,3 +799,5 @@
 .purchase-page #watchedContainer table.tks-controlled-table th>.tks-column-resizer:hover,.purchase-page #watchedContainer table.tks-controlled-table th>.tks-column-resizer:focus-visible{opacity:1;background:color-mix(in srgb,var(--primary) 10%,transparent)}
 .purchase-page #watchedContainer>.tks-table-tools{display:none!important}
 .purchase-page #watchedContainer .watched-container-table td select{box-sizing:border-box;width:100%;min-width:0;max-width:none;min-height:25px;padding:2px 20px 2px 5px;border:1px solid var(--border);border-radius:var(--radius-sm);background-color:var(--panel);font-size:10.5px;line-height:1.2}
+.purchase-help{display:inline-grid;place-items:center;width:16px;height:16px;margin-left:3px;border:1px solid currentColor;border-radius:50%;color:var(--muted);font-size:11px;font-weight:700;line-height:1;cursor:help;vertical-align:middle}
+.purchase-help:focus-visible{outline:2px solid var(--primary);outline-offset:2px}

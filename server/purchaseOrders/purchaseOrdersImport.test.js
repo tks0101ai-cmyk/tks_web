@@ -22,12 +22,11 @@ test('partial update preserves blank fields, permits code rename, and ignores co
   assert.deepEqual(result.operations[0].changes.map(c => c.key), ['productCode', 'cartonCount']);
   assert.equal(result.operations[0].expectedVersion, 2);
 });
-test('measurement input fields import as overrides while derived measurements stay calculated',()=>{
+test('measurement columns are ignored by import templates and cannot change a row',()=>{
   const result=prepareRows([{rowKey:'D00001.01',productCode:'A',literWarehouse:1.25,m3Warehouse:.42,literChina:1.1,literDiff:-12,gramWarehouse:350,gramChina:300,gramDiff:-14,measuredOn:'2026-11-12',ratio:.8}],existing());
   assert.equal(result.valid,true,result.rows[0].errors.join('; '));
-  // Tỉ lệ là cột công thức (Tổng Tấn / Tổng m³), không còn cờ `o` từ be005395: file import có gõ
-  // Tỉ lệ thì vẫn không sinh thay đổi nào, giống 11 cột công thức còn lại.
-  assert.deepEqual(result.operations[0].changes.filter(c=>['literWarehouse','m3Warehouse','literChina','literDiff','gramWarehouse','gramChina','gramDiff','measuredOn','ratio'].includes(c.key)).map(c=>c.key),['literWarehouse','m3Warehouse','literChina','literDiff','gramWarehouse','gramChina','gramDiff','measuredOn']);
+  assert.equal(result.rows[0].action,'unchanged');
+  assert.deepEqual(result.operations,[]);
 });
 test('one error suppresses the whole plan; all errors remain available to the UI', () => {
   const result = prepareRows([fresh(), { rowKey: 'D99999', productCode: 'B' }], existing());
@@ -108,7 +107,7 @@ test('full snapshot workbook carries revision, complete writable headers and per
   const file=excel.exportImportSnapshot({rows:[{...fresh(),rowKey:'D00001.01'}],columns,revision:'12:34'});
   const workbook=excel.read(file),parsed=excel.parseImportSnapshot(file,columns);
   const guide=XLSX.utils.sheet_to_json(workbook.Sheets['Hướng dẫn'],{header:1,defval:''});
-  const writable=columns.filter(c=>c.k==='rowKey'||!!c.region||!!c.o||c.si||!c.d&&!c.m&&!c.ro&& !['container','status'].includes(c.k));
+  const writable=excel.importColumns(columns);
   assert.ok(workbook.SheetNames.includes('Đặt hàng'));
   assert.equal(workbook.Workbook.Sheets.find(s=>s.name==='__TOKOSI').Hidden,1);
   assert.equal(parsed.revision,'12:34');
@@ -117,7 +116,7 @@ test('full snapshot workbook carries revision, complete writable headers and per
   assert.equal(parsed.rows[0].productNameCn,null);
   assert.ok(writable.every(c=>guide.some(row=>row.includes(excel.caption(c)))), 'guide must explain every imported column');
   assert.ok(guide.flat().some(cell=>/ví dụ/i.test(String(cell))), 'example stays on guide sheet');
-  assert.ok(writable.some(c=>c.k==='literWarehouse')&&writable.some(c=>c.k==='gramWarehouse')&&writable.some(c=>c.k==='measuredOn'));
+  assert.ok(!writable.some(c=>['literWarehouse','m3Warehouse','literChina','literDiff','gramWarehouse','gramChina','gramDiff','measuredOn'].includes(c.k)));
   assert.equal(parsed.rows[0].container,null);
 });
 
@@ -134,21 +133,21 @@ test('snapshot container names assign matching active containers and blank value
   assert.equal(pricing.valid,true);assert.equal(pricing.operations[0].values.contId,null);
 });
 
-test('snapshot blocks unknown or region-mismatched container names',()=>{
+test('snapshot plans unknown containers for creation and blocks region-mismatched names',()=>{
   const containers=[{id:'9',name:'10-2H',region_id:'3'}],regions=[{id:'3',name:'H',isActive:true},{id:'4',name:'V',isActive:true}];
   const unknown=prepareRows([{...fresh(),container:'10-99H'}],[],{snapshot:true,containers});
-  assert.equal(unknown.valid,false);assert.match(unknown.rows[0].errors.join(' '),/không tìm thấy cont/);
+  assert.equal(unknown.valid,true);assert.equal(unknown.masterData.containers[0].name,'10-99H');
   const mismatch=prepareRows([{...fresh(),regionId:'V',container:'10-2H'}],[],{snapshot:true,regions,containers});
   assert.equal(mismatch.valid,false);assert.match(mismatch.rows[0].errors.join(' '),/vùng không khớp/);
 });
 
 
-test('snapshot import accepts configured region names and rejects unknown regions',()=>{
+test('snapshot import resolves configured regions and plans unknown region names',()=>{
   const current=[{...fresh(),id:'1',rowKey:'D00001',version:4,regionId:null}],regions=[{id:'9',name:'Miền Bắc',isActive:true}];
   const accepted=prepareRows([{rowKey:'D00001',productCode:'A',regionId:'Miền Bắc'}],current,{snapshot:true,regions});
   assert.equal(accepted.valid,true);assert.equal(accepted.rows[0].changes.find(change=>change.key==='regionId').after,'9');
-  const rejected=prepareRows([{rowKey:'D00001',productCode:'A',regionId:'Không có'}],current,{snapshot:true,regions});
-  assert.equal(rejected.valid,false);assert.match(rejected.rows[0].errors.join(' '),/Vùng/);
+  const planned=prepareRows([{rowKey:'D00001',productCode:'A',regionId:'Không có'}],current,{snapshot:true,regions});
+  assert.equal(planned.valid,true);assert.equal(planned.masterData.regions[0].name,'Không có');
 });
 test('snapshot parser rejects ordinary or incomplete workbooks and accepts an intentionally empty snapshot', () => {
   const rows=[{...fresh(),rowKey:'D00001.01'}],ordinary=excel.bytes(excel.exportWorkbook(rows,columns));

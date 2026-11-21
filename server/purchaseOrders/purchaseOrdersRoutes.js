@@ -6,7 +6,7 @@ const { requireAuth, requireFeature } = require('../auth/authMiddleware');
 const { hasFeature } = require('../auth/featureRegistry');
 const { createPurchaseOrdersService } = require('./purchaseOrdersService');
 const workbook = require('../public/shared/purchase-workbook');
-const { formatPurchaseSnapshot } = require('./purchaseSnapshotFormatter');
+const { formatPurchaseSnapshot, formatPurchaseNewCodesTemplate } = require('./purchaseSnapshotFormatter');
 const { formatPurchaseExport } = require('./purchaseExportFormatter');
 const columns = require('../public/shared/purchase-columns');
 function createPurchaseOrdersRouter(dependencies={}) {
@@ -71,7 +71,7 @@ function createPurchaseOrdersRouter(dependencies={}) {
   router.post(root+'/depart',requireFeature('purchase.depart'),handle(async(req,res)=>res.json(await service.depart(req.user,req.body))));
   router.post(root+'/arrive',requireFeature('purchase.arrive'),handle(async(req,res)=>res.json(await service.arrive(req.user,req.body))));
   router.get(root+'/import/snapshot',requireFeature('purchase.import'),handle(async(req,res)=>{const snapshot=await service.importSnapshot(req.user);const data=workbook.exportImportSnapshot({...snapshot,columns}),formatted=await formatPurchaseSnapshot(data,columns);res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').set('Content-Disposition','attachment; filename="tokosi-purchase-snapshot.xlsx"').send(formatted)}));
-  router.get(root+'/import/new-codes/template',requireFeature('purchase.import'),handle(async(req,res)=>{const {regions}=await service.newCodesTemplate(req.user),file=Buffer.from(workbook.exportNewCodesTemplate(columns,regions));res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').set({'Content-Disposition':'attachment; filename="tokosi-purchase-new-codes-template.xlsx"','Cache-Control':'no-store','Content-Length':String(file.length)}).send(file)}));
+  router.get(root+'/import/new-codes/template',requireFeature('purchase.import'),handle(async(req,res)=>{const {regions}=await service.newCodesTemplate(req.user),data=workbook.exportNewCodesTemplate(columns,regions),file=await formatPurchaseNewCodesTemplate(data,columns);res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').set({'Content-Disposition':'attachment; filename="tokosi-purchase-new-codes-template.xlsx"','Cache-Control':'no-store','Content-Length':String(file.length)}).send(file)}));
   router.post(root+'/import/new-codes/preview',requireFeature('purchase.import'),(req,res,next)=>upload.single('file')(req,res,error=>{if(error)return res.status(400).json({code:'IMPORT_FILE_INVALID',error:'Chỉ chọn một file .xlsx tối đa 10 MB.'});next()}),handle(async(req,res)=>{if(!req.file||!/\.xlsx$/i.test(req.file.originalname))throw Object.assign(Error('Chọn file .xlsx.'),{statusCode:400,code:'IMPORT_FILE_INVALID'});res.json(await service.previewNewCodeImport(req.user,{buffer:req.file.buffer}))}));
   router.post(root+'/import/new-codes/confirm',requireFeature('purchase.import'),handle(async(req,res)=>{if(!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(req.body.token||''))return res.status(400).json({code:'IMPORT_TOKEN_INVALID',error:'Bản xem trước không hợp lệ.'});res.json(await service.commitNewCodeImport(req.user,req.body.token))}));
   router.post(root+'/import/preview',requireFeature('purchase.import'),(req,res,next)=>upload.single('file')(req,res,error=>{
