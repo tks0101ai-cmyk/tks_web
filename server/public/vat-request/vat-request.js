@@ -1541,17 +1541,20 @@
     }
   }
 
-  // "Order VAT" tu hop chi tiet hoa don / don hang (shared/vat-handoff.js): doc 1 lan roi xoa, bo ?handoff=1 khoi URL.
+  // "Order VAT" tu hop chi tiet hoa don / don hang (shared/vat-handoff.js): doc 1 lan roi xoa, bo cac tham so chuyen khoi URL.
   function consumeHandoff() {
     const url = new URL(window.location.href);
     if (url.searchParams.get('handoff') !== '1') return;
+    const ids = url.searchParams.getAll('handoffId');
+    const id = ids.length === 1 ? ids[0] : null;
     url.searchParams.delete('handoff');
+    url.searchParams.delete('handoffId');
     window.history.replaceState(null, '', url.pathname + url.search + url.hash);
     if (!window.TKSVatHandoff) return;
     let storage = null;
     try { storage = window.localStorage; } catch (error) { storage = null; }
     // Luon doc-roi-xoa khoa chuyen, ke ca khi trang khong co form nhap lo.
-    const taken = window.TKSVatHandoff.takeOrderVat(storage);
+    const taken = window.TKSVatHandoff.takeOrderVat(storage, id);
     if (!state.batch) return;
     if (taken.status !== 'ok' || !taken.rows.length) {
       setStatus('Dữ liệu chuyển sang đã hết hạn, mở lại từ hộp chi tiết.', 'error');

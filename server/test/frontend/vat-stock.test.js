@@ -18,7 +18,7 @@ const settle = async () => { for (let i = 0; i < 6; i += 1) await new Promise(re
 
 function memoryStorage() {
   const map = new Map();
-  return { getItem: key => (map.has(key) ? map.get(key) : null), setItem: (key, value) => map.set(key, String(value)), removeItem: key => map.delete(key) };
+  return { get length() { return map.size; }, key: index => [...map.keys()][index] ?? null, getItem: key => (map.has(key) ? map.get(key) : null), setItem: (key, value) => map.set(key, String(value)), removeItem: key => map.delete(key) };
 }
 const L = (productCode, quantity, extra = {}) => ({ productCode, productName: 'Hàng ' + productCode, quantity, price: 30, discount: 3.33, ...extra });
 
@@ -101,21 +101,82 @@ test('headHtml / cellsHtml: cot theo quyen, dong khong xet de trong, thoat HTML 
   assert.match(S.barHtml(), /data-vat-bar/);
 });
 
-test('vat-handoff: ghi / doc 1 lan roi xoa; qua 10 phut hoac hong -> expired; chan bo nho -> false / none', () => {
+test('vat-handoff: doc dung tung ban chuyen mot lan theo ca hai thu tu', () => {
+  const rowsA = [{ customerName: 'KH A', productCode: 'A1', quantity: 2 }];
+  const rowsB = [{ customerName: 'KH B', productCode: 'B2', quantity: 27 }];
+  for (const order of [[0, 1], [1, 0]]) {
+    const storage = memoryStorage();
+    const payloads = [{ source: 'HD-1', rows: rowsA }, { source: 'DH-2', rows: rowsB }];
+    const ids = payloads.map(payload => H.writeOrderVat(storage, payload, 1000));
+    assert.ok(ids.every(id => typeof id === 'string'));
+    assert.notEqual(ids[0], ids[1]);
+    for (const i of order) {
+      assert.deepEqual(H.takeOrderVat(storage, ids[i], 2000), { status: 'ok', ...payloads[i] });
+      assert.deepEqual(H.takeOrderVat(storage, ids[i], 2000), { status: 'none', rows: [] });
+    }
+    assert.equal(storage.length, 0);
+  }
+});
+
+test('vat-handoff: ID du phong van khac nhau khi ghi lien tiep', () => {
+  const dom = new JSDOM('', { runScripts: 'outside-only' });
+  try {
+    const { window } = dom;
+    Object.defineProperty(window, 'crypto', { value: undefined });
+    window.Date.now = () => 1000;
+    window.Math.random = () => 0.5;
+    window.eval(handoffCode);
+    const storage = memoryStorage();
+    const payload = { source: 'HD-1', rows: [] };
+    const first = window.TKSVatHandoff.writeOrderVat(storage, payload, 1000);
+    const second = window.TKSVatHandoff.writeOrderVat(storage, payload, 1000);
+    assert.match(first, /^fallback-/);
+    assert.notEqual(first, second);
+    assert.equal(H.takeOrderVat(storage, first, 1001).status, 'ok');
+    assert.equal(H.takeOrderVat(storage, second, 1001).status, 'ok');
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('vat-handoff: ma sai khong doc khoa cu hay khoa hop le, qua han va loi luu tru', () => {
   const storage = memoryStorage();
-  const rows = [{ customerName: 'KH A', productCode: 'A1', productName: 'Hàng A', quantity: 2, unitPrice: 27, saleNote: 'Từ HD-1' }];
-  assert.equal(H.writeOrderVat(storage, { source: 'HD-1', rows }, 1000), true);
-  assert.deepEqual(H.takeOrderVat(storage, 1000 + 60000), { status: 'ok', source: 'HD-1', rows });
-  assert.equal(storage.getItem(H.ORDER_VAT_KEY), null, 'doc xong la xoa');
-  assert.deepEqual(H.takeOrderVat(storage, 2000), { status: 'none', rows: [] });
-  H.writeOrderVat(storage, { source: 'HD-1', rows }, 0);
-  assert.equal(H.takeOrderVat(storage, H.MAX_AGE_MS + 1).status, 'expired');
-  storage.setItem(H.ORDER_VAT_KEY, '{hong');
-  assert.equal(H.takeOrderVat(storage).status, 'expired');
-  assert.equal(storage.getItem(H.ORDER_VAT_KEY), null);
-  assert.equal(H.writeOrderVat(null, { source: 'x', rows }), false);
-  assert.deepEqual(H.takeOrderVat(null), { status: 'none', rows: [] });
-  assert.equal(H.writeOrderVat({ setItem() { throw new Error('QuotaExceeded'); } }, { source: 'x', rows }), false);
+  const payload = { source: 'HD-1', rows: [{ productCode: 'A1' }] };
+  const legacyKey = 'tks.vatRequest.handoff';
+  storage.setItem(legacyKey, JSON.stringify({ createdAt: 0, ...payload }));
+  const id = H.writeOrderVat(storage, payload, 0);
+  for (const invalidId of [null, '', '../other', '__proto__', id.toUpperCase(), id + '&extra=1', 'a'.repeat(100)]) {
+    assert.deepEqual(H.takeOrderVat(storage, invalidId, 1), { status: 'none', rows: [] });
+  }
+  assert.equal(storage.length, 2);
+  assert.equal(H.takeOrderVat(storage, id, H.MAX_AGE_MS + 1).status, 'expired');
+  assert.equal(storage.length, 1);
+  assert.ok(storage.getItem(legacyKey));
+  storage.setItem(H.ORDER_VAT_PREFIX + id, '{hong');
+  assert.equal(H.takeOrderVat(storage, id, 1).status, 'expired');
+  assert.equal(storage.getItem(H.ORDER_VAT_PREFIX + id), null);
+  assert.equal(H.writeOrderVat(null, payload), false);
+  assert.deepEqual(H.takeOrderVat(null, id), { status: 'none', rows: [] });
+  const denied = { getItem() { throw new Error('denied'); }, setItem() { throw new Error('denied'); } };
+  assert.equal(H.writeOrderVat(denied, payload), false);
+  assert.deepEqual(H.takeOrderVat(denied, id), { status: 'none', rows: [] });
+});
+
+test('vat-handoff: ghi ban chuyen moi don cac khoa qua han va giu cac khoa khac', () => {
+  const storage = memoryStorage();
+  const payload = { source: 'HD-1', rows: [] };
+  const recentTime = H.MAX_AGE_MS;
+  const expired = H.writeOrderVat(storage, payload, 0);
+  const recent = H.writeOrderVat(storage, payload, recentTime);
+  storage.setItem('vr-batch-draft:sale', JSON.stringify({ createdAt: 0, ...payload }));
+  storage.setItem('tks.vatRequest.handoff:unrelated', JSON.stringify({ createdAt: 0, ...payload }));
+  const next = H.writeOrderVat(storage, payload, recentTime + 1);
+  assert.equal(H.takeOrderVat(storage, expired, recentTime + 1).status, 'none');
+  assert.equal(H.takeOrderVat(storage, recent, recentTime + 1).status, 'ok');
+  assert.equal(H.takeOrderVat(storage, next, recentTime + 1).status, 'ok');
+  assert.equal(storage.length, 2);
+  assert.ok(storage.getItem('vr-batch-draft:sale'));
+  assert.ok(storage.getItem('tks.vatRequest.handoff:unrelated'));
 });
 
 test('vat-handoff: TSV dung thu tu cot va thay ky tu xuong dong / tab', () => {
@@ -184,8 +245,10 @@ test('attach: tick -> nut Order VAT (n dong); bam -> luu ban chuyen (so thieu, g
   assert.equal(page.bar().querySelector('[data-vat-action="order"]').textContent, 'Order VAT (1 dòng)');
   page.tick(1);
   page.bar().querySelector('[data-vat-action="order"]').click();
-  assert.deepEqual(page.opened, ['/vat-request/?handoff=1']);
-  const saved = JSON.parse(page.window.localStorage.getItem('tks.vatRequest.handoff'));
+  assert.equal(page.opened.length, 1);
+  assert.match(page.opened[0], /^\/vat-request\/\?handoff=1&handoffId=[a-z0-9-]+$/);
+  const url = new URL(page.opened[0], page.window.location.href);
+  const saved = H.takeOrderVat(page.window.localStorage, url.searchParams.get('handoffId'));
   assert.equal(saved.source, 'HD-1');
   assert.deepEqual(saved.rows, [
     { customerName: 'KH A', productCode: 'A1', productName: 'Hàng A1', quantity: 2, unitPrice: 27, saleNote: 'Từ HD-1' },
@@ -194,12 +257,43 @@ test('attach: tick -> nut Order VAT (n dong); bam -> luu ban chuyen (so thieu, g
   page.dom.window.close();
 });
 
+test('attach: hai trang Order VAT mo gan nhau chi doc dong cua chung tu minh', async () => {
+  for (const order of [[0, 1], [1, 0]]) {
+    const storage = memoryStorage();
+    const pages = ['HD-1', 'DH-2'].map((code, index) => mount({
+      lines: [L('A1', 2 + index)],
+      doc: { ...DOC, code, customerName: 'KH ' + index },
+      getStorage: () => storage,
+      stock: Promise.resolve({ items: { A1: { vatCode: 'VAT1', stock: 1 } } })
+    }));
+    try {
+      await settle();
+      const ids = pages.map(page => {
+        page.tick(0);
+        page.bar().querySelector('[data-vat-action="order"]').click();
+        return new URL(page.opened[0], page.window.location.href).searchParams.get('handoffId');
+      });
+      assert.notEqual(ids[0], ids[1]);
+      for (const i of order) {
+        const handoff = H.takeOrderVat(storage, ids[i]);
+        assert.equal(handoff.source, ['HD-1', 'DH-2'][i]);
+        assert.equal(handoff.rows[0].customerName, 'KH ' + i);
+        assert.equal(handoff.rows[0].quantity, i + 1);
+        assert.equal(H.takeOrderVat(storage, ids[i]).status, 'none');
+      }
+    } finally {
+      pages.forEach(page => page.dom.window.close());
+    }
+  }
+});
+
 test('attach: sau khi bam Order VAT -> bo tick, an nut, bao "Da mo trang ORDER VAT."; tick lai thi het bao va nut tro lai', async () => {
   const page = mount({ lines: [L('A1', 3)], stock: Promise.resolve({ meta: META, items: { A1: { vatCode: 'VAT1', stock: 1 } } }) });
   await settle();
   page.tick(0);
   page.bar().querySelector('[data-vat-action="order"]').click();
-  assert.deepEqual(page.opened, ['/vat-request/?handoff=1']);
+  assert.equal(page.opened.length, 1);
+  assert.match(page.opened[0], /^\/vat-request\/\?handoff=1&handoffId=[a-z0-9-]+$/);
   assert.equal(page.rows()[0].querySelector('.vat-order-tick').checked, false);
   assert.equal(page.bar().querySelector('[data-vat-action="order"]'), null);
   assert.match(page.bar().textContent, /Đã mở trang ORDER VAT\./);
@@ -217,7 +311,8 @@ test('attach: loi doc ton -> "—", dong bao loi, tick mo o moi dong duoc xet, O
   assert.doesNotMatch(page.bar().textContent, /dòng thiếu VAT/);
   page.tick(1);
   page.bar().querySelector('[data-vat-action="order"]').click();
-  assert.equal(JSON.parse(page.window.localStorage.getItem('tks.vatRequest.handoff')).rows[0].quantity, 4);
+  const url = new URL(page.opened[0], page.window.location.href);
+  assert.equal(H.takeOrderVat(page.window.localStorage, url.searchParams.get('handoffId')).rows[0].quantity, 4);
   page.dom.window.close();
 });
 
@@ -300,6 +395,6 @@ test('attach: destroy xoa tick va thao tac cua chung tu cu', async () => {
   assert.equal(page.bar().querySelector('[data-vat-action="order"]'), null);
   action.click();
   assert.deepEqual(page.opened, []);
-  assert.equal(page.window.localStorage.getItem(H.ORDER_VAT_KEY), null);
+  assert.equal(page.window.localStorage.length, 0);
   page.dom.window.close();
 });

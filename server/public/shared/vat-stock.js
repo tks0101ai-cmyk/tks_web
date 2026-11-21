@@ -205,12 +205,13 @@
     function onOrder() {
       const rows = orderRows();
       if (!rows.length || !handoff) return;
-      if (handoff.writeOrderVat(getStorage(), { source: doc.code, rows })) {
+      const id = handoff.writeOrderVat(getStorage(), { source: doc.code, rows });
+      if (id) {
         state.ticked.clear();
         state.notice = 'Đã mở trang ORDER VAT.';
         paintCells();
         paintBar();
-        openTab('/vat-request/?handoff=1');
+        openTab('/vat-request/?handoff=1&handoffId=' + encodeURIComponent(id));
         return;
       }
       Promise.resolve()
