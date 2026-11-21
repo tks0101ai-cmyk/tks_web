@@ -6,6 +6,21 @@ const assert = require('node:assert/strict');
 const registry = require('./featureRegistry');
 const { ROLES, INTERNAL_ROLES, REPORTS_ROLES } = require('./userRepository');
 
+test('Kế toán xem Giao dịch, chi tiết hóa đơn và dùng Tồn VAT / ORDER VAT, không mở quyền báo cáo khác', () => {
+  const permissions = registry.resolvePermissions({ vaiTro: ROLES.KE_TOAN });
+  for (const key of ['reports.invoices', 'accounting.vatLookup', 'accounting.vatRequest']) {
+    assert.ok(permissions.includes(key), key);
+  }
+  const vat = require('../public/shared/vat-stock');
+  assert.deepEqual(vat.permissions(key => permissions.includes(key)), { stock: true, order: true });
+  for (const key of ['reports.export', 'reports.overview', 'reports.debt', 'reports.business',
+    'reports.invoices.priceAudit', 'reports.invoices.approvedPrice', 'accounting.vatRequestProcess']) {
+    assert.ok(!permissions.includes(key), key);
+  }
+  const revoked = registry.resolvePermissions({ vaiTro: ROLES.KE_TOAN, featurePermissions: { 'reports.invoices': false } });
+  assert.ok(!revoked.includes('reports.invoices'));
+});
+
 test('Marketing defaults to manager, assistant and Marketing, supports per-user revoke', () => {
   for (const role of Object.values(ROLES)) {
     assert.equal(registry.defaultsForRole(role).includes('reports.marketing'),
@@ -148,8 +163,9 @@ test('mac dinh theo vai tro: reports.* khop dung REPORTS_ROLES cu', () => {
   }
   for (const role of LEGACY_NO_REPORTS_ROLES) {
     const defaults = registry.defaultsForRole(role);
-    // 2026-10-20: bang Du kien hang ve mo cho Ke toan / Mua hang / Kho; ngoai ra khong co reports.* nao.
-    const reportKeys = defaults.filter(key => key.startsWith('reports.') && key !== 'reports.products.expected');
+    // Kế toán có thêm Giao dịch / chi tiết hóa đơn; không mở các báo cáo khác.
+    const reportKeys = defaults.filter(key => key.startsWith('reports.') && key !== 'reports.products.expected'
+      && !(role === ROLES.KE_TOAN && key === 'reports.invoices'));
     assert.deepEqual(reportKeys, [], `${role} khong duoc co quyen reports.* nao`);
   }
 });
@@ -370,7 +386,7 @@ test('pageRuleFor chuan hoa duong dan, "/" tuong duong "/reports"', () => {
 
 test('landingPathFor tra ve trang dau tien tai khoan vao duoc', () => {
   assert.equal(registry.landingPathFor(registry.defaultsForRole(ROLES.QUAN_LY)), '/reports/');
-  assert.equal(registry.landingPathFor(registry.defaultsForRole(ROLES.KE_TOAN)), '/shipment/lifecycle/');
+  assert.equal(registry.landingPathFor(registry.defaultsForRole(ROLES.KE_TOAN)), '/reports/');
   // Sale co quyen Tong quan nen trang dau tien vao duoc la bao cao (thu tu PAGE_FEATURES).
   assert.equal(registry.landingPathFor(registry.defaultsForRole(ROLES.NHAN_VIEN_SALE)), '/reports/');
   // Marketing now has its own report; guest still only enters account.
@@ -478,9 +494,9 @@ test('reports.products.expected: moi vai tro noi bo, doc lap voi reports.product
   for (const role of [ROLES.KE_TOAN, ROLES.NHAN_VIEN_MUA_HANG, ROLES.NHAN_VIEN_KHO]) {
     const permissions = registry.defaultsForRole(role);
     assert.ok(!permissions.includes('reports.products'), role);
-    // Mo duoc /reports (de xem bang) nhung landing van la trang cu.
+    // Kế toán có Hóa đơn nên vào Báo cáo; Mua hàng / Kho chỉ có Dự kiến vẫn vào trang cũ.
     assert.ok(registry.permissionsHave(permissions, ...registry.pageRuleFor('/reports').anyOf), role);
-    assert.notEqual(registry.landingPathFor(permissions), '/reports/', role);
+    assert.equal(registry.landingPathFor(permissions) === '/reports/', role === ROLES.KE_TOAN, role);
   }
   assert.equal(registry.landingPathFor(['reports.products.expected', 'account.profile']), '/account/');
 });

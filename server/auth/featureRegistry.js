@@ -70,7 +70,7 @@ const FEATURES = Object.freeze([
   { key: 'reports.products.price', groupKey: 'reports', label: 'Hàng hóa: xem đơn giá HN / SG (cần Hàng hóa)', roles: REPORTS_ROLES, requires: 'reports.products' },
   // Du kien hang ve: moi vai tro noi bo; doc lap voi Bao cao hang hoa va Tang truong ma hang.
   { key: 'reports.products.expected', groupKey: 'reports', label: 'Hàng hóa: xem bảng Dự kiến hàng về', roles: INTERNAL_ROLES },
-  { key: 'reports.invoices', groupKey: 'reports', label: 'Hóa đơn', roles: REPORT_VIEW_ROLES },
+  { key: 'reports.invoices', groupKey: 'reports', label: 'Hóa đơn', roles: [...REPORT_VIEW_ROLES, ROLES.KE_TOAN] },
   // 2026-10-20: Kiem tra gia ban (tab Hoa don, server/invoicePriceAudit). Giai thich chi Sale dung nhom khach HIEN TAI
   // (kiem tra o server moi lan ghi); Chot mac dinh chi Quan ly, KHONG tu cap Tro ly; quyen Chot khong kem quyen giai thich.
   // escalationExempt cho giai thich: giong Sale phan hoi cong no (Tro ly van tao / dat lai mat khau TK Sale duoc).
