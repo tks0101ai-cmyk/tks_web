@@ -1302,9 +1302,12 @@
       if(showVat){
         if(!detailVatStock) detailVatStock = vat.loadStock(lines);
         const requestId = detailRequestId;
+        // Tính cả ghi đè Vòng đời và mã hủy Kiot trong ORDER_STATUS_FALLBACK.
+        const cancelled = order.summary?.code === 'CANCELLED' || String(detailKiot.status) === '4';
+        const status = cancelled ? 'Đã hủy' : detailKiot.status;
         detailVatController = vat.attach({
           root: holder, lines, perms,
-          doc: { kind: 'order', code: order.orderCode, branch: order.branch, status: detailKiot.status, customerName: detailKiot.customerName || order.customerName || '' },
+          doc: { kind: 'order', code: order.orderCode, branch: order.branch, status, customerName: detailKiot.customerName || order.customerName || '' },
           stock: detailVatStock,
           isCurrent: () => requestId === detailRequestId && detailOrder === order
         });

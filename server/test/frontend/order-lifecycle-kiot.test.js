@@ -1417,6 +1417,41 @@ test('Tồn VAT: đơn đã hủy có tồn đỏ và không thể ORDER VAT', a
   assert.equal(holder.querySelector('[data-vat-action="order"]'), null);
 });
 
+test('Tồn VAT: mã trạng thái Kiot 4 của đơn đã hủy chỉ xem tồn', async t => {
+  const page = await renderPage({
+    withVatStock: true,
+    orders: [kiotOnlyOrder('DH041173', { kiotStatus: 'Đã hủy' })],
+    fetchImpl: vatFetch(kiotDetail({ status: '4', phieuTam: false }))
+  });
+  t.after(() => page.dom.window.close());
+  rowsOf(page.document)[0].click();
+  await settle();
+  const holder = page.document.getElementById('lcDetailKiot');
+  assert.equal(holder.querySelector('.vat-stock-cell.is-vat-short').textContent, '100');
+  const tick = holder.querySelector('.vat-order-tick');
+  assert.ok(!tick || tick.disabled);
+  tick?.click();
+  assert.equal(holder.querySelector('[data-vat-action="order"]'), null);
+});
+
+test('Tồn VAT: đơn đã hủy ở Vòng đời chỉ xem tồn dù Kiot còn Phiếu tạm', async t => {
+  const page = await renderPage({
+    withVatStock: true,
+    orders: [kiotOnlyOrder('DH041173', { summary: { code: 'CANCELLED', label: 'Đã hủy' } })],
+    fetchImpl: vatFetch(kiotDetail())
+  });
+  t.after(() => page.dom.window.close());
+  rowsOf(page.document)[0].click();
+  await settle();
+  const holder = page.document.getElementById('lcDetailKiot');
+  assert.match(holder.querySelector('.dp-section-note').textContent, /Theo Kiot · Phiếu tạm/);
+  assert.equal(holder.querySelector('.vat-stock-cell.is-vat-short').textContent, '100');
+  const tick = holder.querySelector('.vat-order-tick');
+  assert.ok(!tick || tick.disabled);
+  tick?.click();
+  assert.equal(holder.querySelector('[data-vat-action="order"]'), null);
+});
+
 test('Tồn VAT: Trợ lý không có quyền tra cứu thì không gọi API tồn', async t => {
   const page = await renderPage({
     withVatStock: true, vaiTro: 'Trợ lý',

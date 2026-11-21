@@ -52,9 +52,10 @@ const INVOICE_DETAIL = {
   lineCount: 1, totalQuantity: 3
 };
 
-function createPage({ respond, withTableControls = false, stock, can = () => true, serverPagination = false } = {}) {
+function createPage({ respond, withTableControls = false, stock, can = () => true, serverPagination = false, transactionStatus } = {}) {
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://tokosi.example/#invoices' });
   const data = payload();
+  if (transactionStatus) data.invoices.transactionsReport.transactions[0].status = transactionStatus;
   if (serverPagination) {
     const report = data.invoices.transactionsReport;
     Object.assign(report, { totalRows: 102, page: 2, pageSize: 100, rows: report.transactions });
@@ -404,6 +405,26 @@ test('Tồn VAT: hóa đơn đã hủy chỉ xem tồn', async t => {
   await settle();
   const body = page.$('docModalBody');
   assert.equal(body.querySelector('.vat-stock-cell').textContent, '1');
+  const tick = body.querySelector('.vat-order-tick');
+  assert.ok(!tick || tick.disabled);
+  tick?.click();
+  assert.equal(body.querySelector('[data-vat-action="order"]'), null);
+});
+
+test('Tồn VAT: mã trạng thái Kiot 2 của hóa đơn đã hủy chỉ xem tồn', async t => {
+  const page = createPage({
+    transactionStatus: 'Đã hủy',
+    respond: () => jsonOk({ ...INVOICE_DETAIL, status: '2' }),
+    stock: () => invoiceStock(1)
+  });
+  t.after(() => page.dom.window.close());
+  await settle();
+  const row = firstTransactionRow(page);
+  assert.match(row.textContent, /Đã hủy/);
+  row.click();
+  await settle();
+  const body = page.$('docModalBody');
+  assert.equal(body.querySelector('.vat-stock-cell.is-vat-short').textContent, '1');
   const tick = body.querySelector('.vat-order-tick');
   assert.ok(!tick || tick.disabled);
   tick?.click();

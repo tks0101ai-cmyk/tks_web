@@ -11631,9 +11631,11 @@
         body.innerHTML = docDetailBodyHtml(docDetail.tableKey, data, showVat ? perms : null);
         if (showVat) {
           const requestId = docDetail.requestId;
+          // Khớp INVOICE_STATUS_FALLBACK khi API chi tiết chỉ trả mã Kiot.
+          const status = String(data.status) === '2' ? 'Đã hủy' : data.status;
           docDetail.vatController = vat.attach({
             root: body, lines, perms,
-            doc: { kind: 'invoice', code: data.code, branch: item.branch, status: data.status, customerName: data.customerName },
+            doc: { kind: 'invoice', code: data.code, branch: item.branch, status, customerName: data.customerName },
             stock: vat.loadStock(lines),
             isCurrent: () => requestId === docDetail.requestId
           });
