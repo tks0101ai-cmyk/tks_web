@@ -114,17 +114,10 @@
 /* Mọi nút trong khối Chỉ số cont dùng chung một cỡ chữ: trong bảng, thanh lọc và nút Tạo cont. */
 .purchase-page #containerPanel button{font-size:11px;line-height:1.2}
 
-/* Mã SP: chữ chiếm hết ô để một nhấn (tách dòng) / hai nhấn (lịch sử) dễ trúng; bút chì mới mở ô sửa. */
 .purchase-page #orderTable td[data-field="productCode"]{display:table-cell;vertical-align:middle}
-.purchase-page #orderTable .code-cell{display:flex;align-items:center;gap:2px;min-width:0;width:100%}
-.purchase-page #orderTable td[data-field="productCode"] .code-label{flex:1;min-width:0;cursor:text;overflow:hidden;text-overflow:ellipsis;border-radius:2px}
 .purchase-page #orderTable td[data-field="rowKey"] .row-key-action{cursor:pointer;text-decoration:underline dotted var(--muted);text-underline-offset:3px}
 .purchase-page #orderTable td[data-field="rowKey"] .row-key-action:hover{color:var(--blue)}
 .purchase-page #orderTable td[data-field="rowKey"] .row-key-action:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
-.purchase-page #orderTable td[data-field="productCode"] .code-label:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
-.purchase-page #orderTable td[data-field="productCode"] .code-edit{flex:none;padding:0 3px;min-height:0;line-height:1.1;font-size:10px;border:0;background:transparent;color:var(--muted);cursor:pointer;opacity:0}
-.purchase-page #orderTable td[data-field="productCode"]:hover .code-edit,.purchase-page #orderTable td[data-field="productCode"] .code-edit:focus-visible{opacity:1}
-.purchase-page #orderTable td[data-field="productCode"] .code-edit:hover{color:var(--blue)}
 
 /* ---- Nhật ký phiên bản: bảng tua ngược bên trái, danh sách phiên bản bên phải ---- */
 .purchase-page #history{display:flex;flex-direction:column;gap:0;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-xl);overflow:hidden}
@@ -214,8 +207,7 @@
 .purchase-page :is(#orderTable,#containerTable,#watchedContainer) *::before,
 .purchase-page :is(#orderTable,#containerTable,#watchedContainer) *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
 
-/* A table cell must remain a table-cell: flex belongs inside .code-cell. Keep
-   the frozen code column opaque even while a hovered/draft row scrolls below it. */
+/* Keep the frozen code column opaque while rows scroll. */
 .purchase-page #orderTable tbody tr>td[data-field="productCode"]{background-color:var(--panel)}
 .purchase-page #orderTable tbody tr>td[data-field="productCode"].draft{background-color:color-mix(in srgb,var(--primary) 13%,var(--panel))!important}
 .purchase-page #orderTable td[data-field] select{appearance:none;-webkit-appearance:none;padding-left:1px;padding-right:11px;background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);background-position:calc(100% - 6px) 50%,calc(100% - 3px) 50%;background-size:3px 3px;background-repeat:no-repeat}
@@ -375,11 +367,10 @@
 .purchase-page .order-filters label:has(#filter),.purchase-page .order-filters label:has(#orderRegion),.purchase-page .order-filters label:has(#orderLifecycle),.purchase-page .order-filters label:has(#orderStatus),.purchase-page .order-filters label:has(#orderBuyer),.purchase-page .purchase-page .order-filters label:has(#orderFrom),.purchase-page .order-filters label:has(#orderTo),.purchase-page .order-filters label:has(#orderFlag),.purchase-page .order-filters label:has(#sort){grid-column:auto;grid-row:1}
 .purchase-page .order-filters .filter-actions{grid-column:1/-1;grid-row:2}
 .purchase-page #orderTable td[data-field="productCode"]{font-weight:400}
-.purchase-page #orderTable td[data-field="productCode"],.purchase-page #orderTable td[data-field="productCode"] .code-label{text-overflow:clip}
 .purchase-page #orderTable .purchase-cny-detail{min-height:0;padding:0;border:0;background:transparent;box-shadow:none;color:inherit;font:inherit;line-height:inherit}
 .purchase-page #orderTable .purchase-cny-detail:hover{background:transparent;color:var(--primary)}
 
-.purchase-page .column-tools,.purchase-page .column-tools span,.purchase-page #containerTable small,.purchase-page .expression-result,.purchase-page #orderTable td[data-field="productCode"] .code-edit{font-size:11px;line-height:1.4}
+.purchase-page .column-tools,.purchase-page .column-tools span,.purchase-page #containerTable small,.purchase-page .expression-result{font-size:11px;line-height:1.4}
 
 /* Light theme contrast: replace the legacy dark purchase panel and strengthen grid dividers. */
 :root[data-theme="light"] .purchase-page .purchase-filters{background:#F1F5F9;color:#1E293B;border-color:#CBD5E1;color-scheme:light}
