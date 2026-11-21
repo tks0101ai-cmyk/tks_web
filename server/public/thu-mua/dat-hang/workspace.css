@@ -414,6 +414,12 @@
 :root:not([data-theme="light"]) .purchase-page #orderTable th,:root:not([data-theme="light"]) .purchase-page #orderTable td,:root:not([data-theme="light"]) .purchase-page #containerTable th,:root:not([data-theme="light"]) .purchase-page #containerTable td,:root:not([data-theme="light"]) .purchase-page #watchedContainer th,:root:not([data-theme="light"]) .purchase-page #watchedContainer td{border-right-color:#596A80;border-bottom-color:#596A80}
 :root:not([data-theme="light"]) .purchase-page #orderTable th,:root:not([data-theme="light"]) .purchase-page #containerTable th,:root:not([data-theme="light"]) .purchase-page #watchedContainer th{background:#202C3E;color:#D8E2F0}
 
+/* Make purchase grids easier to scan in both themes. */
+:root[data-theme="light"] .purchase-page #orderTable th,:root[data-theme="light"] .purchase-page #orderTable td,:root[data-theme="light"] .purchase-page #containerTable th,:root[data-theme="light"] .purchase-page #containerTable td,:root[data-theme="light"] .purchase-page #watchedContainer th,:root[data-theme="light"] .purchase-page #watchedContainer td{border-right-width:1.5px;border-bottom-width:1.5px;border-right-color:#9AA8B8;border-bottom-color:#8998A9}
+:root:not([data-theme="light"]) .purchase-page #orderTable th,:root:not([data-theme="light"]) .purchase-page #orderTable td,:root:not([data-theme="light"]) .purchase-page #containerTable th,:root:not([data-theme="light"]) .purchase-page #containerTable td,:root:not([data-theme="light"]) .purchase-page #watchedContainer th,:root:not([data-theme="light"]) .purchase-page #watchedContainer td{border-right-width:1.5px;border-bottom-width:1.5px;border-right-color:#718096;border-bottom-color:#718096}
+:root[data-theme="light"] .purchase-page #orderTable,:root[data-theme="light"] .purchase-page #containerTable,:root[data-theme="light"] .purchase-page #watchedContainer{border:1.5px solid #8998A9}
+:root:not([data-theme="light"]) .purchase-page #orderTable,:root:not([data-theme="light"]) .purchase-page #containerTable,:root:not([data-theme="light"]) .purchase-page #watchedContainer{border:1.5px solid #718096}
+
 /* Consistent control contrast across the complete Thu mua workspace. */
 .purchase-page :is(.content button,dialog button){min-height:32px;padding:6px 11px;border:1px solid #64748B;border-radius:6px;background:#263449;color:#F1F5F9;font:600 12px/1.35 var(--font-body);box-shadow:0 1px 2px #0003;cursor:pointer}
 .purchase-page :is(.content button,dialog button):hover:not(:disabled){background:#344761;border-color:#93A4BA;color:#fff;filter:none}
