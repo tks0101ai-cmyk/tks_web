@@ -4591,9 +4591,66 @@
           </div>
 
 
+          <section class="section">
+            <div class="section-head"><span class="section-step">1</span>
+              <h2>Giao dịch <span class="section-note">chi tiết từng giao dịch trong khoảng thời gian đã chọn</span></h2>
+            </div>
+            <div class="kpi-grid section-kpis" id="transactionsKpis"></div>
+            <div class="grid transaction-analysis-grid">
+              <div class="panel col-12 end-day-table">
+                <div class="panel-head">
+                  <h2>Chi tiết giao dịch</h2>
+                  <div class="panel-head-actions"><span class="drill-hint" id="end-day-table-count">—</span><button
+                      class="export-button" type="button" onclick="openExportDialog('overview.transactions')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Xuất
+                      file</button></div>
+                </div>
+                <div class="table-wrap scroll-list transaction-detail-scroll">
+                  <table class="fixed-table" data-table-key="dashboard-table-11">
+                    <thead>
+                      <tr>
+                        <th style="width:145px" data-column-key="ma-giao-dich">Mã giao dịch</th>
+                        <th style="width:150px" data-column-key="thoi-gian">Thời gian</th>
+                        <th style="width:240px" data-column-key="khach-hang">Khách hàng</th>
+                        <th style="width:195px" data-column-key="nhan-vien-ban-hang">Nhân viên bán hàng</th>
+                        <th style="width:75px" data-column-key="sl">SL</th>
+                        <th style="width:135px" data-column-key="doanh-thu">Doanh thu</th>
+                        <th style="width:130px" data-column-key="giam-gia">Giảm giá</th>
+                        <th style="width:135px" data-column-key="thuc-thu">Thực thu</th>
+                        <th style="width:125px" data-column-key="trang-thai">Trạng thái</th>
+                        <th style="width:130px" data-column-key="co-so">Cơ sở</th>
+                      </tr>
+                    </thead>
+                    <tbody id="endOfDayRows">
+                      <tr>
+                        <td colspan="10" class="table-note">Đang tải...</td>
+                      </tr>
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colspan="4">Tổng theo bộ lọc</td>
+                        <td class="mono" id="end-day-total-qty">—</td>
+                        <td class="mono" id="end-day-total-revenue">—</td>
+                        <td class="mono" id="end-day-total-discount">—</td>
+                        <td class="mono" id="end-day-total-paid">—</td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                <div class="pagination-controls" id="endOfDayPagination" hidden>
+                  <button type="button" id="endOfDayFirstPage" aria-label="Trang đầu" title="Trang đầu">&lt;&lt;</button>
+                  <button type="button" id="endOfDayPrevPage" aria-label="Trang trước" title="Trang trước">&lt;</button>
+                  <span id="endOfDayPageLabel">Trang 1/1</span>
+                  <button type="button" id="endOfDayNextPage" aria-label="Trang sau" title="Trang sau">&gt;</button>
+                  <button type="button" id="endOfDayLastPage" aria-label="Trang cuối" title="Trang cuối">&gt;&gt;</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <!-- Kiểm tra giá bán: MỘT bảng (invoice-price-audit.js), thead sinh từ catalog cột priceAuditColumns.js; ẩn khi thiếu reports.invoices.priceAudit -->
           <section class="section" id="priceAuditSection" hidden>
-            <div class="section-head"><span class="section-step">1</span>
+            <div class="section-head"><span class="section-step">2</span>
               <h2>Kiểm tra giá bán <span class="section-note">mỗi dòng hóa đơn so với giá min quy định, chụp lúc 23:00 trong 16 ngày</span></h2>
             </div>
             <!-- Cột trái: 5 khối KPI xếp dọc (cùng khung với Chỉ số then chốt của tab Công nợ); bên phải: tiền phạt theo sale (cùng bộ lọc với KPI) -->
@@ -4762,7 +4819,7 @@
 
           <!-- Bảng giá duyệt (invoice-approved-prices.js, API /api/invoice-approved-prices): giá Quản lý đã duyệt riêng cho khách + mã hàng, THAY giá min khi Kiểm tra giá bán; xem theo reports.invoices.priceAudit, tạo/sửa/xóa theo reports.invoices.approvedPrice.manage -->
           <section class="section" id="approvedPriceSection" hidden>
-            <div class="section-head"><span class="section-step">2</span>
+            <div class="section-head"><span class="section-step">3</span>
               <h2>Bảng giá duyệt <span class="section-note">giá đã duyệt riêng cho khách + mã hàng; thay giá min khi tính sai giá cho hóa đơn từ ngày duyệt</span></h2>
             </div>
             <div class="kpi-grid section-kpis" id="approvedPriceKpis"></div>
@@ -4844,62 +4901,7 @@
             </div>
           </section>
 
-          <section class="section">
-            <div class="section-head"><span class="section-step">3</span>
-              <h2>Giao dịch <span class="section-note">chi tiết từng giao dịch trong khoảng thời gian đã chọn</span></h2>
-            </div>
-            <div class="kpi-grid section-kpis" id="transactionsKpis"></div>
-            <div class="grid transaction-analysis-grid">
-              <div class="panel col-12 end-day-table">
-                <div class="panel-head">
-                  <h2>Chi tiết giao dịch</h2>
-                  <div class="panel-head-actions"><span class="drill-hint" id="end-day-table-count">—</span><button
-                      class="export-button" type="button" onclick="openExportDialog('overview.transactions')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>Xuất
-                      file</button></div>
-                </div>
-                <div class="table-wrap scroll-list transaction-detail-scroll">
-                  <table class="fixed-table" data-table-key="dashboard-table-11">
-                    <thead>
-                      <tr>
-                        <th style="width:145px" data-column-key="ma-giao-dich">Mã giao dịch</th>
-                        <th style="width:150px" data-column-key="thoi-gian">Thời gian</th>
-                        <th style="width:240px" data-column-key="khach-hang">Khách hàng</th>
-                        <th style="width:195px" data-column-key="nhan-vien-ban-hang">Nhân viên bán hàng</th>
-                        <th style="width:75px" data-column-key="sl">SL</th>
-                        <th style="width:135px" data-column-key="doanh-thu">Doanh thu</th>
-                        <th style="width:130px" data-column-key="giam-gia">Giảm giá</th>
-                        <th style="width:135px" data-column-key="thuc-thu">Thực thu</th>
-                        <th style="width:125px" data-column-key="trang-thai">Trạng thái</th>
-                        <th style="width:130px" data-column-key="co-so">Cơ sở</th>
-                      </tr>
-                    </thead>
-                    <tbody id="endOfDayRows">
-                      <tr>
-                        <td colspan="10" class="table-note">Đang tải...</td>
-                      </tr>
-                    </tbody>
-                    <tfoot>
-                      <tr>
-                        <td colspan="4">Tổng theo bộ lọc</td>
-                        <td class="mono" id="end-day-total-qty">—</td>
-                        <td class="mono" id="end-day-total-revenue">—</td>
-                        <td class="mono" id="end-day-total-discount">—</td>
-                        <td class="mono" id="end-day-total-paid">—</td>
-                        <td></td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-                <div class="pagination-controls" id="endOfDayPagination" hidden>
-                  <button type="button" id="endOfDayFirstPage" aria-label="Trang đầu" title="Trang đầu">&lt;&lt;</button>
-                  <button type="button" id="endOfDayPrevPage" aria-label="Trang trước" title="Trang trước">&lt;</button>
-                  <span id="endOfDayPageLabel">Trang 1/1</span>
-                  <button type="button" id="endOfDayNextPage" aria-label="Trang sau" title="Trang sau">&gt;</button>
-                  <button type="button" id="endOfDayLastPage" aria-label="Trang cuối" title="Trang cuối">&gt;&gt;</button>
-                </div>
-              </div>
-            </div>
-          </section>
+
 
 
         </div>

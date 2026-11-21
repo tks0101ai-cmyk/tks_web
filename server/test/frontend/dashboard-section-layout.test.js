@@ -41,10 +41,10 @@ test('Tổng quan không còn phần nhóm hàng, Hàng hóa không còn phần 
   });
 });
 
-test('Hóa đơn: Kiểm tra giá bán, Bảng giá duyệt rồi Giao dịch (đã bỏ phần Phân tích/Trả hàng; Xu hướng đã chuyển sang Tổng quan), không còn Hóa đơn gần đây', () => {
+test('Hóa đơn: Giao dịch đứng đầu, rồi Kiểm tra giá bán và Bảng giá duyệt; không còn Hóa đơn gần đây', () => {
   const titles = sectionTitles('invoices');
   assert.deepEqual(titles.map(s => s.step), ['1', '2', '3']);
-  assert.deepEqual(titles.map(s => s.title), ['Kiểm tra giá bán', 'Bảng giá duyệt', 'Giao dịch']);
+  assert.deepEqual(titles.map(s => s.title), ['Giao dịch', 'Kiểm tra giá bán', 'Bảng giá duyệt']);
   ['in-returns-total', 'in-returns-count'].forEach(id => assert.equal(document.getElementById(id), null, id + ' da bi go'));
   ['chartInvoiceRevenue', 'in-revenue'].forEach(id => {
     assert.equal(view('invoices').querySelector('#' + id), null, id + ' da chuyen sang Tong quan');
