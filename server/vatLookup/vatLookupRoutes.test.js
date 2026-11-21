@@ -143,3 +143,79 @@ test('modern search envelopes retain metadata/input cap and cached source, with 
   }
   assert.equal(reads,0);
 });
+
+test('POST /stock: ton VAT theo ma SP khop chinh xac, giu khoa ma client gui; khong cache trinh duyet', async () => {
+  const codes = [' talews ', 'TALEW', 'KHONGCO', '   ', null, ...Array(201).fill('TALEWS')];
+  const res = await request('/stock', { method: 'POST', body: { codes } });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(res.body.items, {
+    talews: { vatCode: 'VAT11629', stock: 1000 },
+    TALEW: { vatCode: null, stock: null },
+    KHONGCO: { vatCode: null, stock: null },
+    TALEWS: { vatCode: 'VAT11629', stock: 1000 }
+  });
+  assert.equal(res.body.meta.stale, false);
+  assert.ok(res.body.meta.loadedAt);
+});
+
+test('POST /stock: body sai -> 400 VAT_LOOKUP_STOCK_INVALID', async () => {
+  const bodies = [{}, { codes: 'TALEWS' }, { codes: [] }, { codes: ['  ', null, 5] },
+    { codes: Array.from({ length: 201 }, (_, i) => 'M' + i) }, { codes: ['X'.repeat(61)] }];
+  for (const body of bodies) {
+    const res = await request('/stock', { method: 'POST', body });
+    assert.equal(res.status, 400, JSON.stringify(body).slice(0, 40));
+    assert.equal(res.body.code, 'VAT_LOOKUP_STOCK_INVALID');
+  }
+});
+
+test('POST /stock: thieu quyen Tra cuu VAT -> 403, khong doc sheet', async () => {
+  const readValues = fakeReadValues();
+  const source = createLookupSource({ readValues });
+  const res = await request('/stock', { method: 'POST', body: { codes: ['TALEWS'] }, source, user: userFor(ROLES.NHAN_VIEN_SALE, { 'accounting.vatLookup': false }) });
+  assert.equal(res.status, 403);
+  assert.equal(readValues.calls.length, 0);
+});
+
+test('POST /stock: dung chung bo dem voi /search (khong doc sheet them); nguon loi -> 503', async () => {
+  const readValues = fakeReadValues();
+  const source = createLookupSource({ readValues });
+  await request('/search', { method: 'POST', body: { q: 'TALEWS' }, source });
+  const before = readValues.calls.length;
+  assert.equal((await request('/stock', { method: 'POST', body: { codes: ['TALEWS'] }, source })).status, 200);
+  assert.equal(readValues.calls.length, before);
+  const broken = { get: async () => { const error = new Error('Sheet lỗi'); error.statusCode = 503; error.code = 'SHEET_REF_ERROR'; throw error; } };
+  const failed = await request('/stock', { method: 'POST', body: { codes: ['TALEWS'] }, source: broken });
+  assert.equal(failed.status, 503);
+  assert.equal(failed.body.code, 'SHEET_REF_ERROR');
+});
+
+test('POST /stock: chưa đăng nhập trả 401 trước khi đọc nguồn', async () => {
+  const readValues = fakeReadValues();
+  const source = createLookupSource({ readValues });
+  const res = await request('/stock', { method: 'POST', body: { codes: ['TALEWS'] }, source, user: null });
+  assert.equal(res.status, 401);
+  assert.equal(readValues.calls.length, 0);
+});
+
+test('POST /stock: trả dữ liệu và thời điểm tải của bản cũ khi làm mới nguồn thất bại', async () => {
+  const base = fakeReadValues();
+  let fail = false;
+  const readValues = async sheet => {
+    if (fail) throw new Error('mạng');
+    return base(sheet);
+  };
+  const source = createLookupSource({ readValues, logger: null });
+  const body = { codes: ['TALEWS'] };
+  const fresh = await request('/stock', { method: 'POST', body, source });
+  assert.equal(fresh.status, 200);
+  assert.equal(fresh.body.meta.stale, false);
+  fail = true;
+  const refreshed = await request('/refresh', { method: 'POST', source });
+  assert.equal(refreshed.status, 200);
+  assert.equal(refreshed.body.stale, true);
+  const stale = await request('/stock', { method: 'POST', body, source });
+  assert.equal(stale.status, 200);
+  assert.deepEqual(stale.body.meta, { ...fresh.body.meta, stale: true });
+  assert.deepEqual(stale.body.items, fresh.body.items);
+});
