@@ -696,6 +696,29 @@
 #modalBody .import-stale-warning label{display:flex;align-items:flex-start;gap:8px;margin:0;font-weight:650}
 #modalBody .import-stale-warning input{width:auto;margin:2px 0 0}
 #modalBody .import-preserved{background:color-mix(in srgb,#2c9b79 10%,transparent);color:var(--text)}
+.purchase-page #modal:has(#newCodesFile){width:min(900px,calc(100vw - 32px))}
+.purchase-page #modalBody .purchase-import-modes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0 18px;padding:0;border:0}
+.purchase-page #modalBody .purchase-import-modes legend{grid-column:1/-1;margin-bottom:2px;font-size:12px;font-weight:750;color:var(--text)}
+.purchase-page #modalBody .purchase-import-mode-card{display:flex;width:auto;min-height:100px;align-items:flex-start;gap:10px;margin:0;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--panel-2);cursor:pointer;transition:border-color .15s ease,background .15s ease}
+.purchase-page #modalBody .purchase-import-mode-card:has(input:checked){border-color:var(--primary);background:color-mix(in srgb,var(--primary) 9%,var(--panel));box-shadow:inset 0 0 0 1px var(--primary)}
+.purchase-page #modalBody .purchase-import-mode-card input{width:16px;min-height:16px;flex:0 0 16px;margin:2px 0 0;accent-color:var(--primary)}
+.purchase-page #modalBody .purchase-import-mode-card span{display:grid;gap:6px}
+.purchase-page #modalBody .purchase-import-mode-card strong{font-size:12px;line-height:1.4;color:var(--text)}
+.purchase-page #modalBody .purchase-import-mode-card small,.purchase-page #modalBody .purchase-import-snapshot-actions span{font-size:11px;line-height:1.55;color:var(--muted)}
+.purchase-page #modalBody .purchase-new-codes-import,#modalBody #snapshotImportMode{display:grid;gap:10px}
+.purchase-page #modalBody .purchase-new-codes-import h3,#modalBody #snapshotImportMode h3{margin:0;font-size:13px}
+.purchase-page #modalBody .purchase-new-codes-import>p,#modalBody #mergeImportOptions>p{margin:0;color:var(--muted);line-height:1.6}
+.purchase-page #modalBody .purchase-new-codes-actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.purchase-page #modalBody .purchase-new-codes-actions label{display:grid;width:auto;gap:5px;margin:0;color:var(--muted);font-size:11px}
+.purchase-page #modalBody .purchase-import-select-label{display:grid;width:min(420px,100%);gap:6px;margin:0;font-weight:700}
+.purchase-page #modalBody .purchase-import-select-label select{width:100%}
+.purchase-page #modalBody .purchase-column-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px 12px;max-height:190px;overflow:auto;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--panel-2)}
+.purchase-page #modalBody .purchase-column-options label,.purchase-page #modalBody .purchase-import-clear-blanks{display:flex;width:auto;align-items:center;gap:7px;margin:0;font-size:11px}
+.purchase-page #modalBody .purchase-column-options input,.purchase-page #modalBody .purchase-import-clear-blanks input{width:auto;min-height:0;margin:0;accent-color:var(--primary)}
+.purchase-page #modalBody .purchase-import-safe-note{padding:10px 12px;border-radius:8px;background:color-mix(in srgb,#2c9b79 10%,var(--panel));color:var(--text)!important}
+.purchase-page #modalBody .purchase-import-warning{display:grid;gap:4px;padding:12px;border:1px solid #e7a23b;border-radius:8px;background:color-mix(in srgb,#e7a23b 12%,var(--panel));font-size:12px}
+.purchase-page #modalBody .purchase-import-snapshot-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+@media(max-width:720px){.purchase-page #modalBody .purchase-import-modes{grid-template-columns:1fr}.purchase-page #modalBody .purchase-import-mode-card{min-height:0}.purchase-page #modalBody .purchase-column-options{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.purchase-page #modalBody label.import-drop{min-height:170px;padding:18px}}
 
 .purchase-page .purchase-region-chip{display:inline-block;max-width:100%;padding:2px 7px;border-radius:999px;background:color-mix(in srgb,var(--region-color) 18%,transparent);color:var(--region-color);font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
