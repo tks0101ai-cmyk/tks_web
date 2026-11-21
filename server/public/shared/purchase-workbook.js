@@ -19,11 +19,11 @@
   function exportWorkbook(rows, columns, visibleKeys) {
     const selected = new Set(visibleKeys || columns.map(col => col.k));
     const cols = [columns.find(col => col.k === 'rowKey'), ...columns.filter(col => col.k !== 'rowKey' && selected.has(col.k))].filter(Boolean);
-    const data = [cols.map(caption), ...rows.map(row => cols.map(col => col.region?(row.regionName??row.regionId??null):(row[col.k]??null)))];
+    const data = [cols.map(caption), ...rows.map(row => cols.map(col => col.region?(row.regionName??row.regionId??null):col.k==='listedAt'?exportListedAt(row[col.k]):(row[col.k]??null)))];
     const sheet = XLSX.utils.aoa_to_sheet(data);
     const decimalPlaces={num:4,num1:1,num2:2,num3:3,num4:4,cny:3,money:2};
     cols.forEach((col,c)=>{rows.forEach((row,r)=>{const cell=sheet[XLSX.utils.encode_cell({r:r+1,c})];if(cell?.t!=='n')return;const whole=Number.isInteger(Number(cell.v)),places=decimalPlaces[col.t];if(col.t==='ratio')cell.z=whole?'0%':'0.00%';else if(col.t==='pct')cell.z=whole?'+0%;-0%;0%':'+0.00%;-0.00%;0%';else if(places!=null){const rounded=Number(Number(cell.v).toFixed(places)),decimals=whole?0:(String(rounded).split('.')[1]||'').length;cell.z=decimals?'#,##0.'+'0'.repeat(decimals):'#,##0'}delete cell.w})});
-    cols.forEach((col,c)=>{if(col.t!=='datetime'||col.k==='measuredOn')return;rows.forEach((row,r)=>{const text=dateTimeValue(row[col.k]);if(!text)return;const parts=text.split('T'),ymd=parts[0].split('-').map(Number),hm=(parts[1]||'00:00').split(':').map(Number);const cell=sheet[XLSX.utils.encode_cell({r:r+1,c})];cell.t='n';cell.v=(Date.UTC(ymd[0],ymd[1]-1,ymd[2],hm[0],hm[1])-Date.UTC(1899,11,30))/86400000;cell.z=parts[1]?'dd/mm/yyyy hh:mm':'dd/mm/yyyy';delete cell.w})});
+    cols.forEach((col,c)=>{if(col.k==='listedAt'){rows.forEach((row,r)=>{const cell=sheet[XLSX.utils.encode_cell({r:r+1,c})],date=singleListedAtDate(row[col.k]);if(date){const ymd=date.split('-').map(Number);cell.t='n';cell.v=(Date.UTC(ymd[0],ymd[1]-1,ymd[2])-Date.UTC(1899,11,30))/86400000;cell.z='dd/mm';delete cell.w}});return}if(col.t!=='datetime'||col.k==='measuredOn')return;rows.forEach((row,r)=>{const text=dateTimeValue(row[col.k]);if(!text)return;const parts=text.split('T'),ymd=parts[0].split('-').map(Number),hm=(parts[1]||'00:00').split(':').map(Number);const cell=sheet[XLSX.utils.encode_cell({r:r+1,c})];cell.t='n';cell.v=(Date.UTC(ymd[0],ymd[1]-1,ymd[2],hm[0],hm[1])-Date.UTC(1899,11,30))/86400000;cell.z=parts[1]?'dd/mm/yyyy hh:mm':'dd/mm/yyyy';delete cell.w})});
     sheet['!cols'] = cols.map((col,c)=>{let valueWidth=0;rows.forEach((row,r)=>{const cell=sheet[XLSX.utils.encode_cell({r:r+1,c})];if(!cell)return;const value=cell.t==='n'?XLSX.utils.format_cell(cell):String(cell.v??'');valueWidth=Math.max(valueWidth,[...value].length)});const cap=numericTypes.has(col.t)?18:col.t==='datetime'?16:32;return {wch:Math.min(cap,Math.max(8,valueWidth+1))}});
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, sheet, 'Đặt hàng');
@@ -128,6 +128,15 @@
     if(!match)return dateValue(text,date1904);
     const date=dateValue(match[1],date1904);return date&&Number(match[2])<24&&Number(match[3])<60?date+'T'+match[2]+':'+match[3]:null;
   }
+  function normalizeListedAt(value,date1904=false){
+    if(typeof value==='number'){const parsed=dateTimeValue(value,date1904);return parsed?parsed.split('T')[0]:null}
+    const text=String(value??'').trim();if(!text)return '';
+    const parts=text.split(/\s*\+\s*/);if(parts.length>20)return null;
+    const normalized=parts.map(part=>{const parsed=dateTimeValue(part,date1904);if(parsed)return parsed.split('T')[0];const short=part.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?$/);if(!short)return null;const year=Number(short[3]||new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric'}).format(new Date())),date=year+'-'+String(Number(short[2])).padStart(2,'0')+'-'+String(Number(short[1])).padStart(2,'0');return dateValue(date)});
+    return normalized.some(part=>!part)?null:normalized.join(' + ');
+  }
+  function singleListedAtDate(value){const normalized=normalizeListedAt(value);return normalized&&!normalized.includes(' + ')?normalized:null}
+  function exportListedAt(value){const normalized=normalizeListedAt(value);if(!normalized)return value??null;if(!normalized.includes(' + '))return normalized;return normalized.replace(/(\d{4})-(\d{2})-(\d{2})/g,(_,year,month,day)=>day+'/'+month)}
   function parseWorkbook(workbook, columns, sheetName, {includeEmpty=false,allowEmpty=false,snapshot=false,allowContainer=false}={}) {
     const snapshotKeys=snapshot?new Set(importColumns(columns).map(col=>col.k)):null;
     const canImport=col=>!isExcludedImportColumn(col)&&(snapshot?snapshotKeys.has(col.k):writable(col)||allowContainer&&col.k==='container');
@@ -183,6 +192,8 @@
           if (!Number.isFinite(C.parse(value))) {
             row[col.k] = String(value); row.__cellErrors[col.k] = caption(col) + ': số không hợp lệ';
           } else row[col.k] = C.parse(value);
+        } else if(col.k==='listedAt') {
+          const date=normalizeListedAt(value,!!workbook.Workbook?.WBProps?.date1904);row[col.k]=date||String(value);if(!date)row.__cellErrors[col.k]=caption(col)+': nhập ngày dd/mm hoặc dd/mm/yyyy, có thể nối nhiều ngày bằng dấu +';
         } else if (col.k==='measuredOn') {
           row[col.k] = String(cell?.w||value).trim();
         } else if ((col.t === 'date'||col.t==='datetime')) {
@@ -204,5 +215,5 @@
   }
   function read(data) { return XLSX.read(data, { type: 'array', cellDates: false, cellFormula: true }); }
   function bytes(workbook) { return XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }); }
-  return { caption, numericTypes, importColumns, snapshotRequiredColumns, newCodeColumns, dateValue, dateTimeValue, exportWorkbook, exportImportSnapshot, exportNewCodesTemplate, parseWorkbook, parseImportSnapshot, read, bytes };
+  return { caption, numericTypes, importColumns, snapshotRequiredColumns, newCodeColumns, dateValue, dateTimeValue, normalizeListedAt, exportWorkbook, exportImportSnapshot, exportNewCodesTemplate, parseWorkbook, parseImportSnapshot, read, bytes };
 });

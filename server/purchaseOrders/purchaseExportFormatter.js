@@ -18,6 +18,11 @@ function dateOnly(value){
   const [year,month,day]=date.split('-').map(Number);
   return new Date(Date.UTC(year,month-1,day));
 }
+function listedAtValue(value){
+  const normalized=PurchaseWorkbook.normalizeListedAt(value);if(!normalized)return value??null;
+  if(normalized.includes(' + '))return normalized.replace(/(\d{4})-(\d{2})-(\d{2})/g,(_,year,month,day)=>day+'/'+month);
+  const [year,month,day]=normalized.split('-').map(Number);return new Date(Date.UTC(year,month-1,day));
+}
 
 function numberFormat(column,value){
   if(!NUMBER_TYPES.has(column.t))return '@';
@@ -32,6 +37,10 @@ function numberFormat(column,value){
 
 function visibleText(value,column){
   if(value==null||value==='')return '';
+  if(column.k==='listedAt'){
+    if(value instanceof Date)return value.toLocaleDateString('en-GB',{timeZone:'UTC'}).slice(0,5);
+    return String(PurchaseWorkbook.normalizeListedAt(value)||value).replace(/(\d{4})-(\d{2})-(\d{2})/g,(_,year,month,day)=>day+'/'+month);
+  }
   if(column.t==='datetime'&&column.k!=='measuredOn'){
     const date=dateOnly(value);return date?date.toLocaleDateString('en-GB',{timeZone:'UTC'}):String(value);
   }
@@ -60,7 +69,7 @@ function widthForColumn(column,values,headerLabel){
 async function formatPurchaseExport(rows,columns,fields,language='vi'){
   const selected=new Set(fields||columns.map(column=>column.k)),exportColumns=columns.filter(column=>column.k!=='m3Warehouse'&&selected.has(column.k));
   if(!exportColumns.length)throw Error('Chọn ít nhất một cột để xuất.');
-  const values=rows.map(row=>exportColumns.map(column=>column.k==='container'?orderTableContainer(row):column.region?(row.regionName??row.regionId??null):column.t==='datetime'&&column.k!=='measuredOn'?(dateOnly(row[column.k])||row[column.k]||null):(row[column.k]??null)));
+  const values=rows.map(row=>exportColumns.map(column=>column.k==='container'?orderTableContainer(row):column.region?(row.regionName??row.regionId??null):column.k==='listedAt'?listedAtValue(row[column.k]):column.t==='datetime'&&column.k!=='measuredOn'?(dateOnly(row[column.k])||row[column.k]||null):(row[column.k]??null)));
   const book=new ExcelJS.Workbook();book.creator='TOKOSI';book.created=new Date();book.modified=book.created;
   const sheet=book.addWorksheet('Đặt hàng',{views:[{state:'frozen',ySplit:1,showGridLines:false}]});
   const headerLabels=exportColumns.map(column=>PurchaseHeaders.label(column,language));
@@ -70,8 +79,9 @@ async function formatPurchaseExport(rows,columns,fields,language='vi'){
   for(const rowValues of values)sheet.addRow(rowValues);
   for(let index=0;index<exportColumns.length;index++){
     const column=exportColumns[index],target=sheet.getColumn(index+1);
-    if(column.t==='datetime'&&column.k!=='measuredOn')target.numFmt='dd/mm/yyyy';
-    target.alignment={vertical:'middle',horizontal:NUMBER_TYPES.has(column.t)?'right':column.t==='datetime'?'center':'left'};
+    if(column.k==='listedAt')target.numFmt='dd/mm';
+    else if(column.t==='datetime'&&column.k!=='measuredOn')target.numFmt='dd/mm/yyyy';
+    target.alignment={vertical:'middle',horizontal:NUMBER_TYPES.has(column.t)?'right':column.t==='datetime'||column.k==='listedAt'?'center':'left'};
   }
   sheet.eachRow((row,rowNumber)=>{if(rowNumber===1)return;let lineCount=1;row.eachCell({includeEmpty:true},(cell,columnNumber)=>{const column=exportColumns[columnNumber-1],wrap=HEADER_FIT_COLUMNS.has(column?.k);cell.font={name:'Calibri',size:10};cell.alignment={...cell.alignment,vertical:'middle',wrapText:wrap};cell.border=CELL_BORDER;if(NUMBER_TYPES.has(column?.t))cell.numFmt=numberFormat(column,cell.value);if(wrap&&cell.value!=null&&cell.value!==''){const width=Math.max(1,sheet.getColumn(columnNumber).width-1);lineCount=Math.max(lineCount,String(cell.value).split(/\r?\n/).reduce((count,line)=>count+Math.max(1,Math.ceil(textWidth(line)/width)),0))}});if(lineCount>1)row.height=Math.max(18,lineCount*14+2)});
   if(sheet.rowCount)sheet.autoFilter={from:{row:1,column:1},to:{row:sheet.rowCount,column:exportColumns.length}};

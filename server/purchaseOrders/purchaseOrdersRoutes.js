@@ -67,6 +67,7 @@ function createPurchaseOrdersRouter(dependencies={}) {
   router.post(root+'/status',containersScope,handle(async(req,res)=>{const next=Number(req.body.status);if((next===3&&!hasFeature(req.user,'purchase.depart'))||(next===4&&!hasFeature(req.user,'purchase.arrive')))return res.status(403).json({error:'Chưa có quyền đổi sang trạng thái này.'});res.json(await service.changeStatus(req.user,req.body))}));
   router.post(root+'/schedule',containersScope,handle(async(req,res)=>res.json(await service.schedule(req.user,req.body))));
   router.post(root+'/bulk',ordersScope,handle(async(req,res)=>res.json(await service.bulkEdit(req.user,req.body))));
+  router.post(root+'/merge',ordersScope,requireFeature('purchase.edit'),handle(async(req,res)=>res.json(await service.merge(req.user,req.body))));
   router.post(root+'/transfer',ordersScope,handle(async(req,res)=>res.json(await service.transfer(req.user,req.body))));
   router.post(root+'/depart',requireFeature('purchase.depart'),handle(async(req,res)=>res.json(await service.depart(req.user,req.body))));
   router.post(root+'/arrive',requireFeature('purchase.arrive'),handle(async(req,res)=>res.json(await service.arrive(req.user,req.body))));

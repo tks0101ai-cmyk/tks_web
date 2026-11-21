@@ -162,7 +162,7 @@
     "l": "Lên list",
     "cn": "",
     "g": "Mốc",
-    "t": "datetime",
+    "t": "text",
     "w": 165,
     "v": 1,
     "e": 1
