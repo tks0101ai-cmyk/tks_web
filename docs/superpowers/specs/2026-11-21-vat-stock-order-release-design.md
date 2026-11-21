@@ -1,6 +1,6 @@
 # Phát hành riêng Tồn VAT và ORDER VAT từ chi tiết chứng từ
 
-Ngày: 21/11/2026. Trạng thái: người dùng đã duyệt thiết kế; triển khai theo kế hoạch tách phát hành.
+Ngày: 21/11/2026. Trạng thái: người dùng đã duyệt thiết kế; code đã tách, kiểm thử và review xong; CI và trạng thái phát hành được ghi trong PR.
 
 ## Mục đích
 
@@ -16,11 +16,11 @@ Chọn tách một PR riêng từ `origin/main` mới nhất, chỉ lấy các t
 
 - Hộp chi tiết hóa đơn của tab Hóa đơn và hộp Chi tiết đơn ở Vòng đời đơn hàng có cột Tồn VAT và ô tick ORDER VAT theo quyền hiện có.
 - Tồn lấy từ cùng snapshot / bộ đệm với Tra cứu VAT trên main: mã SP khớp chính xác sang mã VAT, lấy tổng TỒN CÓ THỂ NHÁP của mã VAT trên các công ty. Không phải số tồn Kiot và không phải giữ chỗ VAT.
-- Nhiều dòng chung mã VAT chia tồn theo thứ tự dòng để tính phần thiếu; không tính lặp toàn bộ tồn cho từng dòng. Dòng phí mã bắt đầu bằng VAT, dòng thiếu mã hoặc SL không dương không được xét.
+- Nhiều dòng chung mã VAT chia tồn theo thứ tự dòng để tính phần thiếu; dùng khóa chuẩn `vatKey` do máy chủ trả về để các cách viết cùng mã như V-01 / v01 không tính lặp tồn. Giữ mã gốc `vatCode` để hiển thị. Dòng phí mã bắt đầu bằng VAT, dòng thiếu mã hoặc SL không dương không được xét.
 - Dòng thiếu hiển thị màu đỏ; mã chưa có liên kết VAT hiển thị rõ tình trạng thiếu mã. Tick các dòng cần order rồi bấm Order VAT.
 - Mở trang ORDER VAT với form đã điền khách, mã / tên hàng, giá chưa VAT, số lượng còn thiếu và ghi chú chứng từ nguồn. Sale được sửa và chọn Full VAT trước khi gửi. Không tự tạo yêu cầu chỉ bằng việc bấm chuyển trang.
 - Giữ nháp ORDER VAT đang có; thêm các dòng được chuyển sau các dòng đã nhập, dùng dòng trống trước. Giữ giới hạn số dòng và thông báo dòng vượt giới hạn hiện có.
-- Dữ liệu chuyển trang chỉ dùng một lần, hết hạn sau 10 phút; không đưa tên khách / giá lên URL. Khi trình duyệt không lưu được, báo rõ và hỗ trợ chép dữ liệu để dán như phần đã triển khai.
+- Dữ liệu chuyển trang chỉ dùng một lần, hết hạn sau 10 phút; mỗi lượt chuyển có mã ngẫu nhiên và bản lưu riêng để mở nhiều chứng từ gần nhau không nhận nhầm dữ liệu. URL chỉ mang mã lượt chuyển, không đưa tên khách / giá lên URL. Khi trình duyệt không lưu được, báo rõ và hỗ trợ chép dữ liệu để dán như phần đã triển khai.
 - Trong lúc tải tồn hiện dấu chờ. Khi lỗi, hiện thông báo; cho chọn dòng để order nguyên SL khi không biết phần thiếu. Bản tồn cũ phải có dấu nhận biết. Kết quả trả muộn không điền sang chứng từ khác.
 - Chứng từ đã hủy vẫn xem được tồn nhưng không có thao tác order. Đổi / đóng chi tiết thì dọn các tick và thao tác đang gắn với chứng từ cũ.
 
@@ -66,5 +66,18 @@ Danh sách file / commit chính xác và cách giải quyết xung đột sẽ �
 ## Bước tiếp theo
 
 Duyệt thiết kế này → lập kế hoạch → tách code từ main và kiểm thử → review PR trước khi đưa lên main. Việc chốt phạm vi không có nghĩa là đã merge / deploy. Sandbox hiện tại tiếp tục phục vụ nhánh phát triển đang được người dùng test.
+
+## Kết quả triển khai và ghi chú phát hành
+
+- Nhánh phát hành: `codex/vat-stock-order-release`, worktree riêng; nhánh phát triển `claude/vat-stock-document-detail` cùng sandbox đang chạy được giữ nguyên. Đã đồng bộ main tới `1693c96b`; ba commit Thu mua mới trên main không giao nhau với các file chức năng này.
+- Mã chạy thay đổi: `server/vatLookup/lookupModel.js`, `vatLookupRoutes.js`; `server/public/shared/vat-stock.js`, `vat-stock.css`, `vat-handoff.js`; `server/public/index.html`; `server/public/shipment/lifecycle/index.html`; `server/public/vat-request/index.html`, `vat-request.js`, `vat-request-batch.js`. Có bảy file kiểm thử mới / cập nhật tương ứng.
+- API tồn trả mã hiển thị `vatCode` và khóa gộp `vatKey` do máy chủ chuẩn hóa. Trình duyệt chia tồn theo vatKey; thiếu khóa thì coi như chưa biết tồn, không suy ra đủ VAT. Hai cách viết cùng mã như V-01 / v01 phải dùng chung một số dư.
+- Mỗi lượt chuyển ORDER VAT có ID và bản lưu riêng, đọc một lần / hết hạn 10 phút; mở hai lượt gần nhau không tráo khách / số lượng. Chứng từ đã hủy bị chặn order cả khi trạng thái Kiot trả mã số hoặc Vòng đời đã ghi đè hủy nhưng Kiot vẫn còn hoạt động.
+- Kiểm thử trực tiếp trên bản cuối `e3ac7240`: **208/208 đạt** (Tra cứu VAT 35; VAT stock / ORDER VAT 72; hai hộp chi tiết / Kiểm tra giá bán 101). Kiểm thử rộng ở bản tích hợp `34613197`: **1.413/1.413 đạt**; sau đó đã chạy lại toàn bộ nhóm chịu ảnh hưởng của các bản sửa. Kiểm thử API chi tiết hóa đơn / Vòng đời lân cận: **155/155 đạt**.
+- Sau đồng bộ main `1693c96b`, chạy lại 208 ca cùng lúc cập nhật graphify: 207 đạt, một assertion debounce trong `vat-request-server-pagination.test.js` chạy quá cửa sổ thời gian. File kiểm thử và debounce không thay đổi so với main; chạy lại riêng toàn file đạt **6/6**. Không đổi mã hoặc nới điều kiện kiểm thử để che lỗi. CI của PR xác nhận lại trên máy chạy riêng.
+- Review từng phần và review toàn nhánh đã hoàn tất. Đã sửa lỗi dùng chung ô lưu tạm, nhận diện chứng từ hủy và gộp tồn theo mã chuẩn; các lượt review lại đều đạt. `git diff --check` và kiểm tra phạm vi đạt; graphify đã cập nhật. Bộ phân tích SQL tùy chọn thiếu nhưng đợt này không thay SQL; JS nằm trong HTML được rà trực tiếp vì graphify không lập chỉ mục các hàm đó.
+- Bảy tài liệu dùng chung giữ nguyên như main, không migration / thư viện / biến môi trường mới. Nội dung cập nhật nghiệp vụ cần áp vào README, BRD, SRS và kế hoạch tổng sau merge được gom trong chính tài liệu này: hai hộp chi tiết thêm cột tồn / chọn dòng thiếu, chuyển sang form ORDER VAT hiện có, nguồn và bộ đệm giữ như Tra cứu VAT trên main, không phát hành luồng Xuất hóa đơn.
+- Khi tách phát hành luồng Xuất hóa đơn sau này, lấy main làm gốc và giữ hợp đồng `vatKey`, handoff ID riêng, các bản sửa hủy / phản hồi muộn và bộ đệm hiện tại. Không chép đè các file dùng chung từ nhánh phát triển cũ vì nhánh đó được giữ nguyên và chưa có các bản sửa tách phát hành này.
+- Kiểm thử giao diện dùng JSDOM và dữ liệu giả, chưa thử lại trực tiếp trên trình duyệt thật ở sáng / tối / điện thoại trong đợt tách này. Không chạy test ghi lên DB thật hoặc Google Sheet. CI của PR cần xác nhận trên main mới trước khi merge.
 
 Cập nhật gần nhất: 21/11/2026.
