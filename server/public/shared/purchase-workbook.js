@@ -79,6 +79,27 @@
     return bytes(book);
   }
 
+  function exportNewCodesTemplate(columns,regions=[]) {
+    const cols=columns.filter(col=>col.k!=='rowKey'&&!col.si&&writable(col));
+    if(!cols.some(col=>col.k==='productCode'))throw Error('Thiếu cột Mã SP trong cấu hình Thu mua.');
+    const sheet=XLSX.utils.aoa_to_sheet([cols.map(caption)]);
+    sheet['!cols']=cols.map(col=>({wch:Math.min(28,Math.max(12,[...caption(col)].length+2))}));
+    const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,sheet,'Mã mới');
+    const guide=XLSX.utils.aoa_to_sheet([
+      ['MẪU THÊM MÃ THU MUA'],
+      ['File này chỉ tạo mã mới. Không chứa snapshot, Mã dòng hoặc dữ liệu đơn hàng hiện có.'],
+      ['Chỉ điền các dòng mới ở sheet “Mã mới”; không đổi tên tiêu đề. Mã SP và Số thùng bắt buộc; Mã SP không được trùng trong file hoặc mã đã có trên hệ thống.'],
+      ['Các dòng sẽ được thêm vào trạng thái Chờ xếp. Vùng có thể chọn theo danh sách “Danh sách vùng”; để trống sẽ dùng vùng AA.'],
+      ['Dữ liệu hiện có không được cập nhật hoặc xóa. Nếu một Mã SP đã tồn tại, toàn bộ lần nhập sẽ bị từ chối để bạn xử lý file trước.'],
+      [],['CỘT','BẮT BUỘC','KIỂU'],
+      ...cols.map(col=>[caption(col),['productCode','cartonCount'].includes(col.k)?'Có':'Không',numericTypes.has(col.t)?'Số':col.t==='date'||col.t==='datetime'?'Ngày':'Văn bản'])
+    ]);
+    guide['!cols']=[{wch:36},{wch:18},{wch:26}];XLSX.utils.book_append_sheet(book,guide,'Hướng dẫn');
+    const regionSheet=XLSX.utils.aoa_to_sheet([['MÃ VÙNG','TÊN VÙNG','MÀU'],...regions.map(region=>[String(region.id),region.name,region.color||''])]);
+    regionSheet['!cols']=[{wch:16},{wch:28},{wch:12}];XLSX.utils.book_append_sheet(book,regionSheet,'Danh sách vùng');
+    return bytes(book);
+  }
+
   function dateValue(value, date1904) {
     if (typeof value === 'number') {
       const d = XLSX.SSF.parse_date_code(value, { date1904 });
@@ -176,5 +197,5 @@
   }
   function read(data) { return XLSX.read(data, { type: 'array', cellDates: false, cellFormula: true }); }
   function bytes(workbook) { return XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }); }
-  return { caption, numericTypes, dateValue, dateTimeValue, exportWorkbook, exportImportSnapshot, parseWorkbook, parseImportSnapshot, read, bytes };
+  return { caption, numericTypes, dateValue, dateTimeValue, exportWorkbook, exportImportSnapshot, exportNewCodesTemplate, parseWorkbook, parseImportSnapshot, read, bytes };
 });
