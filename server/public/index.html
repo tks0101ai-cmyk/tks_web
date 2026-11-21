@@ -47,6 +47,7 @@
     })();
   </script>
   <link rel="stylesheet" href="/shared/shared.css?v=20261107-3">
+  <link rel="stylesheet" href="/shared/vat-stock.css?v=20261121-1">
   <script src="/shared/motion.js?v=20261111-calm-1" defer></script>
   <link rel="stylesheet" href="/shared/search-clear.css?v=20261009-1">
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261016">
@@ -5512,6 +5513,8 @@
   <script src="/shared/table-align.js?v=20261017"></script>
   <script src="/shared/dateInput.js?v=20260912"></script>
   <script src="/shared/image-compress.js?v=20261022"></script>
+  <script src="/shared/vat-handoff.js?v=20261121-2"></script>
+  <script src="/shared/vat-stock.js?v=20261121-2"></script>
   <script src="/marketing-report.js?v=20261107-3"></script>
   <script src="/invoice-price-audit.js?v=20261107-3"></script>
   <script src="/invoice-approved-prices.js?v=20261107-3"></script>
@@ -10105,6 +10108,7 @@
     }
 
     function cpOpenFrame(mode, key, trigger, wide) {
+      destroyDocVatStock();
       docDetail.requestId++;
       docDetail.item = null;
       docDetail.focus = null;
@@ -11062,8 +11066,8 @@
       }).join('') + '</div>';
     }
 
-    function detailSectionHeadHtml(title, note) {
-      return '<div class="dp-section-head"><h3 class="dp-section-title">' + escapeHtml(title) + '</h3>' +
+    function detailSectionHeadHtml(title, note, extraHtml = '') {
+      return '<div class="dp-section-head"><h3 class="dp-section-title">' + escapeHtml(title) + '</h3>' + extraHtml +
         (note ? '<span class="dp-section-note">' + escapeHtml(note) + '</span>' : '') + '</div>';
     }
 
@@ -11178,10 +11182,15 @@
       }
     };
     // focus: mục của hộp Báo cáo hàng hóa cần cuộn tới khi mở từ 1 nút trong ô bảng ('customers'); dùng 1 lần.
-    const docDetail = { requestId: 0, tableKey: '', item: null, returnFocus: null, focus: null };
+    const docDetail = { requestId: 0, tableKey: '', item: null, returnFocus: null, focus: null, vatController: null };
+
+    function destroyDocVatStock() {
+      if (docDetail.vatController) docDetail.vatController.destroy();
+      docDetail.vatController = null;
+    }
 
     // Hóa đơn: hàng chỉ số (tổng tiền hàng, đã trả, còn phải thu, giảm giá) → thông tin chung → bảng hàng hóa có dòng Cộng.
-    function docDetailBodyHtml(tableKey, data) {
+    function docDetailBodyHtml(tableKey, data, vat) {
       const lines = data.lines || [];
       const showDiscount = lines.some(function (line) { return line.discount > 0; });
       const total = Number(data.total) || 0;
@@ -11210,26 +11219,30 @@
       if (data.orderCode) meta.push(detailMetaField('Từ đơn đặt hàng', '<span class="mono">' + escapeHtml(data.orderCode) + '</span>'));
       if (data.note) meta.push(detailMetaField('Ghi chú', '<span class="dp-note-text">' + escapeHtml(data.note) + '</span>', true));
 
-      const head = '<th>Mã hàng</th><th>Tên hàng</th><th class="num">SL</th><th class="num">Đơn giá</th>' + (showDiscount ? '<th class="num">Giảm giá</th>' : '') + '<th class="num">Thành tiền</th>';
-      const rows = lines.length ? lines.map(function (line) {
-        return '<tr><td class="dp-code">' + escapeHtml(line.productCode || '—') + '</td>' +
+      const head = '<th>Mã hàng</th><th>Tên hàng</th><th class="num">SL</th><th class="num">Đơn giá</th>' + (showDiscount ? '<th class="num">Giảm giá</th>' : '') + '<th class="num">Thành tiền</th>' +
+        (vat ? window.TKSVatStock.headHtml(vat) : '');
+      const rows = lines.length ? lines.map(function (line, index) {
+        return '<tr' + (vat ? ' data-vat-line="' + index + '"' : '') + '><td class="dp-code">' + escapeHtml(line.productCode || '—') + '</td>' +
           '<td class="dp-cell-main">' + escapeHtml(line.productName || '—') +
           (line.note ? '<span class="dp-line-note">' + escapeHtml(line.note) + '</span>' : '') + '</td>' +
           '<td class="num">' + fmtNumber(line.quantity) + '</td>' +
           '<td class="num">' + fmtTableMoney(line.price) + '</td>' +
           (showDiscount ? '<td class="num">' + fmtTableMoney(line.discount) + '</td>' : '') +
-          '<td class="num">' + fmtTableMoney(line.amount) + '</td></tr>';
+          '<td class="num">' + fmtTableMoney(line.amount) + '</td>' +
+          (vat ? window.TKSVatStock.cellsHtml(line, vat) : '') + '</tr>';
       }).join('') : '<tr><td colspan="' + (showDiscount ? 6 : 5) + '" class="table-note">Chứng từ này chưa có dòng hàng nào.</td></tr>';
       const linesAmount = lines.reduce(function (sum, line) { return sum + (Number(line.amount) || 0); }, 0);
       const foot = lines.length > 1
         ? '<tfoot><tr><td colspan="2">Cộng hàng hóa</td><td class="num">' + fmtNumber(data.totalQuantity) + '</td>' +
-          '<td colspan="' + (showDiscount ? 2 : 1) + '"></td><td class="num">' + fmtTableMoney(linesAmount) + '</td></tr></tfoot>'
+          '<td colspan="' + (showDiscount ? 2 : 1) + '"></td><td class="num">' + fmtTableMoney(linesAmount) + '</td>' +
+          (vat ? '<td colspan="' + (vat.order ? 2 : 1) + '"></td>' : '') + '</tr></tfoot>'
         : '';
 
       return detailStatsHtml(tiles) +
         '<div class="dp-card"><dl class="dp-meta">' + meta.join('') + '</dl></div>' +
-        '<div class="dp-section">' + detailSectionHeadHtml('Hàng hóa', fmtNumber(data.lineCount) + ' dòng · ' + fmtNumber(data.totalQuantity) + ' sản phẩm') +
-        '<div class="dp-table-wrap is-flow"><table class="dp-table is-min-wide" data-table-key="dashboard-table-20"><thead><tr>' + head + '</tr></thead><tbody>' + rows + '</tbody>' + foot + '</table></div></div>';
+        '<div class="dp-section">' + detailSectionHeadHtml('Hàng hóa', fmtNumber(data.lineCount) + ' dòng · ' + fmtNumber(data.totalQuantity) + ' sản phẩm',
+          vat ? window.TKSVatStock.barHtml() : '') +
+        '<div class="dp-table-wrap is-flow"><table class="dp-table is-min-wide" data-table-key="dashboard-table-20' + (vat ? '-vat' : '') + '"><thead><tr>' + head + '</tr></thead><tbody>' + rows + '</tbody>' + foot + '</table></div></div>';
     }
 
     // Dòng bảng khách của 1 sản phẩm: ô màu = màu lát tương ứng trên biểu đồ tròn (bảng đóng vai chú giải, cuộn được
@@ -11558,6 +11571,7 @@
     }
 
     function renderDocumentDetail(status, data, message) {
+      destroyDocVatStock();
       const body = document.getElementById('docModalBody');
       const subtitle = document.getElementById('docModalSubtitle');
       const kind = DOC_DETAIL_KINDS[docDetail.tableKey];
@@ -11610,7 +11624,20 @@
         body.innerHTML = '<div class="doc-modal-note">' + escapeHtml(message || kind.failure) +
           '<br><button class="dp-btn" type="button" style="margin-top:12px" onclick="retryDocumentDetail()">Thử lại</button></div>';
       } else {
-        body.innerHTML = docDetailBodyHtml(docDetail.tableKey, data);
+        const vat = docDetail.tableKey === 'endOfDay' && window.TKSVatStock;
+        const lines = data.lines || [];
+        const perms = vat ? vat.permissions(hasFeature) : null;
+        const showVat = vat && vat.showsColumns(lines, perms);
+        body.innerHTML = docDetailBodyHtml(docDetail.tableKey, data, showVat ? perms : null);
+        if (showVat) {
+          const requestId = docDetail.requestId;
+          docDetail.vatController = vat.attach({
+            root: body, lines, perms,
+            doc: { kind: 'invoice', code: data.code, branch: item.branch, status: data.status, customerName: data.customerName },
+            stock: vat.loadStock(lines),
+            isCurrent: () => requestId === docDetail.requestId
+          });
+        }
       }
     }
 
@@ -11685,6 +11712,7 @@
     function closeDocumentDetail() {
       if (cp.active && !cpConfirmDiscard()) return; // hộp Chi tiết khách còn thay đổi chưa lưu
       cpTeardown();
+      destroyDocVatStock();
       docDetail.requestId++; // bỏ qua kết quả của request đang chờ
       docDetail.focus = null;
       document.getElementById('docModalBackdrop').hidden = true;
@@ -12213,7 +12241,8 @@
           'endOfDay',
           { tbody: 'endOfDayRows', pagination: 'endOfDayPagination', firstBtn: 'endOfDayFirstPage', prevBtn: 'endOfDayPrevPage', nextBtn: 'endOfDayNextPage', lastBtn: 'endOfDayLastPage', label: 'endOfDayPageLabel' },
           transactions,
-          item => '<tr class="doc-row" tabindex="0" title="Bấm để xem chi tiết giao dịch"><td class="mono name-cell">' + escapeHtml(item.code) + '</td>' +
+          item => '<tr class="doc-row" tabindex="0" title="Bấm để xem chi tiết giao dịch" data-table-item-id="' +
+            escapeHtml(productIdentity(item)) + '"><td class="mono name-cell">' + escapeHtml(item.code) + '</td>' +
             // Gio hien thi khong co nam (dd/MM HH:mm, hay HH:mm khi loc 1 ngay): server gui them timeMs (epoch ms)
             // de sap xep theo THOI GIAN that. Chi gan data-sort-value khi la so huu han (Number('') = 0 se thanh moc 1970).
             '<td class="mono muted"' + (Number.isFinite(item.timeMs) ? ' data-sort-value="' + item.timeMs + '"' : '') + '>' + escapeHtml(item.time || '—') + '</td>' +
@@ -13168,6 +13197,7 @@
 
     // Lich su MOI thay doi tren giao dien cong no (phan hoi, trang thai, lich TT) cua chu ky hien tai.
     async function openDebtHistory(trigger) {
+      destroyDocVatStock();
       docDetail.requestId++;
       docDetail.item = null;
       docDetail.returnFocus = trigger || null;

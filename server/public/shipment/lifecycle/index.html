@@ -16,6 +16,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@500;600;700;800&family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Roboto:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="/shared/shared.css?v=20261107-3">
+<link rel="stylesheet" href="/shared/vat-stock.css?v=20261121-1">
 <script src="/shared/motion.js?v=20261111-calm-1" defer></script>
   <link rel="stylesheet" href="/shared/search-clear.css?v=20261009-1">
   <link rel="stylesheet" href="/shared/detail-panel.css?v=20261016">
@@ -722,6 +723,8 @@
   <script src="/shared/dateInput.js?v=20260912"></script>
   <script src="/shared/carton.js?v=20261031-1"></script>
   <script src="/shared/pick-rules.js?v=20261027-1"></script>
+  <script src="/shared/vat-handoff.js?v=20261121-2"></script>
+  <script src="/shared/vat-stock.js?v=20261121-2"></script>
   <script src="/shipment/lifecycle/pick/invoice.js?v=20261103-redis-1"></script>
   <script src="/shipment/lifecycle/pick/print-tools.js?v=20261111-perf-1"></script>
   <script src="/shipment/lifecycle/pick/pick-assign.js?v=20261111-perf-1"></script>
@@ -883,6 +886,8 @@
     const detailBody = document.getElementById('lcDetailBody');
 
     const detailDialog = detailOverlay.querySelector('.lc-detail-dialog');
+    let detailVatStock = null; // Giữ lại kết quả tồn khi vẽ lại vị trí bốc của cùng đơn.
+    let detailVatController = null;
     let detailRequestId = 0; // bo qua phan hoi chi tiet Kiot den muon sau khi hop da dong / doi sang don khac
     let detailOrder = null;  // don dang xem (dong bang hoac ket qua tra cuu)
     let detailKiot = null;   // ket qua order-detail cua Kiot (null = chua nap / khong co)
@@ -919,8 +924,8 @@
       }).join('') + '</div>';
     }
 
-    function detailSectionHead(title, note){
-      return '<div class="dp-section-head"><h4 class="dp-section-title">' + escapeHtml(title) + '</h4>' +
+    function detailSectionHead(title, note, extraHtml = ''){
+      return '<div class="dp-section-head"><h4 class="dp-section-title">' + escapeHtml(title) + '</h4>' + extraHtml +
         (note ? '<span class="dp-section-note">' + escapeHtml(note) + '</span>' : '') + '</div>';
     }
 
@@ -1014,11 +1019,18 @@
       }).join('');
     }
 
+    function destroyDetailVatStock(){
+      if(detailVatController) detailVatController.destroy();
+      detailVatController = null;
+    }
+
     // opts.withKiot: dong cua bang "Toan bo don hang" (vai tro noi bo) nap them chi tiet dong hang tu Kiot.
     // Khu A (tra cuu cho Khach) va tab Lich su KHONG truyen withKiot — khong bao gio goi API Kiot.
     // opts.summary / opts.branch / opts.flow: bo sung khi `detail` (ket qua tra cuu) khong kem trang thai / co so / luong.
     function openDetailModal(detail, opts){
       closeContainerModal();
+      destroyDetailVatStock();
+      detailVatStock = null;
       detail = detail || {};
       const order = Object.assign({}, detail);
       if(!order.summary && opts && opts.summary) order.summary = opts.summary;
@@ -1054,6 +1066,8 @@
     }
     function closeDetailModal(){
       closeContainerModal();
+      destroyDetailVatStock();
+      detailVatStock = null;
       detailRequestId++;
       detailOrder = null;
       detailKiot = null;
@@ -1068,10 +1082,11 @@
     function formatMoneyOrDash(value){ return (value === null || value === undefined) ? '—' : formatTableVnd(value); }
 
     /** Chuoi HTML phan "Hang hoa trong don" tu du lieu GET /api/shipment/lifecycle/order-detail. */
-    function renderKiotLines(detail){
+    function renderKiotLines(detail, vat){
       const lines = Array.isArray(detail.lines) ? detail.lines : [];
       const pending = !!detail.phieuTam;
-      const head = detailSectionHead('Hàng hóa trong đơn', 'Theo Kiot' + (detail.status ? ' · ' + detail.status : ''));
+      const head = detailSectionHead('Hàng hóa trong đơn', 'Theo Kiot' + (detail.status ? ' · ' + detail.status : ''),
+        vat ? window.TKSVatStock.barHtml() : '');
       if(!lines.length){
         return head + '<p class="lc-lines-status">Đơn này chưa có dòng hàng nào trên Kiot.</p>';
       }
@@ -1083,7 +1098,7 @@
         return jobs.length && jobs.every(function(job){ return typeof job.stCartons === 'number'; })
           ? jobs.reduce(function(sum, job){ return sum + job.stCartons; }, 0) : null;
       };
-      let html = head + '<div class="dp-table-wrap is-flow"><table class="dp-table lc-lines" data-table-key="shipment-lifecycle-table-4' + (pick ? '-st' : '') + '"><thead><tr>' +
+      let html = head + '<div class="dp-table-wrap is-flow"><table class="dp-table lc-lines" data-table-key="shipment-lifecycle-table-4' + (pick ? '-st' : '') + (vat ? '-vat' : '') + '"><thead><tr>' +
         '<th>Mã hàng</th><th>Tên hàng</th><th title="Ghi chú của hàng hóa trong đơn Kiot (cũng in ở phiếu)">Ghi chú</th><th class="num">SL đặt</th>' +
         (pick ? '<th class="num" title="Số thùng thực nhặt theo chỉ định vị trí (SL nhặt / SL mỗi thùng). Trống khi dòng chưa có chỉ định.">ST</th>' : '') +
         '<th class="num" title="Đơn giá sau chiết khấu của dòng">Đơn giá</th><th class="num">Thành tiền</th>' +
@@ -1091,11 +1106,12 @@
         '<th class="num" title="Hàng đang điều chuyển cho Sài Gòn (phiếu Đặt hàng nhập đã xác nhận NCC trên Kiot SG), cùng một số cho cả hai cơ sở. Chỉ để tham khảo — không tính vào số lượng có bán.">Điều chuyển SG</th>' +
         '<th class="num" title="Số lượng bán được ngay = min(SL đặt, tồn kho)">Có bán</th>' +
         '<th class="num" title="Thành tiền của phần có bán = số lượng có bán × đơn giá sau chiết khấu">Thành tiền có bán</th>' +
-        '</tr></thead><tbody>';
+        (vat ? window.TKSVatStock.headHtml(vat) : '') + '</tr></thead><tbody>';
       lines.forEach(function(line, index){
         const stockCell = function(value){ return '<td class="num">' + (pending && !line.isService ? escapeHtml(formatQty(value)) : '—') + '</td>'; };
         const short = pending && !line.isService && line.sellableQty !== null && line.sellableQty < line.quantity;
-        html += '<tr' + (line.isService ? ' class="is-service"' : ' class="lc-product-open" tabindex="0" data-line-index="' + index + '" aria-label="Xem CONT của ' + escapeHtml(line.productCode || '') + '"') + '>' +
+        html += '<tr' + (line.isService ? ' class="is-service"' : ' class="lc-product-open" tabindex="0" data-line-index="' + index + '" aria-label="Xem CONT của ' + escapeHtml(line.productCode || '') + '"') +
+          (vat ? ' data-vat-line="' + index + '"' : '') + '>' +
           '<td class="dp-code">' + escapeHtml(line.productCode || '—') + '</td>' +
           '<td class="dp-cell-main">' + escapeHtml(line.productName || '—') + '</td>' +
           '<td class="lc-line-note">' + escapeHtml(line.note || '') + '</td>' +
@@ -1111,7 +1127,7 @@
           '<td class="num' + (short ? ' is-short' : '') + '">' +
             (pending && !line.isService ? escapeHtml(formatQty(line.sellableQty)) : '—') + '</td>' +
           '<td class="num">' + (pending && !line.isService ? escapeHtml(formatMoneyOrDash(line.sellableAmount)) : '—') + '</td>' +
-          '</tr>';
+          (vat ? window.TKSVatStock.cellsHtml(line, vat) : '') + '</tr>';
       });
       html += '</tbody></table></div>';
       if(pending){
@@ -1277,7 +1293,22 @@
     function renderKiotHolder(order){
       const holder = document.getElementById('lcDetailKiot');
       if(!holder || !detailKiot) return;
-      holder.innerHTML = renderKiotLines(detailKiot);
+      destroyDetailVatStock();
+      const vat = window.TKSVatStock;
+      const lines = Array.isArray(detailKiot.lines) ? detailKiot.lines : [];
+      const perms = vat ? vat.permissions(key => window.TKSNav.can(key)) : null;
+      const showVat = vat && vat.showsColumns(lines, perms);
+      holder.innerHTML = renderKiotLines(detailKiot, showVat ? perms : null);
+      if(showVat){
+        if(!detailVatStock) detailVatStock = vat.loadStock(lines);
+        const requestId = detailRequestId;
+        detailVatController = vat.attach({
+          root: holder, lines, perms,
+          doc: { kind: 'order', code: order.orderCode, branch: order.branch, status: detailKiot.status, customerName: detailKiot.customerName || order.customerName || '' },
+          stock: detailVatStock,
+          isCurrent: () => requestId === detailRequestId && detailOrder === order
+        });
+      }
       attachPick(order);
       renderDetailStats();
       detailDialog.classList.add('is-wide');
@@ -1410,10 +1441,12 @@
     }
 
     detailBody.addEventListener('click', function(e){
+      if(e.target.closest('.vat-order-cell, .vat-stock-bar')) return;
       const row = e.target.closest('[data-line-index]');
       if(row && containerOverlay.hidden) openContainerModal(row);
     });
     detailBody.addEventListener('keydown', function(e){
+      if(e.target.closest('.vat-order-cell, .vat-stock-bar')) return;
       const row = e.target.closest('[data-line-index]');
       if(row && (e.key === 'Enter' || e.key === ' ') && containerOverlay.hidden){
         e.preventDefault(); openContainerModal(row);

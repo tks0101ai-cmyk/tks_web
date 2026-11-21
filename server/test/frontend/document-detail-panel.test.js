@@ -52,10 +52,15 @@ const INVOICE_DETAIL = {
   lineCount: 1, totalQuantity: 3
 };
 
-function createPage({ respond, withTableControls = false } = {}) {
+function createPage({ respond, withTableControls = false, stock, can = () => true, serverPagination = false } = {}) {
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://tokosi.example/#invoices' });
+  const data = payload();
+  if (serverPagination) {
+    const report = data.invoices.transactionsReport;
+    Object.assign(report, { totalRows: 102, page: 2, pageSize: 100, rows: report.transactions });
+  }
   dom.window.sessionStorage.setItem('tksDashboardCache', JSON.stringify({
-    data: payload(),
+    data,
     days: 30,
     filters: { products: { mode: 'days', days: 30 }, invoices: { mode: 'days', days: 30 }, customers: { mode: 'all' } }
   }));
@@ -66,12 +71,22 @@ function createPage({ respond, withTableControls = false } = {}) {
     destroy() {}
   };
   dom.window.setInterval = () => 1;
-  dom.window.requestAnimationFrame = callback => callback();
-  dom.window.TKSNav = { authGuard: () => new Promise(() => {}), can: () => true, handleBranchError: () => false, renderTopSidebar() {} };
+  dom.window.requestAnimationFrame = callback => {
+    if (dom.window.document) callback();
+  };
+  dom.window.TKSNav = { authGuard: () => new Promise(() => {}), can, handleBranchError: () => false, renderTopSidebar() {} };
 
   const urls = [];
-  dom.window.fetch = (url) => {
+  const stockCalls = [];
+  const opened = [];
+  dom.window.open = url => { opened.push(url); };
+  dom.window.fetch = (url, options) => {
     const href = String(url);
+    if (href === '/api/vat-lookup/stock') {
+      const codes = JSON.parse(options.body).codes;
+      stockCalls.push(codes);
+      return stock(codes);
+    }
     // Bat ca 2 API chi tiet da xoa (order/return) de chung minh trang khong con goi chung.
     if (!/^\/api\/(order|return|invoice)-detail/.test(href)) return new Promise(() => {});
     urls.push(href);
@@ -82,12 +97,17 @@ function createPage({ respond, withTableControls = false } = {}) {
   ['pagination.js', 'table-explorer.js'].forEach(file => {
     dom.window.eval(fs.readFileSync(path.join(publicDir, 'js', file), 'utf8'));
   });
+  if (stock) {
+    for (const file of ['vat-handoff.js', 'vat-stock.js']) {
+      dom.window.eval(fs.readFileSync(path.join(publicDir, 'shared', file), 'utf8'));
+    }
+  }
   [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
     .map(match => match[1]).filter(script => script.trim())
     .forEach(script => dom.window.eval(script));
   if (withTableControls) dom.window.eval(fs.readFileSync(path.join(publicDir, 'shared', 'table-controls.js'), 'utf8'));
   const doc = dom.window.document;
-  return { dom, doc, urls, $: id => doc.getElementById(id) };
+  return { dom, doc, urls, stockCalls, opened, $: id => doc.getElementById(id) };
 }
 
 // Hang chi so tong quan cua hop: { 'Nhan': { value, sub, tone } }.
@@ -312,4 +332,104 @@ test('hop chi tiet co sort, keo do rong cot va nut "Cột hiển thị" o dau kh
   input.dispatchEvent(new page.dom.window.Event('change', { bubbles: true }));
   assert.equal(headers.find(th => th.querySelector('.sort-label').textContent === 'Đơn giá').classList.contains('tks-column-hidden'), true);
   assert.equal(modalTable.tFoot.rows[0].cells[0].colSpan, 2);
+});
+
+
+const jsonOk = body => Promise.resolve({ ok: true, status: 200, json: async () => body });
+const invoiceStock = stock => jsonOk({ items: { A1: { vatCode: 'VA', stock } } });
+
+test('Tồn VAT: dòng hóa đơn phân trang máy chủ mở đúng cơ sở và chuyển phần thiếu sang ORDER VAT', async t => {
+  const page = createPage({
+    serverPagination: true,
+    respond: url => jsonOk({ ...INVOICE_DETAIL, customerName: url.includes(encodeURIComponent(SG)) ? 'KH B' : 'KH A' }),
+    stock: () => invoiceStock(1)
+  });
+  t.after(() => page.dom.window.close());
+  await settle();
+  const rows = [...page.$('endOfDayRows').querySelectorAll('tr.doc-row')];
+  assert.equal(rows.length, 2);
+  rows[1].click();
+  await settle();
+  assert.deepEqual(page.urls, ['/api/invoice-detail?code=HD-1&branch=' + encodeURIComponent(SG)]);
+  assert.deepEqual(page.stockCalls, [['A1']]);
+  const body = page.$('docModalBody');
+  assert.ok(body.querySelector('table[data-table-key="dashboard-table-20-vat"]'));
+  assert.deepEqual([...body.querySelectorAll('thead th')].slice(-2).map(th => th.textContent), ['Tồn VAT', 'Order VAT']);
+  assert.equal(body.querySelector('.vat-stock-cell.is-vat-short').textContent, '1');
+  body.querySelector('.vat-order-tick').click();
+  body.querySelector('[data-vat-action="order"]').click();
+  assert.equal(page.opened.length, 1);
+  const url = new URL(page.opened[0], 'https://tokosi.example');
+  assert.equal(url.pathname, '/vat-request/');
+  const { localStorage, TKSVatHandoff } = page.dom.window;
+  const saved = TKSVatHandoff.takeOrderVat(localStorage, url.searchParams.get('handoffId'));
+  assert.deepEqual(JSON.parse(JSON.stringify(saved.rows)), [
+    { customerName: 'KH B', productCode: 'A1', productName: 'Hàng A', quantity: 2, unitPrice: 27, saleNote: 'Từ HD-1' }
+  ]);
+});
+
+test('Tồn VAT: chia lô trên 200 mã và bỏ dòng phí VAT', async t => {
+  const lines = Array.from({ length: 201 }, (_, index) => ({ productCode: 'SP' + index, quantity: 1 }));
+  const page = createPage({
+    respond: () => jsonOk({ ...INVOICE_DETAIL, lines: [...lines, { productCode: 'VAT99', quantity: 1 }] }),
+    stock: () => jsonOk({ items: {} })
+  });
+  t.after(() => page.dom.window.close());
+  await settle();
+  firstTransactionRow(page).click();
+  await settle();
+  assert.deepEqual(page.stockCalls, [lines.slice(0, 200).map(line => line.productCode), ['SP200']]);
+  assert.equal(page.$('docModalBody').querySelectorAll('.vat-stock-cell').length, 202);
+});
+
+test('Tồn VAT: hóa đơn thiếu quyền tra cứu giữ nguyên bảng và không gọi API', async t => {
+  const page = createPage({ can: key => key !== 'accounting.vatLookup', stock: () => invoiceStock(1) });
+  t.after(() => page.dom.window.close());
+  await settle();
+  firstTransactionRow(page).click();
+  await settle();
+  assert.deepEqual(page.stockCalls, []);
+  assert.ok(page.$('docModalBody').querySelector('table[data-table-key="dashboard-table-20"]'));
+  assert.equal(page.$('docModalBody').querySelector('.vat-stock-cell'), null);
+});
+
+test('Tồn VAT: hóa đơn đã hủy chỉ xem tồn', async t => {
+  const page = createPage({
+    respond: () => jsonOk({ ...INVOICE_DETAIL, status: 'Đã hủy' }),
+    stock: () => invoiceStock(1)
+  });
+  t.after(() => page.dom.window.close());
+  await settle();
+  firstTransactionRow(page).click();
+  await settle();
+  const body = page.$('docModalBody');
+  assert.equal(body.querySelector('.vat-stock-cell').textContent, '1');
+  const tick = body.querySelector('.vat-order-tick');
+  assert.ok(!tick || tick.disabled);
+  tick?.click();
+  assert.equal(body.querySelector('[data-vat-action="order"]'), null);
+});
+
+test('Tồn VAT: bỏ kết quả cũ khi đổi hóa đơn và khi đóng hộp', async t => {
+  const pending = [];
+  const page = createPage({ stock: () => new Promise(resolve => pending.push(resolve)) });
+  t.after(() => page.dom.window.close());
+  await settle();
+  const rows = page.$('endOfDayRows').querySelectorAll('tr.doc-row');
+  rows[0].click();
+  await settle();
+  const body = page.$('docModalBody');
+  const first = body.querySelector('.vat-stock-cell');
+  rows[1].click();
+  await settle();
+  const second = body.querySelector('.vat-stock-cell');
+  pending[0](await invoiceStock(777));
+  await settle();
+  assert.equal(first.textContent, '…');
+  assert.equal(second.textContent, '…');
+  clickInline(page, page.$('docModalClose'));
+  pending[1](await invoiceStock(888));
+  await settle();
+  assert.equal(second.textContent, '…');
+  assert.equal(body.textContent, '');
 });
