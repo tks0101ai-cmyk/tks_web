@@ -208,9 +208,9 @@
   // 50 dòng đang hiện, còn ở đây phải xếp toàn bộ dòng đã lọc rồi mới cắt trang.
   const sortState=k=>{const sort=colSort.find(s=>s.key===k);return !sort?'none':sort.dir==='asc'?'ascending':'descending'};
   function sortHead(c,width){
-    const state=sortState(c.k),action=state==='ascending'?'Sắp xếp giảm dần':state==='descending'?'Bỏ sắp xếp':'Sắp xếp tăng dần';
+    const state=sortState(c.k),action=state==='ascending'?'Sắp xếp giảm dần':state==='descending'?'Bỏ sắp xếp':'Sắp xếp tăng dần',hint='; nhấn tiêu đề khác để thêm tiêu chí phụ. Shift + nhấn để chỉ sắp theo cột này.';
     return '<th class="sortable'+(numbers.has(c.t)?' num':'')+(c.d?' calc':'')+'" data-key="'+esc(c.k)+'" aria-sort="'+state+'" data-default-width="'+width+'">'
-      +'<button type="button" class="sort-button" title="'+esc(action+' theo '+c.l)+'" aria-label="'+esc(action+' theo cột '+c.l)+'">'
+      +'<button type="button" class="sort-button" title="'+esc(action+' theo '+c.l+hint)+'" aria-label="'+esc(action+' theo cột '+c.l+hint)+'">'
       +'<span class="sort-label">'+esc(c.l)+'</span><span class="sort-indicator" aria-hidden="true">'+(state==='none'?'▲▼':(state==='ascending'?'▲':'▼')+(colSort.findIndex(s=>s.key===c.k)+1))+'</span></button></th>';
   }
   // Ô trống luôn xuống cuối ở cả hai chiều, như sort của table-controls; giá trị bằng nhau thì
@@ -347,7 +347,7 @@
   $('orderTable').addEventListener('click',e=>{
     const button=e.target.closest('.sort-button'),th=button?button.closest('th'):e.target.matches('th.sortable')?e.target:null;
     if(!th)return;const k=th.dataset.key;
-    viewHeldIds.clear();colSort=window.TKSTables.nextSorts(colSort,k,e.shiftKey);page=1;persist();void refresh(true).catch(error=>notice(error.message));
+    viewHeldIds.clear();colSort=window.TKSTables.nextSorts(colSort,k,!e.shiftKey);page=1;persist();void refresh(true).catch(error=>notice(error.message));
   });
   $('previous').onclick=()=>{if(page>1)navigateOrderPage(page-1)};$('next').onclick=()=>navigateOrderPage(page+1);$('pageNumbers').onclick=e=>{const n=Number(e.target.closest('[data-page]')?.dataset.page);if(Number.isInteger(n)&&n!==page)navigateOrderPage(n)};$('pageSize').onchange=()=>{viewHeldIds.clear();pageSize=Number($('pageSize').value)||50;page=1;persist();navigateOrderPage(1)};
   $('bulk').onclick=()=>{bulk=!bulk;selected.clear();selectedRowCache.clear();render()};
