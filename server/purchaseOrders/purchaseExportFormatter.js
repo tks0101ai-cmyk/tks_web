@@ -53,7 +53,7 @@ function widthForColumn(column,values,headerLabel){
 }
 
 async function formatPurchaseExport(rows,columns,fields,language='vi'){
-  const selected=new Set(fields||columns.map(column=>column.k)),exportColumns=columns.filter(column=>selected.has(column.k));
+  const selected=new Set(fields||columns.map(column=>column.k)),exportColumns=columns.filter(column=>column.k!=='m3Warehouse'&&selected.has(column.k));
   if(!exportColumns.length)throw Error('Chọn ít nhất một cột để xuất.');
   const values=rows.map(row=>exportColumns.map(column=>column.k==='container'?orderTableContainer(row):column.region?(row.regionName??row.regionId??null):column.t==='datetime'&&column.k!=='measuredOn'?(dateOnly(row[column.k])||row[column.k]||null):(row[column.k]??null)));
   const book=new ExcelJS.Workbook();book.creator='TOKOSI';book.created=new Date();book.modified=book.created;

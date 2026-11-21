@@ -10,7 +10,7 @@ const { normalizeName: normalizeContainerKey } = require('./containerNames');
 // Cot chi doc duoc danh dau `ro` trong purchase-columns.js — mot nguon duy nhat,
 // khong lap danh sach ten cot o hai noi nhu truoc.
 const writable = columns.filter(c => !c.d && !c.m && !c.ro);
-const overrideColumns=columns.filter(c=>c.o),regionColumn=columns.find(c=>c.region), importable=[...writable,...overrideColumns,...(regionColumn?[regionColumn]:[])];
+const overrideColumns=columns.filter(c=>c.o&&!c.d&&!c.m),regionColumn=columns.find(c=>c.region), importable=[...writable,...overrideColumns,...(regionColumn?[regionColumn]:[])];
 const snapshotColumns=columns.filter(c=>c.si);
 importable.push(...snapshotColumns);
 const byKey = new Map(importable.map(c => [c.k, c]));

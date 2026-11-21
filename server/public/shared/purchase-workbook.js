@@ -8,7 +8,7 @@
   const normalize = value => String(value ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
   const caption = col => labels[col.k] || (col.cn ? col.l + ' · ' + col.cn : col.l);
   const writable = col => col.k === 'rowKey' || !!col.region || !!col.o || !col.d && !col.m && !col.ro && !['container', 'status'].includes(col.k);
-  const importColumns = columns => columns.filter(col=>writable(col)||col.si);
+  const importColumns = columns => columns.filter(col=>(writable(col)||col.si)&&!col.d&&!col.m&&col.k!=='m3Warehouse');
 
   function exportWorkbook(rows, columns, visibleKeys) {
     const selected = new Set(visibleKeys || columns.map(col => col.k));
@@ -50,15 +50,15 @@
 
   function exportImportSnapshot({rows,columns,revision,regions=[]}) {
     if(!/^\d+:\d+$/.test(String(revision||'')))throw Error('Phiên bản snapshot không hợp lệ.');
-    const cols=columns,keys=cols.filter(col=>col.k!=='rowKey').map(col=>col.k),book=exportWorkbook(rows,columns,keys),sheet=book.Sheets['Đặt hàng'];
+    const importable=importColumns(columns),cols=[columns.find(col=>col.k==='rowKey'),...columns.filter(col=>col.k!=='rowKey'&&importable.includes(col))].filter(Boolean),keys=cols.filter(col=>col.k!=='rowKey').map(col=>col.k),book=exportWorkbook(rows,cols,keys),sheet=book.Sheets['Đặt hàng'];
     cols.forEach((col,c)=>rows.forEach((row,r)=>{const formula=snapshotFormula(col,row,cols,r);if(!formula)return;const address=XLSX.utils.encode_cell({r:r+1,c}),cell=sheet[address]||(sheet[address]={t:'n',v:0});cell.f=formula.slice(1);if(typeof row[col.k]==='number'&&Number.isFinite(row[col.k])){cell.t='n';cell.v=row[col.k]}else{cell.t='str';cell.v=''}}));
     const kind=col=>numericTypes.has(col.t)?'Số'+(col.decimals!=null?' · tối đa '+col.decimals+' chữ số thập phân':''):col.t==='datetime'?'Ngày dd/mm/yyyy hoặc dd/mm/yyyy hh:mm':'Văn bản';
     const required=col=>col.k==='productCode'?'Có · mọi dòng':['productName','qtyPerCarton','cartonCount'].includes(col.k)?'Có · dòng mới':'Không';
-    const importable=importColumns(columns),hints=cols.map(col=>[caption(col),required(col),col.region?'Tên vùng hoặc mã vùng':kind(col),col.d?'Cột công thức Excel; thay công thức bằng giá trị nếu cần ghi đè.':!importable.includes(col)?'Chỉ xem; không được nhập ngược vào hệ thống.':col.region?'Nhập đúng tên vùng đang dùng; để trống sẽ bỏ gán vùng.':col.k==='container'?'Nhập cont đang hoạt động; để trống hoặc chọn Chờ xếp sẽ đưa vào hàng chờ.':col.k==='rowKey'?'Có Mã dòng: cập nhật dòng đó. Để trống: tạo mã mới.':col.k==='productCode'?'Bắt buộc; không trùng trong file.':col.k==='productName'?'Bắt buộc khi tạo mã mới.':['qtyPerCarton','cartonCount'].includes(col.k)?'Mã mới cần số nguyên dương.':col.t==='datetime'?'Để trống sẽ xóa ngày hiện tại.':'Để trống sẽ xóa giá trị hiện tại.']);
+    const hints=cols.map(col=>[caption(col),required(col),col.region?'Tên vùng hoặc mã vùng':kind(col),col.d?'Cột công thức Excel; thay công thức bằng giá trị nếu cần ghi đè.':!importable.includes(col)?'Chỉ xem; không được nhập ngược vào hệ thống.':col.region?'Nhập đúng tên vùng đang dùng; để trống sẽ bỏ gán vùng.':col.k==='container'?'Nhập cont đang hoạt động; để trống hoặc chọn Chờ xếp sẽ đưa vào hàng chờ.':col.k==='rowKey'?'Có Mã dòng: cập nhật dòng đó. Để trống: tạo mã mới.':col.k==='productCode'?'Bắt buộc; không trùng trong file.':col.k==='productName'?'Bắt buộc khi tạo mã mới.':['qtyPerCarton','cartonCount'].includes(col.k)?'Mã mới cần số nguyên dương.':col.t==='datetime'?'Để trống sẽ xóa ngày hiện tại.':'Để trống sẽ xóa giá trị hiện tại.']);
     const exampleKeys=['rowKey','productCode','productName','qtyPerCarton','cartonCount','supplier','unitPriceCny','listedAt'],exampleColumns=exampleKeys.map(key=>cols.find(col=>col.k===key));
     const guide=XLSX.utils.aoa_to_sheet([
       ['HƯỚNG DẪN SỬA FILE THU MUA'],
-      ['Đây là snapshot đầy đủ tải từ dữ liệu hiện tại. Sửa sheet “Đặt hàng” rồi tải lại chính file này. Không xóa sheet __TOKOSI.'],
+      ['Đây là snapshot các trường đặt hàng tải từ dữ liệu hiện tại. Cột công thức và các cột cân đo đã được bỏ; những trường đó sẽ được giữ nguyên khi nhập lại. Sửa sheet “Đặt hàng” rồi tải lại chính file này. Không xóa sheet __TOKOSI.'],
       ['Mỗi dòng là một mã. Mã dòng có sẵn sẽ cập nhật; Mã dòng để trống sẽ tạo mã mới. Mã SP bắt buộc; mã mới cần Tên SP, SL/T và Số thùng.'],
       ['Giá trị ô trống sẽ xóa giá trị hiện tại. Xóa cả dòng khỏi sheet Đặt hàng sẽ xóa mềm mã đó. Xem lại số dòng xóa ở bước xem trước trước khi xác nhận.'],
       ['Cột Vùng nhận tên vùng trong danh sách đã cấu hình; không nhập vùng mới trong file. Cột Tên cont nhận tên cont đang hoạt động; để trống hoặc nhập Chờ xếp sẽ gán vào hàng chờ. Trạng thái cont tự tính, không import.'],
@@ -80,7 +80,7 @@
   }
 
   function exportNewCodesTemplate(columns,regions=[]) {
-    const cols=columns.filter(col=>col.k!=='rowKey'&&!col.si&&writable(col));
+    const cols=columns.filter(col=>col.k!=='rowKey'&&!col.si&&!col.d&&!col.m&&(!col.ro||col.region));
     if(!cols.some(col=>col.k==='productCode'))throw Error('Thiếu cột Mã SP trong cấu hình Thu mua.');
     const sheet=XLSX.utils.aoa_to_sheet([cols.map(caption)]);
     sheet['!cols']=cols.map(col=>({wch:Math.min(28,Math.max(12,[...caption(col)].length+2))}));
