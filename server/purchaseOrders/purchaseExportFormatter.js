@@ -5,6 +5,7 @@ const PurchaseHeaders=require('../public/shared/purchase-headers');
 const PurchaseWorkbook=require('../public/shared/purchase-workbook');
 
 const NUMBER_TYPES=new Set(['num','num1','num2','num3','num4','cny','money','pct','ratio']);
+const HEADER_FIT_COLUMNS=new Set(['supplier','regionId','container','status','color','saleNote','vatNote','buyNote']);
 const HEADER_FILL={type:'pattern',pattern:'solid',fgColor:{argb:'FFEAF1F8'}};
 const CELL_BORDER={top:{style:'thin',color:{argb:'FFD9E0EA'}},bottom:{style:'thin',color:{argb:'FFD9E0EA'}},left:{style:'thin',color:{argb:'FFD9E0EA'}},right:{style:'thin',color:{argb:'FFD9E0EA'}}};
 const HEADER_BORDER={top:{style:'thin',color:{argb:'FFB8C6D8'}},bottom:{style:'thin',color:{argb:'FF9AAABD'}},left:{style:'thin',color:{argb:'FFB8C6D8'}},right:{style:'thin',color:{argb:'FFB8C6D8'}}};
@@ -36,17 +37,19 @@ function visibleText(value,column){
   return String(value).split(/\r?\n/).reduce((longest,line)=>Math.max(longest,[...line].length),0);
 }
 
+function textWidth(value){return [...String(value??'')].reduce((width,char)=>width+(/[\u1100-\u11ff\u2e80-\u9fff\uf900-\ufaff\ufe30-\ufe6f\uff00-\uffef]/u.test(char)?2:1),0)}
+
 function orderTableContainer(row){
   if(row.contId==null)return 'Chờ'+(row.regionName?' '+row.regionName:'');
   return String(row.container??'').replace(/^CONT\s+/i,'').replace(/\s+(?:CHƯA CÓ LỊCH|CHỜ BỐC|ĐÃ BỐC|ĐÃ VỀ).*$/i,'').trim();
 }
 
-function widthForColumn(column,values){
+function widthForColumn(column,values,headerLabel){
+  if(HEADER_FIT_COLUMNS.has(column.k))return Math.max(4,textWidth(headerLabel)+1);
   let width=0;
   for(const value of values){const text=visibleText(value,column);width=Math.max(width,typeof text==='number'?text:[...text].length)}
-  // Headers wrap onto multiple lines; size each column to the displayed cell
-  // values so a long title does not leave unused horizontal space.
-  return Math.max(4,width);
+  // Keep numeric columns wider than the formatted value so Excel never renders ####.
+  return Math.max(4,width+(NUMBER_TYPES.has(column.t)?2:0));
 }
 
 async function formatPurchaseExport(rows,columns,fields,language='vi'){
@@ -55,9 +58,10 @@ async function formatPurchaseExport(rows,columns,fields,language='vi'){
   const values=rows.map(row=>exportColumns.map(column=>column.k==='container'?orderTableContainer(row):column.region?(row.regionName??row.regionId??null):column.t==='datetime'&&column.k!=='measuredOn'?(dateOnly(row[column.k])||row[column.k]||null):(row[column.k]??null)));
   const book=new ExcelJS.Workbook();book.creator='TOKOSI';book.created=new Date();book.modified=book.created;
   const sheet=book.addWorksheet('Đặt hàng',{views:[{state:'frozen',ySplit:1,showGridLines:false}]});
-  sheet.columns=exportColumns.map((column,index)=>({key:column.k,width:widthForColumn(column,values.map(row=>row[index]))}));
-  const header=sheet.addRow(exportColumns.map(column=>PurchaseHeaders.label(column,language)));
-  header.height=32;header.eachCell({includeEmpty:true},cell=>{cell.font={name:'Arial',size:10,bold:true,color:{argb:'FF1D3553'}};cell.fill=HEADER_FILL;cell.alignment={vertical:'middle',horizontal:'center',wrapText:true};cell.border=HEADER_BORDER});
+  const headerLabels=exportColumns.map(column=>PurchaseHeaders.label(column,language));
+  sheet.columns=exportColumns.map((column,index)=>({key:column.k,width:widthForColumn(column,values.map(row=>row[index]),headerLabels[index])}));
+  const header=sheet.addRow(headerLabels);
+  header.height=32;header.eachCell({includeEmpty:true},cell=>{cell.font={name:'Calibri',size:10,bold:true,color:{argb:'FF1D3553'}};cell.fill=HEADER_FILL;cell.alignment={vertical:'middle',horizontal:'center',wrapText:true};cell.border=HEADER_BORDER});
   for(const rowValues of values)sheet.addRow(rowValues);
   for(let index=0;index<exportColumns.length;index++){
     const column=exportColumns[index],target=sheet.getColumn(index+1);
@@ -65,7 +69,7 @@ async function formatPurchaseExport(rows,columns,fields,language='vi'){
     else if(NUMBER_TYPES.has(column.t))target.numFmt=numberFormat(column);
     target.alignment={vertical:'middle',horizontal:NUMBER_TYPES.has(column.t)?'right':column.t==='datetime'?'center':'left'};
   }
-  sheet.eachRow((row,rowNumber)=>{if(rowNumber===1)return;row.eachCell({includeEmpty:true},cell=>{cell.font={name:'Arial',size:10};cell.alignment={...cell.alignment,vertical:'middle'};cell.border=CELL_BORDER})});
+  sheet.eachRow((row,rowNumber)=>{if(rowNumber===1)return;let lineCount=1;row.eachCell({includeEmpty:true},(cell,columnNumber)=>{const column=exportColumns[columnNumber-1],wrap=HEADER_FIT_COLUMNS.has(column?.k);cell.font={name:'Calibri',size:10};cell.alignment={...cell.alignment,vertical:'middle',wrapText:wrap};cell.border=CELL_BORDER;if(wrap&&cell.value!=null&&cell.value!==''){const width=Math.max(1,sheet.getColumn(columnNumber).width-1);lineCount=Math.max(lineCount,String(cell.value).split(/\r?\n/).reduce((count,line)=>count+Math.max(1,Math.ceil(textWidth(line)/width)),0))}});if(lineCount>1)row.height=Math.max(18,lineCount*14+2)});
   if(sheet.rowCount)sheet.autoFilter={from:{row:1,column:1},to:{row:sheet.rowCount,column:exportColumns.length}};
   return book.xlsx.writeBuffer();
 }
