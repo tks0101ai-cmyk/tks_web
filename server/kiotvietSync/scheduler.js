@@ -150,6 +150,7 @@ function createPollingScheduler({
           await poll(api, branchConfig.branch, entity);
         } catch (error) {
           failures.push(error);
+          logger.error(`[KiotViet Sync] ${branchConfig.branch}/${entity.entity}:`, error.message);
           await record(branchConfig.branch, entity.entity, error.message).catch((recordError) => {
             logger.error('[KiotViet Sync] Không ghi được lỗi checkpoint:', recordError.message);
           });

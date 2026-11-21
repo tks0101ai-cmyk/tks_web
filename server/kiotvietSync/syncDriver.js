@@ -217,8 +217,12 @@ function createSyncDriver({ pool = getPool(), checkpointRepository: checkpoints 
       await inTransaction(client => checkpoints.advanceCheckpoint(branch, entityModule.entity, runEndIso, { client }));
       return;
     }
+    // Orders can become visible after a successful poll while their source timestamp
+    // is already older than our checkpoint (clock skew/API delay). Replay the same
+    // bounded overlap used for reconciled entities; document upserts are idempotent.
+    const overlapMs = entityModule.entity === 'orders' ? INCREMENTAL_OVERLAP_MS : 0;
     const sinceIso = checkpoint?.last_synced_at
-      ? new Date(checkpoint.last_synced_at).toISOString()
+      ? new Date(new Date(checkpoint.last_synced_at).getTime() - overlapMs).toISOString()
       : new Date(Date.parse(runEndIso) - 60 * 60 * 1000).toISOString();
     const query = { ...entityModule.listQuery, [entityModule.incrementalParam]: sinceIso };
     await kiotVietClient.fetchAllPages(entityModule.endpoint, query, async (items) => {

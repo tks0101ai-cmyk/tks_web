@@ -24,6 +24,34 @@ function fakePool({ failUpsertAt = 0 } = {}) {
   };
 }
 
+test('orders recover delayed source records older than the previous checkpoint without duplicating them', async () => {
+  const row = { id: 123, code: 'DH_DELAYED_FIXTURE', modifiedDate: '2026-11-21T01:18:58.000Z' };
+  const saved = new Map();
+  let checkpoint = '2026-11-21T01:18:00.000Z';
+  let sourceVisible = false;
+  let nowMs = Date.parse('2026-11-21T01:19:00.000Z');
+  const driver = createSyncDriver({ pool: fakePool(), now: () => nowMs, checkpointRepository: {
+    getCheckpoint: async () => ({ last_synced_at: checkpoint }),
+    advanceCheckpoint: async (_branch, _entity, at) => { checkpoint = at; }
+  }});
+  const api = { fetchAllPages: async (_endpoint, query, onPage) => {
+    await onPage(sourceVisible && Date.parse(row.modifiedDate) >= Date.parse(query.lastModifiedFrom) ? [row] : []);
+  }};
+  const entity = { ...require('./entities/orders'), upsertPage: async (_client, _branch, items) => {
+    items.forEach(item => saved.set(item.id, item));
+  }};
+  await driver.pollEntityOnce(api, 'hanoi', entity);
+  assert.equal(saved.size, 0);
+  sourceVisible = true;
+  nowMs += 60000;
+  await driver.pollEntityOnce(api, 'hanoi', entity);
+  assert.deepEqual(saved.get(row.id), row, 'a delayed order must be recovered on the next poll');
+  nowMs += 60000;
+  await driver.pollEntityOnce(api, 'hanoi', entity);
+  assert.equal(saved.size, 1);
+  assert.equal(checkpoint, '2026-11-21T01:21:00.000Z');
+});
+
 test('empty checkpoint on a snapshot entity (no backfillRangeParam) does a full sweep, no date filter', async () => {
   const pool = fakePool();
   const advances = [];

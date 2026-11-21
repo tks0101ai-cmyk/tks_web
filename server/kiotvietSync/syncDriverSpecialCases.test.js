@@ -125,7 +125,7 @@ for (const [label, entityModule, listQuery] of [
     assert.equal(queries.length, 1);
     assert.deepEqual(queries[0].query, {
       ...listQuery,
-      lastModifiedFrom: '2026-09-14T03:30:00.000Z'
+      lastModifiedFrom: label === 'orders' ? '2026-09-14T03:25:00.000Z' : '2026-09-14T03:30:00.000Z'
     });
   });
 }

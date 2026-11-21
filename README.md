@@ -684,3 +684,8 @@ Thư mục `deploy/` (không thuộc ứng dụng, chỉ dùng trên VPS; bản 
 - Đo thật 17/11/2026: deploy 8f638c4 → 400/400 lần gọi `/health` (mỗi 0,1 s) trả 200; `pm2 reload` riêng lẻ từng thấy 1/250 lần lỗi.
 
 Cập nhật gần nhất: 17/11/2026.
+
+
+21/11/2026 — Sửa đồng bộ đơn KiotViet: đọc chồng 5 phút cho orders để bù bản ghi xuất hiện muộn; log lỗi polling nêu rõ cơ sở và loại dữ liệu. Không migration.
+
+Cập nhật gần nhất: 21/11/2026.

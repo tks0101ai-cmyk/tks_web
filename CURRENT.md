@@ -1,4 +1,5 @@
 # CURRENT — Trạng thái dự án
+> 21/11/2026 — **Kiểm tra DH051623 / đồng bộ KiotViet:** đã xác nhận worker Render chạy, log 07:00–08:46 VN chỉ có HTTP 420 của DH044921/DH049077 (không liên quan đơn cần tìm). Tái hiện bằng dữ liệu giả lập hai lỗi mã nguồn: orders không có cửa sổ chồng nên bản ghi API hiển thị muộn có thể bị bỏ qua; lỗi polling chỉ lưu checkpoint, không có log Render. Sửa orders đọc chồng 5 phút và scheduler ghi lỗi cơ sở/entity trước khi lưu checkpoint. Không migration/đổi cấu hình. **Trạng thái:** kiểm thử 42/42 ca trực tiếp và bộ hồi quy đồng bộ/vòng đời đều đạt; graphify update thành công; chuẩn bị deploy; chưa đọc được DH051623 từ DB production, chưa xác nhận nguyên nhân riêng của đơn này.
 > 17/11/2026 — **Đơn hủy trên KiotViet vẫn hiện "Phiếu tạm" ở Vòng đời (nhánh `work/purchase-20261117`, chưa merge, không migration):** đồng bộ orders chỉ upsert theo `lastModifiedFrom` và không có đường xử lý hủy/xóa, nên đơn bị hủy không bao giờ quay lại danh sách. Thêm `server/kiotvietSync/reconcileOpenOrders.js` hỏi thẳng từng đơn chưa kết thúc qua `GET /orders/{id}` (nhịp 30 phút trong scheduler); đơn trả 404 chỉ đếm và nêu tên, không suy ra là đã hủy. **Việc tiếp theo:** chạy thật với credential KiotViet để xác nhận đường detail trả về đơn đã hủy — `.env` hiện rỗng toàn bộ `KIOTVIET_*` nên chưa probe được.
 
 > 10/11/2026 — **Bộ canh event loop (PR #70 đã merge/deploy, không migration):** `server/lib/loopStallWatch.js` ghi request đang chạy và vừa xong khi event loop đứng ≥ `LOOP_STALL_WARN_MS` (mặc định 1000 ms, `0` tắt; bỏ qua SSE). Kiểm chứng 9 test mới và thử server thật. **Việc tiếp theo:** rà log `[loop-stall]` sau một ngày để xác định request gây khối 1–12 s.
@@ -72,3 +73,6 @@ Cập nhật: 16/11/2026
 - [ ] 17/11 — VPS `159.195.8.95` chạy `tokosi-dash-web/worker` (cổng 3100, `deploy/`, tự cập nhật bằng cron) — mở ra ngoài bằng HTTPS (cookie `secure`; 80/443 do Docker `production-web-1` giữ); tắt job nền trên Render nếu chuyển hẳn (đang chạy trùng, cùng DB); `deploy/` chưa commit
 
 - [ ] 21/11 — Dự kiến hàng về: sheet CONT (cả 7 tab) chèn thêm cột G "VAT: ghi chú" (chỉ nhập tay, không đọc vào hệ thống), làm lệch mọi cột từ G trở đi — sửa `productContainers/parser.js` (+1 index từ otherNote đến vietnamPrice, O→P cho quantity) và `sync.js` (đọc `A:Y` thay `A:X`); test `productContainers/*` 91/91 đạt, không migration — review rồi deploy web; chưa xác minh dữ liệu đọc đúng trên sheet thật sau khi deploy.
+
+
+Cập nhật gần nhất: 21/11/2026.

@@ -217,6 +217,7 @@ test('one branch/entity failure is recorded without blocking other work', async 
   const timers = [];
   const calls = [];
   const failures = [];
+  const errors = [];
   const scheduler = createPollingScheduler({
     enabled:true, getConfiguredBranches:()=>[
       {branch:'hanoi',clientId:'1',clientSecret:'2',retailer:'hn'},
@@ -225,6 +226,7 @@ test('one branch/entity failure is recorded without blocking other work', async 
     createKiotVietClient:(config)=>({branch:config.retailer}),
     pollEntityOnce:async (_api,branch,entity)=>{ calls.push(`${branch}:${entity.entity}`); if(branch==='hanoi'&&entity.entity==='invoices') throw new Error('down'); },
     recordFailure:async (...args)=>failures.push(args),
+    logger: { log() {}, warn() {}, error: (...args) => errors.push(args.join(' ')) },
     setIntervalFn:(fn,ms)=>(timers.push({fn,ms}),ms),
     scheduleImmediate:()=>{},
     getPool:()=>'fake-pool',
@@ -235,6 +237,8 @@ test('one branch/entity failure is recorded without blocking other work', async 
   await timers[0].fn();
   assert.ok(calls.includes('saigon:orders'));
   assert.deepEqual(failures, [['hanoi','invoices','down']]);
+  assert.ok(errors.some(line => line.includes('hanoi/invoices') && line.includes('down')),
+    'Render logs must identify the failed branch/entity even when recording the checkpoint succeeds');
 });
 
 test('explicit customer sync reports branch failures instead of claiming a complete refresh', async () => {

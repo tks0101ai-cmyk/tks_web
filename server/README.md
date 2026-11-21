@@ -1503,3 +1503,8 @@ Cập nhật gần nhất: 18/11/2026.
 
 ## Thu mua — cấu hình chi phí nhóm Chờ xếp (migration 0137)
 Nhóm Chờ xếp là ảo, không phải cont lưu trong `product_containers`; mỗi vùng có đúng một hàng nhóm và cấu hình riêng trong `purchase_waiting_configs`. Cước, phụ phí, đơn giá quy đổi, VC/m³, VC trả sau và Giá NET được tính theo `(container_id IS NULL, region_id)`. `PATCH /api/purchase-orders/waiting-config` nhận `regionId`, `version` và `changes`, yêu cầu `purchase.orders` + `purchase.edit`; sửa vùng H chỉ ảnh hưởng dòng vùng H. Không hiển thị hàng Chờ xếp gốc không vùng. Khi bật cách ly `integration_enabled=false`, lưu không chiếu read model hay xóa cache cont dùng chung.
+
+
+21/11/2026 — Đồng bộ đơn KiotViet: lượt orders tăng dần đọc chồng 5 phút trước checkpoint để lấy lại bản ghi API hiển thị muộn; chỉ tiến checkpoint khi mọi trang thành công. Lỗi polling ghi `[KiotViet Sync] <branch>/<entity>:` vào log trước khi lưu checkpoint lỗi, để lỗi nguồn vẫn thấy được khi DB cũng lỗi. Không đổi API/schema/biến môi trường.
+
+Cập nhật gần nhất: 21/11/2026.
