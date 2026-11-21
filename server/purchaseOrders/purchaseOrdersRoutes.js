@@ -84,7 +84,8 @@ function createPurchaseOrdersRouter(dependencies={}) {
     const yieldToClient=()=>new Promise(resolve=>setImmediate(resolve));
     try{
       send({type:'progress',percent:5,message:'File đã tải lên. Máy chủ đang bắt đầu xử lý…'});await yieldToClient();
-      const result=await service.previewImport(req.user,{buffer:req.file.buffer,allowStale:req.query.allowStale==='1',onProgress:async(percent,message)=>{send({type:'progress',percent,message});await yieldToClient()}});
+      let importOptions={};try{if(typeof req.body?.importOptions==='string')importOptions=JSON.parse(req.body.importOptions);else if(req.body?.importOptions&&typeof req.body.importOptions==='object')importOptions=req.body.importOptions}catch{throw Object.assign(Error('Tùy chọn nhập file không hợp lệ.'),{statusCode:400,code:'IMPORT_OPTIONS_INVALID'})}
+      const result=await service.previewImport(req.user,{buffer:req.file.buffer,allowStale:req.query.allowStale==='1',importOptions,onProgress:async(percent,message)=>{send({type:'progress',percent,message});await yieldToClient()}});
       send({type:'result',result});res.end();
     }catch(error){
       if(error.code==='42P01'){error.statusCode=503;error.code='PURCHASE_MIGRATION_REQUIRED';error.message='Thu mua chưa khởi tạo xong dữ liệu. Các module khác vẫn hoạt động.'}

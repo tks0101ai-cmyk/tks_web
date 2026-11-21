@@ -19,6 +19,7 @@ const integerFields = new Set(['qtyPerCarton', 'cartonCount']);
 const signedFields = new Set([...calculations.SIGNED,'literDiff','gramDiff']);
 const blank = value => value == null || value === '';
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+function normalizeImportOptions(options={}){const allowed=new Set(importable.map(column=>column.k).filter(key=>key!=='rowKey'));return {preserveMissing:options.preserveMissing===true,matchByProductCode:options.matchByProductCode===true,duplicateMode:options.duplicateMode==='update'?'update':'error',updateFields:[...new Set(Array.isArray(options.updateFields)?options.updateFields.filter(key=>allowed.has(key)):[])],clearBlanks:options.clearBlanks===true}}
 
 function version(row) { return row.version ?? row.v; }
 function comparable(value, col) {
@@ -26,10 +27,11 @@ function comparable(value, col) {
 }
 const normalizeRegionName = value => normalizeContainerKey(String(value ?? '').normalize('NFKC'));
 const normalizeContainerLabel = value => String(value ?? '').trim().replace(/^cont\s+/i, '').trim();
-function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = false, snapshotRevision, snapshotStale = false, archivedRows = [], regions = [], containers = [], allowSparseCreates = false } = {}) {
+function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = false, snapshotRevision, snapshotStale = false, archivedRows = [], regions = [], containers = [], allowSparseCreates = false, importOptions = {} } = {}) {
   if (!Array.isArray(sourceRows) || (!sourceRows.length && !snapshot) || sourceRows.length > 10000) throw Error('Đợt nhập phải có 1–10.000 dòng.');
   if (!Array.isArray(existingRows)) throw Error('Thiếu dữ liệu hiện hành để đối chiếu.');
-  const existing = new Map(existingRows.map(row => [row.rowKey, row]));
+  importOptions=normalizeImportOptions(importOptions);
+  const existing = new Map(existingRows.map(row => [row.rowKey, row])),existingByCode=new Map();for(const row of existingRows){const code=String(row.productCode||'').trim().normalize('NFKC').toLocaleLowerCase('vi');if(code){if(!existingByCode.has(code))existingByCode.set(code,[]);existingByCode.get(code).push(row)}}
   const archivedByKey = new Map(archivedRows.map(row => [row.rowKey, row]));
   const prefixes = rows => {const found=new Set();for(const row of rows){const parts=String(row.rowKey||'').split('.');while(parts.length>1){parts.pop();found.add(parts.join('.'))}}return found};
   const existingPrefixes=prefixes(existingRows),archivedPrefixes=prefixes(archivedRows);
@@ -40,25 +42,32 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
   const regionsByKey=new Map(),containersByKey=new Map(),plannedRegions=new Map(),plannedContainers=new Map();
   for(const region of regions){regionsById.set(String(region.id),region);const key=String(region.name||'').trim().toLocaleLowerCase('vi');if(key&&!regionsByName.has(key))regionsByName.set(key,region);const normalized=normalizeRegionName(region.name);if(normalized&&!regionsByKey.has(normalized))regionsByKey.set(normalized,region)}
   for(const container of containers){const key=normalizeContainerKey(String(container.name||'').trim().replace(/^cont\s+/i,''));if(key&&!containersByKey.has(key))containersByKey.set(key,container)}
-  const counts = new Map();
+  const counts = new Map(),codeCounts=new Map();
   const recoveryCounts = new Map();
   sourceRows.forEach(row => { const key = String(row.rowKey ?? '').trim(); if (key) counts.set(key, (counts.get(key) || 0) + 1); });
+  sourceRows.forEach(row=>{const key=String(row.productCode||'').trim().normalize('NFKC').toLocaleLowerCase('vi');if(key&&blank(row.rowKey))codeCounts.set(key,(codeCounts.get(key)||0)+1)});
   sourceRows.forEach(row=>{if(row.recoverArchived===true){const key=String(row.recoverRowKey||row.rowKey||'').trim();if(key)recoveryCounts.set(key,(recoveryCounts.get(key)||0)+1)}});
   const rows = sourceRows.map((source, index) => {
     const rowKey = blank(source.rowKey) ? null : String(source.rowKey).trim();
-    const current = rowKey ? existing.get(rowKey) : null;
+    const codeKey=String(source.productCode||'').trim().normalize('NFKC').toLocaleLowerCase('vi'),codeCandidates=!rowKey&&importOptions.matchByProductCode?existingByCode.get(codeKey)||[]:[],codeMatch=codeCandidates.length===1?codeCandidates[0]:null;
+    const current = rowKey ? existing.get(rowKey) : codeMatch||null,matchedByCode=!!(codeMatch&&current===codeMatch);
+    const archivedCodeMatch=!rowKey&&importOptions.matchByProductCode?archivedRows.find(row=>String(row.productCode||'').trim().normalize('NFKC').toLocaleLowerCase('vi')===codeKey):null;
     const archivedRowByKey=!current&&rowKey?archivedByKey.get(rowKey):null;
     const selectedArchived=source.recoverRowKey?archivedByKey.get(source.recoverRowKey):null;
     const archived=current?null:selectedArchived||archivedRowByKey;
     const candidates=archived?[archived]:[];
     const requestedKey=source.recoverArchived===true?(source.recoverRowKey||archived?.rowKey):null;
     const recovered = !current&&archived&&requestedKey===archived.rowKey;
-    const effectiveKey=recovered?archived.rowKey:rowKey;
-    const result = { sourceRow: source.__sourceRow || index + 2, rowKey: effectiveKey, action: recovered?(archived.deletedAt?'restore':'reactivate'):rowKey ? 'update' : 'create', errors: [], changes: [] };
+    const effectiveKey=recovered?archived.rowKey:rowKey||current?.rowKey||null;
+    const result = { sourceRow: source.__sourceRow || index + 2, rowKey: effectiveKey, action: recovered?(archived.deletedAt?'restore':'reactivate'):effectiveKey ? 'update' : 'create', errors: [], changes: [] };
     if(archived||candidates.length){result.archivedCandidate=archived?{rowKey:archived.rowKey,productCode:archived.productCode,productName:archived.productName,state:archived.deletedAt?'deleted':'inactive'}:null;result.archivedCandidates=candidates.map(row=>({rowKey:row.rowKey,productCode:row.productCode,productName:row.productName,state:row.deletedAt?'deleted':'inactive'}));if(!recovered)result.action='archived_skip'}
     const matched = current || (recovered?archived:null);
     if (rowKey && !keyPattern.test(rowKey)) result.errors.push('Khóa dòng sai định dạng.');
     if (rowKey && counts.get(rowKey) > 1) result.errors.push('Khóa dòng trùng trong file.');
+    if(importOptions.matchByProductCode&&!rowKey&&codeKey&&codeCounts.get(codeKey)>1)result.errors.push('Mã SP trùng trong file.');
+    if(codeCandidates.length>1)result.errors.push('Mã SP trùng nhiều dòng trong hệ thống; cần giữ Mã dòng để xác định đúng dòng.');
+    if(archivedCodeMatch&&!current)result.errors.push('Mã SP đang tắt hoặc đã xóa; hãy nhập đúng Mã dòng để chọn bật lại/khôi phục.');
+    if(matchedByCode&&importOptions.duplicateMode==='error')result.errors.push('Mã SP đã tồn tại. Chọn cập nhật mã trùng nếu muốn sửa mã cũ.');
     if(recovered&&(recoveryCounts.get(archived.rowKey)||0)>1)result.errors.push('Một dòng lưu trữ chỉ được chọn khôi phục một lần.');
     if (rowKey && !current&&!archivedRowByKey) result.errors.push(existingPrefixes.has(rowKey) ? 'Khóa đã tách; xuất lại các nhánh hiện hành.' : archivedPrefixes.has(rowKey)?'Khóa đã tách; chọn đúng nhánh đang tắt/đã xóa.':'Khóa dòng không tồn tại.');
     if (matched && (!Number.isSafeInteger(version(matched)) || version(matched) < 1)) result.errors.push('Không đọc được phiên bản dòng hiện hành.');
@@ -68,6 +77,8 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
     for (const [key,message] of Object.entries(source.__cellErrors || {})) if(key!=='measuredOn') result.errors.push(String(message));
     const values = {};
     for (const col of importable) {
+      if(matched&&importOptions.matchByProductCode&&(importOptions.duplicateMode!=='update'||!importOptions.updateFields.includes(col.k)))continue;
+      if(matched&&importOptions.matchByProductCode&&importOptions.duplicateMode==='update'&&!importOptions.clearBlanks&&blank(source[col.k]))continue;
       const value = source[col.k];
       if(col.si){
         if(!snapshot)continue;
@@ -116,7 +127,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
       }
     }
     const effective={...(matched||{}),...values};for(const key of calculations.issues(effective).filter(k=>!['qtyPerCarton','cartonCount'].includes(k))){if(!result.errors.some(e=>e.startsWith((byKey.get(key)?.l||key)+':')))result.errors.push((byKey.get(key)?.l||key)+': số liệu vượt giới hạn tính toán hoặc không hợp lệ.')}
-    if (!values.productCode) result.errors.push('Thiếu Mã SP.');
+    if (!values.productCode&&!matched?.productCode) result.errors.push('Thiếu Mã SP.');
     if (!effectiveKey && !matched) {
       for (const key of (allowSparseCreates ? ['cartonCount'] : ['productName', 'qtyPerCarton', 'cartonCount'])) if (blank(values[key])) result.errors.push('Thiếu ' + byKey.get(key).l + '.');
       if (!values.listedAt) values.listedAt = listedAt;
@@ -141,9 +152,13 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
     row.values.regionId=regionId;
     if(['update','reactivate','restore'].includes(row.action)){const matched=existingRows.find(current=>String(current.id)===String(row.id))||archivedRows.find(current=>String(current.id)===String(row.id)),change=row.changes.find(entry=>entry.key==='regionId');if(change)change.after=regionId;else if(String(matched?.regionId??'')!==String(regionId))row.changes.push({key:'regionId',label:byKey.get('regionId').l,before:matched?.regionId??null,after:regionId})}
   }
-  if (snapshot) {
+  let preservedCount=0;
+  if (snapshot&&!importOptions.preserveMissing) {
     const included = new Set(rows.map(row => row.rowKey).filter(Boolean));
     for (const current of existingRows) if (!included.has(current.rowKey)) rows.push({ sourceRow: null, rowKey: current.rowKey, action: snapshotStale ? 'stale_preserve' : 'delete', id: current.id, expectedVersion: version(current), errors: [], changes: [], values: { ...current } });
+  } else if(snapshot&&importOptions.preserveMissing) {
+    const included = new Set(rows.map(row => row.rowKey).filter(Boolean));
+    preservedCount=existingRows.filter(current=>!included.has(current.rowKey)).length;
   }
   const valid = rows.every(row => row.errors.length === 0);
   const activeRows=rows.filter(row=>!['archived_skip','delete'].includes(row.action)&&!row.errors.length),usedRegions=new Set(),usedContainers=new Set();
@@ -151,7 +166,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
   const masterData={regions:[...plannedRegions.entries()].filter(([key])=>usedRegions.has(key)).map(([key,row])=>({key,name:row.name})),containers:[...plannedContainers.entries()].filter(([key])=>usedContainers.has(key)).map(([key,row])=>({key,name:row.name,regionKey:row.regionKey??null,regionId:row.regionId??null}))};
   return {
     valid,
-    counts: { create: rows.filter(r => r.action === 'create' && !r.errors.length).length, update: rows.filter(r => r.action === 'update' && !r.errors.length).length, unchanged: rows.filter(r => r.action === 'unchanged').length, reactivate:rows.filter(r=>r.action==='reactivate'&&!r.errors.length).length,restore:rows.filter(r=>r.action==='restore'&&!r.errors.length).length,archivedSkip:rows.filter(r=>r.action==='archived_skip'&&!r.errors.length).length, delete: rows.filter(r => r.action === 'delete').length, preserved: rows.filter(r => r.action === 'stale_preserve').length, error: rows.filter(r => r.errors.length).length },
+    counts: { create: rows.filter(r => r.action === 'create' && !r.errors.length).length, update: rows.filter(r => r.action === 'update' && !r.errors.length).length, unchanged: rows.filter(r => r.action === 'unchanged').length, reactivate:rows.filter(r=>r.action==='reactivate'&&!r.errors.length).length,restore:rows.filter(r=>r.action==='restore'&&!r.errors.length).length,archivedSkip:rows.filter(r=>r.action==='archived_skip'&&!r.errors.length).length, delete: rows.filter(r => r.action === 'delete').length, preserved: preservedCount+rows.filter(r => r.action === 'stale_preserve').length, error: rows.filter(r => r.errors.length).length },
     rows,
     // Errors anywhere suppress every write operation, including valid rows.
     operations: valid ? rows.filter(row => !['unchanged','archived_skip','stale_preserve'].includes(row.action)) : [],
@@ -164,6 +179,8 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
     }),
     listedAt,
     snapshot,
+    importOptions,
+    preservedCount,
     snapshotRevision,
     snapshotStale,
     masterData
@@ -176,12 +193,12 @@ function prepareWorkbook(data, existingRows, { sheetName, ...options } = {}) {
   return { ...prepareRows(parsed.rows, existingRows, options), sheetName: parsed.sheetName, ignoredColumns: parsed.ignored };
 }
 
-function prepareSnapshotWorkbook(data, existingRows, { currentRevision, listedAt = today(), archivedRows = [], regions = [], containers = [], allowStale = false } = {}) {
+function prepareSnapshotWorkbook(data, existingRows, { currentRevision, listedAt = today(), archivedRows = [], regions = [], containers = [], allowStale = false, importOptions = {} } = {}) {
   if (!data || !data.byteLength || data.byteLength > 10 * 1024 * 1024) throw Error('File phải có dữ liệu và không quá 10 MB.');
   const parsed = workbook.parseImportSnapshot(data, columns);
   const snapshotStale = parsed.revision !== currentRevision;
   if (snapshotStale && !allowStale) { const error = Error('Dữ liệu đã thay đổi sau khi tải file. Hãy tải snapshot mới rồi sửa lại.'); error.code = 'IMPORT_SNAPSHOT_STALE'; error.statusCode = 409; throw error; }
-  return { ...prepareRows(parsed.rows, existingRows, { listedAt, snapshot: true, snapshotRevision: currentRevision, snapshotStale, archivedRows, regions, containers }), sourceSnapshotRevision: parsed.revision, sheetName: 'Đặt hàng', ignoredColumns: [], fields: parsed.fields };
+  return { ...prepareRows(parsed.rows, existingRows, { listedAt, snapshot: true, snapshotRevision: currentRevision, snapshotStale, archivedRows, regions, containers,importOptions }), sourceSnapshotRevision: parsed.revision, sheetName: 'Đặt hàng', ignoredColumns: [], fields: parsed.fields };
 }
 
 function recheckPreview(preview, currentRows, archivedRows = [], regions = [], containers = []) {
@@ -195,7 +212,7 @@ function recheckPreview(preview, currentRows, archivedRows = [], regions = [], c
   const currentKeys = new Set([...currentRows,...archivedRows].map(row => row.rowKey));
   const missing = preview.snapshot ? preview.rows.filter(row => !['delete','archived_skip'].includes(row.action) && row.rowKey && !currentKeys.has(row.rowKey)) : [];
   if (missing.length) return { valid: false, code: 'VERSION_CONFLICT', conflicts: missing.map(row => ({ rowKey: row.rowKey, sourceRow: row.sourceRow })), operations: [] };
-  return prepareRows(preview.sourceRows, currentRows, { listedAt: preview.listedAt, snapshot: preview.snapshot, snapshotRevision: preview.snapshotRevision, snapshotStale: preview.snapshotStale, archivedRows, regions, containers });
+  return prepareRows(preview.sourceRows, currentRows, { listedAt: preview.listedAt, snapshot: preview.snapshot, snapshotRevision: preview.snapshotRevision, snapshotStale: preview.snapshotStale, archivedRows, regions, containers,importOptions:preview.importOptions });
 }
 
 module.exports = { prepareRows, prepareWorkbook, prepareSnapshotWorkbook, recheckPreview };
