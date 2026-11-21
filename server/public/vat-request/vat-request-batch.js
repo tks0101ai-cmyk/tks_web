@@ -521,7 +521,32 @@
       field(empty, field(empty, 'customerName').value ? 'productCode' : 'customerName').focus();
     }
 
-    return { open, submit, addRow: values => { const tr = addRow(values); renumber(); return tr; } };
+    // Dong "Order VAT" chuyen sang tu hop chi tiet hoa don / don hang (shared/vat-handoff.js, 17/11/2026): mo form (nhap
+    // cu van duoc khoi phuc nhu thuong) roi them SAU cac dong dang co — dong trong san co duoc dung truoc. Khong tu gui.
+    function prefill(rows, source) {
+      open();
+      togglePastePanel(false);
+      const blanks = rowsEl().filter(tr => !isMeaningful(rowValues(tr)));
+      let added = 0;
+      for (const values of rows) {
+        const blank = blanks.shift();
+        const tr = blank ? body.appendChild(blank) : addRow({});
+        if (!tr) break;
+        setRow(tr, { ...values, fullVat: null });
+        refreshRow(tr);
+        added += 1;
+      }
+      renumber();
+      saveDraft();
+      lookupMissing();
+      const skipped = rows.length - added;
+      showError('');
+      showNotice(`Đã thêm ${added} dòng từ ${source}. Kiểm tra, chọn Full VAT rồi bấm Gửi.` +
+        (skipped ? ` Còn ${skipped} dòng không thêm được vì mỗi lần gửi tối đa ${MAX_ROWS} dòng.` : ''));
+      return added;
+    }
+
+    return { open, submit, prefill, addRow: values => { const tr = addRow(values); renumber(); return tr; } };
   }
 
   window.TKSVatRequestBatch = { createBatchForm, parseAmount, parseClipboard, mapPastedMatrix, MAX_ROWS };

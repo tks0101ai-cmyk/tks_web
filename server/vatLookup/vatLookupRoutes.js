@@ -7,9 +7,29 @@
 const express = require('express');
 const { requireAuth, requireFeature } = require('../auth/authMiddleware');
 const { createLookupSource } = require('./lookupSource');
-const { parseSearchQueries, search, MAX_SEARCH_TERMS } = require('./lookupModel');
+const { parseSearchQueries, search, stockForCodes, MAX_SEARCH_TERMS } = require('./lookupModel');
 
 const MAX_QUERY_CHARS = 20000;
+const MAX_STOCK_CODES = 200;
+const MAX_STOCK_CODE_CHARS = 60;
+
+function stockCodesError(message) {
+  const error = new Error(message);
+  error.statusCode = 400;
+  error.code = 'VAT_LOOKUP_STOCK_INVALID';
+  return error;
+}
+
+/** Body { codes: [...] }: 1-200 ma (sau khi bo khoang trang hai dau, bo rong, bo trung), moi ma <= 60 ky tu. */
+function parseStockCodes(body) {
+  const raw = body && body.codes;
+  if (!Array.isArray(raw)) throw stockCodesError('Thiếu danh sách mã SP (codes).');
+  const codes = [...new Set(raw.map(code => (typeof code === 'string' ? code.trim() : '')).filter(Boolean))];
+  if (!codes.length) throw stockCodesError('Danh sách mã SP trống.');
+  if (codes.length > MAX_STOCK_CODES) throw stockCodesError(`Tối đa ${MAX_STOCK_CODES} mã SP mỗi lần.`);
+  if (codes.some(code => code.length > MAX_STOCK_CODE_CHARS)) throw stockCodesError(`Mã SP dài quá ${MAX_STOCK_CODE_CHARS} ký tự.`);
+  return codes;
+}
 
 function createVatLookupRouter({ source = createLookupSource() } = {}) {
   const router = express.Router();
@@ -57,6 +77,14 @@ function createVatLookupRouter({ source = createLookupSource() } = {}) {
     const { queries, ignoredCount } = parseSearchQueries(text);
     const snapshot = await source.get();
     res.json({ meta: meta(snapshot), queries, ignoredCount, ...search(snapshot, queries, req.body || {}) });
+  }));
+
+  // Body { codes: [...] } — Ton VAT cho hop chi tiet chung tu (tab Hoa don, Vong doi don hang; public/shared/vat-stock.js).
+  // Khop ma CHINH XAC, dung chung bo dem voi /search (khong doc Google Sheets them).
+  router.post('/stock', ...guard, handle(async (req, res) => {
+    const codes = parseStockCodes(req.body);
+    const snapshot = await source.get();
+    res.json({ meta: meta(snapshot), items: stockForCodes(snapshot, codes) });
   }));
 
   return router;

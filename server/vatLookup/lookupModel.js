@@ -511,6 +511,27 @@ function search(model, queries, query = {}) {
   };
 }
 
+/** Tra tồn theo đúng mã SP đã chuẩn hóa, dùng tổng tồn của mã VAT trong Tra cứu VAT. */
+function stockForCodes(model, codes) {
+  const productsByCode = new Map();
+  for (const product of model.products) {
+    if (product.maKiotNorm && !productsByCode.has(product.maKiotNorm)) {
+      productsByCode.set(product.maKiotNorm, product);
+    }
+  }
+
+  return Object.fromEntries(codes.map(code => {
+    const product = productsByCode.get(normalizeCode(code));
+    const line = product?.vatLines.find(line => normalizeCode(line.maVat));
+    if (!line) return [code, { vatCode: null, vatKey: null, stock: null }];
+
+    const vatCode = String(line.maVat).trim();
+    const vatKey = normalizeCode(vatCode);
+    const stock = model.tonCoTheNhapByMaVat.get(vatKey) ?? 0;
+    return [code, { vatCode, vatKey, stock }];
+  }));
+}
+
 module.exports = {
   SHEET_TARGETS,
   MAX_SEARCH_TERMS,
@@ -526,6 +547,7 @@ module.exports = {
   isChuanBiVe,
   buildModel,
   searchProducts,
+  stockForCodes,
   parseSearchQueries,
   searchMultipleProducts,
   search

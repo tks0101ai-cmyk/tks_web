@@ -45,7 +45,7 @@ function kiotOnlyOrder(code, extra = {}) {
   };
 }
 
-async function renderPage({ orders = [], kiot = { ok: true, stale: false, fetchedAt: null, count: 0 }, vaiTro = 'Quản lý', fetchImpl, hiddenColumns } = {}) {
+async function renderPage({ orders = [], kiot = { ok: true, stale: false, fetchedAt: null, count: 0 }, vaiTro = 'Quản lý', fetchImpl, hiddenColumns, withVatStock = false } = {}) {
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://tokosi.example/shipment/lifecycle/' });
   const { window } = dom;
   const calls = [];
@@ -80,9 +80,16 @@ async function renderPage({ orders = [], kiot = { ok: true, stale: false, fetche
   window.HTMLDialogElement.prototype.showModal = function() { this.setAttribute('open', ''); };
   window.HTMLDialogElement.prototype.close = function() { this.removeAttribute('open'); this.dispatchEvent(new window.Event('close')); };
   window.eval(fs.readFileSync(path.join(__dirname, '../../public/shared/table-controls.js'), 'utf8'));
+  const opened = [];
+  window.open = url => { opened.push(url); };
+  if (withVatStock) {
+    for (const file of ['vat-handoff.js', 'vat-stock.js']) {
+      window.eval(fs.readFileSync(path.join(publicDir, 'shared', file), 'utf8'));
+    }
+  }
   [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)].map(match => match[1]).forEach(script => window.eval(script));
   await settle();
-  return { dom, window, document: window.document, calls, source };
+  return { dom, window, document: window.document, calls, source, opened };
 }
 
 const rowsOf = document => [...document.querySelectorAll('#bulkBody tr')];
@@ -1319,4 +1326,142 @@ test('đổi mã hàng bỏ qua phản hồi CONT cũ; lỗi tải và rỗng gi
   assert.match(document.getElementById('lcContainerBody').textContent, /Chưa có CONT/);
   assert.equal(document.getElementById('lcDetailOverlay').hidden, false);
   page.dom.window.close();
+});
+
+
+function vatFetch(detail) {
+  return url => {
+    if (url.includes('/order-detail')) return { ok: true, json: async () => ({ detail }) };
+    if (url === '/api/vat-lookup/stock') {
+      return { ok: true, json: async () => ({ items: { A: { vatCode: 'VA', vatKey: 'va', stock: 100 }, B: { vatCode: 'VB', vatKey: 'vb', stock: 70 } } }) };
+    }
+    return null;
+  };
+}
+
+test('Tồn VAT: giữ đúng vị trí cột khi vẽ lại ST, tải tồn một lần và hủy thao tác cũ khi vẽ lại hoặc đóng', async t => {
+  const page = await renderPage({
+    withVatStock: true,
+    orders: [kiotOnlyOrder('DH041173', { branch: 'SG' })],
+    fetchImpl: vatFetch(kiotDetail({ customerName: 'KH nguồn' }))
+  });
+  t.after(() => page.dom.window.close());
+  const { document, window } = page;
+  let pickChange;
+  window.TKSPick = {
+    attachButton() {},
+    prefetch() {},
+    attach(options) { pickChange = options.onChange; }
+  };
+  rowsOf(document)[0].click();
+  await settle();
+  const holder = document.getElementById('lcDetailKiot');
+  const firstTick = holder.querySelector('.vat-order-tick');
+  assert.ok(firstTick);
+  firstTick.click();
+  const firstButton = holder.querySelector('[data-vat-action="order"]');
+  assert.ok(firstButton);
+  const picked = { status: 'assigned', lines: [{ productCode: 'A', stCartons: 2 }] };
+  pickChange(picked);
+  await settle();
+  pickChange(picked);
+  await settle();
+  assert.equal(firstTick.isConnected, false);
+  assert.equal(holder.querySelector('[data-vat-action="order"]'), null);
+  const table = holder.querySelector('.lc-lines');
+  assert.equal(table.dataset.tableKey, 'shipment-lifecycle-table-4-st-vat');
+  const headers = [...table.tHead.rows[0].cells].map(th => (th.querySelector('.sort-label') || th).textContent.trim());
+  assert.equal(headers[4], 'ST');
+  assert.deepEqual(headers.slice(-2), ['Tồn VAT', 'Order VAT']);
+  assert.equal(table.tBodies[0].rows[0].cells.length, headers.length);
+  assert.equal(table.querySelector('.vat-stock-cell.is-vat-short').textContent, '100');
+  assert.deepEqual(page.calls.filter(call => call.url === '/api/vat-lookup/stock').map(call => JSON.parse(call.options.body)), [{ codes: ['A', 'B'] }]);
+  assert.ok(page.calls.some(call => call.url.includes('/order-detail?code=DH041173&branch=SG')));
+  const tick = table.querySelector('.vat-order-tick');
+  const space = new window.KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+  tick.dispatchEvent(space);
+  assert.equal(space.defaultPrevented, false);
+  tick.click();
+  assert.equal(document.getElementById('lcContainerOverlay').hidden, true);
+  holder.querySelector('[data-vat-action="order"]').click();
+  assert.equal(page.opened.length, 1);
+  const url = new URL(page.opened[0], 'https://tokosi.example');
+  const saved = window.TKSVatHandoff.takeOrderVat(window.localStorage, url.searchParams.get('handoffId'));
+  assert.deepEqual(JSON.parse(JSON.stringify(saved.rows)), [
+    { customerName: 'KH nguồn', productCode: 'A', productName: 'Hàng A', quantity: 400, unitPrice: 1000, saleNote: 'Từ DH041173' }
+  ]);
+  tick.click();
+  const closeButton = holder.querySelector('[data-vat-action="order"]');
+  window.closeDetailModal();
+  assert.equal(holder._tksVatStock, undefined);
+  assert.equal(tick.disabled, true);
+  assert.equal(tick.checked, false);
+  closeButton.click();
+  assert.equal(page.opened.length, 1);
+});
+
+test('Tồn VAT: đơn đã hủy có tồn đỏ và không thể ORDER VAT', async t => {
+  const page = await renderPage({
+    withVatStock: true,
+    orders: [kiotOnlyOrder('DH041173', { kiotStatus: 'Đã hủy' })],
+    fetchImpl: vatFetch(kiotDetail({ status: 'Đã hủy', phieuTam: false }))
+  });
+  t.after(() => page.dom.window.close());
+  rowsOf(page.document)[0].click();
+  await settle();
+  const holder = page.document.getElementById('lcDetailKiot');
+  assert.equal(holder.querySelector('.vat-stock-cell.is-vat-short').textContent, '100');
+  const tick = holder.querySelector('.vat-order-tick');
+  assert.ok(!tick || tick.disabled);
+  tick?.click();
+  assert.equal(holder.querySelector('[data-vat-action="order"]'), null);
+});
+
+test('Tồn VAT: mã trạng thái Kiot 4 của đơn đã hủy chỉ xem tồn', async t => {
+  const page = await renderPage({
+    withVatStock: true,
+    orders: [kiotOnlyOrder('DH041173', { kiotStatus: 'Đã hủy' })],
+    fetchImpl: vatFetch(kiotDetail({ status: '4', phieuTam: false }))
+  });
+  t.after(() => page.dom.window.close());
+  rowsOf(page.document)[0].click();
+  await settle();
+  const holder = page.document.getElementById('lcDetailKiot');
+  assert.equal(holder.querySelector('.vat-stock-cell.is-vat-short').textContent, '100');
+  const tick = holder.querySelector('.vat-order-tick');
+  assert.ok(!tick || tick.disabled);
+  tick?.click();
+  assert.equal(holder.querySelector('[data-vat-action="order"]'), null);
+});
+
+test('Tồn VAT: đơn đã hủy ở Vòng đời chỉ xem tồn dù Kiot còn Phiếu tạm', async t => {
+  const page = await renderPage({
+    withVatStock: true,
+    orders: [kiotOnlyOrder('DH041173', { summary: { code: 'CANCELLED', label: 'Đã hủy' } })],
+    fetchImpl: vatFetch(kiotDetail())
+  });
+  t.after(() => page.dom.window.close());
+  rowsOf(page.document)[0].click();
+  await settle();
+  const holder = page.document.getElementById('lcDetailKiot');
+  assert.match(holder.querySelector('.dp-section-note').textContent, /Theo Kiot · Phiếu tạm/);
+  assert.equal(holder.querySelector('.vat-stock-cell.is-vat-short').textContent, '100');
+  const tick = holder.querySelector('.vat-order-tick');
+  assert.ok(!tick || tick.disabled);
+  tick?.click();
+  assert.equal(holder.querySelector('[data-vat-action="order"]'), null);
+});
+
+test('Tồn VAT: Trợ lý không có quyền tra cứu thì không gọi API tồn', async t => {
+  const page = await renderPage({
+    withVatStock: true, vaiTro: 'Trợ lý',
+    orders: [kiotOnlyOrder('DH041173')],
+    fetchImpl: vatFetch(kiotDetail())
+  });
+  t.after(() => page.dom.window.close());
+  rowsOf(page.document)[0].click();
+  await settle();
+  assert.ok(page.document.querySelector('.lc-lines'));
+  assert.equal(page.document.querySelector('.vat-stock-cell'), null);
+  assert.equal(page.calls.some(call => call.url === '/api/vat-lookup/stock'), false);
 });

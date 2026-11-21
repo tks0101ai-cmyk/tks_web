@@ -195,3 +195,33 @@ test('modern VAT/incoming pages sort the full derived result before the old 500-
   const single=m.search(built,['ONLYGOP'],{vatPage:1});assert.equal(single.incoming.pageSize,100);assert.equal(single.incoming.rows.length,100);
   assert.equal(product.vatLines[0].tonCoTheNhap,0.75);
 });
+
+test('stockForCodes: khop ma CHINH XAC (khong tim gan dung), ton = tong Ton co the nhap moi cong ty cung ma VAT, giu khoa ma gui', () => {
+  const items = m.stockForCodes(model(), ['APTH10', 'apth10-b', 'BDC-PT1B', 'NOVAT', 'ONLYGOP', 'APTH', 'KHONGCO']);
+  assert.deepEqual(items, {
+    APTH10: { vatCode: 'VAT10001', vatKey: 'vat10001', stock: 1300 }, // TKS THAP 1.000 + VC 300 + LUCKY "XUAT THAP" (= 0)
+    'apth10-b': { vatCode: 'VAT10001', vatKey: 'vat10001', stock: 1300 }, // khac hoa thuong / dau gach van khop
+    'BDC-PT1B': { vatCode: 'VAT20002', vatKey: 'vat20002', stock: 0 },
+    NOVAT: { vatCode: null, vatKey: null, stock: null }, // co o Khop ma nhung chua co ma VAT
+    ONLYGOP: { vatCode: 'VAT30003', vatKey: 'vat30003', stock: 10 }, // chi co o Gop VAT
+    APTH: { vatCode: null, vatKey: null, stock: null }, // tien to cua APTH10: KHONG khop gan dung
+    KHONGCO: { vatCode: null, vatKey: null, stock: null }
+  });
+});
+
+test('stockForCodes: lấy mã VAT hợp lệ đầu tiên theo thứ tự của sản phẩm', () => {
+  const built = model();
+  const product = built.products.find(row => row.maKiot === 'APTH10');
+  product.vatLines.unshift({ maVat: ' - ' }, { maVat: ' VAT20002 ' });
+  assert.deepEqual(m.stockForCodes(built, ['APTH10']), {
+    APTH10: { vatCode: 'VAT20002', vatKey: 'vat20002', stock: 0 }
+  });
+});
+
+test('stockForCodes: giữ khóa yêu cầu __proto__ khi chuyển thành JSON', () => {
+  const items = m.stockForCodes(model(), ['__proto__']);
+  assert.equal(Object.getPrototypeOf(items), Object.prototype);
+  assert.deepEqual(JSON.parse(JSON.stringify(items)), {
+    ['__proto__']: { vatCode: null, vatKey: null, stock: null }
+  });
+});
