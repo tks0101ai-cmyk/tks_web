@@ -100,7 +100,7 @@ test('real transaction rollback restores previous snapshot after replacement ins
       if(sql.startsWith('INSERT INTO product_container_lines'))throw Error('simulated insert failure');
       return db.query(sql,args);
     }};
-    const line=Array(24).fill('');line[0]='001A';line[14]=999;
+    const line=Array(25).fill('');line[0]='001A';line[15]=999;
     const result=await refreshContainers({pool:{connect:async()=>connection},spreadsheetId:'fixture',client:{listSheetTitles:async()=>SHEET_NAMES,getValues:async()=>[['CONT NEW','2.Chưa bốc'],line]},logger:{info(){},error(){}}});
     assert.equal(result.status,'failed');
     const summary=await readContainerSummary(db);
@@ -115,7 +115,7 @@ function sheetClient(rowsBySheet) {
   return { listSheetTitles: async () => require('./parser').SHEET_NAMES,
     getValues: async (name) => {
       const out = [['CONT '+name,'2.Chưa bốc']];
-      for (const [code, qty] of rowsBySheet[name] || []) { const row = Array(24).fill(''); row[0] = code; row[14] = qty; out.push(row); }
+      for (const [code, qty] of rowsBySheet[name] || []) { const row = Array(25).fill(''); row[0] = code; row[15] = qty; out.push(row); }
       return out;
     } };
 }
@@ -137,7 +137,7 @@ const many = (n, qty = 1) => Array.from({ length: n }, (_, i) => ['SKU' + i, qty
 const SEVEN_SHEETS = ['YIWU', 'VK-DUNG', 'HÀ BẮC', 'SD', 'GDONG', 'KHÁC', 'CONT TKS1'];
 function tks1SheetClient({ missing = false, rejectedRender } = {}) {
   const calls = [];
-  const product = quantity => Object.assign(Array(24).fill(''), { 0: '001A', 12: 12, 13: 15.3, 14: quantity });
+  const product = quantity => Object.assign(Array(25).fill(''), { 0: '001A', 13: 12, 14: 15.3, 15: quantity });
   return {
     calls,
     listSheetTitles: async () => missing ? SEVEN_SHEETS.slice(0, 6) : SEVEN_SHEETS,
@@ -148,9 +148,9 @@ function tks1SheetClient({ missing = false, rejectedRender } = {}) {
       const values = [['Mã SP', 'Tên SP'], ['CONT TKS1', '1.Chưa có lịch'], product(184), product(2.5),
         ['CONT TKS1', '2.Chưa bốc'], product(7.5), ['CONT TKS1', '3.Đã bốc'], product(23),
         ['CONT TKS1', '4.Đã về'], product(10), ['END'], product(999)];
-      // Displayed quantities are deliberately localized; the job must read O from the raw response.
+      // Displayed quantities are deliberately localized; the job must read P from the raw response.
       return options.valueRenderOption === 'FORMATTED_VALUE'
-        ? values.map(row => row.map((value, col) => col === 14 ? String(value).replace('.', ',') : value)) : values;
+        ? values.map(row => row.map((value, col) => col === 15 ? String(value).replace('.', ',') : value)) : values;
     }
   };
 }
@@ -166,8 +166,8 @@ test('seven-source sync preserves source order, raw O quantities and separate sa
     assert.equal(result.rowCount, 11);
     assert.deepEqual(require('./parser').SHEET_NAMES, SEVEN_SHEETS);
     assert.deepEqual(client.calls, SEVEN_SHEETS.flatMap(name => [
-      { name, valueRenderOption: 'UNFORMATTED_VALUE', cellRange: 'A:X' },
-      { name, valueRenderOption: 'FORMATTED_VALUE', cellRange: 'A:X' }
+      { name, valueRenderOption: 'UNFORMATTED_VALUE', cellRange: 'A:Y' },
+      { name, valueRenderOption: 'FORMATTED_VALUE', cellRange: 'A:Y' }
     ]));
     const snapshot = (await db.query('SELECT sheet_name, sheet_order, source_row, container_row, quantity::float AS quantity FROM product_container_lines ORDER BY sheet_order, source_row')).rows;
     assert.deepEqual(snapshot.slice(0, 6).map(r => [r.sheet_name, r.sheet_order]), SEVEN_SHEETS.slice(0, 6).map((name, index) => [name, index]));

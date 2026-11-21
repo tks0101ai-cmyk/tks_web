@@ -61,7 +61,7 @@ test('seven-sheet success commits rows and metadata together; rollback on insert
     const conn=fakeConnection();const original=conn.query;
     conn.query=async function(sql,params){if(fail&&sql.startsWith('INSERT INTO product_container_lines'))throw Error('insert fail');return original.call(this,sql,params);};
     const reads=[];
-    const result=await refreshContainers({pool:{connect:async()=>conn},spreadsheetId:'fixture',now:()=>fixed,client:{listSheetTitles:async()=>SHEET_NAMES,getValues:async(name)=>{reads.push(name);const row=Array(24).fill('');row[0]='SKU';row[14]=2;return [['CONT A','2.Chưa bốc'],row];}},logger:{info(){},error(){}}});
+    const result=await refreshContainers({pool:{connect:async()=>conn},spreadsheetId:'fixture',now:()=>fixed,client:{listSheetTitles:async()=>SHEET_NAMES,getValues:async(name)=>{reads.push(name);const row=Array(25).fill('');row[0]='SKU';row[15]=2;return [['CONT A','2.Chưa bốc'],row];}},logger:{info(){},error(){}}});
     assert.equal(new Set(reads).size,7);
     const sql=conn.calls.filter(x=>x.sql).map(x=>x.sql);
     assert.ok(sql.indexOf('BEGIN')<sql.findIndex(x=>x.startsWith('DELETE')));
@@ -95,7 +95,7 @@ test('unchanged sheet: 0 dong ghi, version giu nguyen, chi cap nhat moc thoi gia
     return original.call(this,sql,params);
   };
   const result=await refreshContainers({pool:{connect:async()=>conn},spreadsheetId:'fixture',now:()=>fixed,
-    client:{listSheetTitles:async()=>SHEET_NAMES,getValues:async()=>{const row=Array(24).fill('');row[0]='SKU';row[14]=2;return [['CONT A','2.Chưa bốc'],row];}},logger:{info(){},error(){}}});
+    client:{listSheetTitles:async()=>SHEET_NAMES,getValues:async()=>{const row=Array(25).fill('');row[0]='SKU';row[15]=2;return [['CONT A','2.Chưa bốc'],row];}},logger:{info(){},error(){}}});
   assert.equal(result.status,'unchanged');
   assert.equal(result.version,undefined);
   const update=conn.calls.find(x=>x.sql&&x.sql.includes('UPDATE product_container_sync SET')&&x.sql.includes('CASE WHEN'));

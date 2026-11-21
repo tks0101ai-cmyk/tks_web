@@ -80,8 +80,8 @@ async function refreshContainers({
     // All calls settle before releasing the shared lock, including failures.
     const reads = await Promise.allSettled(SHEET_NAMES.map(async (sheetName) => {
       const pair = await Promise.allSettled([
-        client.getValues(sheetName,{valueRenderOption:'UNFORMATTED_VALUE',cellRange:'A:X'}),
-        client.getValues(sheetName,{valueRenderOption:'FORMATTED_VALUE',cellRange:'A:X'})
+        client.getValues(sheetName,{valueRenderOption:'UNFORMATTED_VALUE',cellRange:'A:Y'}),
+        client.getValues(sheetName,{valueRenderOption:'FORMATTED_VALUE',cellRange:'A:Y'})
       ]);
       if (pair.some(result => result.status === 'rejected')) throw new Error('CONTAINER_SHEET_READ_FAILED');
       return parseContainerSheet(sheetName,pair[0].value,pair[1].value);

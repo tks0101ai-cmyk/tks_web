@@ -70,3 +70,5 @@ Cập nhật: 16/11/2026
 - [ ] 17/11 — Thu mua: cấu hình hàng Chờ xếp dạng nhóm ảo trong purchase_settings (migration 0137), thao tác ô cước/m³ giả định/tỉ giá và cùng tính NET theo công thức cont; xác minh migration và sửa/xóa cước trên staging, deploy rồi kiểm tra Chờ xếp không tác động cont thật.
 
 - [ ] 17/11 — VPS `159.195.8.95` chạy `tokosi-dash-web/worker` (cổng 3100, `deploy/`, tự cập nhật bằng cron) — mở ra ngoài bằng HTTPS (cookie `secure`; 80/443 do Docker `production-web-1` giữ); tắt job nền trên Render nếu chuyển hẳn (đang chạy trùng, cùng DB); `deploy/` chưa commit
+
+- [ ] 21/11 — Dự kiến hàng về: sheet CONT (cả 7 tab) chèn thêm cột G "VAT: ghi chú" (chỉ nhập tay, không đọc vào hệ thống), làm lệch mọi cột từ G trở đi — sửa `productContainers/parser.js` (+1 index từ otherNote đến vietnamPrice, O→P cho quantity) và `sync.js` (đọc `A:Y` thay `A:X`); test `productContainers/*` 91/91 đạt, không migration — review rồi deploy web; chưa xác minh dữ liệu đọc đúng trên sheet thật sau khi deploy.

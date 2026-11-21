@@ -2,13 +2,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { parseContainerSheet, normalizeCode } = require('./parser');
-const row = (code, quantity, extra = {}) => Object.assign(Array(24).fill(''), { 0: code, 14: quantity }, extra);
+const row = (code, quantity, extra = {}) => Object.assign(Array(25).fill(''), { 0: code, 15: quantity }, extra);
 
 test('CONT TKS1 keeps immediate products, repeated codes and blocks, O quantities and END boundary', () => {
   const values = [
     ['Mã SP', 'Tên SP'],
     ['CONT TKS1', '1.Chưa có lịch', 'DK tháng 11'],
-    row('QT', 184, { 4: 'Đỏ', 5: 'Gấp', 6: 'Ghi chú mua hàng', 7: 'An', 12: 12, 13: 15.3, 15: 1.44, 23: 12000 }),
+    row('QT', 184, { 4: 'Đỏ', 5: 'Gấp', 7: 'Ghi chú mua hàng', 8: 'An', 13: 12, 14: 15.3, 16: 1.44, 24: 12000 }),
     row('QT', 2.5),
     ['CONT TKS1', '2.Chưa bốc'], row('QT', 7.5),
     ['CONT TKS1', '3.Đã bốc'], row('QT', 23),
@@ -30,7 +30,7 @@ test('CONT TKS1 keeps immediate products, repeated codes and blocks, O quantitie
 });
 test('only O contributes; repeated rows, zero, decimals and all five statuses survive', () => {
   const values = [row('ignored', 90)];
-  for (let s = 1; s <= 5; s++) values.push([' CONT SAME ', `${s}. Trạng thái`, 'DK 14-16/10'], row(' 001a ', s === 1 ? 100 : s === 2 ? 50 : s === 3 ? 30 : 20, {12:999,13:999}));
+  for (let s = 1; s <= 5; s++) values.push([' CONT SAME ', `${s}. Trạng thái`, 'DK 14-16/10'], row(' 001a ', s === 1 ? 100 : s === 2 ? 50 : s === 3 ? 30 : 20, {13:999,14:999}));
   values.push(row('001A', 0), row('001A', 1.5), ['END'], row('001A', 900));
   const parsed = parseContainerSheet('YIWU', values);
   assert.equal(parsed.rows.length, 7);
@@ -48,7 +48,7 @@ test('20 blank displayed rows close a block but later CONT resumes; 19 do not', 
   assert.equal(parseContainerSheet('SD',withNote).rows.length,1);
 });
 test('invalid status skips entire block and invalid O never falls back to M*N', () => {
-  const values = [['CONT BAD','12.X'],row('BAD',4),['CONT GOOD','2.Chưa bốc'],['Mã SP'],row('A','',{12:2,13:4}),row('A','#REF!'),row('A',-1),row('A',5,{12:'#N/A',13:'',23:'#DIV/0!'})];
+  const values = [['CONT BAD','12.X'],row('BAD',4),['CONT GOOD','2.Chưa bốc'],['Mã SP'],row('A','',{13:2,14:4}),row('A','#REF!'),row('A',-1),row('A',5,{13:'#N/A',14:'',24:'#DIV/0!'})];
   const parsed = parseContainerSheet('KHÁC',values);
   assert.deepEqual(parsed.rows.map(x=>x.quantity),[5]);
   assert.equal(parsed.rows[0].unitsPerPackage,null);
@@ -57,16 +57,16 @@ test('invalid status skips entire block and invalid O never falls back to M*N', 
   assert.equal(parsed.warnings.length,4);
 });
 test('header row under CONT (STT or any text in O) is skipped without warning, bad data rows still warn', () => {
-  const header = Object.assign(Array(24).fill(''), { 0: 'STT', 1: 'Tên SP', 14: 'Tổng số lượng' });
-  const odd = Object.assign(Array(24).fill(''), { 0: 'Số TT', 14: 'Tổng SL' });
+  const header = Object.assign(Array(25).fill(''), { 0: 'STT', 1: 'Tên SP', 15: 'Tổng số lượng' });
+  const odd = Object.assign(Array(25).fill(''), { 0: 'Số TT', 15: 'Tổng SL' });
   const values = [['CONT A','2.Chưa bốc'], header, row('A',4), row('B','abc'), ['CONT B','2.Chưa bốc'], odd, row('C',7), ['CONT C','2.Chưa bốc'], row('D',5)];
   const parsed = parseContainerSheet('YIWU', values);
   assert.deepEqual(parsed.rows.map(x => x.productCode), ['A', 'C', 'D']);
   assert.deepEqual(parsed.warnings.map(x => x.row), [4]);
 });
 test('formatted dates are preserved and blank formulas use displayed value', () => {
-  const raw = [['CONT A','3.Đã bốc',45678],row('SKU',50,{11:45670})];
-  const displayed = [['CONT A','3.Đã bốc','DK 10/10'],row('SKU','50',{11:'15/10'})];
+  const raw = [['CONT A','3.Đã bốc',45678],row('SKU',50,{12:45670})];
+  const displayed = [['CONT A','3.Đã bốc','DK 10/10'],row('SKU','50',{12:'15/10'})];
   const result = parseContainerSheet('SD',raw,displayed);
   assert.equal(result.rows[0].listedAt,'15/10');
   assert.equal(result.rows[0].eta,'DK 10/10');

@@ -38,30 +38,32 @@ function parseContainerSheet(sheetName, values, formattedValues = values) {
       awaitingHeader = true;
       continue;
     }
-    if (!Array.from({ length: 24 }, (_, col) => text(display[col])).some(Boolean)) {
+    if (!Array.from({ length: 25 }, (_, col) => text(display[col])).some(Boolean)) {
       if (++blankCount >= 20) current = null;
       continue;
     }
     blankCount = 0;
     if (!current || !code) continue;
     if (HEADER_CODE.test(code)) { awaitingHeader = false; continue; }
-    const quantity = numeric(row[14]);
-    // Cấu trúc khối: dòng CONT → dòng tiêu đề cột → dữ liệu. Dòng có mã đầu tiên dưới CONT mà cột O
+    const quantity = numeric(row[15]);
+    // Cấu trúc khối: dòng CONT → dòng tiêu đề cột → dữ liệu. Dòng có mã đầu tiên dưới CONT mà cột P
     // không phải số là tiêu đề viết khác mẫu (không phải lỗi dữ liệu) nên bỏ qua, không cảnh báo.
     const firstUnderCont = awaitingHeader;
     awaitingHeader = false;
     if (quantity === null && firstUnderCont) continue;
     if (quantity === null) {
-      warnings.push({ sheetName, row: index + 1, reason: 'Tổng số lượng O không hợp lệ' });
+      warnings.push({ sheetName, row: index + 1, reason: 'Tổng số lượng P không hợp lệ' });
       continue;
     }
     rows.push({
       ...current, sheetName, sourceRow: index + 1,
       productCode: code, productKey: normalizeCode(code),
-      color: text(display[4]), saleNote: text(display[5]), otherNote: text(display[6]),
-      orderedBy: text(display[7]), listedAt: text(display[11]),
-      unitsPerPackage: numeric(row[12]), packageCount: numeric(row[13]),
-      quantity, unitPriceCny: numeric(row[15]), vietnamPrice: numeric(row[23])
+      // Cot G la "VAT: ghi chu" chen them, chi de nhap tay, khong doc vao he thong - vi vay cac
+      // cot tu H tro di lech +1 so voi ten bien (otherNote van la cot G cu, nay o H).
+      color: text(display[4]), saleNote: text(display[5]), otherNote: text(display[7]),
+      orderedBy: text(display[8]), listedAt: text(display[12]),
+      unitsPerPackage: numeric(row[13]), packageCount: numeric(row[14]),
+      quantity, unitPriceCny: numeric(row[16]), vietnamPrice: numeric(row[24])
     });
   }
   return { rows, warnings };
