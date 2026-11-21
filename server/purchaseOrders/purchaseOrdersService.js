@@ -653,7 +653,19 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         const total=Number((await client.query('SELECT count(*)::text AS count FROM purchase_orders p LEFT JOIN product_containers pc ON pc.id=p.container_id LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE '+where,whereValues)).rows[0].count);
         page=Math.min(page,Math.max(1,Math.ceil(total/pageSize)));
         const offset=(page-1)*pageSize,limitParam='$'+(whereValues.length+1),offsetParam='$'+(whereValues.length+2),pageSql=filter.clientSort?'':` LIMIT ${limitParam} OFFSET ${offsetParam}`,pageArgs=filter.clientSort?whereValues:[...whereValues,pageSize,offset];
-        const activeRows=(await client.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) LEFT JOIN product_containers pc ON pc.id=p.container_id WHERE ${where} ORDER BY ${filter.order}${pageSql}`,pageArgs)).rows.map(jsRow);
+        const suppliedKnownIds=Array.isArray(options.knownIds)?options.knownIds:String(options.knownIds||'').split(',');
+        const knownIds=suppliedKnownIds.length?[...new Set(suppliedKnownIds.map(String).filter(id=>/^[1-9]\d*$/.test(id)))].slice(0,200):null;
+        let activeRows,windowIds;
+        if(knownIds&&!filter.clientSort){
+          const selected=(await client.query(`SELECT p.id::text AS id FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) LEFT JOIN product_containers pc ON pc.id=p.container_id WHERE ${where} ORDER BY ${filter.order}${pageSql}`,pageArgs)).rows;
+          windowIds=selected.map(row=>String(row.id));
+          const missingIds=windowIds.filter(id=>!knownIds.includes(id));
+          const missingRows=missingIds.length?await readRows(client,false,missingIds):[];
+          const byId=new Map(missingRows.map(row=>[String(row.id),row]));
+          activeRows=windowIds.map(id=>byId.get(id)).filter(Boolean);
+        }else{
+          activeRows=(await client.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) LEFT JOIN product_containers pc ON pc.id=p.container_id WHERE ${where} ORDER BY ${filter.order}${pageSql}`,pageArgs)).rows.map(jsRow);
+        }
         const extraIds=[...new Set((Array.isArray(options.includeIds)?options.includeIds:String(options.includeIds||'').split(',')).map(String).filter(id=>/^\d+$/.test(id)))].filter(id=>!activeRows.some(row=>String(row.id)===id)).slice(0,1000);
         const supplementalRows=extraIds.length?await readRows(client,false,extraIds):[];
         let summaries=cachedContainerSummaries;
@@ -664,7 +676,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
           }
           summaries=await containerSummaryInFlight.promise;
         }
-        return {revision,sourceMode:source,integrationEnabled:settings?.integration_enabled===true,waitingConfig,waitingConfigs,rows:withFreight(activeRows,containers,waitingContainerRows,summaries),supplementalRows:withFreight(supplementalRows,containers,waitingContainerRows,summaries),containers,regions,containerSummaries:summaries,...(filter.clientSort?{}:{pagination:{page,pageSize,total,pages:Math.max(1,Math.ceil(total/pageSize))}})};
+        return {revision,sourceMode:source,integrationEnabled:settings?.integration_enabled===true,waitingConfig,waitingConfigs,rows:withFreight(activeRows,containers,waitingContainerRows,summaries),...(windowIds?{windowIds}:{}),supplementalRows:withFreight(supplementalRows,containers,waitingContainerRows,summaries),containers,regions,containerSummaries:summaries,...(filter.clientSort?{}:{pagination:{page,pageSize,total,pages:Math.max(1,Math.ceil(total/pageSize))}})};
       }
       return {revision,sourceMode:source,integrationEnabled:settings?.integration_enabled===true,waitingConfig,waitingConfigs,rows:withFreight(await readRows(client),containers,waitingContainerRows),containers,regions};
     }finally{client.release()}},
