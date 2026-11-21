@@ -337,7 +337,7 @@ test('hop chi tiet co sort, keo do rong cot va nut "Cột hiển thị" o dau kh
 
 
 const jsonOk = body => Promise.resolve({ ok: true, status: 200, json: async () => body });
-const invoiceStock = stock => jsonOk({ items: { A1: { vatCode: 'VA', stock } } });
+const invoiceStock = stock => jsonOk({ items: { A1: { vatCode: 'VA', vatKey: 'va', stock } } });
 
 test('Tồn VAT: dòng hóa đơn phân trang máy chủ mở đúng cơ sở và chuyển phần thiếu sang ORDER VAT', async t => {
   const page = createPage({

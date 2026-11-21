@@ -150,10 +150,10 @@ test('POST /stock: ton VAT theo ma SP khop chinh xac, giu khoa ma client gui; kh
   assert.equal(res.status, 200);
   assert.equal(res.headers.get('cache-control'), 'no-store');
   assert.deepEqual(res.body.items, {
-    talews: { vatCode: 'VAT11629', stock: 1000 },
-    TALEW: { vatCode: null, stock: null },
-    KHONGCO: { vatCode: null, stock: null },
-    TALEWS: { vatCode: 'VAT11629', stock: 1000 }
+    talews: { vatCode: 'VAT11629', vatKey: 'vat11629', stock: 1000 },
+    TALEW: { vatCode: null, vatKey: null, stock: null },
+    KHONGCO: { vatCode: null, vatKey: null, stock: null },
+    TALEWS: { vatCode: 'VAT11629', vatKey: 'vat11629', stock: 1000 }
   });
   assert.equal(res.body.meta.stale, false);
   assert.ok(res.body.meta.loadedAt);

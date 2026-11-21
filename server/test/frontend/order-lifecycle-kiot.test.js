@@ -1333,7 +1333,7 @@ function vatFetch(detail) {
   return url => {
     if (url.includes('/order-detail')) return { ok: true, json: async () => ({ detail }) };
     if (url === '/api/vat-lookup/stock') {
-      return { ok: true, json: async () => ({ items: { A: { vatCode: 'VA', stock: 100 }, B: { vatCode: 'VB', stock: 70 } } }) };
+      return { ok: true, json: async () => ({ items: { A: { vatCode: 'VA', vatKey: 'va', stock: 100 }, B: { vatCode: 'VB', vatKey: 'vb', stock: 70 } } }) };
     }
     return null;
   };

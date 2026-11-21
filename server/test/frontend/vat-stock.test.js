@@ -8,6 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
+const { buildModel, stockForCodes } = require('../../vatLookup/lookupModel');
 const S = require('../../public/shared/vat-stock.js');
 const H = require('../../public/shared/vat-handoff.js');
 
@@ -25,7 +26,7 @@ const L = (productCode, quantity, extra = {}) => ({ productCode, productName: 'H
 // ---------- Ham thuan ----------
 
 test('computeVatShortages: 1 dong du / thieu / ton am; enough', () => {
-  const items = { A: { vatCode: 'V1', stock: 5 }, B: { vatCode: 'V2', stock: -3 } };
+  const items = { A: { vatCode: 'V1', vatKey: 'v1', stock: 5 }, B: { vatCode: 'V2', vatKey: 'v2', stock: -3 } };
   const result = S.computeVatShortages([L('A', 5), L('B', 2)], items);
   assert.deepEqual(result.lines.map(r => [r.status, r.stock, r.shortage]), [['ok', 5, 0], ['short', -3, 2]]);
   assert.equal(result.enough, false);
@@ -34,14 +35,14 @@ test('computeVatShortages: 1 dong du / thieu / ton am; enough', () => {
 });
 
 test('computeVatShortages: nhieu dong cung ma VAT chia ton theo thu tu dong (35 -> 30 du, 20 thieu 15)', () => {
-  const items = { A: { vatCode: 'V1', stock: 35 }, C: { vatCode: 'V1', stock: 35 } };
+  const items = { A: { vatCode: 'V1', vatKey: 'v1', stock: 35 }, C: { vatCode: 'V1', vatKey: 'v1', stock: 35 } };
   const result = S.computeVatShortages([L('A', 30), L('C', 20)], items);
   assert.deepEqual(result.lines.map(r => r.shortage), [0, 15]);
   assert.equal(result.enough, false);
 });
 
 test('computeVatShortages: bo qua dong phi VAT…, SL <= 0, ma rong; noVat va unknown thieu ca SL', () => {
-  const items = { A: { vatCode: null, stock: null } };
+  const items = { A: { vatCode: null, vatKey: null, stock: null } };
   const result = S.computeVatShortages([L('VATDA44', 1), L(' vat01 ', 1), L('A', 3), L('B', -2), L('', 1), L('B', 0)], items);
   assert.deepEqual(result.lines.map(r => r.status), ['skip', 'skip', 'noVat', 'skip', 'skip', 'skip']);
   assert.equal(result.lines[2].shortage, 3);
@@ -54,7 +55,7 @@ test('computeVatShortages: bo qua dong phi VAT…, SL <= 0, ma rong; noVat va un
 });
 
 test('computeVatShortages: SL le khong sai so cong don', () => {
-  const result = S.computeVatShortages([L('A', 0.1), L('A', 0.2)], { A: { vatCode: 'V1', stock: 0.25 } });
+  const result = S.computeVatShortages([L('A', 0.1), L('A', 0.2)], { A: { vatCode: 'V1', vatKey: 'v1', stock: 0.25 } });
   assert.deepEqual(result.lines.map(r => r.shortage), [0, 0.05]);
 });
 
@@ -79,7 +80,7 @@ test('showsBar / showsColumns: quyen xem ton va co dong hang duoc xet', () => {
 
 test('loadStock: chi gui ma duoc xet, bo trung, chia lo 200 ma va gop ket qua; khong co dong xet -> khong goi; loi -> { error }', async () => {
   const sent = [];
-  const post = async codes => { sent.push(codes); return { meta: { loadedAt: 'x', stale: false }, items: Object.fromEntries(codes.map(code => [code, { vatCode: 'V', stock: 1 }])) }; };
+  const post = async codes => { sent.push(codes); return { meta: { loadedAt: 'x', stale: false }, items: Object.fromEntries(codes.map(code => [code, { vatCode: 'V', vatKey: 'v', stock: 1 }])) }; };
   const lines = [L('VATDA44', 1), L('A', 1), L('A', 2), ...Array.from({ length: 449 }, (_, i) => L('M' + i, 1))];
   const data = await S.loadStock(lines, post);
   assert.deepEqual(sent.map(batch => batch.length), [200, 200, 50]);
@@ -216,8 +217,62 @@ function mount({ lines, perms = ALL, doc = DOC, stock, isCurrent, getStorage, wr
   return { dom, window, VS, host, opened, rows, bar, tick };
 }
 
+test('stockForCodes and ORDER VAT share stock across VAT code aliases', async () => {
+  const model = buildModel({
+    gop: [
+      { CTY: 'A', 'Mã kiot đại diện': 'A1', 'MÃ VAT KIOT': 'V-01', 'TỒN CÓ THỂ NHÁP': 5 },
+      { CTY: 'A', 'Mã kiot đại diện': 'C3', 'MÃ VAT KIOT': 'V-02', 'TỒN CÓ THỂ NHÁP': 4 }
+    ],
+    khop: [
+      { 'Mã SP': 'A1', 'MÃ VAT KIOT': 'V-01' },
+      { 'Mã SP': 'B2', 'MÃ VAT KIOT': 'v01' },
+      { 'Mã SP': 'D4', 'MÃ VAT KIOT': 'Ṽ_01' }
+    ]
+  });
+  const items = stockForCodes(model, ['A1', 'B2', 'C3', 'D4', 'E5']);
+  const lines = [L('A1', 4), L('B2', 4)];
+  const result = S.computeVatShortages(lines, items);
+  assert.deepEqual(result.lines.map(line => line.shortage), [0, 3]);
+  assert.equal(result.lines[1].status, 'short');
+  assert.equal(result.enough, false);
+  assert.deepEqual(items, {
+    A1: { vatCode: 'V-01', vatKey: 'v01', stock: 5 },
+    B2: { vatCode: 'v01', vatKey: 'v01', stock: 5 },
+    C3: { vatCode: 'V-02', vatKey: 'v02', stock: 4 },
+    D4: { vatCode: 'Ṽ_01', vatKey: 'v01', stock: 5 },
+    E5: { vatCode: null, vatKey: null, stock: null }
+  });
+  const extended = S.computeVatShortages([...lines, L('C3', 4), L('D4', 2), L('E5', 3)], items);
+  assert.deepEqual(extended.lines.map(line => [line.status, line.shortage]), [
+    ['ok', 0], ['short', 3], ['ok', 0], ['short', 2], ['noVat', 3]
+  ]);
+
+  const page = mount({ lines, stock: Promise.resolve({ items }) });
+  try {
+    await settle();
+    const [first, second] = page.rows();
+    assert.equal(first.querySelector('.vat-order-tick').disabled, true);
+    assert.equal(second.querySelector('.vat-order-tick').disabled, false);
+    assert.equal(second.querySelector('.vat-stock-cell').title, 'Mã VAT v01 · Thiếu 3');
+    page.tick(1);
+    page.bar().querySelector('[data-vat-action="order"]').click();
+    const id = new URL(page.opened[0], page.window.location).searchParams.get('handoffId');
+    const handoff = H.takeOrderVat(page.window.localStorage, id);
+    assert.deepEqual(handoff.rows.map(row => [row.productCode, row.quantity]), [['B2', 3]]);
+  } finally {
+    page.dom.window.close();
+  }
+});
+
+test('computeVatShortages treats a mapped code without a canonical key as unknown', () => {
+  const items = { A: { vatCode: 'V-01', stock: 5 } };
+  const result = S.computeVatShortages([L('A', 4)], items);
+  assert.deepEqual(result.lines[0], { considered: true, status: 'unknown', vatCode: 'V-01', stock: null, shortage: 4 });
+  assert.equal(result.enough, false);
+});
+
 test('attach: so ton, dong thieu do, tick chi o dong thieu, title co ma VAT / thieu / gio cap nhat', async () => {
-  const page = mount({ lines: [L('A1', 3), L('B2', 2), L('VATDA44', 1)], stock: Promise.resolve({ meta: META, items: { A1: { vatCode: 'VAT1', stock: 1 }, B2: { vatCode: 'VAT2', stock: 50 } } }) });
+  const page = mount({ lines: [L('A1', 3), L('B2', 2), L('VATDA44', 1)], stock: Promise.resolve({ meta: META, items: { A1: { vatCode: 'VAT1', vatKey: 'vat1', stock: 1 }, B2: { vatCode: 'VAT2', vatKey: 'vat2', stock: 50 } } }) });
   assert.equal(page.rows()[0].querySelector('.vat-stock-cell').textContent, '…', 'dang tai');
   await settle();
   const [a, b, fee] = page.rows();
@@ -234,7 +289,7 @@ test('attach: so ton, dong thieu do, tick chi o dong thieu, title co ma VAT / th
 });
 
 test('attach: tick -> nut Order VAT (n dong); bam -> luu ban chuyen (so thieu, gia sau chiet khau) va mo /vat-request/?handoff=1', async () => {
-  const page = mount({ lines: [L('A1', 3), L('B2', 5)], stock: Promise.resolve({ meta: META, items: { A1: { vatCode: 'VAT1', stock: 1 }, B2: { vatCode: null, stock: null } } }) });
+  const page = mount({ lines: [L('A1', 3), L('B2', 5)], stock: Promise.resolve({ meta: META, items: { A1: { vatCode: 'VAT1', vatKey: 'vat1', stock: 1 }, B2: { vatCode: null, vatKey: null, stock: null } } }) });
   await settle();
   assert.equal(page.rows()[1].querySelector('.vat-stock-cell').textContent, 'Chưa có mã VAT');
   page.tick(0);
@@ -264,7 +319,7 @@ test('attach: hai trang Order VAT mo gan nhau chi doc dong cua chung tu minh', a
       lines: [L('A1', 2 + index)],
       doc: { ...DOC, code, customerName: 'KH ' + index },
       getStorage: () => storage,
-      stock: Promise.resolve({ items: { A1: { vatCode: 'VAT1', stock: 1 } } })
+      stock: Promise.resolve({ items: { A1: { vatCode: 'VAT1', vatKey: 'vat1', stock: 1 } } })
     }));
     try {
       await settle();
@@ -288,7 +343,7 @@ test('attach: hai trang Order VAT mo gan nhau chi doc dong cua chung tu minh', a
 });
 
 test('attach: sau khi bam Order VAT -> bo tick, an nut, bao "Da mo trang ORDER VAT."; tick lai thi het bao va nut tro lai', async () => {
-  const page = mount({ lines: [L('A1', 3)], stock: Promise.resolve({ meta: META, items: { A1: { vatCode: 'VAT1', stock: 1 } } }) });
+  const page = mount({ lines: [L('A1', 3)], stock: Promise.resolve({ meta: META, items: { A1: { vatCode: 'VAT1', vatKey: 'vat1', stock: 1 } } }) });
   await settle();
   page.tick(0);
   page.bar().querySelector('[data-vat-action="order"]').click();
@@ -317,7 +372,7 @@ test('attach: loi doc ton -> "—", dong bao loi, tick mo o moi dong duoc xet, O
 });
 
 test('attach: chung tu Da huy -> khong tick, khong nut; thieu quyen -> khong cot Order VAT', async () => {
-  const items = { A1: { vatCode: 'VAT1', stock: 0 }, B2: { vatCode: 'VAT2', stock: 9 } };
+  const items = { A1: { vatCode: 'VAT1', vatKey: 'vat1', stock: 0 }, B2: { vatCode: 'VAT2', vatKey: 'vat2', stock: 9 } };
   const cancelled = mount({ lines: [L('A1', 3)], doc: { ...DOC, status: 'Đã hủy' }, stock: Promise.resolve({ meta: META, items }) });
   await settle();
   assert.equal(cancelled.rows()[0].querySelector('.vat-order-tick').disabled, true);
@@ -337,12 +392,12 @@ test('attach: chung tu Da huy -> khong tick, khong nut; thieu quyen -> khong cot
 test('attach: ket qua ve muon cua lan gan truoc khong ve de len lan gan moi; isCurrent=false thi bo qua', async () => {
   let resolveOld;
   const page = mount({ lines: [L('A1', 3)], stock: new Promise(resolve => { resolveOld = resolve; }) });
-  page.VS.attach({ root: page.host, lines: [L('A1', 3)], doc: DOC, perms: ALL, stock: Promise.resolve({ meta: META, items: { A1: { vatCode: 'VAT1', stock: 7 } } }), openTab: () => {} });
+  page.VS.attach({ root: page.host, lines: [L('A1', 3)], doc: DOC, perms: ALL, stock: Promise.resolve({ meta: META, items: { A1: { vatCode: 'VAT1', vatKey: 'vat1', stock: 7 } } }), openTab: () => {} });
   await settle();
-  resolveOld({ meta: META, items: { A1: { vatCode: 'VAT1', stock: 1 } } });
+  resolveOld({ meta: META, items: { A1: { vatCode: 'VAT1', vatKey: 'vat1', stock: 1 } } });
   await settle();
   assert.equal(page.rows()[0].querySelector('.vat-stock-cell').textContent, '7');
-  const stale = mount({ lines: [L('A1', 3)], isCurrent: () => false, stock: Promise.resolve({ meta: META, items: { A1: { vatCode: 'VAT1', stock: 1 } } }) });
+  const stale = mount({ lines: [L('A1', 3)], isCurrent: () => false, stock: Promise.resolve({ meta: META, items: { A1: { vatCode: 'VAT1', vatKey: 'vat1', stock: 1 } } }) });
   await settle();
   assert.equal(stale.rows()[0].querySelector('.vat-stock-cell').textContent, '…');
   page.dom.window.close();
@@ -353,7 +408,7 @@ test('attach: trinh duyet chan luu tam -> khong mo tab, chep TSV vao khay nho va
   const copied = [];
   const page = mount({
     lines: [L('A1', 3)], getStorage: () => null, writeClipboard: text => { copied.push(text); return Promise.resolve(); },
-    stock: Promise.resolve({ meta: META, items: { A1: { vatCode: 'VAT1', stock: 1 } } })
+    stock: Promise.resolve({ meta: META, items: { A1: { vatCode: 'VAT1', vatKey: 'vat1', stock: 1 } } })
   });
   await settle();
   page.tick(0);
@@ -369,7 +424,7 @@ test('attach: quyen xem ton xem duoc thong bao bao loi va ban cu', async () => {
   const perms = { stock: true, order: false };
   const failed = mount({ lines: [L('A1', 3)], perms, stock: Promise.resolve({ error: 'Sheet lỗi' }) });
   const stale = mount({ lines: [L('A1', 3)], perms, stock: Promise.resolve({
-    meta: { ...META, stale: true }, items: { A1: { vatCode: 'VAT1', stock: 1 } }
+    meta: { ...META, stale: true }, items: { A1: { vatCode: 'VAT1', vatKey: 'vat1', stock: 1 } }
   }) });
   await settle();
   assert.equal(failed.bar().hidden, false);
@@ -381,7 +436,7 @@ test('attach: quyen xem ton xem duoc thong bao bao loi va ban cu', async () => {
 });
 
 test('attach: destroy xoa tick va thao tac cua chung tu cu', async () => {
-  const page = mount({ lines: [L('A1', 3)], stock: Promise.resolve({ items: { A1: { vatCode: 'VAT1', stock: 1 } } }) });
+  const page = mount({ lines: [L('A1', 3)], stock: Promise.resolve({ items: { A1: { vatCode: 'VAT1', vatKey: 'vat1', stock: 1 } } }) });
   await settle();
   page.tick(0);
   const action = page.bar().querySelector('[data-vat-action="order"]');

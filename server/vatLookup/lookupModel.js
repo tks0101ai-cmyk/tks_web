@@ -523,11 +523,12 @@ function stockForCodes(model, codes) {
   return Object.fromEntries(codes.map(code => {
     const product = productsByCode.get(normalizeCode(code));
     const line = product?.vatLines.find(line => normalizeCode(line.maVat));
-    if (!line) return [code, { vatCode: null, stock: null }];
+    if (!line) return [code, { vatCode: null, vatKey: null, stock: null }];
 
     const vatCode = String(line.maVat).trim();
-    const stock = model.tonCoTheNhapByMaVat.get(normalizeCode(vatCode)) ?? 0;
-    return [code, { vatCode, stock }];
+    const vatKey = normalizeCode(vatCode);
+    const stock = model.tonCoTheNhapByMaVat.get(vatKey) ?? 0;
+    return [code, { vatCode, vatKey, stock }];
   }));
 }
 

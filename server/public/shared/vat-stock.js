@@ -25,7 +25,7 @@
   function hasConsidered(lines) { return (lines || []).some(isConsidered); }
 
   /**
-   * items = ket qua API (null khi khong doc duoc ton). Moi nhom cung ma VAT bat dau voi max(ton, 0) va chia lan luot
+   * items = ket qua API (null khi khong doc duoc ton). Moi nhom cung vatKey bat dau voi max(ton, 0) va chia lan luot
    * cho cac dong theo thu tu; phan khong lay duoc la phan thieu. enough = co dong duoc xet va moi dong deu 'ok'.
    */
   function computeVatShortages(lines, items) {
@@ -36,7 +36,8 @@
       if (!items) return { considered: true, status: 'unknown', vatCode: null, stock: null, shortage: quantity };
       const info = items[codeOf(line)];
       if (!info || !info.vatCode) return { considered: true, status: 'noVat', vatCode: null, stock: null, shortage: quantity };
-      const key = String(info.vatCode).trim();
+      const key = info.vatKey;
+      if (typeof key !== 'string' || !key) return { considered: true, status: 'unknown', vatCode: info.vatCode, stock: null, shortage: quantity };
       if (!remaining.has(key)) remaining.set(key, Math.max(num(info.stock), 0));
       const take = Math.min(quantity, remaining.get(key));
       remaining.set(key, round3(remaining.get(key) - take));
