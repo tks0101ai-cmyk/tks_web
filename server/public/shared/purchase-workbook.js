@@ -53,7 +53,7 @@
     return formulas[col.k]||null;
   }
 
-  function exportImportSnapshot({rows,columns,revision,regions=[]}) {
+  function exportImportSnapshot({rows,columns,revision,regions=[],scope=null}) {
     if(!/^\d+:\d+$/.test(String(revision||'')))throw Error('Phiên bản snapshot không hợp lệ.');
     const importable=importColumns(columns),cols=[columns.find(col=>col.k==='rowKey'),...columns.filter(col=>col.k!=='rowKey'&&importable.includes(col))].filter(Boolean),keys=cols.filter(col=>col.k!=='rowKey').map(col=>col.k),book=exportWorkbook(rows,cols,keys),sheet=book.Sheets['Đặt hàng'];
     cols.forEach((col,c)=>rows.forEach((row,r)=>{const formula=snapshotFormula(col,row,cols,r);if(!formula)return;const address=XLSX.utils.encode_cell({r:r+1,c}),cell=sheet[address]||(sheet[address]={t:'n',v:0});cell.f=formula.slice(1);if(typeof row[col.k]==='number'&&Number.isFinite(row[col.k])){cell.t='n';cell.v=row[col.k]}else{cell.t='str';cell.v=''}}));
@@ -63,11 +63,11 @@
     const exampleKeys=['rowKey','productCode','productName','qtyPerCarton','cartonCount','supplier','unitPriceCny','listedAt'],exampleColumns=exampleKeys.map(key=>cols.find(col=>col.k===key));
     const guide=XLSX.utils.aoa_to_sheet([
       ['HƯỚNG DẪN SỬA FILE THU MUA'],
-      ['Đây là snapshot các trường đặt hàng tải từ dữ liệu hiện tại. '+excludedImportDescription+' Các trường này được giữ nguyên khi nhập lại. Sửa sheet “Đặt hàng” rồi tải lại chính file này. Không xóa sheet __TOKOSI.'],
+      [scope?.type==='container'?'File chỉ quản lý các dòng của cont '+(scope.containerName||scope.containerId)+'. Khi nhập lại: Mã dòng có sẵn được cập nhật, Mã dòng để trống tạo dòng mới, dòng bị xóa khỏi sheet sẽ bị xóa mềm trong cont này. Các cont khác không bị thay đổi. '+excludedImportDescription+' Không xóa sheet __TOKOSI.':'Đây là snapshot các trường đặt hàng tải từ dữ liệu hiện tại. '+excludedImportDescription+' Các trường này được giữ nguyên khi nhập lại. Sửa sheet “Đặt hàng” rồi tải lại chính file này. Không xóa sheet __TOKOSI.'],
       ['Mỗi dòng là một dòng đặt hàng. Mã dòng có sẵn sẽ cập nhật đúng dòng; Mã dòng để trống sẽ tạo dòng mới. Mã dòng phải không trùng; Mã SP được phép lặp. Dòng mới cần Tên SP, SL/T và Số thùng.'],
-      ['Giá trị ô trống sẽ xóa giá trị hiện tại. Xóa cả dòng khỏi sheet Đặt hàng sẽ xóa mềm mã đó. Xem lại số dòng xóa ở bước xem trước trước khi xác nhận.'],
+      [scope?.type==='container'?'Khi nhập file cont, ô trống xử lý theo lựa chọn cột trên giao diện; dòng bị xóa khỏi sheet sẽ xóa mềm dòng đó trong cont này. Kiểm tra số dòng xóa ở bước xem trước.':'Ô trống được xử lý theo lựa chọn trên giao diện. Ở chế độ Cập nhật theo Mã dòng, dòng bỏ khỏi file được giữ nguyên; ở chế độ Đồng bộ toàn bộ danh sách, dòng bỏ khỏi file sẽ bị xóa mềm. Kiểm tra số dòng xóa ở bước xem trước.'],
       ['Cột Vùng nhận tên vùng trong danh sách đã cấu hình; không nhập vùng mới trong file. Cột Tên cont nhận tên cont đang hoạt động; để trống hoặc nhập Chờ xếp sẽ gán vào hàng chờ. Trạng thái cont tự tính, không import.'],
-      ['Nếu dữ liệu trên hệ thống đổi sau lúc tải file, snapshot sẽ bị từ chối; hãy tải snapshot mới, áp lại chỉnh sửa và gửi lại. Một lỗi sẽ chặn toàn bộ file.'],
+      [scope?.type==='container'?'Nếu một dòng trong cont đổi sau lúc tải file, toàn bộ lần nhập sẽ dừng để tránh ghi đè; hãy tải lại file riêng cont rồi áp lại chỉnh sửa. Thay đổi ở cont khác không ảnh hưởng.':'Nếu dữ liệu trên hệ thống đổi sau lúc tải file, snapshot sẽ bị từ chối; hãy tải snapshot mới, áp lại chỉnh sửa và gửi lại. Một lỗi sẽ chặn toàn bộ file.'],
       [],['CỘT','BẮT BUỘC','KIỂU / ĐỊNH DẠNG','LƯU Ý'],...hints,
       [],['VÍ DỤ DÒNG MỚI (chỉ để xem, không nằm trong sheet Đặt hàng)'],
       exampleColumns.map(caption),
@@ -76,7 +76,7 @@
     guide['!cols']=[{wch:30},{wch:18},{wch:34},{wch:88}];
     XLSX.utils.book_append_sheet(book,guide,'Hướng dẫn');
     const regionSheet=XLSX.utils.aoa_to_sheet([['MÃ VÙNG','TÊN VÙNG','MÀU'],...regions.map(region=>[String(region.id),region.name,region.color||''])]);regionSheet['!cols']=[{wch:16},{wch:28},{wch:12}];XLSX.utils.book_append_sheet(book,regionSheet,'Danh sách vùng');
-    const meta=XLSX.utils.aoa_to_sheet([['format','TOKOSI_PURCHASE_SNAPSHOT'],['revision',String(revision)]]);
+    const metaRows=[['format','TOKOSI_PURCHASE_SNAPSHOT'],['revision',String(revision)]];if(scope?.type==='container'){metaRows.push(['scope','container'],['containerId',String(scope.containerId)],['rowVersions',JSON.stringify(scope.rowVersions||{})])}const meta=XLSX.utils.aoa_to_sheet(metaRows);
     XLSX.utils.book_append_sheet(book,meta,'__TOKOSI');
     book.Workbook||={};
     book.Workbook.Sheets||=book.SheetNames.map(name=>({name,Hidden:0}));
@@ -200,7 +200,7 @@
     if(values?.[0]?.[1]!=='TOKOSI_PURCHASE_SNAPSHOT'||!/^\d+:\d+$/.test(String(revision||'')))throw Error('Tải snapshot dữ liệu hiện tại trước khi import.');
     const parsed=parseWorkbook(book,columns,'Đặt hàng',{includeEmpty:true,allowEmpty:true,snapshot:true}),expected=importColumns(columns).map(col=>col.k);
     if(parsed.fields.length!==expected.length||expected.some(key=>!parsed.fields.includes(key)))throw Error('File thiếu cột snapshot. Tải lại dữ liệu hiện tại trước khi import.');
-    return {...parsed,revision,fields:expected};
+    const scopeType=values?.find(row=>row[0]==='scope')?.[1],containerId=values?.find(row=>row[0]==='containerId')?.[1],versionValue=values?.find(row=>row[0]==='rowVersions')?.[1];let rowVersions={};if(scopeType==='container'){if(!/^\d+$/.test(String(containerId||'')))throw Error('File theo cont không hợp lệ. Tải lại file của cont.');try{rowVersions=JSON.parse(String(versionValue||'{}'))}catch{throw Error('File theo cont thiếu thông tin phiên bản dòng. Tải lại file của cont.')}if(!rowVersions||typeof rowVersions!=='object'||Array.isArray(rowVersions))throw Error('File theo cont thiếu thông tin phiên bản dòng. Tải lại file của cont.')}return {...parsed,revision,scope:scopeType==='container'?{type:'container',containerId:String(containerId),rowVersions}:null,fields:expected};
   }
   function read(data) { return XLSX.read(data, { type: 'array', cellDates: false, cellFormula: true }); }
   function bytes(workbook) { return XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }); }

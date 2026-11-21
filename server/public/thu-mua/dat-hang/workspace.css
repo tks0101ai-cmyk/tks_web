@@ -737,8 +737,13 @@
 .purchase-page #modalBody .purchase-import-selection-summary{margin:8px 0;padding:8px 10px;border-radius:7px;background:color-mix(in srgb,var(--primary) 10%,var(--panel));color:var(--text);font-size:11px;font-weight:650}
 .purchase-page #modalBody .purchase-import-clear-hint{display:block;margin:-5px 0 6px 22px;color:var(--muted);font-size:11px}
 .purchase-page #modalBody .purchase-import-warning{display:grid;gap:4px;padding:12px;border:1px solid #e7a23b;border-radius:8px;background:color-mix(in srgb,#e7a23b 12%,var(--panel));font-size:12px}
+.purchase-page #modalBody .purchase-container-snapshot{display:grid;grid-template-columns:minmax(220px,320px) auto;align-items:end;gap:8px 12px;padding:11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel-2)}
+.purchase-page #modalBody .purchase-container-snapshot label{display:grid;gap:5px;margin:0;color:var(--text);font-weight:650}
+.purchase-page #modalBody .purchase-container-snapshot select{min-height:34px;width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--panel);color:var(--text)}
+.purchase-page #modalBody .purchase-container-snapshot small{grid-column:1/-1;color:var(--muted);line-height:1.5}
 .purchase-page #modalBody .purchase-import-snapshot-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 @media(max-width:720px){.purchase-page #modalBody .purchase-import-modes{grid-template-columns:1fr}.purchase-page #modalBody .purchase-import-mode-card{min-height:0}.purchase-page #modalBody .purchase-column-options{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.purchase-page #modalBody .purchase-container-snapshot{grid-template-columns:1fr}}
 @media(max-width:620px){.purchase-page #modalBody label.import-drop{min-height:170px;padding:18px}}
 
 .purchase-page .purchase-region-chip{display:inline-block;max-width:100%;padding:2px 7px;border-radius:999px;background:color-mix(in srgb,var(--region-color) 18%,transparent);color:var(--region-color);font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
