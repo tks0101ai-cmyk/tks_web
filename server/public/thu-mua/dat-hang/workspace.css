@@ -667,6 +667,9 @@
 .order-actions #managePurchaseEmployees:hover:not(:disabled),
 .order-actions #export:hover:not(:disabled),
 .order-actions .purchase-work-tools #undoWork:hover:not(:disabled){color:var(--text)}
+.purchase-page .order-actions #export{background:#107C41;border-color:#107C41;color:#fff;font-weight:650}
+.purchase-page .order-actions #export:hover:not(:disabled){background:#0B5E32;border-color:#0B5E32;color:#fff}
+.purchase-page .order-actions #export:disabled{background:#6F9880;border-color:#6F9880;color:#fff;opacity:.7}
 
 /* Import: vùng chọn file thành một bề mặt rõ ràng, không để lộ nút file mặc định của trình duyệt. */
 #modalBody .import-status{display:flex;align-items:center;gap:9px;margin:14px 0;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel-2);color:var(--muted)}
