@@ -55,8 +55,8 @@ function saleListResponse(rows) {
 }
 const KT_ONLY_COLUMNS = ['vatStock', 'pendingQty', 'incomingContainer', 'containerStatus', 'containerEta'];
 
-async function setup(t, { vaiTro, id = 'sale-1', responses, featurePermissions = {} }) {
-  const dom = new JSDOM(html, { url: 'https://tokosi.test/vat-request/', runScripts: 'outside-only', pretendToBeVisual: true });
+async function setup(t, { vaiTro, id = 'sale-1', responses, featurePermissions = {}, url = 'https://tokosi.test/vat-request/', beforeInit }) {
+  const dom = new JSDOM(html, { url, runScripts: 'outside-only', pretendToBeVisual: true });
   t.after(() => dom.window.close());
   const window = dom.window;
   window.eval(fs.readFileSync(path.join(publicDir, 'shared/table-controls.js'), 'utf8'));
@@ -78,9 +78,11 @@ async function setup(t, { vaiTro, id = 'sale-1', responses, featurePermissions =
     return { ok: result.status < 400, status: result.status, json: async () => data,
       blob: async () => new window.Blob([result.data || '']), headers: { get: name => headers[name.toLowerCase()] ?? null } };
   };
+  window.eval(fs.readFileSync(path.join(publicDir, 'shared/vat-handoff.js'), 'utf8'));
   window.eval(batchCode);
   window.eval(gridCode);
   window.eval(code);
+  if (beforeInit) beforeInit(window);
   await window.TKSVatRequest.init();
   await tick();
   return { window, doc: window.document, calls };
@@ -1014,4 +1016,51 @@ test('Shift sorts VAT requests through three priorities, blanks last and removes
   assert.equal(doc.querySelector('[data-sort="unitPrice"] .sort-indicator').textContent,'▼3');
   click('quantity',true);click('quantity',true);
   assert.equal(doc.querySelector('[data-sort="unitPrice"] .sort-indicator').textContent,'▼2');
+});
+
+// ---- Order VAT tu hop chi tiet hoa don / don hang (shared/vat-handoff.js, 17/11/2026) ----
+const HANDOFF_KEY = 'tks.vatRequest.handoff';
+const handoffRow = (extra = {}) => ({ customerName: 'KH A', productCode: '014XOAN', productName: 'Bát inox', quantity: 400, unitPrice: 11400, saleNote: 'Từ HD035762', ...extra });
+const batchValues = doc => batchRows(doc).map(tr => ['customerName', 'productCode', 'quantity', 'unitPrice', 'saleNote', 'fullVat'].map(name => cell(tr, name).value));
+
+test('Order VAT tu hop chi tiet: mo form, them SAU nhap cu, bao so dong; xoa ban chuyen va ?handoff; khong tu gui', async t => {
+  const responses = { 'GET /': listResponse([]), 'POST /lookup': lookupResponse };
+  const { window, doc, calls } = await setup(t, {
+    vaiTro: 'Nhân viên sale', responses, url: 'https://tokosi.test/vat-request/?handoff=1',
+    beforeInit: w => {
+      w.localStorage.setItem('vr-batch-draft:sale-1', JSON.stringify({ savedAt: Date.now(), rows: [{ customerName: 'KH cũ', productCode: '26DAQUAN', quantity: '5', unitPrice: '100', fullVat: '', saleNote: '' }] }));
+      w.localStorage.setItem(HANDOFF_KEY, JSON.stringify({ createdAt: Date.now(), source: 'HD035762', rows: [handoffRow()] }));
+    }
+  });
+  assert.equal(doc.getElementById('vrBatchDialog').hasAttribute('open'), true);
+  assert.deepEqual(batchValues(doc), [['KH cũ', '26DAQUAN', '5', '100', '', ''], ['KH A', '014XOAN', '400', '11400', 'Từ HD035762', '']]);
+  assert.match(doc.getElementById('vrBatchNotice').textContent, /Đã thêm 1 dòng từ HD035762\. Kiểm tra, chọn Full VAT rồi bấm Gửi\./);
+  assert.equal(window.localStorage.getItem(HANDOFF_KEY), null);
+  assert.equal(window.location.search, '');
+  assert.match(batchRows(doc)[1].querySelector('[data-cell="product"]').textContent, /Bát inox/);
+  const draft = JSON.parse(window.localStorage.getItem('vr-batch-draft:sale-1'));
+  assert.deepEqual(draft.rows.map(row => row.productCode), ['26DAQUAN', '014XOAN']);
+  assert.equal(calls.some(({ key }) => key === 'POST /batch' || key === 'POST /'), false);
+});
+
+test('Order VAT: form trong thi dung luon dong trong san co; qua 200 dong thi bao so dong khong them duoc', async t => {
+  const rows = Array.from({ length: 201 }, (_, i) => handoffRow({ productCode: 'M' + i }));
+  const { doc } = await setup(t, {
+    vaiTro: 'Nhân viên sale', responses: { 'GET /': listResponse([]), 'POST /lookup': lookupResponse }, url: 'https://tokosi.test/vat-request/?handoff=1',
+    beforeInit: w => w.localStorage.setItem(HANDOFF_KEY, JSON.stringify({ createdAt: Date.now(), source: 'DH041173', rows }))
+  });
+  assert.equal(batchRows(doc).length, 200);
+  assert.equal(cell(batchRows(doc)[0], 'productCode').value, 'M0');
+  assert.equal(doc.getElementById('vrBatchPastePanel').hidden, true);
+  assert.match(doc.getElementById('vrBatchNotice').textContent, /Đã thêm 200 dòng từ DH041173\..*Còn 1 dòng không thêm được vì mỗi lần gửi tối đa 200 dòng\./);
+});
+
+test('Order VAT: ban chuyen qua 10 phut -> khong mo form, bao het han, van xoa khoa', async t => {
+  const { window, doc } = await setup(t, {
+    vaiTro: 'Nhân viên sale', responses: { 'GET /': listResponse([]) }, url: 'https://tokosi.test/vat-request/?handoff=1',
+    beforeInit: w => w.localStorage.setItem(HANDOFF_KEY, JSON.stringify({ createdAt: Date.now() - 11 * 60000, source: 'HD1', rows: [handoffRow()] }))
+  });
+  assert.equal(doc.getElementById('vrBatchDialog').hasAttribute('open'), false);
+  assert.match(doc.getElementById('vrStatus').textContent, /Dữ liệu chuyển sang đã hết hạn, mở lại từ hộp chi tiết./);
+  assert.equal(window.localStorage.getItem(HANDOFF_KEY), null);
 });

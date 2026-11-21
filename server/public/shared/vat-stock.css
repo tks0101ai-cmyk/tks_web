@@ -1,0 +1,16 @@
+/* Ton VAT trong hop chi tiet chung tu (public/shared/vat-stock.js). Mau theo token shared.css (sang / toi). */
+.vat-stock-cell.is-vat-short { color: var(--red); font-weight: 600; }
+.vat-order-cell { text-align: center; }
+.vat-order-tick { width: 16px; height: 16px; cursor: pointer; accent-color: var(--red); }
+.vat-order-tick:disabled { cursor: default; opacity: .4; }
+.vat-stock-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0 0; }
+.vat-stock-bar[hidden] { display: none; }
+/* Thanh nut nam trong dong tieu de "Hang hoa" (20/11/2026): ngay sau chu tieu de, day phan dem dong sang phai. */
+.dp-section-head > .vat-stock-bar { margin: 0 auto 0 4px; }
+.dp-section-head:has(> .vat-stock-bar:not([hidden])) > .dp-section-title { margin-right: 0; }
+.vat-stock-hint { color: var(--muted); font-size: 13px; }
+.vat-stock-hint.is-error { color: var(--red); }
+@media (max-width: 640px) {
+  .vat-stock-bar .vat-stock-btn { flex: 1 1 100%; }
+  .dp-section-head > .vat-stock-bar { order: 3; flex: 1 1 100%; margin: 4px 0 0; }
+}
