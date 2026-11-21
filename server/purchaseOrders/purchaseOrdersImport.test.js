@@ -73,12 +73,13 @@ test('snapshot recheck keeps the active row when its display key was reused', ()
   assert.equal(checked.valid, true);
   assert.deepEqual(checked.conflicts, undefined);
 });
-test('snapshot deletion rows survive reused display keys in archived rows', () => {
+test('snapshot upserts preserve current rows even when their keys exist in archives', () => {
   const keys = ['D00556', 'D00561'];
   const current = keys.map((rowKey, i) => ({ ...existing()[0], id: i + 2, rowKey }));
   const archived = keys.map((rowKey, i) => ({ ...existing()[0], id: i + 1, rowKey, deletedAt: '2026-11-01' }));
   const preview = prepareRows([fresh()], current, { snapshot: true, archivedRows: archived });
-  assert.deepEqual(preview.rows.filter(row => row.action === 'delete').map(row => [row.rowKey, row.sourceRow]), [['D00556', null], ['D00561', null]]);
+  assert.equal(preview.rows.some(row => row.action === 'delete'), false);
+  assert.equal(preview.counts.preserved, 2);
   const checked = recheckPreview(preview, current, archived);
   assert.equal(checked.valid, true);
   assert.deepEqual(checked.conflicts, undefined);
@@ -159,13 +160,14 @@ test('snapshot parser rejects ordinary or incomplete workbooks and accepts an in
   assert.equal(empty.rows.length,0);
 });
 
-test('full snapshot clears blank cells and plans omitted current rows for deletion', () => {
+test('full snapshot clears blank cells and preserves omitted current rows', () => {
   const current=[existing()[0],{id:2,rowKey:'D00002',version:1,productCode:'B',productName:'Other',cartonCount:1,qtyPerCarton:1}],
     plan=prepareRows([{rowKey:'D00001.01',productCode:'A',productName:'Tape',cartonCount:10,qtyPerCarton:20,supplier:''}],current,{snapshot:true});
   assert.equal(plan.valid,true);
   assert.equal(plan.counts.update,1);
-  assert.equal(plan.counts.delete,1);
-  assert.equal(plan.operations.find(op=>op.action==='delete').id,2);
+  assert.equal(plan.counts.delete,0);
+  assert.equal(plan.counts.preserved,1);
+  assert.equal(plan.operations.some(op=>op.action==='delete'),false);
   assert.equal(plan.operations.find(op=>op.action==='update').changes.find(change=>change.key==='supplier').after,null);
   assert.equal(plan.sourceRows[0].supplier,'');
 });
@@ -189,10 +191,10 @@ test('a new row with the same product code is separate from archived rows',()=>{
   assert.equal(recheckPreview(selected,[],archived).operations[0].action,'restore');
 });
 
-test('stale snapshot is rejected before creating a plan', () => {
+test('snapshot revision changes do not block row-key upserts', () => {
   const current=existing(),file=excel.exportImportSnapshot({rows:current,columns,revision:'12:34'});
-  assert.throws(()=>prepareSnapshotWorkbook(file,current,{currentRevision:'12:35'}),error=>error.code==='IMPORT_SNAPSHOT_STALE');
-  assert.equal(prepareSnapshotWorkbook(file,current,{currentRevision:'12:34'}).snapshotRevision,'12:34');
+  const plan=prepareSnapshotWorkbook(file,current,{currentRevision:'12:35'});
+  assert.equal(plan.valid,true);assert.equal(plan.snapshotStale,false);assert.equal(plan.rows.some(row=>row.action==='delete'),false);
 });
 
 // Duong ghi cua web (sua o, sua hang loat, import) deu di qua prepareRows, nen

@@ -31,6 +31,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
   if (!Array.isArray(sourceRows) || (!sourceRows.length && !snapshot) || sourceRows.length > 10000) throw Error('Đợt nhập phải có 1–10.000 dòng.');
   if (!Array.isArray(existingRows)) throw Error('Thiếu dữ liệu hiện hành để đối chiếu.');
   importOptions=normalizeImportOptions(importOptions);
+  if(snapshot)importOptions.preserveMissing=true;
   const existing = new Map(existingRows.map(row => [row.rowKey, row]));
   const archivedByKey = new Map(archivedRows.map(row => [row.rowKey, row]));
   const prefixes = rows => {const found=new Set();for(const row of rows){const parts=String(row.rowKey||'').split('.');while(parts.length>1){parts.pop();found.add(parts.join('.'))}}return found};
@@ -55,14 +56,15 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
     const candidates=archived?[archived]:[];
     const requestedKey=source.recoverArchived===true?(source.recoverRowKey||archived?.rowKey):null;
     const recovered = !current&&archived&&requestedKey===archived.rowKey;
-    const effectiveKey=recovered?archived.rowKey:rowKey||current?.rowKey||null;
+    // Mã dòng chỉ dùng để ghép với dòng đang có. Mã không tồn tại được xem là
+    // một dòng mới và backend sẽ cấp Mã dòng chuẩn khi ghi.
+    const effectiveKey=recovered?archived.rowKey:current?.rowKey||null;
     const result = { sourceRow: source.__sourceRow || index + 2, rowKey: effectiveKey, action: recovered?(archived.deletedAt?'restore':'reactivate'):effectiveKey ? 'update' : 'create', errors: [], changes: [] };
     if(archived||candidates.length){result.archivedCandidate=archived?{rowKey:archived.rowKey,productCode:archived.productCode,productName:archived.productName,state:archived.deletedAt?'deleted':'inactive'}:null;result.archivedCandidates=candidates.map(row=>({rowKey:row.rowKey,productCode:row.productCode,productName:row.productName,state:row.deletedAt?'deleted':'inactive'}));if(!recovered)result.action='archived_skip'}
     const matched = current || (recovered?archived:null);
-    if (rowKey && !keyPattern.test(rowKey)) result.errors.push('Khóa dòng sai định dạng.');
+    if (rowKey && (current||archivedRowByKey) && !keyPattern.test(rowKey)) result.errors.push('Khóa dòng sai định dạng.');
     if (rowKey && counts.get(rowKey) > 1) result.errors.push('Khóa dòng trùng trong file.');
     if(recovered&&(recoveryCounts.get(archived.rowKey)||0)>1)result.errors.push('Một dòng lưu trữ chỉ được chọn khôi phục một lần.');
-    if (rowKey && !current&&!archivedRowByKey) result.errors.push(existingPrefixes.has(rowKey) ? 'Khóa đã tách; xuất lại các nhánh hiện hành.' : archivedPrefixes.has(rowKey)?'Khóa đã tách; chọn đúng nhánh đang tắt/đã xóa.':'Khóa dòng không tồn tại.');
     if (matched && (!Number.isSafeInteger(version(matched)) || version(matched) < 1)) result.errors.push('Không đọc được phiên bản dòng hiện hành.');
     // `measuredOn` is deliberately free-form text. Older preview tokens may still
     // carry a date/formula validation error created before that column changed to
@@ -192,45 +194,25 @@ function prepareWorkbook(data, existingRows, { sheetName, ...options } = {}) {
   return { ...prepareRows(parsed.rows, existingRows, options), sheetName: parsed.sheetName, ignoredColumns: parsed.ignored };
 }
 
-function validateContainerSnapshotScope(scope,currentRows,containers){
-  const targetId=String(scope.containerId),container=containers.find(item=>String(item.id)===targetId),baseline=scope.rowVersions||{},currentByKey=new Map(currentRows.map(row=>[String(row.rowKey),row])),conflicts=[];
-  if(!container||container.deleted_at||container.deletedAt||container.inactive_at||container.inactiveAt)throw Object.assign(Error('Cont trong file không còn hoạt động. Tải file của cont đang sử dụng rồi thử lại.'),{code:'IMPORT_CONTAINER_STALE',statusCode:409});
-  for(const [rowKey,expectedVersion] of Object.entries(baseline)){const current=currentByKey.get(rowKey);if(!current||String(current.version??current.v)!==String(expectedVersion)||String(current.contId??'')!==targetId)conflicts.push(rowKey)}
-  for(const current of currentRows)if(String(current.contId??'')===targetId&&!Object.hasOwn(baseline,String(current.rowKey)))conflicts.push(String(current.rowKey));
-  for(const source of scope.sourceRows||[]){const rowKey=String(source.rowKey||'').trim();if(rowKey&&!Object.hasOwn(baseline,rowKey))conflicts.push(rowKey)}
-  if(conflicts.length)throw Object.assign(Error('Cont đã thay đổi sau khi tải file. Tải lại file riêng của cont rồi áp lại chỉnh sửa để tránh ghi đè dòng mới hoặc thay đổi khác.'),{code:'IMPORT_CONTAINER_STALE',statusCode:409,conflicts:[...new Set(conflicts)]});
-  return container;
-}
-
 function prepareSnapshotWorkbook(data, existingRows, { currentRevision, listedAt = today(), archivedRows = [], regions = [], containers = [], allowStale = false, importOptions = {} } = {}) {
   if (!data || !data.byteLength || data.byteLength > 10 * 1024 * 1024) throw Error('File phải có dữ liệu và không quá 10 MB.');
   const parsed = workbook.parseImportSnapshot(data, columns);
-  const scoped=parsed.scope?.type==='container';let snapshotStale = !scoped&&parsed.revision !== currentRevision,scopedRows=existingRows;
+  const scoped=!!parsed.scope;let snapshotStale = false,scopedRows=existingRows;
   if(scoped){
-    const container=validateContainerSnapshotScope({...parsed.scope,sourceRows:parsed.rows},existingRows,containers),targetId=String(parsed.scope.containerId);
-    const region=regions.find(item=>String(item.id)===String(container.regionId??container.region_id??''));for(const source of parsed.rows){source.container=container.name;if(region)source.region=region.name}
-    scopedRows=existingRows.filter(row=>String(row.contId??'')===targetId);
-    const requested=normalizeImportOptions(importOptions),allowedFields=requested.updateExistingByRowKey?requested.updateFields:importable.map(column=>column.k),scopedFields=allowedFields.filter(key=>!['container','region'].includes(key));
-    importOptions={preserveMissing:false,updateExistingByRowKey:true,updateFields:scopedFields,clearBlanks:requested.updateExistingByRowKey?requested.clearBlanks:true};snapshotStale=false;
-  }
-  if (snapshotStale && !allowStale) { const error = Error('Dữ liệu đã thay đổi sau khi tải file. Hãy tải snapshot mới rồi sửa lại.'); error.code = 'IMPORT_SNAPSHOT_STALE'; error.statusCode = 409; throw error; }
+    const selectedFields=new Set(parsed.selectedColumns||[]);
+    if(parsed.scope.type==='container'){const container=containers.find(item=>String(item.id)===String(parsed.scope.containerId));if(container){const region=regions.find(item=>String(item.id)===String(container.regionId??container.region_id??''));for(const source of parsed.rows){source.container=container.name;if(region)source.region=region.name}}}
+    const requested=normalizeImportOptions(importOptions),allowedFields=requested.updateExistingByRowKey?requested.updateFields.filter(key=>selectedFields.has(key)):parsed.selectedColumns||importable.map(column=>column.k),scopedFields=allowedFields.filter(key=>!['rowKey','container','region'].includes(key));
+    importOptions={preserveMissing:true,updateExistingByRowKey:true,updateFields:scopedFields,clearBlanks:requested.updateExistingByRowKey?requested.clearBlanks:true};
+  }else if(parsed.selectedColumns?.length<importable.length){const requested=normalizeImportOptions(importOptions),selectedFields=new Set(parsed.selectedColumns),fields=requested.updateExistingByRowKey?requested.updateFields.filter(key=>selectedFields.has(key)):parsed.selectedColumns;importOptions={...requested,updateExistingByRowKey:true,updateFields:fields,clearBlanks:requested.updateExistingByRowKey?requested.clearBlanks:true}}
+  if(!importOptions.updateExistingByRowKey)importOptions={...normalizeImportOptions(importOptions),preserveMissing:true};
   return { ...prepareRows(parsed.rows, scopedRows, { listedAt, snapshot: true, snapshotRevision: scoped?null:currentRevision, snapshotStale, archivedRows:scoped?[]:archivedRows, regions, containers,importOptions }), sourceSnapshotRevision: parsed.revision,scope:parsed.scope, sheetName: 'Đặt hàng', ignoredColumns: [], fields: parsed.fields };
 }
 
 function recheckPreview(preview, currentRows, archivedRows = [], regions = [], containers = []) {
   if (!preview?.valid) throw Error('Toàn bộ file phải hợp lệ trước khi xác nhận.');
-  if(preview.scope?.type==='container')validateContainerSnapshotScope({...preview.scope,sourceRows:preview.sourceRows},currentRows,containers);
-  const rowsById = new Map([...archivedRows,...currentRows].map(row => [String(row.id), row]));
-  const conflicts = preview.rows.filter(row => {
-    const current = rowsById.get(String(row.id));
-    return row.id&&row.rowKey&&(!current||current.rowKey!==row.rowKey||version(current)!==row.expectedVersion);
-  });
-  if (conflicts.length) return { valid: false, code: 'VERSION_CONFLICT', conflicts: conflicts.map(row => ({ rowKey: row.rowKey, sourceRow: row.sourceRow })), operations: [] };
-  const currentKeys = new Set([...currentRows,...archivedRows].map(row => row.rowKey));
-  const missing = preview.snapshot ? preview.rows.filter(row => !['delete','archived_skip'].includes(row.action) && row.rowKey && !currentKeys.has(row.rowKey)) : [];
-  if (missing.length) return { valid: false, code: 'VERSION_CONFLICT', conflicts: missing.map(row => ({ rowKey: row.rowKey, sourceRow: row.sourceRow })), operations: [] };
-  const scopedRows=preview.scope?.type==='container'?currentRows.filter(row=>String(row.contId??'')===String(preview.scope.containerId)):currentRows;
-  return prepareRows(preview.sourceRows, scopedRows, { listedAt: preview.listedAt, snapshot: preview.snapshot, snapshotRevision: preview.snapshotRevision, snapshotStale: preview.snapshotStale, archivedRows:preview.scope?.type==='container'?[]:archivedRows, regions, containers,importOptions:preview.importOptions });
+  // Re-match by Mã dòng against the latest active rows. Version changes are
+  // allowed; the values in the uploaded file intentionally win for those rows.
+  return prepareRows(preview.sourceRows, currentRows, { listedAt: preview.listedAt, snapshot: preview.snapshot, snapshotRevision: null, snapshotStale: false, archivedRows, regions, containers,importOptions:{...preview.importOptions,preserveMissing:true} });
 }
 
-module.exports = { prepareRows, prepareWorkbook, prepareSnapshotWorkbook, recheckPreview, validateContainerSnapshotScope };
+module.exports = { prepareRows, prepareWorkbook, prepareSnapshotWorkbook, recheckPreview };

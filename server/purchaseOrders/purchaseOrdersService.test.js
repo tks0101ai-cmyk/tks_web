@@ -424,16 +424,15 @@ test('snapshot import assigns selected containers to existing and new rows; blan
  const waiting=await service.previewImport(manager,{buffer:Buffer.from(excel.exportImportSnapshot({rows:snapshot.rows.map(row=>({...row,container:''})),columns,revision:snapshot.revision}))});
  assert.equal(waiting.valid,true);await service.commitImport(manager,waiting.token);rows=(await service.list(manager)).rows;assert.ok(rows.every(row=>row.contId===null));
 });
-test('snapshot import clears blanks and soft-deletes rows omitted from the complete file',async()=>{
+test('snapshot import clears selected row blanks and preserves omitted rows',async()=>{
  const kept=await service.create(manager,{...input(),supplier:'NCC'}),removed=await service.create(manager,{...input(),productCode:'B'}),cursor=(await service.revision(manager)).revision;
- const preview=await service.previewImport(manager,{buffer:await snapshotFile([{...kept,supplier:''}])});assert.equal(preview.valid,true);assert.equal(preview.counts.update,1);assert.equal(preview.counts.delete,1);
- await service.commitImport(manager,preview.token);const listed=await service.list(manager);assert.equal(listed.rows.length,1);assert.equal(listed.rows[0].supplier,null);
- const trash=(await service.trash(manager))[0];assert.equal(trash.rowKey,removed.rowKey);
- assert.deepEqual((await db.query("SELECT summary->'deleted' deleted FROM purchase_history WHERE action='import'")).rows[0].deleted,[removed.rowKey]);
- assert.ok((await service.changes(manager,cursor)).deletedIds.includes(removed.id));await service.restore(manager,{id:removed.id,version:trash.version});assert.equal((await service.list(manager)).rows.length,2);
+ const preview=await service.previewImport(manager,{buffer:await snapshotFile([{...kept,supplier:''}])});assert.equal(preview.valid,true);assert.equal(preview.counts.update,1);assert.equal(preview.counts.delete,0);assert.equal(preview.counts.preserved,1);
+ await service.commitImport(manager,preview.token);const listed=await service.list(manager);assert.equal(listed.rows.length,2);assert.equal(listed.rows.find(row=>row.id===kept.id).supplier,null);assert.ok(listed.rows.some(row=>row.id===removed.id));
+ assert.deepEqual((await db.query("SELECT summary->'deleted' deleted FROM purchase_history WHERE action='import'")).rows[0].deleted,[]);
+ assert.ok(!(await service.changes(manager,cursor)).deletedIds.includes(removed.id));
 });
 
-test('snapshot import recycles omitted keys before creating rows and rolls back atomically',async()=>{
+test('snapshot upserts ignore revision changes and keep omitted rows while rolling back atomically',async()=>{
  const first=await service.create(manager,input()),second=await service.create(manager,{...input(),productCode:'B'});
  const preview=await service.previewImport(manager,{buffer:await snapshotFile([{...input(),productCode:'C',rowKey:''},{...input(),productCode:'D',rowKey:''}])});
  assert.equal(preview.valid,true);
@@ -442,22 +441,20 @@ test('snapshot import recycles omitted keys before creating rows and rolls back 
  assert.deepEqual((await service.list(manager)).rows.map(row=>row.id).sort(),[first.id,second.id].sort());
  assert.equal((await db.query('SELECT count(*)::int n FROM purchase_key_pool')).rows[0].n,0);
  const result=await service.commitImport(manager,preview.token);
- assert.deepEqual(result.createdKeys,['D00001','D00002']);
- assert.deepEqual((await service.list(manager)).rows.map(row=>row.rowKey).sort(),['D00001','D00002']);
+ assert.deepEqual(result.createdKeys,['D00003','D00004']);
+ assert.deepEqual((await service.list(manager)).rows.map(row=>row.rowKey).sort(),['D00001','D00002','D00003','D00004']);
  const stale=await service.previewImport(manager,{buffer:await snapshotFile([{...input(),productCode:'E',rowKey:''}])});
  const current=(await service.list(manager)).rows[0];await service.update(manager,current.id,{version:current.version,changes:{supplier:'Changed'}});
- const activeBefore=(await db.query('SELECT id,row_key,deleted_at FROM purchase_orders ORDER BY id')).rows;
- const poolBefore=(await db.query('SELECT row_key FROM purchase_key_pool ORDER BY row_key')).rows;
- await assert.rejects(service.commitImport(manager,stale.token),error=>error.code==='IMPORT_SNAPSHOT_STALE');
- assert.deepEqual((await db.query('SELECT id,row_key,deleted_at FROM purchase_orders ORDER BY id')).rows,activeBefore);
- assert.deepEqual((await db.query('SELECT row_key FROM purchase_key_pool ORDER BY row_key')).rows,poolBefore);
+ const saved=await service.commitImport(manager,stale.token);
+ assert.deepEqual(saved.createdKeys,['D00005']);
+ assert.equal((await db.query('SELECT count(*)::int n FROM purchase_orders WHERE deleted_at IS NULL')).rows[0].n,5);
 });
 test('snapshot import retirement keeps operation-less history isolated after reuse and restore',async()=>{
  const old=await service.create(manager,input());
  await db.query("INSERT INTO purchase_history(action,actor_id,actor_name,summary) VALUES('legacy_edit',$1,$2,$3)",[manager.id,manager.hoTen,JSON.stringify({rowKey:old.rowKey})]);
  const empty=await service.previewImport(manager,{buffer:await snapshotFile([])});assert.equal(empty.valid,true);await service.commitImport(manager,empty.token);
  const reservation=await service.reserveKey(manager),current=await service.create(manager,{...input(),productCode:'CURRENT',rowKey:reservation.rowKey,reservationId:reservation.reservationId});
- assert.equal(current.rowKey,old.rowKey);
+ assert.notEqual(current.rowKey,old.rowKey);
  const trash=(await service.trash(manager)).find(row=>row.id===old.id);await service.restore(manager,{id:old.id,version:trash.version});
  const restored=(await service.list(manager)).rows.find(row=>row.id===old.id);assert.notEqual(restored.rowKey,current.rowKey);
  assert.ok(!(await service.history(manager,current.id)).some(row=>row.action==='legacy_edit'));
@@ -504,10 +501,10 @@ test('snapshot restores deleted families sequentially when a reused root key has
  const activeFamilies=new Map(active.map(row=>[String(row.root_order_id),row.root_key]));assert.equal(new Set(activeFamilies.values()).size,activeFamilies.size);
  assert.equal((await db.query('SELECT count(*)::int n FROM purchase_key_pool p WHERE EXISTS(SELECT 1 FROM purchase_orders o WHERE o.root_key=p.row_key AND o.deleted_at IS NULL)')).rows[0].n,0);
 });
-test('snapshot changed after download is rejected before preview',async()=>{
+test('snapshot changed after download still previews against current rows',async()=>{
  const row=await service.create(manager,input()),snapshot=await service.importSnapshot(manager),buffer=Buffer.from(excel.exportImportSnapshot({rows:snapshot.rows,columns,revision:snapshot.revision}));
  await service.update(manager,row.id,{version:row.version,changes:{supplier:'Changed'}});
- await assert.rejects(service.previewImport(manager,{buffer}),error=>error.code==='IMPORT_SNAPSHOT_STALE');assert.equal((await service.list(manager)).rows[0].supplier,'Changed');
+ const preview=await service.previewImport(manager,{buffer});assert.equal(preview.valid,true);assert.equal(preview.snapshotStale,false);assert.equal(preview.counts.update,1);assert.equal((await service.list(manager)).rows[0].supplier,'Changed');
 });
 test('snapshot import ignores measurement and formula columns while applying writable changes',async()=>{
  const row=await service.create(manager,input()),snapshot=await service.importSnapshot(manager),fileRow={...snapshot.rows[0],supplier:'Nhà cung cấp mới',literWarehouse:1.25,m3Warehouse:.42,literChina:1.1,literDiff:-12,gramWarehouse:550,gramChina:500,gramDiff:-9,measuredOn:'2026-11-12',ratio:.75,totalQty:999999};
@@ -516,7 +513,7 @@ test('snapshot import ignores measurement and formula columns while applying wri
  const latest=await service.importSnapshot(manager),same=await service.previewImport(manager,{buffer:Buffer.from(excel.exportImportSnapshot({rows:latest.rows,columns,revision:latest.revision}))});assert.equal(same.valid,true);assert.equal(same.counts.unchanged,1);await service.commitImport(manager,same.token);
 });
 
-test('snapshot import processes deletes and generated keys in a bounded number of queries',async()=>{
+test('snapshot import upserts rows without deleting omitted rows in a bounded number of queries',async()=>{
  const oldRows=[];
  for(let i=0;i<20;i++)oldRows.push(await service.create(manager,{...input(),productCode:'OLD'+i}));
  const preview=await service.previewImport(manager,{buffer:await snapshotFile(Array.from({length:20},(_,i)=>({...input(),productCode:'NEW'+i,rowKey:''})))});
@@ -524,16 +521,17 @@ test('snapshot import processes deletes and generated keys in a bounded number o
  let queryCount=0;const query=(sql,params)=>{queryCount++;return db.query(sql,params)};
  const measured=createPurchaseOrdersService({pool:{query,connect:async()=>({query,release(){}})},events});
  queryCount=0;const result=await measured.commitImport(manager,preview.token);
- assert.equal(result.counts.create,20);assert.equal(result.counts.delete,20);
- assert.deepEqual([...result.createdKeys].sort(),oldRows.map(row=>row.rowKey).sort());
+ assert.equal(result.counts.create,20);assert.equal(result.counts.delete,0);
+ assert.equal((await db.query('SELECT count(*)::int n FROM purchase_orders WHERE deleted_at IS NULL')).rows[0].n,40);
  assert.ok(queryCount<40,`snapshot commit made ${queryCount} sequential database queries`);
 });
-test('stale import rejects valid creations and updates together', async () => {
+test('row-key import commits valid creations and updates despite concurrent version changes', async () => {
   const row=await service.create(manager,input());
   const preview=await service.previewImport(manager,{buffer:await snapshotFile([{...input(),rowKey:row.rowKey,cartonCount:7},input()])});
   await service.update(manager,row.id,{version:1,changes:{supplier:'Other'}});
-  await assert.rejects(service.commitImport(manager,preview.token),e=>e.code==='IMPORT_SNAPSHOT_STALE');
-  assert.equal((await service.list(manager)).rows.length,1);assert.equal((await service.list(manager)).rows[0].cartonCount,100);
+  const result=await service.commitImport(manager,preview.token);
+  assert.equal(result.counts.create,1);assert.equal(result.counts.update,1);
+  assert.equal((await service.list(manager)).rows.length,2);assert.equal((await service.list(manager)).rows.find(item=>item.id===row.id).cartonCount,7);
 });
 test('failure while updating read models rolls back rows and audit and emits no success event', async () => {
   const query=(sql,params)=>db.query(sql,params);let notifications=0;events.once('purchase-orders-changed',()=>notifications++);
@@ -849,11 +847,11 @@ test('server supports stepwise undo while a later actor edit blocks an older ope
 test('two actors merge separate fields, block same-cell overwrite and stale delete',async()=>{
  const other={id:'other',hoTen:'Nhân viên khác'},a=await service.create(manager,input());const first=await service.update(manager,a.id,{version:a.version,changes:{supplier:'A'}});const second=await service.update(other,a.id,{version:a.version,before:{cartonCount:100},changes:{cartonCount:80}});assert.equal(second.supplier,'A');await assert.rejects(service.update(other,a.id,{version:a.version,before:{supplier:null},changes:{supplier:'B'}}),e=>e.code==='VERSION_CONFLICT');await assert.rejects(service.remove(manager,{rows:[{id:a.id,version:first.version}]}),e=>e.code==='VERSION_CONFLICT');assert.equal((await service.list(manager)).rows[0].cartonCount,80);
 });
-test('deleting a row after import preview invalidates the whole import and does not resurrect it',async()=>{
- const a=await service.create(manager,input()),preview=await service.previewImport(manager,{buffer:await snapshotFile([{...a,cartonCount:3},{...input(),productCode:'NEW'}])});await service.remove(manager,{rows:[{id:a.id,version:a.version}]});await assert.rejects(service.commitImport(manager,preview.token));assert.equal((await service.list(manager)).rows.length,0);
+test('deleting a row after import preview does not cause a version conflict or resurrect it',async()=>{
+ const a=await service.create(manager,input()),preview=await service.previewImport(manager,{buffer:await snapshotFile([{...a,cartonCount:3},{...input(),productCode:'NEW',rowKey:''}])});await service.remove(manager,{rows:[{id:a.id,version:a.version}]});const saved=await service.commitImport(manager,preview.token);assert.equal(saved.counts.create,1);const active=(await service.list(manager)).rows;assert.equal(active.length,1);assert.equal(active[0].productCode,'NEW');assert.ok((await service.trash(manager)).some(row=>row.id===a.id));
 });
-test('import confirm returns a version conflict when a row changes without a history entry',async()=>{
- const a=await service.create(manager,input()),preview=await service.previewImport(manager,{buffer:await snapshotFile([{...a,cartonCount:3}])});await db.query('UPDATE purchase_orders SET version=version+1 WHERE id=$1',[a.id]);await assert.rejects(service.commitImport(manager,preview.token),e=>e.code==='VERSION_CONFLICT');assert.equal((await service.list(manager)).rows[0].cartonCount,100);
+test('import confirm matches row key even when its version changes without a history entry',async()=>{
+ const a=await service.create(manager,input()),preview=await service.previewImport(manager,{buffer:await snapshotFile([{...a,cartonCount:3}])});await db.query('UPDATE purchase_orders SET version=version+1 WHERE id=$1',[a.id]);await service.commitImport(manager,preview.token);assert.equal((await service.list(manager)).rows[0].cartonCount,3);
 });
 
 test('employee assignment can be cleared using the buyer name field',async()=>{

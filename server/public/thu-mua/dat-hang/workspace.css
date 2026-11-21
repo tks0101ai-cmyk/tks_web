@@ -117,8 +117,10 @@
 /* Mã SP: chữ chiếm hết ô để một nhấn (tách dòng) / hai nhấn (lịch sử) dễ trúng; bút chì mới mở ô sửa. */
 .purchase-page #orderTable td[data-field="productCode"]{display:table-cell;vertical-align:middle}
 .purchase-page #orderTable .code-cell{display:flex;align-items:center;gap:2px;min-width:0;width:100%}
-.purchase-page #orderTable td[data-field="productCode"] .code-label{flex:1;min-width:0;cursor:pointer;overflow:hidden;text-overflow:ellipsis;border-radius:2px}
-.purchase-page #orderTable td[data-field="productCode"] .code-label:hover{background:var(--panel-2);box-shadow:inset 0 -1px 0 var(--blue)}
+.purchase-page #orderTable td[data-field="productCode"] .code-label{flex:1;min-width:0;cursor:text;overflow:hidden;text-overflow:ellipsis;border-radius:2px}
+.purchase-page #orderTable td[data-field="rowKey"] .row-key-action{cursor:pointer;text-decoration:underline dotted var(--muted);text-underline-offset:3px}
+.purchase-page #orderTable td[data-field="rowKey"] .row-key-action:hover{color:var(--blue)}
+.purchase-page #orderTable td[data-field="rowKey"] .row-key-action:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
 .purchase-page #orderTable td[data-field="productCode"] .code-label:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
 .purchase-page #orderTable td[data-field="productCode"] .code-edit{flex:none;padding:0 3px;min-height:0;line-height:1.1;font-size:10px;border:0;background:transparent;color:var(--muted);cursor:pointer;opacity:0}
 .purchase-page #orderTable td[data-field="productCode"]:hover .code-edit,.purchase-page #orderTable td[data-field="productCode"] .code-edit:focus-visible{opacity:1}
@@ -822,3 +824,29 @@
 .purchase-page #watchedContainer .watched-container-table td select{box-sizing:border-box;width:100%;min-width:0;max-width:none;min-height:25px;padding:2px 20px 2px 5px;border:1px solid var(--border);border-radius:var(--radius-sm);background-color:var(--panel);font-size:10.5px;line-height:1.2}
 .purchase-help{display:inline-grid;place-items:center;width:16px;height:16px;margin-left:3px;border:1px solid currentColor;border-radius:50%;color:var(--muted);font-size:11px;font-weight:700;line-height:1;cursor:help;vertical-align:middle}
 .purchase-help:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+
+/* Snapshot scope and column picker. */
+.purchase-snapshot-picker{width:min(760px,calc(100vw - 28px));max-width:none;max-height:min(88dvh,900px);padding:0;border:1px solid var(--border);border-top:3px solid var(--primary);border-radius:12px;background:var(--panel);color:var(--text);box-shadow:0 24px 70px #0008}
+.purchase-snapshot-picker::backdrop{background:#020617a6;backdrop-filter:blur(3px)}
+.purchase-snapshot-picker .purchase-snapshot-picker-card{display:grid;gap:16px;padding:0;margin:0}
+.purchase-snapshot-picker header{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid var(--border);background:var(--panel-2)}
+.purchase-snapshot-picker header small{color:var(--primary);font-size:10px;font-weight:800;letter-spacing:.08em}
+.purchase-snapshot-picker h2{margin:2px 0 0;font-size:18px}
+.purchase-snapshot-picker h3{margin:0 0 8px;font-size:13px}
+.purchase-snapshot-picker p,.purchase-snapshot-picker-choice small{color:var(--muted)}
+.purchase-snapshot-picker section{padding:0 18px}
+.purchase-snapshot-picker .purchase-snapshot-choice{display:flex;align-items:flex-start;gap:9px;margin:7px 0;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--panel-2);cursor:pointer}
+.purchase-snapshot-picker .purchase-snapshot-choice:has(input:checked){border-color:var(--primary);box-shadow:inset 0 0 0 1px var(--primary)}
+.purchase-snapshot-picker .purchase-snapshot-choice input,.purchase-snapshot-picker .purchase-snapshot-columns input{width:auto;min-height:0;margin:2px 0 0;accent-color:var(--primary)}
+.purchase-snapshot-picker .purchase-snapshot-choice span{display:grid;gap:3px}
+.purchase-snapshot-picker .purchase-snapshot-choice small,.purchase-snapshot-picker .purchase-snapshot-columns small{color:var(--muted);font-size:11px}
+.purchase-snapshot-picker .purchase-snapshot-columns-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.purchase-snapshot-picker .purchase-snapshot-columns-head p{margin:0 0 8px;font-size:11px}
+.purchase-snapshot-picker .purchase-snapshot-columns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px 14px;max-height:34dvh;overflow:auto;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--panel-2)}
+.purchase-snapshot-picker .purchase-snapshot-columns label{display:flex;align-items:center;gap:7px;min-width:0;margin:0;font-size:11px}
+.purchase-snapshot-picker footer{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;border-top:1px solid var(--border);background:var(--panel-2)}
+.purchase-snapshot-picker button{min-height:32px;padding:6px 11px;border:1px solid var(--border);border-radius:7px;background:var(--panel);color:var(--text);font:inherit;cursor:pointer}
+.purchase-snapshot-picker footer [data-snapshot-download]{border-color:var(--primary);background:var(--primary);color:var(--primary-text);font-weight:700}
+.purchase-snapshot-picker button:disabled{opacity:.55;cursor:not-allowed}
+.purchase-page #modalBody .purchase-import-scoped-note{padding:10px 12px;border:1px solid var(--border-focus);border-radius:8px;background:color-mix(in srgb,var(--primary) 9%,var(--panel));color:var(--text)}
+@media(max-width:620px){.purchase-snapshot-picker .purchase-snapshot-columns{grid-template-columns:repeat(2,minmax(0,1fr))}.purchase-snapshot-picker .purchase-snapshot-columns-head{align-items:flex-start}}

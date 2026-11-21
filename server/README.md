@@ -1443,9 +1443,9 @@ Cập nhật cuối: 12/11/2026.
 ## Thu mua — snapshot import Excel (12/11/2026)
 
 - `GET /api/purchase-orders/import/snapshot` (`purchase.import`) tải mọi dòng Thu mua đang hoạt động, không phụ thuộc lọc/trang, dưới dạng `.xlsx` gồm `Đặt hàng`, `Hướng dẫn`, `__TOKOSI` ẩn. Snapshot và revision lịch sử được đọc trong cùng giao dịch `REPEATABLE READ READ ONLY`.
-- `POST /import/preview` chỉ nhận workbook snapshot này (tối đa 10 MB/10.000 dòng), kiểm tra đủ cột và revision. Preview đếm thêm/sửa/không đổi/xóa mềm/lỗi; không ghi dữ liệu. Tên buyer mới được đề xuất thêm vào danh mục NV Thu mua; NV đã ngừng hoạt động được đề xuất kích hoạt lại.
-- `POST /import/revise` cập nhật lại preview; `POST /import/confirm` xác nhận toàn bộ. Revision và danh mục NV được kiểm tra lại trong transaction trước khi ghi; các NV đề xuất chỉ được thêm/kích hoạt cùng lúc với snapshot đã xác nhận. Snapshot cũ trả 409 `IMPORT_SNAPSHOT_STALE`; nếu danh mục đổi hoặc trùng cách viết sau preview thì từ chối toàn bộ.
-- Ô trống xóa giá trị tùy chọn; thiếu Mã dòng tạo mã mới; Mã dòng có sẵn cập nhật; dòng active bị bỏ khỏi workbook được xóa mềm cùng audit, projection và realtime. Một lỗi/xung đột chặn toàn bộ snapshot. Không migration.
+- `POST /import/preview` chỉ nhận workbook snapshot này (tối đa 10 MB/10.000 dòng), kiểm tra đủ cột nhưng không chặn theo revision. Preview đếm thêm/sửa/không đổi/lỗi; không ghi dữ liệu. Tên buyer mới được đề xuất thêm vào danh mục NV Thu mua; NV đã ngừng hoạt động được đề xuất kích hoạt lại.
+- `POST /import/revise` cập nhật lại preview; `POST /import/confirm` đối chiếu lại theo Mã dòng với dữ liệu mới nhất ngay trong transaction. Nếu Mã dòng đang có thì cập nhật dòng đó; nếu Mã dòng trống hoặc không tìm thấy thì tạo dòng mới với khóa do hệ thống cấp. Thay đổi phiên bản toàn hệ thống hoặc phiên bản của một dòng không chặn import.
+- Ô trống xử lý theo lựa chọn cột/ô trống trên giao diện. Dòng không có trong workbook được giữ nguyên; import chỉ thêm/cập nhật những dòng trong file. Danh mục NV/vùng/cont và dữ liệu dòng vẫn được xác thực trước khi ghi. Không migration.
 
 Cập nhật cuối: 15/11/2026.
 
