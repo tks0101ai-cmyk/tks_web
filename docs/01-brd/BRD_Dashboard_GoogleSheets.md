@@ -724,7 +724,7 @@ Người dùng tạo cont với Tổng m³ giả định để dự tính cướ
 
 Cập nhật gần nhất: 14/11/2026.
 
-22/11/2026 — Thu mua cần tìm kiếm nhanh không dấu, giữ nguyên các ngày lên list khi gộp mã và gán mã nhập mới vào đúng nhóm Chờ xếp theo vùng.
+22/11/2026 — Thu mua cần tìm kiếm nhanh không dấu, giữ nguyên các ngày lên list khi gộp mã và gán các nhãn Chờ nhập mới vào đúng nhóm Chờ xếp theo vùng.
 
 Cập nhật gần nhất: 22/11/2026.
 

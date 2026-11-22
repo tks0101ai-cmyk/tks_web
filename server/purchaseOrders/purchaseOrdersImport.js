@@ -77,10 +77,10 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
       const value = source[col.k];
       if(col.si){
         if(!snapshot&&!allowContainerAssignment)continue;
-        const text=String(value??'').trim(),waitingMatch=/^(?:cont\s*)?chờ(?:\s+|-)?xếp(?:\s+(.+))?$/i.exec(text)||(/^chờ\s*-\s*h$/i.test(text)?[text,'H']:null),waiting=!text||!!waitingMatch||/^tính giá$/i.test(text);
+        const text=String(value??'').trim(),waitingMatch=/^(?:cont\s*)?chờ(?:\s+(?:xếp(?:\s+(.+))?|(.+))|\s*-\s*(.+))?$/i.exec(text),waiting=!text||!!waitingMatch||/^tính giá$/i.test(text);
         if(waiting){
           if(snapshot||allowContainerAssignment)values.contId=null;
-          const regionName=waitingMatch?.[1]?.trim();
+          const regionName=(waitingMatch?.[1]||waitingMatch?.[2]||waitingMatch?.[3]||'').replace(/^xếp\s+/i,'').trim();
           if(regionName){const region=regionsByName.get(regionName.toLocaleLowerCase('vi'))||regionsByKey.get(normalizeRegionName(regionName));if(!region||region.isActive===false)result.errors.push('Tên cont: không tìm thấy vùng Chờ xếp đang hoạt động “'+regionName+'”.');else if(values.regionId!=null&&String(values.regionId)!==String(region.id))result.errors.push('Tên cont: vùng Chờ xếp '+region.name+' không khớp với cột Vùng.');else values.regionId=String(region.id)}
           continue;
         }

@@ -1509,6 +1509,6 @@ Nhóm Chờ xếp là ảo, không phải cont lưu trong `product_containers`; 
 
 Cập nhật gần nhất: 21/11/2026.
 
-22/11/2026 — Migration tìm kiếm `0140` dùng phép nối text immutable thay `concat_ws` để tạo trigram index; API dùng cùng biểu thức lọc. `0141` đổi `purchase_orders.listed_at` sang TEXT. Import Excel ánh xạ hậu tố `Chờ xếp <vùng>` vào nhóm chờ ảo của vùng đó; log lỗi khởi tạo schema nêu tên migration, mã và nội dung PostgreSQL.
+22/11/2026 — Migration tìm kiếm `0140` dùng phép nối text immutable thay `concat_ws` để tạo trigram index; API dùng cùng biểu thức lọc. `0141` đổi `purchase_orders.listed_at` sang TEXT. Import Excel ánh xạ `Chờ`, `Chờ <vùng>` và `Chờ xếp <vùng>` vào nhóm chờ ảo theo vùng; log lỗi khởi tạo schema nêu tên migration, mã và nội dung PostgreSQL.
 
 Cập nhật gần nhất: 22/11/2026.

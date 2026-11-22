@@ -793,7 +793,7 @@ Cập nhật cuối: 13/11/2026.
 Cho phép nhập biểu thức Excel-style trực tiếp tại ô Tiền VC của cont. Lưu biểu thức tối đa 512 ký tự, parser an toàn chỉ nhận số học, `D2`/`M3_CONT` (tổng m³ cont), `M3_XE`, và `SUM`/`ROUND`/`MIN`/`MAX`/`ABS`; không dùng `eval`. Công thức cho tổng cước cont hiện tại; kết quả chia tổng m³ thành VC/m³, rồi cùng phép chiếu phân bổ cước dòng và NET trong thao tác thay đổi. Số tiền nhập trực tiếp tiếp tục là chế độ thủ công. Migration `0126_purchase_container_freight_formula.sql` thêm trường công thức, được nạp khi khởi tạo schema Thu mua. Test unit/service/projection/UI phải xác nhận parser, lưu/sửa chế độ, m³ đổi, từ chối kết quả không hợp lệ kèm rollback và công thức hiển thị khi focus.
 Cập nhật gần nhất: 14/11/2026.
 
-22/11/2026 — Thu mua: migration `0140` đổi biểu thức trigram index khỏi `concat_ws` sang nối text immutable; `0141` đổi `listed_at` sang TEXT. Import mã mới ánh xạ `Chờ xếp <vùng>` vào nhóm chờ ảo đúng vùng, không tạo cont vật lý.
+22/11/2026 — Thu mua: migration `0140` đổi biểu thức trigram index khỏi `concat_ws` sang nối text immutable; `0141` đổi `listed_at` sang TEXT. Import mã mới ánh xạ `Chờ`, `Chờ <vùng>` và `Chờ xếp <vùng>` vào nhóm chờ ảo đúng vùng.
 
 Cập nhật gần nhất: 22/11/2026.
 

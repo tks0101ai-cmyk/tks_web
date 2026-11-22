@@ -1079,6 +1079,6 @@ Cập nhật gần nhất: 14/11/2026.
 
 `0141_purchase_listed_at_text.sql` đổi `purchase_orders.listed_at` từ timestamp sang TEXT, giữ ngày cũ theo dạng `YYYY-MM-DD`, để cho phép lưu các ngày lên list đã gộp. Các index dùng cột trực tiếp, không có biểu thức để PostgreSQL từ chối vì volatility.
 
-Import mã mới: ô Tên cont `Chờ xếp <tên vùng>` gán `container_id=NULL` và giữ `region_id` theo vùng đã nêu; cột Vùng nếu có phải khớp hậu tố.
+Import mã mới: Tên cont `Chờ`, `Chờ <tên vùng>` hoặc `Chờ xếp <tên vùng>` gán `container_id=NULL`; vùng lấy từ hậu tố hoặc cột Vùng và hai giá trị phải khớp.
 
 Cập nhật gần nhất: 22/11/2026.
