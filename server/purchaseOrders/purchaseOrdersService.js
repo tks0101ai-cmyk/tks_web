@@ -21,7 +21,7 @@ const numeric = new Set(['num','num1','num2','num3','num4','cny','money','pct','
 const containerProjectionFields = new Set(['assumedM3','containerFxRate','arrivalNote','arrivalDate','name','freight','freightMode','freightFormula','freightBase','freightCapacity']);
 const PROJECTION_LOCK_KEY=20531074;
 const fail = (statusCode,code,message,extra={}) => Object.assign(new Error(message),{statusCode,code,...extra});
-const MAX_NEW_CODE_IMPORT_ROWS=1000;
+const MAX_NEW_CODE_IMPORT_ROWS=5000;
 const { normalizeName } = require('./containerNames');
 const searchFoldGroups={a:'àáảãạăằắẳẵặâầấẩẫậ',e:'èéẻẽẹêềếểễệ',i:'ìíỉĩị',o:'òóỏõọôồốổỗộơờớởỡợ',u:'ùúủũụưừứửữự',y:'ỳýỷỹỵ',d:'đ'};
 const searchFoldFrom=Object.values(searchFoldGroups).join(''),searchFoldTo=Object.entries(searchFoldGroups).map(([letter,chars])=>letter.repeat([...chars].length)).join('');
