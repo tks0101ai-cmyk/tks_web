@@ -21,7 +21,7 @@
         if(node.textContent!==text)node.textContent=text;
         th.querySelectorAll('.cn').forEach(el=>{if(!el.hidden)el.hidden=true;if(el.style.display!=='none')el.style.display='none'});
       });
-      const label=lang==='zh'?'中文 ▾':'Tiếng Việt ▾';if(button.textContent!==label)button.textContent=label;button.setAttribute('aria-label','Ngôn ngữ tiêu đề: '+(lang==='zh'?'中文':'Tiếng Việt'));
+      const buttonLabel=lang==='zh'?'中文 ▾':'Tiếng Việt ▾';if(button.textContent!==buttonLabel)button.textContent=buttonLabel;button.setAttribute('aria-label','Ngôn ngữ tiêu đề: '+(lang==='zh'?'中文':'Tiếng Việt'));
     }
     button.onclick=()=>{lang=lang==='vi'?'zh':'vi';try{storage.setItem('purchase:header-language',lang)}catch{}onChange(lang);apply()};
     const observer=new doc.defaultView.MutationObserver(apply);observer.observe(doc.body,{childList:true,subtree:true});apply();
