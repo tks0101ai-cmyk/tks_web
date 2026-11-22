@@ -671,7 +671,7 @@ Cập nhật gần nhất: 16/11/2026.
 
 Cập nhật gần nhất: 17/11/2026.
 
-22/11/2026 — Migration tìm kiếm Thu mua `0140` thay `concat_ws` (STABLE) bằng phép nối text có xử lý NULL để tạo trigram index hợp lệ; đồng bộ biểu thức lọc trong API. Migration `0141` đổi `purchase_orders.listed_at` sang TEXT để chứa nhiều ngày sau khi gộp mã.
+22/11/2026 — Migration tìm kiếm Thu mua `0140` thay `concat_ws` (STABLE) bằng phép nối text có xử lý NULL để tạo trigram index hợp lệ; đồng bộ biểu thức lọc trong API. Migration `0141` đổi `purchase_orders.listed_at` sang TEXT để chứa nhiều ngày sau khi gộp mã. Import nhận hậu tố vùng trong nhãn `Chờ xếp <vùng>`.
 
 Cập nhật gần nhất: 22/11/2026.
 
