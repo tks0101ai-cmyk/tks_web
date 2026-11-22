@@ -440,7 +440,7 @@
   };
   $('addBulk').onclick=()=>{
     if(!allowed('edit','orders'))return;
-    modal('<h2>Thêm mã</h2><p>Mỗi dòng nhập <b>Mã SP</b>, một khoảng trắng hoặc tab, rồi <b>Số thùng</b>. Mã đã có sẽ lấy Tên SP, NCC, nhân viên, ngày lên list, SL/T, giá tệ, Kg/T, m³/thùng và vùng từ lần gần nhất.</p><label for="bulkTarget">Thêm vào cont</label><select id="bulkTarget">'+options(false,true,'Chờ xếp')+'</select><p>Mã mới vào vùng AA khi chọn Chờ xếp.</p><label for="bulkCodes">Danh sách mã</label><textarea id="bulkCodes" rows="14" placeholder="ABC001 10&#10;ABC002 15"></textarea><p id="bulkCodesStatus" role="status">Mỗi dòng: Mã SP Số thùng; tối đa 500 mã.</p><button type="button" id="bulkCodesSave">Thêm vào bảng</button>');
+    modal('<h2>Thêm mã</h2><p>Mỗi dòng nhập <b>Mã SP</b>, một khoảng trắng hoặc tab, rồi <b>Số thùng</b>. Mã đã có sẽ lấy Tên SP, NCC, nhân viên, SL/T, giá tệ, Kg/T, m³/thùng và vùng từ lần gần nhất; Lên list là ngày thêm mới.</p><label for="bulkTarget">Thêm vào cont</label><select id="bulkTarget">'+options(false,true,'Chờ xếp')+'</select><p>Mã mới vào vùng AA khi chọn Chờ xếp.</p><label for="bulkCodes">Danh sách mã</label><textarea id="bulkCodes" rows="14" placeholder="ABC001 10&#10;ABC002 15"></textarea><p id="bulkCodesStatus" role="status">Mỗi dòng: Mã SP Số thùng; tối đa 500 mã.</p><button type="button" id="bulkCodesSave">Thêm vào bảng</button>');
     const textarea=$('bulkCodes'),status=$('bulkCodesStatus'),save=$('bulkCodesSave');
     const latestByCode=new Map();for(const item of data.rows){const code=String(item.productCode||'').trim(),previous=latestByCode.get(code.toLocaleLowerCase('vi'));if(code&&(!previous||latestListedAtEpoch(item.listedAt)>latestListedAtEpoch(previous.listedAt)||latestListedAtEpoch(item.listedAt)===latestListedAtEpoch(previous.listedAt)&&Number(item.id)>Number(previous.id)))latestByCode.set(code.toLocaleLowerCase('vi'),item)}
     const parse=()=>textarea.value.split(/\r?\n/).map(line=>line.trim()).filter(Boolean);
@@ -448,9 +448,9 @@
       const lines=parse(),today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
       const rows=lines.map(line=>{
         const match=line.match(/^(.*?)\s+([\d,]+)$/),code=(match?.[1]||line).trim(),previous=latestByCode.get(code.toLocaleLowerCase('vi')),input={productCode:code,cartonCount:match?Number(match[2].replaceAll(',','')):null};
-        if(previous)for(const key of ['productName','supplier','buyer','listedAt','qtyPerCarton','unitPriceCny','kgPerCarton','m3PerCarton','regionId'])if(previous[key]!=null&&(key!=='qtyPerCarton'||Number.isSafeInteger(Number(previous[key]))&&Number(previous[key])>0))input[key]=previous[key];
+        if(previous)for(const key of ['productName','supplier','buyer','qtyPerCarton','unitPriceCny','kgPerCarton','m3PerCarton','regionId'])if(previous[key]!=null&&(key!=='qtyPerCarton'||Number.isSafeInteger(Number(previous[key]))&&Number(previous[key])>0))input[key]=previous[key];
         if(input.regionId&&!(data.regions||[]).some(region=>String(region.id)===String(input.regionId)&&region.isActive!==false))delete input.regionId;
-        input.listedAt=input.listedAt||normalizeDay(today);
+        input.listedAt=normalizeDay(today);
         if(input.productName==null&&!previous)input.productName='';return input;
       });
       const invalid=rows.map((row,index)=>!row.productCode||!Number.isSafeInteger(row.cartonCount)||row.cartonCount<=0?index+1:null).filter(Boolean);
