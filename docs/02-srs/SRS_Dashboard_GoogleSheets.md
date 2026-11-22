@@ -1302,7 +1302,7 @@ Cập nhật cuối: 13/11/2026.
 - Migration `0126_purchase_container_freight_formula.sql` thêm `product_containers.freight_formula`, đăng ký trong `ensurePurchaseSchema.FILES`. Cần kiểm staging trước khi áp vào production; chưa deploy.
 Cập nhật gần nhất: 16/11/2026.
 
-22/11/2026 — Thu mua: trường Lên list lưu dạng văn bản để bảo toàn nhiều ngày khi gộp mã; ngày gần nhất lấy từ ngày cuối trong chuỗi.
+22/11/2026 — Thu mua: tìm kiếm không dấu dùng index trigram với phép nối text; trường Lên list lưu dạng văn bản để bảo toàn nhiều ngày khi gộp mã.
 
 Cập nhật gần nhất: 22/11/2026.
 

@@ -1073,7 +1073,7 @@ Cập nhật gần nhất: 14/11/2026.
 
 ## Migration 0140 — tăng tốc tìm kiếm Thu mua (19/11/2026)
 
-`0140_purchase_order_search_trgm.sql` bật `pg_trgm` và tạo GIN index cho đúng biểu thức tìm kiếm không phân biệt dấu của lưới Đặt hàng. Các điều kiện lọc và kết quả tìm kiếm không đổi; truy vấn chứa từ khóa từ 3 ký tự trở lên có thể dùng index thay vì quét toàn bộ đơn đang hoạt động.
+`0140_purchase_order_search_trgm.sql` bật `pg_trgm` và tạo GIN index cho biểu thức tìm kiếm không phân biệt dấu của lưới Đặt hàng. Phép nối các trường dùng toán tử text và `COALESCE` để biểu thức index chỉ dùng hàm immutable. Các điều kiện lọc và kết quả tìm kiếm không đổi; truy vấn chứa từ khóa từ 3 ký tự trở lên có thể dùng index.
 
 ## Migration 0141 — ngày lên list dạng văn bản (22/11/2026)
 

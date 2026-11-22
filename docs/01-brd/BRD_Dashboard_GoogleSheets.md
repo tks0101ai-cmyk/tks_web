@@ -724,7 +724,7 @@ Người dùng tạo cont với Tổng m³ giả định để dự tính cướ
 
 Cập nhật gần nhất: 14/11/2026.
 
-22/11/2026 — Thu mua cần giữ nguyên các ngày lên list khi gộp mã, không ép giá trị nhiều ngày vào một timestamp.
+22/11/2026 — Thu mua cần tìm kiếm nhanh không dấu và giữ nguyên các ngày lên list khi gộp mã, không ép nhiều ngày vào một timestamp.
 
 Cập nhật gần nhất: 22/11/2026.
 

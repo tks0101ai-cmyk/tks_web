@@ -1509,6 +1509,6 @@ Nhóm Chờ xếp là ảo, không phải cont lưu trong `product_containers`; 
 
 Cập nhật gần nhất: 21/11/2026.
 
-22/11/2026 — Migration Thu mua `0141_purchase_listed_at_text.sql` đổi `purchase_orders.listed_at` sang TEXT để lưu nhiều ngày lên list đã gộp. Index không dùng biểu thức; log lỗi khởi tạo schema nêu tên migration, mã và nội dung lỗi PostgreSQL.
+22/11/2026 — Migration tìm kiếm `0140` dùng phép nối text immutable thay `concat_ws` để tạo trigram index; API dùng cùng biểu thức lọc. `0141` đổi `purchase_orders.listed_at` sang TEXT. Log lỗi khởi tạo schema nêu tên migration, mã và nội dung PostgreSQL.
 
 Cập nhật gần nhất: 22/11/2026.

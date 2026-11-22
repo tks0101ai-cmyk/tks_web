@@ -24,7 +24,7 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 
 ## Đang dở / chờ
 
-- [ ] 22/11 — Thu mua: sửa migration `0141` lỗi PostgreSQL `42P17`, ghi rõ lỗi khởi tạo schema — deploy web, xác nhận migration 0141 được áp rồi thử lại import; production chưa xác minh.
+- [ ] 22/11 — Thu mua: sửa migration `0140` lỗi PostgreSQL `42P17` do `concat_ws` trong trigram index — deploy web, xác nhận 0140/0141 được áp rồi thử lại import; production chưa xác minh.
 
 - [ ] 20/11 — Thu mua: cho phép lưu đồng thời các trường cont khác nhau và chỉ báo xung đột khi cùng trường bị sửa; chưa kiểm thử hoặc deploy.
 - [ ] 18/11 — Thu mua: import snapshot tự tạo vùng/cont mới đã sửa cục bộ (không migration) — chạy kiểm thử import liên quan, review rồi deploy web; chưa áp dụng lên hệ thống thật.

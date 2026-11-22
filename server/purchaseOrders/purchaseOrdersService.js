@@ -149,7 +149,7 @@ function pagedOrderFilter(options,user){
   const values=[],where=['p.deleted_at IS NULL AND p.inactive_at IS NULL'];
   const bind=value=>{values.push(value);return '$'+values.length};
   const search=String(options.search||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').replace(/Đ/g,'D').toLocaleLowerCase('vi').trim();
-  if(search){const arg=bind('%'+search+'%'),folded=`translate(lower(concat_ws(' ',p.row_key,p.source_sheet,p.product_code,p.product_name,p.product_name_cn,p.supplier,p.sale_note,p.buy_note,p.extra_note)),'${searchFoldFrom}','${searchFoldTo}')`;where.push(`(${folded} LIKE ${arg})`)}
+  if(search){const arg=bind('%'+search+'%'),folded=`translate(lower(COALESCE(p.row_key||' ','')||COALESCE(p.source_sheet||' ','')||COALESCE(p.product_code||' ','')||COALESCE(p.product_name||' ','')||COALESCE(p.product_name_cn||' ','')||COALESCE(p.supplier||' ','')||COALESCE(p.sale_note||' ','')||COALESCE(p.buy_note||' ','')||COALESCE(p.extra_note||' ','')),'${searchFoldFrom}','${searchFoldTo}')`;where.push(`(${folded} LIKE ${arg})`)}
   if(options.container!==undefined&&options.container!=='all')where.push(!options.container||options.container==='__waiting__'?'p.container_id IS NULL':'p.container_id='+bind(options.container));
   if(options.region==='__unassigned__')where.push('p.region_id IS NULL');else if(options.region)where.push('p.region_id='+bind(options.region));
   const statuses=String(options.status??'').split(',').filter(value=>/^[0-4]$/.test(value)).map(Number);

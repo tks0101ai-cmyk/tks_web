@@ -6,8 +6,11 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE INDEX IF NOT EXISTS purchase_orders_active_search_trgm_idx
   ON purchase_orders USING GIN (
     (translate(
-      lower(concat_ws(' ', row_key, source_sheet, product_code, product_name,
-        product_name_cn, supplier, sale_note, buy_note, extra_note)),
+      lower(COALESCE(row_key || ' ', '') || COALESCE(source_sheet || ' ', '') ||
+        COALESCE(product_code || ' ', '') || COALESCE(product_name || ' ', '') ||
+        COALESCE(product_name_cn || ' ', '') || COALESCE(supplier || ' ', '') ||
+        COALESCE(sale_note || ' ', '') || COALESCE(buy_note || ' ', '') ||
+        COALESCE(extra_note || ' ', '')),
       'àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ',
       'aaaaaaaaaaaaaaaaaeeeeeeeeeeeiiiiiooooooooooooooooouuuuuuuuuuuyyyyyd'
     )) gin_trgm_ops
