@@ -79,3 +79,4 @@ Cập nhật: 16/11/2026
 
 
 Cập nhật gần nhất: 21/11/2026.
+> 22/11/2026 — **Thu mua: xóa cont kéo theo xóa mềm mã đang gán** — đã sửa service/UI và cập nhật tài liệu; chưa chạy kiểm thử, chưa push/deploy. Cần kiểm khi có yêu cầu xác minh hoặc trước phát hành.

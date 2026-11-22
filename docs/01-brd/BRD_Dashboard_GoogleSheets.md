@@ -745,3 +745,7 @@ Cập nhật gần nhất: 16/11/2026.
 Người dùng nhập tổng chi phí vận chuyển theo cont, có thể là số hoặc biểu thức. Hệ thống giữ chi phí gốc ở Đơn giá cont và tính VC/m³ theo m³ giả định; khi bỏ m³ giả định, dùng m³ đang xếp. Chi phí vận chuyển từng mã thay đổi theo VC/m³ và m³ thực tế của mã. Phụ phí nhận phần trăm âm/dương, hiển thị thành số tiền trên Tiền hàng của mã. Bảng chỉ số cont cần trình bày tổng phụ phí và đơn giá quy đổi, ghi chú, trạng thái Chưa xếp. Người dùng quản lý vùng và màu, gán vùng khi tạo đơn/cont, phân biệt cont chờ xếp theo vùng và lọc vùng trong cả hai bảng.
 
 Cập nhật gần nhất: 14/11/2026.
+
+22/11/2026 — Thu mua: khi người dùng xác nhận xóa cont, các mã đang thuộc cont đó được đưa khỏi bảng Đặt hàng và chuyển vào thùng rác để khôi phục riêng nếu cần.
+
+Cập nhật gần nhất: 22/11/2026.

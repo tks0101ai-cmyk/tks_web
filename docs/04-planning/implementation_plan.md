@@ -823,3 +823,8 @@ Cập nhật gần nhất: 14/11/2026.
 - [x] Lập kế hoạch vùng/cont mới ở preview, cho revise nhận tên đã sửa; không ghi danh mục trước xác nhận.
 - [x] Xác nhận tạo danh mục và ánh xạ dòng trong cùng transaction, giữ snapshot recheck và audit; cont mới dùng vùng AA nếu file bỏ trống.
 - [ ] Chưa chạy test theo yêu cầu phiên; cần kiểm thử import trên môi trường test trước khi deploy.
+
+## Thu mua — xóa mã cùng cont (22/11/2026)
+Xóa cont sẽ xóa mềm mọi mã đang gán vào cont trong cùng giao dịch, ghi audit và giải phóng Mã dòng theo pool hiện có. Các mã không còn trong bảng Đặt hàng; có thể khôi phục riêng từ thùng rác. Khôi phục cont không tự khôi phục mã.
+
+Cập nhật gần nhất: 22/11/2026.

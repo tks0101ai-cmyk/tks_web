@@ -1174,10 +1174,12 @@ test('container lifecycle shows HĐ and NHĐ without changing shipment status an
  assert.equal(active.inactive_at,null);assert.equal(active.status,1);
  const deleted=await service.removeContainer(manager,{id:container.id,version:active.version});
  assert.ok(deleted.deleted_at);assert.equal((await service.containerTrash(manager))[0].id,container.id);
- assert.equal(String((await service.list(manager)).rows[0].contId),String(container.id),'trashing a container preserves product assignments');
+ assert.equal((await service.list(manager)).rows.some(row=>String(row.id)===String(assigned.row.id)),false,'trashing a container removes its assigned product rows from the active dataset');
+ assert.ok((await db.query('SELECT deleted_at FROM purchase_orders WHERE id=$1',[assigned.row.id])).rows[0].deleted_at,'container deletion soft-deletes assigned product rows');
  await assert.rejects(service.transfer(manager,{id:assigned.row.id,version:assigned.row.version,quantity:assigned.row.cartonCount,destinationId:container.id}),e=>e.code==='VERSION_CONFLICT');
  const restored=await service.restoreContainer(manager,{id:container.id,version:deleted.version});
  assert.equal(restored.deleted_at,null);assert.equal(restored.inactive_at,null);
  assert.equal((await service.list(manager)).containers.find(c=>c.id===container.id).name,'LIFECYCLE CONT');
+ assert.equal((await service.list(manager)).rows.some(row=>String(row.id)===String(assigned.row.id)),false,'restoring the container does not implicitly restore its product rows');
  assert.deepEqual((await db.query("SELECT action FROM purchase_history WHERE action LIKE 'container_%' ORDER BY id")).rows.map(r=>r.action),['container_create','container_deactivate','container_reactivate','container_delete','container_restore']);
 });

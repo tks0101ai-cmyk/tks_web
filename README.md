@@ -693,3 +693,5 @@ Cập nhật gần nhất: 17/11/2026.
 21/11/2026 — Sửa đồng bộ đơn KiotViet: đọc chồng 5 phút cho orders để bù bản ghi xuất hiện muộn; log lỗi polling nêu rõ cơ sở và loại dữ liệu. Không migration.
 
 Cập nhật gần nhất: 21/11/2026.
+
+22/11/2026 — Thu mua: xóa cont đồng thời xóa mềm tất cả mã đang gán vào cont khỏi bảng Đặt hàng; Mã dòng được xử lý qua lịch sử/pool hiện có. Mã chuyển vào thùng rác riêng và không tự khôi phục khi khôi phục cont. Code đã sửa trên main cục bộ; chưa push/deploy.

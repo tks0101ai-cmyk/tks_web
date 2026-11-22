@@ -1351,3 +1351,7 @@ Cập nhật gần nhất: 14/11/2026.
 - Sửa hàng loạt khóa theo lô và ghi bằng câu lệnh set-based; giữ kết quả xung đột/không hợp lệ theo từng mã và một audit cho cả thao tác.
 
 Cập nhật gần nhất: 16/11/2026.
+
+22/11/2026 — Thu mua: xóa cont đồng thời xóa mềm các mã gán vào cont khỏi bảng hoạt động. Mã còn trong thùng rác để khôi phục riêng; khôi phục cont không tự khôi phục mã.
+
+Cập nhật gần nhất: 22/11/2026.

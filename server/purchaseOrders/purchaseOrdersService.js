@@ -788,14 +788,21 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
     async deactivateContainer(user,{id,version}) {return transaction(user,async client=>{const row=await getContainer(client,id,version);if(!row||row.deleted_at)throw fail(404,'CONTAINER_NOT_FOUND','Không có cont đang hoạt động.');if(row.inactive_at)return {changed:false,value:row};const updated=(await client.query('UPDATE product_containers SET inactive_at=now(),version=version+1,updated_at=now() WHERE id=$1 RETURNING *',[id])).rows[0];await audit(client,user,'container_deactivate',{containerId:String(id),name:row.name});return {changed:true,value:updated}})},
     async reactivateContainer(user,{id,version}) {return transaction(user,async client=>{const row=await getContainer(client,id,version);if(!row||row.deleted_at||!row.inactive_at)throw fail(409,'VERSION_CONFLICT','Cont đã thay đổi hoặc đã được bật lại.');const updated=(await client.query('UPDATE product_containers SET inactive_at=NULL,version=version+1,updated_at=now() WHERE id=$1 RETURNING *',[id])).rows[0];await audit(client,user,'container_reactivate',{containerId:String(id),name:row.name});return {changed:true,value:updated}})},
     async removeContainer(user,{id,version,rows}) {return transaction(user,async client=>{
+      let containers;
       if(rows!==undefined){
         if(!Array.isArray(rows)||!rows.length||rows.length>500||rows.some(r=>!r||!Number.isSafeInteger(Number(r.id))||Number(r.id)<1||!Number.isSafeInteger(Number(r.version))||Number(r.version)<1)||new Set(rows.map(r=>String(r.id))).size!==rows.length)throw fail(400,'CONTAINER_DELETE_INVALID','Chọn 1–500 cont không trùng.');
         const locked=(await client.query('SELECT * FROM product_containers WHERE id=ANY($1::bigint[]) ORDER BY id FOR UPDATE',[rows.map(r=>r.id)])).rows,byId=new Map(locked.map(row=>[String(row.id),row]));
         if(locked.length!==rows.length||rows.some(ref=>{const row=byId.get(String(ref.id));return !row||row.deleted_at||Number(row.version)!==Number(ref.version)}))throw fail(409,'VERSION_CONFLICT','Một số cont đã thay đổi. Tải lại bảng rồi thử lại.');
-        const deleted=(await client.query('UPDATE product_containers SET deleted_at=now(),version=version+1,updated_at=now() WHERE id=ANY($1::bigint[]) RETURNING *',[locked.map(row=>row.id)])).rows;
-        await audit(client,user,'container_delete',{containers:deleted.map(row=>({containerId:String(row.id),name:row.name}))});return {changed:true,value:{rows:deleted,deleted:deleted.length}};
+        containers=locked;
+      }else{
+        const row=await getContainer(client,id,version);if(!row)throw fail(404,'CONTAINER_NOT_FOUND','Không có cont cần xóa.');containers=[row];
       }
-      const row=await getContainer(client,id,version);if(!row)throw fail(404,'CONTAINER_NOT_FOUND','Không có cont cần xóa.');const updated=(await client.query('UPDATE product_containers SET deleted_at=now(),version=version+1,updated_at=now() WHERE id=$1 RETURNING *',[id])).rows[0];await audit(client,user,'container_delete',{containerId:String(id),name:row.name});return {changed:true,value:updated}
+      const containerIds=containers.map(row=>row.id),retired=(await client.query('SELECT id,row_key,root_order_id,root_key,container_id,product_code FROM purchase_orders WHERE container_id=ANY($1::bigint[]) AND deleted_at IS NULL ORDER BY id FOR UPDATE',[containerIds])).rows;
+      if(retired.length){client.purchaseFormulaValidationRequired=true;await recordRetiredKeys(client,retired);await client.query('UPDATE purchase_orders SET deleted_at=now(),version=version+1,updated_at=now() WHERE id=ANY($1::bigint[])',[retired.map(row=>row.id)]);await releaseInactiveFamilies(client,retired)}
+      const deleted=(await client.query('UPDATE product_containers SET deleted_at=now(),version=version+1,updated_at=now() WHERE id=ANY($1::bigint[]) RETURNING *',[containerIds])).rows;
+      client.purchaseContainersChanged=true;
+      await audit(client,user,'container_delete',{containers:deleted.map(row=>({containerId:String(row.id),name:row.name})),deletedRows:retired.length});
+      return {changed:true,value:rows===undefined?{...deleted[0],deletedRows:retired.length}:{rows:deleted,deleted:deleted.length,deletedRows:retired.length}}
     })},
     async restoreContainer(user,{id,version}) {return transaction(user,async client=>{const row=(await client.query('SELECT * FROM product_containers WHERE id=$1 FOR UPDATE',[id])).rows[0];if(!row?.deleted_at||Number(row.version)!==Number(version))throw fail(409,'VERSION_CONFLICT','Cont đã thay đổi hoặc đã khôi phục.');const updated=(await client.query('UPDATE product_containers SET deleted_at=NULL,version=version+1,updated_at=now() WHERE id=$1 RETURNING *',[id])).rows[0];await audit(client,user,'container_restore',{containerId:String(id),name:row.name});return {changed:true,value:updated}})},
 
