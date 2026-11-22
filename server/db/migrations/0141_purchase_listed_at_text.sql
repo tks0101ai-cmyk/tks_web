@@ -13,16 +13,16 @@ ALTER TABLE purchase_orders
   END;
 
 CREATE INDEX purchase_orders_latest_idx
-  ON purchase_orders(lower(product_code), (regexp_replace(listed_at, '^.* [+] ', '')) DESC NULLS LAST, id DESC);
+  ON purchase_orders(product_code, listed_at DESC NULLS LAST, id DESC);
 
 CREATE INDEX purchase_orders_active_listed_idx
-  ON purchase_orders((regexp_replace(listed_at, '^.* [+] ', '')) DESC NULLS LAST, id DESC)
+  ON purchase_orders(listed_at DESC NULLS LAST, id DESC)
   WHERE deleted_at IS NULL AND inactive_at IS NULL;
 
 CREATE INDEX purchase_orders_active_region_idx
-  ON purchase_orders(region_id, (regexp_replace(listed_at, '^.* [+] ', '')) DESC NULLS LAST, id DESC)
+  ON purchase_orders(region_id, listed_at DESC NULLS LAST, id DESC)
   WHERE deleted_at IS NULL AND inactive_at IS NULL;
 
 CREATE INDEX purchase_orders_active_buyer_idx
-  ON purchase_orders(buyer_employee_id, (regexp_replace(listed_at, '^.* [+] ', '')) DESC NULLS LAST, id DESC)
+  ON purchase_orders(buyer_employee_id, listed_at DESC NULLS LAST, id DESC)
   WHERE deleted_at IS NULL AND inactive_at IS NULL;

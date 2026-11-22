@@ -970,7 +970,7 @@ Migrations Thu mua bắt đầu ở 0110–0116 vì main đã dùng 0101–0109 
 
 ## Migration 0101 — Thu mua / cont dùng chung (03/11/2026, chưa áp DB)
 - product_containers: một nguồn cont chuẩn cho Thu mua và các bảng đọc Dự kiến hàng về; không tạo purchase_containers riêng. Trạng thái 1–4, xe và sức chứa NUMERIC, ngày/kho/người xác nhận về, version. Tên cont có khóa chuẩn hóa UNIQUE.
-- purchase_orders: ID BIGSERIAL bất biến, row_key UNIQUE, root_key, split_from_key, container_id NULL là hàng chờ; các trường tiền/số lượng NUMERIC, listed_at DATE; `measurement_overrides` JSONB per-row (migration 0122). Không phân tách branch theo ngoại lệ chỉ HN đặt hàng. Khóa .01/.02 đệ quy, số thùng và quy cách nguyên dương.
+- purchase_orders: ID BIGSERIAL bất biến, row_key UNIQUE, root_key, split_from_key, container_id NULL là hàng chờ; các trường tiền/số lượng NUMERIC, listed_at TEXT để lưu nhiều ngày lên list nối bằng ` + ` (migration 0141); `measurement_overrides` JSONB per-row (migration 0122). Không phân tách branch theo ngoại lệ chỉ HN đặt hàng. Khóa .01/.02 đệ quy, số thùng và quy cách nguyên dương.
 - purchase_key_history: lưu khóa đã nghỉ khi tách, không cho UPDATE/DELETE; import chỉ nhận khóa lá hiện hành.
 - purchase_history và purchase_departures: audit và ảnh chụp thực xuất append-only, trigger chặn sửa/xóa.
 - purchase_import_previews: UUID token, actor_id, payload server, hạn 30 phút và result cho xác nhận lặp. Ghi dữ liệu và đánh dấu token trong cùng giao dịch.
@@ -1074,3 +1074,9 @@ Cập nhật gần nhất: 14/11/2026.
 ## Migration 0140 — tăng tốc tìm kiếm Thu mua (19/11/2026)
 
 `0140_purchase_order_search_trgm.sql` bật `pg_trgm` và tạo GIN index cho đúng biểu thức tìm kiếm không phân biệt dấu của lưới Đặt hàng. Các điều kiện lọc và kết quả tìm kiếm không đổi; truy vấn chứa từ khóa từ 3 ký tự trở lên có thể dùng index thay vì quét toàn bộ đơn đang hoạt động.
+
+## Migration 0141 — ngày lên list dạng văn bản (22/11/2026)
+
+`0141_purchase_listed_at_text.sql` đổi `purchase_orders.listed_at` từ timestamp sang TEXT, giữ ngày cũ theo dạng `YYYY-MM-DD`, để cho phép lưu các ngày lên list đã gộp. Các index dùng cột trực tiếp, không có biểu thức để PostgreSQL từ chối vì volatility.
+
+Cập nhật gần nhất: 22/11/2026.

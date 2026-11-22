@@ -671,6 +671,10 @@ Cập nhật gần nhất: 16/11/2026.
 
 Cập nhật gần nhất: 17/11/2026.
 
+22/11/2026 — Migration Thu mua `0141` đổi `purchase_orders.listed_at` sang TEXT để chứa nhiều ngày sau khi gộp mã; index mới dùng trực tiếp các cột, không dùng biểu thức.
+
+Cập nhật gần nhất: 22/11/2026.
+
 
 17/11/2026 — Thu mua: cấu hình cước dùng chung cho nhóm Chờ xếp trong `purchase_settings`, version chống ghi đè; không tạo cont giả.
 

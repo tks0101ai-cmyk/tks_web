@@ -1508,3 +1508,7 @@ Nhóm Chờ xếp là ảo, không phải cont lưu trong `product_containers`; 
 21/11/2026 — Đồng bộ đơn KiotViet: lượt orders tăng dần đọc chồng 5 phút trước checkpoint để lấy lại bản ghi API hiển thị muộn; chỉ tiến checkpoint khi mọi trang thành công. Lỗi polling ghi `[KiotViet Sync] <branch>/<entity>:` vào log trước khi lưu checkpoint lỗi, để lỗi nguồn vẫn thấy được khi DB cũng lỗi. Không đổi API/schema/biến môi trường.
 
 Cập nhật gần nhất: 21/11/2026.
+
+22/11/2026 — Migration Thu mua `0141_purchase_listed_at_text.sql` đổi `purchase_orders.listed_at` sang TEXT để lưu nhiều ngày lên list đã gộp. Index không dùng biểu thức; log lỗi khởi tạo schema nêu tên migration, mã và nội dung lỗi PostgreSQL.
+
+Cập nhật gần nhất: 22/11/2026.

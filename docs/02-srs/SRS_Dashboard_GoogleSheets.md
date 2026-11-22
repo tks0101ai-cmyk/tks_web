@@ -1302,6 +1302,10 @@ Cập nhật cuối: 13/11/2026.
 - Migration `0126_purchase_container_freight_formula.sql` thêm `product_containers.freight_formula`, đăng ký trong `ensurePurchaseSchema.FILES`. Cần kiểm staging trước khi áp vào production; chưa deploy.
 Cập nhật gần nhất: 16/11/2026.
 
+22/11/2026 — Thu mua: trường Lên list lưu dạng văn bản để bảo toàn nhiều ngày khi gộp mã; ngày gần nhất lấy từ ngày cuối trong chuỗi.
+
+Cập nhật gần nhất: 22/11/2026.
+
 ## Thu mua — tự tạo vùng/cont khi import snapshot (18/11/2026)
 
 - `POST /api/purchase-orders/import/preview` và `/revise` chỉ lập kế hoạch danh mục mới, không tạo vùng hoặc cont.

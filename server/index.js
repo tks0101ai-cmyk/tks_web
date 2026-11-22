@@ -159,7 +159,7 @@ async function startServer() {
   if (CONFIG.SUPABASE_DB_URL) await ensureHrInsuranceSchema();
   // Additive purchase tables only. Schema failures must not take down other modules.
   if (CONFIG.SUPABASE_DB_URL) await ensurePurchaseSchema().catch(error => {
-    console.error('[Purchase] Schema initialization unavailable:', error.code || 'INITIALIZATION_FAILED');
+    console.error('[Purchase] Schema initialization unavailable:', { migration: error.migration || '', code: error.code || 'INITIALIZATION_FAILED', message: error.message || '' });
   });
   localUserStore.initStore();
   await localUserStore.hydrateFromSheets().catch((err) => {
