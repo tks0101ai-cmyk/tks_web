@@ -663,10 +663,12 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
     },
     async list(user,options={}) {actor(user);const client=await pool.connect();try{
       const revision=(await client.query("SELECT COALESCE(max(id),0)::text || ':' || count(*)::text AS version FROM purchase_history")).rows[0].version;
-      const settings=(await client.query('SELECT * FROM purchase_settings WHERE id=1')).rows[0],source=settings?.source_mode;
-      const containers=(await client.query('SELECT * FROM product_containers ORDER BY id')).rows;
-      const regions=(await client.query('SELECT id,name,color,is_active AS "isActive",version FROM purchase_regions ORDER BY name,id')).rows;
-      const configs=(await client.query('SELECT region_id AS "regionId",freight_mode AS "freightMode",freight,freight_formula AS "freightFormula",freight_base AS "freightBase",freight_capacity AS "freightCapacity",assumed_m3 AS "assumedM3",container_fx_rate AS "containerFxRate",version FROM purchase_waiting_configs')).rows;
+      const metadata=(await client.query(`SELECT
+        (SELECT row_to_json(s) FROM purchase_settings s WHERE s.id=1) AS settings,
+        COALESCE((SELECT json_agg(c ORDER BY c.id) FROM product_containers c),'[]'::json) AS containers,
+        COALESCE((SELECT json_agg(json_build_object('id',r.id,'name',r.name,'color',r.color,'isActive',r.is_active,'version',r.version) ORDER BY r.name,r.id) FROM purchase_regions r),'[]'::json) AS regions,
+        COALESCE((SELECT json_agg(json_build_object('regionId',w.region_id,'freightMode',w.freight_mode,'freight',w.freight,'freightFormula',w.freight_formula,'freightBase',w.freight_base,'freightCapacity',w.freight_capacity,'assumedM3',w.assumed_m3,'containerFxRate',w.container_fx_rate,'version',w.version) ORDER BY w.region_id) FROM purchase_waiting_configs w),'[]'::json) AS configs`)).rows[0];
+      const {settings,containers,regions,configs}=metadata,source=settings?.source_mode;
       const savedWaitingConfigs=Object.fromEntries(configs.map(config=>[String(config.regionId),config])),waitingConfigs=Object.fromEntries(regions.map(region=>[String(region.id),savedWaitingConfigs[String(region.id)]||{regionId:String(region.id),...defaultWaitingConfig}])),waitingContainerRows=waitingContainerConfigs(regions,waitingConfigs);
       const waitingConfig={freightMode:settings.waiting_freight_mode,freight:settings.waiting_freight,freightFormula:settings.waiting_freight_formula,freightBase:settings.waiting_freight_base,freightCapacity:settings.waiting_freight_capacity,assumedM3:settings.waiting_assumed_m3,assumed_m3:settings.waiting_assumed_m3,containerFxRate:settings.waiting_container_fx_rate,container_fx_rate:settings.waiting_container_fx_rate,version:settings.waiting_version};
       if(options.page!=null){
@@ -679,7 +681,8 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         const knownIds=suppliedKnownIds.length?[...new Set(suppliedKnownIds.map(String).filter(id=>/^[1-9]\d*$/.test(id)))].slice(0,200):null;
         let activeRows,windowIds;
         if(knownIds&&!filter.clientSort){
-          const selected=(await client.query(`SELECT p.id::text AS id FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) LEFT JOIN product_containers pc ON pc.id=p.container_id WHERE ${where} ORDER BY ${filter.order}${pageSql}`,pageArgs)).rows;
+          const measureSortKeys=new Set(['literWarehouse','m3Warehouse','literDiff','gramWarehouse','gramDiff']),sorts=typeof options.colSort==='string'?(()=>{try{return JSON.parse(options.colSort)}catch{return []}})():options.colSort,needsMeasureJoin=options.flag==='diff'||Array.isArray(sorts)&&sorts.some(sort=>measureSortKeys.has(sort?.key)),pageJoins=needsMeasureJoin?' LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code))':'';
+          const selected=(await client.query(`SELECT p.id::text AS id FROM purchase_orders p${pageJoins} WHERE ${where} ORDER BY ${filter.order}${pageSql}`,pageArgs)).rows;
           windowIds=selected.map(row=>String(row.id));
           const missingIds=windowIds.filter(id=>!knownIds.includes(id));
           const missingRows=missingIds.length?await readRows(client,false,missingIds):[];

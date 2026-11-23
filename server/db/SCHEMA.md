@@ -1083,4 +1083,10 @@ Import mã mới: Tên cont `Chờ`, `Chờ <tên vùng>` hoặc `Chờ xếp <t
 
 Cập nhật gần nhất: 22/11/2026.
 
+## Migration 0142 — tăng tốc sắp xếp tiêu đề Thu mua (23/11/2026)
+
+`0142_purchase_order_title_sort_indexes.sql` tạo B-tree index có điều kiện cho `product_name` và `supplier`, theo đúng thứ tự tăng dần + `id DESC` của lưới. Chỉ mục chỉ chứa dòng đang hoạt động; tìm kiếm, bộ lọc, cách sắp xếp và dữ liệu trả về không đổi.
+
+Cập nhật gần nhất: 23/11/2026.
+
 22/11/2026 — Thu mua: xóa cont cũng xóa mềm các dòng đơn đang gán (`purchase_orders.deleted_at`), không xóa vật lý; dòng được ẩn khỏi bảng hoạt động và có thể khôi phục riêng từ thùng rác. Khôi phục `product_containers` không tự bật lại các dòng đơn.

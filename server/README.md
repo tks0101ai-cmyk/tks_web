@@ -1509,6 +1509,10 @@ Nhóm Chờ xếp là ảo, không phải cont lưu trong `product_containers`; 
 
 Cập nhật gần nhất: 21/11/2026.
 
+23/11/2026 — Thu mua: migration `0142` thêm B-tree index cho sắp xếp Tên SP/NCC trên dòng đang hoạt động. API danh sách gộp cấu hình/vùng/cont thành một lần đọc; truy vấn đếm không nối bảng thừa; chọn ID phân trang chỉ nối số đo khi bộ lọc hoặc sắp xếp cần. Không đổi công thức/nghiệp vụ.
+
+Cập nhật gần nhất: 23/11/2026.
+
 22/11/2026 — Migration tìm kiếm `0140` dùng phép nối text immutable thay `concat_ws` để tạo trigram index; API dùng cùng biểu thức lọc. `0141` đổi `purchase_orders.listed_at` sang TEXT. Import Excel ánh xạ `Chờ`, `Chờ <vùng>` và `Chờ xếp <vùng>` vào nhóm chờ ảo theo vùng; log lỗi khởi tạo schema nêu tên migration, mã và nội dung PostgreSQL.
 
 Cập nhật gần nhất: 22/11/2026.
