@@ -671,7 +671,8 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
       const waitingConfig={freightMode:settings.waiting_freight_mode,freight:settings.waiting_freight,freightFormula:settings.waiting_freight_formula,freightBase:settings.waiting_freight_base,freightCapacity:settings.waiting_freight_capacity,assumedM3:settings.waiting_assumed_m3,assumed_m3:settings.waiting_assumed_m3,containerFxRate:settings.waiting_container_fx_rate,container_fx_rate:settings.waiting_container_fx_rate,version:settings.waiting_version};
       if(options.page!=null){
         let page=Math.max(1,Math.min(100000,Number.parseInt(options.page,10)||1));const pageSize=Math.max(10,Math.min(200,Number.parseInt(options.pageSize,10)||50)),filter=pagedOrderFilter(options,user),whereValues=[...filter.values],where=filter.where;
-        const total=Number((await client.query('SELECT count(*)::text AS count FROM purchase_orders p LEFT JOIN product_containers pc ON pc.id=p.container_id LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE '+where,whereValues)).rows[0].count);
+        const countJoins=options.flag==='diff'?' LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code))':'';
+        const total=Number((await client.query('SELECT count(*)::text AS count FROM purchase_orders p'+countJoins+' WHERE '+where,whereValues)).rows[0].count);
         page=Math.min(page,Math.max(1,Math.ceil(total/pageSize)));
         const offset=(page-1)*pageSize,limitParam='$'+(whereValues.length+1),offsetParam='$'+(whereValues.length+2),pageSql=filter.clientSort?'':` LIMIT ${limitParam} OFFSET ${offsetParam}`,pageArgs=filter.clientSort?whereValues:[...whereValues,pageSize,offset];
         const suppliedKnownIds=Array.isArray(options.knownIds)?options.knownIds:String(options.knownIds||'').split(',');
