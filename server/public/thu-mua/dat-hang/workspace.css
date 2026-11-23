@@ -323,7 +323,8 @@
 .purchase-page .page-size-control{display:flex;align-items:center;gap:7px;margin-right:auto;color:var(--muted);font-size:11px}
 .purchase-page #pageSize{min-height:30px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font:500 12px var(--font-body)}
 .purchase-page .page-controls{display:flex;align-items:center;gap:4px}
-.purchase-page .page-numbers{display:flex;align-items:center;gap:3px;max-width:min(70vw,720px);overflow-x:auto}
+.purchase-page .page-numbers{display:flex;align-items:center;gap:3px;max-width:min(70vw,720px);overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none}
+.purchase-page .page-numbers::-webkit-scrollbar{display:none}
 .purchase-page .page-controls button{min-width:30px;min-height:30px;padding:4px 8px;font:500 11px var(--font-body)}
 .purchase-page .page-controls .page-numbers button[aria-current="page"]{border-color:var(--primary);background:var(--primary);color:#fff}
 .purchase-page #pageLabel{margin-left:5px;color:var(--muted);font-size:10px;white-space:nowrap}
