@@ -28,7 +28,7 @@ function orderRow(code, extra = {}) {
   };
 }
 
-async function renderPage({ orders, permissions = ['shipment.lifecycle', 'shipment.pick'], confirmAnswer = true, statusReply } = {}) {
+async function renderPage({ orders, permissions = ['shipment.lifecycle', 'shipment.pick'], confirmAnswer = true, statusReply, facets } = {}) {
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'https://tokosi.example/shipment/lifecycle/' });
   const { window } = dom;
   const calls = [];
@@ -46,7 +46,7 @@ async function renderPage({ orders, permissions = ['shipment.lifecycle', 'shipme
     const href = String(url);
     calls.push({ url: href, options });
     const u = new URL(href, 'https://tokosi.example');
-    if (isListUrl(href)) return json(lifecycleResponse(href, source.orders, { ok: true, stale: false, fetchedAt: null, count: 0 }));
+    if (isListUrl(href)) return json({ ...lifecycleResponse(href, source.orders, { ok: true, stale: false, fetchedAt: null, count: 0 }), facets });
     if (u.pathname === '/api/shipment/pick/status' && options.method === 'POST') {
       const body = JSON.parse(options.body);
       if (statusReply) return statusReply(body, source);
@@ -65,6 +65,22 @@ async function renderPage({ orders, permissions = ['shipment.lifecycle', 'shipme
 }
 
 const rowsOf = document => [...document.querySelectorAll('#bulkBody tr')];
+
+test('bộ lọc vẫn chọn được trạng thái có số đếm facet bằng 0 và gửi lựa chọn lên máy chủ', async t => {
+  const page = await renderPage({ orders: [orderRow('DH1')], facets: { status: {}, kiot: {}, branch: {}, warning: {}, pick: {} } });
+  t.after(() => page.dom.window.close());
+  for (const [id, value, param] of [
+    ['bulkStatusFilter', 'DELIVERING', 'status'],
+    ['bulkKiotStatusFilter', 'Hoàn thành', 'kiotStatus']
+  ]) {
+    const select = page.document.getElementById(id);
+    const option = [...select.options].find(o => o.value === value);
+    assert.equal(option.disabled, false, value + ' phải chọn được dù số đếm bằng 0');
+    await choose(page, select, value);
+    const last = page.calls.filter(c => isListUrl(c.url)).at(-1);
+    assert.equal(new URL(last.url, 'https://tokosi.example').searchParams.get(param), value);
+  }
+});
 const pickCell = row => row.querySelector('[data-col="pickStatus"]');
 const pickPosts = page => page.calls.filter(c => c.url.endsWith('/api/shipment/pick/status'));
 async function choose(page, select, value) {
