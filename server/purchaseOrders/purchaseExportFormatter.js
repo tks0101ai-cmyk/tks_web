@@ -3,6 +3,7 @@
 const ExcelJS=require('exceljs');
 const PurchaseHeaders=require('../public/shared/purchase-headers');
 const PurchaseWorkbook=require('../public/shared/purchase-workbook');
+const PurchaseCalculations=require('../public/shared/purchase-calculations');
 
 const NUMBER_TYPES=new Set(['num','num1','num2','num3','num4','cny','money','pct','ratio']);
 const HEADER_FIT_COLUMNS=new Set(['supplier','regionId','container','status','color','saleNote','vatNote','buyNote']);
@@ -58,6 +59,36 @@ function orderTableContainer(row){
   return String(row.container??'').replace(/^CONT\s+/i,'').replace(/\s+(?:CHƯA CÓ LỊCH|CHỜ BỐC|ĐÃ BỐC|ĐÃ VỀ).*$/i,'').trim();
 }
 
+function mergeExportRows(rows){
+  const groups=new Map();
+  for(const row of rows){
+    const code=String(row.productCode??'').trim().normalize('NFC').toLocaleLowerCase('vi');
+    const units=Number(row.qtyPerCarton),cartons=Number(row.cartonCount);
+    if(!code||!Number.isSafeInteger(units)||units<=0||!Number.isSafeInteger(cartons)||cartons<=0){groups.set('single:'+String(row.id??groups.size),[row]);continue}
+    const key=JSON.stringify([code,String(row.contId??''),String(row.regionId??''),units]);
+    if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row);
+  }
+  const epoch=value=>{const normalized=PurchaseWorkbook.normalizeListedAt(value);const part=String(normalized||value||'').split(' + ')[0],match=/^(\d{4}-\d{2}-\d{2})/.exec(part);return match?Date.parse(match[1]+'T00:00:00Z')||0:0};
+  const updated=row=>Date.parse(row.updatedAt||'')||epoch(row.listedAt)||Number(row.id)||0;
+  const result=[];
+  for(const group of groups.values()){
+    if(group.length<2){result.push(...group);continue}
+    const newest=[...group].sort((a,b)=>updated(b)-updated(a)||Number(b.id||0)-Number(a.id||0))[0];
+    const cartonCount=group.reduce((sum,row)=>sum+Number(row.cartonCount),0);
+    if(!Number.isSafeInteger(cartonCount)||cartonCount<=0){result.push(...group);continue}
+    const chronological=[...group].sort((a,b)=>epoch(a.listedAt)-epoch(b.listedAt)||updated(a)-updated(b)||Number(a.id||0)-Number(b.id||0));
+    const dates=[...new Set(group.flatMap(row=>String(PurchaseWorkbook.normalizeListedAt(row.listedAt)||'').split(' + ').filter(Boolean)).sort((a,b)=>Date.parse(a+'T00:00:00Z')-Date.parse(b+'T00:00:00Z')||a.localeCompare(b)))];
+    const orderedNotes=[...new Set(chronological.map(row=>String(row.orderedNote??'').trim()).filter(Boolean))];
+    const merged={...newest,cartonCount,listedAt:dates.join(' + ')||newest.listedAt||null,orderedNote:orderedNotes.join(' + ')||null};
+    const derived=PurchaseCalculations.row(merged,null,merged.containerFxRate);
+    const freightRates=group.map(row=>Number(row.totalM3)>0&&Number.isFinite(Number(row.freightAmount))?Number(row.freightAmount)/Number(row.totalM3):null).filter(Number.isFinite);
+    const freight=freightRates.length?freightRates[0]*Number(derived.totalM3||0):group.some(row=>row.freightAmount!=null)?group.reduce((sum,row)=>sum+(Number(row.freightAmount)||0),0):null;
+    Object.assign(merged,PurchaseCalculations.row(merged,freight,merged.containerFxRate));
+    result.push(merged);
+  }
+  return result;
+}
+
 function widthForColumn(column,values,headerLabel){
   if(HEADER_FIT_COLUMNS.has(column.k))return Math.max(4,textWidth(headerLabel)+1);
   let width=0;
@@ -66,7 +97,8 @@ function widthForColumn(column,values,headerLabel){
   return Math.max(4,width+(NUMBER_TYPES.has(column.t)?2:0));
 }
 
-async function formatPurchaseExport(rows,columns,fields,language='vi'){
+async function formatPurchaseExport(rows,columns,fields,language='vi',{mergeSameProduct=false}={}){
+  if(mergeSameProduct)rows=mergeExportRows(rows);
   const selected=new Set(fields||columns.map(column=>column.k)),exportColumns=columns.filter(column=>column.k!=='m3Warehouse'&&selected.has(column.k));
   if(!exportColumns.length)throw Error('Chọn ít nhất một cột để xuất.');
   const values=rows.map(row=>exportColumns.map(column=>column.k==='container'?orderTableContainer(row):column.region?(row.regionName??row.regionId??null):column.k==='listedAt'?listedAtValue(row[column.k]):column.t==='datetime'&&column.k!=='measuredOn'?(dateOnly(row[column.k])||row[column.k]||null):(row[column.k]??null)));
@@ -88,4 +120,4 @@ async function formatPurchaseExport(rows,columns,fields,language='vi'){
   return book.xlsx.writeBuffer();
 }
 
-module.exports={formatPurchaseExport};
+module.exports={formatPurchaseExport,mergeExportRows};

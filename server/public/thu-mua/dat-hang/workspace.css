@@ -289,6 +289,11 @@
 /* Column picker follows the source column groups instead of one long, flat checklist. */
 .purchase-page #modalBody .purchase-column-presets{display:flex;gap:7px;margin:0 0 12px}
 .purchase-page #modalBody .purchase-column-presets button{min-height:30px;padding:5px 10px}
+.purchase-page #modalBody .purchase-export-merge-option{display:flex;align-items:flex-start;gap:9px;margin:0 0 12px;padding:11px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel-2);cursor:pointer}
+.purchase-page #modalBody .purchase-export-merge-option input{width:16px;min-height:16px;flex:0 0 16px;margin:2px 0 0;accent-color:var(--primary)}
+.purchase-page #modalBody .purchase-export-merge-option span{display:grid;gap:4px}
+.purchase-page #modalBody .purchase-export-merge-option strong{font-size:12px;color:var(--text)}
+.purchase-page #modalBody .purchase-export-merge-option small{font-size:11px;line-height:1.5;color:var(--muted)}
 .purchase-page #modalBody .purchase-column-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;max-height:56vh;overflow:auto;padding:1px 4px 4px 1px}
 .purchase-page #modalBody .purchase-column-group{min-width:0;margin:0;padding:8px 9px;border:1px solid var(--border);border-radius:var(--radius-sm)}
 .purchase-page #modalBody .purchase-column-group legend{padding:0 5px;color:var(--text);font-size:11px;font-weight:650}
