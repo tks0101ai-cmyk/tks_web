@@ -72,6 +72,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
     for (const [key,message] of Object.entries(source.__cellErrors || {})) if(key!=='measuredOn') result.errors.push(String(message));
     const values = {};
     for (const col of importable) {
+      if(snapshot&&matched&&col.k==='qtyPerCarton'&&Object.hasOwn(source,col.k)&&blank(source[col.k]))result.errors.push(col.l+': phải là số nguyên dương.');
       if(matched&&importOptions.updateExistingByRowKey&&!importOptions.updateFields.includes(col.k))continue;
       if(matched&&importOptions.updateExistingByRowKey&&!importOptions.clearBlanks&&blank(source[col.k]))continue;
       const value = source[col.k];
