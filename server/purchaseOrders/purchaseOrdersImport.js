@@ -106,7 +106,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
         if(region!=null&&requestedRegion==null)values.regionId=String(region);
         values.contId=String(found.id);continue;
       }
-      if (blank(value)) { if (snapshot) values[col.k] = null; continue; }
+      if (blank(value)) { if(col.k==='qtyPerCarton')values.qtyPerCarton=0;else if (snapshot) values[col.k] = null; continue; }
       if(col.region){const raw=String(value).trim(),found=regionsById.get(raw)||regionsByName.get(raw.toLocaleLowerCase('vi'))||regionsByKey.get(normalizeRegionName(raw));if(found){if(found.isActive===false&&String(matched?.regionId??'')!==String(found.id))result.errors.push('Vùng: chọn tên vùng đang hoạt động trong danh sách.');else values.regionId=String(found.id)}else if(!raw||raw.length>80)result.errors.push('Vùng: tên không hợp lệ (tối đa 80 ký tự).');else if(/^\d+$/.test(raw))result.errors.push('Vùng: không tìm thấy vùng theo mã nội bộ.');else if(!snapshot&&!allowContainerAssignment)result.errors.push('Vùng: chọn tên vùng đang hoạt động trong danh sách.');else{const key=normalizeRegionName(raw);let planned=plannedRegions.get(key);if(!planned){planned={id:'@new-region:'+key,name:raw};plannedRegions.set(key,planned)}values.regionId=planned.id}continue}
       if(col.k==='measuredOn'){const text=String(value).trim();if(text.length>4000)result.errors.push(col.l+': tối đa 4.000 ký tự.');else values[col.k]=text;continue}
       if(col.k==='listedAt'){const date=workbook.normalizeListedAt(value);if(!date)result.errors.push(col.l+': nhập ngày dd/mm hoặc dd/mm/yyyy, có thể nối nhiều ngày bằng dấu +.');else values[col.k]=date;continue}
@@ -114,7 +114,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
         const number = calculations.parse(value);
         // Chi cac cot co the am duoc khai bao trong signedFields.
         if (!Number.isFinite(number) || number < 0 && !signedFields.has(col.k) || Math.abs(number) > Number.MAX_SAFE_INTEGER) result.errors.push(col.l + ': số không hợp lệ.');
-        else if (integerFields.has(col.k) && (!Number.isSafeInteger(number) || number <= 0)) result.errors.push(col.l + ': phải là số nguyên dương.');
+        else if (integerFields.has(col.k) && (!Number.isSafeInteger(number) || (col.k==='qtyPerCarton'?number<0:number<=0))) result.errors.push(col.l + (col.k==='qtyPerCarton'?': phải là số nguyên không âm.':': phải là số nguyên dương.'));
         else if(col.k==='fxRate'&&number===0)result.errors.push(col.l+': phải lớn hơn 0 hoặc để trống.');else values[col.k] = number;
       } else if ((col.t === 'date'||col.t==='datetime')) {
         const date = (col.t==='datetime'?workbook.dateTimeValue:workbook.dateValue)(value, false);
@@ -130,10 +130,8 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
     const effective={...(matched||{}),...values};for(const key of calculations.issues(effective).filter(k=>!['qtyPerCarton','cartonCount'].includes(k))){if(!result.errors.some(e=>e.startsWith((byKey.get(key)?.l||key)+':')))result.errors.push((byKey.get(key)?.l||key)+': số liệu vượt giới hạn tính toán hoặc không hợp lệ.')}
     if (!values.productCode&&!matched?.productCode) result.errors.push('Thiếu Mã SP.');
     if (!effectiveKey && !matched) {
-      // Sparse imports may omit the product name, but quantity fields must
-      // always be valid positive integers so a newly created row can be
-      // exported and imported again through the snapshot update path.
-      for (const key of (allowSparseCreates ? ['qtyPerCarton', 'cartonCount'] : ['productName', 'qtyPerCarton', 'cartonCount'])) if (blank(values[key])) result.errors.push('Thiếu ' + byKey.get(key).l + '.');
+      // SL/T defaults to zero when blank. Carton count remains required and positive.
+      for (const key of (allowSparseCreates ? ['cartonCount'] : ['productName', 'cartonCount'])) if (blank(values[key])) result.errors.push('Thiếu ' + byKey.get(key).l + '.');
       if (!values.listedAt) values.listedAt = listedAt;
       result.values = { ...values, contId: values.contId??null };
     } else if (matched) {

@@ -23,11 +23,11 @@ test('bulk add validates once and creates all pasted product codes in AA with on
  assert.equal((await db.query("SELECT name FROM purchase_regions WHERE id=(SELECT region_id FROM purchase_orders LIMIT 1)")).rows[0].name,'AA');
  assert.equal((await db.query("SELECT count(*)::int AS count FROM purchase_history WHERE action='bulk_create'")).rows[0].count,1);
 });
-test('bulk add requires a positive integer quantity per carton',async()=>{
- await assert.rejects(service.createMany(manager,{rows:[{productCode:'MINIMAL-01',cartonCount:7}]}),error=>error.code==='VALIDATION_ERROR');
- await assert.rejects(service.createMany(manager,{rows:[{productCode:'ZERO-QUANTITY',qtyPerCarton:0,cartonCount:7}]}),error=>error.code==='VALIDATION_ERROR');
- const result=await service.createMany(manager,{rows:[{productCode:'MINIMAL-01',qtyPerCarton:1,cartonCount:7}]});
- assert.equal(result.count,1);assert.equal(result.rows[0].productCode,'MINIMAL-01');assert.equal(result.rows[0].cartonCount,7);assert.equal(result.rows[0].productName,'');assert.equal(result.rows[0].qtyPerCarton,1);
+test('bulk add accepts blank or zero quantity per carton',async()=>{
+ const result=await service.createMany(manager,{rows:[{productCode:'MINIMAL-01',cartonCount:7}]});
+ assert.equal(result.count,1);assert.equal(result.rows[0].productCode,'MINIMAL-01');assert.equal(result.rows[0].cartonCount,7);assert.equal(result.rows[0].productName,'');assert.equal(result.rows[0].qtyPerCarton,0);
+ const zero=await service.createMany(manager,{rows:[{productCode:'ZERO-QUANTITY',qtyPerCarton:0,cartonCount:7}]});
+ assert.equal(zero.rows[0].qtyPerCarton,0);
 });
 test('bulk add can insert directly into an active container',async()=>{
  const container=await service.createContainer(manager,{name:'CONT DIRECT',assumedM3:170});
