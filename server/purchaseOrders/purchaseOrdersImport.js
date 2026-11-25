@@ -130,7 +130,10 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
     const effective={...(matched||{}),...values};for(const key of calculations.issues(effective).filter(k=>!['qtyPerCarton','cartonCount'].includes(k))){if(!result.errors.some(e=>e.startsWith((byKey.get(key)?.l||key)+':')))result.errors.push((byKey.get(key)?.l||key)+': số liệu vượt giới hạn tính toán hoặc không hợp lệ.')}
     if (!values.productCode&&!matched?.productCode) result.errors.push('Thiếu Mã SP.');
     if (!effectiveKey && !matched) {
-      for (const key of (allowSparseCreates ? ['cartonCount'] : ['productName', 'qtyPerCarton', 'cartonCount'])) if (blank(values[key])) result.errors.push('Thiếu ' + byKey.get(key).l + '.');
+      // Sparse imports may omit the product name, but quantity fields must
+      // always be valid positive integers so a newly created row can be
+      // exported and imported again through the snapshot update path.
+      for (const key of (allowSparseCreates ? ['qtyPerCarton', 'cartonCount'] : ['productName', 'qtyPerCarton', 'cartonCount'])) if (blank(values[key])) result.errors.push('Thiếu ' + byKey.get(key).l + '.');
       if (!values.listedAt) values.listedAt = listedAt;
       result.values = { ...values, contId: values.contId??null };
     } else if (matched) {

@@ -94,12 +94,12 @@
     const guide=XLSX.utils.aoa_to_sheet([
       ['HƯỚNG DẪN NHẬP FILE THU MUA'],
       ['File này chỉ thêm dòng mới, không chứa snapshot hoặc Mã dòng. '+excludedImportDescription],
-      ['Chỉ điền các dòng mới ở sheet “Mã mới”; giữ nguyên tiêu đề cột. Mã SP và Số thùng là bắt buộc. Mã SP được phép trùng; hệ thống tự cấp Mã dòng riêng cho mỗi dòng mới.'],
+      ['Chỉ điền các dòng mới ở sheet “Mã mới”; giữ nguyên tiêu đề cột. Mã SP, SL/T và Số thùng là bắt buộc. SL/T và Số thùng phải là số nguyên dương. Mã SP được phép trùng; hệ thống tự cấp Mã dòng riêng cho mỗi dòng mới.'],
       ['Giới hạn: tối đa 1.000 dòng mới trong mỗi lần nhập.'],
       ['Tên cont: nhập tên cont đã có để gán mã vào cont đó. Nếu chưa có, cont sẽ được tạo mới trong Vùng đã chọn; để trống Tên cont thì mã vào Chờ xếp. Vùng để trống sẽ dùng vùng AA.'],
       ['Mã SP trùng trong file hoặc trên hệ thống không phải lỗi. Mã dòng riêng do hệ thống cấp cho từng dòng; dữ liệu hiện có không bị cập nhật hoặc xóa.'],
       [],['CỘT','BẮT BUỘC','KIỂU / ĐỊNH DẠNG','LƯU Ý'],
-      ...cols.map(col=>[caption(col),['productCode','cartonCount'].includes(col.k)?'Có':'Không',col.region?'Tên vùng hoặc mã vùng':numericTypes.has(col.t)?'Số'+(col.decimals!=null?' · tối đa '+col.decimals+' chữ số thập phân':''):col.t==='date'||col.t==='datetime'?'Ngày':'Văn bản',col.k==='productCode'?'Mã SP được phép trùng. Mỗi dòng mới nhận Mã dòng riêng.':col.k==='cartonCount'?'Số nguyên dương.':col.k==='container'?'Cont đã có sẽ được gán; tên chưa có sẽ tạo cont mới thuộc Vùng đã chọn. Để trống để vào Chờ xếp.':col.region?'Để trống sẽ dùng vùng AA.':'Để trống nếu chưa có dữ liệu.'])
+      ...cols.map(col=>[caption(col),['productCode','qtyPerCarton','cartonCount'].includes(col.k)?'Có':'Không',col.region?'Tên vùng hoặc mã vùng':numericTypes.has(col.t)?'Số'+(col.decimals!=null?' · tối đa '+col.decimals+' chữ số thập phân':''):col.t==='date'||col.t==='datetime'?'Ngày':'Văn bản',col.k==='productCode'?'Mã SP được phép trùng. Mỗi dòng mới nhận Mã dòng riêng.':(['qtyPerCarton','cartonCount'].includes(col.k)?'Số nguyên dương; không để trống hoặc nhập 0.':col.k==='container'?'Cont đã có sẽ được gán; tên chưa có sẽ tạo cont mới thuộc Vùng đã chọn. Để trống để vào Chờ xếp.':col.region?'Để trống sẽ dùng vùng AA.':'Để trống nếu chưa có dữ liệu.')])
     ]);
     guide['!cols']=[{wch:30},{wch:18},{wch:34},{wch:68}];XLSX.utils.book_append_sheet(book,guide,'Hướng dẫn');
     const regionSheet=XLSX.utils.aoa_to_sheet([['MÃ VÙNG','TÊN VÙNG','MÀU'],...regions.map(region=>[String(region.id),region.name,region.color||''])]);
