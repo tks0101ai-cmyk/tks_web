@@ -48,6 +48,9 @@ dialog::backdrop{background:#0009}
 
 #notice{min-height:18px;color:var(--amber)}
 .error{color:var(--amber)}
+.purchase-spinner{display:inline-block;width:13px;height:13px;box-sizing:border-box;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-2px;animation:purchase-spin .7s linear infinite}
+@keyframes purchase-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.purchase-spinner{animation-duration:1.8s}}
 .resize{position:absolute;right:0;top:0;width:6px;height:100%;cursor:col-resize}
 
 /* Drawer điều hướng dùng chung ở shared.css. */
