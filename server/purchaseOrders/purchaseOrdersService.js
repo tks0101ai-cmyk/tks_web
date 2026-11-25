@@ -200,9 +200,17 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
     const row=(await client.query(sql)).rows[0];
     return {...row,revision:row.max_id+':'+row.count};
   }
-  async function prepareSummaryCacheUpdate(client,operationId){
+  async function prepareSummaryCacheUpdate(client,operationId,baseRevision){
     if(!cachedContainerSummaries)return null;
-    const start=await readHistoryRevision(client),snapshots=(await client.query('SELECT before_row,after_row FROM purchase_operation_rows WHERE operation_id=$1',[operationId])).rows;
+    const start=await readHistoryRevision(client);
+    // A process-local summary cache may have missed writes committed by another
+    // server instance. Do not apply a partial delta to a cache from an older
+    // database revision and then mark that incomplete cache as current.
+    const baseCount=BigInt(String(baseRevision||'').split(':')[1]||'-1'),startCount=BigInt(start.revision.split(':')[1]||'0');
+    // This transaction writes one audit row. Any additional revision means a
+    // concurrent or missed write; invalidate instead of blessing a partial cache.
+    if(!baseRevision||cachedContainerSummaryRevision!==baseRevision||startCount-baseCount!==1n)return {invalidate:true};
+    const snapshots=(await client.query('SELECT before_row,after_row FROM purchase_operation_rows WHERE operation_id=$1',[operationId])).rows;
     if(snapshots.length>500)return {invalidate:true};
     const relevant=new Set(['container_id','region_id','deleted_at','inactive_at','carton_count','kg_per_carton','m3_per_carton','qty_per_carton','unit_price_cny','fx_rate','surcharge_percent','freight_prepaid','freight_postpaid']);
     const buckets=new Map(),rowState=row=>row&&row.deleted_at==null&&row.inactive_at==null;
@@ -253,6 +261,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
       // Create the operation and set its transaction-local trigger context in one
       // database round trip. The trigger still sees the same operation UUID.
       await client.query("WITH operation AS (INSERT INTO purchase_operations(id,actor_id) VALUES($1,$2) RETURNING id) SELECT set_config('purchase.operation_id',id::text,true) FROM operation",[operation,actor(user).id]);
+       const summaryBaseRevision=cachedContainerSummaries?(await readHistoryRevision(client)).revision:null;
       const result=await fn(client),response=result.changed&&['create','edit','bulk_edit','transfer','balance_plan','delete','merge','restore','deactivate','reactivate','restore_version','container_delete','container_restore','container_deactivate','container_reactivate'].includes(client.purchaseAction)&&result.value&&typeof result.value==='object'?{...result.value,operationId:operation}:result.value;
       const enqueueProjection=!!(result.changed&&integrated&&client.purchaseProjectionRequired!==false&&deferProjection);
       if(result.changed&&integrated&&client.purchaseProjectionRequired!==false){if(deferProjection){client.purchaseProjectionRequested=true;client.purchaseProjectionDeferred=true}else{await client.query('SELECT pg_advisory_xact_lock($1)',[PROJECTION_LOCK_KEY]);await project(client)}}
@@ -270,7 +279,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         if(request)await client.query('INSERT INTO purchase_requests(actor_id,request_key,fingerprint,result) VALUES($1,$2,$3,$4)',[actor(user).id,request.key,request.fingerprint,JSON.stringify(response)]);
       }
       let summaryCacheUpdate=null;
-      if(result.changed&&cachedContainerSummaries)try{summaryCacheUpdate=await prepareSummaryCacheUpdate(client,operation)}catch{summaryCacheUpdate={invalidate:true}}
+      if(result.changed&&cachedContainerSummaries)try{summaryCacheUpdate=await prepareSummaryCacheUpdate(client,operation,summaryBaseRevision)}catch{summaryCacheUpdate={invalidate:true}}
       await client.query('COMMIT');committed=true;
       if(summaryCacheUpdate?.invalidate){cachedContainerSummaries=null;cachedContainerSummaryRevision=null;containerSummaryInFlight=null}
       else if(summaryCacheUpdate){cachedContainerSummaries=summaryCacheUpdate.summaries;cachedContainerSummaryRevision=summaryCacheUpdate.revision;containerSummaryInFlight=null}
