@@ -38,11 +38,11 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
   const existingPrefixes=prefixes(existingRows),archivedPrefixes=prefixes(archivedRows);
   const normalizeContainerName=value=>String(value??'').trim().replace(/^cont\s+/i,'').normalize('NFKC').replace(/\s+/g,' ').toLocaleLowerCase('vi');
   const containersById=new Map(),containersByName=new Map();
-  for(const container of containers){containersById.set(String(container.id),container);const key=normalizeContainerName(container.name);if(key&&!containersByName.has(key))containersByName.set(key,container)}
+  for(const container of containers){containersById.set(String(container.id),container);if(container.deleted_at||container.deletedAt)continue;const key=normalizeContainerName(container.name);if(key&&!containersByName.has(key))containersByName.set(key,container)}
   const regionsById=new Map(),regionsByName=new Map();
   const regionsByKey=new Map(),containersByKey=new Map(),plannedRegions=new Map(),plannedContainers=new Map();
   for(const region of regions){regionsById.set(String(region.id),region);const key=String(region.name||'').trim().toLocaleLowerCase('vi');if(key&&!regionsByName.has(key))regionsByName.set(key,region);const normalized=normalizeRegionName(region.name);if(normalized&&!regionsByKey.has(normalized))regionsByKey.set(normalized,region)}
-  for(const container of containers){const key=normalizeContainerKey(String(container.name||'').trim().replace(/^cont\s+/i,''));if(key&&!containersByKey.has(key))containersByKey.set(key,container)}
+  for(const container of containers){if(container.deleted_at||container.deletedAt)continue;const key=normalizeContainerKey(String(container.name||'').trim().replace(/^cont\s+/i,''));if(key&&!containersByKey.has(key))containersByKey.set(key,container)}
   const counts = new Map();
   const recoveryCounts = new Map();
   sourceRows.forEach(row => { const key = String(row.rowKey ?? '').trim(); if (key) counts.set(key, (counts.get(key) || 0) + 1); });

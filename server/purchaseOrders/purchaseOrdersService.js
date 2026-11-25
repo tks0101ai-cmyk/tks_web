@@ -279,7 +279,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         if(request)await client.query('INSERT INTO purchase_requests(actor_id,request_key,fingerprint,result) VALUES($1,$2,$3,$4)',[actor(user).id,request.key,request.fingerprint,JSON.stringify(response)]);
       }
       let summaryCacheUpdate=null;
-      if(result.changed&&cachedContainerSummaries){if(client.purchaseForceSummaryInvalidation)summaryCacheUpdate={invalidate:true};else try{summaryCacheUpdate=await prepareSummaryCacheUpdate(client,operation,summaryBaseRevision)}catch{summaryCacheUpdate={invalidate:true}}}
+      if(result.changed&&(client.purchaseForceSummaryInvalidation||cachedContainerSummaries)){if(client.purchaseForceSummaryInvalidation)summaryCacheUpdate={invalidate:true};else try{summaryCacheUpdate=await prepareSummaryCacheUpdate(client,operation,summaryBaseRevision)}catch{summaryCacheUpdate={invalidate:true}}}
       await client.query('COMMIT');committed=true;
       if(summaryCacheUpdate?.invalidate){cachedContainerSummaries=null;cachedContainerSummaryRevision=null;containerSummaryInFlight=null}
       else if(summaryCacheUpdate){cachedContainerSummaries=summaryCacheUpdate.summaries;cachedContainerSummaryRevision=summaryCacheUpdate.revision;containerSummaryInFlight=null}
@@ -806,6 +806,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         if(!saved.live)throw fail(410,'PREVIEW_EXPIRED','Bản xem trước đã hết hạn.');
         const plan=await prepareNewCodePlan(client,saved.payload.sourceRows||[]);
         if(!plan.valid)throw fail(409,'NEW_CODES_CHANGED','Danh sách mã, vùng hoặc cont đã thay đổi. Không thêm mã nào; tải lại file để xem trước lần nữa.',{rows:plan.rows.filter(row=>row.errors.length)});
+        if(plan.rows.length)client.purchaseForceSummaryInvalidation=true;
         const regionIds=new Map(),containerIds=new Map(),containerRegionIds=new Map();
         for(const region of plan.masterData?.regions||[]){
           const row=(await client.query('INSERT INTO purchase_regions(name,name_key,color,is_active) VALUES($1,$2,$3,true) RETURNING id',[region.name,normalizeName(region.name),'#2563EB'])).rows[0];
@@ -871,12 +872,12 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
       }
       const containerIds=containers.map(row=>row.id),retired=(await client.query('SELECT id,row_key,root_order_id,root_key,container_id,product_code FROM purchase_orders WHERE container_id=ANY($1::bigint[]) AND deleted_at IS NULL ORDER BY id FOR UPDATE',[containerIds])).rows;
       if(retired.length){client.purchaseFormulaValidationRequired=true;await recordRetiredKeys(client,retired);await client.query('UPDATE purchase_orders SET deleted_at=now(),version=version+1,updated_at=now() WHERE id=ANY($1::bigint[])',[retired.map(row=>row.id)]);await releaseInactiveFamilies(client,retired)}
-      const deleted=(await client.query('UPDATE product_containers SET deleted_at=now(),version=version+1,updated_at=now() WHERE id=ANY($1::bigint[]) RETURNING *',[containerIds])).rows;
+      const deleted=(await client.query("UPDATE product_containers SET deleted_at=now(),name_key='__DELETED__:'||id::text||':'||md5(name_key),version=version+1,updated_at=now() WHERE id=ANY($1::bigint[]) RETURNING *",[containerIds])).rows;
       client.purchaseContainersChanged=true;
       await audit(client,user,'container_delete',{containers:deleted.map(row=>({containerId:String(row.id),name:row.name})),deletedRows:retired.length});
       return {changed:true,value:rows===undefined?{...deleted[0],deletedRows:retired.length}:{rows:deleted,deleted:deleted.length,deletedRows:retired.length}}
     })},
-    async restoreContainer(user,{id,version}) {return transaction(user,async client=>{const row=(await client.query('SELECT * FROM product_containers WHERE id=$1 FOR UPDATE',[id])).rows[0];if(!row?.deleted_at||Number(row.version)!==Number(version))throw fail(409,'VERSION_CONFLICT','Cont đã thay đổi hoặc đã khôi phục.');const updated=(await client.query('UPDATE product_containers SET deleted_at=NULL,version=version+1,updated_at=now() WHERE id=$1 RETURNING *',[id])).rows[0];await audit(client,user,'container_restore',{containerId:String(id),name:row.name});return {changed:true,value:updated}})},
+    async restoreContainer(user,{id,version}) {return transaction(user,async client=>{const row=(await client.query('SELECT * FROM product_containers WHERE id=$1 FOR UPDATE',[id])).rows[0];if(!row?.deleted_at||Number(row.version)!==Number(version))throw fail(409,'VERSION_CONFLICT','Cont đã thay đổi hoặc đã khôi phục.');const restoredKey=normalizeName(row.name),conflict=(await client.query('SELECT id FROM product_containers WHERE name_key=$1 AND id<>$2',[restoredKey,id])).rows[0];if(conflict)throw fail(409,'CONTAINER_EXISTS','Không thể khôi phục cont vì đang có cont khác cùng tên.');const updated=(await client.query('UPDATE product_containers SET name_key=$2,deleted_at=NULL,version=version+1,updated_at=now() WHERE id=$1 RETURNING *',[id,restoredKey])).rows[0];await audit(client,user,'container_restore',{containerId:String(id),name:row.name});return {changed:true,value:updated}})},
 
     async updateContainer(user,id,{version,before={},changes={},rows,rowsSnapshotComplete}) {
       return transaction(user,async client=>{
@@ -1098,7 +1099,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         const records=[],keys=await allocateKeys(client,creates.length);
         for(let i=0;i<creates.length;i++){const values=creates[i],key=keys[i],record={row_key:key,root_key:key,container_id:values.contId??null,region_id:values.regionId??null,measurement_overrides:Object.fromEntries(overrideColumns.filter(c=>values[c.k]!=null&&values[c.k]!=='').map(c=>[c.k,values[c.k]]))};writable.forEach(c=>record[snake(c.k)]=values[c.k]??null);records.push(record)}
         await insertMany(client,records);
-        const deletedContainers=emptyContainerCandidates.size?(await client.query('UPDATE product_containers c SET deleted_at=now(),version=version+1,updated_at=now() WHERE c.id IN (SELECT container_id::bigint FROM jsonb_array_elements_text($1::jsonb) AS candidate(container_id)) AND c.deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM purchase_orders o WHERE o.container_id=c.id AND o.deleted_at IS NULL) RETURNING c.id,c.name',[JSON.stringify([...emptyContainerCandidates])])).rows:[];
+        const deletedContainers=emptyContainerCandidates.size?(await client.query("UPDATE product_containers c SET deleted_at=now(),name_key='__DELETED__:'||c.id::text||':'||md5(c.name_key),version=version+1,updated_at=now() WHERE c.id IN (SELECT container_id::bigint FROM jsonb_array_elements_text($1::jsonb) AS candidate(container_id)) AND c.deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM purchase_orders o WHERE o.container_id=c.id AND o.deleted_at IS NULL) RETURNING c.id,c.name",[JSON.stringify([...emptyContainerCandidates])])).rows:[];
         if(deletedContainers.length)client.purchaseContainersChanged=true;
         const result={counts:plan.counts,createdKeys:records.map(r=>r.row_key),employeeChanges,deletedContainers:deletedContainers.map(c=>({id:String(c.id),name:c.name}))};
         if(plan.operations.length)await audit(client,user,'import',{...result,changes:plan.rows.filter(r=>['update','reactivate','restore'].includes(r.action)).map(r=>({rowKey:r.rowKey,action:r.action,changes:r.changes})),deleted:deletes.map(r=>r.rowKey)});
