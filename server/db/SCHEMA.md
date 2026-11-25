@@ -1089,4 +1089,12 @@ Cập nhật gần nhất: 22/11/2026.
 
 Cập nhật gần nhất: 23/11/2026.
 
+## Migration 0143 — bộ đếm phiên bản lịch sử Thu mua
+
+`0143_purchase_history_revision_counts.sql` khởi tạo bộ đếm chính xác theo 64 shard và trigger tăng bộ đếm trong cùng transaction khi ghi `purchase_history`. API vẫn trả revision dạng `max(id):count`, vì vậy delta và nhận biết lần ghi có ID thấp commit muộn vẫn giữ nguyên hành vi; đọc count từ 64 hàng nhỏ thay vì quét toàn bộ audit log. Các dòng lịch sử vẫn bất biến như trước.
+
+Trong tiến trình đang xử lý thay đổi, cache tổng cont/vùng được làm mới theo các nhóm bị ảnh hưởng trong operation; thao tác chỉ đổi ghi chú hoặc dữ liệu danh mục giữ nguyên cache. Nếu quá nhiều nhóm đổi cùng lúc hoặc không đọc được snapshot operation thì cache tự bỏ và lần tải kế tiếp tổng hợp lại đầy đủ.
+
+Cập nhật gần nhất: 25/11/2026.
+
 22/11/2026 — Thu mua: xóa cont cũng xóa mềm các dòng đơn đang gán (`purchase_orders.deleted_at`), không xóa vật lý; dòng được ẩn khỏi bảng hoạt động và có thể khôi phục riêng từ thùng rác. Khôi phục `product_containers` không tự bật lại các dòng đơn.
