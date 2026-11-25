@@ -525,6 +525,20 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
       const state=await rowsAtVersion(pool,op);
       const touched=(await pool.query('SELECT row_id,before_row,after_row FROM purchase_operation_rows WHERE operation_id=$1 ORDER BY row_id',[operationId])).rows;
       const changes=touched.flatMap(x=>versionRowDiff(x));
+      // Lifecycle actions are sometimes absent from the reconstructed active-row set
+      // (for example, when the row was later archived). The operation snapshot is the
+      // authoritative state immediately after reactivation, so keep that row visible.
+      if(['reactivate','restore'].includes(op.action)){
+        const present=new Set(state.map(row=>String(row.id)));
+        const missing=touched.filter(x=>x.after_row&&!x.after_row.deleted_at&&!x.after_row.inactive_at&&!present.has(String(x.row_id)));
+        if(missing.length){
+          const keys=[...new Set(missing.map(x=>String(x.after_row.product_code||'').trim().toLowerCase()).filter(Boolean))];
+          const measures=keys.length?(await pool.query('SELECT code_key,m3_per_unit AS measure_m3_per_unit,per_carton AS measure_per_carton,kg_per_unit AS measure_kg_per_unit FROM shipping_measures WHERE code_key=ANY($1::text[])',[keys])).rows:[];
+          const byCode=new Map(measures.map(row=>[row.code_key,row]));
+          for(const item of missing){const code=String(item.after_row.product_code||'').trim().toLowerCase();state.push(jsRow({...item.after_row,...byCode.get(code)}));}
+          state.sort((a,b)=>Number(a.id)-Number(b.id));
+        }
+      }
       return {version:{id:op.id,action:op.action,createdAt:op.created_at,actorId:op.actor_id,actorName:op.actor_name,undone:op.undone},rows:state,changes,cellCount:changes.length};
     },
     async restoreVersion(user,operationId){return transaction(user,async client=>{
