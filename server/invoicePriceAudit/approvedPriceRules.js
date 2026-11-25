@@ -7,7 +7,7 @@
 const FEATURE_VIEW = 'reports.invoices.approvedPrice';
 const FEATURE_MANAGE = 'reports.invoices.approvedPrice.manage';
 
-const APPROVERS = Object.freeze(['Anh Quân', 'Anh Duy', 'Anh Duy Khánh']);
+const APPROVERS = Object.freeze(['Anh Quân', 'Anh Duy', 'Anh Duy Khánh', 'An Hồng Hải - Trợ lý']);
 const BRANCHES = Object.freeze(['hanoi', 'saigon']);
 const BRANCH_LABELS = Object.freeze({ hanoi: 'Hà Nội', saigon: 'Sài Gòn' });
 // Khoa sap xep (khop SORT_SQL cua repository) = khoa cot cua bang.

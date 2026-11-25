@@ -66,6 +66,7 @@ test('rules: gia / ngay / nguoi duyet / co so / khoa sort chi nhan gia tri hop l
   assert.ok(!rules.isValidDay('2026-02-30'));
   assert.ok(!rules.isValidDay('19/10/2026'));
   assert.throws(() => rules.parseCreate(valid({ approver: 'Anh Ba' })), e => e.code === 'INVALID_APPROVER');
+  assert.equal(rules.parseCreate(valid({ approver: 'An Hồng Hải - Trợ lý' })).approver, 'An Hồng Hải - Trợ lý');
   assert.throws(() => rules.parseCreate(valid({ branch: 'both' })), e => e.code === 'INVALID_BRANCH');
   assert.throws(() => rules.parseCreate(valid({ customerId: 'x' })), e => e.code === 'INVALID_ID');
   assert.throws(() => rules.parseCreate(valid({ approvedOn: '2026-13-01' })), e => e.code === 'INVALID_DATE');
@@ -74,7 +75,7 @@ test('rules: gia / ngay / nguoi duyet / co so / khoa sort chi nhan gia tri hop l
   assert.equal(rules.parseUpdate({ ...valid(), expectedVersion: 2 }).expectedVersion, 2);
   assert.throws(() => rules.parseListQuery({ sort: 'id; DROP TABLE x' }), e => e.code === 'INVALID_SORT');
   assert.throws(() => rules.parseListQuery({ from: '2026-10-20', to: '2026-10-01' }), e => e.code === 'INVALID_RANGE');
-  assert.deepEqual(rules.APPROVERS, ['Anh Quân', 'Anh Duy', 'Anh Duy Khánh']);
+  assert.deepEqual(rules.APPROVERS, ['Anh Quân', 'Anh Duy', 'Anh Duy Khánh', 'An Hồng Hải - Trợ lý']);
 });
 
 test('tao: khach / san pham khong co (hoac khach ngung hoat dong, sai co so) thi khong tao duoc', async () => {
@@ -342,7 +343,7 @@ test('HTTP: quyen xem / tao-sua-xoa, no-store, tao 201, sua + xoa co xac nhan ve
         assert.equal(view.status, 200, u);
         assert.equal(view.headers.get('cache-control'), 'no-store');
         assert.equal(view.body.canManage, false);
-        assert.deepEqual(view.body.options.approvers, ['Anh Quân', 'Anh Duy', 'Anh Duy Khánh']);
+        assert.deepEqual(view.body.options.approvers, ['Anh Quân', 'Anh Duy', 'Anh Duy Khánh', 'An Hồng Hải - Trợ lý']);
         assert.equal((await call(base, '/', { user: u, method: 'POST', body: valid() })).status, 403, u);
         assert.equal((await call(base, '/1', { user: u, method: 'PUT', body: { ...valid(), expectedVersion: 1 } })).status, 403, u);
         assert.equal((await call(base, '/1', { user: u, method: 'DELETE' })).status, 403, u);

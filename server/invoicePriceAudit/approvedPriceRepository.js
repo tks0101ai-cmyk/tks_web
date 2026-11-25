@@ -12,6 +12,7 @@ const { recalcWindow, SOURCE_NOT_READY } = require('./priceAuditRepository');
 const { LOCK_KEY } = require('./priceAuditRefresh');
 const { BRANCH_LABELS, bad } = require('./approvedPriceRules');
 const { validateRow } = require('./approvedPriceImport');
+const notificationRepository = require('../notifications/notificationRepository');
 
 const MAX_EXPORT_ROWS = 20000;
 const SUGGEST_LIMIT = 20;
@@ -80,6 +81,12 @@ const DELETE_SQL = 'DELETE FROM invoice_approved_prices WHERE id = $1::bigint';
 const CHANGE_SQL = `INSERT INTO invoice_approved_price_changes (price_id, action, actor, before_value, after_value)
   VALUES ($1::bigint, $2, $3, $4::jsonb, $5::jsonb)`;
 const STATE_SQL = 'SELECT published_day::text AS published_day FROM invoice_price_audit_state WHERE id';
+const APPROVER_ACCOUNT_NAMES = Object.freeze({
+  'Anh Quân': 'Anh Quân', 'Anh Duy': 'Anh Duy', 'Anh Duy Khánh': 'Anh Duy Khánh',
+  'An Hồng Hải - Trợ lý': 'An Hồng Hải'
+});
+const APPROVER_ACCOUNT_SQL = `SELECT id::text AS id FROM app_users
+  WHERE lower(btrim(ho_ten)) = lower(btrim($1)) AND trang_thai = 'Đang hoạt động' AND NOT is_deleted`;
 
 // Import (xem importPrices): doi chieu ma KH / ma SP trong file voi KiotViet cua co so (khong phan biet hoa/thuong), roi tim
 // ban ghi da co cung (co so, khach, SP, ngay duyet) de ghi de.
@@ -132,7 +139,36 @@ async function applyRecalc(client, scopes, now) {
   }
 }
 
-function createApprovedPriceRepository({ pool = getPool(), now = () => new Date() } = {}) {
+function createApprovedPriceRepository({ pool = getPool(), now = () => new Date(), notificationRepo = notificationRepository } = {}) {
+  async function notifyApprover(client, { id, approver, branch, customerName, productCode, approvedOn, actor }, recipientCache) {
+    const accountName = APPROVER_ACCOUNT_NAMES[approver] || approver;
+    await client.query('SAVEPOINT approved_price_notification');
+    try {
+      let recipientId;
+      if (recipientCache.has(accountName)) recipientId = recipientCache.get(accountName);
+      else {
+        const users = (await client.query(APPROVER_ACCOUNT_SQL, [accountName])).rows;
+        recipientId = users.length === 1 ? users[0].id : null;
+        recipientCache.set(accountName, recipientId);
+      }
+      if (recipientId) await notificationRepo.createNotificationForUsers([recipientId], {
+        type: 'invoice_approved_price_created',
+        title: 'Bản ghi giá duyệt mới',
+        message: `Bạn được ghi nhận là người duyệt giá cho ${customerName || 'khách hàng'} · ${productCode || 'mã sản phẩm'} · ${BRANCH_LABELS[branch] || branch} · ngày duyệt ${approvedOn}. Người tạo: ${actor}.`,
+        relatedType: null,
+        relatedId: String(id)
+      }, { db: client });
+      else if (recipientCache.get(accountName) === null) console.warn(`[invoice-approved-prices] Không gửi được thông báo: cần đúng một tài khoản đang hoạt động tên "${accountName}".`);
+      await client.query('RELEASE SAVEPOINT approved_price_notification');
+      return !!recipientId;
+    } catch (error) {
+      await client.query('ROLLBACK TO SAVEPOINT approved_price_notification').catch(() => {});
+      await client.query('RELEASE SAVEPOINT approved_price_notification').catch(() => {});
+      console.error('[invoice-approved-prices] Không tạo được thông báo người duyệt:', error.message);
+      return false;
+    }
+  }
+
   async function list(query, { all = false } = {}) {
     const params = [query.approver, query.from, query.to];
     const order = orderSql(query.sort, query.dir, query.sorts);
@@ -210,7 +246,10 @@ function createApprovedPriceRepository({ pool = getPool(), now = () => new Date(
       await client.query(CHANGE_SQL, [id, 'create', actor, null, JSON.stringify(snapshot({ ...input, version: 1 }))]);
       const recalc = await applyRecalc(client, [{ branch: input.branch, customerId: input.customerId,
         productId: input.productId, fromDay: input.approvedOn }], now());
-      return { row: await readOne(id, client), recalc };
+      const row = await readOne(id, client);
+      await notifyApprover(client, { id, approver: input.approver, branch: input.branch, customerName: row.customerName,
+        productCode: row.productCode, approvedOn: input.approvedOn, actor }, new Map());
+      return { row, recalc };
     });
   }
 
@@ -328,11 +367,14 @@ function createApprovedPriceRepository({ pool = getPool(), now = () => new Date(
     return inTransaction(async client => {
       const items = await planImport(client, rawRows, true);
       const scopes = [];
+      const approverRecipients = new Map();
       for (const i of items) {
         const v = i.value;
         if (i.status === 'create') {
           const id = (await client.query(INSERT_SQL, [v.branch, i.customerId, i.productId, v.priceNoVat, v.priceWithVat, v.approver, v.approvedOn, actor])).rows[0].id;
           await client.query(CHANGE_SQL, [id, 'create', actor, null, JSON.stringify(snapshot({ ...v, customerId: i.customerId, productId: i.productId, version: 1 }))]);
+          await notifyApprover(client, { id, approver: v.approver, branch: v.branch, customerName: i.customerName,
+            productCode: i.productCode, approvedOn: v.approvedOn, actor }, approverRecipients);
           scopes.push({ branch: v.branch, customerId: i.customerId, productId: i.productId, fromDay: v.approvedOn });
         } else if (i.status === 'update') {
           const ex = i.existing;

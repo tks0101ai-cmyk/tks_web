@@ -9,7 +9,7 @@
   const API = '/api/invoice-approved-prices';
   const FEATURE_VIEW = 'reports.invoices.approvedPrice';
   const FEATURE_MANAGE = 'reports.invoices.approvedPrice.manage';
-  const APPROVERS = ['Anh Quân', 'Anh Duy', 'Anh Duy Khánh'];
+  const APPROVERS = ['Anh Quân', 'Anh Duy', 'Anh Duy Khánh', 'An Hồng Hải - Trợ lý'];
   const BRANCHES = [['hanoi', 'Hà Nội'], ['saigon', 'Sài Gòn']];
   const COLUMN_COUNT = 9;
 
