@@ -279,7 +279,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         if(request)await client.query('INSERT INTO purchase_requests(actor_id,request_key,fingerprint,result) VALUES($1,$2,$3,$4)',[actor(user).id,request.key,request.fingerprint,JSON.stringify(response)]);
       }
       let summaryCacheUpdate=null;
-      if(result.changed&&cachedContainerSummaries)try{summaryCacheUpdate=await prepareSummaryCacheUpdate(client,operation,summaryBaseRevision)}catch{summaryCacheUpdate={invalidate:true}}
+      if(result.changed&&cachedContainerSummaries){if(client.purchaseForceSummaryInvalidation)summaryCacheUpdate={invalidate:true};else try{summaryCacheUpdate=await prepareSummaryCacheUpdate(client,operation,summaryBaseRevision)}catch{summaryCacheUpdate={invalidate:true}}}
       await client.query('COMMIT');committed=true;
       if(summaryCacheUpdate?.invalidate){cachedContainerSummaries=null;cachedContainerSummaryRevision=null;containerSummaryInFlight=null}
       else if(summaryCacheUpdate){cachedContainerSummaries=summaryCacheUpdate.summaries;cachedContainerSummaryRevision=summaryCacheUpdate.revision;containerSummaryInFlight=null}
@@ -1064,6 +1064,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
           if(operation.values){operation.values.regionId=materialize(operation.values.regionId);operation.values.contId=materialize(operation.values.contId)}for(const change of operation.changes||[])if(change.key==='regionId'||change.key==='contId')change.after=materialize(change.after)
         }
         for(const row of plan.rows){if(row.values){row.values.regionId=materialize(row.values.regionId);row.values.contId=materialize(row.values.contId)}for(const change of row.changes||[])if(change.key==='regionId'||change.key==='contId')change.after=materialize(change.after)}
+        if(plan.operations.length)client.purchaseForceSummaryInvalidation=true;
         if(checked.operations.length)client.purchaseFormulaValidationRequired=true;
         const employeeChanges=await applyImportEmployees(client,plan.employeeChanges||[],user);
         const currentById=new Map(current.map(row=>[String(row.id),row])),archivedById=new Map(archived.map(row=>[String(row.id),row]));
