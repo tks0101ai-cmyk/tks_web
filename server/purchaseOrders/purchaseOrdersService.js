@@ -411,15 +411,19 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
   function employeeName(name){if(typeof name!=='string'||!name.trim()||name.trim().length>200)throw fail(400,'NAME_INVALID','Tên nhân viên phải có 1–200 ký tự.');return name.trim()}
   async function validateImportEmployees(client,plan,current,archived=[],lock=false){
     const employees=(await client.query('SELECT id,name,color,is_active AS "isActive",version FROM purchase_employees ORDER BY id'+(lock?' FOR UPDATE':''))).rows;
-    const byName=new Map(employees.map(employee=>[employee.name.trim().toLowerCase(),employee])),currentByKey=new Map(current.map(row=>[row.rowKey,row])),archivedByKey=new Map(archived.map(row=>[row.rowKey,row])),planned=new Map(),employeeChanges=[];
+    const employeeKey=name=>String(name??'').trim().normalize('NFC').toLocaleLowerCase('vi'),byName=new Map(employees.map(employee=>[employeeKey(employee.name),employee])),currentByKey=new Map(current.map(row=>[row.rowKey,row])),archivedByKey=new Map(archived.map(row=>[row.rowKey,row])),planned=new Map(),employeeChanges=[];
     for(const row of plan.rows){
       if(['archived_skip','delete','stale_preserve'].includes(row.action))continue;
       const matched=currentByKey.get(row.rowKey)||archivedByKey.get(row.rowKey),buyerChange=row.changes.find(change=>change.key==='buyer'),buyer=row.action==='create'?row.values?.buyer:buyerChange?buyerChange.after:matched?.buyer;
       if(buyer==null||buyer==='')continue;
+      if(row.action!=='create'&&!buyerChange&&!['reactivate','restore'].includes(row.action))continue;
       let name;try{name=employeeName(buyer)}catch(error){row.errors.push(error.message);continue}
-      const key=name.toLowerCase(),existing=byName.get(key),prior=planned.get(key);
-      if(existing&&existing.name!==name){row.errors.push('Tên nhân viên trùng cách viết với danh mục: '+existing.name+'.');continue}
-      if(prior&&prior.name!==name){row.errors.push('Tên nhân viên trùng cách viết trong file: '+prior.name+'.');continue}
+      const key=employeeKey(name),existing=byName.get(key),prior=planned.get(key),canonical=existing?.name||prior?.name;
+      if(canonical&&canonical!==name){
+        if(row.action==='create')row.values.buyer=canonical;
+        else if(buyerChange){buyerChange.after=canonical;if(row.values)row.values.buyer=canonical}
+      }
+      if(buyerChange&&buyerChange.before===buyerChange.after){row.changes=row.changes.filter(change=>change!==buyerChange);if(row.action==='update'&&!row.changes.length)row.action='unchanged'}
       if(existing){if(!existing.isActive)planned.set(key,{action:'reactivate',id:String(existing.id),version:Number(existing.version),name:existing.name});continue}
       if(!prior)planned.set(key,{action:'create',name});
     }
