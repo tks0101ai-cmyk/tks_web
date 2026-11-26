@@ -20,6 +20,7 @@ function startBackgroundJobs() {
 
   // CÂN ĐO: đọc Google Sheets theo chu kỳ vào Postgres, web chỉ đọc DB (Vị trí hàng cũ đã gỡ 2026-10-30).
   stops.push(require('./sheetSnapshots/sync').startSheetSnapshotSchedule());
+  stops.push(require('./vatSnapshot/sync').startVatSnapshotSchedule());
 
   if (CONFIG.PANCAKE_MARKETING_SYNC_ENABLED) {
     const pancakeScheduler = require('./marketingReport/pancakeScheduler').createPancakeScheduler({ enabled: true });

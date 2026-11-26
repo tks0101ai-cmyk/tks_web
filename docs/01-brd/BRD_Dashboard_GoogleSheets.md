@@ -753,3 +753,12 @@ Cập nhật gần nhất: 22/11/2026.
 26/11/2026 — Thu mua: Tỉ giá thiếu được mặc định 3900 để tránh bỏ trống các kết quả tiền hàng/NET; giá trị tỉ giá đã nhập được bảo toàn và không chấp nhận 0.
 
 Cập nhật gần nhất: 26/11/2026.
+
+
+## 26/11/2026 — Phân biệt tổng tồn VAT và phần sale dùng được
+
+Sale cần thấy lượng VAT còn thuộc công ty và lượng còn dùng được cho đơn mới: đơn nháp của sale khác có thể giữ VAT dù hàng vẫn còn trong tồn thực. Báo cáo Hàng hóa mục 1 thêm Tồn VAT thực (I) và Tồn VAT có bán (O) sau Có bán SG; ví dụ 1.000 tổng tồn, nháp giữ 300 thì còn dùng được 700. Có thể xem phân bổ theo công ty và xuất số liệu.
+
+Để không tăng tải lên workbook nặng, worker Render hiện có đọc một bản chung mỗi 5 phút, các trang sử dụng dữ liệu đã lưu trong PostgreSQL. Người xem được biết thời điểm và tình trạng dữ liệu; không diễn giải bản cũ thành tồn thời gian thực hoặc biến dữ liệu thiếu thành 0. Không thay đổi nghiệp vụ giữ chỗ/chốt đơn trong đợt này.
+
+Cập nhật gần nhất: 26/11/2026.

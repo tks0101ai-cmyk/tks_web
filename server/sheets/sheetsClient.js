@@ -175,19 +175,25 @@ function createClient(getSpreadsheetId, branchLabel) {
  * file goc VAT TKS (timeout 45 s) tung keo dai ~136 s va moi trang VAT cho theo (14/11/2026). Loi -> nguoi
  * goi tra ban cu (cache) hoac lan sau doc lai.
  */
-async function readSheetValuesById({ spreadsheetId, sheetId, range = '', timeoutMs = API_TIMEOUT_MS }, { sheetsApi, valueRenderOption = 'FORMATTED_VALUE' } = {}) {
+async function readSheetValuesById({ spreadsheetId, sheetId, range = '', timeoutMs = API_TIMEOUT_MS }, { sheetsApi, valueRenderOption = 'FORMATTED_VALUE', metadataCache, beforeRequest = async () => {} } = {}) {
   const sheets = sheetsApi || await getSheetsApi();
   const requestOptions = { timeout: timeoutMs, retry: false };
-  const meta = await sheets.spreadsheets.get({
-    spreadsheetId,
-    fields: 'sheets.properties(sheetId,title)'
-  }, requestOptions);
+  let meta = metadataCache && metadataCache.get(spreadsheetId);
+  if (!meta) {
+    await beforeRequest();
+    meta = await sheets.spreadsheets.get({
+      spreadsheetId,
+      fields: 'sheets.properties(sheetId,title)'
+    }, requestOptions);
+    if (metadataCache) metadataCache.set(spreadsheetId, meta);
+  }
   const tab = (meta.data.sheets || []).find(s => String(s.properties.sheetId) === String(sheetId));
   if (!tab) {
     const err = new Error(`Không có tab sheetId ${sheetId} trong file ${spreadsheetId}.`);
     err.code = 'SHEET_TAB_NOT_FOUND';
     throw err;
   }
+  await beforeRequest();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId,
     range: quoteSheetName(tab.properties.title) + (range ? `!${range}` : ''),

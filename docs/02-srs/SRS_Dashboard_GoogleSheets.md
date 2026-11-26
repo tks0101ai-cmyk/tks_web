@@ -1361,3 +1361,12 @@ Cập nhật gần nhất: 22/11/2026.
 Nếu cột Tỉ giá của một mã trống hoặc chưa có giá trị, hệ thống dùng `3900` cho tính toán và thể hiện giá trị đó trên bảng/xuất file. Quy tắc áp dụng nhất quán cho thêm mã, import mới/cập nhật, lưu sửa một ô và sửa hàng loạt; tỉ giá người dùng nhập được giữ nguyên. Số `0` vẫn không hợp lệ. Migration `0145` backfill dòng cũ còn NULL và cập nhật projection NET.
 
 Cập nhật gần nhất: 26/11/2026.
+
+
+## FR-PRODUCT-VAT-STOCK (26/11/2026)
+
+Mục 1 tab Hàng hóa hiển thị Tồn VAT thực (Gộp VAT I) và Tồn VAT có bán (O) theo thứ tự sau Có bán SG. Cột O đã trừ đơn nháp giữ chỗ, web không trừ lần nữa. Mã được khớp theo thứ tự hiện có của ORDER VAT, gộp từng mã VAT duy nhất qua các công ty. Bấm số xem công ty/mã VAT/I/O; hỗ trợ sắp xếp toàn tập trước phân trang, chọn cột, xuất Excel/HTML với thời điểm dữ liệu. Giữ số 0/số âm, chưa biết hoặc không khớp hiển thị dấu gạch.
+
+NFR: mọi chức năng VAT dùng snapshot PostgreSQL chung do worker hiện có làm mới 5 phút; mở/xem/tìm/sắp xếp/xuất không gọi Sheets. Request được giới hạn theo workbook và chia sẻ metadata; cập nhật thủ công coalesce/cooldown 60 giây và không vượt backoff. Lỗi giữ bản trước; cảnh báo cũ sau 5 phút hoặc lỗi; quá 6 giờ ngừng sử dụng tồn VAT. Công bố nguyên tử sau kiểm tra công thức/số/sụt dòng, bảo toàn thuật toán Nháp VAT và quyền các API hiện có. Giao diện dùng table-controls, hỗ trợ Light/Dark và màn hình nhỏ.
+
+Cập nhật gần nhất: 26/11/2026.

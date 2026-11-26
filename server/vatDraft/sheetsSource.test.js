@@ -16,6 +16,20 @@ const {
 const vatDraftConfig = require('./vatDraftConfig');
 const { readSheetValuesById } = require('../sheets/sheetsClient');
 
+test('worker reuses workbook metadata for multiple VAT tabs and applies request pacing hook', async () => {
+  let metadataReads = 0, valueReads = 0, paced = 0;
+  const metadataCache = new Map();
+  const options = { metadataCache, beforeRequest: async () => { paced++; }, sheetsApi: { spreadsheets: {
+    get: async () => { metadataReads++; return { data: { sheets: [{properties:{sheetId:1,title:'Gop'}},{properties:{sheetId:2,title:'Khop'}}] } }; },
+    values: { get: async ({range}) => { valueReads++; return { data: { values: [[range]] } }; } }
+  } } };
+  await readSheetValuesById({spreadsheetId:'VAT',sheetId:1,range:'A:P'},options);
+  await readSheetValuesById({spreadsheetId:'VAT',sheetId:2,range:'A:K'},options);
+  assert.equal(metadataReads, 1);
+  assert.equal(valueReads, 2);
+  assert.equal(paced, 3);
+});
+
 const GOP_HEADER = 'CTY,Mã kiot đại diện,Tên kiot đại diện,MÃ VAT KIOT,TÊN VAT KIOT,TÊN HÀNG,Đơn vị tính,x,TỒN ĐẦU NGÀY,GIÁ BÁN,THUẾ VAT,THUẾ NK,TỔNG THUẾ MẤT,TỔNG ĐANG NHÁP,TỒN CÓ THỂ NHÁP';
 const KHOP_HEADER = 'CHECK TỒN BÊN SHEET VAT,,,,,,,,,,\nMã SP,Tên SP,,,,,,,,MÃ VAT KIOT,TÊN VAT KIOT';
 

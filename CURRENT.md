@@ -82,3 +82,7 @@ Cập nhật: 16/11/2026
 
 Cập nhật gần nhất: 21/11/2026.
 > 22/11/2026 — **Thu mua: xóa cont kéo theo xóa mềm mã đang gán** — đã sửa service/UI và cập nhật tài liệu; chưa chạy kiểm thử, chưa push/deploy. Cần kiểm khi có yêu cầu xác minh hoặc trước phát hành.
+
+- [ ] 26/11 — Tồn VAT: mã đã kiểm tra trên main `9247fdab`, snapshot chung qua worker hiện có; 531/531 tích hợp + 27/27 hồi quy đạt, local đã được người dùng xác nhận; [bàn giao](docs/superpowers/plans/2026-11-25-vat-stock.md) — chờ áp riêng migration `0146`, triển khai worker và xác minh snapshot trước web.
+
+Cập nhật gần nhất: 26/11/2026.

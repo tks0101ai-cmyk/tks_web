@@ -1102,3 +1102,20 @@ Cập nhật gần nhất: 25/11/2026.
 26/11/2026 — Migration `0145_purchase_order_fx_rate_default.sql` đặt `purchase_orders.fx_rate` có default `3900`, backfill các dòng NULL và đổi cột thành `NOT NULL`. Khi backfill có dữ liệu, ghi một mục `purchase_projection_queue` để làm mới NET trong read model dùng chung. Các luồng Thu mua cũng chuyển ô Tỉ giá trống thành 3900 trước khi tính/lưu; tỉ giá đã nhập giữ nguyên, số 0 tiếp tục bị từ chối ở kiểm tra ứng dụng.
 
 Cập nhật gần nhất: 26/11/2026.
+
+
+## Migration 0146 — Shared VAT sheet snapshot (26/11/2026, chưa áp DB)
+
+vat_sheet_snapshot chứa đúng một dòng (id INTEGER PK CHECK id=1):
+
+| Cột | Kiểu | Hợp đồng |
+|---|---|---|
+| records | JSONB nullable | Raw formatted cells theo khóa spreadsheetId:sheetId; công bố toàn bộ bundle cùng lúc |
+| loaded_at | TIMESTAMPTZ nullable | Lần công bố thành công; không đổi khi lỗi |
+| last_attempt_at / next_attempt_at | TIMESTAMPTZ | Lịch 5 phút và retry lưu qua restart |
+| lease_token / lease_until | UUID / TIMESTAMPTZ nullable | Claim có hạn 5 phút, công bố có điều kiện token |
+| failures / last_error | INTEGER / TEXT nullable | Số lần lỗi và mã lỗi an toàn; backoff giới hạn 60 phút |
+
+Bật RLS, REVOKE PUBLIC và anon/authenticated/reporting_readonly nếu tồn tại. Không có grant dữ liệu VAT raw cho client; backend áp quyền từng API hiện có. Số lượng trong bundle là chuỗi raw có định dạng để giữ đúng hợp đồng các parser cũ; không thêm cột tiền/số lượng INTEGER hoặc FLOAT vào bảng nghiệp vụ. Không đổi bảng tồn/đơn/giữ chỗ KiotViet. Rollback: db/rollbacks/0146_vat_sheet_snapshot.down.sql, chỉ sau khi dừng job mới và quay consumer về bản trước.
+
+Cập nhật gần nhất: 26/11/2026.

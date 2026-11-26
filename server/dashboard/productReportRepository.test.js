@@ -6,6 +6,32 @@ const {
   getProductReport, getProductReportCustomers, PRODUCT_REPORT_PRICE_KEYS, __test__
 } = require('./productReportRepository');
 
+test('VAT enrichment precedes whole-result sorting/pagination and does not depend on report version', async () => {
+  const { createProductReportReader, queryProductReport } = require('./productReportRepository');
+  const { parseStockSnapshot, defaultStockConfig } = require('../vatRequests/stockSource');
+  const stockRow = (rep, actual, available) => {
+    const row = Array(15).fill('');
+    Object.assign(row,{0:'CTY',1:rep,3:rep+'VAT',8:actual,14:available});
+    return row;
+  };
+  let snapshot = { ...parseStockSnapshot([Array(15).fill('header'),stockRow('A','1000','700'),stockRow('B','0','-2')],[[],[]],defaultStockConfig()), loadedAt:1, stale:false };
+  const vatSource = { get: async () => snapshot };
+  const pool = { query: async sql => {
+    if (/FROM product_report\s/.test(sql)) return {rows:[{product_code:'A',product_name:'A'},{product_code:'B',product_name:'B'},{product_code:'UNKNOWN'}]};
+    return {rows:[]};
+  } };
+  const reader = createProductReportReader({ pool, vatSource });
+  const data = await reader.read();
+  assert.deepEqual(data.rows.map(row=>[row.vatStockActual,row.vatStockAvailable]),[[1000,700],[0,-2],[null,null]]);
+  const page = queryProductReport(data,{sorts:[{key:'vatStockAvailable',dir:'asc'}],page:1,pageSize:1});
+  assert.equal(page.rows[0].code,'B');
+  assert.equal(page.totalRows,3);
+  snapshot = { ...snapshot, loadedAt:2, stale:true };
+  const next = await reader.read();
+  assert.deepEqual(next.vatSync,{available:true,loadedAt:2,stale:true});
+  assert.equal(next.reportVersion,null);
+});
+
 test('derived product query pages after search/sort, full sums and hidden field restrictions', () => {
   const { queryProductReport } = require('./productReportRepository');
   const data = { computedAt: 'stamp', rows: Array.from({ length: 205 }, (_, i) => ({ code: 'P' + i, name: 'Áo đỏ', availableToSell: i + .5, revenue90d: 999 })) };
@@ -143,9 +169,10 @@ test('getProductReport doc bang product_report va tinh computedAt = moc gan nhat
   };
   const result = await getProductReport({ pool });
   // 1 cau doc state (chua co migration 0055 => luong cu) + dong bao cao + tong CONT + hang van chuyen + YC dieu chuyen.
-  assert.equal(pool.calls.length, 5);
+  assert.equal(pool.calls.length, 6);
+  assert.match(pool.calls[1], /FROM vat_sheet_snapshot/);
   assert.match(pool.calls[0], /FROM product_report_state/);
-  assert.match(pool.calls[1], /FROM product_report\s/);
+  assert.match(pool.calls[2], /FROM product_report\s/);
   assert.equal(result.rows.length, 2);
   assert.equal(result.computedAt, '2026-09-23T00:06:00.000Z');
 });

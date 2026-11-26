@@ -703,3 +703,25 @@ Cập nhật gần nhất: 23/11/2026.
 26/11/2026 — Thu mua: Tỉ giá mã để trống mặc định 3900 cho tính toán, hiển thị, import và lưu; tỉ giá nhập cụ thể vẫn được giữ. Migration `0145` backfill dữ liệu cũ và làm mới projection NET liên quan.
 
 Cập nhật gần nhất: 26/11/2026.
+
+
+## 26/11/2026 — Tồn VAT trong báo cáo hàng hóa
+
+Thêm Tồn VAT thực (I) và Tồn VAT có bán (O, đã trừ đơn nháp) sau Có bán SG; xem chi tiết theo công ty, sắp xếp, chọn cột và xuất Excel/HTML. Worker Render hiện có đồng bộ dữ liệu VAT chung vào PostgreSQL mỗi 5 phút; các trang web chỉ đọc bản đã lưu. Không thêm service, thư viện hoặc biến môi trường.
+
+Cấu trúc bổ sung:
+
+```text
+server/
+  vatSnapshot/
+    source.js       # Bộ đọc bản dữ liệu chung từ PostgreSQL
+    sync.js         # Job worker, lease và backoff
+    source.test.js
+    sync.test.js
+  db/migrations/0146_vat_sheet_snapshot.sql
+  db/rollbacks/0146_vat_sheet_snapshot.down.sql
+```
+
+Thiết kế và quy trình tích hợp: [VAT stock design](docs/superpowers/specs/2026-11-25-vat-stock-design.md). Chỉ áp migration 0146 đã duyệt sau khi tích hợp nền mã mới; không chạy tràn migration đang chờ. Triển khai worker, đợi snapshot đầu thành công rồi chuyển web consumer.
+
+Cập nhật gần nhất: 26/11/2026.

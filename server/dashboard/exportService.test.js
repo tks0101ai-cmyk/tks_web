@@ -40,7 +40,7 @@ test('canonical transaction export uses raw timestamp and full search before sel
   });
 });
 
-// 35 cột Báo cáo hàng hóa theo ĐÚNG thứ tự sheet BC CHUNG (= thứ tự cột bảng trên màn hình): [khóa, nhãn, kiểu].
+// 37 cột Báo cáo hàng hóa theo ĐÚNG thứ tự sheet BC CHUNG (= thứ tự cột bảng trên màn hình): [khóa, nhãn, kiểu].
 const PRODUCT_REPORT_SPEC = [
   ['code', 'Mã sản phẩm', 'text'], ['name', 'Tên sản phẩm', 'general'],
   ['loadedQty', 'Đã bốc', 'number'], ['unloadedQty', 'Chưa bốc', 'number'],
@@ -48,6 +48,7 @@ const PRODUCT_REPORT_SPEC = [
   ['stockHanoi', 'Tồn thực Hà Nội', 'number'], ['availableHanoi', 'Có bán Hà Nội', 'number'],
   ['transferRequest', 'Yêu cầu điều chuyển', 'number'],
   ['inTransit', 'Điều chuyển SG', 'number'], ['stockSaigon', 'Tồn thực Sài Gòn', 'number'], ['availableSaigon', 'Có bán Sài Gòn', 'number'],
+  ['vatStockActual', 'Tồn VAT thực', 'number'], ['vatStockAvailable', 'Tồn VAT có bán', 'number'],
   ['qtySold30dSaigon', 'Số lượng bán 30 ngày Sài Gòn', 'number'], ['availableValueSaigon', 'Giá trị có bán Sài Gòn', 'number'],
   ['totalStock', 'Tổng tồn thực và điều chuyển', 'number'], ['availableToSell', 'Tổng có bán và điều chuyển', 'number'],
   ['qtySold30d', 'Số lượng bán 30 ngày', 'number'],
@@ -65,7 +66,7 @@ const PRODUCT_REPORT_KEYS = PRODUCT_REPORT_SPEC.map(item => item[0]);
 const PRODUCT_REPORT_SENSITIVE_KEYS = ['availableValueHanoi', 'availableValueSaigon', 'priceHanoi', 'priceSaigon'];
 
 test('product report export has exactly 35 columns in BC CHUNG order with full labels, explicit types and one shared sensitive-key list', async () => {
-  assert.equal(PRODUCT_REPORT_SPEC.length, 35);
+  assert.equal(PRODUCT_REPORT_SPEC.length, 37);
   assert.deepEqual(Array.from(productReportRepository.PRODUCT_REPORT_PRICE_KEYS).sort(), PRODUCT_REPORT_SENSITIVE_KEYS.slice().sort());
   const fields = (await exportService.getExportFields({ tableKey: 'overview.productReport' }, undefined, { canViewPrice: true })).worksheets[0].fields;
   assert.deepEqual(fields.map(field => field.key), PRODUCT_REPORT_KEYS);
@@ -185,7 +186,7 @@ test('product report export includes numeric container quantities before stock a
   try {
     const request = { tableKey: 'overview.productReport' };
     const fields = (await exportService.getExportFields(request)).worksheets[0].fields;
-    // Không có cờ quyền giá: 31 trong 35 cột (bỏ 4 cột nhạy cảm), vẫn đúng thứ tự sheet BC CHUNG.
+    // Không có cờ quyền giá: 31 trong 37 cột (bỏ 4 cột nhạy cảm), vẫn đúng thứ tự sheet BC CHUNG.
     assert.deepEqual(fields.map(field => field.key), PRODUCT_REPORT_KEYS.filter(key => !PRODUCT_REPORT_SENSITIVE_KEYS.includes(key)));
     assert.ok(['unloadedQty', 'loadedQty'].every(key => fields.find(field => field.key === key).selected && fields.find(field => field.key === key).type === 'number'));
     const byKey = key => fields.find(field => field.key === key);
@@ -240,7 +241,8 @@ test('product report export includes Don gia HN/SG only for accounts allowed to 
     const fields = (await exportService.getExportFields({ tableKey: 'overview.productReport' }, undefined, allowed)).worksheets[0].fields;
     assert.deepEqual(fields.map(field => field.key), PRODUCT_REPORT_KEYS);
     // Đơn giá nằm SAU Tỉ trọng khách lớn nhất (cột 32-33), không còn đứng ngay sau Tên sản phẩm.
-    assert.deepEqual(fields.slice(31, 33).map(field => field.key), ['priceHanoi', 'priceSaigon']);
+    const priceIndex = fields.findIndex(field => field.key === 'topCustomerShare') + 1;
+    assert.deepEqual(fields.slice(priceIndex, priceIndex + 2).map(field => field.key), ['priceHanoi', 'priceSaigon']);
     assert.ok(PRODUCT_REPORT_SENSITIVE_KEYS.every(key => fields.find(field => field.key === key).type === 'number'));
 
     const request = { tableKey: 'overview.productReport', columns: { product_report: ['code', 'priceHanoi', 'priceSaigon'] } };
