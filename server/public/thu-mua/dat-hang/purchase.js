@@ -443,21 +443,24 @@
   };
   $('addBulk').onclick=()=>{
     if(!allowed('edit','orders'))return;
-    modal('<h2>Thêm mã</h2><p>Mỗi dòng nhập <b>Mã SP</b>, một khoảng trắng hoặc tab, rồi <b>Số thùng</b>. Mã đã có sẽ lấy Tên SP, NCC, nhân viên, SL/T, giá tệ, Kg/T, m³/thùng và vùng từ lần gần nhất; Lên list là ngày thêm mới.</p><label for="bulkTarget">Thêm vào cont</label><select id="bulkTarget">'+options(false,true,'Chờ xếp')+'</select><p>Mã mới vào vùng AA khi chọn Chờ xếp.</p><label for="bulkCodes">Danh sách mã</label><textarea id="bulkCodes" rows="14" placeholder="ABC001 10&#10;ABC002 15"></textarea><p id="bulkCodesStatus" role="status">Mỗi dòng: Mã SP Số thùng; tối đa 500 mã.</p><button type="button" id="bulkCodesSave">Thêm vào bảng</button>');
+    modal('<h2>Thêm mã</h2><p>Mỗi dòng nhập <b>Mã SP</b>, rồi <b>Số thùng</b>. Có thể phân tách bằng khoảng trắng hoặc Tab. Với mã mới chưa có dữ liệu cũ, nhập thêm <b>SL/T</b> ở cột thứ ba, phân tách bằng Tab. Mã đã có sẽ lấy Tên SP, NCC, nhân viên, SL/T, giá tệ, Kg/T, m³/thùng và vùng từ lần gần nhất; Lên list là ngày thêm mới.</p><label for="bulkTarget">Thêm vào cont</label><select id="bulkTarget">'+options(false,true,'Chờ xếp')+'</select><p>Mã mới vào vùng AA khi chọn Chờ xếp.</p><label for="bulkCodes">Danh sách mã</label><textarea id="bulkCodes" rows="14" placeholder="ABC001 10&#10;ABC002&#9;15&#9;24"></textarea><p id="bulkCodesStatus" role="status">Mỗi dòng: Mã SP · Số thùng · SL/T (SL/T cần có với mã mới); tối đa 500 mã.</p><button type="button" id="bulkCodesSave">Thêm vào bảng</button>');
     const textarea=$('bulkCodes'),status=$('bulkCodesStatus'),save=$('bulkCodesSave');
     const latestByCode=new Map();for(const item of data.rows){const code=String(item.productCode||'').trim(),previous=latestByCode.get(code.toLocaleLowerCase('vi'));if(code&&(!previous||latestListedAtEpoch(item.listedAt)>latestListedAtEpoch(previous.listedAt)||latestListedAtEpoch(item.listedAt)===latestListedAtEpoch(previous.listedAt)&&Number(item.id)>Number(previous.id)))latestByCode.set(code.toLocaleLowerCase('vi'),item)}
     const parse=()=>textarea.value.split(/\r?\n/).map(line=>line.trim()).filter(Boolean);
     const preview=()=>{
       const lines=parse(),today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
       const rows=lines.map(line=>{
-        const match=line.match(/^(.*?)\s+([\d,]+)$/),code=(match?.[1]||line).trim(),previous=latestByCode.get(code.toLocaleLowerCase('vi')),input={productCode:code,cartonCount:match?Number(match[2].replaceAll(',','')):null};
+        const tabFields=line.split('\t'),tabular=tabFields.length>=2,match=tabular?null:line.match(/^(.*?)\s+([\d,]+)$/),code=(tabular?tabFields[0]:match?.[1]||line).trim(),previous=latestByCode.get(code.toLocaleLowerCase('vi')),cartonText=tabular?tabFields[1]?.trim():match?.[2],input={productCode:code,cartonCount:cartonText?Number(cartonText.replaceAll(',','')):null};
         if(previous)for(const key of ['productName','supplier','buyer','qtyPerCarton','unitPriceCny','kgPerCarton','m3PerCarton','regionId'])if(previous[key]!=null&&(key!=='qtyPerCarton'||Number.isSafeInteger(Number(previous[key]))&&Number(previous[key])>0))input[key]=previous[key];
+        if(tabular&&tabFields.length>=3&&tabFields[2].trim())input.qtyPerCarton=tabFields[2].trim();
         if(input.regionId&&!(data.regions||[]).some(region=>String(region.id)===String(input.regionId)&&region.isActive!==false))delete input.regionId;
         input.listedAt=normalizeDay(today);
         if(input.productName==null&&!previous)input.productName='';return input;
       });
-      const invalid=rows.map((row,index)=>!row.productCode||!Number.isSafeInteger(row.cartonCount)||row.cartonCount<=0?index+1:null).filter(Boolean);
-      status.textContent=`${rows.length} mã · ${invalid.length?`thiếu Mã SP hoặc Số thùng hợp lệ ở dòng ${invalid.slice(0,8).join(', ')}${invalid.length>8?'…':''}`:'đã sẵn sàng để thêm'}${rows.length>500?' · vượt giới hạn 500':''}`;save.disabled=!rows.length||rows.length>500||invalid.length>0;return rows;
+      const invalidBasic=rows.map((row,index)=>!row.productCode||!Number.isSafeInteger(row.cartonCount)||row.cartonCount<=0?index+1:null).filter(Boolean),invalidQty=rows.map((row,index)=>!Number.isSafeInteger(Number(row.qtyPerCarton))||Number(row.qtyPerCarton)<=0?index+1:null).filter(Boolean),issues=[];
+      if(invalidBasic.length)issues.push(`Mã SP/Số thùng không hợp lệ ở dòng ${invalidBasic.slice(0,8).join(', ')}${invalidBasic.length>8?'…':''}`);
+      if(invalidQty.length)issues.push(`SL/T phải là số nguyên dương ở dòng ${invalidQty.slice(0,8).join(', ')}${invalidQty.length>8?'…':''}; nhập ở cột Tab thứ ba`);
+      status.textContent=`${rows.length} mã · ${issues.length?issues.join(' · '):'đã sẵn sàng để thêm'}${rows.length>500?' · vượt giới hạn 500':''}`;save.disabled=!rows.length||rows.length>500||issues.length>0;return rows;
     };
     textarea.addEventListener('input',preview);preview();
     save.onclick=guarded(async()=>{let rows=preview();if(save.disabled)return;const latest=await api('/latest-many',{codes:rows.map(row=>row.productCode)});for(const item of latest.rows||[])latestByCode.set(String(item.productCode||'').trim().toLocaleLowerCase('vi'),item);rows=preview();if(save.disabled)return;save.disabled=true;const payload=rows.map(row=>Object.fromEntries(Object.entries(row).filter(([,value])=>value!==''&&value!=null)));try{const result=await api('/bulk-create',{rows:payload,containerId:$('bulkTarget').value||null});await refresh();await modalSuccess(`Đã thêm ${result.count||0} mã vào bảng Đặt hàng.`)}catch(error){save.disabled=false;throw error}});

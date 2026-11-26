@@ -664,29 +664,41 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
       if(!op||op.actor_id!==actor(user).id||op.undone_by||!['create','edit','bulk_edit','transfer','balance_plan','delete','merge','restore','deactivate','reactivate'].includes(op.action))throw fail(409,'UNDO_INVALID','Không thể hoàn tác thao tác này.');
       const changes=(await client.query('SELECT * FROM purchase_operation_rows WHERE operation_id=$1 ORDER BY row_id',[operationId])).rows;
       if(!changes.length)throw fail(409,'UNDO_INVALID','Thao tác không thay đổi dòng.');
-      for(const x of changes){
-        const current=(await client.query('SELECT to_jsonb(o) snapshot FROM purchase_orders o WHERE id=$1 FOR UPDATE',[x.row_id])).rows[0]?.snapshot||null;
-        const expected=(await client.query('SELECT expected_row FROM purchase_undo_expected WHERE operation_id=$1 AND row_id=$2',[operationId,x.row_id])).rows[0]?.expected_row||x.after_row;
-        if(JSON.stringify(current)!==JSON.stringify(expected))throw fail(409,'VERSION_CONFLICT','Dòng đã được sửa tiếp; chưa hoàn tác.');
-      }
+      // Lock all extant rows together before validating their snapshots. The old
+      // per-row SELECT/lock/expected queries made undo latency grow linearly with
+      // the number of rows in a bulk edit.
+      await client.query('SELECT id FROM purchase_orders WHERE id=ANY($1::bigint[]) ORDER BY id FOR UPDATE',[changes.map(x=>x.row_id)]);
+      const currentRows=(await client.query(`SELECT r.row_id,to_jsonb(o) AS current_row,
+          COALESCE(e.expected_row,r.after_row) AS expected_row
+        FROM purchase_operation_rows r
+        LEFT JOIN purchase_orders o ON o.id=r.row_id
+        LEFT JOIN purchase_undo_expected e ON e.operation_id=r.operation_id AND e.row_id=r.row_id
+        WHERE r.operation_id=$1 ORDER BY r.row_id`,[operationId])).rows;
+      for(const x of currentRows)if(JSON.stringify(x.current_row||null)!==JSON.stringify(x.expected_row||null))throw fail(409,'VERSION_CONFLICT','Dòng đã được sửa tiếp; chưa hoàn tác.');
       const familyKeys=new Map();
-      for(const x of changes.filter(x=>x.before_row&&!x.before_row.deleted_at)){
+      for(const x of changes.filter(x=>x.before_row&&!x.before_row.deleted_at&&x.after_row?.deleted_at)){
         const b=x.before_row,rootId=String(b.root_order_id??x.root_order_id);
         if(!familyKeys.has(rootId))familyKeys.set(rootId,await ensureFamilyKey(client,rootId,b.root_key));
       }
       const displacedKeys=new Map(changes.filter(x=>x.before_row?.deleted_at&&x.after_row&&!x.after_row.deleted_at&&x.before_row.root_key!==x.after_row.root_key).map(x=>[String(x.before_row.root_order_id??x.root_order_id),x.after_row.root_key]));
-      for(const x of changes.filter(x=>!x.before_row)){
-        const current=(await client.query('SELECT * FROM purchase_orders WHERE id=$1',[x.row_id])).rows[0];
-        if(current){await recordRetiredKey(client,current);await client.query('DELETE FROM purchase_orders WHERE id=$1',[x.row_id]);await releaseInactiveFamilyKey(client,current.root_order_id,current.root_key)}
+      const createdRows=changes.filter(x=>!x.before_row).map(x=>({...x.after_row,id:x.row_id}));
+      if(createdRows.length){
+        await recordRetiredKeys(client,createdRows);
+        await client.query('DELETE FROM purchase_orders WHERE id=ANY($1::bigint[])',[createdRows.map(row=>row.id)]);
+        await releaseInactiveFamilies(client,createdRows);
       }
+      const restored=[];
       for(const x of changes.filter(x=>x.before_row)){
         const b={...x.before_row},rootId=String(b.root_order_id??x.root_order_id),next=familyKeys.get(rootId);
         if(next&&next!==b.root_key){const oldRoot=b.root_key,remap=value=>value===oldRoot?next:typeof value==='string'&&value.startsWith(oldRoot+'.')?next+value.slice(oldRoot.length):value;b.row_key=remap(b.row_key);b.split_from_key=remap(b.split_from_key);b.root_key=next}
-        const keys=Object.keys(b).filter(k=>!['id','version','updated_at','created_at'].includes(k));
-        await client.query('UPDATE purchase_orders SET '+keys.map((k,i)=>k+'=$'+(i+2)).join(',')+',version=version+1,updated_at=now() WHERE id=$1',[x.row_id,...keys.map(k=>b[k])]);
-        if(x.after_row&&!x.after_row.deleted_at&&b.deleted_at)await recordRetiredKey(client,{...b,id:x.row_id});
+        const fields=Object.fromEntries(Object.entries(b).filter(([key])=>!['id','version','updated_at','created_at'].includes(key)));
+        restored.push({id:x.row_id,changes:fields});
       }
-      for(const family of new Map(changes.filter(x=>x.before_row?.deleted_at).map(x=>[String(x.before_row.root_order_id??x.root_order_id),x.before_row])).values())await releaseInactiveFamilyKey(client,family.root_order_id,family.root_key);
+      const retiredOnRestore=changes.filter(x=>x.before_row&&x.after_row&&!x.after_row.deleted_at&&x.before_row.deleted_at).map(x=>({...x.before_row,id:x.row_id}));
+      if(retiredOnRestore.length)await recordRetiredKeys(client,retiredOnRestore);
+      await writeRows(client,restored);
+      const releasedFamilies=[...new Map(changes.filter(x=>x.before_row?.deleted_at).map(x=>[String(x.before_row.root_order_id??x.root_order_id),{root_order_id:x.before_row.root_order_id??x.root_order_id,root_key:x.before_row.root_key}])).values()];
+      await releaseInactiveFamilies(client,releasedFamilies);
       for(const [rootId,key] of displacedKeys)await releaseInactiveFamilyKey(client,rootId,key,true);
       await client.query("UPDATE purchase_operations SET undone_by=current_setting('purchase.operation_id')::uuid WHERE id=$1",[operationId]);
       await client.query("INSERT INTO purchase_undo_expected(operation_id,row_id,expected_row) SELECT p.id,r.row_id,to_jsonb(o) FROM purchase_operations p JOIN purchase_operation_rows r ON r.operation_id=p.id JOIN purchase_orders o ON o.id=r.row_id WHERE p.actor_id=$1 AND p.undone_by IS NULL AND p.id<>$2 AND r.row_id=ANY($3::bigint[]) AND (r.after_row-'version'-'updated_at')=(to_jsonb(o)-'version'-'updated_at') ON CONFLICT(operation_id,row_id) DO UPDATE SET expected_row=EXCLUDED.expected_row",[actor(user).id,operationId,changes.map(x=>x.row_id)]);
