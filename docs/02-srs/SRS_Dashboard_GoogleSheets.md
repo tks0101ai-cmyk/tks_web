@@ -1355,3 +1355,9 @@ Cập nhật gần nhất: 16/11/2026.
 22/11/2026 — Thu mua: xóa cont đồng thời xóa mềm các mã gán vào cont khỏi bảng hoạt động. Mã còn trong thùng rác để khôi phục riêng; khôi phục cont không tự khôi phục mã.
 
 Cập nhật gần nhất: 22/11/2026.
+
+## Thu mua — Tỉ giá mã mặc định (26/11/2026)
+
+Nếu cột Tỉ giá của một mã trống hoặc chưa có giá trị, hệ thống dùng `3900` cho tính toán và thể hiện giá trị đó trên bảng/xuất file. Quy tắc áp dụng nhất quán cho thêm mã, import mới/cập nhật, lưu sửa một ô và sửa hàng loạt; tỉ giá người dùng nhập được giữ nguyên. Số `0` vẫn không hợp lệ. Migration `0145` backfill dòng cũ còn NULL và cập nhật projection NET.
+
+Cập nhật gần nhất: 26/11/2026.

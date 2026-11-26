@@ -749,3 +749,7 @@ Cập nhật gần nhất: 14/11/2026.
 22/11/2026 — Thu mua: khi người dùng xác nhận xóa cont, các mã đang thuộc cont đó được đưa khỏi bảng Đặt hàng và chuyển vào thùng rác để khôi phục riêng nếu cần.
 
 Cập nhật gần nhất: 22/11/2026.
+
+26/11/2026 — Thu mua: Tỉ giá thiếu được mặc định 3900 để tránh bỏ trống các kết quả tiền hàng/NET; giá trị tỉ giá đã nhập được bảo toàn và không chấp nhận 0.
+
+Cập nhật gần nhất: 26/11/2026.

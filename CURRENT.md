@@ -24,6 +24,8 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 
 ## Đang dở / chờ
 
+- [ ] 26/11 — Thu mua: Tỉ giá mã thiếu mặc định 3900 (migration 0145 backfill NULL và cập nhật projection) — chạy kiểm tra liên quan, review rồi push/deploy; migration chưa áp production.
+
 - [ ] 22/11 — Thu mua: import nhãn `Chờ`, `Chờ <vùng>` và `Chờ xếp <vùng>` vào đúng nhóm chờ ảo — deploy web rồi xác nhận file import không tạo cont vật lý.
 
 - [ ] 20/11 — Thu mua: cho phép lưu đồng thời các trường cont khác nhau và chỉ báo xung đột khi cùng trường bị sửa; chưa kiểm thử hoặc deploy.

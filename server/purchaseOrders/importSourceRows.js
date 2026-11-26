@@ -11,6 +11,7 @@
 // doi chieu xong (READINESS muc 39, cong cu purchaseOrdersReconcile.js).
 const fs = require('node:fs');
 const { getPool } = require('../db/pool');
+const { DEFAULT_FX_RATE } = require('../public/shared/purchase-calculations');
 // Dung CHINH XAC phep chuan hoa ten cont cua service: neu khac, cung mot ten cont
 // se sinh hai name_key va UNIQUE(name_key) khong con chan trung ten tren web.
 const { normalizeName } = require('./containerNames');
@@ -65,11 +66,11 @@ async function importSourceRows({ pool = getPool(), file, year = 2026, replace =
     supplier: text(r.supplier), buyer: text(r.buyer),
     qtyPerCarton: num(r.qtyPerCarton), cartonCount: num(r.cartonCount),
     unitPriceCny: num(r.unitPriceCny) ?? 0, freightPrepaid: num(r.freightPrepaid),
-    fxRate: num(r.fxRate), freightPostpaid: num(r.freightPostpaid),
+    fxRate: r.fxRate == null || String(r.fxRate).trim()==='' ? DEFAULT_FX_RATE : num(r.fxRate), freightPostpaid: num(r.freightPostpaid),
     kgPerCarton: num(r.kgPerCarton), m3PerCarton: num(r.m3PerCarton)
   }));
 
-  const invalid = prepared.filter(r => !(r.qtyPerCarton > 0) || !(r.cartonCount > 0) || !r.productCode || !r.productName);
+  const invalid = prepared.filter(r => !(r.qtyPerCarton > 0) || !(r.cartonCount > 0) || !(r.fxRate > 0) || !r.productCode || !r.productName);
   // (sheet, dong) trung trong CUNG file: index 0118 se chan o DB, nhung bao som
   // thi nguoi dung sua ban chup chu khong phai doc loi Postgres.
   const seen = new Map(), dupSource = [];
@@ -90,7 +91,7 @@ async function importSourceRows({ pool = getPool(), file, year = 2026, replace =
     invalid: invalid.length, anomalies
   };
   if (invalid.length) {
-    throw Object.assign(new Error(`${invalid.length} dong khong hop le (thieu ma/ten hoac so thung/SL khong duong): ` +
+    throw Object.assign(new Error(`${invalid.length} dong khong hop le (thieu ma/ten, so thung/SL khong duong hoac ti gia khong hop le): ` +
       invalid.slice(0, 5).map(r => r.rowKey).join(', ')), { code: 'SOURCE_ROWS_INVALID', summary });
   }
   if (dryRun) { logger.log('[Purchase] CHAY THU — khong ghi gi'); return summary; }

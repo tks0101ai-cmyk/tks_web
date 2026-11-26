@@ -36,7 +36,7 @@ function measurementFallbacks(row) {
 }
 function jsRow(row) {
   const out={freightAmount:null,regionId:row.region_id==null?null:String(row.region_id),id:String(row.id),rowKey:row.row_key,sourceSheet:row.source_sheet??null,sourceRow:row.source_row==null?null:Number(row.source_row),rootKey:row.root_key,splitFromKey:row.split_from_key,contId:row.container_id==null?null:String(row.container_id),version:Number(row.version),buyerEmployeeId:row.buyer_employee_id==null?null:String(row.buyer_employee_id),inactiveAt:row.inactive_at??null,deletedAt:row.deleted_at??null,updatedAt:row.updated_at??null};
-  writable.forEach(c=>{const value=row[snake(c.k)];out[c.k]=c.k==='unitPriceCny'&&value==null?0:value==null?null:c.k==='buyerEmployeeId'?String(value):c.k==='listedAt'?(value instanceof Date?[value.getFullYear(),String(value.getMonth()+1).padStart(2,'0'),String(value.getDate()).padStart(2,'0')].join('-'):String(value)):c.t==='datetime'? (value instanceof Date?([value.getFullYear(),String(value.getMonth()+1).padStart(2,'0'),String(value.getDate()).padStart(2,'0')].join('-')+(value.getHours()||value.getMinutes()?'T'+String(value.getHours()).padStart(2,'0')+':'+String(value.getMinutes()).padStart(2,'0'):'')):String(value).replace(' ','T').replace(/T00:00:00(?:\.000)?$/,'').replace(/:(\d{2}):00$/ ,':$1')) : c.t==='date'?(value instanceof Date?[value.getFullYear(),String(value.getMonth()+1).padStart(2,'0'),String(value.getDate()).padStart(2,'0')].join('-'):String(value).slice(0,10)):numeric.has(c.t)?Number(value):value});
+  writable.forEach(c=>{const value=row[snake(c.k)];out[c.k]=c.k==='unitPriceCny'&&value==null?0:c.k==='fxRate'&&value==null?calculations.DEFAULT_FX_RATE:value==null?null:c.k==='buyerEmployeeId'?String(value):c.k==='listedAt'?(value instanceof Date?[value.getFullYear(),String(value.getMonth()+1).padStart(2,'0'),String(value.getDate()).padStart(2,'0')].join('-'):String(value)):c.t==='datetime'? (value instanceof Date?([value.getFullYear(),String(value.getMonth()+1).padStart(2,'0'),String(value.getDate()).padStart(2,'0')].join('-')+(value.getHours()||value.getMinutes()?'T'+String(value.getHours()).padStart(2,'0')+':'+String(value.getMinutes()).padStart(2,'0'):'')):String(value).replace(' ','T').replace(/T00:00:00(?:\.000)?$/,'').replace(/:(\d{2}):00$/ ,':$1')) : c.t==='date'?(value instanceof Date?[value.getFullYear(),String(value.getMonth()+1).padStart(2,'0'),String(value.getDate()).padStart(2,'0')].join('-'):String(value).slice(0,10)):numeric.has(c.t)?Number(value):value});
   out.measurementOverrides=row.measurement_overrides&&typeof row.measurement_overrides==='object'&&!Array.isArray(row.measurement_overrides)?row.measurement_overrides:{};
   const fallback=measurementFallbacks({...row,...out});out.measurementDefaults=fallback;Object.defineProperty(out,'_measurementDefaults',{value:fallback});for(const column of overrideColumns)out[column.k]=Object.hasOwn(out.measurementOverrides,column.k)?out.measurementOverrides[column.k]:fallback[column.k];out.ratio=calculations.row({...row,...out,measurementOverrides:{}}).ratio;
   return out;
@@ -124,16 +124,18 @@ async function audit(client,user,action,summary) { const who=actor(user);client.
 async function insertMany(client,records) {
   if(!records.length)return [];
   const cols=['row_key','root_key','root_order_id','split_from_key','container_id','region_id','measurement_overrides',...dbCols];
-  return (await client.query(`INSERT INTO purchase_orders(${cols.join(',')}) SELECT ${cols.join(',')} FROM jsonb_populate_recordset(NULL::purchase_orders,$1::jsonb) RETURNING *`,[JSON.stringify(records.map(record=>({measurement_overrides:{},...record})))])).rows;
+  return (await client.query(`INSERT INTO purchase_orders(${cols.join(',')}) SELECT ${cols.join(',')} FROM jsonb_populate_recordset(NULL::purchase_orders,$1::jsonb) RETURNING *`,[JSON.stringify(records.map(record=>({measurement_overrides:{},...record,fx_rate:record.fx_rate??calculations.DEFAULT_FX_RATE})))])).rows;
 }
 async function writeRow(client,row,changes) {
   if(Object.hasOwn(changes,'buyer')&&!Object.hasOwn(changes,'buyer_employee_id'))changes.buyer_employee_id=null;
+  if(Object.hasOwn(changes,'fx_rate')&&(changes.fx_rate==null||changes.fx_rate===''))changes.fx_rate=calculations.DEFAULT_FX_RATE;
   const keys=Object.keys(changes).filter(key=>dbCols.includes(key)||['row_key','root_key','split_from_key','container_id','region_id','measurement_overrides'].includes(key));
   if(!keys.length)return row;
   return (await client.query(`UPDATE purchase_orders SET ${keys.map((k,i)=>`${k}=$${i+2}${k==='measurement_overrides'?'::jsonb':''}`).join(',')},version=version+1,updated_at=now() WHERE id=$1 RETURNING *`,[row.id,...keys.map(k=>changes[k])])).rows[0];
 }
 async function writeRows(client,patches) {
   if(!patches.length)return;
+  patches=patches.map(({id,changes})=>({id,changes:Object.hasOwn(changes,'fx_rate')&&(changes.fx_rate==null||changes.fx_rate==='')?{...changes,fx_rate:calculations.DEFAULT_FX_RATE}:changes}));
   const keys=[...new Set(patches.flatMap(({changes})=>Object.keys(changes).filter(key=>dbCols.includes(key)||['row_key','root_key','split_from_key','container_id','region_id','measurement_overrides'].includes(key))))];
   if(!keys.length)return;
   const assignments=keys.map(key=>`"${key}"=CASE WHEN patch.changes ? '${key}' THEN (patch.row)."${key}" ELSE target."${key}" END`);
@@ -160,7 +162,7 @@ function pagedOrderFilter(options,user){
   if(options.quick==='eta')where.push("(p.eta_note IS NULL OR btrim(p.eta_note)='')");
   if(options.quick==='measure')where.push('(p.carton_count IS NULL OR p.carton_count<=0 OR p.kg_per_carton IS NULL OR p.kg_per_carton<=0 OR p.m3_per_carton IS NULL OR p.m3_per_carton<=0)');
   if(options.flag==='measure')where.push('(p.carton_count IS NULL OR p.carton_count<=0 OR p.kg_per_carton IS NULL OR p.kg_per_carton<=0 OR p.m3_per_carton IS NULL OR p.m3_per_carton<=0)');
-  if(options.flag==='price')where.push('(p.qty_per_carton IS NULL OR p.qty_per_carton<=0 OR p.carton_count IS NULL OR p.carton_count<=0 OR p.unit_price_cny<0 OR p.fx_rate IS NULL OR p.fx_rate<=0)');
+  if(options.flag==='price')where.push('(p.qty_per_carton IS NULL OR p.qty_per_carton<=0 OR p.carton_count IS NULL OR p.carton_count<=0 OR p.unit_price_cny<0 OR p.fx_rate<=0)');
   if(options.flag==='diff'){
     const literWarehouse="COALESCE(NULLIF(p.measurement_overrides->>'literWarehouse','')::numeric,sm.m3_per_unit*1000)",gramWarehouse="COALESCE(NULLIF(p.measurement_overrides->>'gramWarehouse','')::numeric,sm.kg_per_unit*1000)",literChina="COALESCE(NULLIF(p.measurement_overrides->>'literChina','')::numeric,p.m3_per_carton*1000/NULLIF(p.qty_per_carton,0))",gramChina="COALESCE(NULLIF(p.measurement_overrides->>'gramChina','')::numeric,p.kg_per_carton*1000/NULLIF(p.qty_per_carton,0))",literDiff="COALESCE(NULLIF(p.measurement_overrides->>'literDiff','')::numeric,("+literChina+"-"+literWarehouse+")/NULLIF("+literWarehouse+",0))",gramDiff="COALESCE(NULLIF(p.measurement_overrides->>'gramDiff','')::numeric,("+gramChina+"-"+gramWarehouse+")/NULLIF("+gramWarehouse+",0))";
     where.push('(abs('+literDiff+')>0.100000000001 OR abs('+gramDiff+')>0.100000000001)');
@@ -175,7 +177,7 @@ function pagedOrderFilter(options,user){
   let order=options.sort==='date'?"regexp_replace(p.listed_at, '^.* [+] ', '') DESC NULLS LAST,p.id DESC":options.sort==='code'?'p.product_code ASC,p.id DESC':"p.container_id NULLS FIRST,(p.split_from_key IS NOT NULL) DESC,CASE WHEN p.split_from_key IS NOT NULL THEN max(p.id) OVER (PARTITION BY p.split_from_key) END DESC NULLS LAST,CASE WHEN p.split_from_key IS NOT NULL THEN p.row_key END ASC,CASE WHEN p.split_from_key IS NULL THEN p.id END DESC,p.id DESC";
   let colSort=options.colSort;if(typeof colSort==='string'){try{colSort=JSON.parse(colSort)}catch{colSort=[]}}
   let clientSort=false;
-  if(Array.isArray(colSort)&&colSort.length){const clauses=[],overrides="p.measurement_overrides->>'",override=key=>"NULLIF("+overrides+key+"','')::numeric";const expressions={rowKey:'p.row_key',container:"COALESCE((SELECT c.name FROM product_containers c WHERE c.id=p.container_id),'')",status:'COALESCE((SELECT c.status FROM product_containers c WHERE c.id=p.container_id),0)',totalQty:'p.qty_per_carton*p.carton_count',totalCny:'p.qty_per_carton*p.carton_count*p.unit_price_cny+COALESCE(p.freight_prepaid,0)',goodsAmount:'(p.qty_per_carton*p.carton_count*p.unit_price_cny+COALESCE(p.freight_prepaid,0))*p.fx_rate',surchargePercent:'(p.qty_per_carton*p.carton_count*p.unit_price_cny+COALESCE(p.freight_prepaid,0))*p.fx_rate*p.surcharge_percent',totalTon:'p.kg_per_carton*p.carton_count/1000',totalM3:'p.m3_per_carton*p.carton_count',literWarehouse:'COALESCE('+override('literWarehouse')+',sm.m3_per_unit*1000)',m3Warehouse:'COALESCE('+override('m3Warehouse')+',sm.m3_per_unit*sm.per_carton)',literChina:'COALESCE('+override('literChina')+',p.m3_per_carton*1000/NULLIF(p.qty_per_carton,0))',gramWarehouse:'COALESCE('+override('gramWarehouse')+',sm.kg_per_unit*1000)',gramChina:'COALESCE('+override('gramChina')+',p.kg_per_carton*1000/NULLIF(p.qty_per_carton,0))',literDiff:'COALESCE('+override('literDiff')+',((COALESCE('+override('literChina')+',p.m3_per_carton*1000/NULLIF(p.qty_per_carton,0))-COALESCE('+override('literWarehouse')+',sm.m3_per_unit*1000))/NULLIF(COALESCE('+override('literWarehouse')+',sm.m3_per_unit*1000),0)))',gramDiff:'COALESCE('+override('gramDiff')+',((COALESCE('+override('gramChina')+',p.kg_per_carton*1000/NULLIF(p.qty_per_carton,0))-COALESCE('+override('gramWarehouse')+',sm.kg_per_unit*1000))/NULLIF(COALESCE('+override('gramWarehouse')+',sm.kg_per_unit*1000),0)))',ratio:'p.kg_per_carton/(1000*NULLIF(p.m3_per_carton,0))'};
+  if(Array.isArray(colSort)&&colSort.length){const clauses=[],overrides="p.measurement_overrides->>'",override=key=>"NULLIF("+overrides+key+"','')::numeric";const expressions={rowKey:'p.row_key',container:"COALESCE((SELECT c.name FROM product_containers c WHERE c.id=p.container_id),'')",status:'COALESCE((SELECT c.status FROM product_containers c WHERE c.id=p.container_id),0)',totalQty:'p.qty_per_carton*p.carton_count',totalCny:'p.qty_per_carton*p.carton_count*p.unit_price_cny+COALESCE(p.freight_prepaid,0)',goodsAmount:'(p.qty_per_carton*p.carton_count*p.unit_price_cny+COALESCE(p.freight_prepaid,0))*COALESCE(p.fx_rate,3900)',surchargePercent:'(p.qty_per_carton*p.carton_count*p.unit_price_cny+COALESCE(p.freight_prepaid,0))*COALESCE(p.fx_rate,3900)*p.surcharge_percent',totalTon:'p.kg_per_carton*p.carton_count/1000',totalM3:'p.m3_per_carton*p.carton_count',literWarehouse:'COALESCE('+override('literWarehouse')+',sm.m3_per_unit*1000)',m3Warehouse:'COALESCE('+override('m3Warehouse')+',sm.m3_per_unit*sm.per_carton)',literChina:'COALESCE('+override('literChina')+',p.m3_per_carton*1000/NULLIF(p.qty_per_carton,0))',gramWarehouse:'COALESCE('+override('gramWarehouse')+',sm.kg_per_unit*1000)',gramChina:'COALESCE('+override('gramChina')+',p.kg_per_carton*1000/NULLIF(p.qty_per_carton,0))',literDiff:'COALESCE('+override('literDiff')+',((COALESCE('+override('literChina')+',p.m3_per_carton*1000/NULLIF(p.qty_per_carton,0))-COALESCE('+override('literWarehouse')+',sm.m3_per_unit*1000))/NULLIF(COALESCE('+override('literWarehouse')+',sm.m3_per_unit*1000),0)))',gramDiff:'COALESCE('+override('gramDiff')+',((COALESCE('+override('gramChina')+',p.kg_per_carton*1000/NULLIF(p.qty_per_carton,0))-COALESCE('+override('gramWarehouse')+',sm.kg_per_unit*1000))/NULLIF(COALESCE('+override('gramWarehouse')+',sm.kg_per_unit*1000),0)))',ratio:'p.kg_per_carton/(1000*NULLIF(p.m3_per_carton,0))'};
     for(const sort of colSort.slice(0,3)){if(!['asc','desc'].includes(sort.dir))continue;const column=columns.find(c=>c.k===sort.key),key=column&&snake(column.k),expression=expressions[sort.key]||(dbCols.includes(key)?'p."'+key+'"':null);if(expression)clauses.push(expression+' '+sort.dir.toUpperCase()+' NULLS LAST');else clientSort=true}
     if(clauses.length)order=clauses.join(',')+',p.id DESC';
   }
@@ -186,7 +188,7 @@ async function readContainerSummaries(client){return (await client.query(`SELECT
   COALESCE(sum(CASE WHEN carton_count>0 AND kg_per_carton>0 THEN carton_count::numeric*kg_per_carton/1000 ELSE 0 END),0)::float8 AS ton,
   COALESCE(sum(CASE WHEN carton_count>0 AND m3_per_carton>0 THEN carton_count::numeric*m3_per_carton ELSE 0 END),0)::float8 AS m3,
   count(*) FILTER(WHERE carton_count IS NULL OR carton_count<=0 OR m3_per_carton IS NULL OR m3_per_carton<=0)::int AS "freightMissing",
-  COALESCE(sum(CASE WHEN qty_per_carton>0 AND carton_count>0 AND (unit_price_cny IS NULL OR unit_price_cny>=0) AND fx_rate>0 THEN (qty_per_carton::numeric*carton_count*COALESCE(unit_price_cny,0)+COALESCE(freight_prepaid,0))*fx_rate*COALESCE(surcharge_percent,0) ELSE 0 END),0)::float8 AS surcharge,
+  COALESCE(sum(CASE WHEN qty_per_carton>0 AND carton_count>0 AND (unit_price_cny IS NULL OR unit_price_cny>=0) AND COALESCE(fx_rate,3900)>0 THEN (qty_per_carton::numeric*carton_count*COALESCE(unit_price_cny,0)+COALESCE(freight_prepaid,0))*COALESCE(fx_rate,3900)*COALESCE(surcharge_percent,0) ELSE 0 END),0)::float8 AS surcharge,
   COALESCE(sum(COALESCE(freight_postpaid,0)),0)::float8 AS postpaid
   FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL GROUP BY container_id,region_id`)).rows}
 function createPurchaseOrdersService({ pool=getPool(), project=projectContainers, events=dashboardRollupEvents, lockKey=20531015, invalidate=invalidateContainerDetails, deferProjection=false }={}) {
@@ -229,7 +231,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         COALESCE(sum(CASE WHEN p.carton_count>0 AND p.kg_per_carton>0 THEN p.carton_count::numeric*p.kg_per_carton/1000 ELSE 0 END),0)::float8 AS ton,
         COALESCE(sum(CASE WHEN p.carton_count>0 AND p.m3_per_carton>0 THEN p.carton_count::numeric*p.m3_per_carton ELSE 0 END),0)::float8 AS m3,
         count(*) FILTER(WHERE p.carton_count IS NULL OR p.carton_count<=0 OR p.m3_per_carton IS NULL OR p.m3_per_carton<=0)::int AS "freightMissing",
-        COALESCE(sum(CASE WHEN p.qty_per_carton>0 AND p.carton_count>0 AND (p.unit_price_cny IS NULL OR p.unit_price_cny>=0) AND p.fx_rate>0 THEN (p.qty_per_carton::numeric*p.carton_count*COALESCE(p.unit_price_cny,0)+COALESCE(p.freight_prepaid,0))*p.fx_rate*COALESCE(p.surcharge_percent,0) ELSE 0 END),0)::float8 AS surcharge,
+        COALESCE(sum(CASE WHEN p.qty_per_carton>0 AND p.carton_count>0 AND (p.unit_price_cny IS NULL OR p.unit_price_cny>=0) AND COALESCE(p.fx_rate,3900)>0 THEN (p.qty_per_carton::numeric*p.carton_count*COALESCE(p.unit_price_cny,0)+COALESCE(p.freight_prepaid,0))*COALESCE(p.fx_rate,3900)*COALESCE(p.surcharge_percent,0) ELSE 0 END),0)::float8 AS surcharge,
         COALESCE(sum(COALESCE(p.freight_postpaid,0)),0)::float8 AS postpaid
         FROM purchase_orders p WHERE p.deleted_at IS NULL AND p.inactive_at IS NULL AND EXISTS(
           SELECT 1 FROM requested r WHERE p.container_id IS NOT DISTINCT FROM r.container_id AND p.region_id IS NOT DISTINCT FROM r.region_id
@@ -470,6 +472,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
     if(!changes||typeof changes!=='object'||Array.isArray(changes))throw fail(400,'PLAN_INVALID','Thay đổi không hợp lệ.');
     if(Object.keys(changes).some(k=>!['contId','regionId'].includes(k)&&!writable.some(c=>c.k===k)&&!overrideByKey.has(k)))throw fail(400,'FIELD_NOT_WRITABLE','Trường không được sửa.');
     const normal=Object.fromEntries(Object.entries(changes).filter(([k])=>writable.some(c=>c.k===k)||k==='contId'||k==='regionId'));
+    if(Object.hasOwn(normal,'fxRate')&&(normal.fxRate==null||normal.fxRate===''))normal.fxRate=calculations.DEFAULT_FX_RATE;
     await resolveEmployee(client,normal,raw);const current=jsRow(raw),rowChanges=Object.fromEntries(Object.entries(normal).filter(([key])=>key!=='regionId'));
     // prepareRows defaults a blank unitPriceCny to zero for imports. For a
     // partial edit, an omitted field means "leave unchanged", so carry the
@@ -582,7 +585,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
       const alreadyRestored=target.every(row=>{
         const prior=currentById.get(String(row.id));
         const family=String(row.root_order_id),rootKey=currentFamilyKeys.get(family)||row.root_key;
-        const expected={...row,root_order_id:idMap.get(String(row.root_order_id))||String(row.root_order_id),root_key:rootKey,row_key:remapFamilyValue(row.row_key,row.root_key,rootKey),split_from_key:remapFamilyValue(row.split_from_key,row.root_key,rootKey)};
+        const expected={...row,fx_rate:row.fx_rate??calculations.DEFAULT_FX_RATE,root_order_id:idMap.get(String(row.root_order_id))||String(row.root_order_id),root_key:rootKey,row_key:remapFamilyValue(row.row_key,row.root_key,rootKey),split_from_key:remapFamilyValue(row.split_from_key,row.root_key,rootKey)};
         return prior&&prior.deleted_at==null&&prior.inactive_at==null
           &&restoreFields.every(key=>same(prior.snapshot[key],expected[key]));
       })&&current.every(row=>row.deleted_at!=null||row.inactive_at!=null||targetById.has(String(row.id)));
@@ -612,7 +615,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         const rootOrderId=idMap.get(String(row.root_order_id))||String(row.root_order_id);
         const familyKey=rootOrderId+':'+String(row.root_key);
         if(!restoredFamilies.has(familyKey))restoredFamilies.set(familyKey,await ensureFamilyKey(client,rootOrderId,currentFamilyKeys.get(rootOrderId)||row.root_key));
-        const assignedRootKey=restoredFamilies.get(familyKey),values={...row,id,root_order_id:rootOrderId,root_key:assignedRootKey,row_key:remapFamilyValue(row.row_key,row.root_key,assignedRootKey),split_from_key:remapFamilyValue(row.split_from_key,row.root_key,assignedRootKey)};
+        const assignedRootKey=restoredFamilies.get(familyKey),values={...row,fx_rate:row.fx_rate??calculations.DEFAULT_FX_RATE,id,root_order_id:rootOrderId,root_key:assignedRootKey,row_key:remapFamilyValue(row.row_key,row.root_key,assignedRootKey),split_from_key:remapFamilyValue(row.split_from_key,row.root_key,assignedRootKey)};
         if(prior){
           const changed=restoreFields.some(key=>!same(prior[key],values[key]))||prior.deleted_at!=null||prior.inactive_at!=null;
           if(!changed)continue;
@@ -1014,6 +1017,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
       if(Object.keys(changes).some(key=>!writable.some(c=>c.k===key)))throw fail(400,'FIELD_NOT_WRITABLE','Trường không được sửa.');
       const locked=(await client.query('SELECT * FROM purchase_orders WHERE id=ANY($1::bigint[]) ORDER BY id FOR UPDATE',[rows.map(item=>item.id)])).rows;
       const byId=new Map(locked.map(item=>[String(item.id),item])),active=locked.filter(item=>!item.deleted_at&&!item.inactive_at),normalized={...changes};
+      if(Object.hasOwn(normalized,'fxRate')&&(normalized.fxRate==null||normalized.fxRate===''))normalized.fxRate=calculations.DEFAULT_FX_RATE;
       if(active.length&&Object.hasOwn(normalized,'buyer')&&active.some(item=>String(normalized.buyer??'')!==String(item.buyer??'')))await resolveEmployee(client,normalized);
       else if(active.length&&Object.hasOwn(normalized,'buyerEmployeeId'))await resolveEmployee(client,normalized);
       const results=[],details=[],patches=[];

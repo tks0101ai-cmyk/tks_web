@@ -16,6 +16,15 @@ test('same product without row key always creates a new waiting line, without mo
   assert.equal(result.operations[0].values.listedAt, '2026-11-03');
   assert.equal(JSON.stringify(rows), before);
 });
+test('missing exchange rate defaults to 3900 on create and snapshot update',()=>{
+  const created=prepareRows([{...fresh(),fxRate:''}],[]);
+  assert.equal(created.valid,true,created.rows[0].errors.join('; '));
+  assert.equal(created.operations[0].values.fxRate,3900);
+  const current={...existing()[0],fxRate:3920};
+  const updated=prepareRows([{rowKey:current.rowKey,productCode:current.productCode,fxRate:null}], [current], {snapshot:true});
+  assert.equal(updated.valid,true,updated.rows[0].errors.join('; '));
+  assert.deepEqual(updated.rows[0].changes.find(change=>change.key==='fxRate'),{key:'fxRate',label:'Tỉ giá',before:3920,after:3900});
+});
 test('partial update preserves blank fields, permits code rename, and ignores computed/cont fields', () => {
   const result = prepareRows([{ rowKey: 'D00001.01', productCode: 'RENAMED', supplier: '', cartonCount: 11, container: 'Other', totalQty: 999 }], existing());
   assert.equal(result.valid, true);

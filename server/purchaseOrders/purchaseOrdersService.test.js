@@ -12,6 +12,12 @@ let db, service, events;
 const manager = { id: 'manager', hoTen: 'Người quản lý' };
 const input = () => ({ productCode: 'A', productName: 'Hàng A', listedAt: '2026-11-03', qtyPerCarton: 20, cartonCount: 100, unitPriceCny: 2, fxRate: 3920, freightPrepaid: 0, freightPostpaid: 0, freightAmount: 1000 });
 const snapshotFile = async rows => { const snapshot=await service.importSnapshot(manager);return Buffer.from(excel.exportImportSnapshot({rows,columns,revision:snapshot.revision})); };
+test('missing exchange rate defaults to 3900 and persists when explicitly cleared',async()=>{
+ const created=await service.create(manager,{...input(),productCode:'FX-DEFAULT',fxRate:null});
+ assert.equal(created.value.fxRate,3900);assert.equal(Number((await db.query("SELECT fx_rate FROM purchase_orders WHERE product_code='FX-DEFAULT'")).rows[0].fx_rate),3900);
+ const updated=await service.update(manager,created.value.id,{version:created.value.version,changes:{fxRate:''}});
+ assert.equal(updated.fxRate,3900);assert.equal(Number((await db.query("SELECT fx_rate FROM purchase_orders WHERE product_code='FX-DEFAULT'")).rows[0].fx_rate),3900);
+});
 test('bulk add validates once and creates all pasted product codes in AA with one batch insert',async()=>{
  const rows=['A-101','A-102','A-103'].map((productCode,index)=>{const row={...input(),productCode,productName:'Hàng '+(index+1)};delete row.freightAmount;return row});
  const invalid={...rows[1],productCode:'',productName:''};await assert.rejects(service.createMany(manager,{rows:[rows[0],invalid]}),error=>error.code==='VALIDATION_ERROR');

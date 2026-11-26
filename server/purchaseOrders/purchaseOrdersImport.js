@@ -76,7 +76,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
       if(matched&&importOptions.updateExistingByRowKey&&!importOptions.updateFields.includes(col.k))continue;
       if(matched&&importOptions.updateExistingByRowKey&&!importOptions.clearBlanks&&blank(source[col.k])&&col.k!=='unitPriceCny')continue;
       const sourceValue = source[col.k];
-      const value = col.k==='unitPriceCny'&&blank(sourceValue)?0:sourceValue;
+      const value = col.k==='unitPriceCny'&&blank(sourceValue)?0:col.k==='fxRate'&&blank(sourceValue)?calculations.DEFAULT_FX_RATE:sourceValue;
       if(col.si){
         if(!snapshot&&!allowContainerAssignment)continue;
         const text=String(value??'').trim(),waitingMatch=/^(?:cont\s*)?chờ(?:\s+(?:xếp(?:\s+(.+))?|(.+))|\s*-\s*(.+))?$/i.exec(text),waiting=!text||!!waitingMatch||/^tính giá$/i.test(text);

@@ -699,3 +699,7 @@ Cập nhật gần nhất: 21/11/2026.
 23/11/2026 — Tối ưu truy vấn đọc Thu mua: migration `0142` thêm index sắp xếp Tên SP/NCC trên dòng hoạt động; API danh sách gom dữ liệu cấu hình, vùng, cont vào một truy vấn, bỏ các phép nối thừa khi đếm và chỉ nối cân đo khi trang cần. Không đổi kết quả lọc, sắp xếp hay công thức.
 
 Cập nhật gần nhất: 23/11/2026.
+
+26/11/2026 — Thu mua: Tỉ giá mã để trống mặc định 3900 cho tính toán, hiển thị, import và lưu; tỉ giá nhập cụ thể vẫn được giữ. Migration `0145` backfill dữ liệu cũ và làm mới projection NET liên quan.
+
+Cập nhật gần nhất: 26/11/2026.

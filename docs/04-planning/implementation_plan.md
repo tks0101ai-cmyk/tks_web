@@ -828,3 +828,8 @@ Cập nhật gần nhất: 14/11/2026.
 Xóa cont sẽ xóa mềm mọi mã đang gán vào cont trong cùng giao dịch, ghi audit và giải phóng Mã dòng theo pool hiện có. Các mã không còn trong bảng Đặt hàng; có thể khôi phục riêng từ thùng rác. Khôi phục cont không tự khôi phục mã.
 
 Cập nhật gần nhất: 22/11/2026.
+
+## Thu mua — mặc định Tỉ giá mã (26/11/2026)
+Ô Tỉ giá trống dùng 3900 trong công thức, UI, export, import và các luồng ghi. Migration 0145 backfill NULL, đặt default/not-null và yêu cầu projection tính lại NET; cần kiểm tra trên staging trước khi áp production.
+
+Cập nhật gần nhất: 26/11/2026.
