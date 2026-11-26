@@ -74,8 +74,9 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
     for (const col of importable) {
       if(snapshot&&matched&&col.k==='qtyPerCarton'&&Object.hasOwn(source,col.k)&&blank(source[col.k]))result.errors.push(col.l+': phải là số nguyên dương.');
       if(matched&&importOptions.updateExistingByRowKey&&!importOptions.updateFields.includes(col.k))continue;
-      if(matched&&importOptions.updateExistingByRowKey&&!importOptions.clearBlanks&&blank(source[col.k]))continue;
-      const value = source[col.k];
+      if(matched&&importOptions.updateExistingByRowKey&&!importOptions.clearBlanks&&blank(source[col.k])&&col.k!=='unitPriceCny')continue;
+      const sourceValue = source[col.k];
+      const value = col.k==='unitPriceCny'&&blank(sourceValue)?0:sourceValue;
       if(col.si){
         if(!snapshot&&!allowContainerAssignment)continue;
         const text=String(value??'').trim(),waitingMatch=/^(?:cont\s*)?chờ(?:\s+(?:xếp(?:\s+(.+))?|(.+))|\s*-\s*(.+))?$/i.exec(text),waiting=!text||!!waitingMatch||/^tính giá$/i.test(text);

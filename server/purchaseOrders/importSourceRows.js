@@ -64,7 +64,7 @@ async function importSourceRows({ pool = getPool(), file, year = 2026, replace =
     productCode: text(r.code), productName: text(r.name), productNameCn: text(r.nameCn),
     supplier: text(r.supplier), buyer: text(r.buyer),
     qtyPerCarton: num(r.qtyPerCarton), cartonCount: num(r.cartonCount),
-    unitPriceCny: num(r.unitPriceCny), freightPrepaid: num(r.freightPrepaid),
+    unitPriceCny: num(r.unitPriceCny) ?? 0, freightPrepaid: num(r.freightPrepaid),
     fxRate: num(r.fxRate), freightPostpaid: num(r.freightPostpaid),
     kgPerCarton: num(r.kgPerCarton), m3PerCarton: num(r.m3PerCarton)
   }));

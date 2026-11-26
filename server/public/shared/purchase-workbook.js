@@ -39,8 +39,8 @@
     const qty=cell('totalQty'),goods=cell('goodsAmount'),freight=cell('freightAmount'),liter=cell('literChina'),gram=cell('gramChina'),literWarehouse=cell('literWarehouse'),gramWarehouse=cell('gramWarehouse'),isBlank=refs=>`OR(${refs.map(address=>`${address}=\"\"`).join(',')})`;
     const formulas={
       totalQty:q&&n?`=IF(${isBlank([q,n])},\"\",IFERROR(${q}*${n},\"\"))`:null,
-      totalCny:q&&n&&price&&pre?`=IF(${isBlank([q,n,price])},\"\",IFERROR(${q}*${n}*${price}+${pre},\"\"))`:null,
-      goodsAmount:q&&n&&price&&pre&&fx?`=IF(${isBlank([q,n,price,fx])},\"\",IFERROR((${q}*${n}*${price}+${pre})*${fx},\"\"))`:null,
+      totalCny:q&&n&&price&&pre?`=IF(${isBlank([q,n])},\"\",IFERROR(${q}*${n}*IF(${price}=\"\",0,${price})+${pre},\"\"))`:null,
+      goodsAmount:q&&n&&price&&pre&&fx?`=IF(${isBlank([q,n,fx])},\"\",IFERROR((${q}*${n}*IF(${price}=\"\",0,${price})+${pre})*${fx},\"\"))`:null,
       totalTon:kg&&n?`=IF(${isBlank([kg,n])},\"\",IFERROR(${kg}*${n}/1000,\"\"))`:null,
       totalM3:m3&&n?`=IF(${isBlank([m3,n])},\"\",IFERROR(${m3}*${n},\"\"))`:null,
       freightAmount:m3&&n?`=IF(${isBlank([m3,n])},\"\",IFERROR(${m3}*${n}*${(Number(row.totalM3)>0?Number(row.freightAmount)/Number(row.totalM3):0)},\"\"))`:null,

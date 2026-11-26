@@ -15,7 +15,7 @@ async function projectContainers(client) {
   //   true  — so huu toan phan: Thu mua la nguon duy nhat.
   const containers=(await client.query('SELECT * FROM product_containers')).rows;
   const volumeRows=(await client.query(`SELECT container_id AS "containerId",COALESCE(sum(carton_count*m3_per_carton),0)::numeric AS volume,
-      COALESCE(sum(CASE WHEN qty_per_carton>0 AND carton_count>0 AND unit_price_cny>=0 AND fx_rate>0 THEN (qty_per_carton::numeric*carton_count*unit_price_cny+COALESCE(freight_prepaid,0))*fx_rate*COALESCE(surcharge_percent,0) ELSE 0 END),0)::numeric AS surcharge,
+      COALESCE(sum(CASE WHEN qty_per_carton>0 AND carton_count>0 AND (unit_price_cny IS NULL OR unit_price_cny>=0) AND fx_rate>0 THEN (qty_per_carton::numeric*carton_count*COALESCE(unit_price_cny,0)+COALESCE(freight_prepaid,0))*fx_rate*COALESCE(surcharge_percent,0) ELSE 0 END),0)::numeric AS surcharge,
       COALESCE(bool_and(m3_per_carton>0 AND carton_count>0 AND m3_per_carton IS NOT NULL),false) AS complete
     FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL GROUP BY container_id`)).rows;
   const stats=new Map(volumeRows.map(row=>[String(row.containerId??''),{volume:Number(row.volume),surcharge:Number(row.surcharge),complete:row.complete}])),rates=new Map();
@@ -34,8 +34,8 @@ async function projectContainers(client) {
       COALESCE(o.buyer,'') AS ordered_by,COALESCE(o.listed_at::text,'') AS listed_at,
       o.qty_per_carton AS units_per_package,o.carton_count AS package_count,
       o.qty_per_carton*o.carton_count AS quantity,
-      CASE WHEN o.fx_rate>0 AND o.qty_per_carton>0 AND o.carton_count>0 AND o.unit_price_cny IS NOT NULL
-        THEN ((o.qty_per_carton*o.carton_count*o.unit_price_cny+COALESCE(o.freight_prepaid,0))*o.fx_rate+COALESCE((o.qty_per_carton*o.carton_count*o.unit_price_cny+COALESCE(o.freight_prepaid,0))*o.fx_rate*o.surcharge_percent,0)+COALESCE(cost.freight,0)+COALESCE(o.freight_postpaid,0)*COALESCE(c.container_fx_rate,3900))/NULLIF(o.qty_per_carton*o.carton_count,0)
+      CASE WHEN o.fx_rate>0 AND o.qty_per_carton>0 AND o.carton_count>0
+        THEN ((o.qty_per_carton*o.carton_count*COALESCE(o.unit_price_cny,0)+COALESCE(o.freight_prepaid,0))*o.fx_rate+COALESCE((o.qty_per_carton*o.carton_count*COALESCE(o.unit_price_cny,0)+COALESCE(o.freight_prepaid,0))*o.fx_rate*o.surcharge_percent,0)+COALESCE(cost.freight,0)+COALESCE(o.freight_postpaid,0)*COALESCE(c.container_fx_rate,3900))/NULLIF(o.qty_per_carton*o.carton_count,0)
         ELSE NULL END AS vietnam_price,
       o.unit_price_cny,COALESCE(o.buy_note,'') AS other_note
     FROM purchase_orders o LEFT JOIN product_containers c ON c.id=o.container_id
