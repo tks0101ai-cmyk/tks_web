@@ -191,6 +191,7 @@ async function readContainerSummaries(client){return (await client.query(`SELECT
   FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL GROUP BY container_id,region_id`)).rows}
 function createPurchaseOrdersService({ pool=getPool(), project=projectContainers, events=dashboardRollupEvents, lockKey=20531015, invalidate=invalidateContainerDetails, deferProjection=false }={}) {
   let cachedContainerSummaryRevision=null,cachedContainerSummaries=null,containerSummaryInFlight=null;
+  const pagedCountCache=new Map();
   let historyRevisionCounterAvailable;
   async function readHistoryRevision(client){
     if(historyRevisionCounterAvailable==null)historyRevisionCounterAvailable=(await client.query("SELECT to_regclass('purchase_history_revision_counts') IS NOT NULL AS available")).rows[0]?.available===true;
@@ -763,7 +764,9 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
       if(options.page!=null){
         let page=Math.max(1,Math.min(100000,Number.parseInt(options.page,10)||1));const pageSize=Math.max(10,Math.min(200,Number.parseInt(options.pageSize,10)||50)),filter=pagedOrderFilter(options,user),whereValues=[...filter.values],where=filter.where;
         const countJoins=options.flag==='diff'?' LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code))':'';
-        const total=Number((await client.query('SELECT count(*)::text AS count FROM purchase_orders p'+countJoins+' WHERE '+where,whereValues)).rows[0].count);
+        const cacheCount=!countJoins,countKey=JSON.stringify([revision,where,whereValues]);let total=cacheCount?pagedCountCache.get(countKey):null;
+        if(total==null){total=Number((await client.query('SELECT count(*)::text AS count FROM purchase_orders p'+countJoins+' WHERE '+where,whereValues)).rows[0].count);if(cacheCount){pagedCountCache.set(countKey,total);if(pagedCountCache.size>256)pagedCountCache.delete(pagedCountCache.keys().next().value)}}
+        else{pagedCountCache.delete(countKey);pagedCountCache.set(countKey,total)}
         page=Math.min(page,Math.max(1,Math.ceil(total/pageSize)));
         const offset=(page-1)*pageSize,limitParam='$'+(whereValues.length+1),offsetParam='$'+(whereValues.length+2),pageSql=filter.clientSort?'':` LIMIT ${limitParam} OFFSET ${offsetParam}`,pageArgs=filter.clientSort?whereValues:[...whereValues,pageSize,offset];
         const suppliedKnownIds=Array.isArray(options.knownIds)?options.knownIds:String(options.knownIds||'').split(',');
