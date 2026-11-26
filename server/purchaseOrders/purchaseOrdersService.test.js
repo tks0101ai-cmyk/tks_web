@@ -621,6 +621,18 @@ test('bulk edit locks and writes selected rows in two set-based queries',async()
  assert.deepEqual(result.results.map(row=>row.status),['updated','updated']);assert.equal(lockQueries,1);assert.equal(writeQueries,1);
  assert.equal((await batched.latest(manager,'A')).supplier,'BATCHED');assert.equal((await batched.latest(manager,'BATCH-B')).supplier,'BATCHED');
 });
+test('partial formula edits preserve unit CNY through single, plan, and bulk saves',async()=>{
+ let row=await service.create(manager,{...input(),productCode:'PARTIAL-PRICE',surchargePercent:.02,kgPerCarton:2,m3PerCarton:.2});
+ row=await service.update(manager,row.id,{version:row.version,changes:{surchargePercent:.05}});
+ assert.equal(row.unitPriceCny,2,'single-field edit must retain the existing unit price');
+ await service.applyPlan(manager,{rows:[{id:row.id,version:row.version,changes:{kgPerCarton:3}}]});
+ row=await service.latest(manager,'PARTIAL-PRICE');assert.equal(row.unitPriceCny,2,'plan edit must retain the existing unit price');
+ const bulk=await service.bulkEdit(manager,{rows:[{id:row.id,version:row.version}],changes:{freightPrepaid:10}});
+ assert.equal(bulk.results[0].status,'updated');
+ const exported=(await service.exportRows(manager)).find(item=>item.productCode==='PARTIAL-PRICE');
+ assert.equal(exported.unitPriceCny,2);assert.equal(exported.totalCny,4010);assert.equal(exported.goodsAmount,4010*3920);
+ assert.equal(exported.surchargeAmount,exported.goodsAmount*.05);assert.equal(exported.totalTon,.3);assert.equal(exported.totalM3,20);
+});
 test('revise import requires every file row and validates all corrected data server-side',async()=>{
   const preview=await service.previewImport(manager,{buffer:await snapshotFile([{...input(),rowKey:'D99999'},input()])});
   await assert.rejects(service.reviseImport(manager,preview.token,[input()]),e=>e.code==='IMPORT_ROW_COUNT');

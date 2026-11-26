@@ -470,7 +470,12 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
     if(!changes||typeof changes!=='object'||Array.isArray(changes))throw fail(400,'PLAN_INVALID','Thay đổi không hợp lệ.');
     if(Object.keys(changes).some(k=>!['contId','regionId'].includes(k)&&!writable.some(c=>c.k===k)&&!overrideByKey.has(k)))throw fail(400,'FIELD_NOT_WRITABLE','Trường không được sửa.');
     const normal=Object.fromEntries(Object.entries(changes).filter(([k])=>writable.some(c=>c.k===k)||k==='contId'||k==='regionId'));
-    await resolveEmployee(client,normal,raw);const current=jsRow(raw),rowChanges=Object.fromEntries(Object.entries(normal).filter(([key])=>key!=='regionId')),assignmentOnly=Object.keys(normal).every(key=>key==='contId'||key==='regionId'),plan=assignmentOnly?{valid:true,rows:[{changes:[]}]}:prepareRows([{rowKey:current.rowKey,productCode:current.productCode,...rowChanges}],[current]);
+    await resolveEmployee(client,normal,raw);const current=jsRow(raw),rowChanges=Object.fromEntries(Object.entries(normal).filter(([key])=>key!=='regionId'));
+    // prepareRows defaults a blank unitPriceCny to zero for imports. For a
+    // partial edit, an omitted field means "leave unchanged", so carry the
+    // current value through unless this request explicitly edits that field.
+    if(!Object.hasOwn(rowChanges,'unitPriceCny'))rowChanges.unitPriceCny=current.unitPriceCny;
+    const assignmentOnly=Object.keys(normal).every(key=>key==='contId'||key==='regionId'),plan=assignmentOnly?{valid:true,rows:[{changes:[]}]}:prepareRows([{rowKey:current.rowKey,productCode:current.productCode,...rowChanges}],[current]);
     if(!plan.valid)throw fail(400,'VALIDATION_ERROR','Phương án chưa hợp lệ.',{rows:plan.rows});
     const diff=plan.rows[0].changes;
     for(const [key,value] of Object.entries(normal)){if(key==='regionId'){const id=value==null||value===''?null:String(value);if(id&&(!(await client.query('SELECT 1 FROM purchase_regions WHERE id=$1 AND is_active=true',[id])).rowCount))throw fail(400,'REGION_INVALID','Vùng không còn hoạt động.');if(String(current.regionId??'')!==String(id??''))diff.push({key,before:current.regionId??null,after:id})}else if(key==='contId'){const id=value==null||value===''?null:String(value);await getAssignableContainer(client,id);if(current.contId!==id){diff.push({key,label:'Tên cont',before:current.contId,after:id});const target=await getAssignableContainer(client,id),nextRegionId=id==null?current.regionId:target?.region_id??null;if(String(current.regionId??'')!==String(nextRegionId??''))diff.push({key:'regionId',before:current.regionId??null,after:nextRegionId==null?null:String(nextRegionId)})}}else if((value===null||value==='')&&key!=='unitPriceCny'){if(['productCode','productName','qtyPerCarton','cartonCount'].includes(key))throw fail(400,'VALIDATION_ERROR','Không được xóa trường bắt buộc.');const next=(key==='listedAt'||key==='buyerEmployeeId')||numeric.has(writable.find(c=>c.k===key).t)?null:'';if(current[key]!==next)diff.push({key,before:current[key],after:next})}}
@@ -1016,6 +1021,9 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         const raw=byId.get(String(requested.id));
         if(!raw||raw.deleted_at||raw.inactive_at){results.push({id:requested.id,status:'conflict'});continue}
         const current=jsRow(raw),itemChanges={...normalized};
+        // Like editPlanFields, bulk edits are partial. Do not let prepareRows'
+        // import default turn an omitted unit price into an explicit zero.
+        if(!Object.hasOwn(itemChanges,'unitPriceCny'))itemChanges.unitPriceCny=current.unitPriceCny;
         // Preserve legacy names unchanged on rows where the user selected their current value.
         if(Object.hasOwn(changes,'buyer')&&String(changes.buyer??'')===String(current.buyer??''))itemChanges.buyer=changes.buyer;
         if(Number(raw.version)!==Number(requested.version)&&Object.keys(changes).some(k=>!Object.hasOwn(requested.before||{},k)||String(current[k]??'')!==String(requested.before[k]??''))){results.push({id:requested.id,status:'conflict'});continue}
