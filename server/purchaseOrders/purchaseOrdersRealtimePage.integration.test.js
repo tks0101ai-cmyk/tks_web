@@ -96,6 +96,31 @@ test('Ctrl+Z undoes an edited input before it loses focus',async t=>{
  const undo=new p.w.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true});input.dispatchEvent(undo);
  assert.equal(undo.defaultPrevented,true);assert.equal(p.drafts()['1'],undefined);assert.equal(doc.activeElement.dataset.edit,'supplier');
 });
+test('Ctrl+Z applies a saved edit undo delta without waiting for a changes refresh',async t=>{
+ const p=await page(t,{revision:'1:3'}),doc=p.w.document,fetch=p.w.fetch;let changesReads=0;
+ p.w.fetch=async(url,options={})=>{
+  if(url.endsWith('/undo'))return {ok:true,json:async()=>({undoDelta:{revision:'1:4',rows:[{...p.data.rows[0],version:5,supplier:'Restored supplier'}],deletedIds:[],containers:null,regions:null,sourceMode:'web',integrationEnabled:true,employeesChanged:false,reset:false}})};
+  if(url.includes('/changes?'))changesReads++;
+  return fetch(url,options);
+ };
+ const cell=doc.querySelector('#orderTable [data-id="1"] [data-field="supplier"]');cell.focus();cell.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true}));
+ for(let i=0;i<5;i++)await tick();
+ assert.equal(doc.querySelector('#orderTable [data-id="1"] [data-edit="supplier"]').value,'Restored supplier');
+ assert.equal(changesReads,0,'the inline delta avoids the sequential /changes request');
+});
+test('Ctrl+Z refreshes the row window when undo moves a row between containers',async t=>{
+ const p=await page(t,{revision:'1:3'}),doc=p.w.document,fetch=p.w.fetch,moved={...p.data.rows[0],contId:'3',version:5};let changesReads=0,pageReads=0;
+ p.data.rows[0]=moved;p.data.revision='1:4';p.data.containers.push({id:'3',name:'CONT DEST',status:1,version:1});
+ p.w.fetch=async(url,options={})=>{
+  if(url.endsWith('/undo'))return {ok:true,json:async()=>({undoDelta:{revision:'1:4',rows:[moved],deletedIds:[],containers:null,regions:null,sourceMode:'web',integrationEnabled:true,employeesChanged:false,reset:false}})};
+  if(url.includes('/changes?')){changesReads++;return {ok:true,json:async()=>({revision:'1:4',rows:[moved],deletedIds:[],containers:null,regions:null,sourceMode:'web',integrationEnabled:true,employeesChanged:false,reset:false})}}
+  if(url.startsWith('/api/purchase-orders'))pageReads++;
+  return fetch(url,options);
+ };
+ const cell=doc.querySelector('#orderTable [data-id="1"] [data-field="supplier"]');cell.focus();cell.dispatchEvent(new p.w.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true}));
+ for(let i=0;i<6;i++)await tick();
+ assert.equal(doc.querySelector('#orderTable [data-id="1"] [data-edit="contId"]').value,'3');assert.equal(changesReads,1);assert.equal(pageReads,1);
+});
 test('container index uses requested ordered columns and keeps the expense/rate distinct',async t=>{
  const p=await page(t),doc=p.w.document;Object.assign(p.data.rows[0],{cartonCount:10,kgPerCarton:2,m3PerCarton:.25});p.listeners.changed();await tick();await tick();
  assert.deepEqual([...doc.querySelectorAll('#containerTable thead th')].map(th=>th.textContent.replace(/[▲▼]/g,'').trim()),['Tên cont','Trạng thái cont','Tổng tấn','m³ xếp','m³ giả định','Đơn giá cont','Phụ phí','Đơn giá quy đổi','Tiền VC/m³','VC trả sau','Tỉ giá cont','Ngày bốc','Ngày về','Nhà VC','Tên cont TQ','Loại xe','Ghi chú','Người xếp cont','KQ nhận','Khớp tiền','HĐ/NHĐ']);

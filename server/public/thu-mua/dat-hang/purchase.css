@@ -47,6 +47,7 @@ dialog::backdrop{background:#0009}
 #bulkCodesSave{background:var(--primary);color:var(--primary-ink,#fff);font-weight:700}
 
 #notice{min-height:18px;color:var(--amber)}
+#draftAttention{border-color:var(--amber);color:var(--amber);font-weight:700}
 .error{color:var(--amber)}
 .purchase-spinner{display:inline-block;width:13px;height:13px;box-sizing:border-box;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-2px;animation:purchase-spin .7s linear infinite}
 @keyframes purchase-spin{to{transform:rotate(360deg)}}

@@ -81,6 +81,13 @@ test('undo without an operation id directly reverts the latest eligible action',
  await service.undo(manager,{});assert.equal((await service.list(manager)).rows.length,0);
  await assert.rejects(service.undo(manager,{}),error=>error.code==='UNDO_INVALID');
 });
+test('undo returns a precise inline row delta and removes rows created by the undone action',async()=>{
+ const created=await service.create(manager,input()),edited=await service.update(manager,created.id,{version:created.version,changes:{supplier:'Changed'}});
+ const restored=await service.undo(manager,{operationId:edited.operationId});
+ assert.equal(restored.undoDelta.rows.length,1);assert.equal(restored.undoDelta.rows[0].id,created.id);assert.equal(restored.undoDelta.rows[0].supplier,created.supplier);
+ assert.deepEqual(restored.undoDelta.deletedIds,[]);assert.match(restored.undoDelta.revision,/^\d+:\d+$/);assert.equal(restored.undoDelta.sourceMode,'web');assert.equal(typeof restored.undoDelta.integrationEnabled,'boolean');
+ const removed=await service.undo(manager,{operationId:created.operationId});assert.deepEqual(removed.undoDelta.rows,[]);assert.deepEqual(removed.undoDelta.deletedIds,[String(created.id)]);
+});
 before(async () => {
   db = new PGlite();
   // Danh sach migration Thu mua lay tu FILES de them migration moi khong lam

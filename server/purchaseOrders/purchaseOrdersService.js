@@ -255,6 +255,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
       // containersChanged. The shared settings-row lock keeps this decision stable
       // for the transaction while allowing unrelated purchase edits to run together.
       const integrated=settings.rows[0]?.integration_enabled===true;
+      client.purchaseIntegrationEnabled=integrated;
       const request=user._purchaseRequest;if(request){
         // Serialize only retries of the same idempotency key, not unrelated users' writes.
         await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",[String(actor(user).id)+':'+request.key]);
@@ -711,7 +712,9 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
       await client.query("UPDATE purchase_operations SET undone_by=current_setting('purchase.operation_id')::uuid WHERE id=$1",[operationId]);
       await client.query("INSERT INTO purchase_undo_expected(operation_id,row_id,expected_row) SELECT p.id,r.row_id,to_jsonb(o) FROM purchase_operations p JOIN purchase_operation_rows r ON r.operation_id=p.id JOIN purchase_orders o ON o.id=r.row_id WHERE p.actor_id=$1 AND p.undone_by IS NULL AND p.id<>$2 AND r.row_id=ANY($3::bigint[]) AND (r.after_row-'version'-'updated_at')=(to_jsonb(o)-'version'-'updated_at') ON CONFLICT(operation_id,row_id) DO UPDATE SET expected_row=EXCLUDED.expected_row",[actor(user).id,operationId,changes.map(x=>x.row_id)]);
       await audit(client,user,'undo',{operationId,rows:changes.map(x=>({rowKey:x.before_row?.row_key||x.after_row?.row_key}))});
-      return {changed:true,value:{undone:operationId}};
+      const rows=await readRows(client,false,changes.map(x=>x.row_id)),activeIds=new Set(rows.map(row=>String(row.id))),deletedIds=changes.map(change=>String(change.row_id)).filter(id=>!activeIds.has(id));
+      const undoDelta={revision:(await readHistoryRevision(client)).revision,rows,deletedIds,containers:null,regions:null,sourceMode:'web',integrationEnabled:client.purchaseIntegrationEnabled===true,employeesChanged:false,reset:false};
+      return {changed:true,value:{undone:operationId,undoDelta}};
     })},
 
     async inactive(user){actor(user);return (await pool.query(`SELECT ${MEASURED_ROW_SQL} FROM purchase_orders p LEFT JOIN shipping_measures sm ON sm.code_key=lower(btrim(p.product_code)) WHERE p.deleted_at IS NULL AND p.inactive_at IS NOT NULL ORDER BY p.inactive_at DESC LIMIT 1000`)).rows.map(jsRow)},
