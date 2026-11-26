@@ -14,14 +14,16 @@ async function projectContainers(client) {
   //           dong cua sheet khac giu nguyen, khong day hang cho xep sang.
   //   true  — so huu toan phan: Thu mua la nguon duy nhat.
   const containers=(await client.query('SELECT * FROM product_containers')).rows;
-  const volumeRows=(await client.query(`SELECT container_id AS "containerId",COALESCE(sum(carton_count*m3_per_carton),0)::numeric AS volume,
-      COALESCE(sum(CASE WHEN qty_per_carton>0 AND carton_count>0 AND (unit_price_cny IS NULL OR unit_price_cny>=0) AND fx_rate>0 THEN (qty_per_carton::numeric*carton_count*COALESCE(unit_price_cny,0)+COALESCE(freight_prepaid,0))*fx_rate*COALESCE(surcharge_percent,0) ELSE 0 END),0)::numeric AS surcharge,
-      COALESCE(bool_and(m3_per_carton>0 AND carton_count>0 AND m3_per_carton IS NOT NULL),false) AS complete
-    FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL GROUP BY container_id`)).rows;
-  const stats=new Map(volumeRows.map(row=>[String(row.containerId??''),{volume:Number(row.volume),surcharge:Number(row.surcharge),complete:row.complete}])),rates=new Map();
-  for(const container of [{id:null,freightMode:'formula'},...containers]){const key=String(container.id??''),summary=stats.get(key)||{volume:0,surcharge:0,complete:true},fee=freightModel.calculate(container,summary.volume),converted=fee.amount==null?null:fee.amount-summary.surcharge,rate=fee.mode==='manual'&&(!summary.complete||!summary.volume||fee.amount==null)?null:calculations.divide(converted,fee.assumedM3??summary.volume);rates.set(key,rate)}
-  await client.query('CREATE TEMP TABLE purchase_container_freight_rates(container_id BIGINT, rate NUMERIC) ON COMMIT DROP');
-  for(const [containerId,rate] of rates)await client.query('INSERT INTO purchase_container_freight_rates(container_id,rate) VALUES($1,$2)',[containerId===''?null:containerId,rate]);
+  const waitingConfigs=(await client.query('SELECT * FROM purchase_waiting_configs')).rows;
+  const volumeRows=(await client.query(`SELECT container_id AS "containerId",CASE WHEN container_id IS NULL THEN region_id::text ELSE NULL END AS "regionId",COALESCE(sum(carton_count*m3_per_carton),0)::numeric AS volume,
+      COALESCE(sum(CASE WHEN qty_per_carton>0 AND carton_count>0 AND (unit_price_cny IS NULL OR unit_price_cny>=0) AND fx_rate>0 THEN (qty_per_carton::numeric*carton_count*COALESCE(unit_price_cny,0)+COALESCE(freight_prepaid,0))*fx_rate*COALESCE(surcharge_percent,0) ELSE 0 END),0)::numeric AS surcharge
+    FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL GROUP BY container_id,CASE WHEN container_id IS NULL THEN region_id::text ELSE NULL END`)).rows;
+  const stats=new Map(volumeRows.map(row=>[row.containerId==null?'wait:'+String(row.regionId??''):'cont:'+String(row.containerId),{volume:Number(row.volume),surcharge:Number(row.surcharge)}])),rates=new Map();
+  const waitingConfigByRegion=new Map(waitingConfigs.map(config=>[String(config.region_id),config])),waitingRegionIds=new Set([...volumeRows.filter(row=>row.containerId==null&&row.regionId!=null).map(row=>String(row.regionId)),...waitingConfigs.map(config=>String(config.region_id))]),defaultWaiting={id:null,freight_mode:'formula',freight:null,freight_formula:null,freight_base:202000000,freight_capacity:170,assumed_m3:null};
+  const rateTargets=[...containers,...[...waitingRegionIds].map(regionId=>({...defaultWaiting,...waitingConfigByRegion.get(regionId),region_id:regionId})),{...defaultWaiting,region_id:null}];
+  for(const container of rateTargets){const waiting=container.id==null,regionId=container.region_id??container.regionId??null,key=waiting?'wait:'+String(regionId??''):'cont:'+String(container.id),summary=stats.get(key)||{volume:0,surcharge:0},fee=freightModel.calculate(container,summary.volume),converted=fee.amount==null?null:fee.amount-summary.surcharge,denominator=fee.assumedM3??summary.volume,rate=fee.mode==='manual'&&(!denominator||fee.amount==null)?null:calculations.divide(converted,denominator);rates.set(key,rate)}
+  await client.query('CREATE TEMP TABLE purchase_container_freight_rates(container_id BIGINT, region_id TEXT, rate NUMERIC, container_fx_rate NUMERIC) ON COMMIT DROP');
+  for(const container of rateTargets){const waiting=container.id==null,regionId=container.region_id??container.regionId??null,key=waiting?'wait:'+String(regionId??''):'cont:'+String(container.id),rate=rates.get(key);await client.query('INSERT INTO purchase_container_freight_rates(container_id,region_id,rate,container_fx_rate) VALUES($1,$2,$3,$4)',[waiting?null:container.id,waiting?regionId:null,rate,container.container_fx_rate??container.containerFxRate??null])}
   const ownsAll = (await client.query('SELECT projection_owns_all FROM purchase_settings WHERE id=1')).rows[0]?.projection_owns_all === true;
   await client.query(`CREATE TEMP TABLE purchase_line_projection ON COMMIT DROP AS
     SELECT 'THU MUA'::text AS sheet_name, 0::integer AS sheet_order,
@@ -35,11 +37,11 @@ async function projectContainers(client) {
       o.qty_per_carton AS units_per_package,o.carton_count AS package_count,
       o.qty_per_carton*o.carton_count AS quantity,
       CASE WHEN o.fx_rate>0 AND o.qty_per_carton>0 AND o.carton_count>0
-        THEN ((o.qty_per_carton*o.carton_count*COALESCE(o.unit_price_cny,0)+COALESCE(o.freight_prepaid,0))*o.fx_rate+COALESCE((o.qty_per_carton*o.carton_count*COALESCE(o.unit_price_cny,0)+COALESCE(o.freight_prepaid,0))*o.fx_rate*o.surcharge_percent,0)+COALESCE(cost.freight,0)+COALESCE(o.freight_postpaid,0)*COALESCE(c.container_fx_rate,3900))/NULLIF(o.qty_per_carton*o.carton_count,0)
+        THEN ((o.qty_per_carton*o.carton_count*COALESCE(o.unit_price_cny,0)+COALESCE(o.freight_prepaid,0))*o.fx_rate+COALESCE((o.qty_per_carton*o.carton_count*COALESCE(o.unit_price_cny,0)+COALESCE(o.freight_prepaid,0))*o.fx_rate*o.surcharge_percent,0)+COALESCE(cost.freight,0)+COALESCE(o.freight_postpaid,0)*COALESCE(freight_rate.container_fx_rate,c.container_fx_rate,3900))/NULLIF(o.qty_per_carton*o.carton_count,0)
         ELSE NULL END AS vietnam_price,
       o.unit_price_cny,COALESCE(o.buy_note,'') AS other_note
     FROM purchase_orders o LEFT JOIN product_containers c ON c.id=o.container_id
-    LEFT JOIN purchase_container_freight_rates freight_rate ON freight_rate.container_id IS NOT DISTINCT FROM o.container_id
+    LEFT JOIN purchase_container_freight_rates freight_rate ON freight_rate.container_id IS NOT DISTINCT FROM o.container_id AND (o.container_id IS NOT NULL OR freight_rate.region_id IS NOT DISTINCT FROM o.region_id::text)
     LEFT JOIN LATERAL(SELECT CASE WHEN o.m3_per_carton>0 AND o.carton_count>0 THEN o.carton_count*o.m3_per_carton*freight_rate.rate ELSE NULL END AS freight) cost ON true
     WHERE o.deleted_at IS NULL AND o.inactive_at IS NULL${ownsAll ? '' : ' AND o.container_id IS NOT NULL'}`);
   const cols = ['sheet_name','sheet_order','container_row','source_row','product_code','product_key','container_name','status','status_label','eta','color','sale_note','ordered_by','listed_at','units_per_package','package_count','quantity','vietnam_price','unit_price_cny','other_note'];
