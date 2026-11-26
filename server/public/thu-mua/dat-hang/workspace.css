@@ -413,6 +413,13 @@
 .purchase-page #modalBody #purchaseEmployeeAdd label{display:grid;gap:4px;margin:0;font-size:12px}
 .purchase-page #modalBody #purchaseEmployeeAdd input[type="color"],.purchase-page #modalBody input[data-directory-color]{width:54px;min-width:54px;height:34px;padding:3px;cursor:pointer}
 .purchase-page #modalBody [data-directory-color]{border:1px solid var(--border);border-radius:5px}
+.purchase-page #modalBody select.purchase-directory-status{font-weight:600;transition:color .12s ease,border-color .12s ease,background-color .12s ease}
+.purchase-page #modalBody select.purchase-directory-status[data-state="active"]{color:#4ADE80;background-color:color-mix(in srgb,#22C55E 13%,var(--panel));border-color:#22C55E}
+.purchase-page #modalBody select.purchase-directory-status[data-state="inactive"]{color:#F87171;background-color:color-mix(in srgb,#EF4444 13%,var(--panel));border-color:#EF4444}
+.purchase-page #modalBody select.purchase-directory-status option[value="true"]{color:#4ADE80}
+.purchase-page #modalBody select.purchase-directory-status option[value="false"]{color:#F87171}
+:root[data-theme="light"] .purchase-page #modalBody select.purchase-directory-status[data-state="active"]{color:#166534;background-color:#F0FDF4;border-color:#22C55E}
+:root[data-theme="light"] .purchase-page #modalBody select.purchase-directory-status[data-state="inactive"]{color:#B91C1C;background-color:#FEF2F2;border-color:#EF4444}
 .purchase-page #modalBody .purchase-employee-save{display:flex;align-items:center;gap:10px;padding-top:12px}
 .purchase-page #modalBody #employeeSaveStatus{font-size:12px;color:var(--muted)}
 :root:not([data-theme="light"]) .purchase-page #orderTable th,:root:not([data-theme="light"]) .purchase-page #orderTable td,:root:not([data-theme="light"]) .purchase-page #containerTable th,:root:not([data-theme="light"]) .purchase-page #containerTable td,:root:not([data-theme="light"]) .purchase-page #watchedContainer th,:root:not([data-theme="light"]) .purchase-page #watchedContainer td{border-right-color:#596A80;border-bottom-color:#596A80}
