@@ -51,9 +51,13 @@ for(const [label,prepaid,expected] of [['omitted',undefined,1620],['null',null,1
   const d=C.row(input,100);assert.equal(d.totalCny,expected);assert.equal(d.goodsAmount,expected*row.fxRate);
   assert.equal(d.netPrice,(expected*row.fxRate+100+row.freightPostpaid*3900)/1200);
   assert.equal(C.sum([d.totalCny]),expected);
-  for(const key of ['qtyPerCarton','cartonCount','unitPriceCny'])for(const missing of [undefined,null,'']){
+  for(const key of ['qtyPerCarton','cartonCount'])for(const missing of [undefined,null,'']){
    const incomplete=C.row({...input,[key]:missing},100);
    for(const field of ['totalCny','goodsAmount','netPrice'])assert.equal(incomplete[field],null,key+'/'+field);
+  }
+  for(const missing of [undefined,null,'']){
+   const incomplete=C.row({...input,unitPriceCny:missing},100),zeroPrice=C.row({...input,unitPriceCny:0},100);
+   for(const field of ['totalCny','goodsAmount','netPrice'])assert.equal(incomplete[field],zeroPrice[field],'blank price is zero/'+field);
   }
  });
 }

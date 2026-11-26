@@ -1,5 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
+const C=require('./purchase-calculations');
 const Freight=require('./purchase-freight');
 
 test('a cost expression stays as total expense and allocates by assumed m3',()=>{
@@ -36,6 +37,16 @@ test('invalid stored container formulas produce no freight rate',()=>{
  const fee=Freight.calculate({freightMode:'formula',freightFormula:'=M3_CONT/0',freightCapacity:170},10);
  assert.equal(fee.rate,null);
  assert.equal(fee.amount,null);
+});
+
+test('editing any purchase formula input recalculates finite row and freight results',()=>{
+ const base={contId:'1',qtyPerCarton:10,cartonCount:20,unitPriceCny:3,freightPrepaid:0,freightPostpaid:0,surchargePercent:0,fxRate:3900,kgPerCarton:1,m3PerCarton:.1};
+ const container={id:'1',freightMode:'manual',freight:120000,assumedM3:100};
+ const edits={qtyPerCarton:11,cartonCount:21,unitPriceCny:3.2,freightPrepaid:-15,freightPostpaid:2,surchargePercent:.03,fxRate:3920,kgPerCarton:1.2,m3PerCarton:.15};
+ for(const [key,value] of Object.entries(edits)){
+  const row={...base,[key]:value},rates=Freight.rates([row],[container]),freight=Freight.rowAmount(row,rates),derived=C.row(row,freight);
+  for(const field of ['totalQty','totalCny','goodsAmount','surchargeAmount','totalTon','totalM3','freightAmount','netPrice'])assert.ok(Number.isFinite(derived[field]),key+'/'+field);
+ }
 });
 
 test('manual container freight divides by assumed m3 first and actual stacked m3 after clearing it',()=>{
