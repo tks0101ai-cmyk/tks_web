@@ -700,7 +700,7 @@ Cập nhật gần nhất: 21/11/2026.
 
 Cập nhật gần nhất: 23/11/2026.
 
-26/11/2026 — Thu mua: Tỉ giá mã để trống mặc định 3900 cho tính toán, hiển thị, import và lưu; tỉ giá nhập cụ thể vẫn được giữ. Migration `0145` backfill dữ liệu cũ và làm mới projection NET liên quan.
+26/11/2026 — Thu mua: Giá tệ/Tỉ giá để trống thì công thức phụ thuộc để trống; thêm cột “Mã đơn” nhập văn bản tự do cạnh “TỔNG TỆ” (migration `0148`).
 
 Cập nhật gần nhất: 26/11/2026.
 

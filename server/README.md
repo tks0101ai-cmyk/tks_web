@@ -1524,6 +1524,12 @@ Cập nhật gần nhất: 22/11/2026.
 
 Cập nhật gần nhất: 26/11/2026.
 
+## Thu mua — Mã đơn văn bản tự do (migration 0148, 26/11/2026)
+
+`purchase_orders.order_code TEXT` lưu mã đơn ngoài hệ thống. Cột “Mã đơn” xuất hiện ngay sau “TỔNG TỆ” trong Đặt hàng; là trường text nhập/sửa tự do, được lưu qua API và giữ trong import, snapshot, lịch sử và xuất Excel. Migration `0148_purchase_order_order_code.sql` chỉ thêm cột nullable, không thay đổi dữ liệu hiện có.
+
+Cập nhật gần nhất: 26/11/2026.
+
 
 ## 26/11/2026 — Shared VAT snapshot
 

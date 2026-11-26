@@ -964,13 +964,13 @@ Cập nhật gần nhất: 04/11/2026.
 
 Thêm /thu-mua/dat-hang/ và /api/purchase-orders với quyền purchase.view/edit/import/export/depart/arrive; mặc định chỉ Quản lý, quyền mở rộng qua cơ chế cấp quyền hiện có. Module có bảng Chỉ số cont và Đặt hàng sửa trực tiếp, lọc riêng theo tài khoản, dropdown NV/cont/trạng thái, tách .01/.02 đệ quy, sửa hàng loạt, undo/xóa mềm/khôi phục, import toàn bộ hợp lệ mới ghi, audit/realtime và bộ công thức dùng chung. Source gate ngăn job Sheet và web ghi đè nhau.
 
-Migrations Thu mua bắt đầu ở 0110–0116 vì main đã dùng 0101–0109 và 0114 (`0114_stocktake_frozen_lines.sql`). `db/ensurePurchaseSchema.js` áp các migration Thu mua đã đăng ký trong một giao dịch/advisory lock, không chạy migration module khác; hiện có tới `0128_purchase_surcharge_percent.sql`. Nguồn mặc định Sheets được giữ nguyên; không seed/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
+Migrations Thu mua bắt đầu ở 0110–0116 vì main đã dùng 0101–0109 và 0114 (`0114_stocktake_frozen_lines.sql`). `db/ensurePurchaseSchema.js` chỉ áp danh sách migration Thu mua được đăng ký trong một giao dịch/advisory lock, không chạy migration module khác; danh sách hiện có tới `0148_purchase_order_order_code.sql`. Nguồn mặc định Sheets được giữ nguyên; không seed/cutover hay thay dữ liệu đọc cũ trong lần deploy code. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại server/purchaseOrders/ROLLOUT.md. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
 
 
 
 ## Migration 0101 — Thu mua / cont dùng chung (03/11/2026, chưa áp DB)
 - product_containers: một nguồn cont chuẩn cho Thu mua và các bảng đọc Dự kiến hàng về; không tạo purchase_containers riêng. Trạng thái 1–4, xe và sức chứa NUMERIC, ngày/kho/người xác nhận về, version. Tên cont có khóa chuẩn hóa UNIQUE.
-- purchase_orders: ID BIGSERIAL bất biến, row_key UNIQUE, root_key, split_from_key, container_id NULL là hàng chờ; các trường tiền/số lượng NUMERIC, listed_at TEXT để lưu nhiều ngày lên list nối bằng ` + ` (migration 0141); `measurement_overrides` JSONB per-row (migration 0122). Không phân tách branch theo ngoại lệ chỉ HN đặt hàng. Khóa .01/.02 đệ quy, số thùng và quy cách nguyên dương.
+- purchase_orders: ID BIGSERIAL bất biến, row_key UNIQUE, root_key, split_from_key, container_id NULL là hàng chờ; các trường tiền/số lượng NUMERIC, `order_code` TEXT nhập tự do (migration 0148), listed_at TEXT để lưu nhiều ngày lên list nối bằng ` + ` (migration 0141); `measurement_overrides` JSONB per-row (migration 0122). Không phân tách branch theo ngoại lệ chỉ HN đặt hàng. Khóa .01/.02 đệ quy, số thùng và quy cách nguyên dương.
 - purchase_key_history: lưu khóa đã nghỉ khi tách, không cho UPDATE/DELETE; import chỉ nhận khóa lá hiện hành.
 - purchase_history và purchase_departures: audit và ảnh chụp thực xuất append-only, trigger chặn sửa/xóa.
 - purchase_import_previews: UUID token, actor_id, payload server, hạn 30 phút và result cho xác nhận lặp. Ghi dữ liệu và đánh dấu token trong cùng giao dịch.
@@ -1100,6 +1100,8 @@ Cập nhật gần nhất: 25/11/2026.
 22/11/2026 — Thu mua: xóa cont cũng xóa mềm các dòng đơn đang gán (`purchase_orders.deleted_at`), không xóa vật lý; dòng được ẩn khỏi bảng hoạt động và có thể khôi phục riêng từ thùng rác. Khôi phục `product_containers` không tự bật lại các dòng đơn.
 
 26/11/2026 — Migration `0145_purchase_order_fx_rate_default.sql` từng backfill Tỉ giá NULL thành 3900 và đặt cột NOT NULL. Migration `0147_purchase_order_blank_price_fx.sql` đảo lại quy tắc cho các giá trị mới: gỡ default của `unit_price_cny` và `fx_rate`, cho phép `fx_rate` NULL; không xóa 0/3900 đã backfill vì không thể phân biệt với giá trị người dùng nhập thật. Khi Giá tệ hoặc Tỉ giá để trống, phép tính phụ thuộc vào trường đó trả NULL; các luồng chỉnh sửa từng phần giữ nguyên trường không được gửi sửa. Tỉ giá bằng 0 vẫn không hợp lệ. Quy đổi cước sau riêng vẫn dùng tỉ giá cont, mặc định 3900.
+
+26/11/2026 — Migration `0148_purchase_order_order_code.sql` thêm `purchase_orders.order_code TEXT` nullable cho mã đơn ngoài hệ thống. Cột “Mã đơn” nằm cạnh “TỔNG TỆ”, là văn bản tự do, được đọc/ghi cùng dòng Thu mua và đi theo luồng import/xuất snapshot.
 
 Cập nhật gần nhất: 26/11/2026.
 

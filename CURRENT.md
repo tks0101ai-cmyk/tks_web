@@ -87,4 +87,6 @@ Cập nhật gần nhất: 21/11/2026.
 
 - [ ] 26/11 — Tồn VAT: mã đã kiểm tra trên main `9247fdab`, snapshot chung qua worker hiện có; 531/531 tích hợp + 27/27 hồi quy đạt, local đã được người dùng xác nhận; [bàn giao](docs/superpowers/plans/2026-11-25-vat-stock.md) — chờ áp riêng migration `0146`, triển khai worker và xác minh snapshot trước web.
 
+- [ ] 26/11 — Thu mua: thêm cột “Mã đơn” dạng text tự do cạnh “TỔNG TỆ” (migration `0148`) — áp migration và deploy web rồi xác nhận sửa, import, xuất snapshot.
+
 Cập nhật gần nhất: 26/11/2026.
