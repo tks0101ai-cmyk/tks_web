@@ -204,43 +204,41 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
   }
   async function prepareSummaryCacheUpdate(client,operationId,baseRevision){
     if(!cachedContainerSummaries)return null;
-    const start=await readHistoryRevision(client);
     // A process-local summary cache may have missed writes committed by another
     // server instance. Do not apply a partial delta to a cache from an older
     // database revision and then mark that incomplete cache as current.
-    const baseCount=BigInt(String(baseRevision||'').split(':')[1]||'-1'),startCount=BigInt(start.revision.split(':')[1]||'0');
-    // This transaction writes one audit row. Any additional revision means a
-    // concurrent or missed write; invalidate instead of blessing a partial cache.
-    if(!baseRevision||cachedContainerSummaryRevision!==baseRevision||startCount-baseCount!==1n)return {invalidate:true};
+    const baseCount=BigInt(String(baseRevision||'').split(':')[1]||'-1');
+    if(!baseRevision||cachedContainerSummaryRevision!==baseRevision)return {invalidate:true};
     const snapshots=(await client.query('SELECT before_row,after_row FROM purchase_operation_rows WHERE operation_id=$1',[operationId])).rows;
     if(snapshots.length>500)return {invalidate:true};
     const relevant=new Set(['container_id','region_id','deleted_at','inactive_at','carton_count','kg_per_carton','m3_per_carton','qty_per_carton','unit_price_cny','fx_rate','surcharge_percent','freight_prepaid','freight_postpaid']);
-    const buckets=new Map(),rowState=row=>row&&row.deleted_at==null&&row.inactive_at==null;
+    const summaryFields=['count','missing','freightMissing','ton','m3','surcharge','postpaid'],summaryKey=(containerId,regionId)=>JSON.stringify([containerId==null?null:String(containerId),regionId==null?null:String(regionId)]),rowState=row=>row&&row.deleted_at==null&&row.inactive_at==null;
+    const summaries=new Map(cachedContainerSummaries.map(row=>[summaryKey(row.contId,row.regionId),{...row}]));
+    const metrics=row=>{
+      const cartons=calculations.number(row.carton_count),kg=calculations.number(row.kg_per_carton),m3=calculations.number(row.m3_per_carton),qty=calculations.number(row.qty_per_carton),rawPrice=calculations.number(row.unit_price_cny),fx=row.fx_rate==null?calculations.DEFAULT_FX_RATE:calculations.number(row.fx_rate),prepaid=calculations.number(row.freight_prepaid)||0,percent=calculations.number(row.surcharge_percent)||0,postpaid=calculations.number(row.freight_postpaid)||0,validCartons=cartons!=null&&cartons>0,priced=qty!=null&&qty>0&&validCartons&&(row.unit_price_cny==null||rawPrice!=null&&rawPrice>=0)&&fx!=null&&fx>0,goodsCny=calculations.add(calculations.mul(qty,cartons,rawPrice??0),prepaid);
+      return {count:1,missing:Number(!validCartons||kg==null||kg<=0||m3==null||m3<=0),freightMissing:Number(!validCartons||m3==null||m3<=0),ton:validCartons&&kg>0?calculations.divide(calculations.mul(cartons,kg),1000)||0:0,m3:validCartons&&m3>0?calculations.mul(cartons,m3)||0:0,surcharge:priced?calculations.mul(calculations.mul(goodsCny,fx),percent)||0:0,postpaid};
+    };
+    let invalid=false;
+    const apply=(row,direction)=>{
+      const key=summaryKey(row.container_id,row.region_id);let summary=summaries.get(key);
+      if(!summary){if(direction<0){invalid=true;return}summary={contId:row.container_id==null?null:String(row.container_id),regionId:row.region_id==null?null:String(row.region_id),count:0,missing:0,freightMissing:0,ton:0,m3:0,surcharge:0,postpaid:0};summaries.set(key,summary)}
+      const values=metrics(row);for(const field of summaryFields){const next=calculations.add(summary[field]??0,calculations.mul(direction,values[field])??0);if(next==null){invalid=true;return}summary[field]=next}
+      if(summary.count<0)invalid=true;else if(summary.count===0)summaries.delete(key);
+    };
     for(const snapshot of snapshots){
       const before=snapshot.before_row,after=snapshot.after_row;
       if(before&&after&&![...relevant].some(key=>String(before[key]??'')!==String(after[key]??'')))continue;
-      for(const row of [before,after])if(rowState(row)){const containerId=row.container_id==null?null:String(row.container_id),regionId=row.region_id==null?null:String(row.region_id),key=JSON.stringify([containerId,regionId]);buckets.set(key,{containerId,regionId})}
+      if(rowState(before))apply(before,-1);
+      if(rowState(after))apply(after,1);
     }
-    if(buckets.size>100)return {invalidate:true};
-    let summaries=cachedContainerSummaries;
-    if(buckets.size){
-      const selected=[...buckets.values()],recomputed=(await client.query(`WITH requested AS (
-        SELECT container_id,region_id FROM jsonb_to_recordset($1::jsonb) AS x(container_id bigint,region_id bigint)
-      ) SELECT p.container_id AS "contId",p.region_id AS "regionId",count(*)::int AS count,
-        count(*) FILTER(WHERE p.carton_count IS NULL OR p.carton_count<=0 OR p.kg_per_carton IS NULL OR p.kg_per_carton<=0 OR p.m3_per_carton IS NULL OR p.m3_per_carton<=0)::int AS missing,
-        COALESCE(sum(CASE WHEN p.carton_count>0 AND p.kg_per_carton>0 THEN p.carton_count::numeric*p.kg_per_carton/1000 ELSE 0 END),0)::float8 AS ton,
-        COALESCE(sum(CASE WHEN p.carton_count>0 AND p.m3_per_carton>0 THEN p.carton_count::numeric*p.m3_per_carton ELSE 0 END),0)::float8 AS m3,
-        count(*) FILTER(WHERE p.carton_count IS NULL OR p.carton_count<=0 OR p.m3_per_carton IS NULL OR p.m3_per_carton<=0)::int AS "freightMissing",
-        COALESCE(sum(CASE WHEN p.qty_per_carton>0 AND p.carton_count>0 AND (p.unit_price_cny IS NULL OR p.unit_price_cny>=0) AND COALESCE(p.fx_rate,3900)>0 THEN (p.qty_per_carton::numeric*p.carton_count*COALESCE(p.unit_price_cny,0)+COALESCE(p.freight_prepaid,0))*COALESCE(p.fx_rate,3900)*COALESCE(p.surcharge_percent,0) ELSE 0 END),0)::float8 AS surcharge,
-        COALESCE(sum(COALESCE(p.freight_postpaid,0)),0)::float8 AS postpaid
-        FROM purchase_orders p WHERE p.deleted_at IS NULL AND p.inactive_at IS NULL AND EXISTS(
-          SELECT 1 FROM requested r WHERE p.container_id IS NOT DISTINCT FROM r.container_id AND p.region_id IS NOT DISTINCT FROM r.region_id
-        ) GROUP BY p.container_id,p.region_id`,[JSON.stringify(selected)])).rows;
-      const affected=new Set(buckets.keys()),byKey=new Map();for(const row of recomputed)byKey.set(JSON.stringify([row.contId==null?null:String(row.contId),row.regionId==null?null:String(row.regionId)]),row);
-      summaries=[...cachedContainerSummaries.filter(row=>!affected.has(JSON.stringify([row.contId==null?null:String(row.contId),row.regionId==null?null:String(row.regionId)]))),...byKey.values()];
-    }
-    const end=await readHistoryRevision(client);
-    return start.revision===end.revision?{summaries,revision:end.revision}:{invalidate:true};
+    // The operation snapshots contain the exact before/after rows, so update
+    // only their summary buckets instead of scanning all rows in each cont.
+    if(invalid)return {invalidate:true};
+    const end=await readHistoryRevision(client),endCount=BigInt(String(end.revision||'').split(':')[1]||'0');
+    // A normal purchase operation writes one audit revision. Concurrent or
+    // auxiliary writes make this process-local cache unsafe to advance.
+    if(endCount-baseCount!==1n)return {invalidate:true};
+    return {summaries:[...summaries.values()],revision:end.revision};
   }
   async function transaction(user,fn) {
     actor(user);const client=await pool.connect();let committed=false;

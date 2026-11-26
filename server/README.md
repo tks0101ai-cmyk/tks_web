@@ -1543,5 +1543,10 @@ Phát hành: áp riêng migration 0146, triển khai worker hiện có và xác 
 Cập nhật gần nhất: 26/11/2026.
 
 26/11/2026 — Sau tích hợp main: worker tiếp tục ưu tiên workbook trung gian và đọc workbook VAT TKS dự phòng khi tab hỏng/lỗi API; bundle lưu cả `fallbackTabs` để các trang hiển thị nguồn thực. Giữ timeout 15/45 giây và `retry:false` của main, chia sẻ metadata trong mỗi lượt. Endpoint `/api/vat-lookup/stock` và cột VAT trong chi tiết hóa đơn/đơn hàng giữ nguyên thuật toán và quyền, cùng đọc snapshot PostgreSQL. Bảng báo cáo hiển thị tuổi dữ liệu theo phút. Chưa áp migration 0146 hoặc triển khai; cần kiểm tra nguồn thật và đối chiếu I/O sau khi worker nạp bản đầu.
+## Thu mua — giảm độ trễ chỉ số cont (26/11/2026)
+
+- Với lần sửa thông thường, API cập nhật cache tổng cont từ các bản trước/sau đã ghi trong `purchase_operation_rows`; không quét gộp lại toàn bộ mã của cont trong transaction. Nếu cache không cùng revision, thiếu bucket hoặc thao tác vượt 500 snapshot, cache bị vô hiệu hóa để lần đọc sau dựng lại từ PostgreSQL.
+- Frontend giữ tổng dự kiến từ bản nháp tức thời, áp số liệu đã xác nhận ngay khi API lưu xong và bỏ lượt tải lại toàn bộ danh sách riêng cho lần sửa thường; SSE/revision vẫn đồng bộ thay đổi từ phiên khác. Tạo mã/chia mã vẫn tải lại để nhận ID và dữ liệu cấu trúc mới.
+- PostgreSQL vẫn là nguồn xác nhận dữ liệu Thu mua. Outbox `0134` tiếp tục chiếu read model trong worker; Redis hiện không phải hàng đợi ghi bền và không dùng làm nơi lưu tạm bản chính.
 
 Cập nhật gần nhất: 26/11/2026.
