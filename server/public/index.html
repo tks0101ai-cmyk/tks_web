@@ -4325,6 +4325,7 @@
             </div>
             <div class="kpi-grid section-kpis" id="productReportKpis"></div>
             <p class="section-note" id="productContainerUpdatedAt" role="status">Hàng dự kiến: chưa có dữ liệu đồng bộ.</p>
+            <p class="section-note" id="productVatUpdatedAt" role="status">VAT: chưa có dữ liệu đồng bộ.</p>
             <div class="grid">
               <div class="panel col-12">
                 <div class="panel-head">
@@ -4337,7 +4338,7 @@
                 </div>
                 <div class="scroll-list" style="max-height:600px;">
                   <table class="fixed-table" id="productReportTable" data-table-key="dashboard-table-2" data-min-column-width="40">
-                    <!-- 35 cột theo thứ tự sheet BC CHUNG (UI = Excel xuất ra): 19 cột file HÀNG HÓA.xlsx + Khách lớn nhất + các cột bổ sung (Giá trị có bán, SL bán 30 ngày theo cơ sở, Đứt, Ngày, SL đơn, Tăng trưởng, DS khách lớn nhất, Đơn giá).
+                    <!-- 37 cột theo thứ tự sheet BC CHUNG (UI = Excel xuất ra): 19 cột file HÀNG HÓA.xlsx + Khách lớn nhất + các cột bổ sung (Giá trị có bán, SL bán 30 ngày theo cơ sở, Đứt, Ngày, SL đơn, Tăng trưởng, DS khách lớn nhất, Đơn giá).
                          data-price-column = cột nhạy cảm chỉ Quản lý/Trợ lý (reports.products.price) thấy. data-hint = chú giải khi rê chuột
                          (không dùng title: nút sắp xếp thay nội dung th và che mất title của th). Không dùng ký tự dấu lớn hơn trong data-hint. -->
                     <thead>
@@ -4354,6 +4355,8 @@
                         <th style="width:125px" data-column-key="dieu-chuyen-sg" data-hint="Số lượng đặt hàng nhập Đã xác nhận NCC tại Kiot Sài Gòn; cộng vào tổng tồn thực và tổng có bán.">Điều chuyển SG</th>
                         <th style="width:105px" data-column-key="ton-thuc-sg">Tồn thực SG</th>
                         <th style="width:100px" data-column-key="co-ban-sg" data-hint="Có bán SG = Tồn thực SG trừ số lượng khách đặt (phiếu tạm) tại Sài Gòn.">Có bán SG</th>
+                        <th style="width:120px" data-column-key="ton-vat-thuc" data-hint="Tổng tồn VAT của sản phẩm tại các công ty, cột I của Gộp VAT. Bấm số để xem từng công ty.">Tồn VAT thực</th>
+                        <th style="width:130px" data-column-key="ton-vat-co-ban" data-hint="VAT dùng được cho đơn mới, cột O đã trừ phần đơn nháp đang giữ. Bấm số để xem từng công ty.">Tồn VAT có bán</th>
                         <th style="width:125px" data-column-key="sl-ban-30-ngay-sg" data-hint="Số lượng bán 30 ngày gần nhất (tính đến hết hôm qua) tại Sài Gòn.">SL bán 30 ngày SG</th>
                         <th style="width:135px" data-column-key="gia-tri-co-ban-sg" data-price-column data-hint="Giá trị có bán SG = Có bán SG × Đơn giá SG (chỉ Quản lý và Trợ lý thấy).">Giá trị có bán SG</th>
                         <th style="width:130px" data-column-key="tong-ton-thuc" data-hint="Tổng tồn thực + ĐC = Tồn thực HN + Tồn thực SG + YC điều chuyển + Điều chuyển SG.">Tổng tồn thực + ĐC</th>
@@ -4381,7 +4384,7 @@
                     </thead>
                     <tbody id="productReportRows">
                       <tr>
-                        <td colspan="35" class="table-note">Đang tải...</td>
+                        <td colspan="37" class="table-note">Đang tải...</td>
                       </tr>
                     </tbody>
                   </table>
@@ -8637,7 +8640,7 @@
       return request.promise;
     }
 
-    // ===== Tab Hàng hóa — "Báo cáo hàng hóa" (35 cột theo sheet BC CHUNG, nền là file HÀNG HÓA.xlsx) =====
+    // ===== Tab Hàng hóa — "Báo cáo hàng hóa" (37 cột theo sheet BC CHUNG, nền là file HÀNG HÓA.xlsx) =====
     // Doanh số/tồn chốt mỗi đêm; hàng dự kiến có snapshot riêng 10 phút.
     // Metadata CONT được kiểm tra khi bảng đang hiển thị, độc lập loadData()/SSE. =====
     TABLE_EXPLORER_CONFIGS.productReport = {
@@ -8650,7 +8653,7 @@
       const date = new Date(computedAt);
       if (isNaN(date.getTime())) return '—';
       return 'Dữ liệu cập nhật lúc ' + date.toLocaleString('vi-VN', {
-        hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
+        hour: '2-digit', timeZone: 'Asia/Ho_Chi_Minh', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
       });
     }
 
@@ -8722,9 +8725,44 @@
       return productReportNullableCell(value, function (v) { return PRODUCT_REPORT_GROWTH_FORMAT.format(Number(v)); });
     }
 
-    // 35 ô theo đúng thứ tự thead (= thứ tự cột Excel, theo sheet BC CHUNG); hàm thuần vì sắp xếp toàn bộ dữ liệu chạy lại
+    // 37 ô theo đúng thứ tự thead (= thứ tự cột Excel, theo sheet BC CHUNG); hàm thuần vì sắp xếp toàn bộ dữ liệu chạy lại
     // hàm này cho mọi dòng rồi đọc ô theo chỉ số cột (sortItemsByRenderedColumn). Đổi thứ tự ở đây phải đổi thead,
     // PRODUCT_REPORT_WIDTHS_BY_PROFILE và PRODUCT_REPORT_COLUMNS ở exportService.js.
+    function renderProductVatStatus(sync) {
+      const element = document.getElementById('productVatUpdatedAt');
+      if (!sync || !sync.available) { element.textContent = 'VAT: chưa có dữ liệu hoặc dữ liệu quá cũ; chưa xác định tồn dùng được.'; return; }
+      element.textContent = 'VAT: ' + formatProductReportUpdatedAt(sync.loadedAt) + ' · ' + Math.max(0, Math.floor((Date.now() - new Date(sync.loadedAt).getTime()) / 60000)) + ' phút trước' +
+        (sync.stale ? ' — Dữ liệu cũ, đang chờ đồng bộ. Kiểm tra lại trước khi chốt đơn.' : ' · Đồng bộ mỗi 5 phút.');
+    }
+
+    function productReportVatCell(product, field) {
+      const value = product[field];
+      if (value === null || value === undefined || !Number.isFinite(Number(value))) return '<td class="mono muted">—</td>';
+      return '<td class="mono" data-sort-value="' + Number(value) + '"><button type="button" class="cell-link" data-vat-product="' +
+        escapeHtml(product.code) + '" title="Xem tồn VAT theo công ty">' + fmtNumber(value) + '</button></td>';
+    }
+
+    function openProductVatDetail(code) {
+      const item = state.productReport.rows.find(function (row) { return String(row.code) === String(code); });
+      if (!item) return;
+      let dialog = document.getElementById('productVatDialog');
+      if (!dialog) {
+        dialog = document.createElement('dialog'); dialog.id = 'productVatDialog';
+        dialog.setAttribute('aria-label', 'Tồn VAT theo công ty');
+        dialog.style.cssText = 'width:min(720px,92vw);max-height:85vh;overflow:auto;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:12px;padding:20px';
+        document.body.appendChild(dialog);
+      }
+      const number = function (value) { return value === null || value === undefined ? '—' : fmtNumber(value); };
+      dialog.innerHTML = '<div class="dp-head"><h2>Tồn VAT · ' + escapeHtml(item.code) + '</h2>' +
+        '<form method="dialog"><button type="submit" aria-label="Đóng chi tiết tồn VAT">Đóng</button></form></div>' +
+        '<p>' + escapeHtml(item.name) + '</p><p class="section-note">' + escapeHtml(document.getElementById('productVatUpdatedAt').textContent) + '</p>' +
+        '<div class="dp-table-wrap"><table class="dp-table" data-table-controls="off"><thead><tr><th>Công ty</th><th>Mã VAT</th><th>Tồn VAT thực</th><th>Tồn VAT có bán</th></tr></thead><tbody>' +
+        (item.vatStockByCompany || []).map(function (row) { return '<tr><td>' + escapeHtml(row.company) + '</td><td>' + escapeHtml(row.vatCode) +
+          '</td><td>' + number(row.actual) + '</td><td>' + number(row.available) + '</td></tr>'; }).join('') +
+        '</tbody><tfoot><tr><th colspan="2">Tổng</th><td>' + number(item.vatStockActual) + '</td><td>' + number(item.vatStockAvailable) + '</td></tr></tfoot></table></div>';
+      if (dialog.showModal) { if (!dialog.open) dialog.showModal(); } else dialog.setAttribute('open', '');
+    }
+
     function productReportRowHtml(p) {
       const code = escapeHtml(p.code);
       const hasShare = p.topCustomerShare !== null && p.topCustomerShare !== undefined;
@@ -8740,6 +8778,7 @@
         '<td class="mono" data-sort-value="' + (p.inTransit || 0) + '">' + fmtNumber(p.inTransit) + '</td>' +
         '<td class="mono pr-stock" data-sort-value="' + p.stockSaigon + '">' + fmtNumber(p.stockSaigon) + '</td>' +
         productReportAvailableCell(p.availableSaigon) +
+        productReportVatCell(p, 'vatStockActual') + productReportVatCell(p, 'vatStockAvailable') +
         productReportNullableCell(p.qtySold30dSaigon, fmtNumber) +
         productReportNullableCell(p.availableValueSaigon, fmtTableMoney) +
         productReportNullableCell(p.totalStock, fmtNumber) +
@@ -8806,6 +8845,7 @@
 
     function renderProductReport() {
       const rows = state.productReport.rows;
+      renderProductVatStatus(state.productReport.vatSync);
       document.getElementById('productReportUpdatedAt').textContent = formatProductReportUpdatedAt(state.productReport.computedAt);
       document.getElementById('productContainerUpdatedAt').textContent = productContainerSyncText(state.productReport.containerSync);
       // Nhãn đếm + hàng chỉ số do renderProductReportKpis vẽ (afterRender của bảng) theo các dòng đã lọc từ khóa.
@@ -8817,7 +8857,7 @@
         },
         rows,
         productReportRowHtml,
-        35,
+        37,
         state.productReport.loaded ? 'Chưa có dữ liệu báo cáo hàng hóa.' : 'Đang tải...'
       );
       const remote = state.serverTableData.productReport;
@@ -8837,7 +8877,7 @@
       if (state.view !== 'products' || !allowedAtBoot('reports.products')) return Promise.resolve();
       state.productReport.loading = true;
       state.tableTableBodies.productReport = 'productReportRows';
-      const fields = ['code','name','unloadedQty','loadedQty','availableValueHanoi','qtySold30dHanoi','stockHanoi','availableHanoi','transferRequest','inTransit','stockSaigon','availableSaigon','qtySold30dSaigon','availableValueSaigon','totalStock','availableToSell','qtySold30d','stockoutDaysHanoi','stockoutDaysSaigon','daysToOrder','daysSaigonTransit','daysHanoi','daysBothBranches','revenue90d','customerCount90d','orders90d','orders30d','ordersGrowth','topCustomerRevenue90d','topCustomerName','topCustomerShare','priceHanoi','priceSaigon','descriptionHanoi','descriptionSaigon'];
+      const fields = ['code','name','unloadedQty','loadedQty','availableValueHanoi','qtySold30dHanoi','stockHanoi','availableHanoi','transferRequest','inTransit','stockSaigon','availableSaigon','vatStockActual','vatStockAvailable','qtySold30dSaigon','availableValueSaigon','totalStock','availableToSell','qtySold30d','stockoutDaysHanoi','stockoutDaysSaigon','daysToOrder','daysSaigonTransit','daysHanoi','daysBothBranches','revenue90d','customerCount90d','orders90d','orders30d','ordersGrowth','topCustomerRevenue90d','topCustomerName','topCustomerShare','priceHanoi','priceSaigon','descriptionHanoi','descriptionSaigon'];
       const params = tablePageQuery('productReport','productReportRows',fields);
       state.serverTableReloads.productReport = loadProductReport;
       return requestServerTable('productReport','/api/product-report?' + params.toString(), function (data) {
@@ -8846,6 +8886,7 @@
           state.productReport.rows = (data && data.rows) || [];
           state.productReport.computedAt = data && data.computedAt;
           state.productReport.containerSync = data && data.containerSync;
+          state.productReport.vatSync = data && data.vatSync;
           state.productReport.reportVersion = data && data.reportVersion != null ? data.reportVersion : null;
           state.productReport.loaded = true;
           renderProductReport();
@@ -8856,7 +8897,7 @@
           if (!state.productReport.loaded) {
             state.productReport.loaded = true;
             document.getElementById('productReportRows').innerHTML =
-              '<tr><td colspan="35" class="table-note">Không tải được báo cáo hàng hóa.</td></tr>';
+              '<tr><td colspan="37" class="table-note">Không tải được báo cáo hàng hóa.</td></tr>';
           }
         }).finally(function () { state.productReport.loading = false; });
     }
@@ -8875,11 +8916,11 @@
       manager: ['ton-thuc-hn', 'co-ban-hn', 'yc-dieu-chuyen', 'dieu-chuyen-sg', 'ton-thuc-sg', 'co-ban-sg', 'mo-ta-hn', 'mo-ta-sg', 'khach-lon-nhat']
         .concat(PRODUCT_REPORT_BC_CHUNG_HIDDEN)
     };
-    // Độ rộng theo ảnh mẫu, cùng thứ tự 35 cột với thead; khai báo rõ để không lấy độ rộng đã giãn từ phiên chưa biết vai trò.
+    // Độ rộng theo ảnh mẫu, cùng thứ tự 37 cột với thead; khai báo rõ để không lấy độ rộng đã giãn từ phiên chưa biết vai trò.
     // Hai hồ sơ chỉ khác Tên sản phẩm (260/225) và DS 90 ngày (135/112).
     const PRODUCT_REPORT_WIDTHS_BY_PROFILE = {
-      sale: [120, 260, 100, 100, 135, 125, 105, 100, 120, 125, 105, 100, 125, 135, 130, 105, 100, 90, 90, 95, 115, 100, 110, 135, 115, 115, 115, 110, 135, 200, 135, 110, 110, 110, 110],
-      manager: [120, 225, 100, 100, 135, 125, 105, 100, 120, 125, 105, 100, 125, 135, 130, 105, 100, 90, 90, 95, 115, 100, 110, 112, 115, 115, 115, 110, 135, 200, 135, 110, 110, 110, 110]
+      sale: [120, 260, 100, 100, 135, 125, 105, 100, 120, 125, 105, 100, 120, 130, 125, 135, 130, 105, 100, 90, 90, 95, 115, 100, 110, 135, 115, 115, 115, 110, 135, 200, 135, 110, 110, 110, 110],
+      manager: [120, 225, 100, 100, 135, 125, 105, 100, 120, 125, 105, 100, 120, 130, 125, 135, 130, 105, 100, 90, 90, 95, 115, 100, 110, 112, 115, 115, 115, 110, 135, 200, 135, 110, 110, 110, 110]
     };
     let productReportColumnProfile = '';
 
@@ -8932,11 +8973,13 @@
         const previous = state.productReport.containerSync;
         const next = data.containerSync;
         // reportVersion chi doi khi bang bao cao that su doi (lam moi tang dan) -> khong tai lai khi khong co gi moi.
+        if (data.vatSync) renderProductVatStatus(data.vatSync);
+        const vatChanged = data.vatSync && JSON.stringify(data.vatSync) !== JSON.stringify(state.productReport.vatSync);
         const reportChanged = data.reportVersion != null && data.reportVersion !== state.productReport.reportVersion;
         if (next && previous && next.version !== previous.version && typeof TKSNav.clearCachedJSON === 'function') {
           TKSNav.clearCachedJSON();
         }
-        if (!state.productReport.loaded || reportChanged || (next && (!previous || next.version !== previous.version))) {
+        if (!state.productReport.loaded || reportChanged || vatChanged || (next && (!previous || next.version !== previous.version))) {
           return loadProductReport().then(function () {
             if (docDetail.tableKey === 'productReport' && docDetail.item) loadDocumentDetail();
           });
@@ -11759,6 +11802,8 @@
           if (!row) return;
           // Bấm dropdown đổi team / nút Chi tiết ghi chú / biểu tượng lịch tiếp khách không được mở hộp chi tiết số liệu.
           if (event.target.closest('select, option, input, [data-cp-action]')) return;
+          const vatButton = event.target.closest('[data-vat-product]');
+          if (vatButton) { openProductVatDetail(vatButton.dataset.vatProduct); return; }
           const selection = window.getSelection && window.getSelection();
           // Đang bôi đen chữ trong dòng (để sao chép mã) thì không mở panel.
           if (selection && !selection.isCollapsed && row.contains(selection.anchorNode)) return;

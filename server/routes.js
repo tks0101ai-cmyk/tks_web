@@ -413,7 +413,8 @@ router.get('/api/product-report/containers/meta', async (req, res) => {
     // reportVersion: phien ban bao cao hang hoa (chi tang khi du lieu that su doi, migration 0055); client so
     // voi phien ban da tai de quyet dinh co tai lai ca bang khong. null = chua co che do tang dan.
     const meta = await containerRepository.getContainerMeta();
-    res.status(200).json({ ...meta, reportVersion: await getProductReportVersion() });
+    res.status(200).json({ ...meta, reportVersion: await getProductReportVersion(),
+      vatSync: await require('./dashboard/productReportRepository').getVatReportStatus() });
   } catch {
     res.status(503).json({ error: 'Không lấy được trạng thái cập nhật CONT.' });
   }

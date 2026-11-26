@@ -6,6 +6,28 @@ const { parseCsv } = require('../vatDraft/csv');
 const vatDraftConfig = require('../vatDraft/vatDraftConfig');
 const { defaultStockConfig, createStockSource, lookupStock } = require('./stockSource');
 
+test('paired VAT stocks sum companies once, prefer mappings, preserve zero/negative and unknown', () => {
+  const { parseStockSnapshot, lookupVatStock } = require('./stockSource');
+  const config = defaultStockConfig();
+  const row = (company, representative, vat, actual, available) => {
+    const values = Array(15).fill('');
+    Object.assign(values, { 0: company, 1: representative, 3: vat, 8: actual, 14: available });
+    return values;
+  };
+  const mapping = vat => ['SP', '', '', '', '', '', '', '', '', vat];
+  const snapshot = parseStockSnapshot([Array(15).fill('header'),
+    row('A', 'OTHER', 'V1', '10.5', '0'), row('B', '', 'V1', '2', '-3'),
+    row('C', 'SP', 'V2', '100', '80'), row('D', 'UNKNOWN', 'V3', '', '')],
+  [[], [], mapping('V1'), mapping('V1')], config);
+  assert.deepEqual(lookupVatStock(snapshot, 'sp'), { actual: 12.5, available: -3,
+    byCompany: [{ company: 'A', vatCode: 'V1', actual: 10.5, available: 0 }, { company: 'B', vatCode: 'V1', actual: 2, available: -3 }] });
+  assert.equal(lookupVatStock(snapshot, 'OTHER').actual, 12.5);
+  assert.equal(lookupVatStock(snapshot, 'V1').available, -3);
+  assert.equal(lookupVatStock(snapshot, 'UNKNOWN').actual, null);
+  assert.equal(lookupVatStock(snapshot, 'UNKNOWN').available, null);
+  assert.equal(lookupVatStock(snapshot, 'MISSING'), null);
+});
+
 const GOP_VAT_SHEET_ID = vatDraftConfig.gopVatSheet.sheetId;
 
 test('defaultStockConfig: mac dinh doc tab Gộp VAT + Khớp mã cua file trung gian (vatDraftConfig)', () => {

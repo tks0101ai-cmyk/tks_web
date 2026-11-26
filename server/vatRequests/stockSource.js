@@ -68,6 +68,7 @@ function addCatalogEntry(catalog, code, name) {
 function parseStockRecords(records, config) {
   const read = cellReader(config.stockColumns);
   const stockByVat = new Map();
+  const pairedStockByVat = new Map();
   const vatByRepresentative = new Map();
   const representativeCatalog = new Map();
   const vatCatalog = new Map();
@@ -77,6 +78,9 @@ function parseStockRecords(records, config) {
     const stock = toFloatOrNone(read(row, 'stock'));
     if (!stockByVat.has(vatKey)) stockByVat.set(vatKey, []);
     stockByVat.get(vatKey).push({ company: read(row, 'company'), vatCode: read(row, 'vatCode'), stock: stock === null ? 0 : stock });
+    if (!pairedStockByVat.has(vatKey)) pairedStockByVat.set(vatKey, []);
+    pairedStockByVat.get(vatKey).push({ company: read(row, 'company'), vatCode: read(row, 'vatCode'),
+      actual: toFloatOrNone(row[columnLetterToIndex('I')]), available: toFloatOrNone(row[columnLetterToIndex('O')]) });
     addCatalogEntry(vatCatalog, read(row, 'vatCode'), read(row, 'vatName'));
     addCatalogEntry(representativeCatalog, read(row, 'representativeCode'), read(row, 'representativeName'));
     const repKey = normalizeCodeForMatch(read(row, 'representativeCode'));
@@ -85,7 +89,7 @@ function parseStockRecords(records, config) {
       vatByRepresentative.get(repKey).add(vatKey);
     }
   }
-  return { stockByVat, vatByRepresentative, representativeCatalog, vatCatalog };
+  return { stockByVat, pairedStockByVat, vatByRepresentative, representativeCatalog, vatCatalog };
 }
 
 /**
@@ -156,7 +160,33 @@ function lookupStock(snapshot, productCode) {
   return { total, byCompany };
 }
 
-function createStockSource({ readValues, config = defaultStockConfig(), now, logger } = {}) {
+function parseStockSnapshot(stockRecords, mappingRecords, config) {
+  const { representativeCatalog, vatCatalog, ...stock } = parseStockRecords(stockRecords, config);
+  const mappingCatalog = new Map();
+  const vatByProduct = parseMappingRecords(mappingRecords, config, mappingCatalog);
+  return { ...stock, vatByProduct, productByCode: buildProductCatalog(mappingCatalog, representativeCatalog, vatCatalog) };
+}
+
+// Preserve the existing matching precedence and count each mapped VAT code only once.
+function lookupVatStock(snapshot, productCode) {
+  const key = normalizeCodeForMatch(productCode);
+  if (!key || !snapshot) return null;
+  const vatKeys = snapshot.vatByProduct.get(key) || snapshot.vatByRepresentative.get(key)
+    || (snapshot.stockByVat.has(key) ? new Set([key]) : null);
+  if (!vatKeys) return null;
+  const byCompany = [...vatKeys].flatMap(vatKey => snapshot.pairedStockByVat.get(vatKey) || []);
+  if (!byCompany.length) return null;
+  const total = field => byCompany.some(row => row[field] === null) ? null : byCompany.reduce((sum, row) => sum + row[field], 0);
+  return { actual: total('actual'), available: total('available'), byCompany };
+}
+
+function createStockSource({ readValues, config = defaultStockConfig(), now, logger, pool } = {}) {
+  // No per-page Sheets read in production: all VAT screens consume the worker snapshot.
+  if (!readValues) {
+    const { createParsedSource, recordsFor } = require('../vatSnapshot/source');
+    return createParsedSource(snapshot => parseStockSnapshot(recordsFor(snapshot, config.stockSheet),
+      recordsFor(snapshot, config.mappingSheet), config), { pool });
+  }
   const cache = createTtlSnapshotCache({
     freshTtlMs: 10 * 60 * 1000,
     staleTtlMs: 6 * 60 * 60 * 1000,
@@ -172,10 +202,7 @@ function createStockSource({ readValues, config = defaultStockConfig(), now, log
         read(config.stockSheet, config.stockFallbackSheet, 'Tồn VAT'),
         read(config.mappingSheet, config.mappingFallbackSheet, 'Khớp mã')
       ]);
-      const { representativeCatalog, vatCatalog, ...stock } = parseStockRecords(stockRecords, config);
-      const mappingCatalog = new Map();
-      const vatByProduct = parseMappingRecords(mappingRecords, config, mappingCatalog);
-      return { ...stock, vatByProduct, productByCode: buildProductCatalog(mappingCatalog, representativeCatalog, vatCatalog) };
+      return parseStockSnapshot(stockRecords, mappingRecords, config);
     }
   });
   return {
@@ -187,5 +214,5 @@ function createStockSource({ readValues, config = defaultStockConfig(), now, log
 
 module.exports = {
   defaultStockConfig, parseStockRecords, parseMappingRecords, buildProductCatalog,
-  lookupStock, findSheetProduct, suggestSheetProducts, createStockSource
+  lookupStock, lookupVatStock, parseStockSnapshot, findSheetProduct, suggestSheetProducts, createStockSource
 };

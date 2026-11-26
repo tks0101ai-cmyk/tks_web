@@ -265,7 +265,7 @@ const STOCK_WAIT_MS = 3000;
 
 const STOCK_LOADING = Symbol('stock-loading');
 
-function createVatRequestService({ pool = getPool(), stockSource = createStockSource(), now = () => new Date(), stockWaitMs = STOCK_WAIT_MS } = {}) {
+function createVatRequestService({ pool = getPool(), stockSource = createStockSource({ pool }), now = () => new Date(), stockWaitMs = STOCK_WAIT_MS } = {}) {
   const submissions = new Map(); // `${userId}:${submissionId}` -> { promise, at } (chong gui trung form nhieu dong)
   async function loadOrThrow(db, id, options) {
     const row = await repository.getRequest(db, id, options);
@@ -288,7 +288,7 @@ function createVatRequestService({ pool = getPool(), stockSource = createStockSo
       ]).finally(() => clearTimeout(timer));
       if (snapshot === STOCK_LOADING) {
         pending.catch(() => {}); // doc xong (hoac loi) sau: chi de cache, khong ai cho
-        return { snapshot: null, status: { available: false, loading: true, error: 'Đang tải tồn VAT từ Google Sheets (file nguồn đang chậm). Cột Tồn VAT sẽ có ở lần tải sau.' } };
+        return { snapshot: null, status: { available: false, loading: true, error: 'Đang tải tồn VAT từ bản đồng bộ. Cột Tồn VAT sẽ có ở lần tải sau.' } };
       }
       return { snapshot, status: { available: true, stale: !!snapshot.stale, loadedAt: snapshot.loadedAt ? new Date(snapshot.loadedAt).toISOString() : null } };
     } catch (error) {

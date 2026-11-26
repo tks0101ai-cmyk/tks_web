@@ -1,6 +1,6 @@
 'use strict';
 
-// Bang "Bao cao hang hoa" (tab Hang hoa): 35 cot theo thu tu sheet BC CHUNG (= thu tu cot file Excel), KHONG co
+// Bang "Bao cao hang hoa" (tab Hang hoa): 37 cot theo thu tu sheet BC CHUNG (= thu tu cot file Excel), KHONG co
 // nut "Chi tiet" rieng; so Ti trong khach lon nhat la nut mo hop chi tiet o muc Doanh so theo khach (hang du kien nay xem o hop cua bang Du kien hang ve). Bam vao 1 dong mo hop chi tiet giua man hinh (dung chung voi bang giao dich/dat hang/tra hang)
 // gom bang doanh so tung khach 90 ngay (so tien + %) va bieu do tron dat canh ben.
 
@@ -106,17 +106,17 @@ test('server product pages render full KPI summary and send raw sort fields befo
   assert.match(page.$('productReportKpis').textContent,/77/);
   page.$('productReportNextPage').click(); await settle();
   assert.match(page.$('productReportPageLabel').textContent,/2\/3/);
-  page.run("setTableSort('productReportRows',19,{shiftKey:false})"); await settle();
+  page.run("setTableSort('productReportRows'," + idx('ngay-can-dat') + ",{shiftKey:false})"); await settle();
   const q = new URL(page.urls.filter(u=>u.startsWith('/api/product-report?')).at(-1),'https://tokosi.example').searchParams;
   assert.equal(q.get('page'),'1');
   assert.deepEqual(JSON.parse(q.get('sorts')),[{key:'daysToOrder',dir:'asc'}]);
 });
 
-// 35 cột theo thứ tự sheet BC CHUNG: [data-column-key, nhãn trên tiêu đề]. Thứ tự này = thứ tự file Excel (PRODUCT_REPORT_COLUMNS ở exportService.js).
+// 37 cột theo thứ tự sheet BC CHUNG: [data-column-key, nhãn trên tiêu đề]. Thứ tự này = thứ tự file Excel (PRODUCT_REPORT_COLUMNS ở exportService.js).
 const COLUMNS = [
   ['ma-sp', 'Mã sản phẩm'], ['ten-sp', 'Tên sản phẩm'], ['chua-boc', 'Chưa bốc'], ['da-boc', 'Đã bốc'], ['gia-tri-co-ban-hn', 'Giá trị có bán HN'], ['sl-ban-30-ngay-hn', 'SL bán 30 ngày HN'],
   ['ton-thuc-hn', 'Tồn thực HN'], ['co-ban-hn', 'Có bán HN'], ['yc-dieu-chuyen', 'YC điều chuyển'], ['dieu-chuyen-sg', 'Điều chuyển SG'], ['ton-thuc-sg', 'Tồn thực SG'],
-  ['co-ban-sg', 'Có bán SG'], ['sl-ban-30-ngay-sg', 'SL bán 30 ngày SG'], ['gia-tri-co-ban-sg', 'Giá trị có bán SG'],
+  ['co-ban-sg', 'Có bán SG'], ['ton-vat-thuc', 'Tồn VAT thực'], ['ton-vat-co-ban', 'Tồn VAT có bán'], ['sl-ban-30-ngay-sg', 'SL bán 30 ngày SG'], ['gia-tri-co-ban-sg', 'Giá trị có bán SG'],
   ['tong-ton-thuc', 'Tổng tồn thực + ĐC'], ['tong-co-ban', 'Tổng có bán + ĐC'], ['sl-ban-30-ngay', 'SL bán 30 ngày'],
   ['dut-hn', 'Đứt HN'], ['dut-sg', 'Đứt SG'], ['ngay-can-dat', 'Ngày cần đặt'],
   ['ngay-sg-dc', 'Ngày SG + ĐC'], ['ngay-hn', 'Ngày HN'], ['ngay-2-mien', 'Ngày 2 miền'], ['ds-90-ngay', 'DS 90 ngày'], ['sl-khach-ban', 'SL khách bán'],
@@ -135,8 +135,8 @@ const NEW_KEYS = ['gia-tri-co-ban-hn', 'sl-ban-30-ngay-hn', 'sl-ban-30-ngay-sg',
   'sl-don-90-ngay', 'sl-don-30-ngay', 'tang-truong', 'ds-khach-lon-nhat'];
 // Bộ cột ĐANG HIỆN mặc định (không đổi so với bảng 21 cột trước đó).
 const inColumnOrder = list => KEYS.filter(key => list.includes(key));
-const SALE_VISIBLE = inColumnOrder(['ma-sp', 'ten-sp', 'da-boc', 'chua-boc', 'ton-thuc-hn', 'co-ban-hn', 'yc-dieu-chuyen', 'dieu-chuyen-sg', 'ton-thuc-sg', 'co-ban-sg', 'mo-ta-hn', 'mo-ta-sg', 'ds-90-ngay']);
-const MANAGER_VISIBLE = inColumnOrder(['ma-sp', 'ten-sp', 'don-gia-hn', 'don-gia-sg', 'da-boc', 'chua-boc', 'tong-ton-thuc', 'tong-co-ban', 'sl-ban-30-ngay', 'ngay-can-dat',
+const SALE_VISIBLE = inColumnOrder(['ton-vat-thuc', 'ton-vat-co-ban', 'ma-sp', 'ten-sp', 'da-boc', 'chua-boc', 'ton-thuc-hn', 'co-ban-hn', 'yc-dieu-chuyen', 'dieu-chuyen-sg', 'ton-thuc-sg', 'co-ban-sg', 'mo-ta-hn', 'mo-ta-sg', 'ds-90-ngay']);
+const MANAGER_VISIBLE = inColumnOrder(['ton-vat-thuc', 'ton-vat-co-ban', 'ma-sp', 'ten-sp', 'don-gia-hn', 'don-gia-sg', 'da-boc', 'chua-boc', 'tong-ton-thuc', 'tong-co-ban', 'sl-ban-30-ngay', 'ngay-can-dat',
   'ds-90-ngay', 'sl-khach-ban', 'ti-trong-khach-lon-nhat']);
 const hiddenOf = visible => KEYS.filter(key => !visible.includes(key));
 const reportTable = page => page.$('productReportRows').closest('table');
@@ -144,18 +144,18 @@ const columnKeys = page => [...reportTable(page).querySelectorAll('thead th')].m
 const scrolledSections = page => (page.dom.window.__scrolledTo || []).filter(id => id === 'productContainerSection' || id === 'productCustomerSection');
 const READY = { available: true, version: 'v1', lastSuccessAt: '2026-10-15T02:00:00Z' };
 
-test('bang Bao cao hang hoa co 35 cot theo thu tu sheet BC CHUNG, moi dong du 35 o dung vi tri, dong bam duoc', async () => {
+test('bang Bao cao hang hoa co 37 cot theo thu tu sheet BC CHUNG, moi dong du 37 o dung vi tri, dong bam duoc', async () => {
   const page = createPage();
   await settle();
 
   const headers = [...reportTable(page).querySelectorAll('thead th')].map(th => th.textContent.replace(/[↕▲▼]/g, '').trim());
   assert.deepEqual(headers, HEADERS);
-  assert.equal(HEADERS.length, 35);
+  assert.equal(HEADERS.length, 37);
   assert.deepEqual(columnKeys(page), KEYS);
-  assert.equal(new Set(columnKeys(page)).size, 35, 'data-column-key duy nhat cho tung cot');
+  assert.equal(new Set(columnKeys(page)).size, 37, 'data-column-key duy nhat cho tung cot');
 
   const firstRow = page.$('productReportRows').querySelector('tr');
-  assert.equal(firstRow.cells.length, 35);
+  assert.equal(firstRow.cells.length, 37);
   const text = key => cellOf(firstRow, key).textContent;
   assert.equal(text('ma-sp'), 'SP-1');
   assert.equal(text('gia-tri-co-ban-hn'), '-30,000');  // Giá trị có bán HN (tiền, giữ dấu âm)
@@ -193,7 +193,7 @@ test('bang Bao cao hang hoa co 35 cot theo thu tu sheet BC CHUNG, moi dong du 35
   assert.equal(firstRow.getAttribute('tabindex'), '0');
   assert.match(firstRow.title, /doanh số theo khách/);
   assert.doesNotMatch(firstRow.title, /hàng dự kiến/, 'hang du kien nay xem o hop cua bang Du kien hang ve');
-  [...page.$('productReportRows').querySelectorAll('tr.doc-row')].forEach(row => assert.equal(row.cells.length, 35));
+  [...page.$('productReportRows').querySelectorAll('tr.doc-row')].forEach(row => assert.equal(row.cells.length, 37));
   assert.match(page.$('productReportRows').innerHTML, /^\s*<tr/);
 });
 
@@ -477,7 +477,7 @@ test('khung nhin theo vai tro: chua biet vai tro hoac chua nap table-controls th
   assert.deepEqual(sessionHidden(withControls), { key: 'dashboard-table-2', hidden: [] });
 });
 
-test('cot an mac dinh khop: khoa an cua tung ho so deu co trong thead, cot moi + DS khach lon nhat nam trong danh sach an cua CA HAI ho so, do rong du 35 cot', async () => {
+test('cot an mac dinh khop: khoa an cua tung ho so deu co trong thead, cot moi + DS khach lon nhat nam trong danh sach an cua CA HAI ho so, do rong du 37 cot', async () => {
   const page = createPage();
   await settle();
   const keys = columnKeys(page);
@@ -493,7 +493,7 @@ test('cot an mac dinh khop: khoa an cua tung ho so deu co trong thead, cot moi +
   const widths = page.dom.window.__reportTestInternals.widthsByProfile;
   ['sale', 'manager'].forEach(profile => {
     const list = Array.from(widths[profile]);
-    assert.equal(list.length, 35, profile);
+    assert.equal(list.length, 37, profile);
     assert.ok(list.every(width => Number.isFinite(width) && width >= 60), profile);
   });
 });
@@ -873,4 +873,49 @@ test('bang Bao cao hang hoa cho keo cot hep toi 40px (ten cot xuong den 3 dong, 
   const handles = [...reportTable(page).querySelectorAll('thead th > .tks-column-resizer')];
   assert.ok(handles.length > 0, 'co thanh keo do rong cot');
   handles.forEach(handle => assert.equal(handle.getAttribute('aria-valuemin'), '40'));
+});
+
+
+test('VAT columns show zero/negative/null, company detail escapes source and avoids customer requests', async t => {
+  const sync = { available: true, loadedAt: Date.now() - 600000, stale: true };
+  const rows = [
+    { ...PRODUCTS[0], vatStockActual: 1000, vatStockAvailable: 700, vatStockByCompany: [{company: '<img src=x onerror=alert(1)>', vatCode: 'VAT1', actual: 1000, available: 700}] },
+    { ...PRODUCTS[1], vatStockActual: 0, vatStockAvailable: -2, vatStockByCompany: [] },
+    { ...PRODUCTS[1], code: 'UNKNOWN', vatStockActual: null, vatStockAvailable: null }
+  ];
+  const page = createPage({ report: () => ({ rows, vatSync: sync }) });
+  t.after(() => page.dom.window.close());
+  await settle();
+  assert.equal(idx('ton-vat-thuc'), idx('co-ban-sg') + 1);
+  assert.equal(idx('ton-vat-co-ban'), idx('co-ban-sg') + 2);
+  assert.equal(cellOf(rowOf(page, 'SP-2'), 'ton-vat-thuc').textContent, '0');
+  assert.equal(cellOf(rowOf(page, 'SP-2'), 'ton-vat-co-ban').textContent, '-2');
+  assert.equal(cellOf(rowOf(page, 'UNKNOWN'), 'ton-vat-thuc').getAttribute('data-sort-value'), null);
+  assert.match(page.$('productVatUpdatedAt').textContent, /Dữ liệu cũ/);
+  const requests = page.urls.length;
+  cellOf(rowOf(page, 'SP-1'), 'ton-vat-co-ban').querySelector('button').click();
+  await settle();
+  const dialog = page.$('productVatDialog');
+  assert.ok(dialog.hasAttribute('open'));
+  assert.equal(dialog.querySelector('img'), null);
+  assert.match(dialog.textContent, /<img src=x/);
+  assert.match(dialog.textContent, /1,000/);
+  assert.match(dialog.textContent, /700/);
+  assert.equal(dialog.querySelector('table').dataset.tableControls, 'off');
+  assert.equal(page.urls.length, requests);
+  assert.equal(page.$('docModalBackdrop').hidden, true);
+});
+
+test('VAT metadata updates reload the product report even if report/CONT versions stay unchanged', async t => {
+  let stamp = 1;
+  const page = createPage({meta: () => READY, reportVersion: () => 'report-1', report: () => ({rows: PRODUCTS, reportVersion: 'report-1', containerSync: READY, vatSync: {available:true,loadedAt:stamp,stale:false}})});
+  t.after(() => page.dom.window.close());
+  await settle();
+  const originalFetch = page.dom.window.fetch;
+  page.dom.window.fetch = url => url === '/api/product-report/containers/meta'
+    ? Promise.resolve({ok:true,json:async()=>({containerSync:READY,reportVersion:'report-1',vatSync:{available:true,loadedAt:++stamp,stale:false}})}) : originalFetch(url);
+  const before = page.urls.filter(url=>url.startsWith('/api/product-report?')).length;
+  page.run('productContainerReportVisible = function () { return true; }; refreshProductContainerMeta();');
+  await settle();
+  assert.equal(page.urls.filter(url=>url.startsWith('/api/product-report?')).length, before + 1);
 });

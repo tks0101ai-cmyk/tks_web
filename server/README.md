@@ -1523,3 +1523,25 @@ Cập nhật gần nhất: 22/11/2026.
 `purchase_orders.fx_rate` mặc định và bắt buộc có giá trị; các luồng ứng dụng kiểm tra giá trị lớn hơn 0. Khi không có ô Tỉ giá, hệ thống dùng `3900`. Quy tắc áp dụng cho công thức, tổng hợp cont, Giá NET/projection, giao diện, export, import snapshot, tạo mã và chỉnh sửa. Giá trị khác nhập rõ ràng được giữ nguyên; `0` không được xem là ô trống. Migration `0145_purchase_order_fx_rate_default.sql` backfill các dòng cũ đang NULL, đặt default/not-null và yêu cầu projection làm mới khi có dòng cần backfill.
 
 Cập nhật gần nhất: 26/11/2026.
+
+
+## 26/11/2026 — Shared VAT snapshot
+
+Module mới: vatSnapshot/source.js (đọc DB/cache trạng thái 10 giây, chỉ tải lại raw khi loaded_at đổi) và vatSnapshot/sync.js (đăng ký trong jobs.js trên worker hiện có). Dùng GOOGLE_SERVICE_ACCOUNT_JSON/SUPABASE_DB_URL hiện có, không thêm biến hoặc dependency. Migration 0146_vat_sheet_snapshot.sql tạo bảng singleton; SQL down nằm trong db/rollbacks/.
+
+| API hiện có | Thay đổi |
+|---|---|
+| GET /api/product-report | vatStockActual, vatStockAvailable, vatStockByCompany trên dòng; vatSync ở phản hồi |
+| GET /api/product-report/containers/meta | Thêm vatSync để bảng nhận phiên VAT mới độc lập với báo cáo/CONT |
+| POST /api/vat-draft/master-data/refresh | Yêu cầu worker chạy sớm, không đọc Sheets từ web |
+| POST /api/vat-lookup/refresh | Cùng hàng chờ, cooldown và backoff |
+
+Nháp VAT, Tra cứu VAT, ORDER VAT và báo cáo dùng cùng raw bundle (Gộp VAT A:P, Khớp mã A:K, MUA VAT SIDA A:E, cộng nguồn ORDER VAT tùy chỉnh). Bộ đọc có readValues được tiêm rõ ràng giữ đường cũ cho test/công cụ. Lease 5 phút; các API request cùng workbook cách nhau ít nhất 1 giây, metadata dùng chung trong chu kỳ. Lỗi giữ nguyên bản trước, retry 5/10/20/40/60 phút có jitter. Nút cập nhật tối thiểu 60 giây và không vượt backoff. Cảnh báo cũ sau 5 phút/có lỗi; không dùng quá 6 giờ. Kiểm tra nguyên tử, lỗi công thức/số và sụt dữ liệu >30%; chỉ log mã lỗi an toàn.
+
+Phát hành: áp riêng migration 0146, triển khai worker hiện có và xác minh loaded_at trước khi chuyển web. Rollback consumer/job trước SQL down; không thay đổi dữ liệu KiotViet hay thuật toán phân bổ VAT.
+
+Cập nhật gần nhất: 26/11/2026.
+
+26/11/2026 — Sau tích hợp main: worker tiếp tục ưu tiên workbook trung gian và đọc workbook VAT TKS dự phòng khi tab hỏng/lỗi API; bundle lưu cả `fallbackTabs` để các trang hiển thị nguồn thực. Giữ timeout 15/45 giây và `retry:false` của main, chia sẻ metadata trong mỗi lượt. Endpoint `/api/vat-lookup/stock` và cột VAT trong chi tiết hóa đơn/đơn hàng giữ nguyên thuật toán và quyền, cùng đọc snapshot PostgreSQL. Bảng báo cáo hiển thị tuổi dữ liệu theo phút. Chưa áp migration 0146 hoặc triển khai; cần kiểm tra nguồn thật và đối chiếu I/O sau khi worker nạp bản đầu.
+
+Cập nhật gần nhất: 26/11/2026.

@@ -56,7 +56,13 @@ function parseLookupRecords(recordsByKey) {
   return buildModel(rowsBySheet);
 }
 
-function createLookupSource({ readValues, config = defaultLookupConfig(), now, logger } = {}) {
+function createLookupSource({ readValues, config = defaultLookupConfig(), now, logger, pool } = {}) {
+  // Production reads the same durable raw bundle as Nhap VAT and ORDER VAT.
+  if (!readValues) {
+    const { createParsedSource, recordsFor } = require('../vatSnapshot/source');
+    return createParsedSource(snapshot => parseLookupRecords(Object.fromEntries(SHEET_TARGETS.map(target => [target.key,
+      recordsFor(snapshot, { spreadsheetId: config.spreadsheetId, ...config.sheets[target.key] })]))), { pool });
+  }
   const cache = createTtlSnapshotCache({
     freshTtlMs: 10 * 60 * 1000,
     staleTtlMs: 6 * 60 * 60 * 1000,

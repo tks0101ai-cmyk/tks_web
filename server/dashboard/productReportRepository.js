@@ -12,6 +12,15 @@ const { normalizeCode } = require('../productContainers/parser');
 const { readInTransitByCode } = require('./inTransitSource');
 const { readTransferRequestByCode } = require('./transferRequestSource');
 const { pageRows, sortRows, searchRows, rowText, scalarCatalog } = require('../shared/tablePage');
+const { createStockSource, lookupVatStock } = require('../vatRequests/stockSource');
+const { snapshotReader } = require('../vatSnapshot/source');
+
+async function getVatReportStatus({ pool } = {}) {
+  try {
+    const snapshot = await snapshotReader(pool).get();
+    return { available: true, loadedAt: snapshot.loadedAt, stale: snapshot.stale };
+  } catch (_) { return { available: false, loadedAt: null, stale: true }; }
+}
 
 function queryProductReport(data, query = {}, hiddenKeys = [], { exportAll = false } = {}) {
   const authorized = data.rows.map(row => Object.fromEntries(Object.entries(row).filter(([key]) => !hiddenKeys.includes(key))));
@@ -119,7 +128,7 @@ const STATE_PROBE_SQL = 'SELECT version::text AS version, computed_at FROM produ
  * noi va ca app xep hang (do that 2026-11-05: 101 truy van cho). Chi dung chung phan TAI; compose chay rieng cho tung
  * nguoi vi ben goi duoc sua ket qua (routes.js gan de data.rows de an cot theo quyen).
  */
-function createProductReportReader({ pool, now = Date.now } = {}) {
+function createProductReportReader({ pool, now = Date.now, vatSource = createStockSource({ pool }) } = {}) {
   let rowsCache = null; // { version, rows }  - dong da map, KHONG bi sua
   let containerCache = null; // { version, totals }
   let transitCache = null; // { at, byCode }
@@ -172,14 +181,22 @@ function createProductReportReader({ pool, now = Date.now } = {}) {
 
   async function load() {
     const state = await probeState();
-    if (state) return { part: await readVersioned(state), reportVersion: state.version };
-    return { part: await readLegacyParts(pool), reportVersion: null };
+    let vat = null;
+    try { vat = await vatSource.get(); } catch (_) { /* Report remains usable before migration/first sync. */ }
+    const part = state ? await readVersioned(state) : await readLegacyParts(pool);
+    return { part, reportVersion: state ? state.version : null, vat };
   }
 
   async function read() {
     if (!inFlight) inFlight = load().finally(() => { inFlight = null; });
-    const { part, reportVersion } = await inFlight;
-    return { ...compose(part), reportVersion };
+    const { part, reportVersion, vat } = await inFlight;
+    const data = compose(part);
+    data.rows = data.rows.map(row => {
+      const stock = vat ? lookupVatStock(vat, row.code) : null;
+      return { ...row, vatStockActual: stock ? stock.actual : null,
+        vatStockAvailable: stock ? stock.available : null, vatStockByCompany: stock ? stock.byCompany : [] };
+    });
+    return { ...data, reportVersion, vatSync: { available: !!vat, loadedAt: vat ? vat.loadedAt : null, stale: vat ? vat.stale : true } };
   }
 
   return { read, probeState };
@@ -334,7 +351,7 @@ async function getProductReportCustomers({ code, pool = getPool() } = {}) {
 
 module.exports = {
   queryProductReport,
-  getProductReport, getProductReportCustomers, getProductReportVersion, createProductReportReader, customerPeriods,
+  getProductReport, getProductReportCustomers, getProductReportVersion, getVatReportStatus, createProductReportReader, customerPeriods,
   PRODUCT_REPORT_PRICE_KEYS, PRODUCT_REPORT_SALES_KEYS,
   __test__: { mapRow, daysToOrder, daysOfCover }
 };

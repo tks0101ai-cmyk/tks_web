@@ -833,3 +833,18 @@ Cập nhật gần nhất: 22/11/2026.
 Ô Tỉ giá trống dùng 3900 trong công thức, UI, export, import và các luồng ghi. Migration 0145 backfill NULL, đặt default/not-null và yêu cầu projection tính lại NET; cần kiểm tra trên staging trước khi áp production.
 
 Cập nhật gần nhất: 26/11/2026.
+
+
+## 26/11/2026 — Shared VAT snapshot và hai cột báo cáo
+
+Đã chuẩn bị: migration 0146; vatSnapshot/source.js + sync.js; nối jobs.js của worker hiện có; chuyển các nguồn Nháp VAT/Tra cứu VAT/ORDER VAT sang DB; ghép I/O và chi tiết công ty vào báo cáo trước sắp xếp/phân trang/xuất file; trạng thái VAT độc lập trong API metadata và giao diện.
+
+Thiết kế: docs/superpowers/specs/2026-11-25-vat-stock-design.md. Kế hoạch: docs/superpowers/plans/2026-11-25-vat-stock.md. Kiểm thử dùng node:test/PGlite/JSDOM; phạm vi phụ thuộc lấy từ graphify (sources, routes, exports, product report và shared Sheets client). Không đổi thuật toán allocation/nameMatching.
+
+Còn lại: quyền ghi Git để chuyển main và tích hợp với nguồn VAT trung gian/dự phòng mới; kiểm thử lại trên main; áp riêng migration 0146; triển khai worker và chờ snapshot thành công; triển khai web. Không tạo service Render mới.
+
+Cập nhật gần nhất: 26/11/2026.
+
+26/11/2026 — Sau tích hợp main: worker tiếp tục ưu tiên workbook trung gian và đọc workbook VAT TKS dự phòng khi tab hỏng/lỗi API; bundle lưu cả `fallbackTabs` để các trang hiển thị nguồn thực. Giữ timeout 15/45 giây và `retry:false` của main, chia sẻ metadata trong mỗi lượt. Endpoint `/api/vat-lookup/stock` và cột VAT trong chi tiết hóa đơn/đơn hàng giữ nguyên thuật toán và quyền, cùng đọc snapshot PostgreSQL. Bảng báo cáo hiển thị tuổi dữ liệu theo phút. Chưa áp migration 0146 hoặc triển khai; cần kiểm tra nguồn thật và đối chiếu I/O sau khi worker nạp bản đầu.
+
+Cập nhật gần nhất: 26/11/2026.

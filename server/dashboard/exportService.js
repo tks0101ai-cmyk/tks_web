@@ -304,7 +304,7 @@ const CUSTOMER_PRODUCT_DETAIL_COLUMNS = [
 
 // Bao cao hang hoa (tab Tong quan) - doc thang tu bang product_report da tinh
 // san 1 lan/dem (xem productReportRepository.js/productReportRefresh.js).
-// 35 cot, THU TU = thu tu sheet BC CHUNG va = thu tu cot bang "Bao cao hang hoa" tren man hinh (thead trong public/index.html);
+// 37 cot, THU TU = thu tu sheet BC CHUNG va = thu tu cot bang "Bao cao hang hoa" tren man hinh (thead trong public/index.html);
 // doi thu tu o day phai doi thead + productReportRowHtml + PRODUCT_REPORT_WIDTHS_BY_PROFILE. Cot "ngay" khai bao type tuong minh
 // (nhan co chu "ngay" se bi inferColumnType suy ra thanh cot ngay thang). Tang truong la phan so (0,25 = 25%), kieu 'percent'.
 const PRODUCT_REPORT_COLUMNS = [
@@ -322,6 +322,8 @@ const PRODUCT_REPORT_COLUMNS = [
   aggregateColumn('inTransit', 'Điều chuyển SG', 'number', 'Số lượng đặt hàng nhập Đã xác nhận nhà cung cấp tại Kiot Sài Gòn, cộng vào tồn có thể bán của báo cáo này.'),
   aggregateColumn('stockSaigon', 'Tồn thực Sài Gòn', 'number', 'Tồn kho hiện tại tại cơ sở Sài Gòn.'),
   aggregateColumn('availableSaigon', 'Có bán Sài Gòn', 'number', 'Tồn thực Sài Gòn trừ số lượng khách đặt phiếu tạm tại Sài Gòn; trống khi báo cáo chưa được tính lại.'),
+  aggregateColumn('vatStockActual', 'Tồn VAT thực', 'number', 'Tổng tồn VAT của các công ty, cột I sheet Gộp VAT.'),
+  aggregateColumn('vatStockAvailable', 'Tồn VAT có bán', 'number', 'VAT còn dùng được cho đơn mới, cột O đã trừ lượng đơn nháp giữ.'),
   aggregateColumn('qtySold30dSaigon', 'Số lượng bán 30 ngày Sài Gòn', 'number', 'Tổng số lượng bán ra tại Sài Gòn trong 30 ngày gần nhất (tính đến hết hôm qua); trống khi báo cáo chưa được tính lại.'),
   aggregateColumn('availableValueSaigon', 'Giá trị có bán Sài Gòn', 'number',
     'Có bán Sài Gòn nhân đơn giá Sài Gòn (VNĐ); trống khi thiếu một trong hai số. Chỉ Quản lý và Trợ lý được xuất.'),
@@ -1117,7 +1119,10 @@ async function buildProductReportDataset(description, payload, signal) {
   }, hiddenKeys, { exportAll: true });
   return applyTableSearchToDataset({
     tableKey: 'overview.productReport', title: TABLE_TITLES['overview.productReport'], selectionMode: 'custom',
-    reportNotes: productContainerExportNotes(data.containerSync),
+    reportNotes: productContainerExportNotes(data.containerSync).concat([
+      ['Cập nhật VAT thành công lúc', data.vatSync && data.vatSync.loadedAt ? new Date(data.vatSync.loadedAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—'],
+      ['Trạng thái VAT', !data.vatSync || !data.vatSync.available ? 'Chưa có dữ liệu hoặc dữ liệu quá cũ; để trống tồn VAT.' : data.vatSync.stale ? 'Dữ liệu VAT cũ; kiểm tra trước khi chốt đơn.' : 'Đồng bộ mỗi 5 phút; cột O đã trừ đơn nháp.']
+    ]),
     worksheets: [{ ...worksheet, rows: pickAggregateRows(filtered.rows, worksheet.columns) }]
   }, null, canonical.length ? null : sorts);
 }

@@ -332,7 +332,18 @@ function minColumnsFor(letters) {
  * thoi thi tra ban cu (stale, toi da 6 gio) thay vi lam hong ca trang. Tab trung gian hong
  * thi doc file goc (config.fallback), ten tab da dung du phong ghi trong fallbackTabs.
  */
-function createMasterDataSource({ readValues, config = vatDraftConfig, now, logger } = {}) {
+function createMasterDataSource({ readValues, config = vatDraftConfig, now, logger, pool } = {}) {
+  // Production reads PostgreSQL only. Injected readers retain the legacy TTL for tests/tools.
+  if (!readValues) {
+    const { createParsedSource, recordsFor } = require('../vatSnapshot/source');
+    return createParsedSource(snapshot => {
+      const data = parseMasterData(
+        recordsFor(snapshot, { spreadsheetId: config.spreadsheetId, ...config.gopVatSheet }),
+        recordsFor(snapshot, { spreadsheetId: config.spreadsheetId, ...config.khopMaSheet }), config);
+      if (data.errors.length) throw sheetError(data.errors.join(' '), 'SHEET_COLUMNS');
+      return data;
+    }, { pool });
+  }
   const cache = createTtlSnapshotCache({
     freshTtlMs: 10 * 60 * 1000,
     staleTtlMs: 6 * 60 * 60 * 1000,
