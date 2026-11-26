@@ -1110,7 +1110,7 @@ Cập nhật gần nhất: 04/11/2026.
 
 Thêm /thu-mua/dat-hang/ và /api/purchase-orders với quyền purchase.view/edit/import/export/depart/arrive; mặc định chỉ Quản lý, quyền mở rộng qua cơ chế cấp quyền hiện có. Module có bảng Chỉ số cont và Đặt hàng sửa trực tiếp, lọc riêng theo tài khoản, dropdown NV/cont/trạng thái, tách .01/.02 đệ quy, sửa hàng loạt, undo/xóa mềm/khôi phục, import toàn bộ hợp lệ mới ghi, audit/realtime và bộ công thức dùng chung. Source gate ngăn job Sheet và web ghi đè nhau.
 
-Migrations Thu mua được đổi sang 0110–0116 vì main đã dùng 0101–0109 và 0114 (0114_stocktake_frozen_lines.sql). `db/ensurePurchaseSchema.js` đăng ký migrations Thu mua theo thứ tự từ 0110 đến 0145, bỏ các số đã dành cho module khác; startup chỉ chạy module Thu mua trong transaction/advisory lock/rollback. Nguồn mặc định Sheets được giữ nguyên; không seed đơn hàng/cutover hoặc thay nguồn dữ liệu chỉ vì có migration. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại `server/purchaseOrders/ROLLOUT.md`. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
+Migrations Thu mua được đổi sang 0110–0116 vì main đã dùng 0101–0109 và 0114 (0114_stocktake_frozen_lines.sql). `db/ensurePurchaseSchema.js` đăng ký migrations Thu mua theo thứ tự từ 0110 đến 0147, bỏ các số đã dành cho module khác; startup chỉ chạy module Thu mua trong transaction/advisory lock/rollback. Nguồn mặc định Sheets được giữ nguyên; không seed đơn hàng/cutover hoặc thay nguồn dữ liệu chỉ vì có migration. Backup và đối soát dữ liệu thật là bước riêng được mô tả tại `server/purchaseOrders/ROLLOUT.md`. Mockup/fixture dữ liệu thử không đưa lên production. Luồng phát hành: branch → PR → CI/review → merge main → Render auto-deploy; không thao tác Render dashboard.
 
 
 ### Thu mua — bản thử nghiệp vụ, 03/11/2026
@@ -1518,9 +1518,9 @@ Cập nhật gần nhất: 22/11/2026.
 
 22/11/2026 — API Thu mua `POST /api/purchase-orders/containers/delete`: xóa mềm cont cùng các dòng `purchase_orders` đang gán vào cont trong cùng transaction; ghi audit và trả Mã dòng về pool theo quy tắc hiện có. Khôi phục cont không tự khôi phục các mã; khôi phục mã qua thùng rác Thu mua.
 
-## Thu mua — mặc định Tỉ giá mã (migration 0145, 26/11/2026)
+## Thu mua — Giá tệ/Tỉ giá để trống (migration 0147, 26/11/2026)
 
-`purchase_orders.fx_rate` mặc định và bắt buộc có giá trị; các luồng ứng dụng kiểm tra giá trị lớn hơn 0. Khi không có ô Tỉ giá, hệ thống dùng `3900`. Quy tắc áp dụng cho công thức, tổng hợp cont, Giá NET/projection, giao diện, export, import snapshot, tạo mã và chỉnh sửa. Giá trị khác nhập rõ ràng được giữ nguyên; `0` không được xem là ô trống. Migration `0145_purchase_order_fx_rate_default.sql` backfill các dòng cũ đang NULL, đặt default/not-null và yêu cầu projection làm mới khi có dòng cần backfill.
+Ô `purchase_orders.unit_price_cny` và `purchase_orders.fx_rate` được phép để trống. Tổng tệ/tiền hàng/phụ phí/NET phụ thuộc vào Giá tệ hoặc Tỉ giá sẽ để trống khi thiếu thành phần; các công thức độc lập (số lượng, m³, cước) vẫn tính bình thường. Sửa các trường khác chỉ ghi những trường được sửa, không điền mặc định vào hai ô này. Migration `0147_purchase_order_blank_price_fx.sql` gỡ default Giá tệ/Tỉ giá và cho phép Tỉ giá NULL. Giá trị `0` ở Tỉ giá vẫn bị từ chối. Giá trị 0/3900 đã được backfill trước đó được giữ nguyên vì không thể xác định đó là giá trị chủ động nhập hay giá trị mặc định cũ.
 
 Cập nhật gần nhất: 26/11/2026.
 

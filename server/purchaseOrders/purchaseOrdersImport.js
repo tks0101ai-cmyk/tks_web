@@ -74,9 +74,9 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
     for (const col of importable) {
       if(snapshot&&matched&&col.k==='qtyPerCarton'&&Object.hasOwn(source,col.k)&&blank(source[col.k]))result.errors.push(col.l+': phải là số nguyên dương.');
       if(matched&&importOptions.updateExistingByRowKey&&!importOptions.updateFields.includes(col.k))continue;
-      if(matched&&importOptions.updateExistingByRowKey&&!importOptions.clearBlanks&&blank(source[col.k])&&col.k!=='unitPriceCny')continue;
+      if(matched&&importOptions.updateExistingByRowKey&&!importOptions.clearBlanks&&blank(source[col.k]))continue;
       const sourceValue = source[col.k];
-      const value = col.k==='unitPriceCny'&&blank(sourceValue)?0:col.k==='fxRate'&&blank(sourceValue)?calculations.DEFAULT_FX_RATE:sourceValue;
+      const value = sourceValue;
       if(col.si){
         if(!snapshot&&!allowContainerAssignment)continue;
         const text=String(value??'').trim(),waitingMatch=/^(?:cont\s*)?chờ(?:\s+(?:xếp(?:\s+(.+))?|(.+))|\s*-\s*(.+))?$/i.exec(text),waiting=!text||!!waitingMatch||/^tính giá$/i.test(text);
@@ -108,7 +108,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
         if(region!=null&&requestedRegion==null)values.regionId=String(region);
         values.contId=String(found.id);continue;
       }
-      if (blank(value)) { if (snapshot) values[col.k] = null; continue; }
+      if (blank(value)) { if (snapshot||matched&&importOptions.updateExistingByRowKey&&importOptions.clearBlanks) values[col.k] = null; continue; }
       if(col.region){const raw=String(value).trim(),found=regionsById.get(raw)||regionsByName.get(raw.toLocaleLowerCase('vi'))||regionsByKey.get(normalizeRegionName(raw));if(found){if(found.isActive===false&&String(matched?.regionId??'')!==String(found.id))result.errors.push('Vùng: chọn tên vùng đang hoạt động trong danh sách.');else values.regionId=String(found.id)}else if(!raw||raw.length>80)result.errors.push('Vùng: tên không hợp lệ (tối đa 80 ký tự).');else if(/^\d+$/.test(raw))result.errors.push('Vùng: không tìm thấy vùng theo mã nội bộ.');else if(!snapshot&&!allowContainerAssignment)result.errors.push('Vùng: chọn tên vùng đang hoạt động trong danh sách.');else{const key=normalizeRegionName(raw);let planned=plannedRegions.get(key);if(!planned){planned={id:'@new-region:'+key,name:raw};plannedRegions.set(key,planned)}values.regionId=planned.id}continue}
       if(col.k==='measuredOn'){const text=String(value).trim();if(text.length>4000)result.errors.push(col.l+': tối đa 4.000 ký tự.');else values[col.k]=text;continue}
       if(col.k==='listedAt'){const date=workbook.normalizeListedAt(value);if(!date)result.errors.push(col.l+': nhập ngày dd/mm hoặc dd/mm/yyyy, có thể nối nhiều ngày bằng dấu +.');else values[col.k]=date;continue}

@@ -1099,7 +1099,7 @@ Cập nhật gần nhất: 25/11/2026.
 
 22/11/2026 — Thu mua: xóa cont cũng xóa mềm các dòng đơn đang gán (`purchase_orders.deleted_at`), không xóa vật lý; dòng được ẩn khỏi bảng hoạt động và có thể khôi phục riêng từ thùng rác. Khôi phục `product_containers` không tự bật lại các dòng đơn.
 
-26/11/2026 — Migration `0145_purchase_order_fx_rate_default.sql` đặt `purchase_orders.fx_rate` có default `3900`, backfill các dòng NULL và đổi cột thành `NOT NULL`. Khi backfill có dữ liệu, ghi một mục `purchase_projection_queue` để làm mới NET trong read model dùng chung. Các luồng Thu mua cũng chuyển ô Tỉ giá trống thành 3900 trước khi tính/lưu; tỉ giá đã nhập giữ nguyên, số 0 tiếp tục bị từ chối ở kiểm tra ứng dụng.
+26/11/2026 — Migration `0145_purchase_order_fx_rate_default.sql` từng backfill Tỉ giá NULL thành 3900 và đặt cột NOT NULL. Migration `0147_purchase_order_blank_price_fx.sql` đảo lại quy tắc cho các giá trị mới: gỡ default của `unit_price_cny` và `fx_rate`, cho phép `fx_rate` NULL; không xóa 0/3900 đã backfill vì không thể phân biệt với giá trị người dùng nhập thật. Khi Giá tệ hoặc Tỉ giá để trống, phép tính phụ thuộc vào trường đó trả NULL; các luồng chỉnh sửa từng phần giữ nguyên trường không được gửi sửa. Tỉ giá bằng 0 vẫn không hợp lệ. Quy đổi cước sau riêng vẫn dùng tỉ giá cont, mặc định 3900.
 
 Cập nhật gần nhất: 26/11/2026.
 

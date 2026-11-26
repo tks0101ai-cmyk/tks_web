@@ -11,7 +11,6 @@
 // doi chieu xong (READINESS muc 39, cong cu purchaseOrdersReconcile.js).
 const fs = require('node:fs');
 const { getPool } = require('../db/pool');
-const { DEFAULT_FX_RATE } = require('../public/shared/purchase-calculations');
 // Dung CHINH XAC phep chuan hoa ten cont cua service: neu khac, cung mot ten cont
 // se sinh hai name_key va UNIQUE(name_key) khong con chan trung ten tren web.
 const { normalizeName } = require('./containerNames');
@@ -65,12 +64,12 @@ async function importSourceRows({ pool = getPool(), file, year = 2026, replace =
     productCode: text(r.code), productName: text(r.name), productNameCn: text(r.nameCn),
     supplier: text(r.supplier), buyer: text(r.buyer),
     qtyPerCarton: num(r.qtyPerCarton), cartonCount: num(r.cartonCount),
-    unitPriceCny: num(r.unitPriceCny) ?? 0, freightPrepaid: num(r.freightPrepaid),
-    fxRate: r.fxRate == null || String(r.fxRate).trim()==='' ? DEFAULT_FX_RATE : num(r.fxRate), freightPostpaid: num(r.freightPostpaid),
+    unitPriceCny: num(r.unitPriceCny), freightPrepaid: num(r.freightPrepaid),
+    fxRate: num(r.fxRate), freightPostpaid: num(r.freightPostpaid),
     kgPerCarton: num(r.kgPerCarton), m3PerCarton: num(r.m3PerCarton)
   }));
 
-  const invalid = prepared.filter(r => !(r.qtyPerCarton > 0) || !(r.cartonCount > 0) || !(r.fxRate > 0) || !r.productCode || !r.productName);
+  const invalid = prepared.filter(r => !(r.qtyPerCarton > 0) || !(r.cartonCount > 0) || r.fxRate!=null&&!(r.fxRate > 0) || !r.productCode || !r.productName);
   // (sheet, dong) trung trong CUNG file: index 0118 se chan o DB, nhung bao som
   // thi nguoi dung sua ban chup chu khong phai doc loi Postgres.
   const seen = new Map(), dupSource = [];

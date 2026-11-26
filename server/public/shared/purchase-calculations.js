@@ -1,7 +1,7 @@
 (function(root,factory){if(typeof module==='object'&&module.exports)module.exports=factory();else root.PurchaseCalculations=factory()})(typeof globalThis!=='undefined'?globalThis:this,function(){
  'use strict';
  const MAX=Number.MAX_SAFE_INTEGER;
- const DEFAULT_FX_RATE=3900; // Tỉ giá của mã; riêng VC sau vẫn ưu tiên tỉ giá cấu hình theo cont.
+ const DEFAULT_FX_RATE=3900; // Chỉ dùng cho quy đổi VC sau khi cont chưa có tỉ giá riêng.
  // Arithmetic only: no eval, identifiers, function calls or cell references.
  function evaluate(value){
   const plain=parse(value);if(!Number.isNaN(plain))return plain;
@@ -43,7 +43,7 @@
  const scaled=(values,denominator)=>result(raw('div',[raw('mul',values),denominator]));
  const add=(...v)=>operation('add',v),mul=(...v)=>operation('mul',v),divide=(...v)=>operation('div',v);
  const positive=v=>{const n=number(v);return n>0?n:null};
- const fxRate=v=>v==null||String(v).trim()===''?DEFAULT_FX_RATE:positive(v);
+ const fxRate=v=>positive(v);
  const nonnegative=v=>{const n=number(v);return n!=null&&n>=0?n:null};
  // VC truoc (已付) duoc phep AM: nguon TKS dung so am lam khoan giam tru/hoan.
  // Cac cot tien khac van khong am. Xem migration 0115_purchase_freight_prepaid_signed.sql.
@@ -51,7 +51,7 @@
  const signed=v=>number(v);
  const quantity=v=>{const n=positive(v);return Number.isSafeInteger(n)?n:null};
  function row(r,freightAmount=null,postpaidFxRate=null){
-  const units=quantity(r.qtyPerCarton),cartons=quantity(r.cartonCount),price=r.unitPriceCny==null||String(r.unitPriceCny).trim()===''?0:nonnegative(r.unitPriceCny),pre=r.freightPrepaid==null||String(r.freightPrepaid).trim()===''?0:signed(r.freightPrepaid),post=nonnegative(r.freightPostpaid),surchargePercent=signed(r.surchargePercent),fx=fxRate(r.fxRate),kg=positive(r.kgPerCarton),m3=positive(r.m3PerCarton),lw=positive(r.literWarehouse),gw=positive(r.gramWarehouse);
+  const units=quantity(r.qtyPerCarton),cartons=quantity(r.cartonCount),price=nonnegative(r.unitPriceCny),pre=r.freightPrepaid==null||String(r.freightPrepaid).trim()===''?0:signed(r.freightPrepaid),post=nonnegative(r.freightPostpaid),surchargePercent=signed(r.surchargePercent),fx=fxRate(r.fxRate),kg=positive(r.kgPerCarton),m3=positive(r.m3PerCarton),lw=positive(r.literWarehouse),gw=positive(r.gramWarehouse);
   const totalQty=mul(units,cartons),goodsCny=mul(totalQty,price),totalCny=add(goodsCny,pre),goodsAmount=mul(totalCny,fx),surchargeAmount=mul(goodsAmount,surchargePercent),totalTon=scaled([kg,cartons],1000),totalM3=mul(m3,cartons),freight=number(freightAmount),postpaidRate=positive(postpaidFxRate)??3900,overrides=r.measurementOverrides||{},override=(key,value)=>Object.hasOwn(overrides,key)?number(overrides[key]):value;
   const literChina=override('literChina',scaled([m3,1000],units)),gramChina=override('gramChina',scaled([kg,1000],units));
   return {totalQty,totalCny,goodsAmount,surchargeAmount,totalTon,totalM3,freightAmount:freight,netPrice:result(raw('div',[raw('add',[goodsAmount,surchargeAmount??0,freight??0,raw('mul',[post??0,postpaidRate])]),totalQty])),literChina,gramChina,literDiff:override('literDiff',divide(add(literChina,lw==null?null:-lw),lw)),gramDiff:override('gramDiff',divide(add(gramChina,gw==null?null:-gw),gw)),ratio:divide(totalTon,totalM3)};
