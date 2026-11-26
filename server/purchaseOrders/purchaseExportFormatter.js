@@ -7,9 +7,8 @@ const PurchaseCalculations=require('../public/shared/purchase-calculations');
 
 const NUMBER_TYPES=new Set(['num','num1','num2','num3','num4','cny','money','pct','ratio']);
 const HEADER_FIT_COLUMNS=new Set(['supplier','regionId','container','status','color','saleNote','vatNote','buyNote']);
-const HEADER_FILL={type:'pattern',pattern:'solid',fgColor:{argb:'FFEAF1F8'}};
-const CELL_BORDER={top:{style:'thin',color:{argb:'FFD9E0EA'}},bottom:{style:'thin',color:{argb:'FFD9E0EA'}},left:{style:'thin',color:{argb:'FFD9E0EA'}},right:{style:'thin',color:{argb:'FFD9E0EA'}}};
-const HEADER_BORDER={top:{style:'thin',color:{argb:'FFB8C6D8'}},bottom:{style:'thin',color:{argb:'FF9AAABD'}},left:{style:'thin',color:{argb:'FFB8C6D8'}},right:{style:'thin',color:{argb:'FFB8C6D8'}}};
+const CELL_BORDER={top:{style:'thin'},bottom:{style:'thin'},left:{style:'thin'},right:{style:'thin'}};
+const HEADER_BORDER=CELL_BORDER;
 
 function dateOnly(value){
   if(value==null||value==='')return null;
@@ -94,7 +93,7 @@ function widthForColumn(column,values,headerLabel){
   let width=0;
   for(const value of values){const text=visibleText(value,column);width=Math.max(width,typeof text==='number'?text:[...text].length)}
   // Keep numeric columns wider than the formatted value so Excel never renders ####.
-  return Math.max(4,width+(NUMBER_TYPES.has(column.t)?2:0));
+  return Math.max(4,textWidth(headerLabel),width+(NUMBER_TYPES.has(column.t)?2:0));
 }
 
 async function formatPurchaseExport(rows,columns,fields,language='vi',{mergeSameProduct=false}={}){
@@ -107,15 +106,15 @@ async function formatPurchaseExport(rows,columns,fields,language='vi',{mergeSame
   const headerLabels=exportColumns.map(column=>PurchaseHeaders.label(column,language));
   sheet.columns=exportColumns.map((column,index)=>({key:column.k,width:widthForColumn(column,values.map(row=>row[index]),headerLabels[index])}));
   const header=sheet.addRow(headerLabels);
-  header.height=32;header.eachCell({includeEmpty:true},cell=>{cell.font={name:'Calibri',size:10,bold:true,color:{argb:'FF1D3553'}};cell.fill=HEADER_FILL;cell.alignment={vertical:'middle',horizontal:'center',wrapText:true};cell.border=HEADER_BORDER});
+  header.eachCell({includeEmpty:true},cell=>{cell.font={name:'Calibri',size:11,bold:true};cell.alignment={horizontal:'center'};cell.border=HEADER_BORDER});
   for(const rowValues of values)sheet.addRow(rowValues);
   for(let index=0;index<exportColumns.length;index++){
     const column=exportColumns[index],target=sheet.getColumn(index+1);
     if(column.k==='listedAt')target.numFmt='dd/mm';
     else if(column.t==='datetime'&&column.k!=='measuredOn')target.numFmt='dd/mm/yyyy';
-    target.alignment={vertical:'middle',horizontal:NUMBER_TYPES.has(column.t)?'right':column.t==='datetime'||column.k==='listedAt'?'center':'left'};
+    target.alignment={vertical:'middle'};
   }
-  sheet.eachRow((row,rowNumber)=>{if(rowNumber===1)return;let lineCount=1;row.eachCell({includeEmpty:true},(cell,columnNumber)=>{const column=exportColumns[columnNumber-1],wrap=HEADER_FIT_COLUMNS.has(column?.k);cell.font={name:'Calibri',size:10};cell.alignment={...cell.alignment,vertical:'middle',wrapText:wrap};cell.border=CELL_BORDER;if(NUMBER_TYPES.has(column?.t))cell.numFmt=numberFormat(column,cell.value);if(wrap&&cell.value!=null&&cell.value!==''){const width=Math.max(1,sheet.getColumn(columnNumber).width-1);lineCount=Math.max(lineCount,String(cell.value).split(/\r?\n/).reduce((count,line)=>count+Math.max(1,Math.ceil(textWidth(line)/width)),0))}});if(lineCount>1)row.height=Math.max(18,lineCount*14+2)});
+  sheet.eachRow((row,rowNumber)=>{if(rowNumber===1)return;row.eachCell({includeEmpty:true},(cell,columnNumber)=>{const column=exportColumns[columnNumber-1];cell.font={name:'Calibri',size:11};cell.alignment={vertical:'middle',wrapText:false};cell.border=CELL_BORDER;if(NUMBER_TYPES.has(column?.t))cell.numFmt=numberFormat(column,cell.value)})});
   if(sheet.rowCount)sheet.autoFilter={from:{row:1,column:1},to:{row:sheet.rowCount,column:exportColumns.length}};
   return book.xlsx.writeBuffer();
 }
