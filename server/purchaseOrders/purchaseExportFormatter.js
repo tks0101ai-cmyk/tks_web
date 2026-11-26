@@ -6,7 +6,8 @@ const PurchaseWorkbook=require('../public/shared/purchase-workbook');
 const PurchaseCalculations=require('../public/shared/purchase-calculations');
 
 const NUMBER_TYPES=new Set(['num','num1','num2','num3','num4','cny','money','pct','ratio']);
-const HEADER_FIT_COLUMNS=new Set(['supplier','regionId','container','status','color','saleNote','vatNote','buyNote']);
+const INTEGER_DISPLAY_COLUMNS=new Set(['goodsAmount','freightAmount','fxRate']);
+const HEADER_FIT_COLUMNS=new Set(['supplier','regionId','container','status','color','saleNote','vatNote','buyNote','buyer','paymentNote','listedAt','orderedNote','shippedNote','etaNote','arrivedNote']);
 const CELL_BORDER={top:{style:'thin'},bottom:{style:'thin'},left:{style:'thin'},right:{style:'thin'}};
 const HEADER_BORDER=CELL_BORDER;
 
@@ -28,7 +29,7 @@ function numberFormat(column,value){
   if(!NUMBER_TYPES.has(column.t))return '@';
   const percent=column.t==='pct'||column.t==='ratio'||['literDiff','gramDiff'].includes(column.k),number=Number(value);
   const shown=Number.isFinite(number)?Number((percent?number*100:number).toFixed(2)):0;
-  const decimals=(String(shown).split('.')[1]||'').length;
+  const decimals=INTEGER_DISPLAY_COLUMNS.has(column.k)?0:(String(shown).split('.')[1]||'').length;
   const positive=(percent?'+0':'#,##0')+(decimals?'.'+'0'.repeat(decimals):'')+(percent?'%':'');
   const negative=(percent?'-0':'[Red]-#,##0')+(decimals?'.'+'0'.repeat(decimals):'')+(percent?'%':'');
   const zero=(percent?'0':'0')+(decimals?'.'+'0'.repeat(decimals):'')+(percent?'%':'');
@@ -46,7 +47,7 @@ function visibleText(value,column){
   }
   if(NUMBER_TYPES.has(column.t)&&Number.isFinite(Number(value))){
     const number=Number(value),percent=column.t==='pct'||column.t==='ratio'||['literDiff','gramDiff'].includes(column.k),shown=percent?number*100:number;
-    return new Intl.NumberFormat('en-US',{maximumFractionDigits:2}).format(shown)+(percent?'%':'');
+    return new Intl.NumberFormat('en-US',{maximumFractionDigits:INTEGER_DISPLAY_COLUMNS.has(column.k)?0:2}).format(shown)+(percent?'%':'');
   }
   return String(value).split(/\r?\n/).reduce((longest,line)=>Math.max(longest,[...line].length),0);
 }
