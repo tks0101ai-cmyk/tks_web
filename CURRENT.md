@@ -25,8 +25,8 @@ Lịch sử cũ (đến 10/11/2026): [docs/archive/CURRENT-den-2026-11-10.md](do
 ## Đang dở / chờ
 
 - [ ] 26/11 — Thu mua: để trống Giá tệ/Tỉ giá thì các công thức phụ thuộc để trống; chỉnh trường khác không ghi đè hai ô (migration 0147 gỡ default, cho phép fx_rate NULL) — review, triển khai rồi xác nhận import, chỉnh sửa và projection; chưa áp production.
-- [ ] 26/11 — Thu mua: giảm độ trễ cập nhật chỉ số cont bằng cache delta từ audit và bỏ lượt tải lại sau lần sửa thường (không migration; PostgreSQL vẫn canonical) — review, xác minh nhiều cont/vùng và phiên đồng thời, rồi push/deploy; chưa xác minh production.
-- [ ] 26/11 — Thu mua: Ctrl+Z của lần tự lưu đổi ô được hoàn tác ngay trên giao diện, đồng bộ DB nền theo operationId — cần review xung đột/reconnect và xác minh trên UI; chưa push/deploy.
+- [ ] 26/11 — Thu mua: giảm độ trễ cập nhật chỉ số cont bằng cache delta từ audit và bỏ lượt tải lại sau lần sửa thường (không migration; PostgreSQL vẫn canonical) — đã push main; cần deploy và xác minh nhiều cont/vùng, phiên đồng thời trên production.
+- [ ] 26/11 — Thu mua: Ctrl+Z của lần tự lưu đổi ô được hoàn tác ngay trên giao diện, đồng bộ DB nền theo operationId — đã push main; cần deploy và xác minh xung đột/reconnect trên UI production.
 
 - [ ] 22/11 — Thu mua: import nhãn `Chờ`, `Chờ <vùng>` và `Chờ xếp <vùng>` vào đúng nhóm chờ ảo — deploy web rồi xác nhận file import không tạo cont vật lý.
 
