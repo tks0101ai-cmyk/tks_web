@@ -42,7 +42,15 @@ dialog::backdrop{background:#0009}
 #modalBody label{display:inline-grid;gap:4px;margin:7px;width:210px}
 #modalBody .scroll{max-height:56vh}
 #modalBody label[for="bulkCodes"]{display:block;width:auto;margin:12px 0 4px;font-weight:700}
-#bulkCodes{display:block;width:100%;min-height:230px;box-sizing:border-box;resize:vertical;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--panel-2);color:inherit;font:13px/1.55 ui-monospace,Consolas,monospace;white-space:pre;tab-size:4}
+#bulkCodes{display:block;position:relative;width:100%;min-height:230px;box-sizing:border-box;resize:vertical;padding:12px;border:1px solid var(--border);border-radius:8px;background:transparent;color:transparent;caret-color:var(--text,inherit);font:13px/1.55 ui-monospace,Consolas,monospace;white-space:pre;tab-size:4;z-index:1}
+#bulkCodes::placeholder{color:transparent}
+.purchase-bulk-code-editor{position:relative}
+.purchase-bulk-code-editor>pre{position:absolute;inset:1px;box-sizing:border-box;overflow:hidden;margin:0;padding:12px;border-radius:7px;color:var(--text,inherit);font:13px/1.55 ui-monospace,Consolas,monospace;white-space:pre;tab-size:4;pointer-events:none}
+.purchase-bulk-code-line{display:block;min-width:100%;width:max-content;box-sizing:border-box;min-height:1.55em;padding:0 3px;border-radius:3px}
+.purchase-bulk-code-line.new{background:rgba(34,197,94,.25);color:#b9f6ca;box-shadow:inset 3px 0 #22c55e}
+:root[data-theme="light"] .purchase-bulk-code-line.new{background:#dcfce7;color:#166534;box-shadow:inset 3px 0 #16a34a}
+.purchase-bulk-code-line.checking{background:rgba(234,179,8,.1)}
+.purchase-bulk-code-editor textarea::selection{background:rgba(59,130,246,.38);color:transparent}
 #bulkCodesStatus{min-height:20px;margin:8px 0 12px;color:var(--muted)}
 #bulkCodesSave{background:var(--primary);color:var(--primary-ink,#fff);font-weight:700}
 
