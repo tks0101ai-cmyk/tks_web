@@ -191,6 +191,7 @@ async function readContainerSummaries(client){return (await client.query(`SELECT
   FROM purchase_orders WHERE deleted_at IS NULL AND inactive_at IS NULL GROUP BY container_id,region_id`)).rows}
 function createPurchaseOrdersService({ pool=getPool(), project=projectContainers, events=dashboardRollupEvents, lockKey=20531015, invalidate=invalidateContainerDetails, deferProjection=false }={}) {
   let cachedContainerSummaryRevision=null,cachedContainerSummaries=null,containerSummaryInFlight=null;
+  function requestContainerSummary(revision,queryable){if(containerSummaryInFlight?.revision===revision)return containerSummaryInFlight.promise;const pending=readContainerSummaries(queryable);containerSummaryInFlight={revision,promise:pending};pending.then(summaries=>{if(containerSummaryInFlight?.promise===pending){cachedContainerSummaries=summaries;cachedContainerSummaryRevision=revision;containerSummaryInFlight=null}},()=>{if(containerSummaryInFlight?.promise===pending)containerSummaryInFlight=null});return pending}
   const pagedCountCache=new Map();
   let historyRevisionCounterAvailable;
   async function readHistoryRevision(client){
@@ -753,6 +754,11 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
     },
     async list(user,options={}) {actor(user);const client=await pool.connect();try{
       const revision=(await readHistoryRevision(client)).revision;
+      const needsContainerSummary=options.page!=null&&(cachedContainerSummaryRevision!==revision||!cachedContainerSummaries);
+      let summaryPromise=needsContainerSummary&&containerSummaryInFlight?.revision===revision?containerSummaryInFlight.promise:null;
+      // Run the aggregate alongside page reads only when the pool already has an idle connection.
+      // Under load, defer until page selection completes and use this request's checked-out client.
+      if(needsContainerSummary&&!summaryPromise&&Number(pool.idleCount)>0)summaryPromise=requestContainerSummary(revision,pool);
       const metadata=(await client.query(`SELECT
         (SELECT row_to_json(s) FROM purchase_settings s WHERE s.id=1) AS settings,
         COALESCE((SELECT json_agg(c ORDER BY c.id) FROM product_containers c),'[]'::json) AS containers,
@@ -785,14 +791,7 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
         }
         const extraIds=[...new Set((Array.isArray(options.includeIds)?options.includeIds:String(options.includeIds||'').split(',')).map(String).filter(id=>/^\d+$/.test(id)))].filter(id=>!activeRows.some(row=>String(row.id)===id)).slice(0,1000);
         const supplementalRows=extraIds.length?await readRows(client,false,extraIds):[];
-        let summaries=cachedContainerSummaries;
-        if(cachedContainerSummaryRevision!==revision||!cachedContainerSummaries){
-          if(containerSummaryInFlight?.revision!==revision){
-            const pending=readContainerSummaries(client);containerSummaryInFlight={revision,promise:pending};
-            pending.then(summaries=>{if(containerSummaryInFlight?.promise===pending){cachedContainerSummaries=summaries;cachedContainerSummaryRevision=revision;containerSummaryInFlight=null}},()=>{if(containerSummaryInFlight?.promise===pending)containerSummaryInFlight=null});
-          }
-          summaries=await containerSummaryInFlight.promise;
-        }
+        let summaries=cachedContainerSummaries;if(needsContainerSummary){summaryPromise=summaryPromise||requestContainerSummary(revision,client);summaries=await summaryPromise}
         return {revision,sourceMode:source,integrationEnabled:settings?.integration_enabled===true,waitingConfig,waitingConfigs,rows:withFreight(activeRows,containers,waitingContainerRows,summaries),...(windowIds?{windowIds}:{}),supplementalRows:withFreight(supplementalRows,containers,waitingContainerRows,summaries),containers,regions,containerSummaries:summaries,...(filter.clientSort?{}:{pagination:{page,pageSize,total,pages:Math.max(1,Math.ceil(total/pageSize))}})};
       }
       return {revision,sourceMode:source,integrationEnabled:settings?.integration_enabled===true,waitingConfig,waitingConfigs,rows:withFreight(await readRows(client),containers,waitingContainerRows),containers,regions};
