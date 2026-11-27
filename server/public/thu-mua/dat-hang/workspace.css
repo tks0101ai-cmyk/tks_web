@@ -120,7 +120,7 @@
 .purchase-page #orderTable td[data-field="rowKey"] .row-key-action{cursor:pointer;text-decoration:underline dotted var(--muted);text-underline-offset:3px}
 .purchase-page #orderTable td[data-field="rowKey"] .row-key-action:hover{color:var(--blue)}
 .purchase-page #orderTable td[data-field="rowKey"] .row-key-action:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
-.purchase-page #orderTable td[data-field="rowKey"] .row-key-action[draggable="true"]{cursor:grab;touch-action:none;user-select:none}
+.purchase-page #orderTable td[data-field="rowKey"] .row-key-action{cursor:crosshair;user-select:none}.purchase-page #orderTable td[data-field="rowKey"] .row-key-action:active{cursor:grabbing}
 .purchase-page #orderTable tbody tr.row-dragging{opacity:.38}
 .purchase-page #orderTable tbody tr.row-drop-target>td{border-top:2px solid var(--blue)!important}
 
