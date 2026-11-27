@@ -1,3 +1,5 @@
+27/11/2026 — Thu mua: cột **Số thùng** nhận số dương có phần thập phân. Tổng SL, tải, m³, NET và cước dùng đủ giá trị; **SL/T** vẫn phải là số nguyên dương. Migration `0149_purchase_fractional_carton_count.sql` gỡ ràng buộc số nguyên khỏi `carton_count`.
+
 18/11/2026 — **Thu mua: import snapshot tự tạo vùng/cont mới (cục bộ, chưa test/deploy):** preview liệt kê danh mục mới, revise cho sửa tên, confirm mới tạo danh mục và gán mã trong một transaction; cont thiếu vùng dùng AA. Không migration.
 
 13/11/2026 — Nháp VAT: sửa lỗi tạo mã QR (danh sách tài khoản tải ngay, chặn QR sai chuẩn VietQR).

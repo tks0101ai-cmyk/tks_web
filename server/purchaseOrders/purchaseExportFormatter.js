@@ -27,6 +27,7 @@ function listedAtValue(value){
 
 function numberFormat(column,value){
   if(!NUMBER_TYPES.has(column.t))return '@';
+  if(column.k==='cartonCount')return '#,##0.###############';
   const percent=column.t==='pct'||column.t==='ratio'||['literDiff','gramDiff'].includes(column.k),number=Number(value);
   const shown=Number.isFinite(number)?Number((percent?number*100:number).toFixed(2)):0;
   const decimals=INTEGER_DISPLAY_COLUMNS.has(column.k)?0:(String(shown).split('.')[1]||'').length;
@@ -47,7 +48,7 @@ function visibleText(value,column){
   }
   if(NUMBER_TYPES.has(column.t)&&Number.isFinite(Number(value))){
     const number=Number(value),percent=column.t==='pct'||column.t==='ratio'||['literDiff','gramDiff'].includes(column.k),shown=percent?number*100:number;
-    return new Intl.NumberFormat('en-US',{maximumFractionDigits:INTEGER_DISPLAY_COLUMNS.has(column.k)?0:2}).format(shown)+(percent?'%':'');
+    return new Intl.NumberFormat('en-US',{maximumFractionDigits:column.k==='cartonCount'?15:INTEGER_DISPLAY_COLUMNS.has(column.k)?0:2}).format(shown)+(percent?'%':'');
   }
   return String(value).split(/\r?\n/).reduce((longest,line)=>Math.max(longest,[...line].length),0);
 }
@@ -75,7 +76,7 @@ function mergeExportRows(rows){
     if(group.length<2){result.push(...group);continue}
     const newest=[...group].sort((a,b)=>updated(b)-updated(a)||Number(b.id||0)-Number(a.id||0))[0];
     const cartonCount=group.reduce((sum,row)=>sum+Number(row.cartonCount),0);
-    if(!Number.isSafeInteger(cartonCount)||cartonCount<=0){result.push(...group);continue}
+    if(!Number.isFinite(cartonCount)||cartonCount<=0||cartonCount>Number.MAX_SAFE_INTEGER){result.push(...group);continue}
     const chronological=[...group].sort((a,b)=>epoch(a.listedAt)-epoch(b.listedAt)||updated(a)-updated(b)||Number(a.id||0)-Number(b.id||0));
     const dates=[...new Set(group.flatMap(row=>String(PurchaseWorkbook.normalizeListedAt(row.listedAt)||'').split(' + ').filter(Boolean)).sort((a,b)=>Date.parse(a+'T00:00:00Z')-Date.parse(b+'T00:00:00Z')||a.localeCompare(b)))];
     const orderedNotes=[...new Set(chronological.map(row=>String(row.orderedNote??'').trim()).filter(Boolean))];

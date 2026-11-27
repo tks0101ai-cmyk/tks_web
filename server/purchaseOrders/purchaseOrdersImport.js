@@ -15,7 +15,7 @@ const snapshotColumns=columns.filter(c=>c.si);
 importable.push(...snapshotColumns);
 const byKey = new Map(importable.map(c => [c.k, c]));
 const keyPattern = /^D\d{5,}(?:\.(?:01|02))*$/;
-const integerFields = new Set(['qtyPerCarton', 'cartonCount']);
+const integerFields = new Set(['qtyPerCarton']);
 const signedFields = new Set([...calculations.SIGNED,'literDiff','gramDiff']);
 const blank = value => value == null || value === '';
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
@@ -116,6 +116,7 @@ function prepareRows(sourceRows, existingRows, { listedAt = today(), snapshot = 
         const number = calculations.parse(value);
         // Chi cac cot co the am duoc khai bao trong signedFields.
         if (!Number.isFinite(number) || number < 0 && !signedFields.has(col.k) || Math.abs(number) > Number.MAX_SAFE_INTEGER) result.errors.push(col.l + ': số không hợp lệ.');
+        else if (col.k === 'cartonCount' && number <= 0) result.errors.push(col.l + ': phải là số dương.');
         else if (integerFields.has(col.k) && (!Number.isSafeInteger(number) || number <= 0)) result.errors.push(col.l + ': phải là số nguyên dương.');
         else if(col.k==='fxRate'&&number===0)result.errors.push(col.l+': phải lớn hơn 0 hoặc để trống.');else values[col.k] = number;
       } else if ((col.t === 'date'||col.t==='datetime')) {

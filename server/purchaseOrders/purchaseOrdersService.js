@@ -644,10 +644,10 @@ function createPurchaseOrdersService({ pool=getPool(), project=projectContainers
       if(!sameCode)throw fail(400,'MERGE_DIFFERENT_CODES','Chỉ gộp các dòng có cùng Mã SP.');
       if(locked.some(row=>String(row.container_id??'')!==String(first.container_id??'')||String(row.region_id??'')!==String(first.region_id??'')))throw fail(400,'MERGE_DIFFERENT_LOCATION','Các dòng phải cùng cont và cùng vùng trước khi gộp.');
       if(locked.some(row=>Number(row.qty_per_carton)!==Number(first.qty_per_carton))||!Number.isSafeInteger(Number(first.qty_per_carton))||Number(first.qty_per_carton)<=0)throw fail(400,'MERGE_DIFFERENT_PACKING','Các dòng phải có cùng SL/T hợp lệ để cộng số thùng chính xác.');
-      if(locked.some(row=>!Number.isSafeInteger(Number(row.carton_count))||Number(row.carton_count)<=0))throw fail(400,'MERGE_QUANTITY_INVALID','Mỗi dòng cần có Số thùng là số nguyên dương trước khi gộp.');
+      if(locked.some(row=>!Number.isFinite(Number(row.carton_count))||Number(row.carton_count)<=0||Number(row.carton_count)>Number.MAX_SAFE_INTEGER))throw fail(400,'MERGE_QUANTITY_INVALID','Mỗi dòng cần có Số thùng là số dương trước khi gộp.');
       const newest=[...locked].sort((a,b)=>new Date(b.updated_at||0)-new Date(a.updated_at||0)||Number(b.id)-Number(a.id))[0];
-      const cartons=locked.reduce((total,row)=>total+Number(row.carton_count||0),0);
-      if(!Number.isSafeInteger(cartons)||cartons<=0)throw fail(400,'MERGE_QUANTITY_INVALID','Tổng Số thùng sau khi gộp phải là số nguyên dương.');
+      const cartons=locked.reduce((total,row)=>calculations.add(total,Number(row.carton_count||0)),0);
+      if(!Number.isFinite(cartons)||cartons<=0||cartons>Number.MAX_SAFE_INTEGER)throw fail(400,'MERGE_QUANTITY_INVALID','Tổng Số thùng sau khi gộp phải là số dương hợp lệ.');
       if(locked.some(row=>row.container_id!=null))client.purchaseFormulaValidationRequired=true;
       const chronological=[...locked].sort((a,b)=>listedAtEpoch(a.listed_at)-listedAtEpoch(b.listed_at)||new Date(a.updated_at||0)-new Date(b.updated_at||0)||Number(a.id)-Number(b.id));
       const listedAt=mergedListedAt(locked),orderedNote=mergedText(chronological.map(row=>row.ordered_note));

@@ -1,3 +1,7 @@
+## Migration 0149 — Thu mua: số thùng thập phân (27/11/2026)
+
+`0149_purchase_fractional_carton_count.sql` bỏ CHECK cũ yêu cầu `purchase_orders.carton_count` là số nguyên và thay bằng điều kiện số dương. Cột vẫn dùng `NUMERIC`; `qty_per_carton` vẫn là số nguyên dương. Công thức tải, thể tích, tổng SL, tiền NET và cước dùng giá trị Số thùng đầy đủ. Migration được đăng ký trong `db/ensurePurchaseSchema.js`.
+
 ## Migration 0131 — ngày về cont nhập dạng chữ (16/11/2026)
 
 `0131_purchase_container_arrival_text.sql` đổi `product_containers.arrival_date` từ `DATE` sang `TEXT`, giữ nguyên ngày ISO cũ để các luồng đồng bộ hiện có tiếp tục đọc được và cho phép nhập lịch dự kiến dạng khoảng như `11-12/11`. API cập nhật cont và xác nhận cont về đều lưu chuỗi nguyên dạng. Migration được đăng ký trong `db/ensurePurchaseSchema.js`.
