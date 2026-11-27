@@ -844,6 +844,28 @@
     if (queued) return; queued = true;
     (window.requestAnimationFrame || window.setTimeout)(function () { queued = false; refreshAll(); });
   }
+  var mutationRefreshQueued = false, mutationTables = new Set(), mutationSelectionDirty = false;
+  function collectTables(nodes, target) {
+    Array.prototype.forEach.call(nodes || [], function (node) {
+      if (!node || node.nodeType !== 1) return;
+      if (node.matches('table')) target.add(node);
+      if (node.querySelectorAll) node.querySelectorAll('table').forEach(function (table) { target.add(table); });
+    });
+  }
+  function scheduleMutationRefresh(tables, selectionDirty) {
+    (tables || []).forEach(function (table) { if (table) mutationTables.add(table); });
+    mutationSelectionDirty = mutationSelectionDirty || !!selectionDirty;
+    if (mutationRefreshQueued) return;
+    mutationRefreshQueued = true;
+    (window.requestAnimationFrame || window.setTimeout)(function () {
+      mutationRefreshQueued = false;
+      mutationTables.forEach(function (table) { if (table.isConnected) enhance(table); });
+      mutationTables.clear();
+      if (drag && !drag.handle.isConnected) finishDrag();
+      if (active && !active.table.isConnected) closePicker();
+      if (mutationSelectionDirty) { mutationSelectionDirty = false; validateSelection(); }
+    });
+  }
   function getState(table) {
     var ctrl = controllers.get(table); if (!ctrl) return null;
     var sorted = ctrl.sort && ctrl.columns[ctrl.sort.index];
@@ -1462,16 +1484,39 @@
     refreshAll();
     fetchPrefs();
     new MutationObserver(function (records) {
-      if (records.some(function (record) {
+      var tables = new Set(), selectionDirty = false, globalRefresh = false;
+      records.forEach(function (record) {
         var target = record.target.nodeType === 1 ? record.target : record.target.parentElement;
-        if (!target || target.closest('.tks-columns-overlay,.tks-table-tools,colgroup,.tks-column-resizer,.tks-sel-sum')) return false;
+        if (!target || target.closest('.tks-columns-overlay,.tks-table-tools,colgroup,.tks-column-resizer,.tks-sel-sum')) return;
+        var table = target.closest('table');
         if (record.type === 'attributes') {
-          // Tô / bỏ tô ô đang chọn (tks-cell-selected, tks-selecting) là việc của chính ta: không dựng lại cả trang vì nó.
-          if (record.attributeName === 'class' && /tks-cell-selected|tks-selecting/.test((record.oldValue || '') + ' ' + target.className)) return false;
-          return !target.closest('table.tks-controlled-table');
+          // Tô / bỏ tô ô đang chọn (tks-cell-selected, tks-selecting) là việc của chính ta.
+          if (record.attributeName === 'class' && /tks-cell-selected|tks-selecting/.test((record.oldValue || '') + ' ' + target.className)) return;
+          if (table?.classList.contains('tks-controlled-table')) return;
+          if (table) tables.add(table);
+          else globalRefresh = true;
+          return;
         }
-        return true;
-      })) schedule();
+        if (record.type === 'characterData') {
+          // Thay chữ trong ô dữ liệu không làm đổi cấu trúc bảng; tiêu đề thì cần cập nhật bộ điều khiển.
+          var header = target.closest('thead');
+          if (header) tables.add(header.closest('table'));
+          return;
+        }
+        if (table) {
+          var headerChanged = target === table || !!target.closest('thead');
+          if (headerChanged || !table.classList.contains('tks-controlled-table')) tables.add(table);
+          if (target === table || target.tagName === 'TBODY') selectionDirty = true;
+          collectTables(record.addedNodes, tables);
+          return;
+        }
+        collectTables(record.addedNodes, tables);
+        var removedTables = new Set();
+        collectTables(record.removedNodes, removedTables);
+        if (removedTables.size) selectionDirty = true;
+      });
+      if (globalRefresh) schedule();
+      else if (tables.size || selectionDirty) scheduleMutationRefresh(tables, selectionDirty);
     }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeOldValue: true, attributeFilter: ['hidden', 'class', 'style', 'open'] });
     window.addEventListener('resize', schedule);
     if (document.fonts) document.fonts.ready.then(schedule);
