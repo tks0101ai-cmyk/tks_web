@@ -31,7 +31,7 @@ test('disconnect during presence query removes late insert; response error also 
 });
 test('presence store reads only public roster and committed history fingerprint',async()=>{
  const queries=[],pool={query:async(sql,args)=>{queries.push({sql,args});return {rows:sql.includes('AS version')?[{version:'9:8'}]:sql.startsWith('SELECT DISTINCT')?[{id:'u',name:'Buyer'}]:[]}}};
- const store=createPresenceStore(pool),snapshot=await store.touch('connection',{id:'u',username:'Buyer'});assert.equal(snapshot.version,'9:8');assert.match(queries[2].sql,/count\(\*\)/);assert.match(queries[1].sql,/WITH expired AS/);await store.remove('connection');assert.deepEqual(queries.at(-1).args,['connection']);
+ const store=createPresenceStore(pool),snapshot=await store.touch('connection',{id:'u',username:'Buyer'});assert.equal(snapshot.version,'9:8');assert.match(queries[2].sql,/purchase_history_revision_counts/);assert.match(queries[1].sql,/WITH expired AS/);await store.remove('connection');assert.deepEqual(queries.at(-1).args,['connection']);
 });
 test('real SQL presence expiry, actor deduplication, disconnect and late lower history id are detected',async()=>{
  const {PGlite}=require('@electric-sql/pglite');const db=new PGlite();

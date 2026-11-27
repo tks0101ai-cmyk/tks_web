@@ -12,7 +12,7 @@ function createPresenceStore(poolOverride) {
     async snapshot(){
       const users=(await pool().query(`WITH expired AS (DELETE FROM purchase_presence WHERE expires_at<now() RETURNING connection_id)
         SELECT DISTINCT actor_id AS id,actor_name AS name FROM purchase_presence WHERE expires_at>now() ORDER BY actor_name`)).rows;
-      const version=(await pool().query("SELECT COALESCE(max(id),0)::text || ':' || count(*)::text AS version FROM purchase_history")).rows[0].version;
+      let version;try{version=(await pool().query("SELECT COALESCE(max(id),0)::text || ':' || COALESCE((SELECT sum(row_count)::text FROM purchase_history_revision_counts),'0') AS version FROM purchase_history")).rows[0].version}catch(error){if(error.code!=='42P01')throw error;version=(await pool().query("SELECT COALESCE(max(id),0)::text || ':' || count(*)::text AS version FROM purchase_history")).rows[0].version}
       return {users,version};
     },
     async touch(id,user){await store.renew(id,user);return store.snapshot()},
