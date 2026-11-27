@@ -6,8 +6,8 @@
 'use strict';
 
 const DEPARTMENTS_BY_BRANCH = Object.freeze({
-  hanoi: Object.freeze(['Ban quản trị', 'Trợ lý', 'Đặt hàng', 'Kế toán', 'Marketing', 'Sale HN', 'Kho HN', 'Lái xe HN']),
-  saigon: Object.freeze(['Quản lý-KT SG', 'Sale SG', 'Kho SG', 'Lái xe SG'])
+  hanoi: Object.freeze(['Ban quản trị', 'Trợ lý', 'Đặt hàng', 'Kế toán', 'Marketing', 'Sale HN', 'Kho HN', 'Lái xe HN', 'Hậu cần - Bảo vệ']),
+  saigon: Object.freeze(['Quản lý-KT SG', 'Sale SG', 'Kho SG', 'Lái xe SG', 'Hậu cần - Bảo vệ'])
 });
 
 function key(value) {

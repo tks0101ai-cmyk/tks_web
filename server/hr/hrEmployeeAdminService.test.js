@@ -79,6 +79,17 @@ test('thêm nhân sự: chuẩn hóa email, trả về nhân sự mới, mặc �
   assert.equal(db.length, 3);
 });
 
+test('thêm nhân sự Hậu cần - Bảo vệ được ở cả hai cơ sở', async () => {
+  for (const coSo of ['Hà Nội', 'Sài Gòn']) {
+    const { service, db } = setup();
+    const { employee } = await service.createEmployee(MANAGER, {
+      ...valid, coSo, boPhan: 'HẬU CẦN - BẢO VỆ', email: `${coSo === 'Hà Nội' ? 'hn' : 'sg'}@x.com`
+    });
+    assert.equal(employee.boPhan, 'Hậu cần - Bảo vệ');
+    assert.equal(db.at(-1).branch, coSo === 'Hà Nội' ? 'hanoi' : 'saigon');
+  }
+});
+
 test('thêm/sửa: thiếu tên, cơ sở sai, email sai bị từ chối 400', async () => {
   const { service } = setup();
   await assert.rejects(service.createEmployee(MANAGER, { ...valid, hoTen: ' ' }), { statusCode: 400, code: 'INVALID_NAME' });
