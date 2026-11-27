@@ -454,9 +454,11 @@
   $('addBulk').onclick=()=>{
     if(!allowed('edit','orders'))return;
     if(pendingRequest?.path==='/bulk-create'){notice('Đang xác minh lần thêm mã trước. Không gửi lại danh sách này cho đến khi hệ thống xác nhận xong.');return}
-    modal('<h2>Thêm mã</h2><p>Mỗi dòng nhập <b>Mã SP</b>, rồi <b>Số thùng</b>. Có thể phân tách bằng khoảng trắng hoặc Tab. Với mã mới chưa có dữ liệu cũ, nhập thêm <b>SL/T</b> ở cột thứ ba, phân tách bằng Tab. Mã đã có sẽ lấy Tên SP, NCC, nhân viên, SL/T, giá tệ, Kg/T, m³/thùng và vùng từ lần gần nhất; Lên list là ngày thêm mới.</p><label for="bulkTarget">Thêm vào cont</label><select id="bulkTarget">'+options(false,true,'Chờ xếp')+'</select><p>Mã mới vào vùng AA khi chọn Chờ xếp.</p><label for="bulkCodes">Danh sách mã</label><div class="purchase-bulk-code-editor"><pre id="bulkCodesHighlight" aria-hidden="true"></pre><textarea id="bulkCodes" rows="14" placeholder="ABC001 10&#10;ABC002&#9;15&#9;24" spellcheck="false"></textarea></div><p id="bulkCodesStatus" role="status">Mỗi dòng: Mã SP · Số thùng · SL/T (SL/T cần có với mã mới); mã mới sẽ được tô xanh sau khi kiểm tra.</p><button type="button" id="bulkCodesSave">Thêm vào bảng</button>');
+    const activeBulkRegions=(data.regions||[]).filter(region=>region.isActive!==false),preferredBulkRegion=activeBulkRegions.find(region=>String(region.name||'').trim().toLocaleUpperCase('vi')==='AA')||activeBulkRegions[0],bulkRegionOptions=activeBulkRegions.map(region=>'<option value="'+esc(region.id)+'" '+(String(region.id)===String(preferredBulkRegion?.id)?'selected':'')+'>'+esc(region.name)+'</option>').join('');
+    modal('<h2>Thêm mã</h2><p>Mỗi dòng nhập <b>Mã SP</b>, rồi <b>Số thùng</b>. Có thể phân tách bằng khoảng trắng hoặc Tab. Với mã mới chưa có dữ liệu cũ, nhập thêm <b>SL/T</b> ở cột thứ ba, phân tách bằng Tab. Mã đã có sẽ lấy Tên SP, NCC, nhân viên, SL/T, giá tệ, Kg/T, m³/thùng và vùng từ lần gần nhất; Lên list là ngày thêm mới.</p><label for="bulkTarget">Thêm vào cont</label><select id="bulkTarget">'+options(false,true,'Chờ xếp')+'</select><div id="bulkRegionControl"><label for="bulkRegion">Vùng chờ xếp</label><select id="bulkRegion">'+(bulkRegionOptions||'<option value="">Không có vùng đang hoạt động</option>')+'</select></div><p id="bulkTargetHint">Các mã sẽ vào nhóm Chờ xếp của vùng đã chọn.</p><label for="bulkCodes">Danh sách mã</label><div class="purchase-bulk-code-editor"><pre id="bulkCodesHighlight" aria-hidden="true"></pre><textarea id="bulkCodes" rows="14" placeholder="ABC001 10&#10;ABC002&#9;15&#9;24" spellcheck="false"></textarea></div><p id="bulkCodesStatus" role="status">Mỗi dòng: Mã SP · Số thùng · SL/T (SL/T cần có với mã mới); mã mới sẽ được tô xanh sau khi kiểm tra.</p><button type="button" id="bulkCodesSave">Thêm vào bảng</button>');
     const textarea=$('bulkCodes'),status=$('bulkCodesStatus'),save=$('bulkCodesSave');
-    const highlight=$('bulkCodesHighlight');let lookupTimer=null,lookupSequence=0;
+    const highlight=$('bulkCodesHighlight'),bulkTarget=$('bulkTarget'),bulkRegion=$('bulkRegion'),bulkRegionControl=$('bulkRegionControl'),bulkTargetHint=$('bulkTargetHint');let lookupTimer=null,lookupSequence=0;
+    const syncBulkTarget=()=>{const waiting=!bulkTarget.value;bulkRegionControl.hidden=!waiting;const selectedRegion=activeBulkRegions.find(region=>String(region.id)===String(bulkRegion.value));bulkTargetHint.textContent=waiting?'Các mã sẽ vào nhóm Chờ xếp của vùng '+(selectedRegion?.name||'AA')+'.':'Mã sẽ được thêm vào cont đã chọn.'};
     const latestByCode=new Map(),latestCheckedCodes=new Set();let submitting=false,previewValid=false;for(const item of data.rows){const code=String(item.productCode||'').trim(),previous=latestByCode.get(code.toLocaleLowerCase('vi'));if(code&&(!previous||latestListedAtEpoch(item.listedAt)>latestListedAtEpoch(previous.listedAt)||latestListedAtEpoch(item.listedAt)===latestListedAtEpoch(previous.listedAt)&&Number(item.id)>Number(previous.id)))latestByCode.set(code.toLocaleLowerCase('vi'),item)}
     const parse=()=>textarea.value.split(/\r?\n/).map(line=>line.trim()).filter(Boolean);
     const lineCode=line=>{const fields=line.split('\t');return String(fields.length>=2?fields[0]:line.match(/^(.*?)\s+([\d,]+)$/)?.[1]||line).trim()};
@@ -467,6 +469,7 @@
       const rows=lines.map(line=>{
         const tabFields=line.split('\t'),tabular=tabFields.length>=2,match=tabular?null:line.match(/^(.*?)\s+([\d,]+)$/),code=(tabular?tabFields[0]:match?.[1]||line).trim(),previous=latestByCode.get(code.toLocaleLowerCase('vi')),cartonText=tabular?tabFields[1]?.trim():match?.[2],input={productCode:code,cartonCount:cartonText?Number(cartonText.replaceAll(',','')):null};
         if(previous)for(const key of ['productName','supplier','buyer','qtyPerCarton','unitPriceCny','kgPerCarton','m3PerCarton','regionId'])if(previous[key]!=null&&(key!=='qtyPerCarton'||Number.isSafeInteger(Number(previous[key]))&&Number(previous[key])>0))input[key]=previous[key];
+        if(!bulkTarget.value){const regionId=bulkRegion.value||defaultRegion();if(regionId)input.regionId=regionId;else delete input.regionId}
         if(tabular&&tabFields.length>=3&&tabFields[2].trim())input.qtyPerCarton=tabFields[2].trim();
         if(input.regionId&&!(data.regions||[]).some(region=>String(region.id)===String(input.regionId)&&region.isActive!==false))delete input.regionId;
         input.listedAt=normalizeDay(today);
@@ -478,22 +481,22 @@
       const ready=issues.length?issues.join(' · '):needsLookup?'đang kiểm tra mã mới; mã mới cần có SL/T ở cột Tab thứ ba':'đã sẵn sàng để thêm';
       previewValid=!!rows.length&&rows.length<=500&&issues.length===0;status.textContent=`${rows.length} mã · ${ready}${rows.length>500?' · vượt giới hạn 500':''}${rows.length?' · tô xanh = mã mới':''}`;save.disabled=submitting||!previewValid;paintCodeRows();return rows;
     };
-    textarea.addEventListener('input',()=>{preview();lookupEnteredCodes()});textarea.addEventListener('scroll',paintCodeRows);preview();
+    bulkTarget.addEventListener('change',()=>{syncBulkTarget();preview()});bulkRegion.addEventListener('change',()=>{syncBulkTarget();preview()});syncBulkTarget();textarea.addEventListener('input',()=>{preview();lookupEnteredCodes()});textarea.addEventListener('scroll',paintCodeRows);preview();
     save.onclick=guarded(async()=>{
-      let rows=preview();if(submitting||save.disabled)return;submitting=true;textarea.disabled=true;$('bulkTarget').disabled=true;save.disabled=true;save.setAttribute('aria-busy','true');save.textContent='Đang thêm…';
+      let rows=preview();if(submitting||save.disabled)return;submitting=true;textarea.disabled=true;$('bulkTarget').disabled=true;$('bulkRegion').disabled=true;save.disabled=true;save.setAttribute('aria-busy','true');save.textContent='Đang thêm…';
       let result;
       try{
         const latest=await api('/latest-many',{codes:rows.map(row=>row.productCode)});for(const code of rows.map(row=>row.productCode))latestCheckedCodes.add(code.trim().toLocaleLowerCase('vi'));for(const item of latest.rows||[])latestByCode.set(String(item.productCode||'').trim().toLocaleLowerCase('vi'),item);rows=preview();
-        if(!previewValid){submitting=false;textarea.disabled=false;$('bulkTarget').disabled=false;save.removeAttribute('aria-busy');save.textContent='Thêm vào bảng';preview();return}
+        if(!previewValid){submitting=false;textarea.disabled=false;$('bulkTarget').disabled=false;$('bulkRegion').disabled=false;save.removeAttribute('aria-busy');save.textContent='Thêm vào bảng';preview();return}
         const payload=rows.map(row=>Object.fromEntries(Object.entries(row).filter(([,value])=>value!==''&&value!=null)));result=await api('/bulk-create',{rows:payload,containerId:$('bulkTarget').value||null});
       }catch(error){
         if(pendingRequest&&['POST','PATCH'].includes(pendingRequest.method)){
           status.textContent='Chưa xác minh được kết quả. Hệ thống đang tự đồng bộ; đừng gửi lại danh sách này.';
           return;
         }
-        submitting=false;textarea.disabled=false;$('bulkTarget').disabled=false;save.removeAttribute('aria-busy');save.textContent='Thêm vào bảng';preview();throw error;
+        submitting=false;textarea.disabled=false;$('bulkTarget').disabled=false;$('bulkRegion').disabled=false;save.removeAttribute('aria-busy');save.textContent='Thêm vào bảng';preview();throw error;
       }
-      const message=`Đã thêm ${result.count||0} mã vào bảng Đặt hàng.`;status.textContent=message+' Danh sách đã được lưu.';save.textContent='Đã thêm thành công';await modalSuccess(message,{keepOpen:true});
+      const destination=bulkTarget.value?'vào cont '+String(bulkTarget.options[bulkTarget.selectedIndex]?.textContent||'đã chọn').trim():'vào Chờ xếp vùng '+(activeBulkRegions.find(region=>String(region.id)===String(bulkRegion.value))?.name||'AA'),message=`Đã thêm ${result.count||0} mã ${destination}.`;status.textContent=message+' Danh sách đã được lưu.';save.textContent='Đã thêm thành công';await modalSuccess(message,{keepOpen:true});
       void refresh().catch(error=>notice(message+' Dữ liệu đã lưu nhưng bảng chưa tải lại được: '+error.message));
     });
   };
